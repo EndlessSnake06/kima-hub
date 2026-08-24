@@ -153,15 +153,22 @@ describe('GET /tracks/:id/stream -- no per-user eviction (spec 1.1)', () => {
     });
 });
 
-// ── Spec 1.9: play-log claim release on failure ───────────────────────────────
+// ── A stream request is not a listen ──────────────────────────────────────────
+//
+// This replaces "play-log claim release on failure (spec 1.9)", which tested a
+// background insert on the stream endpoint plus the in-process claim that kept
+// concurrent requests from double-writing it. All of that is gone: requesting
+// bytes was never evidence anyone listened, so skipping an album wrote a play
+// per track. The judgement now lives in services/playRecording.ts, fed by
+// whoever knows how much was actually heard.
 
-describe('play-log claim release on failure (spec 1.9)', () => {
+describe('the stream endpoint records no plays', () => {
     let app: express.Application;
     let tmpFile: string;
 
     beforeAll(async () => {
-        tmpFile = path.join(os.tmpdir(), `kima-test-claim-${Date.now()}.mp3`);
-        await fs.promises.writeFile(tmpFile, Buffer.alloc(1024, 0xbb));
+        tmpFile = path.join(os.tmpdir(), `kima-noplay-${Date.now()}.mp3`);
+        await fs.promises.writeFile(tmpFile, Buffer.alloc(4096, 1));
         app = makeApp();
     });
 
@@ -171,11 +178,11 @@ describe('play-log claim release on failure (spec 1.9)', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
-        // Use the unique claim track to avoid dedup-window collision with other tests.
         (prisma.track.findUnique as jest.Mock).mockResolvedValue(TRACK_CLAIM);
         (prisma.userSettings.findUnique as jest.Mock).mockResolvedValue(null);
-
-        const streamingService = {
+        (prisma.play.findFirst as jest.Mock).mockResolvedValue(null);
+        (prisma.play.create as jest.Mock).mockResolvedValue({});
+        (getAudioStreamingService as jest.Mock).mockReturnValue({
             getStreamFilePath: jest.fn().mockResolvedValue({
                 filePath: tmpFile,
                 mimeType: 'audio/mpeg',
@@ -183,40 +190,26 @@ describe('play-log claim release on failure (spec 1.9)', () => {
             streamFileWithRangeSupport: jest.fn().mockImplementation(
                 async (_req: any, res: any, filePath: string) => {
                     const data = await fs.promises.readFile(filePath);
+                    res.setHeader('Content-Type', 'audio/mpeg');
+                    res.setHeader('Content-Length', data.length);
                     res.status(200).end(data);
                 }
             ),
-        };
-        (getAudioStreamingService as jest.Mock).mockReturnValue(streamingService);
+        });
     });
 
-    it('failed play.create releases the claim so a retry request can log the play', async () => {
-        // First request: play.create rejects -- claim should be released.
-        (prisma.play.findFirst as jest.Mock).mockResolvedValue(null);
-        (prisma.play.create as jest.Mock).mockRejectedValueOnce(new Error('DB error'));
+    it('writes nothing to Play, however many times a track is streamed', async () => {
+        // Observed failing by restoring the background insert: this reached 1.
+        for (let i = 0; i < 3; i++) {
+            await request(app).get(`/tracks/${TRACK_CLAIM.id}/stream`).expect(200);
+        }
+        await new Promise((r) => setTimeout(r, 60));
+        expect(prisma.play.create).not.toHaveBeenCalled();
+    });
 
-        const r1 = await request(app).get('/tracks/track-claim-unique/stream');
-        expect(r1.status).toBe(200);
-
-        // Allow the fire-and-forget IIFE to settle.
-        await new Promise((r) => setTimeout(r, 50));
-
-        expect(logger.warn).toHaveBeenCalledWith(
-            expect.stringContaining('[STREAM] Failed to log play'),
-            expect.anything(),
-        );
-
-        // Reset call count before the second request to isolate its behavior.
-        (prisma.play.create as jest.Mock).mockClear();
-        (prisma.play.findFirst as jest.Mock).mockResolvedValue(null);
-        (prisma.play.create as jest.Mock).mockResolvedValue({});
-
-        const r2 = await request(app).get('/tracks/track-claim-unique/stream');
-        expect(r2.status).toBe(200);
-
-        await new Promise((r) => setTimeout(r, 50));
-
-        // The second request must have attempted play.create (claim was released).
-        expect(prisma.play.create).toHaveBeenCalledTimes(1);
+    it('does not even look for a recent play -- that check went with the insert', async () => {
+        await request(app).get(`/tracks/${TRACK_CLAIM.id}/stream`).expect(200);
+        await new Promise((r) => setTimeout(r, 60));
+        expect(prisma.play.findFirst).not.toHaveBeenCalled();
     });
 });

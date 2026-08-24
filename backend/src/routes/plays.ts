@@ -3,6 +3,7 @@ import { logger } from "../utils/logger";
 import { requireAuth } from "../middleware/auth";
 import { prisma } from "../utils/db";
 import { z } from "zod";
+import { recordPlay } from "../services/playRecording";
 
 const router = Router();
 
@@ -10,31 +11,29 @@ router.use(requireAuth);
 
 const playSchema = z.object({
     trackId: z.string(),
+    // How many seconds of the track were actually heard. Older clients that
+    // predate this field send nothing; they get 0 and record no play, which is
+    // the correct answer rather than a regression -- a client that cannot say
+    // how much was played cannot know whether it counts.
+    secondsListened: z.number().min(0).max(24 * 60 * 60).default(0),
 });
 
 // POST /plays
 router.post("/", async (req, res) => {
     try {
         const userId = req.user!.id;
-        const { trackId } = playSchema.parse(req.body);
+        const { trackId, secondsListened } = playSchema.parse(req.body);
 
-        // Verify track exists
-        const track = await prisma.track.findUnique({
-            where: { id: trackId },
-        });
+        const outcome = await recordPlay({ userId, trackId, secondsListened });
 
-        if (!track) {
+        if (!outcome.recorded && outcome.reason === "unknown-track") {
             return res.status(404).json({ error: "Track not found" });
         }
 
-        const play = await prisma.play.create({
-            data: {
-                userId,
-                trackId,
-            },
-        });
-
-        res.json(play);
+        // Not qualifying is a normal outcome, not a failure: the client reports
+        // progress and the server decides. Say which way it went so a client can
+        // stop asking.
+        res.json(outcome);
     } catch (error) {
         if (error instanceof z.ZodError) {
             return res

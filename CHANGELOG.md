@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - nightly
 
+### Changed
+
+- **A play now means somebody listened.** A `Play` row was written the moment the stream endpoint was hit, so skipping through an album recorded a play for every track and nobody had heard any of them — and that history feeds the vibe profile, recently-played and the decay model. The rule is now Last.fm's, restated verbatim by ListenBrainz: longer than 30 seconds, and played for half its length or four minutes, whichever comes first.
+
+  The stream endpoint records nothing at all — requesting bytes is not listening. The web player measures real listening and reports it, the server decides, and a track whose length is unknown gets the four-minute bound rather than a free pass, so never scanning a file is not the cheapest way to log a play. Repeats inside five minutes collapse to one. Subsonic clients keep choosing their own moment to scrobble, which is what the contract says, but the 30-second floor is enforced server-side whatever a client claims.
+
+  Existing rows are still stream-starts. The decay model fades them out on its own, and `Play.source` still distinguishes the Subsonic ones if you ever want to audit the cutover.
+
+
 ## [1.10.0] - 2026-08-23
 ### Added
 

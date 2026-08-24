@@ -13,6 +13,7 @@ import {
 import { useAudioState } from "./audio-state-context";
 import { useAudioController } from "./audio-controller-context";
 import type { EngineSnapshot } from "./audio-engine-policy";
+import { usePlayReporting } from "@/hooks/usePlayReporting";
 
 interface AudioPlaybackContextType {
     isPlaying: boolean;
@@ -83,6 +84,15 @@ export function AudioPlaybackProvider({ children }: { children: ReactNode }) {
     }
 
     const controller = useAudioController();
+
+    // A play is reported by whoever knows how much was actually heard. The stream
+    // endpoint no longer logs one -- requesting bytes is not listening -- so if
+    // this stops firing, play history silently stops growing rather than erroring.
+    usePlayReporting(
+        controller as Parameters<typeof usePlayReporting>[0],
+        state.currentTrack?.id ?? null,
+        state.currentTrack?.duration ?? duration ?? null,
+    );
 
     // Snapshot subscriber: derive isPlaying/isBuffering/audioError from engine state machine.
     useEffect(() => {

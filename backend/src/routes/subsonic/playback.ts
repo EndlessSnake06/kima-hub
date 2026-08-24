@@ -10,6 +10,7 @@ import { config } from "../../config";
 import { bitrateToQuality, firstArtistGenre, mapSong, wrap } from "./mappers";
 import { normalizeArtistName } from "../../utils/artistNormalization";
 import { resolveTrackFilePath } from "../library/trackPath";
+import { recordPlay } from "../../services/playRecording";
 
 export const playbackRouter = Router();
 
@@ -315,14 +316,24 @@ playbackRouter.all("/scrobble.view", wrap(async (req, res) => {
     const submission = req.query.submission !== "false";
 
     if (submission) {
-        const track = await prisma.track.findUnique({ where: { id }, select: { id: true } });
-        if (track) {
-            const timeMs = req.query.time ? parseInt(req.query.time as string, 10) : Date.now();
-            const playedAt = isNaN(timeMs) ? new Date() : new Date(timeMs);
-            await prisma.play
-                .create({ data: { userId, trackId: id, playedAt, source: ListenSource.SUBSONIC } })
-                .catch((err) => logger.warn("[Subsonic] scrobble play-log failed:", err));
-        }
+        // The Subsonic contract lets the client decide when a track has been
+        // played, and clients differ. We honour that -- a scrobble here is taken
+        // as a genuine report -- but the floor is ours: a track at or under 30
+        // seconds is never scrobbleable under the Last.fm rule, whatever a client
+        // claims, and services/playRecording.ts owns that judgement.
+        //
+        // A client reporting a scrobble has, by the contract, already decided the
+        // track was played, so the seconds are taken as satisfied rather than
+        // re-measured; the duration floor and the duplicate window still apply.
+        const timeMs = req.query.time ? parseInt(req.query.time as string, 10) : Date.now();
+        const playedAt = isNaN(timeMs) ? new Date() : new Date(timeMs);
+        await recordPlay({
+            userId,
+            trackId: id,
+            secondsListened: Number.POSITIVE_INFINITY,
+            source: ListenSource.SUBSONIC,
+            playedAt,
+        }).catch((err: unknown) => logger.warn("[Subsonic] scrobble play-log failed:", err));
     }
 
     return subsonicOk(req, res);
