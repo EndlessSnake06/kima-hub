@@ -12,6 +12,7 @@ import authRoutes from "./routes/auth";
 import onboardingRoutes from "./routes/onboarding";
 import libraryRoutes from "./routes/library";
 import playsRoutes from "./routes/plays";
+import whatsNewRoutes from "./routes/whatsNew";
 import settingsRoutes from "./routes/settings";
 import systemSettingsRoutes from "./routes/systemSettings";
 import listeningStateRoutes from "./routes/listeningState";
@@ -148,6 +149,7 @@ app.use("/api/device-link", apiLimiter, deviceLinkRoutes);
 // NOTE: /api/library has its own rate limiting (imageLimiter for cover-art, apiLimiter for others)
 app.use("/api/library", libraryRoutes);
 app.use("/api/plays", apiLimiter, playsRoutes);
+app.use("/api/whats-new", apiLimiter, whatsNewRoutes);
 app.use("/api/settings", apiLimiter, settingsRoutes);
 app.use("/api/system-settings", apiLimiter, systemSettingsRoutes);
 app.use("/api/listening-state", apiLimiter, listeningStateRoutes);

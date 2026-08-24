@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - nightly
 
+## [1.10.1] - 2026-08-25
+
+### Added
+
+- **A window that tells you what changed, and asks before it assumes.** After an update, Kima shows the release once: what changed, anything you can run, and anything it needs permission for. Closing it is a real answer — every permission you did not touch is recorded as declined, at its default, which is always off. Nothing is left blank for later code to read as a yes. A permission you did switch on survives closing the window; it is not a retraction.
+- **A one-off repair for play history recorded under the old rule.** Offered in that window and permanently in Settings. It looks first and shows what it found: how many plays it can prove were skips, how many it cannot tell about, and a sample of the actual rows. Only then does a button appear that removes anything.
+
+  The evidence is the gap to the next play. A play followed eight seconds later by another ran for at most eight seconds, whatever else was happening — so it cannot have met the threshold. A *long* gap proves nothing either way, so those are kept, along with the last play of every session, which has nothing following it to bound it. On a test history of 1,700 plays built from 836 deliberate skips, it found 836 and misclassified none of the real listening.
+
 ### Changed
 
 - **A play now means somebody listened.** A `Play` row was written the moment the stream endpoint was hit, so skipping through an album recorded a play for every track and nobody had heard any of them — and that history feeds the vibe profile, recently-played and the decay model. The rule is now Last.fm's, restated verbatim by ListenBrainz: longer than 30 seconds, and played for half its length or four minutes, whichever comes first.

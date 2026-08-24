@@ -9,6 +9,7 @@ import { TVLayout } from "./TVLayout";
 import { BottomNavigation } from "./BottomNavigation";
 import { UniversalPlayer } from "../player/UniversalPlayer";
 import { MediaControlsHandler } from "../player/MediaControlsHandler";
+import { WhatsNewGate } from "@/components/whats-new/WhatsNewGate";
 import { PlayerModeWrapper } from "../player/PlayerModeWrapper";
 import { ActivityPanel } from "./ActivityPanel";
 import { UnifiedPanel } from "./UnifiedPanel";
@@ -109,6 +110,7 @@ export function AuthenticatedLayout({ children }: { children: ReactNode }) {
                         Skip to main content
                     </a>
                     <MediaControlsHandler />
+                    <WhatsNewGate />
                     <TVLayout>{children}</TVLayout>
                 </PlayerModeWrapper>
             );
@@ -126,6 +128,7 @@ export function AuthenticatedLayout({ children }: { children: ReactNode }) {
                     </a>
                     <div className="h-screen bg-black overflow-hidden flex flex-col">
                         <MediaControlsHandler />
+                    <WhatsNewGate />
                         <TopBar />
 
                         {/* Sidebar - renders MobileSidebar for hamburger menu */}
@@ -177,6 +180,7 @@ export function AuthenticatedLayout({ children }: { children: ReactNode }) {
                     style={{ paddingTop: "calc(64px + var(--titlebar-height, 0px))" }}
                 >
                     <MediaControlsHandler />
+                    <WhatsNewGate />
                     <TopBar />
                     <div className="flex-1 flex gap-2 p-2 pt-0 overflow-hidden">
                         <Sidebar />

@@ -893,6 +893,8 @@ model User {
   shareLinks             ShareLink[]
   subsonicBookmarks      SubsonicBookmark[]
   subsonicPlayQueue      SubsonicPlayQueue?
+  releaseAcks            ReleaseAcknowledgement[]
+  releaseChoices         ReleaseChoice[]
 }
 
 model UserDiscoverConfig {
@@ -1057,4 +1059,52 @@ enum ListenSource {
   DISCOVERY
   DISCOVERY_KEPT
   SUBSONIC
+}
+
+/// What a user has been shown, and what they decided.
+///
+/// One row per user per release. Its presence means the release window for that
+/// version has been closed; `dismissedAt` says when. A user who has never seen a
+/// release has no row, which is the only "unknown" state the system has.
+model ReleaseAcknowledgement {
+  id          String   @id @default(cuid())
+  userId      String
+  /// The release this acknowledges, e.g. "1.10.1". Compared as a string; the
+  /// server decides which releases are pending, never the client.
+  version     String
+  dismissedAt DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, version])
+  @@index([userId])
+}
+
+/// A decision on one opt-in, recorded for everybody who saw the release.
+///
+/// Closing the window without touching a toggle still writes a row here, with
+/// `decidedBy = DISMISSED` and the choice's default value — which is always off.
+/// That is deliberate: it means there is no third state for later code to read
+/// optimistically, and "how many people opted in" has an honest denominator.
+model ReleaseChoice {
+  id        String           @id @default(cuid())
+  userId    String
+  version   String
+  /// Stable identifier for the thing being consented to, e.g.
+  /// "social.network", "commons.contribute". Survives copy changes.
+  key       String
+  enabled   Boolean          @default(false)
+  decidedBy ChoiceDecidedBy  @default(DISMISSED)
+  decidedAt DateTime         @default(now())
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@index([userId])
+  @@index([key])
+}
+
+enum ChoiceDecidedBy {
+  /// The user moved the toggle themselves.
+  EXPLICIT
+  /// The window was closed without answering. Recorded at the default.
+  DISMISSED
 }
