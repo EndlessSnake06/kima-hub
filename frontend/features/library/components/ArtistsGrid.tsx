@@ -63,10 +63,10 @@ const ArtistCardItem = memo(
                 prefetch={true}
                 data-tv-card
                 data-tv-card-index={index}
-                style={{ "--i": index } as React.CSSProperties}
+                style={{ "--i": Math.min(index, 8) } as React.CSSProperties}
                 className={cn(
                     "group block",
-                    index < 8 ? "animate-rise [animation-delay:calc(var(--i)*45ms)]" : "",
+                    "animate-rise [animation-delay:calc(var(--i)*45ms)]",
                 )}
             >
                 <div className="relative bg-[var(--bg-primary)] border-2 border-white/10 rounded-lg overflow-hidden hover:border-[#fca200]/50 transition-all duration-200" style={{ transform: "translateZ(0)" }}>

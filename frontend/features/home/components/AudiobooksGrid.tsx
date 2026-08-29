@@ -22,7 +22,7 @@ const AudiobookCard = memo(function AudiobookCard({
     audiobook,
     index,
 }: AudiobookCardProps) {
-    const staggered = index < 8;
+    const cappedIndex = Math.min(index, 8);
 
     return (
         <CarouselItem>
@@ -33,9 +33,9 @@ const AudiobookCard = memo(function AudiobookCard({
                 tabIndex={0}
                 className={cn(
                     "group block",
-                    staggered && "animate-rise [animation-delay:calc(var(--i)*45ms)]",
+                    "animate-rise [animation-delay:calc(var(--i)*45ms)]",
                 )}
-                style={staggered ? { "--i": index } as CSSProperties : undefined}
+                style={{ "--i": cappedIndex } as CSSProperties}
             >
                 <div className="relative bg-[var(--bg-primary)] border border-white/10 rounded-lg overflow-hidden hover:border-[#f59e0b]/40 transition-[border-color] duration-150 mx-1">
                     <div className="relative aspect-square">

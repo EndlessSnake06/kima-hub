@@ -452,13 +452,13 @@ export default function SharePageClient() {
                                         key={track.id}
                                         onClick={() => playTrack(index)}
                                         className={`w-full flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${
-                                            index < 8 ? "animate-rise" : ""
+                                            "animate-rise [animation-delay:calc(var(--i)*45ms)]"
                                         } group ${
                                             isActive
                                                 ? "bg-white/[0.04]"
                                                 : "hover:bg-white/[0.02]"
                                         }`}
-                                        style={index < 8 ? { "--i": index } as CSSProperties : undefined}
+                                        style={{ "--i": Math.min(index, 8) } as CSSProperties}
                                     >
                                         <div className="w-8 text-center flex-shrink-0">
                                             {isActive && isPlaying ? (

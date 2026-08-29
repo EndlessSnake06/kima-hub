@@ -59,13 +59,9 @@ export const PopularTracks: React.FC<PopularTracksProps> = ({
                             className={cn(
                                 "grid grid-cols-[40px_1fr_auto] md:grid-cols-[40px_minmax(200px,4fr)_minmax(80px,1fr)_80px] gap-4 py-2 rounded-md hover:bg-white/5 transition-colors group cursor-pointer touch-manipulation",
                                 isPlaying && "bg-white/10",
-                                index < 8 && "animate-rise",
+                                "animate-rise [animation-delay:calc(var(--i)*45ms)]",
                             )}
-                            style={
-                                index < 8
-                                    ? { animationDelay: `${index * 45}ms` }
-                                    : undefined
-                            }
+                            style={{ "--i": Math.min(index, 8), animationDelay: "calc(var(--i)*45ms)" } as unknown as React.CSSProperties}
                             onDoubleClick={(e) => {
                                 if (isUnowned) {
                                     onPreview(track, e);

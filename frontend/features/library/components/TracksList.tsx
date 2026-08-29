@@ -62,13 +62,13 @@ const TrackRow = memo(
                 data-tv-card
                 data-tv-card-index={index}
                 tabIndex={0}
-                style={{ "--i": index } as React.CSSProperties}
+                style={{ "--i": Math.min(index, 8) } as React.CSSProperties}
                 className={cn(
                     "grid grid-cols-[auto_1fr_auto] md:grid-cols-[auto_1fr_1fr_auto] items-center gap-3 px-4 py-3 rounded-lg border-2 transition-all duration-200 group cursor-pointer touch-manipulation",
                     isCurrentlyPlaying
                         ? "bg-[#a855f7]/10 border-[#a855f7]/30 "
                         : "bg-[var(--bg-primary)] border-white/5 hover:border-[#a855f7]/30 hover:bg-[#a855f7]/5",
-                    index < 8 ? "animate-rise [animation-delay:calc(var(--i)*45ms)]" : "",
+                    "animate-rise [animation-delay:calc(var(--i)*45ms)]",
                 )}
             >
                 {/* Track number / Play button */}

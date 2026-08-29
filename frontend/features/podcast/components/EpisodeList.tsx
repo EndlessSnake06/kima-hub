@@ -52,9 +52,9 @@ function EpisodeRow({
                 isCurrentEpisode
                     ? "bg-white/5 border border-[#3b82f6]/30"
                     : "border border-transparent hover:bg-white/[0.03] hover:border-white/5",
-                index < 8 && "animate-rise",
+                "animate-rise",
             )}
-            style={index < 8 ? { animationDelay: `${index * 45}ms` } : undefined}
+            style={{ "--i": Math.min(index, 8), animationDelay: `${Math.min(index, 8) * 45}ms` } as unknown as React.CSSProperties}
         >
             {/* Progress bar */}
             {episode.progress && episode.progress.progress > 0 && (

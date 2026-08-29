@@ -73,7 +73,7 @@ const ContinueListeningCard = memo(function ContinueListeningCard({
         item.progress &&
         item.progress > 0;
     const colors = TYPE_COLORS[item.type] || TYPE_COLORS.artist;
-    const staggered = index < 8;
+    const cappedIndex = Math.min(index, 8);
 
     return (
         <CarouselItem>
@@ -84,9 +84,9 @@ const ContinueListeningCard = memo(function ContinueListeningCard({
                 tabIndex={0}
                 className={cn(
                     "group block",
-                    staggered && "animate-rise [animation-delay:calc(var(--i)*45ms)]",
+                    "animate-rise [animation-delay:calc(var(--i)*45ms)]",
                 )}
-                style={staggered ? { "--i": index } as CSSProperties : undefined}
+                style={{ "--i": cappedIndex } as CSSProperties}
             >
                 <div className={`relative bg-[var(--bg-primary)] border border-white/10 rounded-lg overflow-hidden ${colors.border} transition-[border-color] duration-150 mx-1`}>
                     <div className="relative aspect-square overflow-hidden">

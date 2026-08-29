@@ -59,10 +59,10 @@ const AlbumCardItem = memo(
                 data-tv-card
                 data-tv-card-index={index}
                 tabIndex={0}
-                style={{ "--i": index } as CSSProperties}
+                style={{ "--i": Math.min(index, 8) } as CSSProperties}
                 className={cn(
                     "group block",
-                    index < 8 ? "animate-rise [animation-delay:calc(var(--i)*45ms)]" : "",
+                    "animate-rise [animation-delay:calc(var(--i)*45ms)]",
                 )}
             >
                 <div className="relative bg-[var(--bg-primary)] border-2 border-white/10 rounded-lg overflow-hidden hover:border-[#22c55e]/50 transition-all duration-200" style={{ transform: "translateZ(0)" }}>
