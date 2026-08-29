@@ -24,6 +24,7 @@ const allNavigation = [
     { name: "Audiobooks", href: "/audiobooks", feature: "audiobookshelfEnabled" as const },
     { name: "Podcasts", href: "/podcasts", feature: null },
     { name: "Browse", href: "/browse/playlists", feature: null },
+    { name: "Stats", href: "/stats", feature: null },
 ];
 
 interface Playlist {

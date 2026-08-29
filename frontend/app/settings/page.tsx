@@ -145,6 +145,14 @@ export default function SettingsPage() {
                 <PlaybackSection
                     value={userSettings.playbackQuality}
                     onChange={(quality) => updateUserSettings({ playbackQuality: quality })}
+                    // Server-wide, so the row only appears for an admin. Passing
+                    // no handler is what hides it.
+                    maxQueueLength={isAdmin ? systemSettings.maxQueueLength : undefined}
+                    onMaxQueueLength={
+                        isAdmin
+                            ? (maxQueueLength) => updateSystemSettings({ maxQueueLength })
+                            : undefined
+                    }
                 />
 
                 {/* Admin-only sections */}

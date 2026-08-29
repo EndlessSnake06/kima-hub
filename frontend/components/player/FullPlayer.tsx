@@ -4,6 +4,7 @@ import { useAudioState } from "@/lib/audio-state-context";
 import { useAudioPlayback } from "@/lib/audio-playback-context";
 import { useAudioControls } from "@/lib/audio-controls-context";
 import { useMediaInfo } from "@/hooks/useMediaInfo";
+import { PlayCountLine } from "@/features/stats/PlayCountLine";
 import { usePlaybackProgress } from "@/hooks/usePlaybackProgress";
 import Image from "next/image";
 import Link from "next/link";
@@ -183,6 +184,13 @@ export function FullPlayer() {
                                     {subtitle}
                                 </p>
                             )}
+                            {/* Beneath the subtitle rather than inside it: the
+                                subtitle is itself a link to the artist, and a
+                                link cannot contain another one. */}
+                            <PlayCountLine
+                                trackId={playbackType === "track" ? currentTrack?.id : null}
+                                className="block text-xs truncate mt-0.5"
+                            />
                             {/* Vibe match score when in vibe mode */}
                             {activeOperation.type !== 'idle' && vibeMatchScore !== null && (
                                 <span

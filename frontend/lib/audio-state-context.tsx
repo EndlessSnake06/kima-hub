@@ -230,6 +230,32 @@ export function AudioStateProvider({ children }: { children: ReactNode }) {
         return stored === "track" ? null : stored;
     });
     const [queue, setQueue] = useState<Track[]>([]);
+
+    /**
+     * The server's queue ceiling, fetched once.
+     *
+     * A ref rather than state on purpose: nothing renders from it, and putting
+     * it in state would re-run the save effect the moment it arrived, writing
+     * the queue again for no reason. The starting value is the same default the
+     * server falls back to, so a failed or slow fetch behaves like agreement
+     * rather than like a much smaller limit.
+     */
+    const queueLimitRef = useRef(10000);
+
+    useEffect(() => {
+        let cancelled = false;
+        api.getQueueLimit()
+            .then((r) => {
+                if (!cancelled && Number.isFinite(r?.maxQueueLength)) {
+                    queueLimitRef.current = r.maxQueueLength;
+                }
+            })
+            .catch(() => {
+                // The default stands. A queue that saves slightly short is a
+                // far smaller problem than one that does not save.
+            });
+        return () => { cancelled = true; };
+    }, []);
     const [currentIndex, setCurrentIndex] = useState(
         () => { const v = readStorage(STORAGE_KEYS.CURRENT_INDEX); return v ? parseInt(v) : 0; }
     );
@@ -511,7 +537,17 @@ export function AudioStateProvider({ children }: { children: ReactNode }) {
                 } else {
                     localStorage.removeItem(STORAGE_KEYS.PLAYBACK_TYPE);
                 }
-                localStorage.setItem(STORAGE_KEYS.QUEUE, JSON.stringify(queue));
+                // The queue is NOT written here, deliberately.
+                //
+                // It lives on the server (`PlaybackState.queue`), which is what
+                // every restore path above actually reads and what a Subsonic
+                // client shares. This wrote the whole queue to localStorage on
+                // every change and nothing ever read it back — measured at 2.2MB
+                // of stringify per skip on a ten thousand track queue, for a key
+                // with no consumer. Worse, it shares this try/catch with the
+                // current track and playback type, so once the queue was large
+                // enough to blow the 5MB origin quota it took those down with
+                // it, silently.
                 localStorage.setItem(
                     STORAGE_KEYS.CURRENT_INDEX,
                     currentIndex.toString()
@@ -558,9 +594,11 @@ export function AudioStateProvider({ children }: { children: ReactNode }) {
 
         const saveToServer = async () => {
             try {
-                // Limit queue to first 2000 items to reduce payload size
-                // Backend also limits to 2000, so this matches server storage
-                const limitedQueue = queue?.slice(0, 2000);
+                // Sliced to whatever the server says it will keep, asked for
+                // once and remembered. This was two hard-coded 2000s — one here
+                // and one in the route — kept in step by a comment, which is
+                // the arrangement that guarantees they eventually differ.
+                const limitedQueue = queue?.slice(0, queueLimitRef.current);
                 const adjustedIndex = Math.min(
                     currentIndex,
                     (limitedQueue?.length || 1) - 1

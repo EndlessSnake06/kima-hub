@@ -1341,6 +1341,11 @@ class ApiClient {
     }
 
     // Playback State (cross-device sync)
+    /** How many tracks the server will keep, as the operator has it set. */
+    async getQueueLimit() {
+        return this.request<{ maxQueueLength: number }>("/playback-state/limit");
+    }
+
     async getPlaybackState() {
         return this.request<ApiData>("/playback-state");
     }

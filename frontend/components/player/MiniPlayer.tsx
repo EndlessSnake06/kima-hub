@@ -2,6 +2,7 @@
 
 import { useAudioState, useAudioPlayback, useAudioControls } from "@/lib/audio-context";
 import { useMediaInfo } from "@/hooks/useMediaInfo";
+import { PlayCountLine } from "@/features/stats/PlayCountLine";
 import { useIsMobile, useIsTablet } from "@/hooks/useMediaQuery";
 import Image from "next/image";
 import Link from "next/link";
@@ -88,6 +89,8 @@ export function MiniPlayer() {
 
 
     const { title, subtitle, coverUrl, mediaLink, hasMedia } = useMediaInfo(100);
+
+    const countedTrackId = playbackType === "track" ? currentTrack?.id : null;
 
     // Check if controls should be enabled (only for tracks)
     const canSkip = playbackType === "track";
@@ -290,6 +293,10 @@ export function MiniPlayer() {
                                             <p className="text-gray-300/70 text-xs truncate leading-tight mt-0.5">
                                                 {subtitle}
                                             </p>
+                                            <PlayCountLine
+                                                trackId={countedTrackId}
+                                                className="block text-xs leading-tight mt-0.5"
+                                            />
                                         </>
                                     )}
                                 </div>

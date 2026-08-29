@@ -15,7 +15,6 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { WhatsNewWindow } from "./WhatsNewWindow";
-import { PlayHistoryRepair } from "./PlayHistoryRepair";
 
 interface Release {
     version: string;
@@ -51,7 +50,17 @@ export function WhatsNewGate() {
             release={current}
             onClose={() => setQueue(rest)}
             renderAction={(item) =>
-                item.key === "plays.repair" ? <PlayHistoryRepair cta={item.cta} /> : null
+                item.key === "plays.repair" ? (
+                    // The review lives on the stats page and stays there. A
+                    // dialogue is a bad place to work through forty tracks, and
+                    // a second copy of a destructive tool is worse.
+                    <a
+                        href="/stats#false-starts"
+                        className="self-start h-11 px-4 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-white text-sm font-medium flex items-center transition-colors"
+                    >
+                        {item.cta}
+                    </a>
+                ) : null
             }
         />
     );

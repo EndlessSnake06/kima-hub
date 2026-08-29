@@ -1,0 +1,99 @@
+"use client";
+
+/**
+ * The part of this page that can be finished.
+ *
+ * A running total only ever goes up, which makes it a number rather than a
+ * goal. A percentage of something countable has an end, and an end is what
+ * turns a statistic into progress. That is the whole of the game here — no
+ * points, no badges, no streaks, just four honest fractions and the gap spelled
+ * out underneath.
+ *
+ * Set large and in a row. Four medium blocks stacked read as a form; four big
+ * numerals side by side read as a scoreboard, and the difference is entirely
+ * scale. The rule under each is thin and flat rather than a rounded pill — a
+ * pill reads as a loading indicator, a rule reads as a measurement.
+ */
+
+import { percent } from "../format";
+import { useReveal } from "../useReveal";
+import { usePlaySlice } from "../usePlaySlice";
+import { Loader2, Shuffle } from "lucide-react";
+import type { ShelfStats } from "../types";
+
+interface Row {
+    label: string;
+    part: number;
+    whole: number;
+    unit: string;
+}
+
+export function Coverage({ shelf }: { shelf: ShelfStats }) {
+    const { ref, shown } = useReveal<HTMLDivElement>({ threshold: 0.3 });
+    const { play, busy } = usePlaySlice();
+    const rows: Row[] = [
+        { label: "Tracks heard", part: shelf.tracks.heard, whole: shelf.tracks.total, unit: "tracks" },
+        { label: "Albums opened", part: shelf.albums.heard, whole: shelf.albums.total, unit: "albums" },
+        { label: "Artists reached", part: shelf.artists.heard, whole: shelf.artists.total, unit: "artists" },
+        { label: "Analysed", part: shelf.analysis.done, whole: shelf.analysis.total, unit: "tracks" },
+    ];
+
+    return (
+        <div ref={ref} className="flex flex-col gap-(--stat-gap-block)">
+            <dl className="grid grid-cols-2 gap-x-6 gap-y-8 sm:grid-cols-4 sm:gap-x-8">
+                {rows.map((row, i) => {
+                    const pct = percent(row.part, row.whole);
+                    return (
+                        <div
+                            key={row.label}
+                            className={`flex flex-col gap-3 ${shown ? "animate-rise" : "opacity-0"}`}
+                            style={shown ? { animationDelay: `${Math.min(i, 8) * 70}ms` } : undefined}
+                        >
+                            <dd className="t-figure text-[length:var(--stat-figure)]">
+                                {pct}
+                                <span className="text-base font-normal text-[var(--text-muted)] tracking-normal">%</span>
+                            </dd>
+
+                            <div className="relative h-[2px] w-full bg-white/[0.07]">
+                                <div
+                                    className="absolute inset-y-0 left-0 w-full origin-left bg-brand"
+                                    style={{
+                                        transform: `scaleX(${shown ? Math.max(0, Math.min(1, pct / 100)) : 0})`,
+                                        transition: "transform 900ms cubic-bezier(0.25,1,0.5,1)",
+                                        transitionDelay: `${140 + Math.min(i, 8) * 90}ms`,
+                                    }}
+                                />
+                            </div>
+
+                            <div className="flex flex-col gap-0.5">
+                                <dt className="t-label text-[var(--text-secondary)]">{row.label}</dt>
+                                <p className="t-meta">
+                                    {row.part.toLocaleString()} of {row.whole.toLocaleString()}
+                                </p>
+                            </div>
+                        </div>
+                    );
+                })}
+            </dl>
+
+            {/* A number that large is only depressing if you cannot do anything
+                with it. The sentence that used to sit above this button said
+                the never-played count out loud — which is now the claim of the
+                section this renders inside, so it was being read twice, forty
+                pixels apart. The button says it on its own. */}
+            {shelf.neverPlayed > 0 && (
+                <div className="flex flex-col items-start gap-4">
+                    <button
+                        type="button"
+                        onClick={() => void play("never", { limit: 40 })}
+                        disabled={busy === "never"}
+                        className="h-11 px-4 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-white t-control flex items-center gap-2 transition-colors disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0a]"
+                    >
+                        {busy === "never" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shuffle className="w-4 h-4" />}
+                        Play forty of them
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+}

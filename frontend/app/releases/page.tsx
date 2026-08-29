@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Calendar, Clock, Download, Music2, Disc, ArrowRight, CheckCircle2, Loader2 } from "lucide-react";
 import { cn } from "@/utils/cn";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
@@ -192,6 +192,46 @@ export default function ReleasesPage() {
     );
 }
 
+/**
+ * The sleeve for one release, and the placeholder when there isn't one.
+ *
+ * Two things guard the same failure. The server has already dropped any cover
+ * address it could not load, so most missing art arrives here as a plain null.
+ * What is left goes through this app's own image endpoint rather than straight
+ * out to the Cover Art Archive, so a picture that disappears between the
+ * server's check and this render fails on our own origin, where it is cached
+ * as missing and swapped for the placeholder below instead of leaving a broken
+ * box on the page.
+ */
+function ReleaseCover({ release }: { release: ReleaseItem }) {
+    const [broken, setBroken] = useState(false);
+
+    const src = useMemo(
+        () => (release.coverUrl ? api.getCoverArtUrl(release.coverUrl, 500) : null),
+        [release.coverUrl],
+    );
+
+    if (!src || broken) {
+        return (
+            <div className="w-full h-full flex items-center justify-center">
+                <Disc className="w-12 h-12 text-[var(--text-muted)]" />
+            </div>
+        );
+    }
+
+    return (
+        <Image
+            src={src}
+            alt={release.title}
+            fill
+            sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, (max-width: 1280px) 20vw, 16vw"
+            className="object-cover group-hover:scale-105 transition-transform duration-150"
+            unoptimized
+            onError={() => setBroken(true)}
+        />
+    );
+}
+
 function ReleaseCard({
     release,
     formatDate,
@@ -210,20 +250,7 @@ function ReleaseCard({
         <div className="group relative">
             {/* Cover Art */}
             <div className="aspect-square rounded-lg overflow-hidden bg-white/5 mb-3 relative">
-                {release.coverUrl ? (
-                    <Image
-                        src={release.coverUrl}
-                        alt={release.title}
-                        fill
-                        sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, (max-width: 1280px) 20vw, 16vw"
-                        className="object-cover group-hover:scale-105 transition-transform duration-150"
-                        unoptimized
-                    />
-                ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                        <Disc className="w-12 h-12 text-[var(--text-muted)]" />
-                    </div>
-                )}
+                <ReleaseCover release={release} />
 
                 {/* Status Badge */}
                 <div className={cn(

@@ -78,6 +78,17 @@ export class ListenMeter {
         if (durationSeconds !== undefined) this.durationSeconds = durationSeconds;
     }
 
+    /**
+     * Learn the track's length without disturbing anything already counted.
+     *
+     * Durations often arrive after playback has begun. That is new information
+     * about the same listen, not a new listen, so it must not clear the counter
+     * or the already-reported flag.
+     */
+    setDuration(durationSeconds: number | null): void {
+        this.durationSeconds = durationSeconds;
+    }
+
     /** A seek breaks the chain of deltas rather than producing one enormous one. */
     breakChain(): void {
         this.lastPosition = null;
@@ -122,9 +133,22 @@ export function usePlayReporting(
     const meterRef = useRef<ListenMeter>(new ListenMeter(durationSeconds));
     const trackIdRef = useRef<string | null>(null);
 
+    /**
+     * Start over when the song changes, and only then.
+     *
+     * An earlier version also reset whenever the duration changed, which sounds
+     * harmless and is not: a track's length often arrives a beat after playback
+     * starts, and resetting clears the "already reported" flag, so the same
+     * listen could be reported twice. The server's duplicate check was hiding
+     * that — and now that the check is only as long as the song itself, a short
+     * track would have started counting twice.
+     *
+     * A late duration is fed to the meter without disturbing what it has
+     * already counted or already sent.
+     */
     useEffect(() => {
         if (trackIdRef.current === trackId) {
-            meterRef.current.reset(durationSeconds ?? null);
+            meterRef.current.setDuration(durationSeconds ?? null);
             return;
         }
         trackIdRef.current = trackId ?? null;

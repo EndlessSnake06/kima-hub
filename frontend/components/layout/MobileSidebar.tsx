@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { Settings, RefreshCw, LogOut, Compass, X, Radio } from "lucide-react";
+import { Settings, RefreshCw, LogOut, Compass, X, Radio, ChartNoAxesColumn } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/utils/cn";
 import { api } from "@/lib/api";
@@ -162,6 +162,25 @@ export function MobileSidebar({ isOpen, onClose }: MobileSidebarProps) {
                             <Radio className="w-5 h-5" />
                             <span className="text-sm font-medium">
                                 Radio
+                            </span>
+                        </Link>
+
+                        <Link
+                            href="/stats"
+                            aria-current={
+                                pathname === "/stats" ? "page" : undefined
+                            }
+                            aria-label="Stats"
+                            className={cn(
+                                "flex items-center gap-3 px-3 py-3 rounded-lg transition-colors duration-200",
+                                pathname === "/stats" ?
+                                    "bg-white/10 text-white"
+                                :   "text-[var(--text-secondary)] hover:text-white hover:bg-white/5",
+                            )}
+                        >
+                            <ChartNoAxesColumn className="w-5 h-5" />
+                            <span className="text-sm font-medium">
+                                Stats
                             </span>
                         </Link>
                     </div>

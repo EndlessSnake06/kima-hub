@@ -1,0 +1,121 @@
+"use client";
+
+/**
+ * The two graphics no streaming service could draw for you.
+ *
+ * Both need two things in one database, and nobody renting you music has both:
+ * the audio analysis of every file, and the fact that the files are yours.
+ * Spotify knows what you played and not what you own. Last.fm has never
+ * listened to any of it. A plain Subsonic server has the files but does not
+ * know what they sound like.
+ *
+ * ## What was removed here on 2026-08-25
+ *
+ * There were four exports. `AlbumCurve` drew listens by track position as a
+ * column chart, which was the third column chart on a page that also had a
+ * grid, a wheel, a timeline and a scatter — and the one fact it carried ("you
+ * play records in order two thirds of the time") is a number, so it is now a
+ * line of the opening ledger and costs nothing. `Statement` and `Em` were
+ * written, never called, and never noticed.
+ *
+ * The remaining collection view lost its era block for the same reason: "half
+ * of what you play came out in 2023 or later" was rendered here *and* written
+ * out again as the supporting paragraph of the section above it. It is one
+ * number. It is now in the ledger, once.
+ */
+
+import { useReveal } from "../useReveal";
+import { KeyWheel } from "./KeyWheel";
+import { EnergyCurve } from "./EnergyCurve";
+import type { Signature as Sig } from "../types";
+
+/* ── What it sounds like ───────────────────────────────────────────────── */
+
+export function SignatureSound({ signature: s, period }: { signature: Sig; period?: string }) {
+    return (
+        <div className="grid gap-x-12 gap-y-(--stat-gap-block) lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] items-start">
+            {s.key && <KeyWheel keys={s.key} period={period} />}
+            {s.hourly.length > 3 && <EnergyCurve hourly={s.hourly} />}
+        </div>
+    );
+}
+
+/* ── The collection against the listening ──────────────────────────────── */
+
+/**
+ * Where your shelf sits, and where your listening sits, on one track each.
+ *
+ * Grey is the shelf, amber is the listening, and the distance between the two
+ * marks is the entire point — which is why they share a track rather than
+ * getting a bar apiece. Two bars would make this a comparison you perform;
+ * one track makes it a gap you see.
+ */
+export function OwnedAgainstPlayed({ signature: s }: { signature: Sig }) {
+    const { ref, shown } = useReveal<HTMLDivElement>({ threshold: 0.2 });
+    if (s.ownedVsPlayed.length === 0) return null;
+
+    // The one sentence worth keeping out of the paragraph that used to sit
+    // here: how much harder the listening runs than the shelf.
+    const hits = s.ownedVsPlayed.find((row) => row.unit !== "bpm");
+    const harder = hits
+        ? Math.round(((hits.played - hits.owned) / Math.max(0.01, hits.owned)) * 100)
+        : 0;
+
+    return (
+        <div ref={ref} className="flex flex-col gap-5">
+            {/* Which mark is which. Every row draws two marks on one track and
+                prints "55 → 66", and nothing said what either number was —
+                the sentence that used to carry it was cut along with the rest
+                of the paragraph. A legend is a label, not a paragraph, so it
+                goes at meta size above the thing it labels. */}
+            <p className="t-meta">grey is your shelf · amber is what you actually play</p>
+
+            <dl className="flex flex-col gap-4">
+                {s.ownedVsPlayed.map((row, i) => {
+                    const norm = (v: number) => (row.unit === "bpm" ? v / 200 : v);
+                    const o = Math.max(0, Math.min(1, norm(row.owned)));
+                    const pl = Math.max(0, Math.min(1, norm(row.played)));
+                    const fmt = (v: number) =>
+                        row.unit === "bpm" ? Math.round(v).toString() : Math.round(v * 100).toString();
+                    return (
+                        <div key={row.label} className="flex flex-col gap-1.5">
+                            <div className="flex items-baseline justify-between gap-4">
+                                <dt className="t-meta text-[var(--text-secondary)]">{row.label}</dt>
+                                <dd className="t-meta tabular-nums">
+                                    <span className="text-[var(--text-muted)]">{fmt(row.owned)}</span>
+                                    <span className="text-[var(--text-muted)]"> → </span>
+                                    <span className="t-figure text-xs">{fmt(row.played)}</span>
+                                </dd>
+                            </div>
+                            <div className="relative h-[3px] w-full bg-white/[0.06]">
+                                <span
+                                    className="absolute top-1/2 -translate-y-1/2 w-[3px] h-[9px] bg-white/30"
+                                    style={{ left: `${o * 100}%` }}
+                                />
+                                <span
+                                    className="absolute top-1/2 -translate-y-1/2 w-[3px] h-[11px] bg-brand"
+                                    style={{
+                                        left: `${(shown ? pl : o) * 100}%`,
+                                        transition: "left 760ms cubic-bezier(0.25,1,0.5,1)",
+                                        transitionDelay: `${180 + i * 90}ms`,
+                                    }}
+                                />
+                            </div>
+                        </div>
+                    );
+                })}
+            </dl>
+
+            {/* Only when there is a gap worth stating. The legend above already
+                says which mark is which, so with nothing to add this said
+                nothing twice. */}
+            {harder > 3 && (
+                <p className="t-body max-w-[38ch]">
+                        What you put on hits about{" "}
+                        <span className="t-figure text-sm">{harder}%</span> harder than the average
+                        record on your shelf.
+                </p>
+            )}
+        </div>
+    );
+}

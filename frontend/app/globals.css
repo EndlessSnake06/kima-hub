@@ -233,6 +233,27 @@
         font-size: 0.75rem;
         font-variant-numeric: tabular-nums;
     }
+
+    /* A measurement, anywhere a page is mostly measurements.
+     *
+     * The stats page had every figure set in extra-light at forty-odd pixels
+     * and every sentence around it set light as well, so nine hundred words of
+     * type arrived at one apparent weight and nothing on the page was ever the
+     * loud thing. Weight is the cheapest hierarchy there is and it was going
+     * unspent.
+     *
+     * The rule this settles: numbers carry the weight, words stay light. A
+     * figure is the answer; the sentence beside it is the caption. Size is set
+     * separately, because the same weight serves a 20px reading and a 56px
+     * headline -- what makes them different ranks is how big they are, not how
+     * heavy. */
+    .t-figure {
+        font-variant-numeric: tabular-nums;
+        font-weight: 600;
+        letter-spacing: -0.035em;
+        line-height: 0.9;
+        color: var(--text-primary);
+    }
 }
 
 /* A machine string is monospace because it is a machine string, not because
@@ -1061,4 +1082,161 @@ body.scanner-active .scanner-overlay {
         linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
     background-size: 100% 100%, 100% 100%, 60px 60px, 60px 60px;
     background-position: center, center, center, center;
+}
+
+/* ── Scroll as the instrument (stats page) ─────────────────────────────────
+ *
+ * Tying motion to scroll position rather than to a timer means the page moves
+ * exactly as far as you move it: stop halfway and it stops halfway. That is the
+ * difference between an animation playing at you and one you are driving.
+ *
+ * Every rule here is additive and gated behind `@supports`. Firefox ships
+ * scroll-driven animations behind a flag, so it — and anything older — simply
+ * gets the page as it already was. Nothing here is load-bearing: no content
+ * depends on these rules to be visible, sized or reachable.
+ *
+ * Reduced motion is handled globally further up (every animation duration is
+ * zeroed), and a scroll-linked animation with no duration simply rests at its
+ * start, which is the untransformed state.
+ * ─────────────────────────────────────────────────────────────────────── */
+@supports (animation-timeline: scroll()) {
+    @media (prefers-reduced-motion: no-preference) {
+        /* The opening figure recedes as you leave it behind — it does not
+         * vanish, it settles, so scrolling back up brings it forward again. */
+        @keyframes stats-hero-recede {
+            from { opacity: 1; transform: scale(1) translateY(0); }
+            to   { opacity: 0.55; transform: scale(0.92) translateY(-1.5rem); }
+        }
+        .stats-hero-figure {
+            animation: stats-hero-recede linear both;
+            animation-timeline: scroll(nearest block);
+            animation-range: 0 65vh;
+            transform-origin: left center;
+            will-change: transform, opacity;
+        }
+
+        /* A hairline that fills as you descend. The only progress indicator on
+         * the page that is honest by construction: it cannot be wrong, because
+         * it is the scroll position itself. */
+        @keyframes stats-progress {
+            from { transform: scaleX(0); }
+            to   { transform: scaleX(1); }
+        }
+        .stats-progress-rule {
+            animation: stats-progress linear both;
+            animation-timeline: scroll(nearest block);
+            transform-origin: left center;
+        }
+
+        /* Sections lift the last of the way in as they enter the viewport,
+         * on top of the JS reveal rather than instead of it. */
+        @keyframes stats-section-settle {
+            from { transform: translateY(1.25rem); }
+            to   { transform: translateY(0); }
+        }
+        .stats-settle {
+            animation: stats-section-settle linear both;
+            animation-timeline: view(block);
+            animation-range: entry 0% entry 60%;
+        }
+    }
+}
+
+/* ── Chart ink ─────────────────────────────────────────────────────────────
+ *
+ * The furniture of an SVG chart cannot be reached by a Tailwind class, so every
+ * chart wrote its own `rgba(255,255,255,…)` literals and the page ended up with
+ * ten different whites: 0.02, 0.035, 0.05, 0.055, 0.09, 0.13, 0.3, 0.55, 0.75
+ * and 0.9. Some of those differences were deliberate and some were whichever
+ * number was typed that afternoon, and from the file you cannot tell which.
+ *
+ * Five rungs, named for the job rather than the opacity. A new chart picks a
+ * rung; it does not invent an eleventh white.
+ * ─────────────────────────────────────────────────────────────────────── */
+:root {
+    /* Something that exists but holds nothing: an unplayed key, a hovered
+     * ground. */
+    --chart-ink-faint: rgba(255, 255, 255, 0.035);
+    /* An empty cell or an unfilled disc. Raised from 0.05 deliberately: at 3%
+     * an empty hour was invisible and a quiet week read as a broken grid. */
+    --chart-ink-empty: rgba(255, 255, 255, 0.055);
+    /* An axis, a baseline, the line a timeline sits on. */
+    --chart-ink-rule: rgba(255, 255, 255, 0.09);
+    /* A filled area behind a line, where the fill is context and not the
+     * subject. */
+    --chart-ink-band: rgba(255, 255, 255, 0.13);
+    /* The outline that makes a shape read as a shape rather than a smudge. */
+    --chart-ink-edge: rgba(255, 255, 255, 0.3);
+}
+
+/* ── Touch rows ────────────────────────────────────────────────────────────
+ *
+ * A ranked list row is content on a desktop and a target on a phone. At its
+ * natural height it comes out 26px, against the 44px this project holds itself
+ * to, so on a device without a pointer it grows and on one with a pointer it
+ * stays dense. Keyed on `(hover: none)` for the same reason the press states
+ * are: it is the honest test for a finger, and it does not guess from width.
+ * ─────────────────────────────────────────────────────────────────────── */
+@media (hover: none) {
+    .t-touch-row {
+        min-height: 44px;
+    }
+}
+
+/* ── Stats display scale ───────────────────────────────────────────────────
+ *
+ * A page whose whole job is showing figures needs a few steps above the six
+ * interface roles, and those steps were improvised into fourteen distinct
+ * sizes with seven of the gaps between them under 1.2x. Sizes that close do
+ * not read as a hierarchy; they read as one size applied carelessly.
+ *
+ * ## Why every step here got smaller on 2026-08-25
+ *
+ * The scale that replaced those fourteen sizes over-corrected. The opening
+ * figure ran to seventy-two pixels across three lines, each of eight sections
+ * was separated by a hundred and twelve, and the page came out at nine and a
+ * half screens carrying nine hundred words -- the length of a magazine feature
+ * for what is about twenty-five facts. Scale had been used to signal
+ * importance and there was no importance left to signal, because everything
+ * was important.
+ *
+ * Four steps, every gap at least 1.3x, and the top of the scale cut by about a
+ * third:
+ *
+ *   --stat-hero    the figure the page opens on. Once per page, one line.
+ *   --stat-figure  a headline measurement. The ledger row at the top.
+ *   --stat-claim   a finding stated in words. Carries the argument.
+ *   --stat-lead    a reading, or a sentence interpreting one.
+ *   --stat-head    a section name. Deliberately the smallest of these -- on a
+ *                  page of measurements the measurement is the content and the
+ *                  heading is only a signpost.
+ *
+ * Presence comes from the space around a heading, not from its size. That is
+ * what --stat-gap-* is for.
+ * ─────────────────────────────────────────────────────────────────────── */
+/* Cut again 2026-08-25, after seeing it at 1920 for the first time. A 56px
+ * opening line is a magazine masthead, and this is a page you read to find
+ * something out. Every step comes down about a fifth; the ratios between them
+ * are what carry the hierarchy, and they are unchanged. */
+:root {
+    --stat-hero: clamp(2rem, 3.6vw, 2.75rem);      /* 32 - 44 */
+    --stat-figure: clamp(1.5rem, 2.4vw, 1.875rem); /* 24 - 30 */
+    --stat-claim: clamp(1.25rem, 1.9vw, 1.5rem);   /* 20 - 24 */
+    --stat-lead: 1.125rem;                         /* 18 */
+    --stat-head: 1rem;                             /* 16 */
+
+    /* One rhythm, three ranks. A section is separated by more than twice what
+     * separates the blocks inside it, which is the whole of why a section
+     * reads as a section. Both were cut by a third with the scale -- 112px of
+     * black between two sections is not rhythm, it is a gap you scroll past. */
+    --stat-gap-section: 4.5rem; /* 72 */
+    --stat-gap-block: 2rem;     /* 32 */
+    --stat-gap-tight: 0.75rem;  /* 12 */
+}
+
+@media (max-width: 640px) {
+    :root {
+        --stat-gap-section: 3rem;
+        --stat-gap-block: 1.5rem;
+    }
 }

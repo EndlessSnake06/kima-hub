@@ -26,6 +26,7 @@ const defaultSystemSettings: SystemSettings = {
     musicPath: "/music",
     downloadPath: "/downloads",
     transcodeCacheMaxGb: 10,
+    maxQueueLength: 10000,
     maxCacheSizeMb: 10240,
     autoSync: true,
     autoEnrichMetadata: true,

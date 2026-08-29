@@ -43,6 +43,8 @@ export interface SystemSettings {
     downloadPath: string;
     // Advanced
     transcodeCacheMaxGb: number;
+    /** How many tracks the play queue may hold, per user. */
+    maxQueueLength: number;
     maxCacheSizeMb: number;
     autoSync: boolean;
     autoEnrichMetadata: boolean;

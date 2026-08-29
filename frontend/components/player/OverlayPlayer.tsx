@@ -2,6 +2,7 @@
 
 import { useAudioState, useAudioPlayback, useAudioControls } from "@/lib/audio-context";
 import { useMediaInfo } from "@/hooks/useMediaInfo";
+import { PlayCountLine } from "@/features/stats/PlayCountLine";
 import Image from "next/image";
 import Link from "next/link";
 import { useRef, useState } from "react";
@@ -240,6 +241,10 @@ export function OverlayPlayer() {
                                 {subtitle}
                             </p>
                         )}
+                        <PlayCountLine
+                            trackId={playbackType === "track" ? currentTrack?.id : null}
+                            className="block text-sm truncate mt-1"
+                        />
 
                     </div>
 
