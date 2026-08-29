@@ -338,7 +338,7 @@ test.describe("Dogfood walkthrough", () => {
         // Client-side navigation on purpose: the queue lives in React state, so reloading
         // the page would destroy the very thing being checked.
         await session.step("open the queue from the player", async () => {
-            await page.getByTitle("Play queue").click();
+            await page.getByRole("link", { name: "Queue" }).click();
             await page.waitForURL(/\/queue/, { timeout: 10_000 });
             await settle(page, 1000);
             return { url: new URL(page.url()).pathname, queueOnArrival: await queueLength() };
@@ -450,7 +450,7 @@ test.describe("Dogfood walkthrough", () => {
         });
 
         await session.step("open the queue page", async () => {
-            await page.getByTitle("Play queue").click();
+            await page.getByRole("link", { name: "Queue" }).click();
             await page.waitForURL(/\/queue/, { timeout: 10_000 });
             await settle(page, 1000);
             return { queueOnArrival: await queueLength() };

@@ -18,6 +18,7 @@ import { MobileSidebar } from "./MobileSidebar";
 
 const allNavigation = [
     { name: "Collection", href: "/collection", feature: null },
+    { name: "Queue", href: "/queue", feature: null },
     { name: "Radio", href: "/radio", feature: null },
     { name: "Discovery", href: "/discover", feature: null },
     { name: "Vibe", href: "/vibe", feature: null },

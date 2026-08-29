@@ -26,15 +26,9 @@ import {
     AudioWaveform,
     RefreshCw,
     MicVocal,
-    ListMusic,
-    ListPlus,
 } from "lucide-react";
-import { useRouter, usePathname } from "next/navigation";
-import { useState, useMemo } from "react";
-import { useToast } from "@/lib/toast-context";
+import { useMemo } from "react";
 import { useVibeToggle } from "@/hooks/useVibeToggle";
-import { PlaylistSelector } from "@/components/ui/PlaylistSelector";
-import { useAddToPlaylistMutation } from "@/hooks/useQueries";
 import { KeyboardShortcutsTooltip } from "./KeyboardShortcutsTooltip";
 import { cn } from "@/utils/cn";
 import { computeVibeMatchScore } from "@/utils/vibeMatchScore";
@@ -46,7 +40,6 @@ import { useLyricsToggle } from "@/hooks/useLyricsToggle";
 
 
 export function FullPlayer() {
-    const { toast } = useToast();
     // Use split contexts to avoid re-rendering on every currentTime update
     const {
         currentTrack,
@@ -85,13 +78,9 @@ export function FullPlayer() {
         toggleRepeat,
     } = useAudioControls();
 
-    const router = useRouter();
-    const pathname = usePathname();
     const { handleVibeToggle, isVibeLoading } = useVibeToggle();
-    const [showPlaylistSelector, setShowPlaylistSelector] = useState(false);
     const { vibeEmbeddings, loading: featuresLoading } = useFeatures();
     const { handleLyricsToggle, isLyricsActive } = useLyricsToggle({ isMobile: false });
-    const { mutateAsync: addToPlaylist } = useAddToPlaylistMutation();
 
     const currentTrackFeatures = queue[currentIndex]?.audioFeatures || null;
 
@@ -425,32 +414,6 @@ export function FullPlayer() {
                                     <MicVocal className="w-4 h-4" />
                                 </button>
                             )}
-
-                            {/* Queue Toggle */}
-                            <button
-                                onClick={() => router.push("/queue")}
-                                className={`p-1.5 rounded-md transition-colors ${
-                                    pathname === "/queue"
-                                        ? "text-brand"
-                                        : "text-[var(--text-muted)] hover:text-white/70"
-                                }`}
-                                aria-label="View play queue"
-                                title="Play queue"
-                            >
-                                <ListMusic className="w-4 h-4" />
-                            </button>
-
-                            {/* Add to Playlist */}
-                            {playbackType === "track" && currentTrack && (
-                                <button
-                                    onClick={() => setShowPlaylistSelector(true)}
-                                    className="p-1.5 rounded-md transition-colors text-[var(--text-muted)] hover:text-white/70"
-                                    aria-label="Add to playlist"
-                                    title="Add to playlist"
-                                >
-                                    <ListPlus className="w-4 h-4" />
-                                </button>
-                            )}
                         </div>
 
                         {/* Progress Bar */}
@@ -551,30 +514,6 @@ export function FullPlayer() {
                 </div>
             </div>
         </div>
-        {showPlaylistSelector && currentTrack && (
-            <PlaylistSelector
-                isOpen={showPlaylistSelector}
-                mode="multi"
-                onSelectPlaylists={async (playlistIds) => {
-                    try {
-                        let added = 0;
-                        for (const playlistId of playlistIds) {
-                            const result = await addToPlaylist({ playlistId, trackId: currentTrack.id });
-                            if (!result.duplicated) added++;
-                        }
-                        toast.success(
-                            added > 0
-                                ? `Added to ${added} playlist${added > 1 ? "s" : ""}`
-                                : "Already in selected playlists"
-                        );
-                        setShowPlaylistSelector(false);
-                    } catch {
-                        toast.error("Failed to add to playlists");
-                    }
-                }}
-                onClose={() => setShowPlaylistSelector(false)}
-            />
-        )}
         </>
     );
 }

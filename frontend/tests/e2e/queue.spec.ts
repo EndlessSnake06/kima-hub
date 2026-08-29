@@ -22,9 +22,9 @@ test.describe("Queue", () => {
         await firstTrackRow.hover();
         await firstTrackRow.getByLabel("Add to queue").click();
 
-        // Navigate to the queue page using the FullPlayer queue button (client-side
+        // Navigate to the queue page via the sidebar Queue link (client-side
         // navigation) so React state -- including the queue -- is preserved.
-        await page.getByTitle("Play queue").click();
+        await page.getByRole("link", { name: "Queue" }).click();
         await page.waitForURL(/\/queue/);
 
         // "Next Up" section must appear since the album has multiple tracks ahead
@@ -34,9 +34,9 @@ test.describe("Queue", () => {
     test("queue page loads with Now Playing section when track is active", async ({ page }) => {
         await startPlayingFirstAlbum(page);
 
-        // Client-side nav via the queue button to preserve React queue state
+        // Client-side nav via the sidebar Queue link to preserve React queue state
         // (page.goto reloads the page and wipes in-memory queue context)
-        await page.getByTitle("Play queue").click();
+        await page.getByRole("link", { name: "Queue" }).click();
         await page.waitForURL(/\/queue/);
 
         // Should show "Now Playing" heading since a track is active
@@ -60,9 +60,8 @@ test.describe("Queue", () => {
         const srcBefore = await getAudioSrc(page);
 
         // Client-side nav to preserve queue state in React context
-        await page.getByTitle("Play queue").click();
+        await page.getByRole("link", { name: "Queue" }).click();
         await page.waitForURL(/\/queue/);
-
         // Find the Next Up section -- tracks after the currently playing one
         // Each track row is a flex div containing the action buttons
         const playNowButtons = page.locator('[title="Play now"]');
@@ -87,7 +86,7 @@ test.describe("Queue", () => {
     test("Remove removes item from queue", async ({ page }) => {
         await startPlayingFirstAlbum(page);
 
-        await page.getByTitle("Play queue").click();
+        await page.getByRole("link", { name: "Queue" }).click();
         await page.waitForURL(/\/queue/);
 
         const removeButtons = page.locator('[title="Remove"]');
@@ -112,7 +111,7 @@ test.describe("Queue", () => {
     test("Move up reorders queue item", async ({ page }) => {
         await startPlayingFirstAlbum(page);
 
-        await page.getByTitle("Play queue").click();
+        await page.getByRole("link", { name: "Queue" }).click();
         await page.waitForURL(/\/queue/);
 
         const moveUpButtons = page.locator('[title="Move up"]:not([disabled])');
@@ -150,8 +149,8 @@ test.describe("Queue", () => {
     test("Clear Queue empties the up-next list", async ({ page }) => {
         await startPlayingFirstAlbum(page);
 
-        // Navigate via FullPlayer queue button (client-side nav) to keep React state
-        await page.getByTitle("Play queue").click();
+        // Navigate via sidebar Queue link (client-side nav) to keep React state
+        await page.getByRole("link", { name: "Queue" }).click();
         await page.waitForURL(/\/queue/);
 
         // Clear Queue button only appears when queue.length > 0
