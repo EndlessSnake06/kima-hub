@@ -9,7 +9,7 @@
  * missing admin check, and `changePassword.view` refusing a self-change made
  * with an API key.
  *
- *   DATABASE_URL=postgresql://test:test@localhost:5433/test npx jest subsonicAuth2fa
+ *   DATABASE_URL=postgresql://test:test@localhost:5433/kima_v1_test npx jest subsonicAuth2fa
  */
 import express from "express";
 import request from "supertest";

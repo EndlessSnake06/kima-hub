@@ -69,25 +69,28 @@ jobs:
         # The social integration suite (vibeProfile/social/socialProfile) needs a
         # real Postgres with pgvector -- not stock postgres, `vibe.fused_track`'s
         # v3 column is a vector type. DATABASE_URL below is the same
-        # test/test@localhost:5433/test that backend/src/__mocks__/test-env.cjs
-        # falls back to for local dev (see test-db-defaults.cjs), so this job
-        # doesn't need its own separate credentials to keep in sync.
+        # test/test@localhost:5433/kima_v1_test that
+        # backend/src/__mocks__/test-env.cjs falls back to for local dev (see
+        # test-db-defaults.cjs), so this job doesn't need its own separate
+        # credentials to keep in sync. The database is named for this checkout
+        # because the plain `test` name is shared with the social branches
+        # locally, and a schema sync from either one drops the other's tables.
         services:
             postgres:
                 image: pgvector/pgvector:pg16
                 env:
                     POSTGRES_USER: test
                     POSTGRES_PASSWORD: test
-                    POSTGRES_DB: test
+                    POSTGRES_DB: kima_v1_test
                 ports:
                     - 5433:5432
                 options: >-
-                    --health-cmd "pg_isready -U test -d test"
+                    --health-cmd "pg_isready -U test -d kima_v1_test"
                     --health-interval 10s
                     --health-timeout 5s
                     --health-retries 5
         env:
-            DATABASE_URL: postgresql://test:test@localhost:5433/test
+            DATABASE_URL: postgresql://test:test@localhost:5433/kima_v1_test
         steps:
             - uses: actions/checkout@v4
 
