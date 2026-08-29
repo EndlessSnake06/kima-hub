@@ -226,7 +226,25 @@ class MusicBrainzService {
      * Normalize album/artist names for better matching
      * Removes common suffixes and cleans up the string
      */
-    private normalizeForSearch(str: string): string {
+    /**
+     * The album title with edition markers taken off, for MATCHING only.
+     *
+     * MusicBrainz models "Delta Machine (Deluxe Edition)" as a RELEASE inside
+     * the "Delta Machine" release GROUP -- there is no group by the longer
+     * name. So a comparison against group titles has to drop the marker, or it
+     * can never match a deluxe, a remaster or an anniversary edition. Measured
+     * on real placeholder albums, that is about a third of them.
+     *
+     * Exported because the same question is asked in two places: here, when
+     * building a search query, and in the enrichment service, when comparing a
+     * local title against the artist's release groups. That second caller used
+     * raw string equality and matched none of them.
+     *
+     * Never applied to a STORED title. Locally "Playing the Angel (Deluxe)"
+     * and "Playing the Angel" are different albums and must stay that way --
+     * see the scope note in albumIdentity.ts.
+     */
+    normalizeForSearch(str: string): string {
         return (
             str
                 .replace(/\s*\([^)]*\)\s*/g, " ") // Remove parenthetical content

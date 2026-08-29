@@ -19,7 +19,7 @@ import { hasRealMbid } from "./artistIdentity";
 import { prisma } from "../utils/db";
 import { lastFmService } from "./lastfm";
 import { musicBrainzService } from "./musicbrainz";
-import { imageProviderService } from "./imageProvider";
+import { findAlbumArtwork, findArtistArtwork } from "./artwork";
 import { downloadAndStoreImage, isNativePath } from "./imageStorage";
 import {
     DuplicateMbidError,
@@ -239,12 +239,10 @@ class EnrichmentService {
         // Step 3: Get artist image from multiple sources (Deezer → Fanart → MusicBrainz → Last.fm)
         try {
             const artistMbid = enrichmentData.mbid || artist.mbid;
-            const imageResult = await imageProviderService.getArtistImage(
-                artist.name,
-                hasRealMbid(artistMbid)
-                    ? artistMbid
-                    : undefined
-            );
+            const imageResult = await findArtistArtwork({
+                name: artist.name,
+                mbid: hasRealMbid(artistMbid) ? artistMbid : undefined,
+            });
 
             if (imageResult) {
                 enrichmentData.heroUrl = imageResult.url;
@@ -318,16 +316,28 @@ class EnrichmentService {
                             50
                         );
 
-                    // Try to match by title
-                    const match = releaseGroups.find(
-                        (rg: any) =>
-                            rg.title.toLowerCase() ===
-                                album.title.toLowerCase() ||
-                            rg.title.toLowerCase().replace(/[^a-z0-9]/g, "") ===
-                                album.title
-                                    .toLowerCase()
-                                    .replace(/[^a-z0-9]/g, "")
-                    );
+                    // Match by title, in order of how sure we can be.
+                    //
+                    // Exact first, then punctuation-insensitive, then with
+                    // edition markers taken off. That last step is what makes
+                    // a deluxe, a remaster or an anniversary edition findable:
+                    // MusicBrainz files those as RELEASES inside a plainly
+                    // named release GROUP, so "Delta Machine (Deluxe Edition)"
+                    // has to be compared as "Delta Machine" or it can never
+                    // match anything. On a real library that was about a third
+                    // of the albums left without an id.
+                    //
+                    // The album keeps its own title either way -- this decides
+                    // what the album IS, not what it is called.
+                    const wanted = album.title;
+                    const match =
+                        releaseGroups.find(
+                            (rg: any) =>
+                                rg.title.toLowerCase() === wanted.toLowerCase()
+                        ) ||
+                        releaseGroups.find((rg: any) =>
+                            titlesAgree(rg.title, wanted)
+                        );
 
                     if (match) {
                         enrichmentData.rgMbid = match.id;
@@ -399,11 +409,11 @@ class EnrichmentService {
 
         // Step 3: Get cover art from multiple sources (Deezer → MusicBrainz → Fanart)
         try {
-            const coverResult = await imageProviderService.getAlbumCover(
-                album.artist.name,
-                album.title,
-                enrichmentData.rgMbid
-            );
+            const coverResult = await findAlbumArtwork({
+                rgMbid: enrichmentData.rgMbid,
+                artistName: album.artist.name,
+                albumTitle: album.title,
+            });
 
             if (coverResult) {
                 enrichmentData.coverUrl = coverResult.url;
@@ -547,6 +557,24 @@ class EnrichmentService {
         }
     }
 
+}
+
+/**
+ * Do these two album titles name the same record?
+ *
+ * Exact, then punctuation-insensitive, then with edition markers removed --
+ * the same ladder in both places that need it. MusicBrainz files a deluxe or a
+ * remaster as a RELEASE inside a plainly named release GROUP, so a title
+ * carrying that marker has to be compared without it or it matches nothing.
+ *
+ * Used to CHECK a candidate, never to rename anything. Locally "Playing the
+ * Angel (Deluxe)" stays distinct from "Playing the Angel".
+ */
+function titlesAgree(a: string, b: string): boolean {
+    const fold = (t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const bare = (t: string) => fold(musicBrainzService.normalizeForSearch(t));
+    if (!a || !b) return false;
+    return fold(a) === fold(b) || bare(a) === bare(b);
 }
 
 export const enrichmentService = new EnrichmentService();
