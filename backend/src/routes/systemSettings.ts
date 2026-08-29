@@ -109,6 +109,7 @@ const systemSettingsSchema = z.object({
 
   // Advanced Settings
   transcodeCacheMaxGb: z.number().optional(),
+  maxQueueLength: z.number().int().min(100).max(100000).optional(),
   soulseekConcurrentDownloads: z.number().min(1).max(10).optional(),
 
   // Download Preferences
@@ -144,6 +145,7 @@ router.get("/", async (req, res) => {
           autoSync: true,
           autoEnrichMetadata: true,
           transcodeCacheMaxGb: 10,
+          maxQueueLength: 10000,
           soulseekConcurrentDownloads: 4,
         },
       });

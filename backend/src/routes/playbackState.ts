@@ -5,6 +5,48 @@ import { requireAuth } from "../middleware/auth";
 
 const router = express.Router();
 
+/** Fallback when there is no settings row yet, and the ceiling on any setting. */
+const QUEUE_LIMIT_DEFAULT = 10000;
+const QUEUE_LIMIT_MIN = 100;
+const QUEUE_LIMIT_MAX = 100000;
+
+/** Cached for a minute: this is read on every queue write. */
+let cachedLimit: { value: number; at: number } | null = null;
+
+/**
+ * How many tracks a queue may hold, as the operator has it set.
+ *
+ * This used to be a literal 2000 here and another literal 2000 in the browser,
+ * kept in step by a comment. The queue is a list of track references, so the
+ * number was never about storage — it was a guess, duplicated. Now the server
+ * owns it, the client asks, and an operator can move it.
+ *
+ * Clamped on read as well as on write, so a value edited straight into the
+ * database still cannot ask the process to slice an array by a negative number
+ * or hold a million rows in memory.
+ */
+async function queueLimit(): Promise<number> {
+    if (cachedLimit && Date.now() - cachedLimit.at < 60_000) return cachedLimit.value;
+    let value = QUEUE_LIMIT_DEFAULT;
+    try {
+        const settings = await prisma.systemSettings.findUnique({
+            where: { id: "default" },
+            select: { maxQueueLength: true },
+        });
+        if (settings?.maxQueueLength) value = settings.maxQueueLength;
+    } catch {
+        // A settings read that fails must not stop somebody's queue saving.
+    }
+    value = Math.min(QUEUE_LIMIT_MAX, Math.max(QUEUE_LIMIT_MIN, Math.floor(value)));
+    cachedLimit = { value, at: Date.now() };
+    return value;
+}
+
+/** The limit, for the client, so it does not have to guess. */
+router.get("/limit", requireAuth, async (_req, res) => {
+    res.json({ maxQueueLength: await queueLimit() });
+});
+
 // Get current playback state for the authenticated user
 router.get("/", requireAuth, async (req, res) => {
     try {
@@ -58,7 +100,7 @@ router.post("/", requireAuth, async (req, res) => {
             // Filter out any invalid items first
             try {
                 safeQueue = queue
-                    .slice(0, 2000)
+                    .slice(0, await queueLimit())
                     .filter((item: any) => item && item.id) // Must have at least an ID
                     .map((item: any) => ({
                         id: String(item.id || ""),

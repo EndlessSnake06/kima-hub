@@ -1,14 +1,16 @@
 /**
- * The repair, against history whose right answer is known in advance.
+ * Grouping rows into listens, against history whose right answer is known.
  *
- * Every case here is constructed so the correct verdict is not a matter of
- * opinion: either the gap to the next play makes the listen impossible, or it
- * leaves it genuinely unknown. The tests exist mostly to hold the second line —
- * a repair that deletes ambiguous rows would look tidier and would be throwing
- * away real listening.
+ * This replaces a suite that tested `analysePlayHistory` and
+ * `repairPlayHistory`, the pair the What's New upgrade window used before the
+ * review moved onto the stats page. Those are gone; `listensOf` is what the
+ * stats page, the audit and the collapse all read through now, and it had no
+ * test at all while its boundary rule was changed twice.
+ *
+ * Every case is built so the correct answer is not a matter of opinion.
  */
 
-import { analysePlayHistory, repairPlayHistory } from "../playHistoryRepair";
+import { listensOf, collapseCandidates } from "../playHistoryRepair";
 
 jest.mock("../../utils/db", () => ({
     prisma: { play: { findMany: jest.fn(), deleteMany: jest.fn() } },
@@ -20,119 +22,101 @@ const { prisma } = require("../../utils/db");
 const T0 = new Date("2026-03-01T12:00:00Z").getTime();
 
 /** A play `atSeconds` into the session, of a track `duration` long. */
-function play(id: string, atSeconds: number, duration: number, title = id) {
+function play(id: string, atSeconds: number, duration: number, trackId = "t1") {
     return {
         id,
-        trackId: `track-${id}`,
+        trackId,
         playedAt: new Date(T0 + atSeconds * 1000),
-        track: { title, duration },
+        track: {
+            title: id,
+            displayTitle: null,
+            duration,
+            album: { artist: { name: "An Artist", displayName: null } },
+        },
     };
 }
 
-function given(rows: ReturnType<typeof play>[]) {
-    prisma.play.findMany.mockResolvedValue(rows);
-    prisma.play.deleteMany.mockImplementation(async ({ where }: never) => ({
-        count: (where as { id: { in: string[] } }).id.in.length,
-    }));
-}
+const given = (rows: ReturnType<typeof play>[]) => prisma.play.findMany.mockResolvedValue(rows);
 
 beforeEach(() => jest.clearAllMocks());
 
-describe("analysePlayHistory", () => {
-    it("calls a track a skip when the next play arrives too soon", async () => {
-        // Three 200s tracks, each needing 100s, played 8 seconds apart. Nobody
-        // listened to the first two: they were already onto something else.
-        given([play("a", 0, 200), play("b", 8, 200), play("c", 16, 200)]);
-        const r = await analysePlayHistory("u1");
-        expect(r.provableSkips).toBe(2);
-        expect(r.sample.map((s) => s.playId)).toEqual(["a", "b"]);
+describe("listensOf", () => {
+    it("folds the rows written while a track was still playing into one listen", async () => {
+        // The pre-1.10.1 streaming endpoint wrote a row every half minute or so.
+        given([play("a", 0, 200), play("b", 44, 200), play("c", 126, 200), play("d", 173, 200)]);
+        const listens = await listensOf("u1");
+        expect(listens).toHaveLength(1);
+        expect(listens[0].rows).toBe(4);
     });
 
-    it("leaves a play alone when the gap proves nothing", async () => {
-        // 220s apart, a 200s track needing 100s. Could be a full listen, could be
-        // four seconds and a walk away. No evidence either way, so no deletion.
-        given([play("a", 0, 200), play("b", 220, 200)]);
-        const r = await analysePlayHistory("u1");
-        expect(r.provableSkips).toBe(0);
-        expect(r.unprovable).toBe(1);
+    it("measures the window from where the listen began, not from the previous row", async () => {
+        // GUNGHO, from the library this rule was corrected against: a 214s
+        // track with rows at +0, +44, +126, +173 and +230. The row at +230 sits
+        // only 57s after the one before it, so a rule that chained off the
+        // previous row swallowed it — but the track ended at 214, so it is a
+        // real replay.
+        given([
+            play("a", 0, 214), play("b", 44, 214), play("c", 126, 214),
+            play("d", 173, 214), play("e", 230, 214),
+        ]);
+        const listens = await listensOf("u1");
+        expect(listens).toHaveLength(2);
+        expect(listens[1].startedAt.getTime()).toBe(T0 + 230_000);
     });
 
-    it("never touches the last play of a session", async () => {
-        // Nothing follows it, so there is no ceiling on how long it ran.
-        given([play("a", 0, 200), play("b", 8, 200)]);
-        const r = await analysePlayHistory("u1");
-        expect(r.noFollowingPlay).toBe(1);
-        expect(r.sample.map((s) => s.playId)).not.toContain("b");
+    it("opens a new listen at exactly one track length, where the track has ended", async () => {
+        // The boundary all three places have to agree on: recording treats this
+        // instant as a genuine replay rather than a duplicate, so the audit and
+        // the stats walk must too.
+        given([play("a", 0, 100), play("b", 100, 100)]);
+        expect(await listensOf("u1")).toHaveLength(2);
     });
 
-    it("treats a gap exactly at the threshold as unprovable, not a skip", async () => {
-        // 100s gap, 100s required. The boundary belongs to the listener.
-        given([play("a", 0, 200), play("b", 100, 200)]);
-        const r = await analysePlayHistory("u1");
-        expect(r.provableSkips).toBe(0);
+    it("keeps a row one second inside the window in the same listen", async () => {
+        given([play("a", 0, 100), play("b", 99, 100)]);
+        expect(await listensOf("u1")).toHaveLength(1);
     });
 
-    it("removes a track too short to ever count, whatever the gap", async () => {
-        // A 20s track cannot be scrobbled under the rule at any length of
-        // listening, so its presence is an artefact of the old behaviour.
-        given([play("a", 0, 20), play("b", 9999, 200)]);
-        const r = await analysePlayHistory("u1");
-        expect(r.provableSkips).toBe(1);
-        expect(r.sample[0].playId).toBe("a");
+    it("uses a thirty second floor, so a very short track is not split by every row", async () => {
+        given([play("a", 0, 5), play("b", 10, 5), play("c", 40, 5)]);
+        const listens = await listensOf("u1");
+        expect(listens).toHaveLength(2);
     });
 
-    it("uses the four-minute bound for a track of unknown length", async () => {
-        // duration 0 means never scanned. It needs 240s, so a 100s gap is a skip.
-        given([play("a", 0, 0), play("b", 100, 200)]);
-        expect((await analysePlayHistory("u1")).provableSkips).toBe(1);
-        given([play("a", 0, 0), play("b", 300, 200)]);
-        expect((await analysePlayHistory("u1")).provableSkips).toBe(0);
+    it("groups per track, so two tracks interleaved do not merge", async () => {
+        given([
+            play("a", 0, 300, "t1"), play("b", 5, 300, "t2"),
+            play("c", 10, 300, "t1"), play("d", 15, 300, "t2"),
+        ]);
+        const listens = await listensOf("u1");
+        expect(listens).toHaveLength(2);
+        expect(listens.every((l) => l.rows === 2)).toBe(true);
     });
 
-    it("reports the span it looked at", async () => {
-        given([play("a", 0, 200), play("b", 600, 200)]);
-        const r = await analysePlayHistory("u1");
-        expect(r.totalPlays).toBe(2);
-        expect(r.earliest).toEqual(new Date(T0));
-        expect(r.latest).toEqual(new Date(T0 + 600_000));
-    });
-
-    it("survives an empty history without inventing anything", async () => {
+    it("says nothing about an empty history", async () => {
         given([]);
-        const r = await analysePlayHistory("u1");
-        expect(r).toMatchObject({ totalPlays: 0, provableSkips: 0, earliest: null, latest: null });
+        expect(await listensOf("u1")).toEqual([]);
     });
 });
 
-describe("repairPlayHistory", () => {
-    it("deletes exactly the provable skips and keeps the rest", async () => {
-        // An album skipped through, then one track genuinely played.
-        given([
-            play("s1", 0, 200),
-            play("s2", 6, 200),
-            play("s3", 12, 200),
-            play("real", 18, 200),
-            play("last", 500, 200),
-        ]);
-        const out = await repairPlayHistory("u1");
-        expect(out).toEqual({ removed: 3, kept: 2 });
-
-        const deleted = prisma.play.deleteMany.mock.calls[0][0].where.id.in;
-        expect(deleted.sort()).toEqual(["s1", "s2", "s3"]);
-        expect(deleted).not.toContain("real"); // 482s gap -- unprovable
-        expect(deleted).not.toContain("last"); // nothing follows it
+describe("collapseCandidates", () => {
+    it("keeps the first and last row of a listen, so its span survives", async () => {
+        // The span is the distance from a listen's first row to its last, and
+        // "heard" is span >= required. Keeping only the first row set every
+        // span to zero, which lost every proven-heard verdict and made at least
+        // one listen newly deletable.
+        given([play("a", 0, 200), play("b", 44, 200), play("c", 126, 200), play("d", 173, 200)]);
+        const listens = await listensOf("u1");
+        expect(collapseCandidates(listens)).toEqual(["b", "c"]);
     });
 
-    it("does nothing at all when there is nothing provable", async () => {
-        given([play("a", 0, 200), play("b", 900, 200)]);
-        const out = await repairPlayHistory("u1");
-        expect(out).toEqual({ removed: 0, kept: 2 });
-        expect(prisma.play.deleteMany).not.toHaveBeenCalled();
+    it("removes nothing from a listen of two rows, which is the span itself", async () => {
+        given([play("a", 0, 200), play("b", 44, 200)]);
+        expect(collapseCandidates(await listensOf("u1"))).toEqual([]);
     });
 
-    it("scopes the delete to the user, not just the ids", async () => {
-        given([play("a", 0, 200), play("b", 5, 200), play("c", 10, 200)]);
-        await repairPlayHistory("u1");
-        expect(prisma.play.deleteMany.mock.calls[0][0].where).toMatchObject({ userId: "u1" });
+    it("removes nothing from a single-row listen", async () => {
+        given([play("a", 0, 200)]);
+        expect(collapseCandidates(await listensOf("u1"))).toEqual([]);
     });
 });

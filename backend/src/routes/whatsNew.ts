@@ -15,7 +15,6 @@ import { z } from "zod";
 import { requireAuth } from "../middleware/auth";
 import { logger } from "../utils/logger";
 import { dismissRelease, findRelease, pendingReleases, setChoice } from "../services/releases";
-import { analysePlayHistory, repairPlayHistory } from "../services/playHistoryRepair";
 
 const router = Router();
 router.use(requireAuth);
@@ -70,35 +69,9 @@ router.post("/:version/dismiss", async (req, res) => {
     }
 });
 
-// ── The play-history repair, the first `action` a release offers ─────────────
-//
-// Two endpoints on purpose. Nobody should be able to trigger a delete by
-// following a link: you look first, then you agree to what you saw.
-
-/** GET /whats-new/actions/play-history — read-only. Nothing is modified. */
-router.get("/actions/play-history", async (req, res) => {
-    try {
-        res.json(await analysePlayHistory(req.user!.id));
-    } catch (error) {
-        logger.error("[PlayRepair] analysis failed:", error);
-        res.status(500).json({ error: "Failed to analyse play history" });
-    }
-});
-
-/**
- * POST /whats-new/actions/play-history/repair — do it.
- *
- * Verdicts are re-derived here rather than taken from the request, so what is
- * deleted is decided against the data as it stands, not against whatever a
- * browser tab computed some minutes ago.
- */
-router.post("/actions/play-history/repair", async (req, res) => {
-    try {
-        res.json(await repairPlayHistory(req.user!.id));
-    } catch (error) {
-        logger.error("[PlayRepair] repair failed:", error);
-        res.status(500).json({ error: "Failed to repair play history" });
-    }
-});
+// Release `action` items do not run anything from here. The one that exists —
+// the play-history audit — lives on the stats page and owns its own endpoints,
+// because a maintenance tool people will want again should not be reachable
+// only through a dialogue that appears once.
 
 export default router;

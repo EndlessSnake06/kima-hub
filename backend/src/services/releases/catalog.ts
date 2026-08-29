@@ -89,7 +89,8 @@ export const RELEASES: Release[] = [
                 title: "A play means somebody listened",
                 body:
                     "A play used to get logged the second a track started loading, so clicking through an album counted every track you skipped past. " +
-                    "Kima now uses the same rule as Last.fm and ListenBrainz: a track counts if it's longer than 30 seconds and you've heard half of it, or four minutes, whichever comes first.",
+                    "Kima now uses the same rule as Last.fm and ListenBrainz. A track counts once you've heard half of it, or four minutes of it, whichever is less. " +
+                    "So a 3 minute song needs 90 seconds, and anything over 8 minutes just needs the 4. Tracks 30 seconds or shorter never count at all.",
             },
             {
                 kind: "action",
@@ -97,10 +98,10 @@ export const RELEASES: Release[] = [
                 title: "Clean up your old play counts",
                 body:
                     "Your existing counts still include all those skips. When one play is followed a few seconds later by another, you clearly weren't listening to the first one, and that gap tells us so. " +
-                    "This finds those and clears them out. It only removes what it can actually prove was a skip, and leaves anything it's unsure about alone.\n\n" +
-                    "This only touches Kima's own play counts. Your music files aren't read, moved, renamed or changed in any way.",
-                cta: "Show me what it found",
-                settingsPath: "/settings#play-history",
+                    "There's a tool on the Stats page that finds them, shows you what it found track by track, and lets you delete them or tell it to leave them alone.\n\n" +
+                    "It only ever removes what it can actually prove was a skip. It doesn't read, move, rename or change any of your music files, and it stays there for whenever you want it.",
+                cta: "Take me to it",
+                settingsPath: "/stats#false-starts",
             },
         ],
     },
