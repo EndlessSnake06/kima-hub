@@ -39,6 +39,7 @@ jest.mock('../../utils/db', () => ({
             findUnique: jest.fn(),
         },
         track: { findMany: jest.fn() },
+        $transaction: jest.fn(async (fn: (tx: any) => Promise<any[]>) => fn(prisma)),
     },
 }));
 

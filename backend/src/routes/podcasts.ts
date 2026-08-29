@@ -139,6 +139,7 @@ router.get("/", requireAuth, async (req, res) => {
  * Get top podcasts from Deezer charts + iTunes search
  */
 router.get("/discover/top", requireAuthOrToken, async (req, res) => {
+    const start = Date.now();
     try {
         const { limit = "20" } = req.query;
         const podcastLimit = Math.min(parseInt(limit as string, 10), 50);
@@ -193,6 +194,9 @@ router.get("/discover/top", requireAuthOrToken, async (req, res) => {
         res.json(podcasts.slice(0, podcastLimit));
     } catch (error) {
         safeError(res, "Error fetching top podcasts", error);
+    } finally {
+        const elapsed = Date.now() - start;
+        logger.info(`GET /podcasts/discover/top completed in ${elapsed}ms`);
     }
 });
 

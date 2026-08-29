@@ -23,10 +23,20 @@ jest.mock('../../../utils/logger', () => ({
 jest.mock('../../../services/deezer', () => ({ deezerService: {} }));
 jest.mock('../../../services/lidarr', () => ({ lidarrService: {} }));
 
+// Shared prisma mock instance, so $transaction can delegate to the same fn instances.
+const mockAlbumFindMany = jest.fn();
+const mockAlbumCount = jest.fn();
+const mockOwnedFindMany = jest.fn();
+
 jest.mock('../../../utils/db', () => ({
     prisma: {
-        album: { findMany: jest.fn(), count: jest.fn() },
-        ownedAlbum: { findMany: jest.fn() },
+        album: { findMany: mockAlbumFindMany, count: mockAlbumCount },
+        ownedAlbum: { findMany: mockOwnedFindMany },
+        track: { findMany: jest.fn() },
+        $transaction: jest.fn(async (fn: (tx: any) => Promise<any[]>) => fn({
+            album: { findMany: mockAlbumFindMany, count: mockAlbumCount },
+            ownedAlbum: { findMany: mockOwnedFindMany },
+        })),
     },
     Prisma: { SortOrder: { asc: 'asc', desc: 'desc' } },
 }));

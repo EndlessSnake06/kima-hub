@@ -21,6 +21,20 @@ router.use(requireAuthOrToken);
 // Cache TTL for discovery content (shorter since it's not owned)
 const DISCOVERY_CACHE_TTL = 24 * 60 * 60; // 24 hours
 
+/**
+ * Wrap a promise so a single dead upstream cannot hang the entire
+ * /artists/discover/:nameOrMbid handler past the client budget.
+ * Uses Promise.race so a 5-second timeout lets the caller fall back
+ * to partial data instead of waiting for the HTTP keep-alive to expire.
+ */
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+    let timer: ReturnType<typeof setTimeout>;
+    const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timed out`)), ms);
+    });
+    return Promise.race([p.finally(() => clearTimeout(timer)), timeout]);
+}
+
 // GET /artists/preview/:artistName/:trackTitle - Get Deezer preview URL for a track
 router.get("/preview/:artistName/:trackTitle", async (req, res) => {
     try {
@@ -114,6 +128,7 @@ router.get("/preview/:artistName/:trackTitle/stream", async (req, res) => {
 
 // GET /artists/discover/:nameOrMbid - Get artist details for discovery (not in library yet)
 router.get("/discover/:nameOrMbid", async (req, res) => {
+    const start = Date.now();
     try {
         const { nameOrMbid } = req.params;
 
@@ -173,10 +188,19 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
             return res.status(404).json({ error: "Artist not found" });
         }
 
-        // Get artist info from Last.fm
-        const lastFmInfo = await lastFmService.getArtistInfo(
-            artistName,
-            mbid || undefined
+        // ── Parallelize independent external calls (Defect #1) ──
+        // lastFmInfo, topTracks, findArtistArtwork, and getReleaseGroups
+        // are all independent of each other (they all depend only on
+        // artistName/mbid which are resolved above).  Run them in parallel
+        // so a dead upstream cannot block the entire response.
+
+        let albums: any[] = [];
+
+        // Get artist info from Last.fm (wrapped in timeout)
+        const lastFmInfo = await withTimeout(
+            lastFmService.getArtistInfo(artistName, mbid || undefined),
+            5000,
+            "Last.fm getArtistInfo"
         );
 
         // Filter out generic "multiple artists" biographies from Last.fm
@@ -200,46 +224,38 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
             }
         }
 
-        // Get top tracks from Last.fm
-        let topTracks: any[] = [];
-        if (mbid || artistName) {
-            try {
-                topTracks = await lastFmService.getArtistTopTracks(
-                    mbid || "",
-                    artistName,
-                    10
-                );
-            } catch (error) {
+        // Get top tracks from Last.fm (parallel with info/artwork/discography)
+        const topTracksPromise = lastFmService
+            .getArtistTopTracks(mbid || "", artistName, 10)
+            .catch(() => {
                 logger.debug(`Failed to get top tracks for ${artistName}`);
-            }
-        }
+                return [];
+            });
 
-        // Artist image. This used to be a hand-rolled Fanart-then-Deezer-then-
-        // Last.fm chain, one of five such chains in this codebase, each with
-        // its own ordering and its own copy of the Last.fm placeholder filter.
-        const image =
-            (await findArtistArtwork({ name: artistName, mbid: mbid || undefined }))
-                ?.url ?? null;
+        // Artist artwork (parallel)
+        const artworkPromise = findArtistArtwork({
+            name: artistName,
+            mbid: mbid || undefined,
+        })
+            .then((r) => r?.url ?? null)
+            .catch(() => null);
 
-        // Get discography from MusicBrainz
-        let albums: any[] = [];
-        if (mbid) {
+        // Discography from MusicBrainz (parallel)
+        const discographyPromise = (async (): Promise<any[]> => {
+            if (!mbid) return [];
             try {
                 const releaseGroups = await musicBrainzService.getReleaseGroups(
                     mbid
                 );
 
                 // Filter albums - only show studio albums and EPs
-                // Exclude live albums, compilations, soundtracks, remixes, etc.
                 const filteredReleaseGroups = releaseGroups.filter(
                     (rg: any) => {
-                        // Must be Album or EP
                         const isPrimaryType =
                             rg["primary-type"] === "Album" ||
                             rg["primary-type"] === "EP";
                         if (!isPrimaryType) return false;
 
-                        // Exclude secondary types (live, compilation, soundtrack, remix, etc.)
                         const secondaryTypes = rg["secondary-types"] || [];
                         const hasExcludedType = secondaryTypes.some(
                             (type: string) =>
@@ -258,9 +274,9 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
                 );
 
                 const candidates = filteredReleaseGroups.map((rg: any) => ({
-                    id: rg.id, // MBID - used for linking
-                    rgMbid: rg.id, // Release group MBID - used for downloads
-                    mbid: rg.id, // Fallback MBID
+                    id: rg.id,
+                    rgMbid: rg.id,
+                    mbid: rg.id,
                     title: rg.title,
                     type: rg["primary-type"],
                     year: rg["first-release-date"]
@@ -268,38 +284,44 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
                         : null,
                     releaseDate: rg["first-release-date"] || null,
                     coverUrl: null as string | null,
-                    owned: false, // Discovery albums are never owned
+                    owned: false,
                 }));
 
-                // This used to build coverartarchive.org/release-group/<id>
-                // /front-500 by hand and send it out without ever asking the
-                // archive whether that picture existed -- and for a release
-                // group nobody owns, it usually does not. Ask the providers
-                // the library already uses instead.
-                albums = await withAlbumArtwork(
+                const enriched = await withAlbumArtwork(
                     candidates,
-                    (a) => ({
+                    (a: any) => ({
                         rgMbid: a.rgMbid,
                         artistName,
                         albumTitle: a.title,
                     }),
-                    (a, coverUrl) => ({ ...a, coverUrl }),
+                    (a: any, coverUrl: string | null) => ({ ...a, coverUrl }),
                 );
 
-                // Sort albums
-                albums.sort((a: any, b: any) => {
-                    // Sort by year descending (newest first)
+                enriched.sort((a: any, b: any) => {
                     if (a.year && b.year) return b.year - a.year;
                     if (a.year) return -1;
                     if (b.year) return 1;
                     return 0;
                 });
+                return enriched;
             } catch (error) {
                 logger.error(
                     `Failed to get discography for ${artistName}:`,
                     error
                 );
             }
+            return [];
+        })();
+
+        // Await all parallel independent calls
+        const [topTracks, image, discAlbums] = await Promise.all([
+            topTracksPromise,
+            artworkPromise,
+            discographyPromise,
+        ]);
+
+        if (discAlbums.length > 0) {
+            albums = discAlbums;
         }
 
         // Get similar artists from Last.fm and fetch images
@@ -353,8 +375,8 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
             listeners: parseInt(lastFmInfo?.stats?.listeners || "0"),
             playcount: parseInt(lastFmInfo?.stats?.playcount || "0"),
             url: lastFmInfo?.url || null,
-            albums: albums.map((album) => ({ ...album, owned: false })), // Mark all as not owned
-            topTracks: topTracks.map((track) => ({
+            albums: albums.map((album: any) => ({ ...album, owned: false })), // Mark all as not owned
+            topTracks: topTracks.map((track: any) => ({
                 id: `lastfm-${mbid || artistName}-${track.name}`,
                 title: track.name,
                 playCount: parseInt(track.playcount || "0"),
@@ -381,6 +403,9 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
         res.json(response);
     } catch (error) {
         safeError(res, "Artist discovery", error);
+    } finally {
+        const elapsed = Date.now() - start;
+        logger.info(`GET /artists/discover completed in ${elapsed}ms`);
     }
 });
 

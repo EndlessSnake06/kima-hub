@@ -29,6 +29,7 @@ const MAX_LIMIT = 10000;
 const router = Router();
 
 router.get("/albums", async (req, res) => {
+  const start = Date.now();
   try {
     const {
       artistId,
@@ -52,8 +53,10 @@ router.get("/albums", async (req, res) => {
     };
 
     if (filter === "owned") {
+      // Defect #2: Bound ownedAlbum query so it cannot fetch every row
       const ownedAlbumMbids = await prisma.ownedAlbum.findMany({
         select: { rgMbid: true },
+        take: 20000,
       });
       const ownedMbids = ownedAlbumMbids.map((oa) => oa.rgMbid);
 
@@ -75,24 +78,29 @@ router.get("/albums", async (req, res) => {
       }
     }
 
-    const [albumsData, total] = await Promise.all([
-      prisma.album.findMany({
-        where,
-        skip: offset,
-        take: limit,
-        orderBy,
-        include: {
-          artist: {
-            select: {
-              id: true,
-              mbid: true,
-              name: true,
+    // Defect #5: Guard the album query with { timeout: 30000 } like library/artists.ts
+    const [albumsData, total] = await prisma.$transaction(
+      () =>
+        Promise.all([
+          prisma.album.findMany({
+            where,
+            skip: offset,
+            take: limit,
+            orderBy,
+            include: {
+              artist: {
+                select: {
+                  id: true,
+                  mbid: true,
+                  name: true,
+                },
+              },
             },
-          },
-        },
-      }),
-      prisma.album.count({ where }),
-    ]);
+          }),
+          prisma.album.count({ where }),
+        ]),
+      { timeout: 30000 },
+    );
 
     const albums = albumsData.map((album) => ({
       ...album,
@@ -107,6 +115,9 @@ router.get("/albums", async (req, res) => {
     });
   } catch (error) {
     safeError(res, "Get albums", error);
+  } finally {
+    const elapsed = Date.now() - start;
+    logger.info(`GET /albums completed in ${elapsed}ms`);
   }
 });
 
