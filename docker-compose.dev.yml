@@ -5,14 +5,17 @@
 #   docker compose -f docker-compose.dev.yml up -d
 #
 # This runs:
-#   - PostgreSQL (port 5433)
-#   - Redis (port 6379)
+#   - PostgreSQL (port 5455, pgvector image to match CI/prod schema needs)
+#   - Redis (port 6390)
 #   - Audio Analyzer with ML models (Enhanced vibe matching)
+#
+# Ports are v1-dedicated on purpose: 5433 and 6379 on this machine are owned
+# by other Kima checkouts' containers; do NOT repoint backend/.env at them.
 
 services:
     postgres:
-        image: postgres:16-alpine
-        container_name: kima_dev_db
+        image: pgvector/pgvector:pg16
+        container_name: kima_v1_pg
         environment:
             POSTGRES_USER: kima
             POSTGRES_PASSWORD: kima
@@ -20,7 +23,7 @@ services:
         volumes:
             - postgres_dev_data:/var/lib/postgresql/data
         ports:
-            - "5433:5432"
+            - "5455:5432"
         restart: unless-stopped
         healthcheck:
             test: ["CMD-SHELL", "pg_isready -U kima -d kima"]
@@ -30,9 +33,9 @@ services:
 
     redis:
         image: redis:7-alpine
-        container_name: kima_dev_redis
+        container_name: kima_v1_redis
         ports:
-            - "6380:6379"
+            - "6390:6379"
         restart: unless-stopped
         healthcheck:
             test: ["CMD", "redis-cli", "ping"]

@@ -10,18 +10,18 @@ if [ ! -f backend/.env ]; then
     echo "⚠️  Please update backend/.env with your configuration"
 fi
 
-# Check PostgreSQL
-echo "🔍 Checking PostgreSQL (port 5433)..."
-if ! nc -z localhost 5433 2>/dev/null; then
-    echo "❌ PostgreSQL not running on port 5433"
+# Check PostgreSQL (v1-dedicated dev server; see docker-compose.dev.yml)
+echo "🔍 Checking PostgreSQL (port 5455)..."
+if ! nc -z localhost 5455 2>/dev/null; then
+    echo "❌ PostgreSQL not running on port 5455"
     echo "   Start with: docker compose -f docker-compose.dev.yml up -d postgres"
     exit 1
 fi
 
 # Check Redis
-echo "🔍 Checking Redis (port 6380)..."
-if ! nc -z localhost 6380 2>/dev/null; then
-    echo "❌ Redis not running on port 6380"
+echo "🔍 Checking Redis (port 6390)..."
+if ! nc -z localhost 6390 2>/dev/null; then
+    echo "❌ Redis not running on port 6390"
     echo "   Start with: docker compose -f docker-compose.dev.yml up -d redis"
     exit 1
 fi
