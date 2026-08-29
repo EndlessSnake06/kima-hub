@@ -51,7 +51,7 @@ export function AlbumActionBar({
                     <button
                         onClick={handlePlayPauseClick}
                         aria-label={showPause ? "Pause" : "Play all"}
-                        className="h-12 w-12 rounded-full flex items-center justify-center transition-all hover:scale-105 bg-brand"
+                        className="h-12 w-12 rounded-lg flex items-center justify-center transition-all hover:scale-105 bg-brand"
                     >
                         {showPause ? (
                             <Pause className="w-5 h-5 fill-current text-black" />
@@ -63,7 +63,7 @@ export function AlbumActionBar({
                     {/* Shuffle Button */}
                     <button
                         onClick={onShuffle}
-                        className="h-8 w-8 rounded-full hover:bg-white/10 flex items-center justify-center text-[var(--text-secondary)] hover:text-white transition-all"
+                        className="h-8 w-8 rounded-lg hover:bg-white/10 flex items-center justify-center text-[var(--text-secondary)] hover:text-white transition-all"
                         title="Shuffle play"
                     >
                         <Shuffle className="w-5 h-5" />
@@ -72,7 +72,7 @@ export function AlbumActionBar({
                     {/* Add to Playlist Button */}
                     <button
                         onClick={onAddToPlaylist}
-                        className="h-8 w-8 rounded-full hover:bg-white/10 flex items-center justify-center text-[var(--text-secondary)] hover:text-white transition-all"
+                        className="h-8 w-8 rounded-lg hover:bg-white/10 flex items-center justify-center text-[var(--text-secondary)] hover:text-white transition-all"
                         title="Add to playlist"
                     >
                         <ListPlus className="w-5 h-5" />
@@ -86,7 +86,7 @@ export function AlbumActionBar({
                     onClick={onDownloadAlbum}
                     disabled={isPendingDownload}
                     className={cn(
-                        "flex items-center gap-2 px-5 py-2.5 rounded-full font-medium transition-all",
+                        "flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium transition-all",
                         isPendingDownload
                             ? "bg-white/5 text-[var(--text-secondary)] cursor-not-allowed"
                             : "bg-brand hover:bg-[#e69200] text-black hover:scale-105"
