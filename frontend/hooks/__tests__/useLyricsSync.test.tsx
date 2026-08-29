@@ -33,7 +33,12 @@ vi.mock("@/lib/audio-state-context", () => ({
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mock API requires flexible return types for tests
-const mockApi: Record<string, (...args: any[]) => any> = { getTrackLyrics: vi.fn() };
+type MockApi = { getTrackLyrics: ReturnType<typeof vi.fn> } & Record<
+    string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (...args: any[]) => any
+>;
+const mockApi = { getTrackLyrics: vi.fn() } as unknown as MockApi;
 vi.mock("@/lib/api", () => ({ api: mockApi }));
 
 const { useLyricsSync } = await import("@/hooks/useLyricsSync");
