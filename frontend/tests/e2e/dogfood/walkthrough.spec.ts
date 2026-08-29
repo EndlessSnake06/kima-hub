@@ -305,10 +305,21 @@ test.describe("Dogfood walkthrough", () => {
     test("3. queue: line up more music and confirm every surface agrees", async () => {
         session.setJourney("3. Queue");
 
+        // Asked of the server, which is where the queue actually lives.
+        // This read localStorage, and the app wrote the queue there without
+        // ever reading it back — so the assertion passed by watching a value
+        // nothing consumed. That write is gone; `PlaybackState.queue` is the
+        // only copy, and it is the one a reload and another device both see.
         const queueLength = () =>
-            page.evaluate(() => {
+            page.evaluate(async () => {
                 try {
-                    return JSON.parse(localStorage.getItem("kima_queue") || "[]").length;
+                    const token = localStorage.getItem("auth_token");
+                    const res = await fetch("/api/playback-state", {
+                        headers: token ? { Authorization: `Bearer ${token}` } : {},
+                    });
+                    if (!res.ok) return -1;
+                    const state = await res.json();
+                    return Array.isArray(state?.queue) ? state.queue.length : 0;
                 } catch {
                     return -1;
                 }
@@ -395,10 +406,21 @@ test.describe("Dogfood walkthrough", () => {
         test.setTimeout(180_000);
         session.setJourney("3a. Queue editing");
 
+        // Asked of the server, which is where the queue actually lives.
+        // This read localStorage, and the app wrote the queue there without
+        // ever reading it back — so the assertion passed by watching a value
+        // nothing consumed. That write is gone; `PlaybackState.queue` is the
+        // only copy, and it is the one a reload and another device both see.
         const queueLength = () =>
-            page.evaluate(() => {
+            page.evaluate(async () => {
                 try {
-                    return JSON.parse(localStorage.getItem("kima_queue") || "[]").length;
+                    const token = localStorage.getItem("auth_token");
+                    const res = await fetch("/api/playback-state", {
+                        headers: token ? { Authorization: `Bearer ${token}` } : {},
+                    });
+                    if (!res.ok) return -1;
+                    const state = await res.json();
+                    return Array.isArray(state?.queue) ? state.queue.length : 0;
                 } catch {
                     return -1;
                 }
