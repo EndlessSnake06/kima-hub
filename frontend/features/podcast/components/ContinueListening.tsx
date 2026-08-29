@@ -4,6 +4,7 @@ import { Play, Pause } from "lucide-react";
 import { Podcast, Episode } from "../types";
 import { formatDuration } from "@/utils/formatTime";
 import { formatDate } from "../utils";
+import { SectionHeader } from "@/features/home/components/SectionHeader";
 
 interface ContinueListeningProps {
     podcast: Podcast;
@@ -48,17 +49,13 @@ export function ContinueListening({
 
     return (
         <section>
-            <div className="flex items-center gap-3 mb-6">
-                <span className="w-1 h-8 bg-gradient-to-b from-[#3b82f6] to-[#2563eb] rounded-full shrink-0" />
-                <h2 className="text-2xl font-bold tracking-tight">Continue Listening</h2>
-                <span className="flex-1 border-t border-white/10" />
-            </div>
+            <SectionHeader title="Continue Listening" color="podcasts" />
 
-            <div className="space-y-1.5">
+            <div className="space-y-0.5">
                 {/* Previous Episode */}
                 {previousEpisode && (
                     <div
-                        className="flex items-center gap-3 p-3 rounded-lg border border-transparent hover:border-white/5 hover:bg-white/[0.02] transition-all cursor-pointer opacity-40 hover:opacity-60 animate-rise"
+                        className="flex items-center gap-3 px-3 py-2 rounded-lg border border-transparent hover:bg-white/[0.02] hover:border-white/5 transition-all cursor-pointer opacity-40 hover:opacity-60 animate-rise"
                         style={{ animationDelay: "0ms" }}
                         onClick={() => onPlayEpisode(previousEpisode)}
                     >
@@ -76,7 +73,7 @@ export function ContinueListening({
 
                 {/* Current Episode */}
                 <div
-                    className="flex items-center gap-4 p-4 rounded-lg bg-[var(--bg-primary)] border-2 border-[#3b82f6]/30 hover:border-[#3b82f6]/50 transition-all cursor-pointer animate-rise"
+                    className="flex items-center gap-3 px-3 py-2 rounded-lg bg-white/5 transition-all cursor-pointer animate-rise"
                     style={{ animationDelay: "45ms" }}
                     onClick={() => onPlayPause(recentEpisode)}
                 >
@@ -85,19 +82,19 @@ export function ContinueListening({
                             e.stopPropagation();
                             onPlayPause(recentEpisode);
                         }}
-                        className="w-12 h-12 rounded-lg bg-[#3b82f6] hover:bg-[#2563eb] hover:scale-105 transition-all flex items-center justify-center shrink-0"
+                        className="w-10 h-10 rounded-lg bg-[var(--color-brand)] hover:bg-[var(--color-brand-hover)] flex items-center justify-center shrink-0"
                     >
                         {isCurrentPlaying && isPlaying ? (
-                            <Pause className="w-5 h-5 text-white" />
+                            <Pause className="w-4 h-4 text-black" />
                         ) : (
-                            <Play className="w-5 h-5 text-white ml-0.5" fill="white" />
+                            <Play className="w-4 h-4 text-black ml-0.5" fill="black" />
                         )}
                     </button>
                     <div className="flex-1 min-w-0">
-                        <h3 className="font-bold text-white truncate tracking-tight">
+                        <h3 className="font-bold text-[var(--color-brand)] truncate text-sm tracking-tight">
                             {recentEpisode.title}
                         </h3>
-                        <div className="flex items-center gap-3 mt-1 text-xs tabular-nums text-[var(--text-muted)]">
+                        <div className="flex items-center gap-3 mt-0.5 text-xs tabular-nums text-[var(--text-muted)]">
                             <span>{formatDuration(recentEpisode.duration)}</span>
                             <span className="text-[var(--text-muted)]">|</span>
                             <span>{formatDate(recentEpisode.publishedAt)}</span>
@@ -108,13 +105,13 @@ export function ContinueListening({
                                 <div className="flex items-center gap-2">
                                     <div className="flex-1 h-1 bg-white/5 rounded-full overflow-hidden">
                                         <div
-                                            className="h-full bg-[#3b82f6] rounded-full transition-all"
+                                            className="h-full bg-[var(--color-brand)] rounded-full transition-all"
                                             style={{
                                                 width: `${recentEpisode.progress.progress}%`,
                                             }}
                                         />
                                     </div>
-                                    <span className="text-micro tabular-nums text-[#3b82f6]">
+                                    <span className="text-micro tabular-nums text-[var(--color-brand)]">
                                         {Math.floor(recentEpisode.progress.progress)}%
                                     </span>
                                 </div>
@@ -126,7 +123,7 @@ export function ContinueListening({
                 {/* Next Episode */}
                 {nextEpisode && (
                     <div
-                        className="flex items-center gap-3 p-3 rounded-lg border border-transparent hover:border-white/5 hover:bg-white/[0.02] transition-all cursor-pointer opacity-40 hover:opacity-60 animate-rise"
+                        className="flex items-center gap-3 px-3 py-2 rounded-lg border border-transparent hover:bg-white/[0.02] hover:border-white/5 transition-all cursor-pointer opacity-40 hover:opacity-60 animate-rise"
                         style={{ animationDelay: "90ms" }}
                     >
                         <div className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center shrink-0">

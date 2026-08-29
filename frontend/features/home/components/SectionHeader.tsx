@@ -9,7 +9,7 @@ const GRADIENT_MAP: Record<ContentColor, string> = {
     featured: "from-brand to-[#f97316]",
     tracks: "from-[#a855f7] to-[#c026d3]",
     albums: "from-[#22c55e] to-[#16a34a]",
-    podcasts: "from-[#3b82f6] to-[#2563eb]",
+    podcasts: "from-[#fca200] to-[#e69200]",
     audiobooks: "from-[#f59e0b] to-[#d97706]",
     artists: "from-[#fca200] to-[#d48c00]",
     discover: "from-[#a855f7] to-[#c026d3]",

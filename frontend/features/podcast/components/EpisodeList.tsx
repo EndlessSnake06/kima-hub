@@ -7,6 +7,7 @@ import { cn } from "@/utils/cn";
 import { Podcast, Episode } from "../types";
 import { formatDuration } from "@/utils/formatTime";
 import { formatDate } from "../utils";
+import { SectionHeader } from "@/features/home/components/SectionHeader";
 
 interface EpisodeListProps {
     podcast: Podcast;
@@ -50,7 +51,7 @@ function EpisodeRow({
             className={cn(
                 "group relative rounded-lg transition-all",
                 isCurrentEpisode
-                    ? "bg-white/5 border border-[#3b82f6]/30"
+                    ? "bg-white/5"
                     : "border border-transparent hover:bg-white/[0.03] hover:border-white/5",
                 "animate-rise",
             )}
@@ -60,7 +61,7 @@ function EpisodeRow({
             {episode.progress && episode.progress.progress > 0 && (
                 <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white/5 rounded-full overflow-hidden">
                     <div
-                        className="h-full bg-[#3b82f6]/60 transition-all"
+                        className="h-full bg-brand/60 transition-all"
                         style={{
                             width: `${episode.progress.progress}%`,
                         }}
@@ -71,11 +72,6 @@ function EpisodeRow({
             <div
                 data-track-index={index}
                 onDoubleClick={() => {
-                    // Double-clicking the episode you are already on used to do nothing at
-                    // all. Since the last-played episode is restored from the server on
-                    // load, that made the most likely row in the list inert: open a
-                    // podcast, double-click where you left off, and nothing happens. Play
-                    // and pause it like any other row.
                     if (isCurrentEpisode) {
                         onPlayPause(episode);
                     } else {
@@ -87,8 +83,6 @@ function EpisodeRow({
                     if (isNaN(idx)) return;
                     const now = Date.now();
                     if (now - lastTapRef.current.time < 300 && lastTapRef.current.index === idx) {
-                        // Same on touch: a double-tap on the current episode has to work
-                        // too, or the behaviour differs between phone and desktop.
                         if (isCurrentEpisode) {
                             onPlayPause(episode);
                         } else {
@@ -99,12 +93,15 @@ function EpisodeRow({
                         lastTapRef.current = { time: now, index: idx };
                     }
                 }}
-                className="flex items-center gap-4 px-3 py-3 cursor-pointer touch-manipulation"
+                className={cn(
+                    "grid grid-cols-[40px_minmax(0,1fr)_auto_auto] md:grid-cols-[40px_minmax(200px,3fr)_minmax(100px,2fr)_auto_auto] gap-4 items-center px-3 py-2 rounded-lg transition-all group",
+                    isCurrentEpisode ? "cursor-pointer" : "cursor-pointer"
+                )}
             >
                 {/* Number / Play/Pause */}
-                <div className="w-8 flex items-center justify-center shrink-0">
+                <div className="flex items-center justify-center shrink-0">
                     {episode.progress?.isFinished ? (
-                        <Check className="w-4 h-4 text-green-400" />
+                        <Check className="w-4 h-4 text-[var(--color-brand)]" />
                     ) : (
                         <>
                             <span
@@ -114,7 +111,7 @@ function EpisodeRow({
                                         ? "hidden"
                                         : "group-hover:hidden",
                                     isCurrentEpisode
-                                        ? "text-[#3b82f6] font-bold"
+                                        ? "font-bold text-[var(--color-brand)]"
                                         : "text-[var(--text-muted)]"
                                 )}
                             >
@@ -122,18 +119,18 @@ function EpisodeRow({
                             </span>
                             {isCurrentEpisode && isPlaying ? (
                                 <Pause
-                                    className="w-4 h-4 text-[#3b82f6] cursor-pointer animate-pulse"
+                                    className="w-4 h-4 text-[var(--color-brand)] cursor-pointer animate-pulse"
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         onPlayPause(episode);
                                     }}
-                            />
+                                />
                             ) : (
-                            <Play
+                                <Play
                                     className={cn(
                                         "w-4 h-4 cursor-pointer",
                                         isCurrentEpisode
-                                            ? "text-[#3b82f6]"
+                                            ? "text-[var(--color-brand)]"
                                             : "text-white hidden group-hover:block"
                                     )}
                                     onClick={(e) => {
@@ -146,51 +143,49 @@ function EpisodeRow({
                     )}
                 </div>
 
-                {/* Episode Info */}
-                <div className="flex-1 min-w-0">
+                {/* Episode Info (Title + metadata chips) */}
+                <div className="min-w-0 overflow-hidden">
                     <h3
                         className={cn(
                             "font-bold truncate text-sm tracking-tight",
-                            isCurrentEpisode
-                                ? "text-[#3b82f6]"
-                                : "text-white"
+                            isCurrentEpisode ? "text-[var(--color-brand)]" : "text-white"
                         )}
                     >
                         {episode.title}
                     </h3>
-                    <div className="flex items-center gap-2 text-xs tabular-nums text-[var(--text-muted)] mt-0.5">
-                        <span>{formatDate(episode.publishedAt)}</span>
+                    <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                        {/* Status chip: finished */}
+                        {episode.progress?.isFinished && (
+                            <span className="inline-flex items-center t-eyebrow leading-none">
+                                ✓&nbsp;Finished
+                            </span>
+                        )}
+                        {/* Status chip: in-progress */}
+                        {isInProgress && episode.progress && (
+                            <span className="inline-flex items-center t-eyebrow leading-none text-[var(--color-brand)]">
+                                {Math.floor(episode.progress.progress)}%
+                            </span>
+                        )}
+                        {/* Meta: date */}
+                        <span className="t-meta leading-none">{formatDate(episode.publishedAt)}</span>
+                        {/* Meta: season/episode */}
                         {episode.season && (
                             <>
-                                <span className="text-[var(--text-muted)]">|</span>
-                                <span>S{episode.season}</span>
+                                <span className="t-meta leading-none">|</span>
+                                <span className="t-meta leading-none">S{episode.season}</span>
                             </>
                         )}
                         {episode.episodeNumber && (
                             <>
-                                <span className="text-[var(--text-muted)]">|</span>
-                                <span>E{episode.episodeNumber}</span>
-                            </>
-                        )}
-                        {episode.progress?.isFinished && (
-                            <>
-                                <span className="text-[var(--text-muted)]">|</span>
-                                <span className="text-green-400">Finished</span>
-                            </>
-                        )}
-                        {isInProgress && episode.progress && (
-                            <>
-                                <span className="text-[var(--text-muted)]">|</span>
-                                <span className="text-[#3b82f6]">
-                                    {Math.floor(episode.progress.progress)}%
-                                </span>
+                                <span className="t-meta leading-none">|</span>
+                                <span className="t-meta leading-none">E{episode.episodeNumber}</span>
                             </>
                         )}
                     </div>
                 </div>
 
                 {/* Duration */}
-                <span className="text-xs tabular-nums text-[var(--text-muted)] shrink-0">
+                <span className="t-meta shrink-0 text-right">
                     {formatDuration(episode.duration)}
                 </span>
 
@@ -218,25 +213,25 @@ function EpisodeRow({
                             e.stopPropagation();
                             onMarkComplete(episode.id, episode.duration);
                         }}
-                        className="opacity-0 group-hover:opacity-100 group-hover:translate-y-0 translate-y-1 transition-[opacity,transform] duration-150 p-1.5 rounded-lg hover:bg-white/10"
+                        className="opacity-0 group-hover:opacity-100 group-hover:translate-y-0 translate-y-1 transition-[opacity,transform] duration-150 p-1.5 rounded-lg hover:bg-white/10 shrink-0"
                         title="Mark as complete"
                     >
-                        <CheckCircle className="w-4 h-4 text-[var(--text-muted)] hover:text-green-400 transition-colors" />
+                        <CheckCircle className="w-4 h-4 text-[var(--text-muted)] hover:text-[var(--color-brand)] transition-colors" />
                     </button>
                 )}
 
-            {/* Expanded description */}
-            {expanded && hasDescription && (
-                <div className="px-3 pb-3 pl-[52px]">
-                    <div
-                        className="text-xs text-[var(--text-muted)] leading-relaxed max-w-3xl line-clamp-6 [&_a]:text-[#3b82f6] [&_a]:no-underline [&_a:hover]:underline"
-                        dangerouslySetInnerHTML={{
-                            __html: DOMPurify.sanitize(episode.description || ""),
-                        }}
-                    />
-                </div>
-            )}
-        </div>
+                {/* Expanded description */}
+                {expanded && hasDescription && (
+                    <div className="col-span-full px-3 pb-3 pt-0">
+                        <div
+                            className="text-xs text-[var(--text-muted)] leading-relaxed max-w-3xl line-clamp-6"
+                            dangerouslySetInnerHTML={{
+                                __html: DOMPurify.sanitize(episode.description || ""),
+                            }}
+                        />
+                    </div>
+                )}
+            </div>
         </div>
     );
 }
@@ -252,26 +247,39 @@ export function EpisodeList({
     onPlay,
     onMarkComplete,
 }: EpisodeListProps) {
+    const sortButton = (
+        <button
+            onClick={() =>
+                onSortOrderChange(
+                    sortOrder === "newest" ? "oldest" : "newest"
+                )
+            }
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 text-xs tabular-nums text-[var(--text-secondary)] hover:text-white transition-all"
+        >
+            <ArrowUpDown className="w-3.5 h-3.5" />
+            {sortOrder === "newest" ? "Newest" : "Oldest"}
+        </button>
+    );
+
     return (
         <section>
-            <div className="flex items-center gap-3 mb-6">
-                <span className="w-1 h-8 bg-gradient-to-b from-[#3b82f6] to-[#2563eb] rounded-full shrink-0" />
-                <h2 className="text-2xl font-bold tracking-tight">All Episodes</h2>
-                <span className="text-xs tabular-nums text-[#3b82f6]">
-                    {episodes.length}
-                </span>
-                <span className="flex-1 border-t border-white/10" />
-                <button
-                    onClick={() =>
-                        onSortOrderChange(
-                            sortOrder === "newest" ? "oldest" : "newest"
-                        )
-                    }
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 text-xs tabular-nums text-[var(--text-secondary)] hover:text-white transition-all"
-                >
-                    <ArrowUpDown className="w-3.5 h-3.5" />
-                    {sortOrder === "newest" ? "Newest" : "Oldest"}
-                </button>
+            <SectionHeader title="All Episodes" rightAction={sortButton} color="podcasts" />
+
+            {/* Table header (desktop only) */}
+            <div className="hidden md:grid grid-cols-[40px_minmax(200px,3fr)_minmax(100px,2fr)_auto_auto] gap-4 px-3 py-2 text-xs text-[var(--text-muted)] border-b border-white/10 mb-1">
+                <span className="text-center">#</span>
+                <span>Title</span>
+                <span className="text-right">Duration</span>
+                <span className="w-8" />
+                <span className="w-8" />
+            </div>
+
+            {/* Mobile column labels */}
+            <div className="md:hidden grid grid-cols-[40px_1fr_auto_auto] gap-4 px-3 py-1 text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
+                <span>#</span>
+                <span>Title</span>
+                <span className="text-right">Duration</span>
+                <span className="w-8" />
             </div>
 
             <div className="space-y-0.5">

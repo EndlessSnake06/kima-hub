@@ -88,7 +88,7 @@ export function PodcastHero({
 
                     {/* System status */}
                     <div className="flex items-center gap-2 mb-4">
-                        <div className="w-1.5 h-1.5 bg-[#3b82f6] rounded-full" />
+                        <div className="w-1.5 h-1.5 bg-[var(--color-brand)] rounded-full" />
                         <span className="t-eyebrow">
                             Podcast
                         </span>
@@ -138,7 +138,7 @@ export function PodcastHero({
                                 {inProgressCount > 0 && (
                                     <>
                                         <span className="text-[var(--text-muted)]">|</span>
-                                        <span className="text-[#3b82f6]">
+                                        <span className="text-[var(--color-brand)]">
                                             {inProgressCount} in progress
                                         </span>
                                     </>

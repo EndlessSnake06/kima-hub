@@ -40,7 +40,7 @@ export function PodcastActionBar({
             {isSubscribed && onPlayLatest && (
                 <button
                     onClick={isPlayingPodcast ? onPause : onPlayLatest}
-                    className="w-10 h-10 rounded-lg bg-[#3b82f6] hover:bg-[#2563eb] transition-all flex items-center justify-center hover:scale-105 active:scale-95"
+                    className="w-10 h-10 rounded-lg bg-[var(--color-brand)] hover:bg-[var(--color-brand-hover)] transition-all flex items-center justify-center hover:scale-105 active:scale-95"
                 >
                     {isPlayingPodcast ? (
                         <Pause className="w-4 h-4 text-white" />
@@ -67,7 +67,7 @@ export function PodcastActionBar({
                 <button
                     onClick={onSubscribe}
                     disabled={isSubscribing}
-                    className="h-10 px-5 rounded-lg bg-[#3b82f6] hover:bg-[#2563eb] transition-all flex items-center gap-2 font-bold text-sm text-white disabled:opacity-50 hover:scale-[1.02] active:scale-[0.98]"
+                    className="h-10 px-5 rounded-lg bg-[var(--color-brand)] hover:bg-[var(--color-brand-hover)] transition-all flex items-center gap-2 font-bold text-sm text-black disabled:opacity-50 hover:scale-[1.02] active:scale-[0.98]"
                 >
                     {isSubscribing ? (
                         <>
