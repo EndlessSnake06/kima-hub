@@ -679,6 +679,11 @@ model SystemSettings {
   maxConcurrentDownloads      Int      @default(3)
   downloadRetryAttempts       Int      @default(3)
   transcodeCacheMaxGb         Int      @default(10)
+  /// How many tracks the play queue may hold, per user. The queue is stored as
+  /// track references, so the cost is a JSON column and a POST body rather than
+  /// anything on disk. Clamped 100..100000 on write so a typo cannot take the
+  /// server down.
+  maxQueueLength              Int      @default(10000)
   downloadSource              String   @default("soulseek")
   primaryFailureFallback      String   @default("none")
   updatedAt                   DateTime @updatedAt
@@ -774,6 +779,7 @@ model Track {
   subsonicBookmarks           SubsonicBookmark[]
   trackEmbedding              TrackEmbedding?
   trackLyrics                 TrackLyrics?
+  playAuditIgnores            PlayAuditIgnore[]
 
   @@index([analysisStatus])
   @@index([scanStatus])
@@ -855,18 +861,18 @@ model UnavailableAlbum {
 }
 
 model User {
-  id                     String                @id @default(cuid())
-  username               String                @unique
+  id                     String                   @id @default(cuid())
+  username               String                   @unique
   passwordHash           String
-  role                   String                @default("user")
-  onboardingComplete     Boolean               @default(false)
+  role                   String                   @default("user")
+  onboardingComplete     Boolean                  @default(false)
   enrichmentSettings     Json?
-  twoFactorEnabled       Boolean               @default(false)
+  twoFactorEnabled       Boolean                  @default(false)
   twoFactorSecret        String?
   twoFactorRecoveryCodes String?
   moodMixParams          Json?
-  tokenVersion           Int                   @default(0)
-  createdAt              DateTime              @default(now())
+  tokenVersion           Int                      @default(0)
+  createdAt              DateTime                 @default(now())
   apiKeys                ApiKey[]
   audiobookProgress      AudiobookProgress[]
   cachedTracks           CachedTrack[]
@@ -895,6 +901,7 @@ model User {
   subsonicPlayQueue      SubsonicPlayQueue?
   releaseAcks            ReleaseAcknowledgement[]
   releaseChoices         ReleaseChoice[]
+  playAuditIgnores       PlayAuditIgnore[]
 }
 
 model UserDiscoverConfig {
@@ -1086,16 +1093,16 @@ model ReleaseAcknowledgement {
 /// That is deliberate: it means there is no third state for later code to read
 /// optimistically, and "how many people opted in" has an honest denominator.
 model ReleaseChoice {
-  id        String           @id @default(cuid())
+  id        String          @id @default(cuid())
   userId    String
   version   String
   /// Stable identifier for the thing being consented to, e.g.
   /// "social.network", "commons.contribute". Survives copy changes.
   key       String
-  enabled   Boolean          @default(false)
-  decidedBy ChoiceDecidedBy  @default(DISMISSED)
-  decidedAt DateTime         @default(now())
-  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  enabled   Boolean         @default(false)
+  decidedBy ChoiceDecidedBy @default(DISMISSED)
+  decidedAt DateTime        @default(now())
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, key])
   @@index([userId])
@@ -1107,4 +1114,27 @@ enum ChoiceDecidedBy {
   EXPLICIT
   /// The window was closed without answering. Recorded at the default.
   DISMISSED
+}
+
+/// A track the play-history audit has been told to stop flagging.
+///
+/// The audit finds plays it can prove nobody listened to. There are two honest
+/// answers to that: delete them, or say "this is fine, leave it alone". Only the
+/// first is destructive, and only the second needs somewhere to live — without
+/// this table the same rows are offered up every single time the audit runs,
+/// which is how a maintenance tool turns into something people stop opening.
+///
+/// Ignoring is per track, not per play. "This track's count is fine" is the
+/// thing a person actually means, and it keeps applying as new plays arrive.
+/// Nothing about counting changes: an ignored track accumulates plays exactly
+/// like every other track, it is simply never raised again.
+model PlayAuditIgnore {
+  userId    String
+  trackId   String
+  ignoredAt DateTime @default(now())
+  track     Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, trackId])
+  @@index([userId])
 }
