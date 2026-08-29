@@ -4,8 +4,6 @@ import { logger } from "../utils/logger";
 import * as fuzz from "fuzzball";
 import { config } from "../config";
 import { redisClient } from "../utils/redis";
-import { fanartService } from "./fanart";
-import { deezerService } from "./deezer";
 import { rateLimiter } from "./rateLimiter";
 import { normalizeToArray } from "../utils/normalize";
 import { stripAlbumEdition } from "../utils/artistNormalization";
@@ -714,21 +712,21 @@ class LastFmService {
             return baseResult;
         }
 
-        const [info, fanartImage, deezerImage] = await Promise.all([
+        // Fanart, then Deezer, then whatever Last.fm itself returned -- the
+        // same sequence spelled out in four other places before this. What
+        // search already handed us goes in as the address of last resort.
+        const { findArtistArtwork } = await import("./artwork");
+        const [info, found] = await Promise.all([
             this.getArtistInfo(artist.name, artist.mbid),
-            artist.mbid
-                ? fanartService
-                      .getArtistImage(artist.mbid)
-                      .catch(() => null as string | null)
-                : Promise.resolve<string | null>(null),
-            deezerService
-                .getArtistImage(artist.name)
-                .catch(() => null as string | null),
+            findArtistArtwork({
+                name: artist.name,
+                mbid: artist.mbid || undefined,
+                candidateUrl: baseResult.image,
+            }),
         ]);
 
         const resolvedImage =
-            fanartImage ||
-            deezerImage ||
+            found?.url ||
             (info ? this.getBestImage(info.image) : null) ||
             baseResult.image;
 
@@ -771,10 +769,11 @@ class LastFmService {
             return null;
         }
 
+        // A track with no album art falls back to a picture of the artist.
+        // Asked Deezer alone; asks every source now.
         if (!albumArt) {
-            albumArt = await deezerService
-                .getArtistImage(track.artist)
-                .catch(() => null as string | null);
+            const { findArtistArtwork } = await import("./artwork");
+            albumArt = (await findArtistArtwork({ name: track.artist }))?.url ?? null;
         }
 
         return {
@@ -1090,43 +1089,21 @@ class LastFmService {
             const concurrencyLimit = pLimit(4);
             const detailedArtists = await Promise.all(
                 artists.map((artist: any) => concurrencyLimit(async () => {
-                    // Try to get image from Fanart.tv using MBID
-                    let image = null;
-                    if (artist.mbid) {
-                        try {
-                            image = await fanartService.getArtistImage(
-                                artist.mbid
-                            );
-                        } catch (error) {
-                            // Silently fail
-                        }
-                    }
-
-                    // Fallback to Deezer (most reliable)
-                    if (!image) {
-                        try {
-                            const deezerImage =
-                                await deezerService.getArtistImage(artist.name);
-                            if (deezerImage) {
-                                image = deezerImage;
-                            }
-                        } catch (error) {
-                            // Silently fail
-                        }
-                    }
-
-                    // Last fallback to Last.fm images (but filter placeholders)
-                    if (!image) {
-                        const lastFmImage = this.getBestImage(normalizeToArray(artist.image));
-                        if (
-                            lastFmImage &&
-                            !lastFmImage.includes(
-                                "2a96cbd8b46e442fc41c2b86b821562f"
-                            )
-                        ) {
-                            image = lastFmImage;
-                        }
-                    }
+                    // Fanart, then Deezer, then Last.fm's own image with the
+                    // grey-star placeholder filtered out -- the same sequence
+                    // this file used to spell out by hand. The image Last.fm
+                    // already gave us in this response goes in as the address
+                    // of last resort so we do not ask it for what we hold.
+                    const { findArtistArtwork } = await import("./artwork");
+                    const here = this.getBestImage(normalizeToArray(artist.image));
+                    const image =
+                        (
+                            await findArtistArtwork({
+                                name: artist.name,
+                                mbid: artist.mbid || undefined,
+                                candidateUrl: here,
+                            })
+                        )?.url ?? null;
 
                     return {
                         type: "music",

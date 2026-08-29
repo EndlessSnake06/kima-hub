@@ -13,10 +13,8 @@
 import { logger } from "../utils/logger";
 import { prisma } from "../utils/db";
 import { redisClient } from "../utils/redis";
-import { fanartService } from "./fanart";
-import { deezerService } from "./deezer";
 import { lastFmService } from "./lastfm";
-import { coverArtService } from "./coverArt";
+import { findAlbumArtwork, findArtistArtwork, isRealMbid } from "./artwork";
 import { downloadAndStoreImage } from "./imageStorage";
 
 // Cache TTLs
@@ -88,23 +86,35 @@ class DataCacheService {
         albumId: string,
         rgMbid: string
     ): Promise<string | null> {
-        // Skip temp MBIDs - no cover art available for unscanned albums
-        if (!rgMbid || rgMbid.startsWith("temp-")) {
-            return null;
-        }
+        // A placeholder id used to end this call right here, on the reasoning
+        // that the Cover Art Archive can do nothing without a real MusicBrainz
+        // id. True of the archive, but Deezer searches by artist and title --
+        // and 46% of a real library carries a placeholder id, so this returned
+        // "no cover" for nearly half the albums without asking anyone.
+        // findAlbumArtwork skips the id-keyed sources on its own now.
 
         const cacheKey = `album-cover:${albumId}`;
 
-        // 1. Check DB first
+        // 1. Check DB first. Title and artist come back too: the artwork
+        //    sources need them to ask Deezer, which is the source most likely
+        //    to have the record and the one this path never used to try.
+        let artistName = "";
+        let albumTitle = "";
         try {
             const album = await prisma.album.findUnique({
                 where: { id: albumId },
-                select: { coverUrl: true },
+                select: {
+                    coverUrl: true,
+                    title: true,
+                    artist: { select: { name: true } },
+                },
             });
             if (album?.coverUrl) {
                 this.setRedisCache(cacheKey, album.coverUrl, ALBUM_COVER_TTL);
                 return album.coverUrl;
             }
+            artistName = album?.artist?.name ?? "";
+            albumTitle = album?.title ?? "";
         } catch (err) {
             logger.warn("[DataCache] DB lookup failed for album:", albumId);
         }
@@ -121,8 +131,16 @@ class DataCacheService {
             // Redis errors are non-critical
         }
 
-        // 3. Fetch from Cover Art Archive
-        const coverUrl = await coverArtService.getCoverArt(rgMbid);
+        // 3. Ask every source, not just the Cover Art Archive. This asked the
+        //    archive alone, which is the reason so many album cards here fell
+        //    back to a placeholder when Deezer had the record all along.
+        if (!artistName && !isRealMbid(rgMbid)) {
+            // Nothing to search on at all: no title, no artist, no real id.
+            return null;
+        }
+
+        const coverUrl =
+            (await findAlbumArtwork({ rgMbid, artistName, albumTitle }))?.url ?? null;
 
         // 4. Save to both DB and Redis
         if (coverUrl) {
@@ -246,57 +264,13 @@ class DataCacheService {
         artistName: string,
         mbid?: string | null
     ): Promise<string | null> {
-        let externalUrl: string | null = null;
-        let source = "";
-
-        // Try Fanart.tv first if we have a valid MBID
-        if (mbid && !mbid.startsWith("temp-")) {
-            try {
-                externalUrl = await fanartService.getArtistImage(mbid);
-                if (externalUrl) {
-                    source = "Fanart.tv";
-                }
-            } catch (err) {
-                // Fanart.tv failed, continue
-            }
-        }
-
-        // Try Deezer
-        if (!externalUrl) {
-            try {
-                externalUrl = await deezerService.getArtistImage(artistName);
-                if (externalUrl) {
-                    source = "Deezer";
-                }
-            } catch (err) {
-                // Deezer failed, continue
-            }
-        }
-
-        // Try Last.fm
-        if (!externalUrl) {
-            try {
-                const validMbid = mbid && !mbid.startsWith("temp-") ? mbid : undefined;
-                const lastfmInfo = await lastFmService.getArtistInfo(artistName, validMbid);
-
-                if (lastfmInfo?.image && Array.isArray(lastfmInfo.image)) {
-                    const largestImage =
-                        lastfmInfo.image.find((img: any) => img.size === "extralarge" || img.size === "mega") ||
-                        lastfmInfo.image[lastfmInfo.image.length - 1];
-
-                    if (largestImage && largestImage["#text"]) {
-                        const imageUrl = largestImage["#text"];
-                        // Filter out Last.fm placeholder images
-                        if (!imageUrl.includes("2a96cbd8b46e442fc41c2b86b821562f")) {
-                            externalUrl = imageUrl;
-                            source = "Last.fm";
-                        }
-                    }
-                }
-            } catch (err) {
-                // Last.fm failed
-            }
-        }
+        // This was the fourth hand-rolled Fanart-then-Deezer-then-Last.fm
+        // chain, with its own copy of the Last.fm placeholder filter. The
+        // ordering, the filter and the caching all belong in one place now.
+        const validMbid = mbid && !mbid.startsWith("temp-") ? mbid : undefined;
+        const found = await findArtistArtwork({ name: artistName, mbid: validMbid });
+        const externalUrl = found?.url ?? null;
+        const source = found?.source ?? "";
 
         if (!externalUrl) {
             logger.debug(`[DataCache] No image found for ${artistName}`);

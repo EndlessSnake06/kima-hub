@@ -5,7 +5,6 @@ import { prisma, Prisma } from "../../utils/db";
 import { redisClient } from "../../utils/redis";
 import { logger } from "../../utils/logger";
 import { lastFmService } from "../../services/lastfm";
-import { deezerService } from "../../services/deezer";
 import { musicBrainzService } from "../../services/musicbrainz";
 import { dataCacheService } from "../../services/dataCache";
 import {
@@ -23,6 +22,7 @@ import { hasRealMbid } from "../../services/artistIdentity";
 import pLimit from "p-limit";
 import { toAudioFeaturesDTO } from "../../utils/audioFeatures";
 import { resolveWithinMusicRoot } from "./trackPath";
+import { findArtistArtwork } from "../../services/artwork";
 
 // Alphabetical ordering reads `sortName`, not `name`: the article-stripped,
 // unaccented, lowercased value written by `artistSortName` and backfilled by
@@ -754,21 +754,13 @@ router.get("/artists/:id", async (req, res) => {
 
           let image = libraryArtist?.heroUrl || null;
 
+          // Asked Deezer and nothing else, behind its own ad-hoc cache. Both
+          // jobs now belong to findArtistArtwork, which tries every source and
+          // keeps one cache for all of them.
           if (!image) {
-            try {
-              const cacheKey = `deezer-artist-image:${s.name}`;
-              const cached = await redisClient.get(cacheKey);
-              if (cached && cached !== "NOT_FOUND") {
-                image = cached;
-              } else {
-                image = await deezerService.getArtistImage(s.name);
-                if (image) {
-                  await redisClient.setex(cacheKey, 24 * 60 * 60, image);
-                }
-              }
-            } catch (err) {
-              // Deezer failed, leave null
-            }
+            image =
+              (await findArtistArtwork({ name: s.name, mbid: s.mbid || undefined }))
+                ?.url ?? null;
           }
 
           return {
@@ -860,12 +852,11 @@ router.get("/artists/:id", async (req, res) => {
 
               let image = libraryArtist?.heroUrl || null;
 
+              // Same as above: every source, not just Deezer.
               if (!image) {
-                try {
-                  image = await deezerService.getArtistImage(s.name);
-                } catch (err) {
-                  // Deezer failed, leave null
-                }
+                image =
+                  (await findArtistArtwork({ name: s.name, mbid: s.mbid || undefined }))
+                    ?.url ?? null;
               }
 
               return {

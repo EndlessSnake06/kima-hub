@@ -3,11 +3,15 @@ import axios from "axios";
 import { logger } from "../utils/logger";
 import { lastFmService } from "../services/lastfm";
 import { musicBrainzService } from "../services/musicbrainz";
-import { fanartService } from "../services/fanart";
 import { deezerService } from "../services/deezer";
 import { redisClient } from "../utils/redis";
 import { normalizeToArray } from "../utils/normalize";
 import { requireAuthOrToken } from "../middleware/auth";
+import {
+    withAlbumArtwork,
+    findAlbumArtwork,
+    findArtistArtwork,
+} from "../services/artwork";
 import { safeError } from "../utils/errors";
 import { upstreamHeader } from "../utils/upstreamHeaders";
 
@@ -210,49 +214,12 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
             }
         }
 
-        // Get artist image
-        let image = null;
-
-        // Try Fanart.tv first (if we have MBID)
-        if (mbid) {
-            try {
-                image = await fanartService.getArtistImage(mbid);
-                logger.debug(`Fanart.tv image for ${artistName}`);
-            } catch (error) {
-                logger.debug(
-                    `✗ Failed to get Fanart.tv image for ${artistName}`
-                );
-            }
-        }
-
-        // Fallback to Deezer
-        if (!image) {
-            try {
-                image = await deezerService.getArtistImage(artistName);
-                if (image) {
-                    logger.debug(`Deezer image for ${artistName}`);
-                }
-            } catch (error) {
-                logger.debug(` Failed to get Deezer image for ${artistName}`);
-            }
-        }
-
-        // Fallback to Last.fm (but filter placeholders)
-        // NORMALIZATION: lastFmInfo.image could be a single object or array
-        if (!image && lastFmInfo?.image) {
-            const images = normalizeToArray(lastFmInfo.image);
-            const lastFmImage = lastFmService.getBestImage(images);
-            // Filter out Last.fm placeholder
-            if (
-                lastFmImage &&
-                !lastFmImage.includes("2a96cbd8b46e442fc41c2b86b821562f")
-            ) {
-                image = lastFmImage;
-                logger.debug(`Last.fm image for ${artistName}`);
-            } else {
-                logger.debug(` Last.fm returned placeholder for ${artistName}`);
-            }
-        }
+        // Artist image. This used to be a hand-rolled Fanart-then-Deezer-then-
+        // Last.fm chain, one of five such chains in this codebase, each with
+        // its own ordering and its own copy of the Last.fm placeholder filter.
+        const image =
+            (await findArtistArtwork({ name: artistName, mbid: mbid || undefined }))
+                ?.url ?? null;
 
         // Get discography from MusicBrainz
         let albums: any[] = [];
@@ -290,53 +257,33 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
                     }
                 );
 
-                // Process albums with Deezer fallback
-                albums = await Promise.all(
-                    filteredReleaseGroups.map(async (rg: any) => {
-                        // Default to Cover Art Archive URL
-                        let coverUrl = `https://coverartarchive.org/release-group/${rg.id}/front-500`;
+                const candidates = filteredReleaseGroups.map((rg: any) => ({
+                    id: rg.id, // MBID - used for linking
+                    rgMbid: rg.id, // Release group MBID - used for downloads
+                    mbid: rg.id, // Fallback MBID
+                    title: rg.title,
+                    type: rg["primary-type"],
+                    year: rg["first-release-date"]
+                        ? parseInt(rg["first-release-date"].substring(0, 4))
+                        : null,
+                    releaseDate: rg["first-release-date"] || null,
+                    coverUrl: null as string | null,
+                    owned: false, // Discovery albums are never owned
+                }));
 
-                        // For first 10 albums, try Deezer as fallback if Cover Art Archive doesn't have it
-                        // (to avoid too many requests)
-                        const index = filteredReleaseGroups.indexOf(rg);
-                        if (index < 10) {
-                            try {
-                                const response = await fetch(coverUrl, {
-                                    method: "HEAD",
-                                    signal: AbortSignal.timeout(2000),
-                                });
-                                if (!response.ok) {
-                                    // Cover Art Archive doesn't have it, try Deezer
-                                    const deezerCover =
-                                        await deezerService.getAlbumCover(
-                                            artistName,
-                                            rg.title
-                                        );
-                                    if (deezerCover) {
-                                        coverUrl = deezerCover;
-                                    }
-                                }
-                            } catch (error) {
-                                // Silently fail and keep Cover Art Archive URL
-                            }
-                        }
-
-                        return {
-                            id: rg.id, // MBID - used for linking
-                            rgMbid: rg.id, // Release group MBID - used for downloads
-                            mbid: rg.id, // Fallback MBID
-                            title: rg.title,
-                            type: rg["primary-type"],
-                            year: rg["first-release-date"]
-                                ? parseInt(
-                                      rg["first-release-date"].substring(0, 4)
-                                  )
-                                : null,
-                            releaseDate: rg["first-release-date"] || null,
-                            coverUrl,
-                            owned: false, // Discovery albums are never owned
-                        };
-                    })
+                // This used to build coverartarchive.org/release-group/<id>
+                // /front-500 by hand and send it out without ever asking the
+                // archive whether that picture existed -- and for a release
+                // group nobody owns, it usually does not. Ask the providers
+                // the library already uses instead.
+                albums = await withAlbumArtwork(
+                    candidates,
+                    (a) => ({
+                        rgMbid: a.rgMbid,
+                        artistName,
+                        albumTitle: a.title,
+                    }),
+                    (a, coverUrl) => ({ ...a, coverUrl }),
                 );
 
                 // Sort albums
@@ -362,43 +309,23 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
             similarArtistsRaw.slice(0, 10).map(async (artist: any) => {
                 // NORMALIZATION: artist.image could be a single object or array
                 const images = normalizeToArray(artist.image);
-                const similarImage = images.find(
-                    (img: any) => img.size === "large"
-                )?.[" #text"];
+                // Was `images.find(...)?.[" #text"]` -- the key had a stray
+                // leading space, so this was always undefined and the Last.fm
+                // fallback below never once fired.
+                const similarImage = lastFmService.getBestImage(images);
 
-                let image = null;
-
-                // Try Fanart.tv first (if we have MBID)
-                if (artist.mbid) {
-                    try {
-                        image = await fanartService.getArtistImage(artist.mbid);
-                    } catch (error) {
-                        // Silently fail
-                    }
-                }
-
-                // Fallback to Deezer
-                if (!image) {
-                    try {
-                        const deezerImage = await deezerService.getArtistImage(
-                            artist.name
-                        );
-                        if (deezerImage) {
-                            image = deezerImage;
-                        }
-                    } catch (error) {
-                        // Silently fail
-                    }
-                }
-
-                // Last fallback to Last.fm (but filter placeholders)
-                if (
-                    !image &&
-                    similarImage &&
-                    !similarImage.includes("2a96cbd8b46e442fc41c2b86b821562f")
-                ) {
-                    image = similarImage;
-                }
+                // The same three sources as above, so the same one call.
+                // `similarImage` is whatever Last.fm already handed us in this
+                // response; offered as the address of last resort so we do not
+                // ask Last.fm twice for something we are already holding.
+                const image =
+                    (
+                        await findArtistArtwork({
+                            name: artist.name,
+                            mbid: artist.mbid || undefined,
+                            candidateUrl: similarImage,
+                        })
+                    )?.url ?? null;
 
                 return {
                     id: artist.mbid || artist.name,
@@ -576,53 +503,22 @@ router.get("/album/:mbid", async (req, res) => {
             }
         }
 
-        // Get album cover art - try Cover Art Archive first
-        let coverUrl = null;
-        let coverArtUrl = `https://coverartarchive.org/release/${mbid}/front-500`;
-        if (!release) {
-            coverArtUrl = `https://coverartarchive.org/release-group/${releaseGroupId}/front-500`;
-        }
-
-        // Check if Cover Art Archive actually has the image
-        try {
-            const response = await fetch(coverArtUrl, {
-                method: "HEAD",
-                signal: AbortSignal.timeout(2000),
-            });
-            if (response.ok) {
-                coverUrl = coverArtUrl;
-                logger.debug(`Cover Art Archive has cover for ${albumTitle}`);
-            } else {
-                logger.debug(
-                    `✗ Cover Art Archive 404 for ${albumTitle}, trying Deezer...`
-                );
-            }
-        } catch (error) {
-            logger.debug(
-                `✗ Cover Art Archive check failed for ${albumTitle}, trying Deezer...`
-            );
-        }
-
-        // Fallback to Deezer if Cover Art Archive doesn't have it
-        if (!coverUrl) {
-            try {
-                const deezerCover = await deezerService.getAlbumCover(
+        // Album cover art.
+        //
+        // This used to build a coverartarchive.org address by hand, HEAD it,
+        // fall back to Deezer, and -- when neither had anything -- send the
+        // archive address anyway, under a comment reading "might 404, but
+        // better than nothing". It is not better than nothing: the browser
+        // takes the 404, the page shows a broken box, and the failure never
+        // reaches this server. Ask the providers and accept null.
+        const coverUrl =
+            (
+                await findAlbumArtwork({
+                    rgMbid: releaseGroupId || mbid,
                     artistName,
-                    albumTitle
-                );
-                if (deezerCover) {
-                    coverUrl = deezerCover;
-                    logger.debug(`Deezer has cover for ${albumTitle}`);
-                } else {
-                    // Final fallback to Cover Art Archive URL (might 404, but better than nothing)
-                    coverUrl = coverArtUrl;
-                }
-            } catch (error) {
-                logger.debug(` Deezer lookup failed for ${albumTitle}`);
-                // Final fallback to Cover Art Archive URL
-                coverUrl = coverArtUrl;
-            }
-        }
+                    albumTitle,
+                })
+            )?.url ?? null;
 
         // Format response
         const releaseMbid = release?.id || null;

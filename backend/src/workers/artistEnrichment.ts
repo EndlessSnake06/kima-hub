@@ -3,12 +3,10 @@ import { logger } from "../utils/logger";
 import { prisma } from "../utils/db";
 import { wikidataService } from "../services/wikidata";
 import { lastFmService } from "../services/lastfm";
-import { fanartService } from "../services/fanart";
-import { deezerService } from "../services/deezer";
 import { musicBrainzService } from "../services/musicbrainz";
 import { normalizeArtistName } from "../utils/artistNormalization";
 import { hasRealMbid } from "../services/artistIdentity";
-import { coverArtService } from "../services/coverArt";
+import { findAlbumArtwork, findArtistArtwork } from "../services/artwork";
 import { redisClient } from "../utils/redis";
 import { downloadAndStoreImage, isNativePath, nativeFileExists } from "../services/imageStorage";
 
@@ -171,48 +169,22 @@ export async function enrichSimilarArtist(artist: Artist): Promise<void> {
             }
         }
 
-        // Image fallbacks run independently of Last.fm success
-        // Try Fanart.tv (only with real MBID)
-        if (!heroUrl && hasRealMbid(artist.mbid)) {
-            logger.debug(
-                `${logPrefix} Fanart.tv: Fetching for MBID ${artist.mbid}...`
-            );
-            try {
-                heroUrl = await fanartService.getArtistImage(artist.mbid);
-                if (heroUrl) {
-                    imageSource = "fanart.tv";
-                    logger.debug(
-                        `${logPrefix} Fanart.tv: SUCCESS - ${heroUrl.substring(0, 60)}...`
-                    );
-                } else {
-                    logger.debug(`${logPrefix} Fanart.tv: No image found`);
-                }
-            } catch (error: any) {
-                logger.debug(
-                    `${logPrefix} Fanart.tv: FAILED - ${error?.message || error}`
-                );
-            }
-        }
-
-        // Fallback to Deezer
+        // Image lookup runs whether or not Last.fm had anything. This was
+        // Fanart-then-Deezer spelled out here; the ordering, the Last.fm
+        // fallback it was missing, and the caching all live in one place now.
         if (!heroUrl) {
-            logger.debug(
-                `${logPrefix} Deezer: Fetching for "${artist.name}"...`
-            );
-            try {
-                heroUrl = await deezerService.getArtistImage(artist.name);
-                if (heroUrl) {
-                    imageSource = "deezer";
-                    logger.debug(
-                        `${logPrefix} Deezer: SUCCESS - ${heroUrl.substring(0, 60)}...`
-                    );
-                } else {
-                    logger.debug(`${logPrefix} Deezer: No image found`);
-                }
-            } catch (error: any) {
+            const found = await findArtistArtwork({
+                name: artist.name,
+                mbid: hasRealMbid(artist.mbid) ? artist.mbid : undefined,
+            });
+            if (found) {
+                heroUrl = found.url;
+                imageSource = found.source;
                 logger.debug(
-                    `${logPrefix} Deezer: FAILED - ${error?.message || error}`
+                    `${logPrefix} Image: found via ${found.source} - ${heroUrl.substring(0, 60)}...`
                 );
+            } else {
+                logger.debug(`${logPrefix} Image: no source had one`);
             }
         }
 
@@ -373,7 +345,7 @@ export async function enrichSimilarArtist(artist: Artist): Promise<void> {
         }
 
         // Fetch covers for all albums belonging to this artist that don't have covers yet
-        await enrichAlbumCovers(artist.id);
+        await enrichAlbumCovers(artist.id, artist.name);
 
         // Cache artist image path in Redis for faster access
         if (localHeroUrl) {
@@ -409,6 +381,7 @@ export async function enrichSimilarArtist(artist: Artist): Promise<void> {
  */
 async function enrichAlbumCovers(
     artistId: string,
+    artistName: string,
 ): Promise<void> {
     try {
         // Find albums for this artist that don't have cover art
@@ -446,12 +419,19 @@ async function enrichAlbumCovers(
 
             await Promise.all(
                 batch.map(async (album) => {
-                    if (!album.rgMbid || album.rgMbid.startsWith("temp-")) return;
+                    // A placeholder id only rules out the id-keyed sources.
+                    // Deezer searches by artist and title, and this used to
+                    // skip the album entirely rather than let it try.
+                    if (!album.rgMbid && !album.title) return;
 
                     try {
-                        const coverUrl = await coverArtService.getCoverArt(
-                            album.rgMbid
-                        );
+                        const coverUrl = (
+                            await findAlbumArtwork({
+                                rgMbid: album.rgMbid,
+                                artistName,
+                                albumTitle: album.title,
+                            })
+                        )?.url ?? null;
 
                         if (coverUrl) {
                             // Save to database

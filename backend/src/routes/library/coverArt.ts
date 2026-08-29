@@ -4,8 +4,7 @@ import { redisClient } from "../../utils/redis";
 import { logger } from "../../utils/logger";
 import { imageLimiter } from "../../middleware/rateLimiter";
 import { config, USER_AGENT } from "../../config";
-import { deezerService } from "../../services/deezer";
-import { coverArtService } from "../../services/coverArt";
+import { findAlbumArtwork } from "../../services/artwork";
 import { getSystemSettings } from "../../utils/systemSettings";
 import { validateUrlForFetch } from "../../utils/ssrf";
 import { extractColorsFromImage } from "../../utils/colorExtractor";
@@ -223,18 +222,22 @@ router.get("/cover-art/:id?", imageLimiter, async (req, res) => {
           });
 
           if (album && album.artist) {
-            const deezerCover = await deezerService.getAlbumCover(
-              album.artist.name,
-              album.title,
-            );
+            // The stored file is gone. Ask every source rather than Deezer
+            // alone, and remember whatever we find so the next request for
+            // this album does not have to.
+            const found = await findAlbumArtwork({
+              rgMbid: album.rgMbid,
+              artistName: album.artist.name,
+              albumTitle: album.title,
+            });
 
-            if (deezerCover) {
+            if (found) {
               await prisma.album.update({
                 where: { id: albumId },
-                data: { coverUrl: deezerCover },
+                data: { coverUrl: found.url },
               });
 
-              return res.redirect(deezerCover);
+              return res.redirect(found.url);
             }
           }
         } catch (error) {
@@ -446,11 +449,23 @@ router.get("/album-cover/:mbid", imageLimiter, async (req, res) => {
   try {
     const { mbid } = req.params;
 
-    if (!mbid || mbid.startsWith("temp-")) {
+    if (!mbid) {
       return res.status(400).json({ error: "Valid MBID required" });
     }
 
-    const coverUrl = await coverArtService.getCoverArt(mbid);
+    // Asked the Cover Art Archive alone. The archive has art for about half
+    // the release groups people ask about; the other sources cover most of
+    // the rest.
+    const album = await prisma.album.findFirst({
+      where: { rgMbid: mbid },
+      select: { title: true, artist: { select: { name: true } } },
+    });
+    const found = await findAlbumArtwork({
+      rgMbid: mbid,
+      artistName: album?.artist?.name ?? "",
+      albumTitle: album?.title ?? "",
+    });
+    const coverUrl = found?.url ?? null;
 
     if (!coverUrl) {
       return res.status(204).send();

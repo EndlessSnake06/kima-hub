@@ -13,6 +13,7 @@ import { lidarrService, CalendarRelease } from "../services/lidarr";
 import { prisma } from "../utils/db";
 import { ConfigurationError } from "../utils/errors";
 import { requireAuthOrToken } from "../middleware/auth";
+import { withAlbumArtwork } from "../services/artwork";
 import { z } from "zod";
 
 const router = Router();
@@ -110,7 +111,7 @@ router.get("/radar", async (req, res) => {
         const libraryAlbumMbids = new Set(libraryAlbums.map(a => a.rgMbid).filter(Boolean));
 
         // 5. Transform Lidarr releases
-        const releases: ReleaseItem[] = lidarrReleases.map(release => {
+        const rawReleases: ReleaseItem[] = lidarrReleases.map(release => {
             const releaseTime = new Date(release.releaseDate).getTime();
             const isUpcoming = releaseTime > now.getTime();
             const inLibrary = release.hasFile || libraryAlbumMbids.has(release.albumMbid);
@@ -129,6 +130,22 @@ router.get("/radar", async (req, res) => {
                 canDownload: !inLibrary && !isUpcoming,
             };
         });
+
+        // Lidarr hands out one Cover Art Archive address per release and the
+        // archive has nothing for most albums nobody owns yet. Ask the same
+        // providers the library uses -- Deezer, the archive's real index,
+        // Fanart -- which find artwork for roughly 34 albums in 40 where the
+        // bare Lidarr address finds 21.
+        const releases = await withAlbumArtwork(
+            rawReleases,
+            (r) => ({
+                rgMbid: r.albumMbid,
+                artistName: r.artistName,
+                albumTitle: r.title,
+                candidateUrl: r.coverUrl,
+            }),
+            (r, coverUrl) => ({ ...r, coverUrl }),
+        );
 
         // 6. Split into upcoming and recent
         const upcoming = releases
@@ -167,14 +184,26 @@ router.get("/upcoming", async (req, res) => {
         endDate.setDate(endDate.getDate() + daysAhead);
 
         const releases = await lidarrService.getCalendar(now, endDate);
-        
+
         // Sort by release date (soonest first)
         const sorted = releases.sort((a, b) => 
             new Date(a.releaseDate).getTime() - new Date(b.releaseDate).getTime()
         );
 
+        // Same providers as the radar, for the same reason.
+        const checked = await withAlbumArtwork(
+            sorted,
+            (r) => ({
+                rgMbid: r.albumMbid,
+                artistName: r.artistName,
+                albumTitle: r.title,
+                candidateUrl: r.coverUrl,
+            }),
+            (r, coverUrl) => ({ ...r, coverUrl }),
+        );
+
         res.json({
-            releases: sorted,
+            releases: checked,
             count: sorted.length,
             daysAhead,
         });
@@ -212,8 +241,20 @@ router.get("/recent", async (req, res) => {
                 new Date(b.releaseDate).getTime() - new Date(a.releaseDate).getTime()
             );
 
+        // Same providers as the radar, for the same reason.
+        const checked = await withAlbumArtwork(
+            notInLibrary,
+            (r) => ({
+                rgMbid: r.albumMbid,
+                artistName: r.artistName,
+                albumTitle: r.title,
+                candidateUrl: r.coverUrl,
+            }),
+            (r, coverUrl) => ({ ...r, coverUrl }),
+        );
+
         res.json({
-            releases: notInLibrary,
+            releases: checked,
             count: notInLibrary.length,
             daysBack,
             inLibraryCount: releases.length - notInLibrary.length,
