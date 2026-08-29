@@ -379,6 +379,44 @@ class EnrichmentService {
             } catch (error) {
                 logger.error(` MusicBrainz lookup failed:`, error);
             }
+
+            // Fallback: search MusicBrainz by name.
+            //
+            // The branch above needs the ARTIST to already carry a real MBID,
+            // and has no else. A library that was never tagged -- which is the
+            // normal case for anything not run through Picard or beets --
+            // starts with a placeholder id on every artist, so that branch
+            // never fires and the album is never identified at all. This is
+            // the path for those, and it is the search that already exists
+            // rather than a new one.
+            //
+            // What the search returns is NOT trusted on its own: it hands back
+            // its best hit with no check that the title is even close, so
+            // accepting it blindly would stamp confident, wrong ids onto
+            // albums -- worse than leaving them unidentified. The result has
+            // to survive the same comparison the discography match uses.
+            if (!enrichmentData.rgMbid) {
+                try {
+                    const hit = await musicBrainzService.searchAlbum(
+                        album.title,
+                        album.artist.name
+                    );
+
+                    if (hit && titlesAgree(hit.title, album.title)) {
+                        enrichmentData.rgMbid = hit.id;
+                        enrichmentData.confidence += 0.3;
+                        logger.debug(
+                            `  Found MBID by search: ${hit.id} ("${hit.title}")`
+                        );
+                    } else if (hit) {
+                        logger.debug(
+                            `  Rejected search hit "${hit.title}" for "${album.title}" -- titles do not agree`
+                        );
+                    }
+                } catch (error) {
+                    logger.debug(`  MusicBrainz album search failed`);
+                }
+            }
         }
 
         // Step 2: Get album info from Last.fm
