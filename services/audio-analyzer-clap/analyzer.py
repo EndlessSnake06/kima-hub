@@ -147,6 +147,14 @@ def compute_window_offsets(duration: float,
     # one is clamped to the file end so it never reads past it.
     starts = [(i + 0.5) / count * duration for i in range(count)]
     starts[-1] = min(starts[-1], max_start)
+    if count > 1 and starts[-1] < starts[-2] + window_seconds:
+        # Clamping the last window made it overlap its neighbour (happens for
+        # count*window_seconds <= duration < window_seconds/(1 - 0.5/count·2)
+        # ... concretely 50s <= d < ~66.67s for the defaults). Tile the
+        # windows evenly across the whole file instead: first at 0, last
+        # ending exactly at the file end, guaranteed non-overlapping.
+        step = (duration - window_seconds) / (count - 1)
+        starts = [i * step for i in range(count)]
     return starts
 
 
