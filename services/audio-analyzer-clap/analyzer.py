@@ -71,8 +71,10 @@ MODEL_IDLE_TIMEOUT = int(os.getenv('MODEL_IDLE_TIMEOUT', '300'))
 # (Xenova clap-htsat-unfused, numerically verified identical).
 # Default is unchanged (PyTorch) for backward compatibility.
 CLAP_BACKEND = os.getenv('CLAP_BACKEND', 'torch').lower()
-CLAP_ONNX_MODEL_PATH = os.getenv(
-    'CLAP_ONNX_MODEL_PATH', '/app/models/audio_model.onnx')
+# Resolve the ONNX model path the same way the backend does: default to the
+# analyzer's own models/ directory (where the validated hf_audio.onnx lives),
+# overridable with CLAP_ONNX_MODEL_PATH.
+from onnx_backend import ONNX_MODEL_PATH as CLAP_ONNX_MODEL_PATH
 
 # Queue and channel names
 VIBE_QUEUE_NAME = 'enrichment-vibe'  # BullMQ queue consumed by BullMQVibeWorker
@@ -83,10 +85,69 @@ CONTROL_CHANNEL = 'audio:clap:control'
 # Model version identifier
 MODEL_VERSION = 'laion-clap-music-v1'
 
-# Audio processing: extract middle segment for consistent, efficient embedding
-# 60 seconds captures the "vibe" without intros/outros and reduces memory usage
-MAX_AUDIO_DURATION = 60  # seconds
+# Audio processing: sample the whole track with several short windows.
+# Five 10-second windows (at 10/30/50/70/90% of the duration) capture the
+# intro/verse/chorus/bridge/outro better than one mid-song slice, and the
+# mean of their vectors is still a single 512-d embedding downstream.
+WINDOW_COUNT = 5
+WINDOW_SECONDS = 10  # each window is 10 seconds (matches the ONNX backend)
 CLAP_SAMPLE_RATE = 48000  # 48kHz for CLAP model
+
+
+def compute_window_offsets(duration: float,
+                           count: int = WINDOW_COUNT,
+                           window_seconds: float = WINDOW_SECONDS) -> list:
+    """
+    Return the start offsets (in seconds) for windows sampled across a track.
+
+    Normal tracks (>= count * window_seconds, i.e. >= 50s for the default five
+    10s windows) get `count` windows centered at the (i + 0.5)/count quantiles
+    -- 10/30/50/70/90% -- so the windows tile the whole file with no overlap.
+    Each window is clamped to the file bounds so the last one never reads past
+    the end.
+
+    For shorter tracks, non-overlapping windows of the given length simply do
+    not all fit, so the function places only the number that do fit -- tiled
+    so the first starts at 0 and the last ends at the file end -- and drops the
+    rest. That is the "place what fits without heavy overlap" behaviour: the
+    mean is taken over however many windows the track can hold.
+
+    On the boundary (a track just long enough for `count` windows), the literal
+    10/30/50/70/90% placement is kept, but the last window is clamped to the file
+    end so it never reads past the end of the file.
+
+    Args:
+        duration: Total track length in seconds.
+        count: Number of windows to place on a long track.
+        window_seconds: Length of each window in seconds.
+
+    Returns:
+        A list of start offsets, each >= 0 and clamped so that
+        offset + window_seconds never exceeds `duration`.
+    """
+    if duration <= 0:
+        return [0.0] * count
+    count = max(1, int(count))
+    window_seconds = max(0.0, float(window_seconds))
+    max_start = max(0.0, duration - window_seconds)
+
+    # Number of non-overlapping windows of this length that actually fit.
+    n = min(count, max(1, int(duration // window_seconds)))
+    if n == 1:
+        # Not even one full window fits; read from the start.
+        return [0.0]
+
+    if n < count:
+        # Short track: only the non-overlapping windows that fit are used,
+        # tiled so the first starts at 0 and the last ends at the file end.
+        step = (duration - window_seconds) / (n - 1)
+        return [i * step for i in range(n)]
+
+    # Long track: windows start at 10/30/50/70/90% of the duration. The last
+    # one is clamped to the file end so it never reads past it.
+    starts = [(i + 0.5) / count * duration for i in range(count)]
+    starts[-1] = min(starts[-1], max_start)
+    return starts
 
 
 class CLAPAnalyzer:
@@ -161,42 +222,40 @@ class CLAPAnalyzer:
             logger.info("Reloading CLAP model (new work arrived)...")
             self.load_model()
 
-    def _load_audio_chunk(self, audio_path: str, duration_hint: Optional[float] = None) -> Tuple[Optional[np.ndarray], int]:
+    def _load_window(self, audio_path: str, start: float,
+                     window_seconds: float,
+                     duration_hint: Optional[float] = None) -> Tuple[Optional[np.ndarray], int]:
         """
-        Load audio from the middle of a file for efficient embedding.
+        Load a single `window_seconds`-long clip starting at `start` seconds.
 
-        Always extracts MAX_AUDIO_DURATION seconds from the middle of the track.
-        This captures the "vibe" while avoiding intros/outros and reducing memory.
-
-        Args:
-            audio_path: Path to the audio file
-            duration_hint: Pre-computed duration in seconds (avoids file read)
+        The clip is clamped to the end of the file, so a window near the tail
+        simply reads to the end of the track rather than past it.
 
         Returns:
-            Tuple of (audio_array, sample_rate) or (None, 0) on error
+            Tuple of (audio_array, sample_rate) or (None, 0) on error.
         """
         try:
-            # Use provided duration or fall back to computing it
-            duration = duration_hint if duration_hint else librosa.get_duration(path=audio_path)
+            # Use provided duration or fall back to computing it.
+            duration = duration_hint if duration_hint else librosa.get_duration(
+                path=audio_path)
 
-            if duration > MAX_AUDIO_DURATION:
-                # Extract middle segment
-                offset = (duration - MAX_AUDIO_DURATION) / 2
-                audio, sr = librosa.load(
-                    audio_path,
-                    sr=CLAP_SAMPLE_RATE,
-                    offset=offset,
-                    duration=MAX_AUDIO_DURATION,
-                    mono=True
-                )
-            else:
-                # Short track, load entirely
-                audio, sr = librosa.load(audio_path, sr=CLAP_SAMPLE_RATE, mono=True)
+            # Clamp so we never start past the end of the file.
+            start = max(0.0, min(start, max(0.0, duration - 1e-3)))
+            available = max(0.0, duration - start)
+            take = min(window_seconds, available)
+
+            audio, sr = librosa.load(
+                audio_path,
+                sr=CLAP_SAMPLE_RATE,
+                offset=start,
+                duration=(take if take > 0 else None),
+                mono=True
+            )
 
             return audio, sr
 
         except Exception as e:
-            logger.error(f"Failed to load audio from {audio_path}: {e}")
+            logger.error(f"Failed to load window at {start:.1f}s from {audio_path}: {e}")
             traceback.print_exc()
             return None, 0
 
@@ -204,8 +263,11 @@ class CLAPAnalyzer:
         """
         Generate a 512-dimensional embedding from an audio file.
 
-        Extracts the middle 60 seconds of the track for embedding, which
-        captures the vibe while avoiding intros/outros and reducing memory.
+        Samples the whole track with five 10-second windows (at 10/30/50/70/90%
+        of the duration, each clamped to the file bounds), embeds each window
+        through the active backend (torch or ONNX), takes the mean of the five
+        vectors, and L2-normalizes the result. The output is a single 512-d
+        vector, byte-compatible with the previous single-60s-chunk embedding.
 
         Args:
             audio_path: Path to the audio file
@@ -221,15 +283,55 @@ class CLAPAnalyzer:
             logger.error(f"Audio file not found: {audio_path}")
             return None
 
+        # Resolve the track duration once so every window shares it.
+        if not duration:
+            try:
+                duration = librosa.get_duration(path=audio_path)
+            except Exception as e:
+                logger.error(f"Failed to determine duration of {audio_path}: {e}")
+                traceback.print_exc()
+                return None
+
+        offsets = compute_window_offsets(duration)
+        logger.debug(f"Embedding {audio_path} with {len(offsets)} windows at "
+                     f"offsets={[round(o, 1) for o in offsets]}")
+
+        # Embed each window through the active backend and collect the vectors.
+        vectors = []
+        for start in offsets:
+            vec = self._embed_window(audio_path, start, duration)
+            if vec is not None:
+                vectors.append(vec)
+
+        if not vectors:
+            logger.error(f"No windows embedded for {audio_path}")
+            return None
+
+        # Mean of the window vectors, then L2-normalize -> 512-d.
+        combined = np.mean(np.vstack(vectors), axis=0).astype(np.float32)
+        norm = np.linalg.norm(combined)
+        if norm > 0:
+            combined = combined / norm
+        return combined.astype(np.float32)
+
+    def _embed_window(self, audio_path: str, start: float,
+                      duration_hint: Optional[float] = None) -> Optional[np.ndarray]:
+        """
+        Embed one window (starting at `start` seconds) through the active backend.
+
+        Mirrors the ONNX/torch dispatch in the old code but for a single window
+        rather than a single 60s chunk, so both backends stay on the same path.
+        Returns a 512-d L2-normalized vector, or None on error.
+        """
         # ONNX backend: skip laion_clap, use the numerically-identical
         # onnxruntime audio encoder. Verified parity >= 0.99 (== 1.0000).
         if CLAP_BACKEND == 'onnx':
             self._ensure_onnx_backend()
             try:
-                audio, sr = self._load_audio_chunk(audio_path, duration)
+                audio, sr = self._load_window(audio_path, start, WINDOW_SECONDS, duration_hint)
                 if audio is None:
                     return None
-                logger.debug(f"[onnx] Loaded audio: {len(audio)/sr:.1f}s at {sr}Hz")
+                logger.debug(f"[onnx] Loaded window: {len(audio)/sr:.1f}s at {sr}Hz")
                 with self._lock:
                     return self.onnx_backend.embed_audio(audio)
             except Exception as e:
@@ -237,32 +339,28 @@ class CLAPAnalyzer:
                 traceback.print_exc()
 
         try:
-            # Load audio (with chunking), use provided duration to skip file probe
-            audio, sr = self._load_audio_chunk(audio_path, duration)
-
+            audio, sr = self._load_window(audio_path, start, WINDOW_SECONDS, duration_hint)
             if audio is None:
                 return None
-
-            logger.debug(f"Loaded audio: {len(audio)/sr:.1f}s at {sr}Hz")
+            logger.debug(f"Loaded window: {len(audio)/sr:.1f}s at {sr}Hz")
 
             with self._lock:
-                # Use get_audio_embedding_from_data for pre-loaded audio
-                # This gives us control over memory usage
                 embeddings = self.model.get_audio_embedding_from_data(
                     [audio],
                     use_tensor=False
                 )
-
-                # Result is shape (1, 512) for HTSAT-base model, normalized
                 embedding = embeddings[0]
-
                 if embedding.shape[0] != 512:
                     logger.warning(f"Unexpected embedding dimension: {embedding.shape}")
-
-                return embedding.astype(np.float32)
-
+                vec = embedding.astype(np.float32)
+                # The torch backend returns normalized vectors; normalize again
+                # defensively so the mean-and-normalize below is well-scaled.
+                n = np.linalg.norm(vec)
+                if n > 0:
+                    vec = vec / n
+                return vec
         except Exception as e:
-            logger.error(f"Failed to generate audio embedding for {audio_path}: {e}")
+            logger.error(f"Failed to embed window at {start:.1f}s of {audio_path}: {e}")
             traceback.print_exc()
             return None
 
@@ -930,6 +1028,18 @@ class BullMQVibeWorker:
         """Store the embedding in track_embeddings (runs in executor thread)."""
         conn = self._db_pool.getconn()
         try:
+            # Unit-norm guard: an embedding that is not (approximately) unit
+            # length is almost certainly corrupt. Refuse to write it rather than
+            # poisoning the vector index, and report the failure for the track.
+            norm = float(np.linalg.norm(embedding))
+            if abs(norm - 1.0) > 1e-3:
+                logger.error(
+                    f"REFUSING to store corrupt embedding for {track_id}: "
+                    f"unit-norm guard failed (norm={norm:.6f}, expected ~1.0). "
+                    f"Track will be marked as failed."
+                )
+                return False
+
             # pgvector type must be registered per-connection; idempotent on repeat calls
             register_vector(conn)
             embedding_list = embedding.tolist()

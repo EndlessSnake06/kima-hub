@@ -146,3 +146,25 @@ describe("pendingReleases", () => {
         expect((await pendingReleases("u1")).map((r) => r.version)).not.toContain(real);
     });
 });
+
+describe("catalog", () => {
+    it("has a 1.10.1 entry with the ONNX note and re-embed action", () => {
+        const release = catalog.RELEASES.find((r) => r.version === "1.10.1");
+        expect(release).toBeDefined();
+
+        const keys = release!.items.map((i) => i.key);
+        expect(keys).toContain("clap.onnx");
+        expect(keys).toContain("clap.reembed");
+
+        const note = release!.items.find(
+            (i): i is Extract<catalog.ReleaseItem, { kind: "note" }> => i.kind === "note" && i.key === "clap.onnx",
+        );
+        expect(note?.body).toContain("Swapped the audio analyzer to ONNX");
+
+        const action = release!.items.find(
+            (i): i is Extract<catalog.ReleaseItem, { kind: "action" }> => i.kind === "action" && i.key === "clap.reembed",
+        );
+        expect(action?.cta).toBe("Rebuild your embeddings");
+        expect(action?.settingsPath).toBe("/settings#cache");
+    });
+});

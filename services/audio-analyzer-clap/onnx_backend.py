@@ -33,11 +33,22 @@ MAX_SAMPLES = 480000  # 10s
 MAX_FRAMES = 1001
 EPS = 1e-12
 
-# Default ONNX model path. In production this points at the Docker image;
-# locally it can be overridden with CLAP_ONNX_MODEL_PATH.
+# Default ONNX model path. Resolves to the analyzer's own models/ directory
+# (where the validated hf_audio.onnx is copied) so the ONNX backend works out
+# of the box; override with CLAP_ONNX_MODEL_PATH when needed.
+# In production this can still point at the Docker image instead.
+def _default_onnx_model_path() -> str:
+    here = os.path.dirname(os.path.abspath(__file__))
+    candidate = os.path.join(here, 'models', 'hf_audio.onnx')
+    if os.path.exists(candidate):
+        return candidate
+    # Fall back to the legacy Docker path if the local copy is absent.
+    return os.path.join(here, 'models', 'audio_model.onnx')
+
+
 ONNX_MODEL_PATH = os.getenv(
     'CLAP_ONNX_MODEL_PATH',
-    '/app/models/audio_model.onnx',
+    _default_onnx_model_path(),
 )
 
 # Default HF torch reference model path (used for the torch fallback).

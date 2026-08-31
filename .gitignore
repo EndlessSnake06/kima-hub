@@ -188,3 +188,6 @@ soularr/
 # Claude Code internal task tracking
 .task/
 
+# Local CLAP model weights (validated hf_audio.onnx, copied into the analyzer)
+services/audio-analyzer-clap/models/
+

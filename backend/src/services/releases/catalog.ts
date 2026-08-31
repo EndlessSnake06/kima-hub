@@ -103,6 +103,24 @@ export const RELEASES: Release[] = [
                 cta: "Take me to it",
                 settingsPath: "/stats#false-starts",
             },
+            {
+                kind: "note",
+                key: "clap.onnx",
+                label: "Changed",
+                title: "The vibe analyzer is lighter now",
+                body:
+                    "Swapped the audio analyzer to ONNX — lighter and more stable across devices, including Apple silicon. Existing fingerprints are outdated.",
+            },
+            {
+                kind: "action",
+                key: "clap.reembed",
+                title: "Rebuild your embeddings",
+                body:
+                    "The old fingerprints were made with the previous analyzer, so they no longer line up with the new one. Rebuilding them makes similarity search and the vibe features accurate again.\n\n" +
+                    "It re-embeds every track, which is CPU-intensive and can take a long time on a large library. Your music and everything else about it is untouched.",
+                cta: "Rebuild your embeddings",
+                settingsPath: "/settings#cache",
+            },
         ],
     },
 ];

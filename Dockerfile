@@ -145,6 +145,16 @@ WORKDIR /app/audio-analyzer-clap
 # Copy CLAP analyzer script
 COPY services/audio-analyzer-clap/analyzer.py /app/audio-analyzer-clap/
 
+# Copy the validated ONNX model weights into place when they are present in the
+# build context (they are gitignored locally). The ONNX backend resolves
+# CLAP_ONNX_MODEL_PATH to /app/audio-analyzer-clap/models/hf_audio.onnx by
+# default, so the ONNX backend works out of the box in the container. Guarded
+# so the build does not fail when the model is not checked out.
+RUN mkdir -p /app/audio-analyzer-clap/models && \
+    if [ -d "services/audio-analyzer-clap/models" ]; then \
+        cp services/audio-analyzer-clap/models/*.onnx /app/audio-analyzer-clap/models/ 2>/dev/null || true; \
+    fi
+
 # Create database readiness check script
 RUN cat > /app/wait-for-db.sh << 'EOF'
 #!/bin/bash
