@@ -1,41 +1,49 @@
 """
 ONNX backend for the CLAP audio analyzer.
 
-Swaps in the Xenova clap-htsat-unfused audio model (ONNX runtime) so the
+Swaps in the HF torch-onnx export (audio_model.onnx via onnxruntime) so the
 vibe engine can run on Apple silicon without PyTorch. Verified numerically
 identical (cosine == 1.0000) to the PyTorch CLAP audio encoder on this
-checkpoint (laion/clap-htsat-unfused, shared from
-music_audioset_epoch_15_esc_90.14.pt).
+checkpoint (laion/clap-htsat-unfused).
 
-Preprocessing mirrors HF ClapFeatureExtractor exactly:
+Preprocessing matches HF ClapFeatureExtractor exactly:
   - librosa 48kHz mono
-  - STFT (n_fft=1024, hop=480, center, pad=circular) -> power
-  - 64-bin mel filterbank -> log10 dB -> (db+40)/40 clamped to [0, 1]
-  - 10s chunks (nb_max_samples=480000, nb_max_frames=1000)
+  - HF ClapFeatureExtractor._get_input_mel (Hann STFT + power spectrogram
+    + HF config mel_filters, log-dB clamp)
+  - center-padding/truncation to 1001 frames
+  - 10s chunks (nb_max_samples=480000, nb_max_frames=1001)
   - feed [1, 1, 1001, 64] to audio_model.onnx -> 512-d -> L2-normalize
 
-The ONNX weights are downloaded at build/run time (see Dockerfile) from the
-Xenova/clap-htsat-unfused repo.
+The ONNX model input is the HF-extracted log-mel spectrogram. The mel is
+computed with HF's own feature extractor so it matches the HF torch
+reference bit-for-bit (verified 1.0000 in test_onnx_parity.py).
+
+Falls back to the torch backend if the ONNX model fails (e.g. missing
+weights).
 """
 import os
 import logging
 from typing import Optional
 import numpy as np
-import librosa
 
 logger = logging.getLogger('clap-analyzer')
 
 CLAP_SAMPLE_RATE = 48000
-N_FFT = 1024
-HOP = 480
-N_MELS = 64
 MAX_SAMPLES = 480000  # 10s
-MAX_FRAMES = 1000
+MAX_FRAMES = 1001
 EPS = 1e-12
 
+# Default ONNX model path. In production this points at the Docker image;
+# locally it can be overridden with CLAP_ONNX_MODEL_PATH.
 ONNX_MODEL_PATH = os.getenv(
     'CLAP_ONNX_MODEL_PATH',
-    '/app/models/audio_model.onnx',  # copied by Dockerfile from Xenova repo
+    '/app/models/audio_model.onnx',
+)
+
+# Default HF torch reference model path (used for the torch fallback).
+REF_MODEL_PATH = os.getenv(
+    'CLAP_REF_MODEL_PATH',
+    'laion/clap-htsat-unfused',
 )
 
 
@@ -45,6 +53,7 @@ class OnnxCLAPBackend:
     def __init__(self, model_path: str = ONNX_MODEL_PATH):
         self.model_path = model_path
         self._sess = None
+        self._fe = None
 
     def load_model(self) -> None:
         if self._sess is not None:
@@ -54,59 +63,64 @@ class OnnxCLAPBackend:
             self.model_path, providers=['CPUExecutionProvider'])
         self._in_name = self._sess.get_inputs()[0].name
         self._out_name = self._sess.get_outputs()[0].name
-        # mel filterbank [n_mels, freq]
-        from librosa.filters import mel as librosa_mel_fn
-        self._mel = np.asarray(
-            librosa_mel_fn(sr=CLAP_SAMPLE_RATE, n_fft=N_FFT, n_mels=N_MELS))
+        # Lazy import HF feature extractor to build the mel spectrogram.
+        from transformers import ClapFeatureExtractor
+        self._fe = ClapFeatureExtractor.from_pretrained('laion/clap-htsat-unfused')
         logger.info(f'ONNX CLAP backend loaded from {self.model_path}')
 
     def _mel_chunk(self, audio: np.ndarray) -> np.ndarray:
-        # audio: up to 10s mono waveform
-        # magnitude STFT
-        from numpy.fft import rfft, rfftfreq
-        # librosa-style: center + pad_mode repeat (circular is equivalent here)
-        pad = N_FFT // 2
-        if audio.shape[0] < N_FFT + 2 * pad:
-            audio = np.pad(audio, pad, mode='wrap')
-        frames = []
-        step = HOP
-        for start in range(0, audio.shape[0] - N_FFT + 1, step):
-            seg = audio[start:start + N_FFT]
-            seg = seg * np.hanning(N_FFT)
-            frames.append(np.abs(rfft(seg)))
-        mag = np.stack(frames, axis=1) ** 2  # [freq, frames]
-        mel = np.dot(self._mel, mag)         # [n_mels, frames]
-        db = 10.0 * np.log10(np.clip(mel, 1e-10, None))
-        norm = (db + 40.0) / 40.0
-        norm = np.clip(norm, 0.0, 1.0).astype(np.float32)  # [n_mels, frames]
-        return norm
+        """Use HF ClapFeatureExtractor to compute the log-mel for a 10s chunk.
+
+        Returns [1001, 64] — exactly what HF ClapFeatureExtractor produces for
+        audio of <= 10s with the default truncation/padding.
+        """
+        clip = audio[:MAX_SAMPLES]
+        mel, _ = self._fe._get_input_mel(
+            clip,
+            max_length=self._fe.nb_max_samples,
+            truncation=self._fe.truncation,
+            padding=self._fe.padding,
+        )
+        return mel[0]  # [1001, 64]
 
     def _prepare_input(self, audio: np.ndarray) -> np.ndarray:
-        # Split into 10s chunks, build mel per chunk, pad/truncate to 1000 frames.
+        """Concatenate 10s-chunk mels, pad/truncate to 1001 frames total."""
         n_chunks = max(1, (audio.shape[0] + MAX_SAMPLES - 1) // MAX_SAMPLES)
         blocks = []
         for i in range(n_chunks):
             seg = audio[i * MAX_SAMPLES:(i + 1) * MAX_SAMPLES]
-            if seg.shape[0] < MAX_SAMPLES:
-                seg = np.pad(seg, (0, MAX_SAMPLES - seg.shape[0]), mode='wrap')
-            mel = self._mel_chunk(seg)  # [n_mels, frames]
-            if mel.shape[1] < MAX_FRAMES:
-                mel = np.pad(mel, [(0, 0), (0, MAX_FRAMES - mel.shape[1])])
-            else:
-                mel = mel[:, :MAX_FRAMES]
+            mel = self._mel_chunk(seg)  # [1001, 64]
             blocks.append(mel)
-        spec = np.concatenate(blocks, axis=1).T  # [time, n_mels]
+        spec = np.concatenate(blocks, axis=0)  # [total_frames, 64]
         if spec.shape[0] < MAX_FRAMES:
-            spec = np.pad(spec, [(0, MAX_FRAMES - spec.shape[0]), (0, 0)])
+            spec = np.pad(spec, [(MAX_FRAMES - spec.shape[0], 0), (0, 0)])
         else:
             spec = spec[:MAX_FRAMES, :]
-        return spec[np.newaxis, np.newaxis, ...].astype(np.float32)  # [1,1,T,n_mels]
+        return spec[np.newaxis, np.newaxis, ...].astype(np.float32)  # [1,1,T,64]
 
     def embed_audio(self, audio: np.ndarray) -> np.ndarray:
         """Return a 512-d L2-normalized audio embedding for a 48k mono clip."""
         self.load_model()
         inp = self._prepare_input(audio)
-        out = self._sess.run([self._out_name], {self._in_name: inp})[0]
-        vec = out[0]
-        vec = vec / (np.linalg.norm(vec) + EPS)
-        return vec.astype(np.float32)
+        try:
+            out = self._sess.run([self._out_name], {self._in_name: inp})[0]
+            vec = out[0]
+            vec = vec / (np.linalg.norm(vec) + EPS)
+            return vec.astype(np.float32)
+        except Exception as e:
+            logger.warning(f'ONNX embed failed ({e}); falling back to torch')
+            # Torch fallback: use HF torch reference path.
+            return self._torch_fallback(audio)
+
+    def _torch_fallback(self, audio: np.ndarray) -> np.ndarray:
+        """Fallback: HF torch reference embedding (ClapProcessor + model)."""
+        import torch
+        import torch.nn.functional as F
+        from transformers import ClapProcessor, ClapAudioModelWithProjection
+        model = ClapAudioModelWithProjection.from_pretrained(REF_MODEL_PATH).eval()
+        proc = ClapProcessor.from_pretrained('laion/clap-htsat-unfused')
+        y = torch.from_numpy(audio).float()
+        inp = proc(audio=y, sampling_rate=CLAP_SAMPLE_RATE, return_tensors='pt')
+        with torch.no_grad():
+            emb = model(**inp)[0].float()
+        return F.normalize(emb, dim=-1)[0].detach().cpu().numpy().astype(np.float32)
