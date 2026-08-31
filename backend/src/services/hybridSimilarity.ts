@@ -106,13 +106,13 @@ async function findSimilarHybrid(
             c.clap_dist as distance,
             (
                 ${WEIGHTS.clap} * c.clap_sim +
-                ${WEIGHTS.features.energy} * (1 - ABS(COALESCE(t.energy, 0.5) - COALESCE(s.energy, 0.5))) +
-                ${WEIGHTS.features.valence} * (1 - ABS(COALESCE(t.valence, 0.5) - COALESCE(s.valence, 0.5))) +
-                ${WEIGHTS.features.arousal} * (1 - ABS(COALESCE(t.arousal, 0.5) - COALESCE(s.arousal, 0.5))) +
+                ${WEIGHTS.features.energy} * (CASE WHEN t.energy IS NULL OR s.energy IS NULL THEN 0.5 ELSE 1 - ABS(t.energy - s.energy) END) +
+                ${WEIGHTS.features.valence} * (CASE WHEN t.valence IS NULL OR s.valence IS NULL THEN 0.5 ELSE 1 - ABS(t.valence - s.valence) END) +
+                ${WEIGHTS.features.arousal} * (CASE WHEN t.arousal IS NULL OR s.arousal IS NULL THEN 0.5 ELSE 1 - ABS(t.arousal - s.arousal) END) +
                 ${WEIGHTS.features.bpm} * bpm_similarity(t.bpm, s.bpm) +
-                ${WEIGHTS.features.danceability} * (1 - ABS(COALESCE(t."danceabilityMl", 0.5) - COALESCE(s."danceabilityMl", 0.5))) +
-                ${WEIGHTS.features.acousticness} * (1 - ABS(COALESCE(t.acousticness, 0.5) - COALESCE(s.acousticness, 0.5))) +
-                ${WEIGHTS.features.instrumentalness} * (1 - ABS(COALESCE(t.instrumentalness, 0.5) - COALESCE(s.instrumentalness, 0.5))) +
+                ${WEIGHTS.features.danceability} * (CASE WHEN t."danceabilityMl" IS NULL OR s."danceabilityMl" IS NULL THEN 0.5 ELSE 1 - ABS(t."danceabilityMl" - s."danceabilityMl") END) +
+                ${WEIGHTS.features.acousticness} * (CASE WHEN t.acousticness IS NULL OR s.acousticness IS NULL THEN 0.5 ELSE 1 - ABS(t.acousticness - s.acousticness) END) +
+                ${WEIGHTS.features.instrumentalness} * (CASE WHEN t.instrumentalness IS NULL OR s.instrumentalness IS NULL THEN 0.5 ELSE 1 - ABS(t.instrumentalness - s.instrumentalness) END) +
                 ${WEIGHTS.features.key} * key_similarity(t.key, t."keyScale", s.key, s."keyScale")
             ) as similarity,
             a.id as "albumId",
@@ -195,13 +195,13 @@ async function findSimilarFeaturesOnly(
             t.duration,
             0 as distance,
             (
-                ${FEATURES_ONLY_WEIGHTS.energy} * (1 - ABS(COALESCE(t.energy, 0.5) - COALESCE(s.energy, 0.5))) +
-                ${FEATURES_ONLY_WEIGHTS.valence} * (1 - ABS(COALESCE(t.valence, 0.5) - COALESCE(s.valence, 0.5))) +
-                ${FEATURES_ONLY_WEIGHTS.arousal} * (1 - ABS(COALESCE(t.arousal, 0.5) - COALESCE(s.arousal, 0.5))) +
+                ${FEATURES_ONLY_WEIGHTS.energy} * (CASE WHEN t.energy IS NULL OR s.energy IS NULL THEN 0.5 ELSE 1 - ABS(t.energy - s.energy) END) +
+                ${FEATURES_ONLY_WEIGHTS.valence} * (CASE WHEN t.valence IS NULL OR s.valence IS NULL THEN 0.5 ELSE 1 - ABS(t.valence - s.valence) END) +
+                ${FEATURES_ONLY_WEIGHTS.arousal} * (CASE WHEN t.arousal IS NULL OR s.arousal IS NULL THEN 0.5 ELSE 1 - ABS(t.arousal - s.arousal) END) +
                 ${FEATURES_ONLY_WEIGHTS.bpm} * bpm_similarity(t.bpm, s.bpm) +
-                ${FEATURES_ONLY_WEIGHTS.danceability} * (1 - ABS(COALESCE(t."danceabilityMl", 0.5) - COALESCE(s."danceabilityMl", 0.5))) +
-                ${FEATURES_ONLY_WEIGHTS.acousticness} * (1 - ABS(COALESCE(t.acousticness, 0.5) - COALESCE(s.acousticness, 0.5))) +
-                ${FEATURES_ONLY_WEIGHTS.instrumentalness} * (1 - ABS(COALESCE(t.instrumentalness, 0.5) - COALESCE(s.instrumentalness, 0.5))) +
+                ${FEATURES_ONLY_WEIGHTS.danceability} * (CASE WHEN t."danceabilityMl" IS NULL OR s."danceabilityMl" IS NULL THEN 0.5 ELSE 1 - ABS(t."danceabilityMl" - s."danceabilityMl") END) +
+                ${FEATURES_ONLY_WEIGHTS.acousticness} * (CASE WHEN t.acousticness IS NULL OR s.acousticness IS NULL THEN 0.5 ELSE 1 - ABS(t.acousticness - s.acousticness) END) +
+                ${FEATURES_ONLY_WEIGHTS.instrumentalness} * (CASE WHEN t.instrumentalness IS NULL OR s.instrumentalness IS NULL THEN 0.5 ELSE 1 - ABS(t.instrumentalness - s.instrumentalness) END) +
                 ${FEATURES_ONLY_WEIGHTS.key} * key_similarity(t.key, t."keyScale", s.key, s."keyScale")
             ) as similarity,
             a.id as "albumId",
