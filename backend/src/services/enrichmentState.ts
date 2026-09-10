@@ -56,6 +56,37 @@ interface EnrichmentState {
     };
 }
 
+/**
+ * A stable signature of the parts of state that represent ACTUAL WORK:
+ * the progress counters and the status machine. Explicitly excludes
+ * lastActivity itself, currentPhase (pure churn -- runPhase() rotates it
+ * several times per cycle, so stamping on it would fake the heartbeat),
+ * completionNotificationSent, and the cache-cleared flags -- those are
+ * bookkeeping, not progress.
+ */
+export function progressSignature(state: EnrichmentState): string {
+    return JSON.stringify({
+        status: state.status,
+        artists: state.artists,
+        tracks: state.tracks,
+        audio: state.audio,
+    });
+}
+
+/**
+ * Whether a state write should be treated as "real activity" for heartbeat
+ * purposes. Only counter changes and status transitions count; pure phase /
+ * bookkeeping churn (which runPhase() emits several times per cycle) must
+ * NOT refresh lastActivity, or the hang detector is structurally blind to a
+ * loop that rewrites status="running" while nothing actually moves.
+ */
+export function shouldRefreshLastActivity(
+    previous: EnrichmentState,
+    next: EnrichmentState
+): boolean {
+    return progressSignature(previous) !== progressSignature(next);
+}
+
 class EnrichmentStateService {
     private redis: Redis;
     private publisher: Redis;
@@ -104,10 +135,17 @@ class EnrichmentStateService {
     }
 
     /**
-     * Update enrichment state
+     * Persist state. `lastActivity` is refreshed ONLY when the write is real
+     * work (counters or status changed). Pure phase churn -- which the
+     * enrichment cycle emits several times per 5-second tick -- must not
+     * refresh the heartbeat, or the hang detector keys on "last write"
+     * instead of "last progress" and a frozen loop looks alive forever.
+     * initializeState() bypasses this deliberately: a fresh run is activity.
      */
-    async setState(state: EnrichmentState): Promise<void> {
-        state.lastActivity = new Date().toISOString();
+    async setState(state: EnrichmentState, opts?: { stampActivity?: boolean }): Promise<void> {
+        if (opts?.stampActivity !== false) {
+            state.lastActivity = new Date().toISOString();
+        }
         await this.redis.set(ENRICHMENT_STATE_KEY, JSON.stringify(state));
     }
 
@@ -131,7 +169,13 @@ class EnrichmentStateService {
         }
 
         const updated = { ...current, ...updates };
-        await this.setState(updated);
+        // Heartbeat honesty: stamp lastActivity only if the write actually
+        // moved counters or changed status/phase. A phase-only rewrite of
+        // status="running" over an unchanged counter set is the exact
+        // false-heartbeat signature this class exists to kill.
+        await this.setState(updated, {
+            stampActivity: shouldRefreshLastActivity(current, updated),
+        });
         return updated;
     }
 

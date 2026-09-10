@@ -92,16 +92,16 @@ let lastOrphanedFailuresCleanup: Date | null = null;
 let lastResolvedCleanup: Date | null = null;
 
 /**
- * Reset all pause/stop flags and resume the Python audio analyzer.
- * Called by every function that (re)starts enrichment.
+ * Resume the real infrastructure the analyzer actually runs on: the
+ * BullMQ workers, the vibe queuing bridge, the synchronous Python gate,
+ * and the pub/sub resume signal. This is the "make infra match intent"
+ * half of clearPauseState() -- it deliberately does NOT touch the
+ * isPaused/isStopping/userStopped local flags, so it can be called from
+ * the cycle's own reverse-sync and from hang recovery without resetting
+ * a user's explicit stop.
  */
-async function clearPauseState(): Promise<void> {
-    isPaused = false;
-    isStopping = false;
-    userStopped = false;
-    userStoppedWarned = false;
-    // Resume BullMQ enrichment workers + vibe queue
-    Promise.all(activeEnrichmentWorkers.map((w) => w.resume())).catch(() => {});
+async function resumeInfrastructure(): Promise<void> {
+    await Promise.all(activeEnrichmentWorkers.map((w) => w.resume())).catch(() => {});
     resumeVibeQueuing();
     // Clear synchronous gate BEFORE pub/sub resume -- Python sees "open" immediately
     await enrichmentStateService.clearGate();
@@ -111,6 +111,18 @@ async function clearPauseState(): Promise<void> {
     } catch (err) {
         logger.warn(`[Enrichment] Failed to resume audio analyzer: ${(err as Error).message}`);
     }
+}
+
+/**
+ * Reset all pause/stop flags and resume the Python audio analyzer.
+ * Called by every function that (re)starts enrichment.
+ */
+async function clearPauseState(): Promise<void> {
+    isPaused = false;
+    isStopping = false;
+    userStopped = false;
+    userStoppedWarned = false;
+    await resumeInfrastructure();
 }
 
 // Mood tags to extract from Last.fm
@@ -353,6 +365,16 @@ export async function startUnifiedEnrichmentWorker() {
         startTrackEnrichmentWorker(),
         startPodcastEnrichmentWorker(),
     ]);
+
+    // CRITICAL (prod hang root cause): a stale synchronous gate from a PREVIOUS
+    // process's stop() survives in Redis across restarts -- stop() sets
+    // audio:analysis:gate="paused" and nothing at startup ever cleared it. The
+    // fresh worker then claims status="running" while the Python analyzer stays
+    // gated forever: counters frozen, heartbeat fresh (the cycle keeps writing
+    // lastActivity), the hang detector structurally blind. Resume the real
+    // infrastructure -- clear the gate, resume workers, wake the analyzer --
+    // BEFORE claiming running, exactly as an explicit resume would.
+    await resumeInfrastructure();
 
     // Start audio completion subscriber (Essentia → vibe queue bridge)
     startAudioCompletionSubscriber();
@@ -674,11 +696,16 @@ async function runEnrichmentCycle(fullMode: boolean): Promise<{
 
     // Sync local flags with state service (fallback for missed control messages)
     if (isPaused) {
-        // Reverse sync: if state says running but local isPaused is true, resume
+        // Reverse sync: if state says running but local isPaused is true, resume.
+        // Must resume the REAL infrastructure, not just clear the local flag --
+        // a missed "resume" control message (Redis reconnect, message loss) leaves
+        // the BullMQ workers paused and the analyzer gate closed while state claims
+        // running: the exact false-heartbeat hang this class exists to kill.
         const state = await enrichmentStateService.getState();
         if (state?.status === "running") {
+            logger.warn("[Enrichment] Reverse sync: state is running but local pause was set -- resuming workers + analyzer gate");
+            await resumeInfrastructure();
             isPaused = false;
-            logger.debug("[Enrichment] Reverse sync: state is running, clearing stale local pause");
         }
     } else {
         const state = await enrichmentStateService.getState();
@@ -1077,14 +1104,40 @@ export async function enrichSingleTrack(trackId: string): Promise<void> {
 async function queueAudioAnalysis(): Promise<number> {
     const redis = getRedis();
     const queueLength = await redis.llen("audio:analysis:queue");
-    const MAX_QUEUE_DEPTH = 50;
+    // Soft watermark for logging/visibility, NOT a hard stop: the analyzer drains
+    // via brpop(1) + lpop(<=10 per batch), so a backlog above this while it is
+    // alive is transient by construction. Hard-stopping the feed here was part of
+    // the prod hang -- a temporarily idle (gate-closed or slow-starting) analyzer
+    // left the queue pinned at the cap and the pending pile froze forever while
+    // state claimed "running".
+    const MAX_QUEUE_SOFT_DEPTH = 50;
+    // True safety bound: memory for entries is ~200B each, an entire library fits
+    // in a few MB, and the analyzer's brpop drains it blockingly. Kill the supply
+    // only when the queue is absurdly deep, which means the analyzer is dead --
+    // in that case the circuit breaker + stale-processing cleanup take over.
+    const MAX_QUEUE_HARD_DEPTH = 10_000;
 
-    if (queueLength >= MAX_QUEUE_DEPTH) {
-        logger.debug(`[Audio Analysis] Queue depth ${queueLength} >= ${MAX_QUEUE_DEPTH}, skipping`);
+    if (queueLength >= MAX_QUEUE_HARD_DEPTH) {
+        logger.warn(`[Audio Analysis] Queue depth ${queueLength} >= hard ceiling ${MAX_QUEUE_HARD_DEPTH}; analyzer appears stalled, skipping feed this cycle`);
         return 0;
     }
 
-    const batchSize = MAX_QUEUE_DEPTH - queueLength;
+    if (queueLength >= MAX_QUEUE_SOFT_DEPTH) {
+        // Keep feeding a bounded batch -- a live analyzer drains concurrently, a
+        // dead one is caught by the circuit breaker. Never return 0 on the soft
+        // watermark: that coupling was the hang.
+        logger.debug(`[Audio Analysis] Queue depth ${queueLength} above soft watermark ${MAX_QUEUE_SOFT_DEPTH}, feeding a bounded batch`);
+    }
+
+    const batchSize = Math.min(
+        // Feed up to the soft watermark above what's already queued when the
+        // backlog is small, else a bounded trickle -- never zero while pending
+        // exist and the analyzer has a heartbeat.
+        queueLength < MAX_QUEUE_SOFT_DEPTH
+            ? MAX_QUEUE_SOFT_DEPTH - queueLength
+            : 10,
+        MAX_QUEUE_HARD_DEPTH - queueLength,
+    );
 
     const tracks = await prisma.track.findMany({
         where: {
@@ -1481,7 +1534,7 @@ async function executeScanPhase(): Promise<number> {
     return validated;
 }
 
-async function executeAudioPhase(): Promise<number> {
+export async function executeAudioPhase(): Promise<number> {
     // Compare completed count to previous cycle (~1 min ago) — a much wider
     // window than the milliseconds between two counts around cleanupStaleProcessing().
     const currentCompleted = await prisma.track.count({
@@ -1500,6 +1553,40 @@ async function executeAudioPhase(): Promise<number> {
             `[Enrichment] Audio analysis cleanup: ${cleanupResult.reset} reset, ${cleanupResult.permanentlyFailed} permanently failed, ${cleanupResult.recovered} recovered`,
         );
     }
+
+    // LIVE dead-analyzer recovery (F1/F2): rows marked 'queued' are in-flight to
+    // the analyzer and only 'processing' rows get cleaned by the stale pass --
+    // so if the analyzer process is down, 'queued' rows strand forever: they are
+    // not 'pending' (the feed skips them) and nothing else resets them. The
+    // analyzer heartbeats every loop iteration, so a STALE heartbeat while work
+    // is queued is the unambiguous "analyzer is down" signal. Reset those rows
+    // and flush the Redis list (exactly what startup crash-recovery does) so the
+    // feed can re-drive them the moment the analyzer returns -- without waiting
+    // for a container restart.
+    const AUDIO_ANALYZER_HEARTBEAT_KEY = "audio:worker:heartbeat";
+    const freeFeedFromDeadAnalyzer = async (): Promise<number> => {
+        const [heartbeatVal, queuedLen] = await Promise.all([
+            getRedis().get(AUDIO_ANALYZER_HEARTBEAT_KEY),
+            getRedis().llen("audio:analysis:queue"),
+        ]);
+        const heartbeatMs = heartbeatVal ? Number(heartbeatVal) : 0;
+        const heartbeatStale = Date.now() - heartbeatMs > 90_000; // analyzer pings every loop; 90s dead window
+        const hasQueuedWork = queuedLen > 0;
+        if (!heartbeatStale || !hasQueuedWork) return 0;
+        logger.warn(
+            `[Enrichment] Analyzer heartbeat stale (${heartbeatStale ? ">90s" : "fresh"}) with ${queuedLen} queued entries -- resetting stranded queued tracks to pending + flushing queue (live crash recovery)`,
+        );
+        const stranded = await prisma.track.updateMany({
+            where: { analysisStatus: "queued" },
+            data: { analysisStatus: "pending", analysisStartedAt: null },
+        });
+        await getRedis().del("audio:analysis:queue").catch(() => {});
+        if (stranded.count > 0) {
+            logger.warn(`[Enrichment] Freed ${stranded.count} stranded queued tracks back to pending (analyzer was down)`);
+        }
+        return stranded.count;
+    };
+    await freeFeedFromDeadAnalyzer();
 
     // Drain purgatory: tracks stuck as pending/queued but retryCount >= MAX_RETRIES
     const purgatoryTracks = await prisma.track.findMany({
