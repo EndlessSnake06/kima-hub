@@ -936,6 +936,28 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                             {enrichmentState &&
                                 enrichmentState.status !== "idle" && (
                                     <div className="mt-3 p-2 bg-white/[0.02] rounded-lg border border-white/5 text-xs">
+                                        {enrichmentState.hung ? (
+                                            <>
+                                                <div className="flex items-center gap-2">
+                                                    <AlertTriangle className="w-3 h-3 text-red-400" />
+                                                    <span className="text-red-300 font-medium">
+                                                        Enrichment appears
+                                                        stalled
+                                                    </span>
+                                                </div>
+                                                <p className="mt-1 text-[var(--text-secondary)]">
+                                                    Status is &quot;running&quot;
+                                                    but nothing has completed
+                                                    for over 15 minutes. The
+                                                    audio analyzer may be down
+                                                    or the work queue wedged --
+                                                    check the analyzer container
+                                                    and the enrichment error
+                                                    list below.
+                                                </p>
+                                            </>
+                                        ) : (
+                                            <>
                                         <div className="flex items-center gap-2">
                                             {enrichmentState.status ===
                                                 "running" && (
@@ -985,6 +1007,8 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                                                     {enrichmentState.tracks.current}
                                                 </div>
                                             )}
+                                            </>
+                                        )}
                                     </div>
                                 )}
                         </div>

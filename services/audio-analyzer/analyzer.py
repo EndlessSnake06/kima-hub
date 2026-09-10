@@ -1586,6 +1586,43 @@ class AnalysisWorker:
         finally:
             cursor.close()
 
+    def _reset_queued_on_restart(self) -> int:
+        """Reset 'queued' tracks to 'pending' and flush the Redis queue list.
+
+        Called at worker start: the Redis queue may have been lost or gated
+        during the container's downtime, and any 'queued' row's list entry is
+        untrustworthy. The DB row is the durable truth; the list is a
+        rebuildable buffer (_run_db_reconciliation re-pushes anything the
+        backend re-marks). Flushing the list also prevents the backend from
+        re-pushing the same tracks on top of stale copies when it observes
+        'pending' rows -- without it, one restart double-queues everything.
+
+        Returns the number of rows reset.
+        """
+        cursor = self.db.get_cursor()
+        try:
+            cursor.execute("""
+                UPDATE "Track"
+                SET "analysisStatus" = 'pending'
+                WHERE "analysisStatus" = 'queued'
+            """)
+            queued_reset = cursor.rowcount
+            self.db.commit()
+            if queued_reset > 0:
+                logger.info(f"Reset {queued_reset} queued tracks to pending (Redis queue lost on restart)")
+            try:
+                self.redis.delete(ANALYSIS_QUEUE)
+                logger.info("Flushed Redis audio:analysis:queue to match queued->pending reset")
+            except Exception as e:
+                logger.warning(f"Failed to flush audio:analysis:queue on restart: {e}")
+            return queued_reset
+        except Exception as e:
+            logger.error(f"Failed to reset queued tracks: {e}")
+            self.db.rollback()
+            return 0
+        finally:
+            cursor.close()
+
     def start(self):
         """Start processing jobs with BRPOP-driven event loop"""
         cpu_count = os.cpu_count() or 4
@@ -1608,23 +1645,7 @@ class AnalysisWorker:
         self.db.connect()
         self.running = True
 
-        # Reset "queued" tracks to "pending" -- Redis queue may have been lost during restart
-        cursor = self.db.get_cursor()
-        try:
-            cursor.execute("""
-                UPDATE "Track"
-                SET "analysisStatus" = 'pending'
-                WHERE "analysisStatus" = 'queued'
-            """)
-            queued_reset = cursor.rowcount
-            self.db.commit()
-            if queued_reset > 0:
-                logger.info(f"Reset {queued_reset} queued tracks to pending (Redis queue lost on restart)")
-        except Exception as e:
-            logger.error(f"Failed to reset queued tracks: {e}")
-            self.db.rollback()
-        finally:
-            cursor.close()
+        self._reset_queued_on_restart()
 
         # Debounce stale cleanup -- skip if ran recently (prevents crash-loop inflation)
         CLEANUP_DEBOUNCE_KEY = 'audio:cleanup:last_run'

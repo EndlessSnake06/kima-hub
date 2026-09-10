@@ -13,6 +13,8 @@ export interface EnrichmentState {
     stoppedAt?: string;
     currentPhase: "artists" | "tracks" | "audio" | "vibe" | "podcasts" | null;
     lastActivity: string;
+    /** Set by the backend when status=running but nothing has moved for >15 min. */
+    hung?: boolean;
     stoppingInfo?: {
         phase: string;
         currentItem: string;

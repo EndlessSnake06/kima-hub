@@ -7,6 +7,32 @@
  * times per 5-second cycle and which previously kept a wedged "running" loop
  * looking alive forever (the prod hang signature).
  */
+// The module under test instantiates two real ioredis connections at import
+// time (module-level singleton). Without a mock, jest's event loop never
+// drains and the suite hangs forever. The functions under test are pure, so
+// the mocks only need to exist -- they are never called.
+jest.mock("ioredis", () => {
+    return jest.fn().mockImplementation(() => ({
+        on: jest.fn(),
+        get: jest.fn().mockResolvedValue(null),
+        set: jest.fn().mockResolvedValue("OK"),
+        del: jest.fn().mockResolvedValue(1),
+        publish: jest.fn().mockResolvedValue(1),
+        quit: jest.fn().mockResolvedValue(undefined),
+    }));
+});
+jest.mock("../../config", () => ({
+    config: { redisUrl: "redis://localhost:6379" },
+}));
+jest.mock("../../utils/logger", () => ({
+    logger: {
+        debug: jest.fn(),
+        info: jest.fn(),
+        warn: jest.fn(),
+        error: jest.fn(),
+    },
+}));
+
 import {
     progressSignature,
     shouldRefreshLastActivity,

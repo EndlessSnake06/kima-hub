@@ -54,7 +54,14 @@ router.get("/progress", async (req, res) => {
 router.get("/status", async (req, res) => {
   try {
     const state = await enrichmentStateService.getState();
-    res.json(state || { status: "idle", currentPhase: null });
+    const base = state || { status: "idle", currentPhase: null };
+    // Surface the hang class to the UI: status says running but nothing has
+    // actually moved (honest lastActivity) for > 15 min. Before the heartbeat
+    // fix this could never fire -- every cycle write refreshed lastActivity.
+    const hung =
+      base.status === "running" &&
+      (await enrichmentStateService.detectHang());
+    res.json({ ...base, hung: hung === true });
   } catch (error) {
     logger.error("Get enrichment status error:", error);
     res.status(500).json({ error: "Failed to get status" });
