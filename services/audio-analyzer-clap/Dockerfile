@@ -32,12 +32,12 @@ COPY requirements.txt .
 # Torch from the CPU-only wheel index: the PyPI default drags in nvidia CUDA
 # libraries (~2.5GB) this CPU-only analyzer can never use (no GPU mounts,
 # `cpus`-limited), which also blew the layer export on that build.
-# Arch-aware: 2.6.0 is the newest amd64 cp310 CPU wheel, but torchaudio 2.6.0
-# has NO aarch64 wheel -- arm64-host builds must use the newer train that ships
-# both arches (2.14.0/2.11.0/0.29.0 all have cp310 linux aarch64 cpu wheels).
+# Arch-aware via `uname -m` (works for plain docker build AND buildx --platform,
+# where TARGETARCH is often unset): 2.6.0 is the newest amd64 cp310 CPU wheel,
+# but torchaudio 2.6.0 has NO aarch64 wheel -- arm64 needs the newer train that
+# ships both arches (2.14.0/2.11.0/0.29.0 all have cp310 linux aarch64 wheels).
 # --extra-index-url (not --index-url) keeps pip able to fetch build deps.
-ARG TARGETARCH
-RUN if [ "$TARGETARCH" = "arm64" ]; then \
+RUN if [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ]; then \
         pip install --no-cache-dir \
             --extra-index-url https://download.pytorch.org/whl/cpu \
             "torch==2.14.0+cpu" "torchaudio==2.11.0+cpu" "torchvision==0.29.0+cpu"; \
