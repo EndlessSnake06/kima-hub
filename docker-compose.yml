@@ -293,6 +293,12 @@ services:
             NUM_WORKERS: ${CLAP_WORKERS:-2}
             THREADS_PER_WORKER: ${CLAP_THREADS_PER_WORKER:-1}
             MODEL_IDLE_TIMEOUT: ${CLAP_MODEL_IDLE_TIMEOUT:-300}
+            # ONNX backend swap: default torch for
+            # backward compatibility; the full re-embed sweep MUST
+            # run with CLAP_BACKEND=onnx pinned so every embedding shares one
+            # vector space (the analyzer fails tracks loudly rather than
+            # falling back to torch mid-sweep).
+            CLAP_BACKEND: ${CLAP_BACKEND:-torch}
             INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:-kima-internal-secret-change-me}
         volumes:
             - ${MUSIC_PATH:-./music}:/music:ro

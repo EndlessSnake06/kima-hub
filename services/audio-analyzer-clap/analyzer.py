@@ -171,15 +171,67 @@ class CLAPAnalyzer:
     def __init__(self):
         self.model = None
         self.onnx_backend = None
+        self.onnx_text_backend = None
         self._lock = threading.Lock()
         self.last_work_time: float = time.time()
         self._model_loaded = False
 
     def _ensure_onnx_backend(self):
-        """Lazily construct the ONNX backend (only when CLAP_BACKEND=onnx)."""
+        """Lazily construct + load the ONNX backend (only when CLAP_BACKEND=onnx).
+
+        Loads the model eagerly (not just constructs the wrapper) so the log
+        line that follows is a real "the ONNX path works" assertion, and a
+        broken model fails LOUDLY here instead of at the first embed call.
+        """
         if self.onnx_backend is None and CLAP_BACKEND == 'onnx':
             from onnx_backend import OnnxCLAPBackend
-            self.onnx_backend = OnnxCLAPBackend(CLAP_ONNX_MODEL_PATH)
+            backend = OnnxCLAPBackend(CLAP_ONNX_MODEL_PATH)
+            backend.load_model()  # raises if onnxruntime or the model are broken
+            self.onnx_backend = backend
+            # Exact string the sweep monitoring greps for: proves the ONNX path
+            # actually initialized.
+            logger.info(f"[CLAP] ONNX backend: True ({CLAP_ONNX_MODEL_PATH})")
+
+    def _ensure_onnx_text_backend(self):
+        """Lazily construct + load the ONNX TEXT backend (CLAP_BACKEND=onnx).
+
+        Eager-loads so a broken text model fails at startup, not at the first
+        prompt. Kept separate from _ensure_onnx_backend: the text model is a
+        different 500MB file and must not load unless a text path is used.
+        """
+        if self.onnx_text_backend is None and CLAP_BACKEND == 'onnx':
+            from onnx_backend import OnnxTextCLAPBackend, ONNX_TEXT_MODEL_PATH
+            backend = OnnxTextCLAPBackend(ONNX_TEXT_MODEL_PATH)
+            backend.load_model()
+            self.onnx_text_backend = backend
+            logger.info(f"[CLAP] ONNX text backend verified: {ONNX_TEXT_MODEL_PATH}")
+
+    def _text_embeddings(self, prompts: list[str]) -> list:
+        """Text embeddings via the active backend (ONNX when CLAP_BACKEND=onnx).
+
+        Mirrors laion_clap's get_text_embedding(prompts, use_tensor=False)
+        return shape: a list of 512-d float32 vectors. When CLAP_BACKEND=onnx
+        this uses OnnxTextCLAPBackend (roberta-base tokenizer + Xenova
+        text_model.onnx, cosine 1.0000 vs laion_clap) — NO torch load. When
+        the text backend is unavailable it falls back to laion_clap so the
+        default (torch) mode is untouched.
+        """
+        if CLAP_BACKEND == 'onnx':
+            self._ensure_onnx_text_backend()
+            try:
+                embs = self.onnx_text_backend.embed_text(prompts)
+                return [embs[i] for i in range(embs.shape[0])]
+            except Exception as e:
+                logger.critical(
+                    f"ONNX text backend FAILED with CLAP_BACKEND=onnx pinned; "
+                    f"NOT falling back to torch. Text embeddings for "
+                    f"{len(prompts)} prompts failed: {e}"
+                )
+                traceback.print_exc()
+                raise
+        # torch path (default)
+        self.ensure_model()
+        return self.model.get_text_embedding(prompts, use_tensor=False)
 
     def load_model(self):
         """Load the CLAP model (thread-safe, idempotent)"""
@@ -348,8 +400,15 @@ class CLAPAnalyzer:
                 with self._lock:
                     return self.onnx_backend.embed_audio(audio)
             except Exception as e:
-                logger.error(f"ONNX backend failed, falling back to torch: {e}")
+                # DO NOT fall through to the torch path. CLAP_BACKEND=onnx is
+                # pinned for a whole re-embed so every embedding shares one
+                # vector space; a mid-sweep fallback would silently mix two
+                # spaces and corrupt the library's similarity. Fail the track
+                # loudly instead -- the backend's retry machinery (which the
+                # sweep monitoring surfaces) will pick it up.
+                logger.critical(f"ONNX backend FAILED with CLAP_BACKEND=onnx pinned; NOT falling back to torch. Track {audio_path} failed: {e}")
                 traceback.print_exc()
+                return None
 
         try:
             audio, sr = self._load_window(audio_path, start, WINDOW_SECONDS, duration_hint)
@@ -387,7 +446,8 @@ class CLAPAnalyzer:
         Returns:
             numpy array of shape (512,) or None on error
         """
-        self.ensure_model()
+        if CLAP_BACKEND != 'onnx':
+            self.ensure_model()
         self.last_work_time = time.time()
 
         if not text or not text.strip():
@@ -397,10 +457,7 @@ class CLAPAnalyzer:
         try:
             with self._lock:
                 # CLAP expects a list of text prompts
-                embeddings = self.model.get_text_embedding(
-                    [text],
-                    use_tensor=False
-                )
+                embeddings = self._text_embeddings([text])
 
                 embedding = embeddings[0]
 
@@ -419,7 +476,8 @@ class CLAPAnalyzer:
         Zero-shot vocal detection using CLAP text-audio similarity.
         Returns instrumentalness score (0 = vocals present, 1 = instrumental).
         """
-        self.ensure_model()
+        if CLAP_BACKEND != 'onnx':
+            self.ensure_model()
 
         if not hasattr(self, '_vocal_text_embs') or self._vocal_text_embs is None:
             with self._lock:
@@ -434,11 +492,11 @@ class CLAPAnalyzer:
                         "instrumental track with no singing",
                         "music without any vocals or singing",
                     ]
-                    self._vocal_text_embs = self.model.get_text_embedding(
-                        vocal_prompts, use_tensor=False
+                    self._vocal_text_embs = self._text_embeddings(
+                        vocal_prompts
                     )
-                    self._instr_text_embs = self.model.get_text_embedding(
-                        instrumental_prompts, use_tensor=False
+                    self._instr_text_embs = self._text_embeddings(
+                        instrumental_prompts
                     )
                     logger.info("Cached vocal/instrumental text embeddings for zero-shot detection")
 
@@ -470,7 +528,8 @@ class CLAPAnalyzer:
         Zero-shot acoustic vs electronic detection using CLAP text-audio similarity.
         Returns acousticness score (0 = electronic/synthesized, 1 = acoustic/organic).
         """
-        self.ensure_model()
+        if CLAP_BACKEND != 'onnx':
+            self.ensure_model()
 
         if not hasattr(self, '_acoustic_text_embs') or self._acoustic_text_embs is None:
             with self._lock:
@@ -485,11 +544,11 @@ class CLAPAnalyzer:
                         "distorted electric guitar and amplified drums",
                         "polished pop production with layered synths and effects",
                     ]
-                    self._acoustic_text_embs = self.model.get_text_embedding(
-                        acoustic_prompts, use_tensor=False
+                    self._acoustic_text_embs = self._text_embeddings(
+                        acoustic_prompts
                     )
-                    self._electronic_text_embs = self.model.get_text_embedding(
-                        electronic_prompts, use_tensor=False
+                    self._electronic_text_embs = self._text_embeddings(
+                        electronic_prompts
                     )
                     logger.info("Cached acoustic/electronic text embeddings for zero-shot detection")
 
@@ -522,7 +581,8 @@ class CLAPAnalyzer:
         Valence: 0 = sad/dark, 1 = happy/bright
         Arousal: 0 = calm/quiet, 1 = intense/energetic
         """
-        self.ensure_model()
+        if CLAP_BACKEND != 'onnx':
+            self.ensure_model()
 
         if not hasattr(self, '_happy_text_embs') or self._happy_text_embs is None:
             with self._lock:
@@ -547,17 +607,17 @@ class CLAPAnalyzer:
                         "soft quiet gentle song",
                         "mellow soothing ambient music",
                     ]
-                    self._happy_text_embs = self.model.get_text_embedding(
-                        happy_prompts, use_tensor=False
+                    self._happy_text_embs = self._text_embeddings(
+                        happy_prompts
                     )
-                    self._sad_text_embs = self.model.get_text_embedding(
-                        sad_prompts, use_tensor=False
+                    self._sad_text_embs = self._text_embeddings(
+                        sad_prompts
                     )
-                    self._high_energy_text_embs = self.model.get_text_embedding(
-                        high_energy_prompts, use_tensor=False
+                    self._high_energy_text_embs = self._text_embeddings(
+                        high_energy_prompts
                     )
-                    self._low_energy_text_embs = self.model.get_text_embedding(
-                        low_energy_prompts, use_tensor=False
+                    self._low_energy_text_embs = self._text_embeddings(
+                        low_energy_prompts
                     )
                     logger.info("Cached emotion text embeddings for zero-shot valence/arousal")
 

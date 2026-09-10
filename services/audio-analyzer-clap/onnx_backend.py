@@ -135,3 +135,66 @@ class OnnxCLAPBackend:
         with torch.no_grad():
             emb = model(**inp)[0].float()
         return F.normalize(emb, dim=-1)[0].detach().cpu().numpy().astype(np.float32)
+
+
+# Default ONNX TEXT model path (Xenova clap-htsat-unfused text_model.onnx).
+# The audio service keeps it under models/text_model.onnx; overridable so the
+# testbed/CI can point at a downloaded copy instead of baking 500MB in.
+def _default_text_model_path() -> str:
+    here = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(here, 'models', 'text_model.onnx')
+
+
+ONNX_TEXT_MODEL_PATH = os.getenv(
+    'CLAP_ONNX_TEXT_MODEL_PATH',
+    _default_text_model_path(),
+)
+
+# Tokenizer for the text path. laion_clap uses RobertaTokenizer('roberta-base')
+# -- NOT the 'laion/clap-htsat-unfused' tokenizer -- and the Xenova ONNX export
+# was built with the same roberta-base vocab. Using the wrong tokenizer was the
+# cause of a measured 0.84 cosine vs the correct 1.0000 (text_parity_gate.py).
+TEXT_MAX_LENGTH = 77
+
+
+class OnnxTextCLAPBackend:
+    """Pure-ONNX text encoder: tokenizer + Xenova text_model.onnx.
+
+    Numerically identical (cosine == 1.0000) to laion_clap's torch text path on
+    the 12 prompts used by the zero-shot detectors (text_parity_gate.py,
+    2026-09-10). No torch, no laion_clap -- onnxruntime + transformers only.
+    """
+
+    def __init__(self, model_path: str = ONNX_TEXT_MODEL_PATH):
+        self.model_path = model_path
+        self._sess = None
+        self._tok = None
+
+    def load_model(self) -> None:
+        if self._sess is not None:
+            return
+        import onnxruntime as ort
+        self._sess = ort.InferenceSession(
+            self.model_path, providers=['CPUExecutionProvider'])
+        self._in_name = self._sess.get_inputs()[0].name
+        self._out_name = self._sess.get_outputs()[0].name
+        # Tokenizer: laion_clap's RobertaTokenizer('roberta-base'), not the
+        # laion/clap-htsat-unfused fast tokenizer (vocab differs).
+        from transformers import RobertaTokenizer
+        self._tok = RobertaTokenizer.from_pretrained('roberta-base')
+        logger.info(f'ONNX text backend loaded from {self.model_path}')
+
+    def embed_text(self, texts: list[str]) -> np.ndarray:
+        """Return [n, 512] L2-normalized text embeddings."""
+        self.load_model()
+        enc = self._tok(
+            texts,
+            padding='max_length',
+            truncation=True,
+            max_length=TEXT_MAX_LENGTH,
+            return_tensors='np',
+        )
+        ids = enc['input_ids'].astype(np.int64)
+        out = self._sess.run([self._out_name], {self._in_name: ids})[0]
+        norm = np.linalg.norm(out, axis=1, keepdims=True)
+        return (out / np.maximum(norm, 1e-12)).astype(np.float32)

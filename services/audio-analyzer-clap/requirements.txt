@@ -10,6 +10,11 @@ torchvision>=0.15.0
 transformers>=4.30.0
 librosa>=0.10.0
 
+# ONNX backend for the CLAP audio encoder (CLAP_BACKEND=onnx, the release
+# default for the sweep). NOT optional: analyzer.py imports onnx_backend at
+# module load, and a fresh image without this silently fell back to torch
+onnxruntime>=1.16
+
 # Database and queue
 redis>=4.5.0
 psycopg2-binary>=2.9.0
