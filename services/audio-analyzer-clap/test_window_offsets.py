@@ -56,13 +56,19 @@ def test_window_start_never_past_track_end():
 
 
 def test_exactly_fifty_seconds():
-    # A 50s track is the boundary: five 10s windows at 10/30/50/70/90%. The
-    # last (start 45) would read to 55s, so it clamps to 40 to stay in bounds.
+    # A 50s track is the boundary where clamping the last 10/30/50/70/90%
+    # window (start 45 -> clamp to 40) would overlap window 4 (40-45s is
+    # inside both). e2e02baa fixed that by falling back to even tiling:
+    # first window at 0, last ending exactly at the file end. The result
+    # tiles the whole track, no overlap, no out-of-bounds.
     offsets = compute_window_offsets(duration=50.0)
-    assert offsets == [5.0, 15.0, 25.0, 35.0, 40.0], f"got {offsets}"
-    # No window reads past the file end.
-    for o in offsets:
+    assert offsets == [0.0, 10.0, 20.0, 30.0, 40.0], f"got {offsets}"
+    # No window reads past the file end, and none overlaps the next.
+    for i, o in enumerate(offsets):
         assert o + WINDOW_SECONDS <= 50.0 + 1e-9, f"window {o} reads past end"
+        if i:
+            assert o >= offsets[i - 1] + WINDOW_SECONDS - 1e-9, \
+                f"window {o} overlaps previous {offsets[i - 1]}"
 
 
 # ---------------------------------------------------------------------------
