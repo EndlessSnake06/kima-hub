@@ -2064,7 +2064,6 @@ export async function triggerEnrichmentNow(): Promise<{
      immediateEnrichmentRequested = true;
      invalidateEnrichmentProgress();
      bumpScheduleToFastInterval();
-    bumpScheduleToFastInterval();
 
      // Run full cycle but it will stop after artists phase if paused/stopped
      await runEnrichmentCycle(false);
@@ -2086,7 +2085,6 @@ export async function triggerEnrichmentNow(): Promise<{
      immediateEnrichmentRequested = true;
      invalidateEnrichmentProgress();
      bumpScheduleToFastInterval();
-    bumpScheduleToFastInterval();
 
      await runEnrichmentCycle(false);
 

@@ -18,6 +18,7 @@ const mockInitializeState = jest.fn().mockResolvedValue({});
 const mockClear = jest.fn().mockResolvedValue(undefined);
 const mockDetectHang = jest.fn().mockResolvedValue(false);
 const mockPublishToChannel = jest.fn().mockResolvedValue(undefined);
+const mockClearGate = jest.fn().mockResolvedValue(undefined);
 
 jest.mock("../../services/enrichmentState", () => ({
     enrichmentStateService: {
@@ -26,7 +27,7 @@ jest.mock("../../services/enrichmentState", () => ({
         initializeState: mockInitializeState,
         clear: mockClear,
         detectHang: mockDetectHang,
-        clearGate: jest.fn().mockResolvedValue(undefined),
+        clearGate: mockClearGate,
         publishToChannel: mockPublishToChannel,
     },
 }));
@@ -73,6 +74,7 @@ const mockRedisSet = jest.fn().mockResolvedValue("OK");
 const mockRedisRpush = jest.fn().mockResolvedValue(1);
 const mockRedisLlen = jest.fn().mockResolvedValue(0);
 const mockRedisDel = jest.fn().mockResolvedValue(1);
+const mockRedisGet = jest.fn().mockResolvedValue(null);
 
 jest.mock("ioredis", () => {
     return jest.fn().mockImplementation(() => ({
@@ -84,6 +86,7 @@ jest.mock("ioredis", () => {
         rpush: mockRedisRpush,
         llen: mockRedisLlen,
         del: mockRedisDel,
+        get: mockRedisGet,
         status: "ready",
     }));
 });
@@ -175,6 +178,8 @@ import {
     reRunAudioAnalysisOnly,
     runFullEnrichment,
     startUnifiedEnrichmentWorker,
+    executeAudioPhase,
+    getEnrichmentProgress,
 } from "../unifiedEnrichment";
 
 // ── Test helpers ────────────────────────────────────────────────────
@@ -202,6 +207,20 @@ function simulateRunningState() {
 
 function simulateIdleState() {
     mockGetState.mockResolvedValue({ status: "idle" });
+}
+
+/** The scheduler's fast cadence (unifiedEnrichment ENRICHMENT_INTERVAL_MS). */
+const ENRICHMENT_TICK_MS = 5_000;
+
+/**
+ * Let N scheduler ticks fire. Uses async advancement so the cycle's awaited
+ * promise chain (prisma/redis mocks) flushes between timer fire and the
+ * cycle's own re-schedule in its finally block.
+ */
+async function advanceTicks(count: number): Promise<void> {
+    for (let i = 0; i < count; i++) {
+        await jest.advanceTimersByTimeAsync(ENRICHMENT_TICK_MS);
+    }
 }
 
 // ── Tests ───────────────────────────────────────────────────────────
@@ -458,6 +477,181 @@ describe("Enrichment State Machine", () => {
 
             const result = await runFullEnrichment();
             expect(result).toBeDefined();
+        });
+
+        it("explicit trigger (user re-run) is allowed to resume after stop", async () => {
+            await startUnifiedEnrichmentWorker();
+
+            simulateStopViaStateService();
+            await triggerEnrichmentNow(); // first trigger observed the stop -> idle + userStopped
+
+            mockGetState.mockResolvedValue({ status: "idle" });
+            mockUpdateState.mockClear();
+
+            // A SECOND explicit trigger is the user pressing "Run Enrichment":
+            // triggerEnrichmentNow -> clearPauseState() resets userStopped and
+            // resumes. This is designed behavior (the guard is against the
+            // TIMER auto-restarting, not against an explicit user action).
+            await triggerEnrichmentNow();
+            expect(mockUpdateState).toHaveBeenCalledWith(
+                expect.objectContaining({ status: "running" }),
+            );
+        });
+    });
+
+    describe("W1: startup must resume analyzer infrastructure (prod hang root cause)", () => {
+        it("should clear the stale analyzer gate on worker start", async () => {
+            mockClearGate.mockClear();
+            await startUnifiedEnrichmentWorker();
+            expect(mockClearGate).toHaveBeenCalled();
+        });
+
+        it("should publish resume to the audio analyzer on worker start", async () => {
+            mockPublishToChannel.mockClear();
+            await startUnifiedEnrichmentWorker();
+            expect(mockPublishToChannel).toHaveBeenCalledWith(
+                "audio:analysis:control",
+                "resume",
+            );
+        });
+    });
+
+    describe("W2: reverse-sync must resume infrastructure, not just flip the local flag", () => {
+        it("should call clearGate when reverse-syncing a stale pause to running", async () => {
+            // The reverse-sync branch only runs on the TIMER-driven cycle --
+            // triggerEnrichmentNow calls clearPauseState first, which resets the
+            // local flags before the cycle ever sees them. The wedge is a missed
+            // "resume" control message, so simulate exactly that: state says
+            // "paused" (the pause landed), then state says "running" (the resume
+            // was lost), then the next timer tick must self-heal the
+            // infrastructure, not just the flag.
+            await startUnifiedEnrichmentWorker();
+
+            // State says paused -> local isPaused becomes true via the sync block
+            simulatePauseViaStateService();
+            await jest.advanceTimersByTimeAsync(10_000);
+
+            // Now state says running -- the resume pub/sub was lost
+            mockGetState.mockResolvedValue({ status: "running" });
+            mockClearGate.mockClear();
+            mockPublishToChannel.mockClear();
+
+            // Advance to the next scheduled cycle (timer path, no clearPauseState)
+            await jest.advanceTimersByTimeAsync(60_000);
+
+            // The reverse-sync must have resumed the real infrastructure,
+            // NOT merely flipped the local flag.
+            expect(mockClearGate).toHaveBeenCalled();
+            expect(mockPublishToChannel).toHaveBeenCalledWith(
+                "audio:analysis:control",
+                "resume",
+            );
+        });
+    });
+
+    describe("F1: dead-analyzer recovery frees stranded queued tracks", () => {
+        it("should NOT reset queued tracks when the analyzer heartbeat is fresh", async () => {
+            await startUnifiedEnrichmentWorker();
+            mockRedisGet.mockResolvedValue(String(Date.now()));
+            mockRedisLlen.mockResolvedValue(42);
+            mockPrismaTrackUpdateMany.mockClear();
+
+            await executeAudioPhase();
+
+            // No reset call with analysisStatus queued -> pending
+            const queuedResets = mockPrismaTrackUpdateMany.mock.calls.filter(
+                (call) =>
+                    JSON.stringify(call[0]?.where ?? {}).includes("queued"),
+            );
+            expect(queuedResets).toHaveLength(0);
+        });
+
+        it("should reset queued tracks to pending when the analyzer heartbeat is stale", async () => {
+            await startUnifiedEnrichmentWorker();
+            // Heartbeat is 10 minutes old; queue holds 42 entries
+            mockRedisGet.mockResolvedValue(String(Date.now() - 600_000));
+            mockRedisLlen.mockResolvedValue(42);
+            mockPrismaTrackUpdateMany.mockClear();
+
+            await executeAudioPhase();
+
+            const queuedReset = mockPrismaTrackUpdateMany.mock.calls.find(
+                (call) => (call[0]?.where as any)?.analysisStatus === "queued",
+            );
+            expect(queuedReset).toBeDefined();
+            expect((queuedReset![0] as any).data).toEqual({
+                analysisStatus: "pending",
+                analysisStartedAt: null,
+            });
+        });
+
+        it("should flush the Redis queue when resetting stranded tracks", async () => {
+            await startUnifiedEnrichmentWorker();
+            mockRedisGet.mockResolvedValue(String(Date.now() - 600_000));
+            mockRedisLlen.mockResolvedValue(42);
+            mockRedisDel.mockClear();
+
+            await executeAudioPhase();
+
+            expect(mockRedisDel).toHaveBeenCalledWith("audio:analysis:queue");
+        });
+    });
+
+    describe("F1: queue feed is a watermark, not a hard stop", () => {
+        // executeAudioPhase() runs the purgatory drain FIRST, then the queue
+        // feed, both through mockPrismaTrackFindMany. The drain selects with
+        // analysisRetryCount.gte=3; the feed with analysisStatus=pending. Shape
+        // the mock so the two paths see distinguishable inputs.
+        function shapeFindManyForFeed() {
+            mockPrismaTrackFindMany.mockImplementation((args: any) => {
+                if ((args?.where as any)?.analysisRetryCount?.gte === 3) {
+                    return Promise.resolve([]); // purgatory drain: nothing stranded
+                }
+                return Promise.resolve([
+                    { id: "t1", filePath: "/m/a.mp3", title: "A", duration: 200 },
+                ]);
+            });
+            mockPrismaTrackUpdateMany.mockResolvedValue({ count: 1 });
+        }
+
+        it("should keep feeding when the queue is above the soft watermark but below the hard ceiling", async () => {
+            await startUnifiedEnrichmentWorker();
+            mockRedisLlen.mockResolvedValue(60); // above soft 50, below hard 10000
+            mockRedisGet.mockResolvedValue(String(Date.now())); // analyzer alive
+            mockRedisRpush.mockClear();
+            shapeFindManyForFeed();
+
+            const queued = await executeAudioPhase();
+
+            // A bounded trickle was fed (not zero)
+            expect(mockRedisRpush).toHaveBeenCalled();
+            expect(queued).toBe(1);
+        });
+
+        it("should stop feeding only at the hard ceiling", async () => {
+            await startUnifiedEnrichmentWorker();
+            mockRedisLlen.mockResolvedValue(20_000); // way past hard ceiling
+            mockRedisGet.mockResolvedValue(String(Date.now())); // analyzer alive
+            mockRedisRpush.mockClear();
+            mockPrismaTrackFindMany.mockClear();
+
+            const queued = await executeAudioPhase();
+
+            expect(mockRedisRpush).not.toHaveBeenCalled();
+            expect(queued).toBe(0);
+        });
+
+        it("should keep feeding when the queue is below the soft watermark", async () => {
+            await startUnifiedEnrichmentWorker();
+            mockRedisLlen.mockResolvedValue(10); // below soft 50
+            mockRedisGet.mockResolvedValue(String(Date.now())); // analyzer alive
+            mockRedisRpush.mockClear();
+            shapeFindManyForFeed();
+
+            const queued = await executeAudioPhase();
+
+            expect(mockRedisRpush).toHaveBeenCalled();
+            expect(queued).toBe(1);
         });
     });
 });
