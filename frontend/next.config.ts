@@ -18,6 +18,10 @@ const nextConfig: NextConfig = {
         "http://localhost:3030",
         "http://localhost",
         "localhost",
+        // Tailnet access — the operator browses the dev server from other
+        // machines over Tailscale (dev-machine = 127.0.0.1).
+        "127.0.0.1",
+        "http://127.0.0.1:3030",
     ],
     
     images: {

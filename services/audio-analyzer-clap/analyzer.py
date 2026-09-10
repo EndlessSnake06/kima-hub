@@ -284,7 +284,11 @@ class CLAPAnalyzer:
         Returns:
             numpy array of shape (512,) or None on error
         """
-        self.ensure_model()
+        if CLAP_BACKEND == 'onnx':
+            # ONNX path never touches laion_clap -- don't try to load it.
+            self._ensure_onnx_backend()
+        else:
+            self.ensure_model()
         self.last_work_time = time.time()
 
         if not os.path.exists(audio_path):

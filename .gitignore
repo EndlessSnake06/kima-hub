@@ -191,3 +191,14 @@ soularr/
 # Local CLAP model weights (validated hf_audio.onnx, copied into the analyzer)
 services/audio-analyzer-clap/models/
 
+
+# POC / scratch artifacts (takeover 2026-09-10) — throwaway, never commit
+root_cause_analysis.json
+scoping-report.json
+run_parity_runner.py
+smoke_onnx.py
+frontend/space.mjs
+frontend/README.md
+frontend/pnpm-workspace.yaml
+# Model caches are large binaries, not source
+services/audio-analyzer-clap/cache/
