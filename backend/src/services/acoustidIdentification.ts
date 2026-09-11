@@ -66,7 +66,7 @@ export async function identifyTrackByAcoustid(
     // Path 1+2a: what the file itself already knows.
     try {
         const metadata = await parseFile(track.filePath);
-        const common = metadata.common as Record<string, unknown>;
+        const common = metadata.common as unknown as Record<string, unknown>;
         const tagId = firstTag(common.acoustid_id);
         const tagFingerprint = firstTag(common.acoustid_fingerprint);
         const duration =

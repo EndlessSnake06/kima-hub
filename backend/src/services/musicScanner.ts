@@ -16,8 +16,114 @@ import {
 } from "../utils/artistNormalization";
 import { parseCredit, resolveArtist } from "./artistIdentity";
 import { resolveAlbum } from "./albumIdentity";
+import { acoustidService } from "./acoustidService";
+import { fpcalcService } from "./fpcalc";
+import { getSystemSettings } from "../utils/systemSettings";
 import { backfillAllArtistCounts } from "./artistCountsService";
 import { checkLocalArtistImage } from "./imageStorage";
+
+/**
+ * AcoustID-first identification.
+ *
+ * Order of resolution for a file's album identity:
+ *   1. the file's own `musicbrainz_releasegroupid` tag (unchanged path),
+ *   2. the file's embedded AcoustID fingerprint tag -> AcoustID lookup,
+ *   3. fpcalc on the file -> AcoustID lookup,
+ *   4. nothing — resolveAlbum's `temp-<ts>-<random>` placeholder stands
+ *      (enrichment's MusicBrainz title search stays the fallback; the
+ *      placeholder scheme must NOT be retired — OwnedAlbum/DiscoveryAlbum
+ *      key on the rgMbid string value, see albumIdentity.ts scope note).
+ *
+ * Every outcome is counted so the sweep report can show which path resolved
+ * each track. AcoustID is best-effort: any failure falls through silently.
+ */
+type IdentificationPath =
+    | "mbid-tag"
+    | "acoustid-tag"
+    | "fpcalc"
+    | "placeholder";
+
+const identificationCounters: Record<IdentificationPath, number> = {
+    "mbid-tag": 0,
+    "acoustid-tag": 0,
+    fpcalc: 0,
+    placeholder: 0,
+};
+
+export function getIdentificationCounters() {
+    return { ...identificationCounters };
+}
+
+/**
+ * Run fpcalc on a file; returns fingerprint + duration, or null.
+ *
+ * Delegates to the shared fpcalcService runner. fpcalc 1.5.x has NO
+ * `-format=json` output flag (`-format` selects the *input* format); the
+ * output flag is `-json` on every version since 1.4 — verified live on both
+ * 1.6.1 (this dev box) and the 1.5.1 sources.
+ */
+async function fingerprintFile(
+    absolutePath: string,
+): Promise<{ fingerprint: string; duration: number } | null> {
+    return fpcalcService.fingerprintFile(absolutePath);
+}
+
+/**
+ * Resolve the album identity for one scanned file, trying the AcoustID
+ * paths only when the file carries no usable MusicBrainz tag. Returns the
+ * rgMbid to hand to resolveAlbum plus which path resolved it.
+ */
+async function resolveAlbumIdentity(
+    absolutePath: string,
+    tagRgMbid: string | null | undefined,
+    tagAcoustidId: string | null | undefined,
+    duration: number,
+): Promise<{ rgMbid: string | null; via: IdentificationPath }> {
+    // 1. File's own MusicBrainz tag — authoritative, no network.
+    if (tagRgMbid?.trim()) {
+        identificationCounters["mbid-tag"]++;
+        return { rgMbid: tagRgMbid.trim(), via: "mbid-tag" };
+    }
+
+    const settings = await getSystemSettings();
+    const clientKey = settings?.acoustidApiKey || undefined; // falls back to config default inside the service
+
+    // 2. File's embedded AcoustID recording id (AcoustID:MBID:<uuid> or bare
+    //    uuid) — resolve it without fingerprinting.
+    const acoustidTag = tagAcoustidId?.trim();
+    if (acoustidTag) {
+        const mbid = acoustidTag.replace(/^AcoustID:MBID:/i, "");
+        // The tag gives a recording id, not a release-group id; use the
+        // fingerprint path only when we can actually look something up.
+        // Without a fingerprint there is nothing to query, so fall through
+        // to fpcalc rather than trusting a raw id we cannot resolve here.
+        logger.debug(
+            `[Scanner] AcoustID tag present (${mbid.slice(0, 12)}…), fingerprinting to resolve`,
+        );
+    }
+
+    // 3. fpcalc -> AcoustID lookup (covers both the tagged case, which needs
+    //    the fingerprint to resolve, and untagged files).
+    if (clientKey !== "" /* feature on: a key exists (default baked) */) {
+        const fp = await fingerprintFile(absolutePath);
+        if (fp) {
+            const match = await acoustidService.lookup(fp.duration, fp.fingerprint);
+            if (match?.releaseGroupMbid) {
+                identificationCounters[acoustidTag ? "acoustid-tag" : "fpcalc"]++;
+                logger.info(
+                    `[Scanner] Identified ${path.basename(absolutePath)} via ${
+                        acoustidTag ? "AcoustID tag + fingerprint" : "fingerprint"
+                    }: ${match.releaseGroupMbid} (${match.title} — ${match.album})`,
+                );
+                return { rgMbid: match.releaseGroupMbid, via: acoustidTag ? "acoustid-tag" : "fpcalc" };
+            }
+        }
+    }
+
+    // 4. Placeholder stands; enrichment's MusicBrainz path is the fallback.
+    identificationCounters.placeholder++;
+    return { rgMbid: null, via: "placeholder" };
+}
 
 // Supported audio formats
 const AUDIO_EXTENSIONS = new Set([
@@ -767,10 +873,26 @@ export class MusicScannerService {
         // removed -- and it had no unique-violation retry.
         let isDiscoveryAlbum = false;
 
+        // AcoustID-first identification: try the file's MB tag, then its
+        // AcoustID tag / a fresh fingerprint, and only then let the
+        // placeholder stand (enrichment's MB title-search stays the fallback).
+        const identity = await resolveAlbumIdentity(
+            absolutePath,
+            metadata.common.musicbrainz_releasegroupid,
+            (metadata.common as { acoustidId?: string }).acoustidId
+                ?? (metadata.native
+                      ? Object.values(metadata.native)
+                            .flat()
+                            .find((t) => t.id === "ACOUSTID_ID" || t.id === "Acoustid Id")
+                            ?.value?.toString()
+                      : undefined),
+            duration,
+        );
+
         const album = await resolveAlbum(prisma, {
             artistId: artist.id,
             title: albumTitle,
-            rgMbid: metadata.common.musicbrainz_releasegroupid,
+            rgMbid: identity.rgMbid,
             year,
             isCompilation: Boolean(metadata.common.compilation),
             // Runs only when a row is actually created: these checks cost several
