@@ -21,9 +21,13 @@ WORKDIR /app
 
 # Install runtime dependencies first
 # ffmpeg is required for audio transcoding
+# libchromaprint1 + fpcalc are required for the AcoustID identification path
+# fpcalc produces the fingerprint, libchromaprint backs it.
 # openssl is required for Prisma
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
+    libchromaprint-tools \
+    libchromaprint1 \
     tini \
     openssl \
     && rm -rf /var/lib/apt/lists/*
