@@ -18,7 +18,7 @@ import { parseCredit, resolveArtist } from "./artistIdentity";
 import { resolveAlbum } from "./albumIdentity";
 import { acoustidService } from "./acoustidService";
 import { fpcalcService } from "./fpcalc";
-import { getSystemSettings } from "../utils/systemSettings";
+import { featureDetection } from "./featureDetection";
 import { backfillAllArtistCounts } from "./artistCountsService";
 import { checkLocalArtistImage } from "./imageStorage";
 
@@ -85,9 +85,6 @@ async function resolveAlbumIdentity(
         return { rgMbid: tagRgMbid.trim(), via: "mbid-tag" };
     }
 
-    const settings = await getSystemSettings();
-    const clientKey = settings?.acoustidApiKey || undefined; // falls back to config default inside the service
-
     // 2. File's embedded AcoustID recording id (AcoustID:MBID:<uuid> or bare
     //    uuid) — resolve it without fingerprinting.
     const acoustidTag = tagAcoustidId?.trim();
@@ -103,8 +100,13 @@ async function resolveAlbumIdentity(
     }
 
     // 3. fpcalc -> AcoustID lookup (covers both the tagged case, which needs
-    //    the fingerprint to resolve, and untagged files).
-    if (clientKey !== "" /* feature on: a key exists (default baked) */) {
+    //    the fingerprint to resolve, and untagged files). Same gate as the
+    //    enrichment path: the fpcalc feature flag (binary present, not
+    //    disabled) decides whether this path runs. The service resolves the
+    //    client key itself — operator key from SystemSettings, baked default
+    //    as fallback — so no key plumbing happens here.
+    const features = await featureDetection.getFeatures();
+    if (features.fpcalc) {
         const fp = await fingerprintFile(absolutePath);
         if (fp) {
             const match = await acoustidService.lookup(fp.duration, fp.fingerprint);

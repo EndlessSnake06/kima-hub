@@ -42,6 +42,31 @@ jest.mock('../../services/imageStorage', () => ({
     checkLocalArtistImage: jest.fn(),
 }));
 
+// AcoustID identification stack (imported by musicScanner). featureDetection
+// must be mocked at this boundary: the real one pulls utils/redis -> config,
+// whose zod validation requires env vars this unit suite does not provide.
+jest.mock('../../services/featureDetection', () => ({
+    featureDetection: {
+        getFeatures: jest.fn().mockResolvedValue({
+            musicCNN: false,
+            vibeEmbeddings: false,
+            audiobookshelfEnabled: false,
+            fpcalc: true,
+        }),
+    },
+}));
+
+jest.mock('../../services/acoustidService', () => ({
+    acoustidService: { lookup: jest.fn().mockResolvedValue(null) },
+}));
+
+jest.mock('../../services/fpcalc', () => ({
+    fpcalcService: {
+        isAvailable: jest.fn().mockResolvedValue(false),
+        fingerprintFile: jest.fn().mockResolvedValue(null),
+    },
+}));
+
 // music-metadata is pure ESM; provide a CJS-compatible stub
 jest.mock('music-metadata', () => ({ parseFile: jest.fn() }), { virtual: true });
 
