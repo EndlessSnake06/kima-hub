@@ -29,8 +29,8 @@
  *    default, an explicitly passed key wins over both, and a failed or
  *    empty settings read degrades to the config default without throwing;
  *  - the request body is form-encoded with meta=recordings%20releasegroups
- *    (a literal '+' is NOT form-decoded by the AcoustID server — verified
- *    live: it silently drops the recording data), the duration parameter
+ *    (the server does not form-decode a literal '+' back to a space, so
+ *    %20 is the form we send), the duration parameter
  *    is named "duration" (not "track"), and the content type is
  *    application/x-www-form-urlencoded.
  */

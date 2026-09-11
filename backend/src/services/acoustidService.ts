@@ -9,10 +9,10 @@ import { USER_AGENT, config } from "../config";
  * Wire format verified live against api.acoustid.org on 2026-09-10 with a
  * real Chromaprint fingerprint (Carpenter Brut, score 0.9986):
  *  - POST body must be application/x-www-form-urlencoded. AcoustID's server
- *    percent-decodes WITHOUT form '+'-means-space handling, so "meta" must be
- *    space-separated and encoded as %20 — "recordings+releasegroups" is read
- *    as one invalid token and silently degrades the response to bare
- *    {id, score} with no recordings attached.
+ *    does not apply form '+'-means-space decoding, so "meta" is sent
+ *    space-separated and %20-encoded: "recordings%20releasegroups". That is
+ *    the unambiguous form; a literal '+' happens to be tolerated by the
+ *    server today but must not be relied on.
  *  - The duration parameter is named "duration" (not "track").
  *  - The response is {status: "ok", results: [...]} — each result carries
  *    {id: <recording MBID>, score, recordings: [{id, title, artists,
