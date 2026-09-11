@@ -1,4 +1,5 @@
 import { existsSync } from "fs";
+import { execFileSync } from "child_process";
 import { redisClient } from "../utils/redis";
 import { prisma } from "../utils/db";
 import { logger } from "../utils/logger";
@@ -11,6 +12,8 @@ interface AvailableFeatures {
     musicCNN: boolean;
     vibeEmbeddings: boolean;
     audiobookshelfEnabled: boolean;
+    /** chromaprint fpcalc binary present — gates the AcoustID identity path. */
+    fpcalc: boolean;
 }
 
 const HEARTBEAT_TTL = 300000; // 5 minutes
@@ -26,17 +29,19 @@ class FeatureDetectionService {
             return this.cache;
         }
 
-        const [musicCNN, vibeEmbeddings, audiobookshelfEnabled] = await Promise.all([
-            this.checkMusicCNN(),
-            this.checkCLAP(),
-            this.checkAudiobookshelf(),
-        ]);
+        const [musicCNN, vibeEmbeddings, audiobookshelfEnabled, fpcalc] =
+            await Promise.all([
+                this.checkMusicCNN(),
+                this.checkCLAP(),
+                this.checkAudiobookshelf(),
+                this.checkFpcalc(),
+            ]);
 
-        this.cache = { musicCNN, vibeEmbeddings, audiobookshelfEnabled };
+        this.cache = { musicCNN, vibeEmbeddings, audiobookshelfEnabled, fpcalc };
         this.lastCheck = now;
 
         logger.debug(
-            `[FEATURE-DETECTION] Features: musicCNN=${musicCNN}, vibeEmbeddings=${vibeEmbeddings}, audiobookshelf=${audiobookshelfEnabled}`
+            `[FEATURE-DETECTION] Features: musicCNN=${musicCNN}, vibeEmbeddings=${vibeEmbeddings}, audiobookshelf=${audiobookshelfEnabled}, fpcalc=${fpcalc}`
         );
 
         return this.cache;
@@ -105,6 +110,23 @@ class FeatureDetectionService {
             return settings?.audiobookshelfEnabled ?? false;
         } catch (error) {
             logger.error("[FEATURE-DETECTION] Error checking Audiobookshelf:", error);
+            return false;
+        }
+    }
+
+    /**
+     * fpcalc (chromaprint) presence gates the AcoustID fingerprint path.
+     * Env override: ACOUSTID_DISABLED=true forces the
+     * feature off even when the binary exists. Probed once per process.
+     */
+    private checkFpcalc(): boolean {
+        if (process.env.ACOUSTID_DISABLED === "true") {
+            return false;
+        }
+        try {
+            execFileSync("fpcalc", ["-version"], { timeout: 5000 });
+            return true;
+        } catch {
             return false;
         }
     }

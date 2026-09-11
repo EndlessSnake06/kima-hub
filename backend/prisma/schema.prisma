@@ -692,6 +692,7 @@ model SystemSettings {
   lidarrWebhookSecret         String?
   audioAnalyzerWorkers        Int      @default(2)
   lastfmApiKey                String?
+  acoustidApiKey              String?
   soulseekConcurrentDownloads Int      @default(4)
   clapWorkers                 Int      @default(2)
   soulseekEnabled             Boolean?
@@ -762,6 +763,14 @@ model Track {
   vibeAnalysisStatusUpdatedAt DateTime?
   isrc                        String?
   isrcSource                  String?
+  // Fingerprint-hash for intra-library duplicate/version detection. Populated
+  // from the AcoustID lookup (the same value used to identify the track) so
+  // two tracks that fingerprint identically can be matched without a live API
+  // call. Kept nullable: pre-AcoustID tracks and tracks never fingerprinted
+  // stay null until the enrichment path fills them in.
+  acoustidFingerprint         String?
+
+  @@index([acoustidFingerprint])
   corrupt                     Boolean                  @default(false)
   scanStatus                  String                   @default("pending")
   scanError                   String?

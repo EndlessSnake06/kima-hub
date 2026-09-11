@@ -32,6 +32,7 @@ interface ServiceConfig {
     wikidata: RateLimitConfig;
     fanart: RateLimitConfig;
     itunes: RateLimitConfig;
+    acoustid: RateLimitConfig;
 }
 
 // Service-specific rate limit configurations
@@ -104,6 +105,13 @@ const SERVICE_CONFIGS: ServiceConfig = {
         interval: 3000,
         concurrency: 1,
         maxRetries: 2,
+        baseDelay: 2000,
+    },
+    acoustid: {
+        intervalCap: 3, // 3 requests per second - matches AcoustID's shared-client-key limit
+        interval: 1000,
+        concurrency: 1,
+        maxRetries: 1,
         baseDelay: 2000,
     },
 };

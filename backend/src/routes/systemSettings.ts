@@ -58,6 +58,7 @@ const systemSettingsSchema = z.object({
 
   fanartEnabled: z.boolean().optional(),
   fanartApiKey: z.string().nullable().optional(),
+  acoustidApiKey: z.string().nullable().optional(),
 
   // Last.fm
   lastfmApiKey: z.string().nullable().optional(),
@@ -159,6 +160,7 @@ router.get("/", async (req, res) => {
       lidarrWebhookSecret: safeDecrypt(settings.lidarrWebhookSecret),
       openaiApiKey: safeDecrypt(settings.openaiApiKey),
       fanartApiKey: safeDecrypt(settings.fanartApiKey),
+      acoustidApiKey: safeDecrypt(settings.acoustidApiKey),
       lastfmApiKey: safeDecrypt(settings.lastfmApiKey),
       lastfmApiSecret: safeDecrypt(settings.lastfmApiSecret),
       lastfmUserKey: safeDecrypt(settings.lastfmUserKey),
@@ -197,6 +199,8 @@ router.post("/", async (req, res) => {
       encryptedData.openaiApiKey = encrypt(data.openaiApiKey);
     if (data.fanartApiKey)
       encryptedData.fanartApiKey = encrypt(data.fanartApiKey);
+    if (data.acoustidApiKey)
+      encryptedData.acoustidApiKey = encrypt(data.acoustidApiKey);
     if (data.lastfmApiKey)
       encryptedData.lastfmApiKey = encrypt(data.lastfmApiKey);
     if (data.lastfmApiSecret)
