@@ -42,6 +42,11 @@ import { audioAnalysisCleanupService } from "../services/audioAnalysisCleanup";
 import { featureDetection } from "../services/featureDetection";
 import { musicBrainzService } from "../services/musicbrainz";
 import { trackIdentityService } from "../services/trackIdentity";
+import {
+    identifyTrackByAcoustid,
+    persistAcoustidFingerprint,
+    TrackIdentification,
+} from "../services/acoustidIdentification";
 import { precomputeProjection } from "../services/umapProjection";
 
 // Configuration
@@ -1071,19 +1076,41 @@ export async function enrichSingleTrack(trackId: string): Promise<void> {
         });
     }
 
-    // ISRC enrichment: if track has no ISRC, try MusicBrainz lookup
+    // ISRC enrichment: if track has no ISRC, identify the track AcoustID-first
+    // and fall back to the MusicBrainz text
+    // search. Every identity outcome is counted in
+    // kima_acoustid_track_identity_total (path/outcome labels).
     if (!track.isrc) {
-        try {
-            const recording = await musicBrainzService.searchRecording(
-                track.title,
-                track.album.artist.name,
-            );
-            if (recording) {
-                const isrcData = await musicBrainzService.getRecordingIsrc(recording.trackMbid);
+        let identified: TrackIdentification | null = null;
+        const features = await featureDetection.getFeatures();
+        if (features.fpcalc) {
+            identified = await identifyTrackByAcoustid({
+                id: track.id,
+                title: track.title,
+                filePath: track.filePath,
+                duration: track.duration,
+            });
+            if (identified?.fingerprint) {
+                await persistAcoustidFingerprint(track.id, identified.fingerprint);
+            }
+            if (identified) {
+                logger.debug(
+                    `[Track Enrichment] ${track.title}: AcoustID identified via ${identified.source} (recording ${identified.recordingMbid})`,
+                );
+            }
+        }
+
+        if (identified) {
+            try {
+                const isrcData = await musicBrainzService.getRecordingIsrc(
+                    identified.recordingMbid,
+                );
                 if (isrcData) {
                     await trackIdentityService.storeIsrc(track.id, isrcData, "musicbrainz");
                 }
-                const genreData = await musicBrainzService.getRecordingGenres(recording.trackMbid);
+                const genreData = await musicBrainzService.getRecordingGenres(
+                    identified.recordingMbid,
+                );
                 if (genreData && genreData.genres.length > 0) {
                     const topGenres = genreData.genres
                         .sort((a, b) => b.count - a.count)
@@ -1091,9 +1118,33 @@ export async function enrichSingleTrack(trackId: string): Promise<void> {
                         .map((g) => g.name);
                     await trackIdentityService.populateTrackGenres(track.id, topGenres);
                 }
+            } catch (err) {
+                logger.debug(`[Track Enrichment] ISRC lookup failed for ${track.title}: ${err}`);
             }
-        } catch (err) {
-            logger.debug(`[Track Enrichment] ISRC lookup failed for ${track.title}: ${err}`);
+        } else {
+            // Fallback: the pre-existing MusicBrainz title/artist search.
+            try {
+                const recording = await musicBrainzService.searchRecording(
+                    track.title,
+                    track.album.artist.name,
+                );
+                if (recording) {
+                    const isrcData = await musicBrainzService.getRecordingIsrc(recording.trackMbid);
+                    if (isrcData) {
+                        await trackIdentityService.storeIsrc(track.id, isrcData, "musicbrainz");
+                    }
+                    const genreData = await musicBrainzService.getRecordingGenres(recording.trackMbid);
+                    if (genreData && genreData.genres.length > 0) {
+                        const topGenres = genreData.genres
+                            .sort((a, b) => b.count - a.count)
+                            .slice(0, 5)
+                            .map((g) => g.name);
+                        await trackIdentityService.populateTrackGenres(track.id, topGenres);
+                    }
+                }
+            } catch (err) {
+                logger.debug(`[Track Enrichment] ISRC lookup failed for ${track.title}: ${err}`);
+            }
         }
     }
 }
