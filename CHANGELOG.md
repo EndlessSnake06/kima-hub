@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - nightly
 
+### Fixed
+
+- **Vibe similar-tracks no longer bury under-analyzed tracks.** The hybrid and features-only scorers treated a missing feature as a neutral 0.5 at full weight, so the weights only summed to 1.0 for a fully-analyzed library: a candidate missing the three largest feature weights could never score above ~0.865 where a fully-analyzed one could hit 1.0, however well it actually matched. Both paths now score a weighted MEAN over present features — a missing feature contributes nothing and its weight leaves the denominator (Borg, *Modern Multidimensional Scaling* §8.2; the same rule vibe v2's fusion design uses, a missing block drops out) — so candidates compete on everything that IS known, and a fully-analyzed library scores bit-for-bit as before (verified equal to 1e-9 on all 50 real candidates of the testbed library). When nothing is present at all the score falls back to the neutral 0.5. The features-only path also stops emitting a fabricated distance of 0 for every track: it now reports `1 - similarity`, a real complement.
+
 ## [1.10.1] - 2026-08-25
 
 ### Added
