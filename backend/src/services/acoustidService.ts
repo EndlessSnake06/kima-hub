@@ -67,6 +67,28 @@ class AcoustIDService {
     }
 
     /**
+     * Key precedence (mirrors lastfm.ts getSettings): an explicitly passed
+     * key wins, then the operator's encrypted SystemSettings value, then the
+     * baked config default. A settings read that fails or returns nothing
+     * degrades to the config key — this must never throw into the lookup
+     * path. getSystemSettings is lazily imported (same as lastfm.ts) to
+     * avoid an import cycle through the settings/encryption utils.
+     */
+    private async resolveApiKey(explicit?: string): Promise<string | undefined> {
+        if (explicit) return explicit;
+        try {
+            const { getSystemSettings } = await import("../utils/systemSettings");
+            const settings = await getSystemSettings();
+            if (settings?.acoustidApiKey) return settings.acoustidApiKey;
+        } catch (err: any) {
+            logger.debug(
+                `[AcoustID] Settings read failed, using config key: ${err?.message}`
+            );
+        }
+        return process.env.ACOUSTID_CLIENT_KEY || config.acoustid.clientKey;
+    }
+
+    /**
      * application/x-www-form-urlencoded encoding done by hand. URLSearchParams
      * would emit a literal '+' for the space inside the meta parameter, which
      * this server does not decode back to a space (see module docstring).
@@ -82,6 +104,11 @@ class AcoustIDService {
      *
      * @param duration Track length in seconds (AcoustID scores against it).
      * @param fingerprint Chromaprint fingerprint as produced by `fpcalc`.
+     * @param clientKey Optional client key when the caller already holds one
+     * (e.g. it just read SystemSettings for another reason). When omitted the
+     * key is resolved the same way lastfm.ts resolves its key: the encrypted
+     * SystemSettings row first, then the baked config default (env
+     * ACOUSTID_CLIENT_KEY overrides).
      * @returns The best matching recording + release-group identity, or null
      * when there is no confident match or the call failed. Null is the
      * contract that lets the caller fall through to MusicBrainz silently —
@@ -89,9 +116,10 @@ class AcoustIDService {
      */
     async lookup(
         duration: number,
-        fingerprint: string
+        fingerprint: string,
+        clientKey?: string
     ): Promise<AcoustIDResult | null> {
-        const apiKey = process.env.ACOUSTID_CLIENT_KEY || config.acoustid.clientKey;
+        const apiKey = await this.resolveApiKey(clientKey);
         if (!apiKey) {
             logger.debug("[AcoustID] No client key configured; skipping lookup");
             return null;

@@ -24,6 +24,10 @@
  *    WITHOUT throwing (the silent-fallthrough contract);
  *  - missing fingerprint or non-finite duration short-circuits to null
  *    without any HTTP call at all;
+ *  - key precedence (pattern of lastfmApiKey): the operator's key
+ *    from the encrypted SystemSettings row wins over the baked config
+ *    default, an explicitly passed key wins over both, and a failed or
+ *    empty settings read degrades to the config default without throwing;
  *  - the request body is form-encoded with meta=recordings%20releasegroups
  *    (a literal '+' is NOT form-decoded by the AcoustID server — verified
  *    live: it silently drops the recording data), the duration parameter
@@ -32,6 +36,44 @@
  */
 
 import { acoustidService } from "../acoustidService";
+import { config } from "../../config";
+
+// ── Mocks (must be registered before the imports above run them) ────
+
+jest.mock("../../utils/logger", () => ({
+    logger: {
+        debug: jest.fn(),
+        info: jest.fn(),
+        warn: jest.fn(),
+        error: jest.fn(),
+    },
+}));
+
+// Keep the unit suite hermetic: featureDetection (via utils/redis) would
+// otherwise construct a real Redis client at import time.
+jest.mock("../../utils/redis", () => ({
+    redisClient: { get: jest.fn().mockResolvedValue(null) },
+}));
+
+jest.mock("../../services/featureDetection", () => ({
+    featureDetection: { getFeatures: jest.fn().mockResolvedValue({ fpcalc: true }) },
+}));
+
+// Pass the request straight through: the real limiter's circuit breaker
+// trips on the burst a full suite generates and would reject later lookups.
+jest.mock("../../services/rateLimiter", () => ({
+    rateLimiter: {
+        execute: (_key: string, fn: () => unknown) => fn(),
+    },
+}));
+
+// The service lazily imports this (same pattern as lastfm.ts); the mock
+// stands in for the encrypted SystemSettings row.
+const mockGetSystemSettings = jest.fn().mockResolvedValue(null);
+jest.mock("../../utils/systemSettings", () => ({
+    getSystemSettings: (...args: unknown[]) => mockGetSystemSettings(...args),
+    invalidateSystemSettingsCache: jest.fn(),
+}));
 
 /**
  * The service builds its own axios instance in the constructor; tests inject
@@ -71,6 +113,7 @@ function recordingResult(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
     jest.clearAllMocks();
+    mockGetSystemSettings.mockResolvedValue(null);
 });
 
 describe("acoustidService.lookup", () => {
@@ -165,6 +208,58 @@ describe("acoustidService.lookup", () => {
         expect(body).toContain("client=");
         expect(config.headers["Content-Type"]).toBe(
             "application/x-www-form-urlencoded",
+        );
+    });
+});
+
+describe("acoustidService key precedence (spec D: pattern of lastfmApiKey)", () => {
+    it("sends the operator's SystemSettings key when one is stored", async () => {
+        const post = setupClient();
+        post.mockResolvedValue(lookupResponse([]));
+        mockGetSystemSettings.mockResolvedValue({ acoustidApiKey: "operator-key" });
+
+        await acoustidService.lookup(200, "fp");
+
+        // The mock must be consulted: proves the service actually reads the
+        // settings row (a service that ignored settings would still pass on
+        // the baked config default alone).
+        expect(mockGetSystemSettings).toHaveBeenCalled();
+        expect(post.mock.calls[0][1]).toContain("client=operator-key");
+    });
+
+    it("prefers an explicitly passed key over the settings value", async () => {
+        const post = setupClient();
+        post.mockResolvedValue(lookupResponse([]));
+        mockGetSystemSettings.mockResolvedValue({ acoustidApiKey: "operator-key" });
+
+        await acoustidService.lookup(200, "fp", "explicit-key");
+
+        const body: string = post.mock.calls[0][1];
+        expect(body).toContain("client=explicit-key");
+        expect(body).not.toContain("operator-key");
+    });
+
+    it("falls back to the baked config default when settings hold nothing", async () => {
+        const post = setupClient();
+        post.mockResolvedValue(lookupResponse([]));
+        mockGetSystemSettings.mockResolvedValue(null);
+
+        await acoustidService.lookup(200, "fp");
+
+        expect(post.mock.calls[0][1]).toContain(
+            `client=${config.acoustid.clientKey}`
+        );
+    });
+
+    it("falls back to the config default when the settings read throws (never propagates)", async () => {
+        const post = setupClient();
+        post.mockResolvedValue(lookupResponse([]));
+        mockGetSystemSettings.mockRejectedValue(new Error("db gone"));
+
+        // Empty results -> null, but the point is it must not THROW.
+        await expect(acoustidService.lookup(200, "fp")).resolves.toBeNull();
+        expect(post.mock.calls[0][1]).toContain(
+            `client=${config.acoustid.clientKey}`
         );
     });
 });
