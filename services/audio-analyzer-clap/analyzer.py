@@ -42,10 +42,24 @@ os.environ['OPENBLAS_NUM_THREADS'] = str(THREADS_PER_WORKER)
 os.environ['MKL_NUM_THREADS'] = str(THREADS_PER_WORKER)
 os.environ['NUMEXPR_MAX_THREADS'] = str(THREADS_PER_WORKER)
 
-import torch
-torch.set_num_threads(THREADS_PER_WORKER)
+# PyTorch is needed ONLY by the legacy torch backend. The shipped images run the
+# ONNX backend (CLAP_BACKEND=onnx) precisely so the PyTorch stack -- torch,
+# torchaudio, torchvision, laion-clap: several GB, and the source of the ARM
+# wheel failures and the eleven silently-failed nightly builds -- is not
+# installed at all. An unconditional import here made that impossible: a
+# torch-free image died at import with ModuleNotFoundError before it could do
+# anything. So the import is optional, and the torch path says so plainly when
+# it is asked for.
+try:
+    import torch
 
-DEVICE = torch.device('cpu')
+    torch.set_num_threads(THREADS_PER_WORKER)
+    DEVICE = torch.device('cpu')
+    TORCH_AVAILABLE = True
+except ImportError:  # ONNX-only image: torch is deliberately not installed
+    torch = None
+    DEVICE = None
+    TORCH_AVAILABLE = False
 
 import redis
 import psycopg2
@@ -67,10 +81,16 @@ SLEEP_INTERVAL = int(os.getenv('SLEEP_INTERVAL', '5'))
 NUM_WORKERS = int(os.getenv('NUM_WORKERS', '2'))
 BACKEND_URL = os.getenv('BACKEND_URL', 'http://backend:3006')
 MODEL_IDLE_TIMEOUT = int(os.getenv('MODEL_IDLE_TIMEOUT', '300'))
-# Swap the PyTorch CLAP model for the ONNX runtime backend
-# (Xenova clap-htsat-unfused, numerically verified identical).
-# Default is unchanged (PyTorch) for backward compatibility.
-CLAP_BACKEND = os.getenv('CLAP_BACKEND', 'torch').lower()
+# CLAP backend selection. ONNX is the default from v1.11.0: the shipped images
+# no longer install PyTorch (several GB, and the recurring source of ARM wheel
+# build failures), so 'torch' only exists in a build that deliberately puts the
+# PyTorch stack back -- the legacy path, see requirements-torch.txt.
+CLAP_BACKEND = os.getenv('CLAP_BACKEND', 'onnx').lower()
+if CLAP_BACKEND == 'torch' and not TORCH_AVAILABLE:
+    logger.error(
+        "CLAP_BACKEND=torch requested but PyTorch is not installed in this image; "
+        "no embeddings will be produced. Use CLAP_BACKEND=onnx (the default)."
+    )
 # Resolve the ONNX model path the same way the backend does: default to the
 # analyzer's own models/ directory (where the validated hf_audio.onnx lives),
 # overridable with CLAP_ONNX_MODEL_PATH.
@@ -239,7 +259,13 @@ class CLAPAnalyzer:
             if self.model is not None:
                 return
 
-            logger.info("Loading LAION CLAP model...")
+            logger.info("Loading LAION CLAP model (torch backend)...")
+            if not TORCH_AVAILABLE:
+                raise RuntimeError(
+                    "The torch CLAP backend was requested but PyTorch is not "
+                    "installed in this image (shipped images are ONNX-only). "
+                    "Set CLAP_BACKEND=onnx."
+                )
             try:
                 import laion_clap
 

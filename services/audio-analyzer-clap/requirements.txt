@@ -1,19 +1,24 @@
-# CLAP and ML
-laion-clap>=1.1.4
-torch>=2.0.0
-torchaudio>=2.0.0
-# laion_clap imports torchvision.ops.misc (clap_module/utils.py) but does not
-# declare it, so the image fails to build at the model-verification step with
-# "ModuleNotFoundError: No module named 'torchvision'". Pinned alongside torch
-# because the two must agree on their shared C++ ABI.
-torchvision>=0.15.0
-transformers>=4.30.0
+# CLAP and ML -- ONNX only.
+#
+# The PyTorch stack (torch, torchaudio, torchvision, laion-clap) is deliberately
+# NOT installed here. It cost several GB, its arm64 wheels are what broke the
+# multi-architecture builds, and it was the reason eleven nightly builds failed
+# silently. The shipped images run the ONNX backend (CLAP_BACKEND=onnx).
+#
+# The legacy torch backend still exists in the code for anyone who needs it;
+# install it on top of this file with: pip install -r requirements-torch.txt
 librosa>=0.10.0
 
-# ONNX backend for the CLAP audio encoder (CLAP_BACKEND=onnx, the release
-# default for the sweep). NOT optional: analyzer.py imports onnx_backend at
-# module load, and a fresh image without this silently fell back to torch
+# ONNX runtime powering both CLAP encoders (audio + text) under
+# CLAP_BACKEND=onnx. NOT optional: analyzer.py imports onnx_backend at module
+# load, and an image without this silently fell back to torch (the Sep-2026
 onnxruntime>=1.16
+
+# transformers supplies what the ONNX backends need and nothing more: the CLAP
+# mel feature extractor (ClapFeatureExtractor) for the audio encoder and the
+# text tokenizer (RobertaTokenizer) for the text encoder. Both are usable
+# without torch; the torch code path inside transformers is never called here.
+transformers>=4.30.0
 
 # Database and queue
 redis>=4.5.0

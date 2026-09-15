@@ -65,6 +65,12 @@ class OnnxCLAPBackend:
         self.model_path = model_path
         self._sess = None
         self._fe = None
+        # Counts how often an ONNX failure was papered over with a torch
+        # embedding. Any value above zero means ONNX did NOT do the work, which
+        # is precisely the state the parity harness must never mistake for a
+        # pass (it compares ONNX against a torch reference, so a fallback would
+        # score a perfect 1.0 while the ONNX engine was broken).
+        self.torch_fallback_count = 0
 
     def load_model(self) -> None:
         if self._sess is not None:
@@ -109,8 +115,19 @@ class OnnxCLAPBackend:
             spec = spec[:MAX_FRAMES, :]
         return spec[np.newaxis, np.newaxis, ...].astype(np.float32)  # [1,1,T,64]
 
-    def embed_audio(self, audio: np.ndarray) -> np.ndarray:
-        """Return a 512-d L2-normalized audio embedding for a 48k mono clip."""
+    def embed_audio(self, audio: np.ndarray,
+                    allow_torch_fallback: bool = False) -> np.ndarray:
+        """Return a 512-d L2-normalized audio embedding for a 48k mono clip.
+
+        On ONNX failure this RAISES by default rather than substituting a torch
+        embedding. Two reasons: an ONNX-only image has no torch to fall back to
+        (so the fallback would crash with a confusing ImportError instead of the
+        real cause), and a silent substitution is how this project previously
+        spent an entire testbed run measuring torch while reporting that it was
+        running ONNX. Callers that genuinely want the HF torch reference for
+        comparison (the parity harness) must ask for it explicitly, and should
+        check torch_fallback_count afterwards to prove ONNX did the work.
+        """
         self.load_model()
         inp = self._prepare_input(audio)
         try:
@@ -119,8 +136,19 @@ class OnnxCLAPBackend:
             vec = vec / (np.linalg.norm(vec) + EPS)
             return vec.astype(np.float32)
         except Exception as e:
-            logger.warning(f'ONNX embed failed ({e}); falling back to torch')
-            # Torch fallback: use HF torch reference path.
+            if not allow_torch_fallback:
+                raise RuntimeError(
+                    f'ONNX audio embedding failed ({e}) and the torch fallback is '
+                    'off. This image runs the ONNX backend; a failed window is a '
+                    'failed window and must not be replaced with a substitute '
+                    'vector. Pass allow_torch_fallback=True only in a harness that '
+                    'is explicitly comparing the two.'
+                ) from e
+            logger.warning(
+                f'ONNX embed failed ({e}); falling back to torch reference '
+                'embedding (explicitly requested)'
+            )
+            self.torch_fallback_count += 1
             return self._torch_fallback(audio)
 
     def _torch_fallback(self, audio: np.ndarray) -> np.ndarray:
