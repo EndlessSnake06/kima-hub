@@ -48,6 +48,10 @@ import debugRouter from "./routes/debug";
 import { subsonicRouter } from "./routes/subsonic/index";
 import { dataCacheService } from "./services/dataCache";
 import { enrichmentStateService } from "./services/enrichmentState";
+import {
+    checkEmbeddingWritePath,
+    reportEmbeddingWritePathAtStartup,
+} from "./services/embeddingsHealth";
 import { errorHandler } from "./middleware/errorHandler";
 import { requireAuth, requireAdmin, invalidateUserCache } from "./middleware/auth";
 import {
@@ -205,12 +209,26 @@ async function healthHandler(_req: express.Request, res: express.Response) {
         checks.redis = "error";
     }
 
+    // The embedding write path is reported but deliberately NOT part of the
+    // container health verdict: a broken vibe engine must not put the whole
+    // server into a 503 restart loop. It is here because its failure used to be
+    // invisible everywhere -- the analyzer's upsert can fail on every track
+    // while db, redis and the workers all report ok.
+    const embeddingCheck = await checkEmbeddingWritePath();
+
     const allOk = Object.values(checks).every((v) => v === "ok");
     res.status(allOk ? 200 : 503).json({
         status: allOk ? "ok" : "degraded",
         uptime: Math.floor(process.uptime()),
         version: config.version,
         ...checks,
+        embeddingWritePath: embeddingCheck.ok ? "ok" : "error",
+        ...(embeddingCheck.ok
+            ? {}
+            : {
+                  embeddingWritePathReason: embeddingCheck.reason,
+                  embeddingWritePathDetail: embeddingCheck.detail,
+              }),
     });
 }
 
@@ -447,6 +465,12 @@ async function main() {
     // Initialize music configuration (reads from SystemSettings)
     const { initializeMusicConfig } = await import("./config");
     await initializeMusicConfig();
+
+    // Verify that an audio embedding can actually be stored, and say so plainly
+    // in the log either way. This is the check whose absence let a rebuilt
+    // database store nothing for three weeks while db, redis and every worker
+    // reported healthy.
+    await reportEmbeddingWritePathAtStartup();
 
     // AcoustID feature detection: the fingerprint path is
     // ON only when the fpcalc binary is present. Missing binary = feature
