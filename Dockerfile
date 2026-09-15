@@ -142,18 +142,30 @@ COPY services/audio-analyzer/analyzer.py /app/audio-analyzer/
 # ============================================
 WORKDIR /app/audio-analyzer-clap
 
-# Copy CLAP analyzer script
+# Copy the CLAP analyzer -- BOTH files. analyzer.py imports onnx_backend at
+# module load (analyzer.py:77, unconditional), so an image that copies only
+# analyzer.py cannot start its CLAP analyzer at all: it dies with
+# "ModuleNotFoundError: No module named 'onnx_backend'" before doing any work.
 COPY services/audio-analyzer-clap/analyzer.py /app/audio-analyzer-clap/
+COPY services/audio-analyzer-clap/onnx_backend.py /app/audio-analyzer-clap/
 
-# Copy the validated ONNX model weights into place when they are present in the
-# build context (they are gitignored locally). The ONNX backend resolves
-# CLAP_ONNX_MODEL_PATH to /app/audio-analyzer-clap/models/hf_audio.onnx by
-# default, so the ONNX backend works out of the box in the container. Guarded
-# so the build does not fail when the model is not checked out.
-RUN mkdir -p /app/audio-analyzer-clap/models && \
-    if [ -d "services/audio-analyzer-clap/models" ]; then \
-        cp services/audio-analyzer-clap/models/*.onnx /app/audio-analyzer-clap/models/ 2>/dev/null || true; \
-    fi
+# Prove the analyzer is importable in the image, so a missing file fails the
+# build instead of shipping a dead analyzer. Needs no model weights.
+RUN cd /app/audio-analyzer-clap && \
+    python3 -c "import onnx_backend; print('[CLAP] onnx_backend importable ->', onnx_backend.ONNX_MODEL_PATH)"
+
+# ONNX model weights are NOT in this image.
+#
+# They are gitignored (services/audio-analyzer-clap/models/, ~620MB: hf_audio.onnx
+# 117MB + text_model.onnx 501MB), a COPY cannot be conditional, and a clean clone
+# has no copy of them -- so the previous "copy them if the directory exists" RUN
+# could never fire: a RUN executes inside the image, where the build context does
+# not exist, and it also swallowed failure with "|| true". It silently did nothing
+# every time. This image therefore runs the CLAP analyzer in its default torch
+# mode; under CLAP_BACKEND=onnx the analyzer refuses to start rather than falling
+# back silently. Shipping ONNX in this image needs the weights hosted somewhere
+# fetchable at build time with a pinned checksum (tracked as its own release task).
+RUN mkdir -p /app/audio-analyzer-clap/models
 
 # Create database readiness check script
 RUN cat > /app/wait-for-db.sh << 'EOF'
