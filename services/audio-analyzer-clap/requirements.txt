@@ -14,10 +14,10 @@ librosa>=0.10.0
 # load, and an image without this silently fell back to torch (the Sep-2026
 onnxruntime>=1.16
 
-# transformers supplies what the ONNX backends need and nothing more: the CLAP
-# mel feature extractor (ClapFeatureExtractor) for the audio encoder and the
-# text tokenizer (RobertaTokenizer) for the text encoder. Both are usable
-# without torch; the torch code path inside transformers is never called here.
+# transformers supplies what the ONNX backends need and nothing more: the
+# numpy audio_utils primitives used by our vendored clap_mel.py (bit-for-bit
+# equivalent of ClapFeatureExtractor's mel, which is torch-gated upstream on
+# every installable version) and the text tokenizer (RobertaTokenizer).
 transformers>=4.30.0
 
 # Database and queue

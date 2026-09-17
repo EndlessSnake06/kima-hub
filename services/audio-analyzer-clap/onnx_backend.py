@@ -80,10 +80,16 @@ class OnnxCLAPBackend:
             self.model_path, providers=['CPUExecutionProvider'])
         self._in_name = self._sess.get_inputs()[0].name
         self._out_name = self._sess.get_outputs()[0].name
-        # Lazy import HF feature extractor to build the mel spectrogram.
-        from transformers import ClapFeatureExtractor
-        self._fe = ClapFeatureExtractor.from_pretrained('laion/clap-htsat-unfused')
-        logger.info(f'ONNX CLAP backend loaded from {self.model_path}')
+        # Torch-free mel front-end (vendored; bit-for-bit parity with HF's
+        # ClapFeatureExtractor proven in test_clap_mel_parity.py). transformers
+        # gates that class behind PyTorch on every version we can install, so
+        # the shipped image cannot use it; audio_utils primitives are ungated.
+        import clap_mel
+        config_path = os.path.join(os.path.dirname(self.model_path),
+                                   'preprocessor_config.json')
+        self._fe = clap_mel.ClapMelExtractor(config_path=config_path)
+        logger.info(f'ONNX CLAP backend loaded from {self.model_path} '
+                    f'(torch-free mel via clap_mel)')
 
     def _mel_chunk(self, audio: np.ndarray) -> np.ndarray:
         """Use HF ClapFeatureExtractor to compute the log-mel for a 10s chunk.
@@ -92,13 +98,7 @@ class OnnxCLAPBackend:
         audio of <= 10s with the default truncation/padding.
         """
         clip = audio[:MAX_SAMPLES]
-        mel, _ = self._fe._get_input_mel(
-            clip,
-            max_length=self._fe.nb_max_samples,
-            truncation=self._fe.truncation,
-            padding=self._fe.padding,
-        )
-        return mel[0]  # [1001, 64]
+        return self._fe.get_input_mel(clip)[0]  # [1001, 64]
 
     def _prepare_input(self, audio: np.ndarray) -> np.ndarray:
         """Concatenate 10s-chunk mels, pad/truncate to 1001 frames total."""

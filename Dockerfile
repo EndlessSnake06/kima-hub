@@ -2,6 +2,40 @@
 # Contains: Backend, Frontend, PostgreSQL, Redis, Audio Analyzer (Essentia AI)
 # Usage: docker run -d -p 3030:3030 -v /path/to/music:/music kima/kima
 
+# ============================================================
+# CLAP ONNX BUILDER STAGE
+# Exports hf_audio.onnx (sha256 37df17afb9881569c4f50e5b691167aa54586418059701a74a54934514969972)
+# from the PUBLIC laion/clap-htsat-unfused checkpoint with a pinned toolchain.
+# Byte-reproducibility PROVEN on linux/amd64 and linux/arm64 (2026-09-16,
+# probes under ~/onnx-repro): same pins -> same bytes.
+# The sha gate below fails the build on any drift -- upstream checkpoint
+# revision, toolchain version, or export script change.
+FROM python:3.11-slim AS clap-onnx-builder
+WORKDIR /build
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates
+
+# Toolchain pins that reproduce the shipped export (torch 2.8.0 cpu +
+# transformers 4.57.6 + onnx; numpy<2 for the exporter stack).
+RUN pip3 install --no-cache-dir \
+    --index-url https://download.pytorch.org/whl/cpu \
+    --extra-index-url https://pypi.org/simple \
+    'torch==2.8.0' 'transformers==4.57.6' 'onnx' 'numpy<2'
+COPY services/audio-analyzer-clap/export_onnx.py .
+# Public checkpoint (revision 8fa0f1c6d0433df6e97c127f64b2a1d6c0dcda8a),
+# sha-gated so a moved/rewritten upstream file fails the build.
+RUN curl -fL --retry 5 --retry-delay 5 --retry-all-errors -o ckpt_pytorch_model.bin \
+        'https://huggingface.co/laion/clap-htsat-unfused/resolve/8fa0f1c6d0433df6e97c127f64b2a1d6c0dcda8a/pytorch_model.bin' \
+    && echo '1cd3c601bc4afe0fa87be3de4c13dd2cfadd249fac1e29acf74a9b296c3219bb  ckpt_pytorch_model.bin' | sha256sum -c - \
+    && curl -fL --retry 5 --retry-delay 5 --retry-all-errors -o ckpt/config.json \
+        'https://huggingface.co/laion/clap-htsat-unfused/resolve/8fa0f1c6d0433df6e97c127f64b2a1d6c0dcda8a/config.json' \
+    && echo '9efb9557bc804f2ca6e394486af2e45dfed0b18554909735a99c6220b84e4288  ckpt/config.json' | sha256sum -c - \
+    && curl -fL --retry 5 --retry-delay 5 --retry-all-errors -o ckpt/preprocessor_config.json \
+        'https://huggingface.co/laion/clap-htsat-unfused/resolve/8fa0f1c6d0433df6e97c127f64b2a1d6c0dcda8a/preprocessor_config.json' \
+    && echo '9739f58296aa6f9ac18008fd0150fb2649bc554985fbde86d0a4041c882ac753  ckpt/preprocessor_config.json' | sha256sum -c -
+RUN python3 export_onnx.py --src ckpt --out hf_audio.onnx \
+    && echo '37df17afb9881569c4f50e5b691167aa54586418059701a74a54934514969972  hf_audio.onnx' | sha256sum -c - \
+    && echo '[builder] hf_audio.onnx exported and sha-verified'
+
 FROM node:24-slim
 
 # Add PostgreSQL 16 repository (Debian Bookworm only has PG15 by default)
@@ -52,32 +86,27 @@ RUN pip3 install --no-cache-dir --break-system-packages \
     'bullmq==2.19.5' \
     'yt-dlp>=2024.12.0'
 
-# ML dependencies -- torch/torchaudio for CLAP, tensorflow/essentia for MusiCNN
-# CPU-only torch: install first via the CPU index so downstream packages
-# (laion-clap, transformers) reuse the already-installed CPU wheels.
+# ML dependencies -- ONNX for CLAP (audio + text), tensorflow/essentia for MusiCNN.
+# The PyTorch stack (torch/torchaudio/torchvision/laion-clap) is NOT installed:
+# since v1.11.0 the shipped images run the ONNX CLAP backend (CLAP_BACKEND=onnx,
+# the analyzer default) and are torch-free. The legacy torch backend remains
+# available in code; restore it with services/audio-analyzer-clap/requirements-torch.txt.
+# transformers supplies the tokenizer (RobertaTokenizer) for the text encoder
+# and the audio_utils numpy primitives used by our vendored clap_mel.py.
+# NOTE: ClapFeatureExtractor itself is torch-gated on EVERY version we can
+# install (verified 4.57.6 AND 5.8.1 raise ImportError without torch) -- the
+# shipped runtime does NOT use it; clap_mel.py reproduces its mel bit-for-bit
+# (proven, test_clap_mel_parity). 4.57.6 is the pin the parity was validated on.
 # tensorflow-cpu + essentia-tensorflow: no Linux ARM64 wheels exist upstream,
 # so MusiCNN audio analysis is unavailable on ARM64. CLAP still works.
-#
-# Pins omit the +cpu local version suffix so the same spec resolves on both
-# architectures. On amd64 the CPU index serves torch==2.5.1+cpu and PEP 440
-# matches without the local tag; on arm64 the same index serves torch==2.5.1
-# without any local tag -- the +cpu suffix only appears from torch 2.6.0+.
-# All three packages must be pinned together so pip resolves a compatible
-# set; unpinning torchaudio causes it to drift to newer versions with
-# mismatched torch ABI (the cause of #165 in v1.7.9).
 RUN pip3 install --no-cache-dir --break-system-packages \
-    --index-url https://download.pytorch.org/whl/cpu \
-    --extra-index-url https://pypi.org/simple \
-    'torch==2.5.1' \
-    'torchaudio==2.5.1' \
-    'torchvision==0.20.1' \
-    && pip3 install --no-cache-dir --break-system-packages \
-    'laion-clap>=1.1.4' \
-    'librosa>=0.10.0' \
-    'transformers==5.8.1'
+    'onnxruntime>=1.16' \
+    'transformers==4.57.6' \
+    'librosa>=0.10.0'
 # transformers pinned exact: newer releases reference torch.float8_e8m0fnu
-# (added in torch 2.7) at import and crash against the pinned torch==2.5.1.
-# 5.8.1 is the version running in prod against this torch. Bump only with torch.
+# (added in torch 2.7) at import and crash when torch is absent. 5.8.1 is the
+# version running in prod. Bump only together with a full ONNX re-validation
+# (see verify_runtime.py -- the build-time parity gate).
 
 # tensorflow-cpu + essentia-tensorflow (AMD64 only -- no ARM64 wheels upstream)
 RUN pip3 install --no-cache-dir --break-system-packages \
@@ -94,8 +123,8 @@ RUN pip3 uninstall -y pandas scipy numpy || true \
     'scipy==1.10.1' \
     'pandas==2.0.3'
 
-# Fail fast during build if CLAP/Transformers dependency resolution regresses.
-RUN python3 -c "import numpy, scipy, pandas, torch, torchaudio, laion_clap; from transformers import BertModel; print(f'CLAP deps OK: torch={torch.__version__} torchaudio={torchaudio.__version__} numpy={numpy.__version__} scipy={scipy.__version__} pandas={pandas.__version__}')"
+# Fail fast during build if the CLAP ONNX runtime stack imports cleanly.
+RUN python3 -c "import numpy, scipy, pandas, onnxruntime, librosa, transformers; from transformers import RobertaTokenizer; from transformers.audio_utils import spectrogram, mel_filter_bank, window_function; print(f'CLAP ONNX deps OK: ort={onnxruntime.__version__} transformers={transformers.__version__} numpy={numpy.__version__}')" 
 
 # Cleanup
 RUN pip cache purge \
@@ -127,10 +156,6 @@ RUN echo "Downloading ML models..." && \
         "https://essentia.upf.edu/models/classification-heads/deam/deam-msd-musicnn-2.pb" && \
     curl -fL --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30 --speed-limit 1024 --speed-time 60 -o /app/models/emomusic-msd-musicnn-2.pb \
         "https://essentia.upf.edu/models/classification-heads/emomusic/emomusic-msd-musicnn-2.pb" && \
-    curl -fL --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30 --speed-limit 1024 --speed-time 60 -o /tmp/clap_full.pt \
-        "https://huggingface.co/lukewys/laion_clap/resolve/main/music_audioset_epoch_15_esc_90.14.pt" && \
-    python3 -c "import torch; ckpt = torch.load('/tmp/clap_full.pt', map_location='cpu', weights_only=False); torch.save({'state_dict': ckpt['state_dict']}, '/app/models/music_audioset_epoch_15_esc_90.14.pt')" && \
-    rm /tmp/clap_full.pt && \
     echo "All ML models downloaded" && \
     ls -lh /app/models/
 
@@ -142,30 +167,74 @@ COPY services/audio-analyzer/analyzer.py /app/audio-analyzer/
 # ============================================
 WORKDIR /app/audio-analyzer-clap
 
-# Copy the CLAP analyzer -- BOTH files. analyzer.py imports onnx_backend at
-# module load (analyzer.py:77, unconditional), so an image that copies only
+# Copy the CLAP analyzer -- BOTH runtime modules. analyzer.py imports
+# onnx_backend at module load (unconditional), so an image that copies only
 # analyzer.py cannot start its CLAP analyzer at all: it dies with
 # "ModuleNotFoundError: No module named 'onnx_backend'" before doing any work.
+# verify_runtime.py + test_fixtures ride along for the build-time parity gate.
 COPY services/audio-analyzer-clap/analyzer.py /app/audio-analyzer-clap/
 COPY services/audio-analyzer-clap/onnx_backend.py /app/audio-analyzer-clap/
+COPY services/audio-analyzer-clap/clap_mel.py /app/audio-analyzer-clap/
+COPY services/audio-analyzer-clap/verify_runtime.py /app/audio-analyzer-clap/
+COPY services/audio-analyzer-clap/test_fixtures/ /app/audio-analyzer-clap/test_fixtures/
 
 # Prove the analyzer is importable in the image, so a missing file fails the
 # build instead of shipping a dead analyzer. Needs no model weights.
-RUN cd /app/audio-analyzer-clap && \
-    python3 -c "import onnx_backend; print('[CLAP] onnx_backend importable ->', onnx_backend.ONNX_MODEL_PATH)"
+RUN cd /app/audio-analyzer-clap &&     python3 -c "import onnx_backend; print('[CLAP] onnx_backend importable')"
 
-# ONNX model weights are NOT in this image.
+# ============================================================
+# CLAP ONNX WEIGHTS -- PUBLIC SOURCES ONLY, SHA-GATED
 #
-# They are gitignored (services/audio-analyzer-clap/models/, ~620MB: hf_audio.onnx
-# 117MB + text_model.onnx 501MB), a COPY cannot be conditional, and a clean clone
-# has no copy of them -- so the previous "copy them if the directory exists" RUN
-# could never fire: a RUN executes inside the image, where the build context does
-# not exist, and it also swallowed failure with "|| true". It silently did nothing
-# every time. This image therefore runs the CLAP analyzer in its default torch
-# mode; under CLAP_BACKEND=onnx the analyzer refuses to start rather than falling
-# back silently. Shipping ONNX in this image needs the weights hosted somewhere
-# fetchable at build time with a pinned checksum (tracked as its own release task).
-RUN mkdir -p /app/audio-analyzer-clap/models
+# hf_audio.onnx comes from the builder stage (deterministic export of the
+# public laion/clap-htsat-unfused checkpoint, revision 8fa0f1c6..., sha-gated
+# there). text_model.onnx is byte-identical to Xenova/clap-htsat-unfused's
+# public ONNX text export (sha 6df7c51f...; the graph validated at cosine
+# 1.0000 against laion_clap torch, text_parity_gate.py 2026-09-10).
+# A tampered or moved upstream file FAILS THE BUILD on checksum mismatch.
+RUN mkdir -p /app/audio-analyzer-clap/models \
+    && curl -fL --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30 --speed-limit 1024 --speed-time 60 \
+        -o /app/audio-analyzer-clap/models/text_model.onnx \
+        'https://huggingface.co/Xenova/clap-htsat-unfused/resolve/main/onnx/text_model.onnx' \
+    && echo '6df7c51f2d78e236a03f2b816e613d538c815639d13644fe7c2124f439da9648  /app/audio-analyzer-clap/models/text_model.onnx' | sha256sum -c - \
+    && ls -lh /app/audio-analyzer-clap/models/
+COPY --from=clap-onnx-builder /build/hf_audio.onnx /app/audio-analyzer-clap/models/hf_audio.onnx
+
+# ============================================================
+# OFFLINE HUGGINGFACE CACHE (boot without network)
+# The runtime lazily loads two HF artifacts at first use:
+#   clap_mel.ClapMelExtractor (reads the laion preprocessor_config.json only)
+#   RobertaTokenizer.from_pretrained('roberta-base')  (text tokenizer)
+# Without a baked cache the first embedding requires huggingface.co to be up.
+# Pin the exact revisions; sha-gate every file.
+RUN LAION='https://huggingface.co/laion/clap-htsat-unfused/resolve/8fa0f1c6d0433df6e97c127f64b2a1d6c0dcda8a' \
+    && ROB='https://huggingface.co/roberta-base/resolve/e2da8e2f811d1448a5b465c236feacd80ffbac7b' \
+    && LDIR='/root/.cache/huggingface/hub/models--laion--clap-htsat-unfused' \
+    && RDIR='/root/.cache/huggingface/hub/models--roberta-base' \
+    && mkdir -p "$LDIR/snapshots/8fa0f1c6d0433df6e97c127f64b2a1d6c0dcda8a" "$LDIR/refs" \
+              "$RDIR/snapshots/e2da8e2f811d1448a5b465c236feacd80ffbac7b" "$RDIR/refs" \
+    && printf '%s' '8fa0f1c6d0433df6e97c127f64b2a1d6c0dcda8a' > "$LDIR/refs/main" \
+    && printf '%s' 'e2da8e2f811d1448a5b465c236feacd80ffbac7b' > "$RDIR/refs/main" \
+    && curl -fsSL --retry 5 --retry-all-errors -o "$LDIR/snapshots/8fa0f1c6d0433df6e97c127f64b2a1d6c0dcda8a/preprocessor_config.json" "$LAION/preprocessor_config.json" \
+    && echo '9739f58296aa6f9ac18008fd0150fb2649bc554985fbde86d0a4041c882ac753  '"$LDIR"'/snapshots/8fa0f1c6d0433df6e97c127f64b2a1d6c0dcda8a/preprocessor_config.json' | sha256sum -c - \
+    && LS="$LDIR/snapshots/8fa0f1c6d0433df6e97c127f64b2a1d6c0dcda8a" RS="$RDIR/snapshots/e2da8e2f811d1448a5b465c236feacd80ffbac7b" \
+    && curl -fsSL --retry 5 --retry-all-errors -o "$RS/vocab.json" "$ROB/vocab.json" \
+    && echo '9e7f63c2d15d666b52e21d250d2e513b87c9b713cfa6987a82ed89e5e6e50655  '"$RS"'/vocab.json' | sha256sum -c - \
+    && curl -fsSL --retry 5 --retry-all-errors -o "$RS/merges.txt" "$ROB/merges.txt" \
+    && echo '1ce1664773c50f3e0cc8842619a93edc4624525b728b188a9e0be33b7726adc5  '"$RS"'/merges.txt' | sha256sum -c - \
+    && curl -fsSL --retry 5 --retry-all-errors -o "$RS/tokenizer.json" "$ROB/tokenizer.json" \
+    && echo '847bbeab6174d66a88898f729d52fa8d355fafe1bea101cf960dd404581df70e  '"$RS"'/tokenizer.json' | sha256sum -c - \
+    && curl -fsSL --retry 5 --retry-all-errors -o "$RS/tokenizer_config.json" "$ROB/tokenizer_config.json" \
+    && echo '994f46754c5bf4014f1aa92d34b1374319c3a6b3f702105cd5b742beaecd18ce  '"$RS"'/tokenizer_config.json' | sha256sum -c -
+
+# ============================================================
+# BUILD-TIME PARITY GATE
+# Embed the tracked fixtures through the image's own runtime stack (offline --
+# HF_HUB_OFFLINE=1 proves the baked cache suffices) and require cosine
+# >= 0.999 against expected_onnx_embeddings.npy, which was produced by the
+# VALIDATED pipeline. Any preprocessing/toolchain drift fails the build.
+# Also exercises the text encoder end to end.
+RUN cd /app/audio-analyzer-clap \
+    && HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python3 verify_runtime.py
 
 # Create database readiness check script
 RUN cat > /app/wait-for-db.sh << 'EOF'
