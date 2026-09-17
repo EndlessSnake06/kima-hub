@@ -23,9 +23,14 @@ RUN pip3 install --no-cache-dir \
 COPY services/audio-analyzer-clap/export_onnx.py .
 # Public checkpoint (revision 8fa0f1c6d0433df6e97c127f64b2a1d6c0dcda8a),
 # sha-gated so a moved/rewritten upstream file fails the build.
-RUN curl -fL --retry 5 --retry-delay 5 --retry-all-errors -o ckpt_pytorch_model.bin \
+# NOTE: mkdir -p ckpt is required — curl -o does NOT create parent dirs
+# (error 23 "Failed to open the file ... No such file or directory").
+# All three files must live INSIDE ckpt/ — from_pretrained('ckpt') finds
+# weights only in the snapshot dir, not alongside it.
+RUN mkdir -p ckpt \
+    && curl -fL --retry 5 --retry-delay 5 --retry-all-errors -o ckpt/pytorch_model.bin \
         'https://huggingface.co/laion/clap-htsat-unfused/resolve/8fa0f1c6d0433df6e97c127f64b2a1d6c0dcda8a/pytorch_model.bin' \
-    && echo '1cd3c601bc4afe0fa87be3de4c13dd2cfadd249fac1e29acf74a9b296c3219bb  ckpt_pytorch_model.bin' | sha256sum -c - \
+    && echo '1cd3c601bc4afe0fa87be3de4c13dd2cfadd249fac1e29acf74a9b296c3219bb  ckpt/pytorch_model.bin' | sha256sum -c - \
     && curl -fL --retry 5 --retry-delay 5 --retry-all-errors -o ckpt/config.json \
         'https://huggingface.co/laion/clap-htsat-unfused/resolve/8fa0f1c6d0433df6e97c127f64b2a1d6c0dcda8a/config.json' \
     && echo '9efb9557bc804f2ca6e394486af2e45dfed0b18554909735a99c6220b84e4288  ckpt/config.json' | sha256sum -c - \

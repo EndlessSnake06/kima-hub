@@ -21,3 +21,8 @@ coverage
 __tests__
 android
 ios
+
+# Local model caches / weights -- the image must build from repo files only
+# (builder stage exports + sha-gated downloads). Keep out of build context.
+services/audio-analyzer-clap/cache
+services/audio-analyzer-clap/models
