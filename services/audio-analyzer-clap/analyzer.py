@@ -692,10 +692,17 @@ class DatabaseConnection:
             options="-c client_encoding=UTF8"
         )
         self.conn.set_client_encoding('UTF8')
-        self.conn.autocommit = False
 
-        # Register pgvector type
+        # Register pgvector type. This issues a SELECT on pg_type; on a
+        # non-autocommit connection that opens a transaction which -- on the
+        # boot-time idle-monitor connection that never runs another statement
+        # -- sits 'idle in transaction' for the life of the container
+        # (observed 2026-09-13, xact_age ~2 days, last query = pg_type
+        # SELECT). Register under autocommit, then return
+        # to explicit transactions.
+        self.conn.autocommit = True
         register_vector(self.conn)
+        self.conn.autocommit = False
 
         logger.info("Connected to PostgreSQL with pgvector support")
 
@@ -1405,23 +1412,6 @@ def main():
                 if idle_seconds >= MODEL_IDLE_TIMEOUT > 0:
                     analyzer.unload_model()
                     logger.info(f"Model idle for {idle_seconds:.0f}s, unloaded to free memory (will reload when work arrives)")
-                elif idle_seconds >= MODEL_IDLE_TIMEOUT:
-                    # All embedding work done and idle long enough -- unload
-                    try:
-                        cursor = idle_db.get_cursor()
-                        cursor.execute("""
-                            SELECT COUNT(*) as cnt FROM "Track" t
-                            LEFT JOIN track_embeddings te ON t.id = te.track_id
-                            WHERE te.track_id IS NULL AND t."filePath" IS NOT NULL
-                        """)
-                        remaining = cursor.fetchone()['cnt']
-                        cursor.close()
-                        if remaining == 0:
-                            analyzer.unload_model()
-                            logger.info("All tracks have embeddings and idle for 5min, model unloaded")
-                    except Exception as e:
-                        logger.debug(f"Idle check failed: {e}")
-                        idle_db.reconnect()
     except KeyboardInterrupt:
         logger.info("Keyboard interrupt received")
         stop_event.set()
