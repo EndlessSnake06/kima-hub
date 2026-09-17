@@ -209,7 +209,7 @@ export function WhatsNewWindow({
                 <footer className="shrink-0 px-6 py-4 border-t border-white/10 flex items-center justify-between gap-4">
                     <p className="text-xs leading-relaxed text-[var(--text-muted)]">
                         {asks.length === 0
-                            ? "Nothing to decide here."
+                            ? "Nothing to decide here. (or press Esc)"
                             : unanswered > 0
                               ? `If you close now, ${unanswered === asks.length ? "these stay" : "the rest stay"} off. You can change your mind in Settings whenever.`
                               : "You can change your mind in Settings whenever."}

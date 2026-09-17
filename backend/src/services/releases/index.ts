@@ -26,7 +26,13 @@ export async function pendingReleases(userId: string): Promise<Release[]> {
         select: { version: true },
     });
     const seen = new Set(acked.map((a) => a.version));
-    return RELEASES.filter((r) => !seen.has(r.version));
+    // Sort oldest-first explicitly rather than trusting the catalog's array
+    // order: the array is edited newest-entry-first by habit, and a reader
+    // who has been away for three versions must meet them in the order they
+    // happened, answering the older consent questions before the newer ones.
+    return RELEASES.filter((r) => !seen.has(r.version)).sort((a, b) =>
+        a.date === b.date ? a.version.localeCompare(b.version) : a.date < b.date ? -1 : 1,
+    );
 }
 
 /**
