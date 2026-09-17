@@ -122,8 +122,20 @@ test.describe("Testbed dogfood: fresh install", () => {
                     ? s.status === "completed"
                     : false;
                 if (finished || (audioTotal > 0 && audioFinished >= audioTotal && Number(audio.processing ?? 0) === 0)) {
-                    done = true;
-                    break;
+                    // Audio done ≠ pipeline done: the vibe phase (CLAP
+                    // embeddings + UMAP projection) runs after audio. Wait
+                    // for the vibe subsystem's authoritative signal.
+                    const v = await page.request.get("/api/vibe/status", {
+                        headers: { Authorization: `Bearer ${token}` },
+                    });
+                    if (v.ok()) {
+                        const vs = await v.json();
+                        console.log(`[testbed][vibe] embedded=${vs.embeddedTracks ?? 0}/${vs.totalTracks ?? 0} progress=${vs.progress ?? 0}%`);
+                        if (vs.isComplete) {
+                            done = true;
+                            break;
+                        }
+                    }
                 }
             }
             await page.waitForTimeout(15000);
@@ -133,6 +145,13 @@ test.describe("Testbed dogfood: fresh install", () => {
 
     test("5. vibe map: renders with embeddings present", async () => {
         await page.goto(baseUrl + "/vibe");
+        // First visit since the release may show the release-notes dialog
+        // ("What counts as a play") which masks the page — dismiss it.
+        const close = page.getByRole("button", { name: "Close" });
+        if (await close.count()) {
+            await close.first().click();
+            await page.waitForTimeout(1000);
+        }
         await expect(page.locator("canvas").first()).toBeVisible({ timeout: 60000 });
     });
 
