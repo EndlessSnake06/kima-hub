@@ -113,10 +113,12 @@ test.describe("Dogfood: stats, filters, audit, queue", () => {
             // After an upgrade the What's New dialog opens over everything on
             // first login, so every later journey would be clicking through a
             // modal. Closing it is part of a real first session, not a
-            // workaround — and it is worth knowing this gates the whole app.
-            const dialog = page.getByRole("dialog", { name: /what counts as a play/i });
+            // workaround — and it's worth knowing this gates the whole app.
+            // Match ANY release window: the title changes per release and the
+            // spec must not break the day a new one ships.
+            const dialog = page.locator('div[role="dialog"][aria-labelledby="whats-new-title"]');
             if (await dialog.isVisible().catch(() => false)) {
-                await page.getByRole("button", { name: /^close$/i }).click();
+                await page.locator('div[role="dialog"] button[aria-label="Close"]').first().click();
                 await expect(dialog).toBeHidden({ timeout: 10_000 });
             } else {
                 session.noteNotCovered("no release window was shown on this instance");
@@ -330,11 +332,16 @@ test.describe("Dogfood: stats, filters, audit, queue", () => {
             // The bar says the ordinal of the play in progress, which is one
             // past the completed count. Silent on a first listen.
             if (plays >= 1) {
-                const ordinal = new RegExp(`\\b${plays + 1}(st|nd|rd|th) play\\b`);
+                const n = plays + 1;
+                const suffix = n % 10 === 1 && n % 100 !== 11 ? "st"
+                    : n % 10 === 2 && n % 100 !== 12 ? "nd"
+                    : n % 10 === 3 && n % 100 !== 13 ? "rd"
+                    : "th";
+                const ordinal = new RegExp(`\\b${n}(${suffix}) play\\b`);
                 await expect
                     .poll(async () => (await page.locator("body").innerText()).replace(/\s+/g, " "), {
                         timeout: 20_000,
-                        message: `the player bar should state the ${plays + 1}th play`,
+                        message: `the player bar should state the ${n}${suffix} play`,
                     })
                     .toMatch(ordinal);
 
@@ -357,6 +364,17 @@ test.describe("Dogfood: stats, filters, audit, queue", () => {
 
     test("6. the queue limit is a setting, and the server enforces it", async () => {
         session.setJourney("6. Queue limit");
+
+        // Journeys 4-5 leave the player running. A playing page persists its
+        // own queue on every auto-advance, which races this journey's API
+        // probe and overwrites it (observed: probe saved 10025 -> clamped
+        // 10000, then the live player's 8-track queue landed before the
+        // read-back). Pause first so nothing writes during the probe.
+        const pause = page.getByTitle("Pause", { exact: true });
+        if (await pause.isVisible({ timeout: 2000 }).catch(() => false)) {
+            await pause.click().catch(() => {});
+            await settle(page, 1500);
+        }
 
         await session.step("the server publishes the limit it will honour", async () => {
             const res = await page.request.get(`/api/playback-state/limit`, {
