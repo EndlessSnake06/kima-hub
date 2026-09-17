@@ -31,7 +31,18 @@ import { api } from "@/lib/api";
 
 type ReleaseItem =
     | { kind: "note"; key: string; title: string; body: string; label?: string }
-    | { kind: "action"; key: string; title: string; body: string; cta: string; settingsPath?: string }
+    | {
+          kind: "action";
+          key: string;
+          title: string;
+          body: string;
+          cta: string;
+          settingsPath?: string;
+          runsFromWindow?: boolean;
+          confirmTitle?: string;
+          confirmMessage?: string;
+          confirmLabel?: string;
+      }
     | {
           kind: "choice";
           key: string;
@@ -76,9 +87,15 @@ export function WhatsNewWindow({
     }, [release.version, onClose]);
 
     // Escape closes, and closing is a real answer -- same path as the button, so
-    // the two can never diverge.
+    // the two can never diverge. While a nested confirm is open (the
+    // run-from-window action), Escape belongs to it alone; the gate tells the
+    // window to hold off by setting data-confirming on the scrim.
     useEffect(() => {
-        const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") void close(); };
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key !== "Escape") return;
+            if (document.querySelector("[data-nested-confirm='true']")) return;
+            void close();
+        };
         window.addEventListener("keydown", onKey);
         return () => window.removeEventListener("keydown", onKey);
     }, [close]);
@@ -94,7 +111,7 @@ export function WhatsNewWindow({
 
     return (
         <div
-            className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center bg-black/70 p-0 sm:p-6"
+            className="fixed inset-0 z-(--z-modal) flex items-end sm:items-center justify-center bg-black/70 p-0 sm:p-6"
             role="dialog"
             aria-modal="true"
             aria-labelledby="whats-new-title"

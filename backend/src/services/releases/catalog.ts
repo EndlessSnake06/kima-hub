@@ -46,6 +46,15 @@ export type ReleaseItem =
           cta: string;
           /** Where it lives permanently, once the window is gone. */
           settingsPath?: string;
+          /**
+           * The action can be run directly from the window (behind a confirm)
+           * rather than only linking to its permanent home. When true the gate
+           * renders a run control below the CTA link.
+           */
+          runsFromWindow?: boolean;
+          confirmTitle?: string;
+          confirmMessage?: string;
+          confirmLabel?: string;
       }
     | {
           kind: "choice";
@@ -79,7 +88,7 @@ export const RELEASES: Release[] = [
         version: "1.11.0",
         title: "A page that knows your habits",
         summary:
-            "There's a Stats page now — what you actually listen to, counted honestly — plus a lighter analyzer and a one-off repair for plays the old rule got wrong.",
+            "There's a Stats page now, and it only counts what you actually listened to. The analyzer got lighter too, and there's a one-off repair for plays the old rule got wrong.",
         date: "2026-09-17",
         items: [
             {
@@ -88,9 +97,8 @@ export const RELEASES: Release[] = [
                 label: "New",
                 title: "The Stats page",
                 body:
-                    "Everything on it is computed from your own listening: what you replay most, which artists carry half of everything you play, " +
-                    "how much of your library has never been heard, and how your habits shift between weeks, months, and all time. " +
-                    "The numbers come from one shared definition of a listen, so the page, the player, and the API can't drift apart again.",
+                    "What you replay most. Which artists carry half of everything you play. How much of your library has never been heard, and how your habits shift between weeks, months, and all time. " +
+                    "Every figure comes from one shared definition of a listen, so the page, the player, and the API can't drift apart again.",
             },
             {
                 kind: "note",
@@ -98,8 +106,8 @@ export const RELEASES: Release[] = [
                 label: "New",
                 title: "Play counts live in the player",
                 body:
-                    "The full player now shows how many times you've heard the current track, and the chart behind it is the same data the Stats page uses — " +
-                    "not a copy of it, the same source. Tracks you haven't played yet say so instead of showing a zero.",
+                    "The full player now tells you how many times you've heard the current track, pulled from the same counts the Stats page reads. " +
+                    "Tracks you haven't played yet say so instead of showing a zero.",
             },
             {
                 kind: "note",
@@ -131,6 +139,11 @@ export const RELEASES: Release[] = [
                     "It re-embeds every track, which is CPU-intensive and can take a long time on a large library. Your music and everything else about it is untouched.",
                 cta: "Rebuild your embeddings",
                 settingsPath: "/settings#cache",
+                runsFromWindow: true,
+                confirmTitle: "Rebuild your embeddings?",
+                confirmMessage:
+                    "This wipes all vibe embeddings and re-embeds every track with the new analyzer. It runs in the background on your server; a large library can take hours. Your music files are untouched.",
+                confirmLabel: "Rebuild embeddings",
             },
         ],
     },
@@ -179,6 +192,11 @@ export const RELEASES: Release[] = [
                     "It re-embeds every track, which is CPU-intensive and can take a long time on a large library. Your music and everything else about it is untouched.",
                 cta: "Rebuild your embeddings",
                 settingsPath: "/settings#cache",
+                runsFromWindow: true,
+                confirmTitle: "Rebuild your embeddings?",
+                confirmMessage:
+                    "This wipes all vibe embeddings and re-embeds every track with the new analyzer. It runs in the background on your server; a large library can take hours. Your music files are untouched.",
+                confirmLabel: "Rebuild embeddings",
             },
         ],
     },
