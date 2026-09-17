@@ -1015,7 +1015,20 @@ router.post("/subscribe", requireAuth, async (req, res) => {
             },
             message: "Subscribed successfully",
         });
-    } catch (error) {
+    } catch (error: any) {
+        // A feed that cannot be fetched or parsed is the feed being
+        // unavailable, not the server failing. The status-code rule: an
+        // upstream 4xx surfaces as a 4xx here, never a 500 — a dead URL and a
+        // broken database must not look the same to the client.
+        if (
+            error instanceof Error &&
+            error.message.startsWith("Failed to parse podcast feed")
+        ) {
+            return res.status(422).json({
+                error: "Podcast feed could not be read",
+                detail: error.message,
+            });
+        }
         safeError(res, "Error subscribing to podcast", error);
     }
 });
