@@ -18,6 +18,7 @@ interface SyncResult {
     failed: number;
     skipped: number;
     errors: string[];
+    pruned?: number;
 }
 
 class AudiobookCacheService {
@@ -58,6 +59,7 @@ class AudiobookCacheService {
             synced: 0,
             failed: 0,
             skipped: 0,
+            pruned: 0,
             errors: [],
         };
 
@@ -106,6 +108,30 @@ class AudiobookCacheService {
                 result.errors.forEach((err) => logger.debug(`  - ${err}`));
             }
 
+            // Prune: books that ABS no longer returns must not live forever.
+            // Guard the DESTRUCTIVE case: an empty live set almost certainly
+            // means the ABS fetch failed or the server is down mid-sync --
+            // pruning then would wipe the library. A legitimate bulk removal
+            // looks like a collapse, so a percentage gate would block the
+            // real 4050->240 case; empty-set refusal is the honest line.
+            if (audiobooks.length === 0) {
+                logger.warn(
+                    "[AUDIOBOOK] ABS returned an empty library; skipping prune " +
+                    "(refusing to delete everything on a possibly-failed fetch)"
+                );
+            } else {
+                const liveIds = audiobooks.map((b: any) => b.id);
+                const pruned = await prisma.audiobook.deleteMany({
+                    where: { id: { notIn: liveIds } },
+                });
+                if (pruned.count > 0) {
+                    result.pruned = pruned.count;
+                    logger.info(
+                        `[AUDIOBOOK] Pruned ${pruned.count} audiobooks no longer present in Audiobookshelf`
+                    );
+                }
+            }
+
             return result;
         } catch (error: any) {
             logger.error(" Audiobook sync failed:", error);
@@ -125,18 +151,33 @@ class AudiobookCacheService {
             return false;
         }
 
-        // Skip books whose source files are missing on disk (ABS marks them isMissing).
+        // Books whose source files are missing on disk (ABS marks them
+        // isMissing) are dead in ABS: DELETE the row instead of skipping it,
+        // so removing a book's files clears it from Kima rather than leaving
+        // a stale row forever. Listening progress survives:
+        // AudiobookProgress.audiobookshelfId is a plain String, no FK.
         if (book.isMissing) {
-            logger.debug(`  Skipping audiobook ${book.id} - source files missing`);
+            const deleted = await prisma.audiobook.deleteMany({
+                where: { id: book.id },
+            });
+            if (deleted.count > 0) {
+                logger.info(
+                    `[AUDIOBOOK] Pruned missing audiobook ${book.id} (${title})`
+                );
+            }
             return false;
         }
 
         const author = metadata.authorName || metadata.author || null;
         const narrator = metadata.narratorName || metadata.narrator || null;
         const description = metadata.description || null;
-        const publishedYear = metadata.publishedYear
-            ? parseInt(metadata.publishedYear)
+        // Year strings may be bracketed by taggers ("(2008)") -- parseInt
+        // returns NaN on a leading paren and the year is silently lost.
+        // Extract the first 4-digit run instead.
+        const yearMatch = metadata.publishedYear
+            ? String(metadata.publishedYear).match(/\d{4}/)
             : null;
+        const publishedYear = yearMatch ? parseInt(yearMatch[0], 10) : null;
         const publisher = metadata.publisher || null;
         const isbn = metadata.isbn || null;
         const asin = metadata.asin || null;
@@ -464,14 +505,29 @@ class AudiobookCacheService {
         }
 
         const audiobooks = await prisma.audiobook.findMany({
-            select: { localCoverPath: true },
+            select: { id: true, localCoverPath: true },
         });
 
+        // Keep-list must cover rows with NULL localCoverPath too: the cover
+        // endpoint serves files found on disk even when the column is unset
+        // (routes/audiobooks.ts falls back to a directory probe), so a NULL
+        // row can still have a live cover file. Keep every cache file whose
+        // id-prefixed name matches a live row; only delete files that
+        // correspond to no live audiobook id at all.
         const validCoverPaths = new Set(
             audiobooks
                 .filter((a) => a.localCoverPath)
                 .map((a) => path.basename(a.localCoverPath!))
         );
+        // Cover files are named <audiobookId>.<ext> by ensureCoverCacheDir's
+        // writer; keep any file matching a live id regardless of the column.
+        const liveIds = new Set(audiobooks.map((a) => a.id));
+        for (const file of await fs.readdir(this.coverCacheDir)) {
+            const stem = file.replace(/\.[^.]+$/, "");
+            if (liveIds.has(stem)) {
+                validCoverPaths.add(file);
+            }
+        }
 
         let deleted = 0;
         try {
