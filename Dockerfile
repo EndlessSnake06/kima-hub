@@ -490,12 +490,22 @@ MIGRATIONS_EXIST=$(gosu postgres psql -d kima -tAc "SELECT EXISTS (SELECT FROM i
 # Check if User table exists (indicates existing data)
 USER_TABLE_EXIST=$(gosu postgres psql -d kima -tAc "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'User')" 2>/dev/null || echo "f")
 
-# Handle rename migration for existing databases
-echo "Checking if rename migration needs to be marked as applied..."
-if gosu postgres psql -d kima -tAc "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='SystemSettings' AND column_name='soulseekFallback');" 2>/dev/null | grep -q 't'; then
-    echo "Old column exists, marking migration as applied..."
-    gosu postgres psql -d kima -c "INSERT INTO \"_prisma_migrations\" (id, checksum, finished_at, migration_name, logs, rolled_back_at, started_at, applied_steps_count) VALUES (gen_random_uuid(), '', NOW(), '20250101000000_rename_soulseek_fallback', '', NULL, NOW(), 1) ON CONFLICT DO NOTHING;" 2>/dev/null || true
-fi
+# Resolve the soulseekFallback/primaryFailureFallback column split before
+# `prisma migrate deploy` runs. This REPLACES the old boot hack that INSERTed a
+# fake _prisma_migrations row on every start (163 accumulated on prod; the
+# rename was suppressed forever, so the condition never went false).
+#
+# Why psql instead of relying on the migration alone: the bogus rows in
+# _prisma_migrations mark the 20250101000000 rename as APPLIED, so
+# `migrate deploy` skips it and would also skip the new 20260916000000
+# corrective migration ONLY on databases where it already ran. Running the
+# resolution here, guarded, means every boot converges to the correct state
+# (column resolved + bogus rows gone) and the corrective migration remains a
+# no-op everywhere it has already run. The `|| true` keeps a wedge in this
+# legacy-compat step from ever blocking boot; the corrective migration logs
+# what it did via RAISE NOTICE.
+echo "Resolving soulseekFallback column split (idempotent)..."
+gosu postgres psql -d kima -f /app/backend/prisma/migrations/20260916000000_resolve_soulseek_fallback_split/migration.sql 2>&1 || true
 
 if [ "$MIGRATIONS_EXIST" = "t" ]; then
     # Normal migration flow - migrations table exists
