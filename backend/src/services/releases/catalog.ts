@@ -76,6 +76,65 @@ export interface Release {
 
 export const RELEASES: Release[] = [
     {
+        version: "1.11.0",
+        title: "A page that knows your habits",
+        summary:
+            "There's a Stats page now — what you actually listen to, counted honestly — plus a lighter analyzer and a one-off repair for plays the old rule got wrong.",
+        date: "2026-09-17",
+        items: [
+            {
+                kind: "note",
+                key: "stats.page",
+                label: "New",
+                title: "The Stats page",
+                body:
+                    "Everything on it is computed from your own listening: what you replay most, which artists carry half of everything you play, " +
+                    "how much of your library has never been heard, and how your habits shift between weeks, months, and all time. " +
+                    "The numbers come from one shared definition of a listen, so the page, the player, and the API can't drift apart again.",
+            },
+            {
+                kind: "note",
+                key: "player.playcounts",
+                label: "New",
+                title: "Play counts live in the player",
+                body:
+                    "The full player now shows how many times you've heard the current track, and the chart behind it is the same data the Stats page uses — " +
+                    "not a copy of it, the same source. Tracks you haven't played yet say so instead of showing a zero.",
+            },
+            {
+                kind: "note",
+                key: "clap.onnx",
+                label: "Changed",
+                title: "The vibe analyzer is lighter now",
+                body:
+                    "Swapped the audio analyzer to ONNX — lighter and more stable across devices, including Apple silicon. Existing fingerprints are outdated.",
+            },
+            {
+                kind: "action",
+                key: "plays.repair",
+                title: "Fix your old play counts",
+                body:
+                    "Plays recorded under the old rule (a play was logged the moment a track started loading, skip or not) are still in your history. " +
+                    "There's a tool on the Stats page that finds them: it looks for a play followed seconds later by a different track — the signature of a skip — " +
+                    "shows you exactly what it found, and only removes what it can prove. Your music files are never touched.\n\n" +
+                    "You can run it from here once, or from the Stats page whenever you like.",
+                cta: "Take me to it",
+                settingsPath: "/stats#false-starts",
+            },
+            {
+                kind: "action",
+                key: "clap.reembed",
+                title: "Rebuild your embeddings",
+                body:
+                    "The old fingerprints were made with the previous analyzer, so they no longer line up with the new one. Rebuilding them makes similarity search " +
+                    "and the vibe features accurate again.\n\n" +
+                    "It re-embeds every track, which is CPU-intensive and can take a long time on a large library. Your music and everything else about it is untouched.",
+                cta: "Rebuild your embeddings",
+                settingsPath: "/settings#cache",
+            },
+        ],
+    },
+    {
         version: "1.10.1",
         title: "What counts as a play",
         summary:
