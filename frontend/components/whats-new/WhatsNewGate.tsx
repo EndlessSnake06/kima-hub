@@ -29,6 +29,16 @@ interface Release {
 
 export function WhatsNewGate() {
     const [queue, setQueue] = useState<Release[]>([]);
+    // A CTA click ("Take me to it") sets a session-scoped defer flag: the user
+    // asked to act on this release NOW, so the remaining windows must not
+    // follow them to the destination page. sessionStorage survives the route
+    // change (component state does not — the gate remounts) and dies with the
+    // tab, so the windows return next visit, still unanswered. Dismissing the
+    // window normally never sets the flag; the queue keeps advancing in-session.
+    const [deferred, setDeferred] = useState(() => {
+        if (typeof window === "undefined") return false;
+        return window.sessionStorage.getItem("whatsnew.deferred") === "1";
+    });
     const [confirming, setConfirming] = useState(false);
     const [running, setRunning] = useState<string | null>(null);
     const [started, setStarted] = useState<string | null>(null);
@@ -49,7 +59,7 @@ export function WhatsNewGate() {
         return () => { cancelled = true; };
     }, []);
 
-    if (queue.length === 0) return null;
+    if (queue.length === 0 || deferred) return null;
     const [current, ...rest] = queue;
 
     const reembed = current.items.find(
@@ -76,6 +86,7 @@ export function WhatsNewGate() {
     return (
         <>
             <WhatsNewWindow
+                key={current.version}
                 release={current}
                 onClose={() => setQueue(rest)}
                 renderAction={(item) =>
@@ -85,6 +96,11 @@ export function WhatsNewGate() {
                     // a second copy of a destructive tool is worse.
                     <a
                         href="/stats#false-starts"
+                        onClick={() => {
+                            window.sessionStorage.setItem("whatsnew.deferred", "1");
+                            setDeferred(true);
+                            void api.post(`/whats-new/${current.version}/dismiss`, {});
+                        }}
                         className="self-start h-11 px-4 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-white text-sm font-medium flex items-center transition-colors"
                     >
                         {item.cta}
