@@ -1747,6 +1747,16 @@ class ApiClient {
         return this.post("/notifications/clear-all");
     }
 
+    // Last.fm nudge
+
+    async getLastfmNudgeStatus(): Promise<{ ready: boolean }> {
+        return this.get("/lastfm/nudge/status");
+    }
+
+    async acknowledgeLastfmNudge(): Promise<{ acknowledged: boolean }> {
+        return this.post("/lastfm/nudge/ack");
+    }
+
     // Download Activity
     async getActiveDownloads(): Promise<
         Array<{

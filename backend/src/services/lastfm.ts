@@ -107,23 +107,108 @@ class LastFmService {
 
     private async request<T = any>(params: Record<string, any>) {
         await this.ensureInitialized();
-        const response = await rateLimiter.execute("lastfm", () =>
-            this.client.get<T>("/", { params })
-        );
+        const response = await rateLimiter.execute("lastfm", async () => {
+            const res = await this.client.get<T>("/", { params });
 
-        // Last.fm reports failures in the response body ({ error, message }),
-        // even when the HTTP status is 200. Surface them as thrown errors so
-        // callers can't mistake an error body for empty successful data.
-        const data = response.data;
-        if (data && typeof data === "object") {
-            // T is caller-supplied and unbounded; cast to the error body shape for inspection.
-            const body = data as unknown as { error?: number; message?: string };
-            if (body.error) {
-                throw new Error(`Last.fm API error ${body.error}: ${body.message}`);
+            // Last.fm reports failures in the response body ({ error, message }),
+            // even when the HTTP status is 200. Surface them as thrown errors so
+            // callers can't mistake an error body for empty successful data.
+            //
+            // NOTE: the body-error check lives inside the execute() callback so
+            // that body-derived rate-limit errors (e.g. error 29) flow through
+            // the isRateLimit gate in rateLimiter.ts and get backoff /
+            // circuit-breaking. ( Previously the throw happened after execute()
+            // returned, so error 29 never reached the limiter's isRateLimit
+            // check, and bulk enrichment kept hammering the exhausted shared
+            // default key at full speed. )
+            const data = res.data;
+            if (data && typeof data === "object") {
+                // T is caller-supplied and unbounded; cast to the error body shape for inspection.
+                const body = data as unknown as { error?: number; message?: string };
+                if (body.error) {
+                    // Let the rate-limit path handle error 29 so the limiter
+                    // engages backoff / circuit-breaker instead of the caller
+                    // just hammering again immediately.
+                    if (body.error === 29) {
+                        this.trackRateLimit29OnCurrentKey(this.apiKey);
+                    }
+                    throw new Error(`Last.fm API error ${body.error}: ${body.message}`);
+                }
             }
+
+            return res;
+        });
+
+        return response.data;
+    }
+
+    /**
+     * Track error 29 (rate limit) occurrences on the currently-used API key.
+     *
+     * When error 29 repeats on the SHARED DEFAULT key specifically, the app
+     * surfaces a one-time nudge telling the user to add their own free
+     * Last.fm API key (Settings > AI Services). The default key is baked into
+     * config.ts and shared with every other Kima install using the same
+     * default, so it exhausts quickly under bulk enrichment.
+     *
+     * The counter is static (shared across the single LastFmService singleton)
+     * and the seed/activation is gated by a cooldown so the nudge fires at
+     * most once per cooldown window (per server lifetime, reset on ack).
+     */
+    private static RATE_LIMIT_NUDGE_THRESHOLD = 3; // error-29 hits to trigger
+    private static RATE_LIMIT_NUDGE_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24h
+
+    private static nudgeCount = 0;
+    private static nudgeReady = false;
+    private static lastNudgedAt = 0;
+
+    /** Returns true while a nudge is pending to be surfaced. */
+    static needsNudge(): boolean {
+        return LastFmService.nudgeReady;
+    }
+
+    /** Acknowledge / dismiss the pending nudge. */
+    static acknowledgeNudge(): void {
+        LastFmService.nudgeReady = false;
+        LastFmService.nudgeCount = 0;
+    }
+
+    /**
+     * Called from request() when body.error === 29. Only the default key
+     * (config.lastfm.apiKey) triggers the nudge path — a user-provided key
+     * being rate limited is a different, per-user situation.
+     */
+    private trackRateLimit29OnCurrentKey(apiKey: string): void {
+        // Only track / nudge for the shared default key.
+        if (apiKey !== config.lastfm.apiKey) {
+            return;
         }
 
-        return data;
+        // Already ready to surface — nothing more to do until acked.
+        if (LastFmService.nudgeReady) {
+            return;
+        }
+
+        LastFmService.nudgeCount++;
+
+        if (
+            LastFmService.nudgeCount >= LastFmService.RATE_LIMIT_NUDGE_THRESHOLD
+        ) {
+            const now = Date.now();
+            // Only fire once per cooldown window.
+            if (
+                LastFmService.lastNudgedAt === 0 ||
+                now - LastFmService.lastNudgedAt >
+                    LastFmService.RATE_LIMIT_NUDGE_COOLDOWN_MS
+            ) {
+                LastFmService.nudgeReady = true;
+                LastFmService.lastNudgedAt = now;
+                LastFmService.nudgeCount = 0;
+                logger.warn(
+                    "[Last.fm] Default API key rate limited 3x — a nudge is now ready to be surfaced (Settings > AI Services)."
+                );
+            }
+        }
     }
 
     async getSimilarArtists(
@@ -1138,3 +1223,6 @@ class LastFmService {
 }
 
 export const lastFmService = new LastFmService();
+
+// Re-exported for callers that need the static members (e.g. nudge flag).
+export { LastFmService };

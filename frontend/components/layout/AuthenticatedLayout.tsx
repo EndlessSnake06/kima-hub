@@ -9,6 +9,7 @@ import { TVLayout } from "./TVLayout";
 import { BottomNavigation } from "./BottomNavigation";
 import { UniversalPlayer } from "../player/UniversalPlayer";
 import { MediaControlsHandler } from "../player/MediaControlsHandler";
+import { LastfmNudgeBanner } from "@/components/ui/LastfmNudgeBanner";
 import { WhatsNewGate } from "@/components/whats-new/WhatsNewGate";
 import { PlayerModeWrapper } from "../player/PlayerModeWrapper";
 import { ActivityPanel } from "./ActivityPanel";
@@ -111,6 +112,7 @@ export function AuthenticatedLayout({ children }: { children: ReactNode }) {
                     </a>
                     <MediaControlsHandler />
                     <WhatsNewGate />
+                    <LastfmNudgeBanner />
                     <TVLayout>{children}</TVLayout>
                 </PlayerModeWrapper>
             );
@@ -129,6 +131,7 @@ export function AuthenticatedLayout({ children }: { children: ReactNode }) {
                     <div className="h-screen bg-black overflow-hidden flex flex-col">
                         <MediaControlsHandler />
                     <WhatsNewGate />
+                    <LastfmNudgeBanner />
                         <TopBar />
 
                         {/* Sidebar - renders MobileSidebar for hamburger menu */}
@@ -181,6 +184,7 @@ export function AuthenticatedLayout({ children }: { children: ReactNode }) {
                 >
                     <MediaControlsHandler />
                     <WhatsNewGate />
+                    <LastfmNudgeBanner />
                     <TopBar />
                     <div className="flex-1 flex gap-2 p-2 pt-0 overflow-hidden">
                         <Sidebar />
