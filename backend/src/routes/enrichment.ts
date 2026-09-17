@@ -123,10 +123,20 @@ router.post("/stop", requireAdmin, async (req, res) => {
  */
 router.post("/full", requireAdmin, async (req, res) => {
   try {
-    // This runs in the background
-    runFullEnrichment().catch((err) => {
-      logger.error("Full enrichment error:", err);
-    });
+    // Await the FIRST PHASE (state init + resets) before answering. The old
+    // fire-and-forget returned 200 "started" before runFullEnrichment did
+    // anything; an immediate throw (bad DB write) still showed "started" and
+    // the failure only surfaced in logs after the response went out. The whole
+    // run is still not awaited (it is hours) -- only until it has committed
+    // its resets or failed trying.
+    const firstPhase = runFullEnrichment();
+    const started = await Promise.race([
+      enrichmentStateService.waitForStatus(["running", "failed"], 15_000).catch(() => null),
+      firstPhase.then(() => "done").catch(() => "failed"),
+    ]);
+    if (started === "failed") {
+      return res.status(500).json({ error: "Full enrichment failed to start (see server logs)" });
+    }
 
     res.json({
       message: "Full enrichment started",
@@ -385,11 +395,16 @@ router.post("/start", async (req, res) => {
       });
     }
 
-    // Run via unified worker (handles state, failures, notifications)
-    runFullEnrichment().catch((err) => {
-      logger.error("Background enrichment failed:", err);
-    });
-
+    // Run via unified worker (handles state, failures, notifications).
+    // Await first-phase truth instead of an unconditional 200 (see /full).
+    const firstPhase = runFullEnrichment();
+    const started = await Promise.race([
+      enrichmentStateService.waitForStatus(["running", "failed"], 15_000).catch(() => null),
+      firstPhase.then(() => "done").catch(() => "failed"),
+    ]);
+    if (started === "failed") {
+      return res.status(500).json({ error: "Enrichment failed to start (see server logs)" });
+    }
     res.json({
       success: true,
       message: "Library enrichment started in background",

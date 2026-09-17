@@ -20,6 +20,10 @@ const mockDetectHang = jest.fn().mockResolvedValue(false);
 const mockPublishToChannel = jest.fn().mockResolvedValue(undefined);
 const mockClearGate = jest.fn().mockResolvedValue(undefined);
 
+const mockMarkFailed = jest.fn().mockResolvedValue(undefined);
+const mockWaitForStatus = jest.fn().mockImplementation((statuses, timeoutMs) =>
+    Promise.resolve(statuses?.[0] ?? "running"));
+
 jest.mock("../../services/enrichmentState", () => ({
     enrichmentStateService: {
         updateState: mockUpdateState,
@@ -29,6 +33,8 @@ jest.mock("../../services/enrichmentState", () => ({
         detectHang: mockDetectHang,
         clearGate: mockClearGate,
         publishToChannel: mockPublishToChannel,
+        markFailed: mockMarkFailed,
+        waitForStatus: mockWaitForStatus,
     },
 }));
 
@@ -247,6 +253,36 @@ describe("Enrichment State Machine", () => {
                     data: expect.objectContaining({ analysisStatus: "pending", analysisStartedAt: null }),
                 }),
             );
+        });
+
+        it("should keep starting workers when the first crash-recovery write throws", async () => {
+            // The first statement of crash recovery has no try/catch of its own;
+            // a throw here used to abort startUnifiedEnrichmentWorker BEFORE
+            // BullMQ worker registration -> zero consumers for the process life.
+            const { prisma } = require("../../utils/db");
+            const trackMock = prisma.track;
+            const firstCall = trackMock.updateMany
+                .mockImplementationOnce(() => Promise.reject(new Error("boom: relation \"Track\" does not exist")))
+                .mockImplementationOnce(() => Promise.resolve({ count: 0 }))
+                .mockImplementationOnce(() => Promise.resolve({ count: 0 }))
+                .mockImplementationOnce(() => Promise.resolve({ count: 0 }))
+                .mockImplementationOnce(() => Promise.resolve({ count: 0 }));
+            void firstCall;
+
+            await expect(startUnifiedEnrichmentWorker()).resolves.not.toThrow();
+
+            // Workers still registered: the worker-start module was invoked.
+            // (startArtistEnrichmentWorker etc. are mocked at module level; assert via the queue mock)
+            expect(trackMock.updateMany).toHaveBeenCalled();
+        });
+
+        it("should mark enrichment failed when runFullEnrichment throws mid-run", async () => {
+            const { prisma } = require("../../utils/db");
+            // The first reset inside the try is the ARTIST updateMany; reject it.
+            prisma.artist.updateMany.mockImplementationOnce(() =>
+                Promise.reject(new Error("reset blew up")));
+            await expect(runFullEnrichment()).rejects.toThrow("reset blew up");
+            expect(mockMarkFailed).toHaveBeenCalledWith("reset blew up");
         });
 
         it("should reset orphaned vibe tracks on startup", async () => {

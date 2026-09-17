@@ -305,7 +305,17 @@ export async function startUnifiedEnrichmentWorker() {
 
      // Crash recovery: reset orphaned entities stuck mid-processing from a previous crash
      // Include "queued" -- Redis queue may have been lost during restart
-     const orphanedAudio = await prisma.track.updateMany({
+     // WRAPPED (2026-09-17): a throw here used to abort startUnifiedEnrichmentWorker()
+     // BEFORE the BullMQ workers registered -- one bad write at boot left zero
+     // consumers for the life of the process. Recovery is best-effort: log and
+     // continue so the workers always come up.
+     let orphanedAudio = { count: 0 };
+     let orphanedVibe = { count: 0 };
+     let orphanedArtists = { count: 0 };
+     let orphanedQueued = { count: 0 };
+     let orphanedScan = { count: 0 };
+     try {
+     orphanedAudio = await prisma.track.updateMany({
          where: { analysisStatus: { in: ["processing", "queued"] } },
          data: { analysisStatus: "pending", analysisStartedAt: null, analysisRetryCount: 0 },
      });
@@ -320,20 +330,20 @@ export async function startUnifiedEnrichmentWorker() {
      } catch (err) {
          logger.warn(`[Enrichment] Failed to flush audio:analysis:queue on crash recovery: ${(err as Error).message}`);
      }
-     const orphanedVibe = await prisma.track.updateMany({
+     orphanedVibe = await prisma.track.updateMany({
          where: { vibeAnalysisStatus: "processing" },
          data: { vibeAnalysisStatus: "pending", vibeAnalysisStartedAt: null },
      });
-     const orphanedArtists = await prisma.artist.updateMany({
+     orphanedArtists = await prisma.artist.updateMany({
          where: { enrichmentStatus: "enriching" },
          data: { enrichmentStatus: "pending" },
      });
-     const orphanedQueued = await prisma.track.updateMany({
+     orphanedQueued = await prisma.track.updateMany({
          where: { lastfmTags: { has: "_queued" } },
          data: { lastfmTags: [] },
      });
      // Crash recovery: reset tracks stuck in "validating" (scan queue may be lost)
-     const orphanedScan = await prisma.track.updateMany({
+     orphanedScan = await prisma.track.updateMany({
          where: { scanStatus: "validating" },
          data: { scanStatus: "pending", scanError: null },
      });
@@ -341,6 +351,11 @@ export async function startUnifiedEnrichmentWorker() {
      if (totalOrphaned > 0) {
          logger.info(
              `[Enrichment] Crash recovery: reset ${orphanedAudio.count} audio, ${orphanedVibe.count} vibe, ${orphanedArtists.count} artists, ${orphanedQueued.count} _queued, ${orphanedScan.count} scan tracks`
+         );
+     }
+     } catch (recoveryErr) {
+         logger.error(
+             `[Enrichment] Crash recovery failed (continuing worker startup anyway): ${(recoveryErr as Error).message}`
          );
      }
 
@@ -557,6 +572,7 @@ export async function runFullEnrichment(): Promise<{
     await clearPauseState();
 
     // Initialize state for new enrichment
+    try {
     await enrichmentStateService.initializeState();
 
     // Reset all statuses to pending
@@ -592,6 +608,19 @@ export async function runFullEnrichment(): Promise<{
     const result = await runEnrichmentCycle(true);
 
     return result;
+    } catch (err) {
+        // A throw here used to pin state at running forever (initializeState
+        // had already written status=running; nothing ever moved it again, and
+        // detectHang needs 15 min of silence to flag). Mark failed so the UI
+        // and the ops tooling see the truth immediately.
+        logger.error(`[Enrichment] FULL ENRICHMENT FAILED: ${(err as Error).message}`);
+        try {
+            await enrichmentStateService.markFailed((err as Error).message);
+        } catch (markErr) {
+            logger.error(`[Enrichment] ...and marking state failed also failed: ${(markErr as Error).message}`);
+        }
+        throw err;
+    }
 }
 
 /**

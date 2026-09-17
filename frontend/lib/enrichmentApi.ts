@@ -7,7 +7,7 @@
 import { api } from "./api";
 
 export interface EnrichmentState {
-    status: "idle" | "running" | "paused" | "stopping";
+    status: "idle" | "running" | "paused" | "stopping" | "failed";
     startedAt?: string;
     pausedAt?: string;
     stoppedAt?: string;
