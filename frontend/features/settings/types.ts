@@ -24,6 +24,7 @@ export interface SystemSettings {
     fanartEnabled: boolean;
     fanartApiKey: string;
     lastfmApiKey: string;
+    acoustidApiKey: string | null;
     // Audiobookshelf
     audiobookshelfEnabled: boolean;
     audiobookshelfUrl: string;

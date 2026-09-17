@@ -13,6 +13,7 @@ const defaultSystemSettings: SystemSettings = {
     fanartEnabled: false,
     fanartApiKey: "",
     lastfmApiKey: "",
+        acoustidApiKey: "",
     audiobookshelfEnabled: false,
     audiobookshelfUrl: "http://localhost:13378",
     audiobookshelfApiKey: "",

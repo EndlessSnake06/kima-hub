@@ -133,6 +133,25 @@ export function AIServicesSection({ settings, onUpdate, onTest, isTesting }: AIS
                     </div>
                 )}
             </div>
+
+            {/* AcoustID */}
+            <div className="mt-6 pt-6 border-t border-white/5">
+                <div className="mb-4">
+                    <p className="text-xs text-[var(--text-muted)]">
+                        AcoustID identifies tracks by their audio fingerprint. Add your own API key for higher rate limits.
+                    </p>
+                </div>
+
+                <SettingsRow label="AcoustID API Key (Optional)">
+                    <SettingsInput
+                        type="password"
+                        value={settings.acoustidApiKey || ""}
+                        onChange={(v) => onUpdate({ acoustidApiKey: v })}
+                        placeholder="Optional: Your AcoustID API key"
+                        className="w-64"
+                    />
+                </SettingsRow>
+            </div>
         </SettingsSection>
     );
 }
