@@ -15,6 +15,23 @@ const eslintConfig = defineConfig([
       }],
     },
   },
+  {
+    // The r3f galaxy rig mutates ref-derived three.js state (materials,
+    // camera, OrbitControls, pointer/gesture refs) from inside `useFrame`
+    // and DOM gesture callbacks -- both run OUTSIDE React's render phase,
+    // so react-hooks/immutability's "no mutating
+    // hook-argument-derived values" concern (aimed at render-phase purity)
+    // doesn't apply. This is the imperative r3f per-frame update idiom;
+    // the unified repo's eslint carries the same carve-out for these files.
+    files: [
+      "features/vibe/scenes/galaxy/GalaxyScene.tsx",
+      "features/vibe/scenes/galaxy/useGalaxyFrame.ts",
+      "features/vibe/scenes/galaxy/useGalaxyInteraction.ts",
+    ],
+    rules: {
+      "react-hooks/immutability": "off",
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:

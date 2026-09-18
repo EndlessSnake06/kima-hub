@@ -20,7 +20,7 @@ import { Loader2, X } from "lucide-react";
 type VibeView = "map" | "galaxy";
 
 const GalacticMap = dynamic(
-    () => import("@/features/vibe/scenes/GravityGridScene").then(m => ({ default: m.GravityGridScene })),
+    () => import("@/features/vibe/scenes/galaxy/GalaxyScene").then(m => ({ default: m.GalaxyScene })),
     { ssr: false },
 );
 
