@@ -33,6 +33,7 @@ interface ServiceConfig {
     fanart: RateLimitConfig;
     itunes: RateLimitConfig;
     acoustid: RateLimitConfig;
+    listenbrainz: RateLimitConfig;
 }
 
 // Service-specific rate limit configurations
@@ -112,6 +113,13 @@ const SERVICE_CONFIGS: ServiceConfig = {
         interval: 1000,
         concurrency: 1,
         maxRetries: 1,
+        baseDelay: 2000,
+    },
+    listenbrainz: {
+        intervalCap: 1, // ListenBrainz asks clients for at most 1 request/second
+        interval: 1100, // Slightly over 1 second to be safe
+        concurrency: 1,
+        maxRetries: 2,
         baseDelay: 2000,
     },
 };

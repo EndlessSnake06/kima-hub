@@ -87,6 +87,7 @@ model Artist {
   ownedAlbums         OwnedAlbum[]
   similarFrom         SimilarArtist[]          @relation("FromArtist")
   similarTo           SimilarArtist[]          @relation("ToArtist")
+  artistEmbedding     ArtistEmbedding?
 
   @@index([enrichmentStatus])
   @@index([enrichmentStatus, lastEnriched])
@@ -700,6 +701,9 @@ model SystemSettings {
   lastfmApiSecret             String?
   lastfmUserKey               String?
   lastfmEnabled               Boolean?
+  // ListenBrainz user token (encrypted). Replaces the Last.fm scrobble
+  // stack: submitted via services/listenBrainz.ts when set.
+  listenbrainzUserToken       String?
   publicUrl                   String?
   registrationOpen            Boolean  @default(false)
   lidarrQualityProfileId      Int?
@@ -1000,6 +1004,17 @@ model TrackEmbedding {
   @@index([embedding])
   @@index([model_version])
   @@map("track_embeddings")
+}
+
+model ArtistEmbedding {
+  artistId    String   @id
+  embedding   Unsupported("vector(512)")
+  computedAt  DateTime @default(now()) @db.Timestamptz(6)
+  trackCount  Int      @default(0)
+  artist      Artist   @relation(fields: [artistId], references: [id], onDelete: Cascade)
+
+  @@index([embedding])
+  @@map("artist_embeddings")
 }
 
 model TrackLyrics {
