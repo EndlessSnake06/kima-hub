@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 /**
  * Testbed dogfood addendum — the removal fixes as real UI journeys.
@@ -31,7 +31,7 @@ function escapeRegExp(s: string): string {
  * controls: an X (aria-label "Close") and a footer "Done"/"Close" button —
  * both disabled while `closing` runs, and consent items may need answering.
  */
-async function dismissWhatsNew(page: any): Promise<void> {
+async function dismissWhatsNew(page: Page): Promise<void> {
     for (let i = 0; i < 6; i++) {
         const dialog = page.locator('div[role="dialog"][aria-labelledby="whats-new-title"]');
         if (!(await dialog.count())) return;
@@ -45,7 +45,7 @@ async function dismissWhatsNew(page: any): Promise<void> {
 }
 
 test.describe.serial("Testbed removals", () => {
-    let page: any;
+    let page: Page;
     let token = "";
     let podcastId = "";
     let podcastTitle = "";
@@ -58,7 +58,7 @@ test.describe.serial("Testbed removals", () => {
         await page.getByRole("button", { name: /sign in|log in/i }).click();
         await page.waitForURL(/\/(home|sync|)$/, { timeout: 30_000 });
         await dismissWhatsNew(page);
-        token = await page.evaluate(() => localStorage.getItem("auth_token"));
+        token = (await page.evaluate(() => localStorage.getItem("auth_token"))) ?? "";
         expect(token, "login should yield an auth token").toBeTruthy();
     });
 
@@ -69,11 +69,11 @@ test.describe.serial("Testbed removals", () => {
         });
         expect(top.status(), `discover returned ${top.status()}`).toBe(200);
         const body = await top.json();
-        const list = Array.isArray(body) ? body : (body.podcasts ?? []);
-        const pick = list.find((p: any) => (p.feedUrl ?? p.rssUrl ?? p.feed ?? "").startsWith("https://"));
+        const list: Array<{ id?: string; feedUrl?: string; rssUrl?: string; feed?: string; title?: string }> = Array.isArray(body) ? body : (body.podcasts ?? []);
+        const pick = list.find((p) => (p.feedUrl ?? p.rssUrl ?? p.feed ?? "").startsWith("https://"));
         expect(pick, "discover returned no podcast with an https feed").toBeTruthy();
-        FEED_URL = pick.feedUrl ?? pick.rssUrl ?? pick.feed;
-        podcastTitle = pick.title ?? podcastTitle;
+        FEED_URL = pick?.feedUrl ?? pick?.rssUrl ?? pick?.feed ?? FEED_URL;
+        podcastTitle = pick?.title ?? podcastTitle;
 
         const res = await page.request.post("/api/podcasts/subscribe", {
             data: { feedUrl: FEED_URL },
@@ -136,8 +136,8 @@ test.describe.serial("Testbed removals", () => {
                 });
                 if (!r.ok()) return -1;
                 const d = await r.json();
-                const list = Array.isArray(d) ? d : (d.podcasts ?? []);
-                return list.filter((p: any) => p.id === podcastId).length;
+                const list: Array<{ id?: string }> = Array.isArray(d) ? d : (d.podcasts ?? []);
+                return list.filter((p) => p.id === podcastId).length;
             }, { timeout: 30_000 })
             .toBe(0);
         // The card is gone from the user's library. Scope to the
