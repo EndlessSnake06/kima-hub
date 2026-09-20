@@ -24,6 +24,7 @@
 import { ListenSource } from "@prisma/client";
 import { prisma } from "../utils/db";
 import { logger } from "../utils/logger";
+import { listenBrainzService } from "./listenBrainz";
 
 /** A track at or below this length can never be scrobbled. Last.fm's floor. */
 export const MIN_TRACK_DURATION_SECONDS = 30;
@@ -89,6 +90,45 @@ export function qualifiesAsPlay(
 }
 
 /**
+ * Mirror a recorded play to ListenBrainz, fire-and-forget.
+ *
+ * Kima's play log is the record; ListenBrainz is a mirror the operator opts
+ * into by saving a user token. The play is already committed by the time this
+ * runs, so nothing here may change the outcome: the call is never awaited,
+ * rejections are swallowed with a warn, and with no token configured
+ * `submitListens` skips itself with a debug log. A ListenBrainz outage must
+ * never fail a play.
+ */
+function mirrorToListenBrainz(params: {
+    artistName: string;
+    trackTitle: string;
+    releaseTitle?: string | null;
+    listenedAt: number; // unix seconds
+}): void {
+    const { artistName, trackTitle, releaseTitle, listenedAt } = params;
+    listenBrainzService
+        .submitListens([
+            {
+                artist: artistName,
+                track: trackTitle,
+                ...(releaseTitle ? { release: releaseTitle } : {}),
+                listenedAt,
+            },
+        ])
+        .then((ok) => {
+            if (ok) {
+                logger.debug(`[Play] mirrored "${artistName} – ${trackTitle}" to ListenBrainz`);
+            }
+        })
+        .catch((err: unknown) => {
+            logger.warn(
+                `[Play] ListenBrainz mirror failed for "${artistName} – ${trackTitle}":`,
+                err,
+            );
+        });
+}
+
+/**
  * Record a play if the listening earns it.
  *
  * The caller reports how many seconds were actually heard; this decides. The
@@ -107,7 +147,12 @@ export async function recordPlay(params: {
 
     const track = await prisma.track.findUnique({
         where: { id: trackId },
-        select: { id: true, duration: true },
+        select: {
+            id: true,
+            duration: true,
+            title: true,
+            album: { select: { title: true, artist: { select: { name: true } } } },
+        },
     });
     if (!track) return { recorded: false, reason: "unknown-track" };
 
@@ -139,5 +184,21 @@ export async function recordPlay(params: {
         `[Play] ${trackId} counted for ${userId} after ${Math.round(secondsListened)}s ` +
             `(needed ${Math.round(required)}s of ${track.duration}s)`,
     );
+
+    // Mirror to ListenBrainz only when we know what was actually played.
+    // Mocked/partial track rows (tests, half-enriched libraries) simply
+    // skip the mirror; the local play log above is unaffected either way.
+    if (track.title && track.album?.artist?.name) {
+        mirrorToListenBrainz({
+            artistName: track.album.artist.name,
+            trackTitle: track.title,
+            releaseTitle: track.album.title,
+            // The play's own clock: Subsonic back-fills with the client's
+            // timestamp, and LB wants the listen anchored to when it
+            // happened, not to when the report arrived.
+            listenedAt: Math.floor((playedAt?.getTime() ?? Date.now()) / 1000),
+        });
+    }
+
     return { recorded: true, playId: play.id };
 }

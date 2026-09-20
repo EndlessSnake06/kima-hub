@@ -23,8 +23,19 @@ jest.mock("../../utils/db", () => ({
     },
 }));
 
+// The ListenBrainz mirror must never hit the network from tests. Pin the
+// service; each test decides whether it resolves or rejects.
+jest.mock("../listenBrainz", () => ({
+    listenBrainzService: {
+        submitListens: jest.fn(),
+        getUserToken: jest.fn(),
+    },
+}));
+
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { prisma } = require("../../utils/db");
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { listenBrainzService } = require("../listenBrainz");
 
 const track = (duration: number) => ({ id: "t1", duration });
 
@@ -32,6 +43,9 @@ beforeEach(() => {
     jest.clearAllMocks();
     prisma.play.findFirst.mockResolvedValue(null);
     prisma.play.create.mockResolvedValue({ id: "p1" });
+    // Default: no token configured — the real service skips and resolves
+    // false. Individual tests override when they want a submit to happen.
+    listenBrainzService.submitListens.mockResolvedValue(false);
 });
 
 describe("requiredListenSeconds", () => {
@@ -157,5 +171,69 @@ describe("recordPlay", () => {
                 data: expect.objectContaining({ source: ListenSource.SUBSONIC }),
             }),
         );
+    });
+});
+
+describe("ListenBrainz mirror", () => {
+    const fullTrack = {
+        id: "t1",
+        duration: 200,
+        title: "Windowless Pane",
+        album: { title: "Glass Works", artist: { name: "The Glazier" } },
+    };
+
+    /** Let the fire-and-forget submit settle before asserting. */
+    const flush = () => new Promise((r) => setTimeout(r, 0));
+
+    it("records the play even when no token is configured (submit self-skips)", async () => {
+        // The service's documented no-token path: resolves false, never
+        // throws. The play log must not care either way.
+        prisma.track.findUnique.mockResolvedValue(fullTrack);
+        const out = await recordPlay({ userId: "u1", trackId: "t1", secondsListened: 150 });
+        expect(out).toEqual({ recorded: true, playId: "p1" });
+        await flush();
+    });
+
+    it("mirrors a recorded play with artist, track and release", async () => {
+        prisma.track.findUnique.mockResolvedValue(fullTrack);
+        listenBrainzService.submitListens.mockResolvedValue(true);
+        const out = await recordPlay({ userId: "u1", trackId: "t1", secondsListened: 150 });
+        expect(out.recorded).toBe(true);
+        await flush();
+        expect(listenBrainzService.submitListens).toHaveBeenCalledTimes(1);
+        expect(listenBrainzService.submitListens).toHaveBeenCalledWith([
+            expect.objectContaining({
+                artist: "The Glazier",
+                track: "Windowless Pane",
+                release: "Glass Works",
+            }),
+        ]);
+    });
+
+    it("a dead or rejecting ListenBrainz never fails the play", async () => {
+        prisma.track.findUnique.mockResolvedValue(fullTrack);
+        listenBrainzService.submitListens.mockRejectedValue(new Error("LB down"));
+        const out = await recordPlay({ userId: "u1", trackId: "t1", secondsListened: 150 });
+        expect(out).toEqual({ recorded: true, playId: "p1" });
+        await flush(); // let the rejection land in the swallow, not in jest
+    });
+
+    it("does not mirror a play that was not recorded", async () => {
+        prisma.track.findUnique.mockResolvedValue(fullTrack);
+        prisma.play.findFirst.mockResolvedValue({ id: "already" });
+        const out = await recordPlay({ userId: "u1", trackId: "t1", secondsListened: 150 });
+        expect(out).toEqual({ recorded: false, reason: "duplicate" });
+        await flush();
+        expect(listenBrainzService.submitListens).not.toHaveBeenCalled();
+    });
+
+    it("does not mirror when the track row carries no usable metadata", async () => {
+        // Half-enriched library rows (and the older mocks in this file)
+        // have no title/album — the mirror skips, the play still counts.
+        prisma.track.findUnique.mockResolvedValue({ id: "t1", duration: 200 });
+        const out = await recordPlay({ userId: "u1", trackId: "t1", secondsListened: 150 });
+        expect(out.recorded).toBe(true);
+        await flush();
+        expect(listenBrainzService.submitListens).not.toHaveBeenCalled();
     });
 });

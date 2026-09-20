@@ -76,6 +76,12 @@ export async function getSystemSettings(forceRefresh = false) {
             settings.soulseekPassword,
             "soulseekPassword",
         ),
+        // Stored encrypted by the settings route; submitListens needs the
+        // plaintext user token, so decrypt it like every other key here.
+        listenbrainzUserToken: safeDecrypt(
+            settings.listenbrainzUserToken,
+            "listenbrainzUserToken",
+        ),
     };
 
     cachedSettings = decrypted;

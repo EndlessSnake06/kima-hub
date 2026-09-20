@@ -100,6 +100,10 @@ const systemSettingsSchema = z.object({
   spotifyClientId: z.string().nullable().optional(),
   spotifyClientSecret: z.string().nullable().optional(),
 
+  // ListenBrainz (scrobbling). The user token is write-only: accepted on
+  // save, never echoed back on GET (see the GET handler below).
+  listenbrainzUserToken: z.string().nullable().optional(),
+
   // Storage Paths
   musicPath: z.string().optional(),
   downloadPath: z.string().optional(),
@@ -168,6 +172,10 @@ router.get("/", async (req, res) => {
       soulseekPassword: safeDecrypt(settings.soulseekPassword),
       slskdApiKey: safeDecrypt(settings.slskdApiKey),
       spotifyClientSecret: safeDecrypt(settings.spotifyClientSecret),
+      // Write-only: the LB user token is never sent back to the client.
+      // (The `...settings` spread would otherwise leak the ciphertext;
+      // nulling it also keeps the UI from re-submitting what it never saw.)
+      listenbrainzUserToken: null,
     };
 
     res.json(decryptedSettings);
@@ -215,6 +223,8 @@ router.post("/", async (req, res) => {
       encryptedData.slskdApiKey = encrypt(data.slskdApiKey);
     if (data.spotifyClientSecret)
       encryptedData.spotifyClientSecret = encrypt(data.spotifyClientSecret);
+    if (data.listenbrainzUserToken)
+      encryptedData.listenbrainzUserToken = encrypt(data.listenbrainzUserToken);
 
     // Fetch existing settings before save to detect credential changes
     const existingSettings = await prisma.systemSettings.findUnique({ where: { id: "default" } });
