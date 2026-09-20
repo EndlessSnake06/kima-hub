@@ -6,7 +6,7 @@ import { config } from "../config";
 import { getSystemSettings } from "../utils/systemSettings";
 import { lidarrService } from "../services/lidarr";
 import { musicBrainzService } from "../services/musicbrainz";
-import { lastFmService } from "../services/lastfm";
+import { getArtistCorrection } from "../services/artistCorrection";
 import { simpleDownloadManager } from "../services/simpleDownloadManager";
 import crypto from "crypto";
 import { safeError } from "../utils/errors";
@@ -30,7 +30,7 @@ async function verifyArtistName(
 ): Promise<{
     verifiedName: string;
     wasCorrected: boolean;
-    source: "musicbrainz" | "lastfm" | "original";
+    source: "musicbrainz" | "original";
     originalName: string;
 }> {
     const originalName = artistName;
@@ -57,17 +57,17 @@ async function verifyArtistName(
         }
     }
 
-    // Strategy 2: Use LastFM correction API
+    // Strategy 2: Use MusicBrainz correction
     try {
-        const correction = await lastFmService.getArtistCorrection(artistName);
+        const correction = await getArtistCorrection(artistName);
         if (correction?.corrected) {
             logger.debug(
-                `[VERIFY] LastFM correction: "${artistName}" → "${correction.canonicalName}"`
+                `[VERIFY] MB correction: "${artistName}" → "${correction.canonicalName}"`
             );
             return {
                 verifiedName: correction.canonicalName,
                 wasCorrected: true,
-                source: "lastfm",
+                source: "musicbrainz",
                 originalName,
             };
         }
@@ -323,18 +323,18 @@ async function processArtistDownload(
         logger.warn(`   ⚠ MusicBrainz lookup failed: ${mbError.message}`);
         // Fallback to LastFM correction
         try {
-            const correction = await lastFmService.getArtistCorrection(
+            const correction = await getArtistCorrection(
                 artistName
             );
             if (correction?.canonicalName) {
                 canonicalArtistName = correction.canonicalName;
                 logger.debug(
-                    `   ✓ Name resolved via LastFM: "${artistName}" → "${canonicalArtistName}"`
+                    `   ✓ Name resolved via MusicBrainz: "${artistName}" → "${canonicalArtistName}"`
                 );
             }
         } catch (lfmError) {
             logger.warn(
-                `   ⚠ LastFM correction also failed, using original name`
+                `   ⚠ MB correction also failed, using original name`
             );
         }
     }

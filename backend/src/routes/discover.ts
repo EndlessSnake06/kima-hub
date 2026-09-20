@@ -2,7 +2,7 @@ import { Router } from "express";
 import { logger } from "../utils/logger";
 import { requireAuthOrToken, requireAdmin } from "../middleware/auth";
 import { prisma } from "../utils/db";
-import { lastFmService } from "../services/lastfm";
+import { listenBrainzService } from "../services/listenBrainz";
 import { startOfWeek, endOfWeek } from "date-fns";
 import { resolveViewWeek, resolveGenerationWeekStart, weekStartKey } from "../lib/discoveryWeek";
 import axios from "axios";
@@ -1215,12 +1215,12 @@ router.patch("/config", async (req, res) => {
     }
 });
 
-// GET /discover/popular-artists - Get popular artists from Last.fm charts
+// GET /discover/popular-artists - Get popular artists from ListenBrainz sitewide stats
 router.get("/popular-artists", async (req, res) => {
     try {
         const limit = parseInt(req.query.limit as string) || 20;
 
-        const artists = await lastFmService.getTopChartArtists(limit);
+        const artists = await listenBrainzService.getTopChartArtists(limit);
 
         res.json({ artists });
     } catch (error: any) {

@@ -1,7 +1,7 @@
 import { prisma } from "../../utils/db";
 import { logger } from "../../utils/logger";
 import { normalizeArtistName } from "../../utils/artistNormalization";
-import { lastFmService } from "../lastfm";
+import { getSimilarArtists } from "../artistSimilarity";
 import {
     ProgrammaticMix,
     getMixColor,
@@ -160,14 +160,14 @@ export async function generateArtistSimilarMix(
     logger.debug(`[ARTIST SIMILAR MIX] Top artist: ${topArtist.name}`);
 
     try {
-        const similarArtists = await lastFmService.getSimilarArtists(
+        const similarArtists = await getSimilarArtists(
             topArtist.mbid || "",
             topArtist.name,
             10
         );
 
         logger.debug(
-            `[ARTIST SIMILAR MIX] Last.fm returned ${similarArtists.length} similar artists`
+            `[ARTIST SIMILAR MIX] similarity source returned ${similarArtists.length} similar artists`
         );
 
         const similarArtistNormalized = similarArtists.map((a) =>

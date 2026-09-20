@@ -2,7 +2,7 @@ import { Artist } from "@prisma/client";
 import { logger } from "../utils/logger";
 import { prisma } from "../utils/db";
 import { wikidataService } from "../services/wikidata";
-import { lastFmService } from "../services/lastfm";
+import { getSimilarArtists } from "../services/artistSimilarity";
 import { musicBrainzService } from "../services/musicbrainz";
 import { normalizeArtistName } from "../utils/artistNormalization";
 import { hasRealMbid } from "../services/artistIdentity";
@@ -124,50 +124,8 @@ export async function enrichSimilarArtist(artist: Artist): Promise<void> {
             logger.debug(`${logPrefix} Wikidata: Skipped (temp MBID)`);
         }
 
-        // Fetch from Last.fm if we need summary/heroUrl or always try for genres
-        if (!summary || !heroUrl || genres.length === 0) {
-            logger.debug(
-                `${logPrefix} Last.fm: Fetching (need summary: ${!summary}, need image: ${!heroUrl})...`
-            );
-            try {
-                const validMbid = hasRealMbid(artist.mbid)
-                    ? artist.mbid
-                    : undefined;
-                const lastfmInfo = await lastFmService.getArtistInfo(
-                    artist.name,
-                    validMbid
-                );
-                if (lastfmInfo) {
-                    // Extract text from bio object (bio.summary or bio.content)
-                    if (!summary && lastfmInfo.bio) {
-                        const bio = lastfmInfo.bio as any;
-                        summary = bio.summary || bio.content || null;
-                        if (summary) {
-                            summarySource = "lastfm";
-                            logger.debug(`${logPrefix} Last.fm: Got summary`);
-                        }
-                    }
-
-                    // Extract genres from Last.fm tags
-                    if (lastfmInfo.tags?.tag && Array.isArray(lastfmInfo.tags.tag)) {
-                        genres = lastfmInfo.tags.tag
-                            .slice(0, 5)  // Top 5 tags as genres
-                            .map((t: any) => t.name)
-                            .filter(Boolean);
-                        if (genres.length > 0) {
-                            logger.debug(`${logPrefix} Extracted ${genres.length} genres: ${genres.join(', ')}`);
-                        }
-                    }
-
-                } else {
-                    logger.debug(`${logPrefix} Last.fm: No data returned`);
-                }
-            } catch (error: any) {
-                logger.debug(
-                    `${logPrefix} Last.fm: FAILED - ${error?.message || error}`
-                );
-            }
-        }
+        // (Last.fm fallback block removed 2026-09-19 — shared key dead.
+        // Wikidata above plus MusicBrainz genres below cover the same data.)
 
         // Image lookup runs whether or not Last.fm had anything. This was
         // Fanart-then-Deezer spelled out here; the ordering, the Last.fm
@@ -188,7 +146,7 @@ export async function enrichSimilarArtist(artist: Artist): Promise<void> {
             }
         }
 
-        // Genre fallback: MusicBrainz curated genres (if Last.fm didn't return any)
+        // Genre fallback: MusicBrainz curated genres
         if (genres.length === 0 && hasRealMbid(artist.mbid)) {
             try {
                 const mbArtist = await musicBrainzService.getArtist(artist.mbid, ["genres"]);
@@ -207,7 +165,7 @@ export async function enrichSimilarArtist(artist: Artist): Promise<void> {
             }
         }
 
-        // Get similar artists from Last.fm
+        // Get similar artists (local centroid / ListenBrainz)
         let similarArtists: Array<{
             name: string;
             mbid?: string;
@@ -217,7 +175,7 @@ export async function enrichSimilarArtist(artist: Artist): Promise<void> {
         try {
             // Filter out temp MBIDs
             const validMbid = hasRealMbid(artist.mbid) ? artist.mbid : "";
-            similarArtists = await lastFmService.getSimilarArtists(
+            similarArtists = await getSimilarArtists(
                 validMbid,
                 artist.name
             );
@@ -256,7 +214,7 @@ export async function enrichSimilarArtist(artist: Artist): Promise<void> {
             localHeroUrl = heroUrl; // Already a native path
         }
 
-        // Prepare similar artists JSON for storage (full Last.fm data)
+        // Prepare similar artists JSON for storage (from the similarity source)
         const similarArtistsJson: any =
             similarArtists.length > 0
                 ? similarArtists.map((s) => ({

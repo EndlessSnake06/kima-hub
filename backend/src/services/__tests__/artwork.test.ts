@@ -242,18 +242,22 @@ describe("the one door for artwork", () => {
             expect(found).toEqual({ url: DEEZER_URL, source: "deezer" });
         });
 
-        it("falls through to Last.fm when the better sources have nothing", async () => {
+        it("does not fall through to Last.fm anymore", async () => {
+            // The cascade ends at Deezer: the shared Last.fm key is dead
+            // and the endpoint only served the grey placeholder star.
             lastFmInfo.mockResolvedValue({ image: [{ size: "mega", "#text": LASTFM_URL }] });
             lastFmBestImage.mockReturnValue(LASTFM_URL);
 
             const found = await findArtistArtwork(ARTIST);
 
-            expect(found).toEqual({ url: LASTFM_URL, source: "lastfm" });
+            expect(found).toBeNull();
+            expect(lastFmInfo).not.toHaveBeenCalled();
+            expect(lastFmBestImage).not.toHaveBeenCalled();
         });
 
         it("takes nothing from Last.fm when it only has its grey placeholder", async () => {
-            // getBestImage returns null for the placeholder. Five call sites
-            // used to re-filter that hash on top of it; one of them forgot.
+            // Moot now that Last.fm left the cascade: the door is never
+            // knocked, so the placeholder never reaches the response.
             lastFmInfo.mockResolvedValue({ image: [{ size: "mega", "#text": "grey" }] });
             lastFmBestImage.mockReturnValue(null);
 

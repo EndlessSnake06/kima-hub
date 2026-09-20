@@ -26,6 +26,8 @@ import {
     reassignAlbumRgMbid,
     reassignArtistMbid,
 } from "./mbidReassign";
+import { getSimilarArtists } from "./artistSimilarity";
+import { wikidataService } from "./wikidata";
 
 interface EnrichmentSettings {
     enabled: boolean;
@@ -191,48 +193,32 @@ class EnrichmentService {
             }
         }
 
-        // Step 2: Get artist info from Last.fm
+        // Step 2: bio from Wikidata, similar artists from the local
+        // centroid / ListenBrainz path (replaces the dead Last.fm lookup).
         if (config.sources.lastfm) {
             try {
                 const artistMbid = enrichmentData.mbid || artist.mbid;
-                const lastfmInfo = await lastFmService.getArtistInfo(
-                    artist.name,
-                    hasRealMbid(artistMbid)
-                        ? artistMbid
-                        : undefined
-                );
-
-                if (lastfmInfo) {
-                    enrichmentData.bio = lastfmInfo.bio?.summary;
-                    enrichmentData.tags =
-                        lastfmInfo.tags?.tag?.map((t: any) => t.name) || [];
-                    enrichmentData.genres = enrichmentData.tags?.slice(0, 3); // Top 3 tags as genres
-                    enrichmentData.confidence += 0.3;
-                    logger.debug(
-                        `  Found Last.fm data: ${
-                            enrichmentData.tags?.length || 0
-                        } tags`
+                if (hasRealMbid(artistMbid)) {
+                    const wd = await wikidataService.getArtistInfo(
+                        artist.name,
+                        artistMbid
                     );
-
-                    // Get similar artists
-                    const artistMbidForSimilar = enrichmentData.mbid || artist.mbid;
-                    const similar = await lastFmService.getSimilarArtists(
-                        hasRealMbid(artistMbidForSimilar)
-                            ? artistMbidForSimilar
-                            : "",
+                    if (wd?.summary) {
+                        enrichmentData.bio = wd.summary;
+                        enrichmentData.confidence += 0.3;
+                    }
+                    const similar = await getSimilarArtists(
+                        artistMbid,
                         artist.name,
                         10
                     );
                     enrichmentData.similarArtists = similar.map(
-                        (a: any) => a.name
+                        (a) => a.name
                     );
                     logger.debug(`  Found ${similar.length} similar artists`);
                 }
             } catch (error) {
-                logger.error(
-                    `  ✗ Last.fm lookup failed:`,
-                    error instanceof Error ? error.message : error
-                );
+                logger.error(` Similarity/bio lookup failed:`, error);
             }
         }
 
@@ -419,14 +405,12 @@ class EnrichmentService {
             }
         }
 
-        // Step 2: Get album info from Last.fm
-        if (config.sources.lastfm) {
+        // Step 2 removed: album tags/tracklists only existed on Last.fm.
+        // MusicBrainz (Step 1) already supplies genres and track counts,
+        // so there is nothing to replace here — keep MB + artwork cascade.
+        if (false) {
             try {
-                const lastfmInfo = await lastFmService.getAlbumInfo(
-                    album.artist.name,
-                    album.title
-                );
-
+                const lastfmInfo = null as any;
                 if (lastfmInfo) {
                     enrichmentData.tags =
                         lastfmInfo.tags?.tag?.map((t: any) => t.name) || [];
@@ -434,14 +418,9 @@ class EnrichmentService {
                     enrichmentData.trackCount =
                         lastfmInfo.tracks?.track?.length;
                     enrichmentData.confidence += 0.3;
-                    logger.debug(
-                        `  Found Last.fm data: ${
-                            enrichmentData.tags?.length || 0
-                        } tags`
-                    );
                 }
             } catch (error) {
-                logger.error(` Last.fm lookup failed:`, error);
+                logger.error(` Album lookup skipped`, error);
             }
         }
 

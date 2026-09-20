@@ -14,7 +14,6 @@
 import { logger } from "../utils/logger";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../utils/db";
-import { lastFmService } from "../services/lastfm";
 import Redis from "ioredis";
 import { config } from "../config";
 import path from "path";
@@ -48,6 +47,10 @@ import {
     TrackIdentification,
 } from "../services/acoustidIdentification";
 import { precomputeProjection } from "../services/umapProjection";
+import {
+    MIN_LOCAL_TRACKS,
+    rebuildArtistCentroid,
+} from "../services/artistSimilarity";
 
 // Configuration
 const ARTIST_BATCH_SIZE = 10;
@@ -218,6 +221,25 @@ async function withTimeout<T>(
         timer = setTimeout(() => reject(new Error(errorMessage)), timeoutMs);
     });
     return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * Duration-aware per-track enrichment timeout.
+ * A short clip stays tight; a long FLAC buys room. Base 30s + 40ms per second
+ * of track duration, capped at 180s. Non-finite durations fall back to the
+ * base floor.
+ */
+export function computeTrackEnrichmentTimeoutMs(
+    durationSeconds: number,
+): number {
+    const BASE_MS = 30_000;
+    const CAP_MS = 180_000;
+    const MS_PER_SECOND = 40;
+    if (!Number.isFinite(durationSeconds)) return BASE_MS;
+    return Math.min(
+        CAP_MS,
+        BASE_MS + Math.round(durationSeconds) * MS_PER_SECOND,
+    );
 }
 
 /**
@@ -1080,36 +1102,27 @@ export async function enrichSingleTrack(trackId: string): Promise<void> {
     }
 
     const artistName = track.album.artist.name;
-    const trackInfo = await withTimeout(
-        lastFmService.getTrackInfo(artistName, track.title),
-        30000,
-        `Timeout enriching track: ${track.title}`,
-    );
 
-    if (trackInfo?.toptags?.tag) {
-        const allTags = trackInfo.toptags.tag.map((t: any) => t.name);
-        const moodTags = filterMoodTags(allTags);
-        await prisma.track.update({
-            where: { id: track.id },
-            data: {
-                lastfmTags: moodTags.length > 0 ? moodTags : ["_no_mood_tags"],
-            },
-        });
-        if (moodTags.length > 0) {
-            logger.debug(`   ✓ ${track.title}: [${moodTags.slice(0, 3).join(", ")}...]`);
-        }
-    } else {
-        await prisma.track.update({
-            where: { id: track.id },
-            data: { lastfmTags: ["_not_found"] },
-        });
-    }
+    // Mood tags + ISRC: identify the recording ONCE, then take both the
+    // mood tags and the ISRC from that same recording. Identification is
+    // AcoustID-first: the file tag or a
+    // fresh fpcalc lookup answers, and the MusicBrainz text search is only
+    // the fallback — a track whose identity came from a tag or a
+    // fingerprint never pays for a search. Tracks that already carry an
+    // ISRC identify their recording from it directly, so mood tags keep
+    // working without any AcoustID work.
+    //
+    // Mood tags: MusicBrainz recording genres replace the dead Last.fm
+    // track.getTopTags call. Always mark lastfmTags so the queue drains:
+    // ["_no_mood_tags"] when the recording has no genres, ["_not_found"]
+    // when no recording could be identified at all (same sentinels as
+    // before).
+    const timeoutMs = computeTrackEnrichmentTimeoutMs(track.duration);
+    let recordingMbid: string | null = null;
+    let needsIsrc = false;
 
-    // ISRC enrichment: if track has no ISRC, identify the track AcoustID-first
-    // and fall back to the MusicBrainz text
-    // search. Every identity outcome is counted in
-    // kima_acoustid_track_identity_total (path/outcome labels).
     if (!track.isrc) {
+        needsIsrc = true;
         let identified: TrackIdentification | null = null;
         const features = await featureDetection.getFeatures();
         if (features.fpcalc) {
@@ -1126,55 +1139,98 @@ export async function enrichSingleTrack(trackId: string): Promise<void> {
                 logger.debug(
                     `[Track Enrichment] ${track.title}: AcoustID identified via ${identified.source} (recording ${identified.recordingMbid})`,
                 );
+                recordingMbid = identified.recordingMbid;
             }
         }
 
-        if (identified) {
-            try {
-                const isrcData = await musicBrainzService.getRecordingIsrc(
-                    identified.recordingMbid,
-                );
-                if (isrcData) {
-                    await trackIdentityService.storeIsrc(track.id, isrcData, "musicbrainz");
-                }
-                const genreData = await musicBrainzService.getRecordingGenres(
-                    identified.recordingMbid,
-                );
-                if (genreData && genreData.genres.length > 0) {
-                    const topGenres = genreData.genres
-                        .sort((a, b) => b.count - a.count)
-                        .slice(0, 5)
-                        .map((g) => g.name);
-                    await trackIdentityService.populateTrackGenres(track.id, topGenres);
-                }
-            } catch (err) {
-                logger.debug(`[Track Enrichment] ISRC lookup failed for ${track.title}: ${err}`);
-            }
-        } else {
+        if (!identified) {
             // Fallback: the pre-existing MusicBrainz title/artist search.
+            // Every identity outcome is counted in
+            // kima_acoustid_track_identity_total (path/outcome labels).
             try {
-                const recording = await musicBrainzService.searchRecording(
-                    track.title,
-                    track.album.artist.name,
+                const recording = await withTimeout(
+                    musicBrainzService.searchRecording(track.title, artistName),
+                    timeoutMs,
+                    `Timeout searching MB recording: ${track.title}`,
                 );
-                if (recording) {
-                    const isrcData = await musicBrainzService.getRecordingIsrc(recording.trackMbid);
-                    if (isrcData) {
-                        await trackIdentityService.storeIsrc(track.id, isrcData, "musicbrainz");
-                    }
-                    const genreData = await musicBrainzService.getRecordingGenres(recording.trackMbid);
-                    if (genreData && genreData.genres.length > 0) {
-                        const topGenres = genreData.genres
-                            .sort((a, b) => b.count - a.count)
-                            .slice(0, 5)
-                            .map((g) => g.name);
-                        await trackIdentityService.populateTrackGenres(track.id, topGenres);
-                    }
-                }
+                recordingMbid = recording?.trackMbid ?? null;
             } catch (err) {
-                logger.debug(`[Track Enrichment] ISRC lookup failed for ${track.title}: ${err}`);
+                logger.debug(
+                    `[Track Enrichment] MB recording search failed for ${track.title}: ${err}`,
+                );
             }
         }
+    } else {
+        // Track already has an ISRC: find the recording from the known
+        // identifier instead of re-identifying it.
+        try {
+            const rec = await withTimeout(
+                musicBrainzService.lookupByIsrc(track.isrc),
+                timeoutMs,
+                `Timeout looking up MB recording by ISRC: ${track.title}`,
+            );
+            recordingMbid = rec?.recordingId ?? null;
+        } catch (err) {
+            logger.debug(
+                `[Track Enrichment] MB ISRC lookup failed for ${track.title}: ${err}`,
+            );
+        }
+    }
+
+    if (recordingMbid) {
+        try {
+            if (needsIsrc) {
+                const isrcData = await withTimeout(
+                    musicBrainzService.getRecordingIsrc(recordingMbid),
+                    timeoutMs,
+                    `Timeout fetching MB ISRC: ${track.title}`,
+                );
+                if (isrcData) {
+                    await trackIdentityService.storeIsrc(
+                        track.id,
+                        isrcData,
+                        "musicbrainz",
+                    );
+                }
+            }
+            const genreData = await withTimeout(
+                musicBrainzService.getRecordingGenres(recordingMbid),
+                timeoutMs,
+                `Timeout fetching MB genres: ${track.title}`,
+            );
+            if (genreData && genreData.genres.length > 0) {
+                const topGenres = genreData.genres
+                    .sort((a, b) => b.count - a.count)
+                    .slice(0, 5)
+                    .map((g) => g.name);
+                await trackIdentityService.populateTrackGenres(track.id, topGenres);
+                await prisma.track.update({
+                    where: { id: track.id },
+                    data: { lastfmTags: topGenres },
+                });
+                logger.debug(
+                    `   ✓ ${track.title}: [${topGenres.slice(0, 3).join(", ")}...]`,
+                );
+            } else {
+                await prisma.track.update({
+                    where: { id: track.id },
+                    data: { lastfmTags: ["_no_mood_tags"] },
+                });
+            }
+        } catch (err) {
+            logger.debug(
+                `[Track Enrichment] MB recording enrichment failed for ${track.title}: ${err}`,
+            );
+            await prisma.track.update({
+                where: { id: track.id },
+                data: { lastfmTags: ["_not_found"] },
+            });
+        }
+    } else {
+        await prisma.track.update({
+            where: { id: track.id },
+            data: { lastfmTags: ["_not_found"] },
+        });
     }
 }
 
@@ -1736,6 +1792,53 @@ export async function executeAudioPhase(): Promise<number> {
 
 const VIBE_SWEEP_BATCH_SIZE = 100;
 
+/** Artist centroids to rebuild per cycle — bounds cycle time. */
+const CENTROID_REBUILD_BATCH = 50;
+
+/**
+ * Catch-up pass for artist centroids (replaces the dead Last.fm similarity
+ * source's data path). Tracks that gained a CLAP embedding since their
+ * artist's last centroid computation — per-track embed completion between
+ * cycles, or re-embedded rows after a rebuild-all — have a newer
+ * analyzed_at than their artist's computedAt (or no centroid row at all),
+ * so they surface here on the next cycle. Rides the existing enrichment
+ * cycle; no new scheduler.
+ */
+async function rebuildStaleArtistCentroids(): Promise<void> {
+    const stale = await prisma.$queryRaw<Array<{ artistId: string }>>`
+        SELECT t."artistId"
+        FROM "Track" t
+        JOIN track_embeddings te ON te.track_id = t.id
+        LEFT JOIN artist_embeddings ae ON ae."artistId" = t."artistId"
+        WHERE ae."artistId" IS NULL
+           OR ae."computedAt" < te.analyzed_at
+        GROUP BY t."artistId"
+        LIMIT ${CENTROID_REBUILD_BATCH}
+    `;
+    if (stale.length === 0) return;
+
+    let rebuilt = 0;
+    let usable = 0;
+    for (const { artistId } of stale) {
+        try {
+            const { trackCount } = await rebuildArtistCentroid(artistId);
+            if (trackCount > 0) {
+                rebuilt++;
+                if (trackCount >= MIN_LOCAL_TRACKS) usable++;
+            }
+        } catch (err) {
+            logger.warn(
+                `[Enrichment] Centroid rebuild failed for artist ${artistId}:`,
+                err,
+            );
+        }
+    }
+    logger.debug(
+        `[Enrichment] Centroid catch-up: ${rebuilt}/${stale.length} artists rebuilt ` +
+            `(${usable} with >=${MIN_LOCAL_TRACKS} tracks)`,
+    );
+}
+
 async function executeVibePhase(): Promise<number> {
     const features = await featureDetection.getFeatures();
     if (!features.vibeEmbeddings) {
@@ -1785,8 +1888,17 @@ async function executeVibePhase(): Promise<number> {
     `;
 
     if (tracks.length === 0) {
+        // Steady state: nothing left to queue, but artists whose tracks
+        // gained embeddings between cycles may still need centroid rebuilds.
+        await rebuildStaleArtistCentroids();
         return 0;
     }
+
+    // Rebuild artist centroids for artists whose source embeddings changed
+    // since the last computation. Runs before the queueing below so tracks
+    // embedded in earlier cycles are already covered while freshly queued
+    // ones land next cycle.
+    await rebuildStaleArtistCentroids();
 
     // Ensure vibe queue is resumed -- the audioCompletionSubscriber may have
     // paused it and the resume timer may have deferred (found audio still active)

@@ -11,7 +11,7 @@ import { getSystemSettings } from "../utils/systemSettings";
 import { soulseekService } from "./soulseek";
 import { simpleDownloadManager } from "./simpleDownloadManager";
 import { musicBrainzService } from "./musicbrainz";
-import { lastFmService } from "./lastfm";
+import { getArtistCorrection } from "./artistCorrection";
 import { AcquisitionError, AcquisitionErrorType } from "./lidarr";
 import { distributedLock } from "../utils/distributedLock";
 import PQueue from "p-queue";
@@ -316,7 +316,7 @@ class AcquisitionService {
 
         // Verify artist name before acquisition
         try {
-            const correction = await lastFmService.getArtistCorrection(
+            const correction = await getArtistCorrection(
                 request.artistName
             );
             if (correction?.corrected) {
@@ -592,32 +592,10 @@ class AcquisitionService {
                 // Strategy 2: Fallback to Last.fm (always try when MusicBrainz fails)
                 if (!tracks || tracks.length === 0) {
                     logger.debug(
-                        `[Acquisition/Soulseek] MusicBrainz has no tracks, trying Last.fm`
+                        `[Acquisition/Soulseek] MusicBrainz has no tracks; no fallback source`
                     );
-
-                    try {
-                        const albumInfo = await lastFmService.getAlbumInfo(
-                            request.artistName,
-                            request.albumTitle
-                        );
-                        const lastFmTracks = albumInfo?.tracks?.track || [];
-
-                        if (Array.isArray(lastFmTracks) && lastFmTracks.length > 0) {
-                            tracks = lastFmTracks.map((t: any) => ({
-                                title: t.name || t.title,
-                                position: t["@attr"]?.rank
-                                    ? parseInt(t["@attr"].rank)
-                                    : undefined,
-                            }));
-                            logger.debug(
-                                `[Acquisition/Soulseek] Got ${tracks.length} tracks from Last.fm`
-                            );
-                        }
-                    } catch (lastfmError: any) {
-                        logger.warn(
-                            `[Acquisition/Soulseek] Last.fm fallback failed: ${lastfmError.message}`
-                        );
-                    }
+                    // Last.fm removed (dead shared key); MusicBrainz is
+                    // the only track-list source now.
                 }
 
                 if (!tracks || tracks.length === 0) {

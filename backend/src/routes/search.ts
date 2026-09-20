@@ -2,7 +2,13 @@ import { Router } from "express";
 import { logger } from "../utils/logger";
 import { requireAuth } from "../middleware/auth";
 import { prisma } from "../utils/db";
-import { lastFmService, type SimilarArtist } from "../services/lastfm";
+import {
+    getSimilarArtists,
+    enrichSimilarArtists,
+    type SimilarArtist,
+} from "../services/artistSimilarity";
+import { getArtistCorrection } from "../services/artistCorrection";
+import { musicBrainzService } from "../services/musicbrainz";
 import { searchService, normalizeCacheQuery, type SearchResults } from "../services/search";
 import axios from "axios";
 import { redisClient } from "../utils/redis";
@@ -160,7 +166,7 @@ router.get("/discover", async (req, res) => {
 
         if (type === "music" || type === "all") {
             try {
-                const correction = await lastFmService.getArtistCorrection(query);
+                const correction = await getArtistCorrection(query);
                 if (correction?.corrected) {
                     searchQuery = correction.canonicalName;
                     aliasInfo = {
@@ -179,8 +185,41 @@ router.get("/discover", async (req, res) => {
         const promiseMap: Record<string, Promise<any>> = {};
 
         if (type === "music" || type === "all") {
-            promiseMap.artists = lastFmService.searchArtists(searchQuery, searchLimit);
-            promiseMap.tracks = lastFmService.searchTracks(searchQuery, searchLimit);
+            // Artist results: MusicBrainz search (replaces Last.fm artist
+            // search — the shared key is dead, and MB is the authority for
+            // names, aliases and MBIDs anyway).
+            promiseMap.artists = (async () => {
+                const mbArtists = await musicBrainzService.searchArtist(searchQuery, searchLimit);
+                const similar: SimilarArtist[] = mbArtists.map((a: { id: string; name: string }) => ({
+                    name: a.name,
+                    mbid: a.id,
+                    match: 1,
+                    url: `https://musicbrainz.org/artist/${a.id}`,
+                }));
+                return enrichSimilarArtists(similar, searchLimit);
+            })();
+            // Track results: local library search (replaces Last.fm track
+            // search — web results could never be played here anyway).
+            promiseMap.tracks = (async () => {
+                const local = await searchService.searchTracks({ query: searchQuery, limit: searchLimit });
+                const albumIds = [...new Set(local.map((t) => t.albumId).filter(Boolean))];
+                const albums = await prisma.album.findMany({
+                    where: { id: { in: albumIds } },
+                    select: { id: true, coverUrl: true },
+                });
+                const coverById = new Map(albums.map((a) => [a.id, a.coverUrl]));
+                return local.map((t) => ({
+                    type: "track",
+                    id: t.id,
+                    name: t.title,
+                    artist: t.artistName,
+                    album: t.albumTitle,
+                    listeners: 0,
+                    url: "",
+                    image: coverById.get(t.albumId) || null,
+                    mbid: undefined,
+                }));
+            })();
         }
 
         if (type === "podcasts" || type === "all") {
@@ -299,24 +338,18 @@ router.get("/discover/similar", async (req, res) => {
         }
 
         let similar: SimilarArtist[] = [];
-        let fetchFailed = false;
 
-        // On transient Last.fm failure, return an empty list WITHOUT caching it,
-        // so the next request retries instead of reading a poisoned cache entry.
-        try {
-            similar = await lastFmService.getSimilarArtists(artistMbid, artistName, 10);
-        } catch (err) {
-            logger.warn("[SEARCH SIMILAR] Last.fm similar fetch failed, returning empty:", err);
-            fetchFailed = true;
-        }
+        // artistSimilarity never throws; empty means "no data anywhere".
+        similar = await getSimilarArtists(artistMbid, artistName, 10);
 
-        const similarArtists = !fetchFailed && similar.length > 0
-            ? await lastFmService.enrichSimilarArtists(similar, 6)
-            : [];
+        const similarArtists =
+            similar.length > 0
+                ? await enrichSimilarArtists(similar, 6)
+                : [];
 
         const payload = { similarArtists };
 
-        if (!fetchFailed) {
+        if (similar.length > 0) {
             try {
                 // Cache TTL: 1 hour (3600s) -- similar artists rarely change
                 await redisClient.setex(cacheKey, 3600, JSON.stringify(payload));

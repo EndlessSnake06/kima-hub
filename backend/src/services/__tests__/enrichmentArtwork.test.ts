@@ -77,6 +77,19 @@ jest.mock("../imageStorage", () => ({
     isNativePath: (p: string) => typeof p === "string" && p.startsWith("native:"),
 }));
 
+// The swap moved similar-artists off Last.fm onto the local-centroid /
+// ListenBrainz engine, and bios onto Wikidata. Mock both so the suite
+// stays offline and the assertions below stay about artwork sourcing.
+jest.mock("../artistSimilarity", () => ({
+    getSimilarArtists: jest.fn().mockResolvedValue([]),
+}));
+
+jest.mock("../wikidata", () => ({
+    wikidataService: {
+        getArtistInfo: jest.fn().mockResolvedValue(null),
+    },
+}));
+
 import { enrichmentService } from "../enrichment";
 
 const REAL_MBID = "11111111-2222-3333-4444-555555555555";

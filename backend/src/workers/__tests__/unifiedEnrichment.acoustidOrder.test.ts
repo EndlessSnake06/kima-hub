@@ -79,11 +79,13 @@ jest.mock("../../services/acoustidIdentification", () => ({
 const mockSearchRecording = jest.fn().mockResolvedValue(null);
 const mockGetRecordingIsrc = jest.fn().mockResolvedValue(null);
 const mockGetRecordingGenres = jest.fn().mockResolvedValue(null);
+const mockLookupByIsrc = jest.fn();
 jest.mock("../../services/musicbrainz", () => ({
     musicBrainzService: {
         searchRecording: (...args: unknown[]) => mockSearchRecording(...args),
         getRecordingIsrc: (...args: unknown[]) => mockGetRecordingIsrc(...args),
         getRecordingGenres: (...args: unknown[]) => mockGetRecordingGenres(...args),
+        lookupByIsrc: (...args: unknown[]) => mockLookupByIsrc(...args),
     },
 }));
 
@@ -279,11 +281,27 @@ describe("enrichSingleTrack: AcoustID-first identification order", () => {
             isrc: "FR10S1700001",
             album: { artist: { name: "Carpenter Brut" } },
         });
+        mockLookupByIsrc.mockResolvedValue({
+            recordingId: RECORDING,
+            title: "Cheerleader Effect",
+            artistName: "Carpenter Brut",
+            artistMbid: "ar-1",
+        });
+        mockGetRecordingGenres.mockResolvedValue({
+            genres: [{ name: "electronic", count: 3 }],
+            tags: [],
+        });
 
         await enrichSingleTrack(TRACK_ID);
 
         expect(mockIdentifyTrackByAcoustid).not.toHaveBeenCalled();
         expect(mockSearchRecording).not.toHaveBeenCalled();
         expect(mockGetFeatures).not.toHaveBeenCalled();
+        // Known identifier: the recording is looked up from the ISRC
+        // directly, and mood tags come from that same recording.
+        expect(mockLookupByIsrc).toHaveBeenCalledWith("FR10S1700001");
+        expect(mockGetRecordingGenres).toHaveBeenCalledWith(RECORDING);
+        // ISRC already known — no point fetching it again.
+        expect(mockGetRecordingIsrc).not.toHaveBeenCalled();
     });
 });

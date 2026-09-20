@@ -124,25 +124,8 @@ const ARTIST_SOURCES: Source<ArtistArtworkQuery>[] = [
         name: "deezer",
         find: (q) => deezerService.getArtistImage(q.name),
     },
-    {
-        name: "lastfm",
-        find: async (q) => {
-            const { lastFmService } = await import("./lastfm");
-            const info = await lastFmService.getArtistInfo(
-                q.name,
-                isRealMbid(q.mbid) ? q.mbid! : undefined,
-            );
-            const images = Array.isArray(info?.image)
-                ? info.image
-                : info?.image
-                  ? [info.image]
-                  : [];
-            // getBestImage already returns null for the grey star Last.fm
-            // serves when it has no picture. Five call sites used to filter
-            // that hash again by hand on top of it.
-            return lastFmService.getBestImage(images);
-        },
-    },
+    // Last.fm cascade entry removed 2026-09-19: the shared API key is
+    // dead and the endpoint only served the grey placeholder star anyway.
 ];
 
 /* ── the loop ────────────────────────────────────────────────────────────── */

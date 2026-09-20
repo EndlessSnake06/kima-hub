@@ -1,7 +1,7 @@
 import { Router } from "express";
 import axios from "axios";
 import { logger } from "../utils/logger";
-import { lastFmService } from "../services/lastfm";
+import { getSimilarArtists } from "../services/artistSimilarity";
 import { musicBrainzService } from "../services/musicbrainz";
 import { deezerService } from "../services/deezer";
 import { redisClient } from "../utils/redis";
@@ -189,48 +189,34 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
         }
 
         // ── Parallelize independent external calls (Defect #1) ──
-        // lastFmInfo, topTracks, findArtistArtwork, and getReleaseGroups
-        // are all independent of each other (they all depend only on
-        // artistName/mbid which are resolved above).  Run them in parallel
-        // so a dead upstream cannot block the entire response.
+        // bio (Wikidata→Wikipedia), similar artists (local centroid /
+        // ListenBrainz dataset), artwork, and getReleaseGroups are all
+        // independent of each other. Run them in parallel so a dead
+        // upstream cannot block the entire response.
 
         let albums: any[] = [];
 
-        // Get artist info from Last.fm (wrapped in timeout)
-        const lastFmInfo = await withTimeout(
-            lastFmService.getArtistInfo(artistName, mbid || undefined),
-            5000,
-            "Last.fm getArtistInfo"
-        );
+        // Bio: Wikidata first, Wikipedia abstract via the MB sitelink
+        // second — both live inside wikidataService.getArtistInfo. This
+        // replaces the Last.fm bio tier; the disambiguation-page filter
+        // the old path needed is a Last.fm artifact and is gone with it.
+        const wdInfo = mbid
+            ? await withTimeout(
+                  (await import("../services/wikidata")).wikidataService.getArtistInfo(
+                      artistName,
+                      mbid
+                  ),
+                  8000,
+                  "Wikidata getArtistInfo"
+              )
+            : { summary: null, heroUrl: null };
+        const bio = wdInfo?.summary || null;
 
-        // Filter out generic "multiple artists" biographies from Last.fm
-        // These occur when Last.fm groups artists with the same name
-        let bio = lastFmInfo?.bio?.summary || null;
-        if (bio) {
-            const lowerBio = bio.toLowerCase();
-            if (
-                (lowerBio.includes("there are") &&
-                    (lowerBio.includes("artist") ||
-                        lowerBio.includes("band")) &&
-                    lowerBio.includes("with the name")) ||
-                lowerBio.includes("there is more than one artist") ||
-                lowerBio.includes("multiple artists")
-            ) {
-                // This is a disambiguation page - don't show it
-                logger.debug(
-                    `  Filtered out disambiguation biography for ${artistName}`
-                );
-                bio = null;
-            }
-        }
-
-        // Get top tracks from Last.fm (parallel with info/artwork/discography)
-        const topTracksPromise = lastFmService
-            .getArtistTopTracks(mbid || "", artistName, 10)
-            .catch(() => {
-                logger.debug(`Failed to get top tracks for ${artistName}`);
-                return [];
-            });
+        // Top tracks: no global play-count source exists anymore (the
+        // Last.fm chart was 100% sentinel data with the dead shared key).
+        // Discovery artists have no local listens, so serve none; the
+        // artist page renders discography + similar artists instead.
+        const topTracksPromise = Promise.resolve([] as any[]);
 
         // Artist artwork (parallel)
         const artworkPromise = findArtistArtwork({
@@ -324,67 +310,65 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
             albums = discAlbums;
         }
 
-        // Get similar artists from Last.fm and fetch images
-        // NORMALIZATION: lastFmInfo.similar.artist could be a single object or array
-        const similarArtistsRaw = normalizeToArray(lastFmInfo?.similar?.artist);
+        // Similar artists: local centroid NN with the ListenBrainz artist
+        // dataset as cold start (replaces artist.getSimilar). Then images
+        // via the standard artwork cascade (fanart → Deezer); the old
+        // Last.fm image tier is deleted, not kept as a fallback.
+        const similarList = await getSimilarArtists(
+            mbid || "",
+            artistName,
+            10
+        );
         const similarArtists = await Promise.all(
-            similarArtistsRaw.slice(0, 10).map(async (artist: any) => {
-                // NORMALIZATION: artist.image could be a single object or array
-                const images = normalizeToArray(artist.image);
-                // Was `images.find(...)?.[" #text"]` -- the key had a stray
-                // leading space, so this was always undefined and the Last.fm
-                // fallback below never once fired.
-                const similarImage = lastFmService.getBestImage(images);
-
-                // The same three sources as above, so the same one call.
-                // `similarImage` is whatever Last.fm already handed us in this
-                // response; offered as the address of last resort so we do not
-                // ask Last.fm twice for something we are already holding.
+            similarList.map(async (s) => {
                 const image =
                     (
                         await findArtistArtwork({
-                            name: artist.name,
-                            mbid: artist.mbid || undefined,
-                            candidateUrl: similarImage,
+                            name: s.name,
+                            mbid: s.mbid || undefined,
                         })
                     )?.url ?? null;
 
                 return {
-                    id: artist.mbid || artist.name,
-                    name: artist.name,
-                    mbid: artist.mbid || null,
-                    url: artist.url,
+                    id: s.mbid || s.name,
+                    name: s.name,
+                    mbid: s.mbid || null,
+                    url: s.url,
                     image,
                 };
             })
         );
 
-        // NORMALIZATION: lastFmInfo.tags.tag could be a single object or array
-        const tags = normalizeToArray(lastFmInfo?.tags?.tag)
-            .map((t: any) => t?.name)
-            .filter(Boolean);
+        // Genres: MusicBrainz artist record (replaces Last.fm tags).
+        let tags: string[] = [];
+        if (mbid) {
+            try {
+                const mbArtist = await musicBrainzService.getArtist(mbid, [
+                    "genres",
+                ]);
+                tags = (mbArtist?.genres || [])
+                    .sort((a: any, b: any) => (b.count || 0) - (a.count || 0))
+                    .slice(0, 5)
+                    .map((g: any) => g.name)
+                    .filter(Boolean);
+            } catch (err) {
+                logger.debug(`MB genres failed for ${artistName}:`, err);
+            }
+        }
 
         const response = {
             mbid,
             name: artistName,
             image,
-            bio, // Use filtered bio instead of raw Last.fm bio
+            bio, // Wikidata/Wikipedia abstract
             summary: bio, // Alias for consistency
             tags,
             genres: tags, // Alias for consistency
-            listeners: parseInt(lastFmInfo?.stats?.listeners || "0"),
-            playcount: parseInt(lastFmInfo?.stats?.playcount || "0"),
-            url: lastFmInfo?.url || null,
+            listeners: 0, // no listener-count source after Last.fm
+            playcount: 0,
+            url: mbid ? `https://musicbrainz.org/artist/${mbid}` : null,
             albums: albums.map((album: any) => ({ ...album, owned: false })), // Mark all as not owned
-            topTracks: topTracks.map((track: any) => ({
-                id: `lastfm-${mbid || artistName}-${track.name}`,
-                title: track.name,
-                playCount: parseInt(track.playcount || "0"),
-                listeners: parseInt(track.listeners || "0"),
-                duration: parseInt(track.duration || "0"),
-                url: track.url,
-                album: { title: track.album?.["#text"] || "Unknown Album" },
-            })),
+            topTracks,
             similarArtists,
         };
 
@@ -499,17 +483,11 @@ router.get("/album/:mbid", async (req, res) => {
         const artistMbid = artistCredit?.[0]?.artist?.id;
         const albumTitle = releaseGroup?.title || release?.title;
 
-        // Get album info from Last.fm
-        let lastFmInfo = null;
-        try {
-            lastFmInfo = await lastFmService.getAlbumInfo(
-                artistName,
-                albumTitle
-            );
-        } catch (error) {
-            logger.debug(`Failed to get Last.fm info for ${albumTitle}`);
-        }
-
+        // Get album info from MusicBrainz (replaces the Last.fm album
+        // lookup). MB is the source of the release-group itself; the
+        // annotation carries the wiki-style summary when one exists, and
+        // tags come from the release-group record. The cover cascade
+        // (Deezer / CAA / fanart) is unchanged below.
         // Get tracks - if we have release, use it directly; otherwise get first release from group
         let tracks: any[] = [];
         if (release) {
@@ -567,11 +545,14 @@ router.get("/album/:mbid", async (req, res) => {
             type: releaseGroup?.["primary-type"] || "Album",
             coverUrl,
             coverArt: coverUrl, // Alias for compatibility
-            bio: lastFmInfo?.wiki?.summary || null,
-            // NORMALIZATION: lastFmInfo.tags.tag could be a single object or array
-            tags: normalizeToArray(lastFmInfo?.tags?.tag)
+            bio:
+                (releaseGroup as any)?.annotation ||
+                (release as any)?.annotation ||
+                null,
+            tags: ((releaseGroup as any)?.tags || [])
                 .map((t: any) => t?.name)
-                .filter(Boolean),
+                .filter(Boolean)
+                .slice(0, 5),
             tracks: tracks.map((track: any, index: number) => ({
                 id: `mb-${releaseGroupId}-${track.id || index}`,
                 title: track.title,

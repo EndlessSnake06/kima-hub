@@ -106,6 +106,39 @@ class MusicBrainzService {
         });
     }
 
+    /**
+     * Browse release-groups by style tag (replaces tag.getTopAlbums).
+     * MB search supports `tag:<name> AND primary-type:album`; results come
+     * back in MB relevance order. 30-day cache like every other lookup.
+     */
+    async searchReleaseGroupsByTag(
+        tag: string,
+        limit = 20
+    ): Promise<Array<{ id: string; title: string; artistName: string }>> {
+        const cacheKey = `mb:tag:albums:${tag}:${limit}`;
+
+        return this.cachedRequest(cacheKey, async () => {
+            const response = await this.rateLimitedGet("/release-group", {
+                params: {
+                    query: `tag:"${this.escapeLucene(tag)}" AND primary-type:album`,
+                    limit,
+                    fmt: "json",
+                },
+            });
+            const groups = response.data["release-groups"] || [];
+            return groups
+                .filter((rg: any) => rg?.id && rg?.title)
+                .map((rg: any) => ({
+                    id: rg.id,
+                    title: rg.title,
+                    artistName:
+                        rg["artist-credit"]?.[0]?.name ||
+                        rg["artist-credit"]?.[0]?.artist?.name ||
+                        "",
+                }));
+        });
+    }
+
     async getReleaseGroup(rgMbid: string) {
         const cacheKey = `mb:rg:${rgMbid}`;
 

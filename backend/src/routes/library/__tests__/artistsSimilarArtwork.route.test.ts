@@ -83,12 +83,12 @@ jest.mock("../../../utils/redis", () => ({
 }));
 
 const mockGetSimilarArtists = jest.fn();
-jest.mock("../../../services/lastfm", () => ({
-    lastFmService: {
-        getSimilarArtists: (...a: any[]) => mockGetSimilarArtists(...a),
-        getArtistInfo: jest.fn().mockResolvedValue(null),
-        getBestImage: jest.fn().mockReturnValue(null),
-    },
+// The swap moved this route's similar-artists lookup from lastFmService to
+// the local-centroid / ListenBrainz engine — mock the new door.
+jest.mock("../../../services/artistSimilarity", () => ({
+    getSimilarArtists: (...a: any[]) => mockGetSimilarArtists(...a),
+    enrichSimilarArtists: jest.fn().mockResolvedValue([]),
+    MIN_LOCAL_TRACKS: 3,
 }));
 
 jest.mock("../../../services/musicbrainz", () => ({

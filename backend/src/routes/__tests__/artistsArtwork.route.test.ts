@@ -49,6 +49,22 @@ jest.mock("../../services/lastfm", () => ({
     },
 }));
 
+// The swap moved similar artists off lastFmService.getSimilarArtists onto
+// the local-centroid / ListenBrainz engine, and bios onto Wikidata. Mock
+// both doors so the suite stays offline and the assertions below hold.
+const mockGetSimilarArtists = jest.fn();
+jest.mock("../../services/artistSimilarity", () => ({
+    getSimilarArtists: (...a: unknown[]) => mockGetSimilarArtists(...a),
+    enrichSimilarArtists: jest.fn().mockResolvedValue([]),
+    MIN_LOCAL_TRACKS: 3,
+}));
+
+jest.mock("../../services/wikidata", () => ({
+    wikidataService: {
+        getArtistInfo: jest.fn().mockResolvedValue(null),
+    },
+}));
+
 const mockSearchArtist = jest.fn();
 const mockGetArtist = jest.fn();
 const mockGetReleaseGroups = jest.fn();
@@ -102,6 +118,7 @@ describe("the discovery routes and the pictures they promise", () => {
         mockGetArtistInfo.mockResolvedValue(null);
         mockGetTopTracks.mockResolvedValue([]);
         mockGetBestImage.mockReturnValue(null);
+        mockGetSimilarArtists.mockResolvedValue([]);
         mockSearchArtist.mockResolvedValue([]);
         mockGetArtist.mockResolvedValue({ name: "Perturbator", id: MBID });
         mockGetReleaseGroups.mockResolvedValue([]);
@@ -135,45 +152,58 @@ describe("the discovery routes and the pictures they promise", () => {
         });
 
         it("asks about each similar artist too, by name and by id", async () => {
-            mockGetArtistInfo.mockResolvedValue({
-                name: "Perturbator",
-                similar: { artist: [{ name: "Carpenter Brut", mbid: "sim-1" }] },
-            });
+            // Similar artists now come from the local-centroid /
+            // ListenBrainz engine, not from artist.getSimilar.
+            mockGetSimilarArtists.mockResolvedValue([
+                {
+                    name: "Carpenter Brut",
+                    mbid: "sim-1",
+                    match: 0.9,
+                    url: "https://musicbrainz.org/artist/sim-1",
+                },
+            ]);
             mockFindArtistArtwork.mockResolvedValue({ url: ARTIST_IMG, source: "deezer" });
 
             const res = await request(makeApp()).get(`/artists/discover/${MBID}`);
 
+            expect(mockGetSimilarArtists).toHaveBeenCalledWith(
+                MBID,
+                "Perturbator",
+                10,
+            );
             expect(mockFindArtistArtwork).toHaveBeenCalledWith(
                 expect.objectContaining({ name: "Carpenter Brut", mbid: "sim-1" }),
             );
             expect(res.body.similarArtists[0].image).toBe(ARTIST_IMG);
         });
 
-        it("offers Last.fm's own picture as the address of last resort", async () => {
-            // This used to read `images.find(...)?.[" #text"]` -- the key had a
-            // stray leading space, so the Last.fm fallback never once fired.
-            mockGetArtistInfo.mockResolvedValue({
-                name: "Perturbator",
-                similar: {
-                    artist: [
-                        {
-                            name: "Carpenter Brut",
-                            mbid: null,
-                            image: [{ size: "large", "#text": "https://lastfm/real.png" }],
-                        },
-                    ],
-                },
-            });
-            mockGetBestImage.mockReturnValue("https://lastfm/real.png");
+        it("does not source similar artists or their pictures from Last.fm anymore", async () => {
+            // The old chain took similar artists (and their pictures) from
+            // artist.getSimilar. That call is gone — the engine answers
+            // locally or via the ListenBrainz dataset, and pictures come
+            // from the standard artwork cascade only.
+            mockGetSimilarArtists.mockResolvedValue([
+                { name: "Carpenter Brut", mbid: null, match: 0.8, url: "" },
+            ]);
+            mockFindArtistArtwork.mockResolvedValue(null);
 
-            await request(makeApp()).get(`/artists/discover/${MBID}`);
+            const res = await request(makeApp()).get(`/artists/discover/${MBID}`);
 
+            expect(mockGetArtistInfo).not.toHaveBeenCalled();
+            expect(mockGetBestImage).not.toHaveBeenCalled();
             expect(mockFindArtistArtwork).toHaveBeenCalledWith(
                 expect.objectContaining({
                     name: "Carpenter Brut",
-                    candidateUrl: "https://lastfm/real.png",
+                    mbid: undefined,
                 }),
             );
+            expect(res.body.similarArtists[0]).toEqual({
+                id: "Carpenter Brut",
+                name: "Carpenter Brut",
+                mbid: null,
+                url: "",
+                image: null,
+            });
         });
 
         it("runs the whole discography through the artwork sources", async () => {

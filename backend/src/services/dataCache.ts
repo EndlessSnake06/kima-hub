@@ -13,7 +13,6 @@
 import { logger } from "../utils/logger";
 import { prisma } from "../utils/db";
 import { redisClient } from "../utils/redis";
-import { lastFmService } from "./lastfm";
 import { findAlbumArtwork, findArtistArtwork, isRealMbid } from "./artwork";
 import { downloadAndStoreImage } from "./imageStorage";
 
@@ -25,7 +24,7 @@ const NEGATIVE_CACHE_TTL = 24 * 60 * 60; // 1 day for "not found" results
 class DataCacheService {
     /**
      * Get artist hero image with unified caching
-     * Order: DB -> Redis -> Fanart.tv -> Deezer -> Last.fm -> save to both
+     * Order: DB -> Redis -> Fanart.tv -> Deezer -> save to both
      */
     async getArtistImage(
         artistId: string,

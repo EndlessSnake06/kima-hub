@@ -20,7 +20,10 @@ import type { SeedArtist } from "./discovery/discoverySeeding";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../utils/db";
 import axios from "axios";
-import { lastFmService } from "./lastfm";
+import {
+    getSimilarArtists,
+    type SimilarArtist,
+} from "./artistSimilarity";
 import { musicBrainzService } from "./musicbrainz";
 import { updateBatchStatus } from "./discovery/optimisticBatchUpdate";
 import { lidarrService } from "./lidarr";
@@ -460,42 +463,15 @@ class DiscoverWeeklyService {
     ): Promise<Map<string, any[]>> {
         const cache = new Map<string, any[]>();
 
-        // Helper: fetch with exponential backoff retry
+        // Helper: fetch similar artists. artistSimilarity never throws —
+        // it returns [] when neither the local centroid nor the
+        // ListenBrainz dataset has data — so the old retry-on-429 loop is
+        // gone; there is nothing to retry, and a cold seed should fall
+        // through to the next strategy instead of stalling the run.
         const fetchWithRetry = async (
-            seed: SeedArtist,
-            maxRetries = 3
-        ): Promise<any[]> => {
-            for (let attempt = 1; attempt <= maxRetries; attempt++) {
-                try {
-                    const similar = await lastFmService.getSimilarArtists(
-                        seed.mbid || "",
-                        seed.name,
-                        20
-                    );
-                    return similar;
-                } catch (error: any) {
-                    const isRetryable =
-                        error.response?.status === 429 ||
-                        error.response?.status >= 500 ||
-                        error.code === "ECONNRESET" ||
-                        error.code === "ETIMEDOUT";
-
-                    if (isRetryable && attempt < maxRetries) {
-                        const delay = Math.pow(2, attempt) * 500; // 1s, 2s, 4s
-                        logger.warn(
-                            `   Retry ${attempt}/${maxRetries} for ${seed.name} in ${delay}ms (${error.message})`
-                        );
-                        await new Promise((r) => setTimeout(r, delay));
-                        continue;
-                    }
-
-                    logger.warn(
-                        `   Failed to get similar artists for ${seed.name}: ${error.message}`
-                    );
-                    return [];
-                }
-            }
-            return [];
+            seed: SeedArtist
+        ): Promise<SimilarArtist[]> => {
+            return getSimilarArtists(seed.mbid || "", seed.name, 20);
         };
 
         // Process seeds in smaller batches to avoid overwhelming APIs
@@ -2175,7 +2151,7 @@ class DiscoverWeeklyService {
 
             try {
                 // Get MORE similar artists per seed (30 instead of 15)
-                const similarArtists = await lastFmService.getSimilarArtists(
+                const similarArtists = await getSimilarArtists(
                     seed.mbid,
                     seed.name,
                     30
@@ -2189,14 +2165,17 @@ class DiscoverWeeklyService {
                         continue; // Skip - we already have an album from this artist
                     }
 
-                    // Get more albums to increase chances of finding available one
-                    const albums = await lastFmService.getArtistTopAlbums(
+                    // Albums straight from MusicBrainz (replaces
+                    // artist.getTopAlbums + searchAlbum-by-name): the
+                    // release-groups ARE MB records, so no fuzzy name
+                    // round-trip is needed.
+                    const rgs = await musicBrainzService.getReleaseGroups(
                         similar.mbid,
-                        similar.name,
+                        ["album"],
                         5
                     );
 
-                    for (const album of albums) {
+                    for (const rg of rgs) {
                         if (mbLookupsAttempted >= MAX_MB_LOOKUPS) {
                             logger.debug(
                                 `[Discovery]   Reached MusicBrainz lookup cap (${MAX_MB_LOOKUPS}) for this replacement search`
@@ -2205,11 +2184,7 @@ class DiscoverWeeklyService {
                         }
                         mbLookupsAttempted++;
 
-                        // Get MBID from MusicBrainz
-                        const mbAlbum = await musicBrainzService.searchAlbum(
-                            album.name,
-                            similar.name
-                        );
+                        const mbAlbum = { id: rg.id, title: rg.title };
 
                         if (mbAlbum && !attemptedMbids.has(mbAlbum.id)) {
                             // Check if artist is already in library (Discovery = NEW artists only!)
@@ -2239,17 +2214,17 @@ class DiscoverWeeklyService {
                                 mbAlbum.id,
                                 batch.userId,
                                 similar.name,
-                                album.name
+                                mbAlbum.title
                             );
                             if (!candidate.valid) continue;
 
                             logger.debug(
-                                `[Discovery]   Tier 2 replacement found: ${album.name} by ${similar.name} (NEW artist!)`
+                                `[Discovery]   Tier 2 replacement found: ${mbAlbum.title} by ${similar.name} (NEW artist!)`
                             );
                             return {
                                 artistName: similar.name,
                                 artistMbid: similar.mbid,
-                                albumTitle: album.name,
+                                albumTitle: mbAlbum.title,
                                 albumMbid: mbAlbum.id,
                                 similarity: similar.match || 0.5,
                             };
@@ -2347,12 +2322,21 @@ class DiscoverWeeklyService {
         let skippedDuplicate = 0;
 
         try {
-            // Get 10 albums per artist to increase chances of finding good representative content
-            const topAlbums = await lastFmService.getArtistTopAlbums(
-                artist.mbid || "",
-                artist.name,
-                10
-            );
+            // Albums straight from MusicBrainz release-groups (replaces
+            // artist.getTopAlbums). No MBID → nothing to ask about; the
+            // mbid-keyed browse is exact, so the old searchAlbum-by-name
+            // round-trip below collapses to a direct {id, title}.
+            const rgs: Array<{ id: string; title: string }> = artist.mbid
+                ? await musicBrainzService.getReleaseGroups(
+                      artist.mbid,
+                      ["album"],
+                      10
+                  )
+                : [];
+            const topAlbums = rgs.map((rg) => ({
+                name: rg.title,
+                mbid: rg.id,
+            }));
 
             if (topAlbums.length === 0) {
                 return {
@@ -2377,16 +2361,9 @@ class DiscoverWeeklyService {
             for (const album of topAlbums) {
                 albumsChecked++;
 
-                // Get MBID from MusicBrainz
-                const mbAlbum = await musicBrainzService.searchAlbum(
-                    album.name,
-                    artist.name
-                );
-
-                if (!mbAlbum) {
-                    skippedNoMbid++;
-                    continue;
-                }
+                // Get MBID from MusicBrainz — the release-group IS the MB
+                // record now (no fuzzy name search needed).
+                const mbAlbum = { id: album.mbid, title: album.name };
 
                 // Skip duplicates
                 if (seenAlbums.has(mbAlbum.id)) {
@@ -2447,9 +2424,8 @@ class DiscoverWeeklyService {
                     score += 10;
                 }
 
-                // Popularity score (normalized playcount from Last.fm)
-                const playcount = album.playcount || 0;
-                score += Math.log10(playcount + 1);
+                // No global play-count source exists after Last.fm; the
+                // recency bonus above carries the score.
 
                 scoredAlbums.push({
                     albumName: album.name,
@@ -2642,7 +2618,7 @@ class DiscoverWeeklyService {
 
             try {
                 // Fetch more artists to find those in the deep cut range
-                const similar = await lastFmService.getSimilarArtists(
+                const similar = await getSimilarArtists(
                     seed.mbid || '',
                     seed.name,
                     50 // Fetch more to find low-similarity matches
@@ -2738,8 +2714,11 @@ class DiscoverWeeklyService {
             if (recommendations.length >= targetCount) break;
 
             try {
-                // Use Last.fm's getTopAlbumsByTag
-                const tagAlbums = await lastFmService.getTopAlbumsByTag(
+                // MB browse-by-tag (replaces tag.getTopAlbums): the
+                // release-groups returned are MB records already, so the
+                // old searchAlbum-by-name round-trip collapses to a direct
+                // {id, title}.
+                const tagAlbums = await musicBrainzService.searchReleaseGroupsByTag(
                     genre,
                     30
                 );
@@ -2747,18 +2726,14 @@ class DiscoverWeeklyService {
                 for (const album of tagAlbums) {
                     if (recommendations.length >= targetCount) break;
 
-                    const artistName = album.artist?.name || album.artist;
-                    if (!artistName || !album.name) continue;
+                    const artistName = album.artistName;
+                    if (!artistName || !album.title) continue;
 
                     // Skip non-studio albums
-                    if (!isStudioAlbum(album.name)) continue;
+                    if (!isStudioAlbum(album.title)) continue;
 
-                    // Get MBID from MusicBrainz
-                    const mbAlbum = await musicBrainzService.searchAlbum(
-                        album.name,
-                        artistName
-                    );
-                    if (!mbAlbum || seenAlbums.has(mbAlbum.id)) continue;
+                    const mbAlbum = { id: album.id, title: album.title };
+                    if (seenAlbums.has(mbAlbum.id)) continue;
 
                     // Owned / owned-by-name / excluded -- shared helper, run
                     // concurrently. Dedups the 3rd copy of this logic and makes error
@@ -2768,7 +2743,7 @@ class DiscoverWeeklyService {
                         mbAlbum.id,
                         userId,
                         artistName,
-                        album.name
+                        album.title
                     );
                     if (!candidate.valid) continue;
 
@@ -2782,13 +2757,13 @@ class DiscoverWeeklyService {
                     seenAlbums.add(mbAlbum.id);
                     recommendations.push({
                         artistName,
-                        albumTitle: album.name,
+                        albumTitle: album.title,
                         albumMbid: mbAlbum.id,
                         similarity: 0.7, // Tag-based discovery
                         tier: "wildcard",
                     });
                     logger.debug(
-                        `   ✓ TAG: ${artistName} - ${album.name} (${genre})`
+                        `   ✓ TAG: ${artistName} - ${album.title} (${genre})`
                     );
                 }
             } catch (error: any) {

@@ -230,13 +230,9 @@ router.post("/", async (req, res) => {
 
     invalidateSystemSettingsCache();
 
-    // Refresh Last.fm API key if it was updated
-    try {
-      const { lastFmService } = await import("../services/lastfm");
-      await lastFmService.refreshApiKey();
-    } catch (err) {
-      logger.warn("Failed to refresh Last.fm API key:", err);
-    }
+    // (Last.fm key refresh removed 2026-09-19 — Kima no longer calls
+    // Last.fm; similarity/correction/dates come from ListenBrainz,
+    // MusicBrainz and local centroid embeddings instead.)
 
     // Reconnect Soulseek only if connection-relevant settings actually changed
     // (not just present in payload). This covers P2P credentials AND the slskd
