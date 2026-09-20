@@ -2,6 +2,7 @@ import { AxiosRequestConfig } from "axios";
 import { logger } from "../utils/logger";
 import { CacheWrapper } from "../utils/cacheWrapper";
 import { rateLimitedGet } from "./httpClient";
+import type { SimilarArtist } from "./listenBrainz";
 
 /**
  * Deezer Service
@@ -143,6 +144,58 @@ class DeezerService {
         } catch (error: any) {
             logger.error(`Deezer artist image error for ${artistName}:`, error.message);
             return null;
+        }
+    }
+
+    /**
+     * Related artists for a seed artist (replaces lastFmService's
+     * artist.getSimilar). Searches Deezer by name to resolve the artist id,
+     * then reads Deezer's public `artist/{id}/related` list.
+     *
+     * `match` is rank-position based: Deezer orders related artists by
+     * relevance and publishes no similarity score, so the first entry gets
+     * 0.9 and the last 0.5, decreasing linearly with position. `nb_fan` is
+     * deliberately NOT used for scoring — fan counts are popularity, not
+     * similarity, and would flatten the band.
+     *
+     * Returns [] (never throws) when the seed cannot be resolved or the
+     * related list is empty — callers fall through to their next tier.
+     */
+    async getRelatedArtists(artistName: string, limit = 30): Promise<SimilarArtist[]> {
+        const cacheKey = `related:${artistName.toLowerCase()}:${limit}`;
+
+        try {
+            return await this.cachedRequest(cacheKey, async () => {
+                const search = await this.deezerGet<any>("/search/artist", {
+                    params: { q: artistName, limit: 1 },
+                    timeout: 5000,
+                });
+                const seed = search?.data?.[0];
+                if (!seed?.id) return [];
+
+                const related = await this.deezerGet<any>(`/artist/${seed.id}/related`, {
+                    params: { limit },
+                    timeout: 5000,
+                });
+                const list: any[] = related?.data || [];
+                if (list.length === 0) return [];
+
+                const n = Math.max(list.length - 1, 1);
+                const results: SimilarArtist[] = [];
+                list.forEach((a: any, i: number) => {
+                    if (!a?.name) return;
+                    if (String(a.id) === String(seed.id)) return; // exclude the seed itself
+                    results.push({
+                        name: String(a.name),
+                        match: Math.max(0.5, 0.9 - (0.4 * i) / n),
+                        url: a.link || `https://www.deezer.com/artist/${a.id}`,
+                    });
+                });
+                return results;
+            });
+        } catch (error: any) {
+            logger.error(`Deezer related artists error for ${artistName}:`, error.message);
+            return [];
         }
     }
 
