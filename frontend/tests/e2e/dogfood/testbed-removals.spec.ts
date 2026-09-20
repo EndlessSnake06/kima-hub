@@ -32,15 +32,29 @@ function escapeRegExp(s: string): string {
  * both disabled while `closing` runs, and consent items may need answering.
  */
 async function dismissWhatsNew(page: Page): Promise<void> {
+    const dialog = page.locator('div[role="dialog"][aria-labelledby="whats-new-title"]');
+    // The dialog renders ASYNCHRONOUSLY after login. A single count() check
+    // races the render: it returns "not present" before the dialog mounts, and
+    // the dialog then intercepts every pointer event for the rest of the run
+    // (observed as a >15m hang on a genuinely fresh instance). Wait for it to
+    // appear, bounded — proceed immediately when it never shows.
+    const appeared = await dialog
+        .waitFor({ state: "visible", timeout: 15_000 })
+        .then(() => true)
+        .catch(() => false);
+    if (!appeared) return;
+    // The X in the header; clicking it runs the same close path as Done. The
+    // button is briefly disabled while `closing` runs, so retry until hidden.
+    const close = page.locator('div[role="dialog"] button[aria-label="Close"]').first();
     for (let i = 0; i < 6; i++) {
-        const dialog = page.locator('div[role="dialog"][aria-labelledby="whats-new-title"]');
-        if (!(await dialog.count())) return;
-        // The X in the header; clicking it runs the same close path as Done.
-        const close = page.locator('div[role="dialog"] button[aria-label="Close"]').first();
         if (await close.count()) {
             await close.click({ timeout: 3000 }).catch(() => {});
         }
-        await page.waitForTimeout(1500);
+        const gone = await dialog
+            .waitFor({ state: "hidden", timeout: 2500 })
+            .then(() => true)
+            .catch(() => false);
+        if (gone) return;
     }
 }
 
