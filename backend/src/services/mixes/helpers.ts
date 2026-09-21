@@ -154,14 +154,14 @@ export type TrackWithAlbumCover = {
             userGenres?: string[] | null;
         };
     };
-    lastfmTags?: string[];
+    enrichmentTags?: string[];
     essentiaGenres?: string[];
     [key: string]: unknown;
 };
 
 /**
  * Helper to find tracks matching genre patterns.
- * Uses lastfmTags and essentiaGenres on tracks (String[]) first,
+ * Uses enrichmentTags and essentiaGenres on tracks (String[]) first,
  * then falls back to filtering album.genres (JSON array) in memory.
  */
 export async function findTracksByGenrePatterns(
@@ -173,7 +173,7 @@ export async function findTracksByGenrePatterns(
     const tracks = await prisma.track.findMany({
         where: {
             OR: [
-                { lastfmTags: { hasSome: tagPatterns } },
+                { enrichmentTags: { hasSome: tagPatterns } },
                 { essentiaGenres: { hasSome: tagPatterns } },
             ],
         },

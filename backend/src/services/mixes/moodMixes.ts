@@ -390,7 +390,7 @@ export async function generateMelancholyMix(
                     "atmospheric",
                 ].includes(tag.toLowerCase())
             );
-            const hasMoodListSadTags = t.lastfmTags?.some((tag: string) =>
+            const hasMoodListSadTags = t.enrichmentTags?.some((tag: string) =>
                 [
                     "sad",
                     "melancholic",
@@ -692,7 +692,7 @@ export async function generateMoodTagMix(
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
         where: {
-            lastfmTags: {
+            enrichmentTags: {
                 has: moodTag,
             },
         },
@@ -735,7 +735,7 @@ export async function generateRoadTripMix(
         where: {
             OR: [
                 {
-                    lastfmTags: {
+                    enrichmentTags: {
                         hasSome: [
                             "driving",
                             "road trip",
@@ -849,7 +849,7 @@ export async function generateSadGirlSundays(
                     ],
                 },
                 {
-                    lastfmTags: {
+                    enrichmentTags: {
                         hasSome: [
                             "sad",
                             "melancholic",
@@ -900,7 +900,7 @@ export async function generateMainCharacterEnergy(
                     ],
                 },
                 {
-                    lastfmTags: {
+                    enrichmentTags: {
                         hasSome: [
                             "empowering",
                             "confident",
@@ -952,7 +952,7 @@ export async function generateVillainEra(
                     },
                 },
                 {
-                    lastfmTags: {
+                    enrichmentTags: {
                         hasSome: [
                             "dark",
                             "aggressive",
@@ -1143,7 +1143,7 @@ export async function generateGoldenHour(
                     ],
                 },
                 {
-                    lastfmTags: {
+                    enrichmentTags: {
                         hasSome: ["warm", "sunset", "dreamy", "peaceful"],
                     },
                 },
@@ -1226,7 +1226,7 @@ export async function generateInMyFeelings(
                     ],
                 },
                 {
-                    lastfmTags: {
+                    enrichmentTags: {
                         hasSome: [
                             "emotional",
                             "heartbreak",
@@ -1361,7 +1361,7 @@ export async function generateRomanticizeYourLife(
                     ],
                 },
                 {
-                    lastfmTags: {
+                    enrichmentTags: {
                         hasSome: [
                             "dreamy",
                             "aesthetic",

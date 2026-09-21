@@ -2560,11 +2560,11 @@ class SpotifyImportService {
 
         const existingTrack = await prisma.track.findUnique({
           where: { id: track.id },
-          select: { lastfmTags: true },
+          select: { enrichmentTags: true },
         });
         if (
           existingTrack &&
-          existingTrack.lastfmTags.length === 0 &&
+          existingTrack.enrichmentTags.length === 0 &&
           genreData.tags.length > 0
         ) {
           const moodTags = genreData.tags
@@ -2573,7 +2573,7 @@ class SpotifyImportService {
             .map((t) => t.name);
           await prisma.track.update({
             where: { id: track.id },
-            data: { lastfmTags: moodTags },
+            data: { enrichmentTags: moodTags },
           });
         }
 

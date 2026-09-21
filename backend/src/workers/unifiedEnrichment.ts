@@ -361,8 +361,8 @@ export async function startUnifiedEnrichmentWorker() {
          data: { enrichmentStatus: "pending" },
      });
      orphanedQueued = await prisma.track.updateMany({
-         where: { lastfmTags: { has: "_queued" } },
-         data: { lastfmTags: [] },
+         where: { enrichmentTags: { has: "_queued" } },
+         data: { enrichmentTags: [] },
      });
      // Crash recovery: reset tracks stuck in "validating" (scan queue may be lost)
      orphanedScan = await prisma.track.updateMany({
@@ -606,7 +606,7 @@ export async function runFullEnrichment(): Promise<{
     await prisma.track.updateMany({
         where: { analysisStatus: { not: "processing" } },
         data: {
-            lastfmTags: [],
+            enrichmentTags: [],
             analysisStatus: "pending",
             analysisRetryCount: 0,
             analysisError: null,
@@ -672,7 +672,7 @@ async function resetMoodTagsOnly(): Promise<{ count: number }> {
     logger.debug("[Enrichment] Resetting ONLY mood tags...");
 
     const result = await prisma.track.updateMany({
-        data: { lastfmTags: [] },
+        data: { enrichmentTags: [] },
     });
 
     logger.debug(`[Enrichment] Reset mood tags for ${result.count} tracks`);
@@ -1113,7 +1113,7 @@ export async function enrichSingleTrack(trackId: string): Promise<void> {
     // working without any AcoustID work.
     //
     // Mood tags: MusicBrainz recording genres replace the dead Last.fm
-    // track.getTopTags call. Always mark lastfmTags so the queue drains:
+    // track.getTopTags call. Always mark enrichmentTags so the queue drains:
     // ["_no_mood_tags"] when the recording has no genres, ["_not_found"]
     // when no recording could be identified at all (same sentinels as
     // before).
@@ -1206,7 +1206,7 @@ export async function enrichSingleTrack(trackId: string): Promise<void> {
                 await trackIdentityService.populateTrackGenres(track.id, topGenres);
                 await prisma.track.update({
                     where: { id: track.id },
-                    data: { lastfmTags: topGenres },
+                    data: { enrichmentTags: topGenres },
                 });
                 logger.debug(
                     `   ✓ ${track.title}: [${topGenres.slice(0, 3).join(", ")}...]`,
@@ -1214,7 +1214,7 @@ export async function enrichSingleTrack(trackId: string): Promise<void> {
             } else {
                 await prisma.track.update({
                     where: { id: track.id },
-                    data: { lastfmTags: ["_no_mood_tags"] },
+                    data: { enrichmentTags: ["_no_mood_tags"] },
                 });
             }
         } catch (err) {
@@ -1223,13 +1223,13 @@ export async function enrichSingleTrack(trackId: string): Promise<void> {
             );
             await prisma.track.update({
                 where: { id: track.id },
-                data: { lastfmTags: ["_not_found"] },
+                data: { enrichmentTags: ["_not_found"] },
             });
         }
     } else {
         await prisma.track.update({
             where: { id: track.id },
-            data: { lastfmTags: ["_not_found"] },
+            data: { enrichmentTags: ["_not_found"] },
         });
     }
 }
@@ -1457,14 +1457,14 @@ export async function executeMoodTagsPhase(): Promise<number> {
     const tracks = await prisma.track.findMany({
         where: {
             OR: [
-                { lastfmTags: { equals: [] } },
-                { lastfmTags: { isEmpty: true } },
+                { enrichmentTags: { equals: [] } },
+                { enrichmentTags: { isEmpty: true } },
             ],
             // Exclude tracks already queued this cycle — prevents re-adding the
             // same tracks on every 5s tick before the worker can process them.
             // The worker always overwrites ["_queued"] with real data or a
             // terminal sentinel (["_no_mood_tags"], ["_not_found"]).
-            NOT: { lastfmTags: { has: "_queued" } },
+            NOT: { enrichmentTags: { has: "_queued" } },
         },
         select: { id: true, title: true },
         take: TRACK_BATCH_SIZE,
@@ -1509,7 +1509,7 @@ export async function executeMoodTagsPhase(): Promise<number> {
         // Mark as in-flight so the next orchestrator tick skips them
         await prisma.track.updateMany({
             where: { id: { in: queuedIds } },
-            data: { lastfmTags: ["_queued"] },
+            data: { enrichmentTags: ["_queued"] },
         });
         logger.debug(`[Enrichment] Queued ${queuedIds.length} tracks`);
     }
@@ -2053,7 +2053,7 @@ async function computeEnrichmentProgress() {
 
     // ONE pass over Track with conditional aggregates, instead of seven separate
     // COUNT queries. This function runs on every 5-second orchestrator tick, and
-    // several of those counts had no index to use -- notably the lastfmTags
+    // several of those counts had no index to use -- notably the enrichmentTags
     // predicate -- so each tick was issuing repeated sequential scans of the
     // largest table in the schema against the same connection pool that serves
     // audio streaming.
@@ -2078,7 +2078,7 @@ async function computeEnrichmentProgress() {
                 WHERE "analysisStatus" = 'permanently_failed' OR "corrupt"
             )                                                         AS excluded,
             count(*) FILTER (
-                WHERE array_length("lastfmTags", 1) > 0
+                WHERE array_length("enrichmentTags", 1) > 0
                   AND "analysisStatus" <> 'permanently_failed'
                   AND NOT "corrupt"
             )                                                         AS tags_enriched,
@@ -2415,7 +2415,7 @@ export async function resetAllEnrichmentData(): Promise<{
             danceabilityMl: null,
             moodTags: [],
             essentiaGenres: [],
-            lastfmTags: [],
+            enrichmentTags: [],
         },
     });
 

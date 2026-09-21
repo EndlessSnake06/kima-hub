@@ -410,7 +410,7 @@ router.get("/track/:trackId", requireAuth, async (req, res) => {
                 moodElectronic: true,
                 moodTags: true,
                 essentiaGenres: true,
-                lastfmTags: true,
+                enrichmentTags: true,
             },
         });
 

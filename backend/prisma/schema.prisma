@@ -692,15 +692,11 @@ model SystemSettings {
   enrichmentConcurrency       Int      @default(1)
   lidarrWebhookSecret         String?
   audioAnalyzerWorkers        Int      @default(2)
-  lastfmApiKey                String?
   acoustidApiKey              String?
   soulseekConcurrentDownloads Int      @default(4)
   clapWorkers                 Int      @default(2)
   soulseekEnabled             Boolean?
   soulseekDownloadPath        String?
-  lastfmApiSecret             String?
-  lastfmUserKey               String?
-  lastfmEnabled               Boolean?
   // ListenBrainz user token (encrypted). Replaces the Last.fm scrobble
   // stack: submitted via services/listenBrainz.ts when set.
   listenbrainzUserToken       String?
@@ -748,7 +744,10 @@ model Track {
   danceabilityMl              Float?
   moodTags                    String[]
   essentiaGenres              String[]
-  lastfmTags                  String[]                 @default([])
+  // Enrichment tags: MusicBrainz genres (was Last.fm tags; service removed,
+  // column renamed). Also carries queue sentinels '_queued' / '_no_mood_tags'
+  // / '_not_found' — see workers/unifiedEnrichment.ts.
+  enrichmentTags              String[]                 @default([])
   analysisStatus              String                   @default("pending")
   analysisVersion             String?
   analysisMode                String?
@@ -798,7 +797,7 @@ model Track {
   @@index([scanStatus])
   @@index([vibeAnalysisStatus])
   @@index([analysisStatus, vibeAnalysisStatus])
-  @@index([lastfmTags], type: Gin, map: "Track_lastfmTags_gin_idx")
+  @@index([enrichmentTags], type: Gin, map: "Track_enrichmentTags_gin_idx")
   @@index([isrc])
   @@index([albumId])
   @@index([acousticness])

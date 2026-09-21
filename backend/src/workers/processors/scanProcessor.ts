@@ -598,8 +598,8 @@ export async function processScan(
                 const tracksNeedingTags = await prisma.track.count({
                     where: {
                         OR: [
-                            { lastfmTags: { isEmpty: true } },
-                            { lastfmTags: { equals: null } },
+                            { enrichmentTags: { isEmpty: true } },
+                            { enrichmentTags: { equals: null } },
                         ],
                     },
                 });

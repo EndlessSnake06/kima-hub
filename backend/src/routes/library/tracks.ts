@@ -870,7 +870,7 @@ router.get("/radio", async (req, res) => {
             break;
           default:
             moodWhere = {
-              lastfmTags: { has: moodValue },
+              enrichmentTags: { has: moodValue },
             };
         }
 
@@ -1283,7 +1283,7 @@ router.get("/radio", async (req, res) => {
               danceability: true,
               keyScale: true,
               moodTags: true,
-              lastfmTags: true,
+              enrichmentTags: true,
               essentiaGenres: true,
               instrumentalness: true,
               moodHappy: true,
@@ -1461,9 +1461,9 @@ router.get("/radio", async (req, res) => {
               let score = cosineSimilarity(sourceVector, targetVector);
 
               const tagBonus = computeTagBonus(
-                sourceTrack.lastfmTags || [],
+                sourceTrack.enrichmentTags || [],
                 sourceTrack.essentiaGenres || [],
-                t.lastfmTags || [],
+                t.enrichmentTags || [],
                 t.essentiaGenres || [],
               );
 
@@ -1707,7 +1707,7 @@ router.get("/radio", async (req, res) => {
         );
         logger.debug(
           `  Mood tags: ${
-            ((srcTrack as any).lastfmTags || []).join(", ") || "N/A"
+            ((srcTrack as any).enrichmentTags || []).join(", ") || "N/A"
           }`,
         );
         logger.debug(

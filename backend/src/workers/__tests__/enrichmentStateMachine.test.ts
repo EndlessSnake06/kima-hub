@@ -307,8 +307,8 @@ describe("Enrichment State Machine", () => {
 
             expect(mockPrismaTrackUpdateMany).toHaveBeenCalledWith(
                 expect.objectContaining({
-                    where: { lastfmTags: { has: "_queued" } },
-                    data: { lastfmTags: [] },
+                    where: { enrichmentTags: { has: "_queued" } },
+                    data: { enrichmentTags: [] },
                 }),
             );
         });

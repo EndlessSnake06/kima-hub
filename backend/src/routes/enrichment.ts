@@ -567,7 +567,7 @@ router.post("/retry", requireAdmin, async (req, res) => {
       if (trackTagIdsToReset.length > 0) {
         await prisma.track.updateMany({
           where: { id: { in: trackTagIdsToReset } },
-          data: { lastfmTags: [] },
+          data: { enrichmentTags: [] },
         });
       }
     } catch (error) {

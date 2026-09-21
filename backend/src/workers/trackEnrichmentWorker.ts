@@ -47,7 +47,7 @@ export async function startTrackEnrichmentWorker(): Promise<Worker> {
             // Clear the "_queued" sentinel so the orchestrator can re-pick this
             // track up on the next library re-enrich rather than leaving it stuck
             await prisma.track
-                .update({ where: { id: trackId }, data: { lastfmTags: [] } })
+                .update({ where: { id: trackId }, data: { enrichmentTags: [] } })
                 .catch(() => {});
             await enrichmentFailureService
                 .recordFailure({

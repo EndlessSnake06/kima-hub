@@ -34,7 +34,7 @@ async function generateSundayMix(
                     acousticness: { gte: 0.5 },
                 },
                 {
-                    lastfmTags: {
+                    enrichmentTags: {
                         hasSome: [
                             "relaxed",
                             "calm",
@@ -85,7 +85,7 @@ async function generateMondayMix(
                     valence: { gte: 0.5 },
                 },
                 {
-                    lastfmTags: {
+                    enrichmentTags: {
                         hasSome: [
                             "motivation",
                             "uplifting",
@@ -135,7 +135,7 @@ async function generateFridayMix(
                     energy: { gte: 0.6 },
                 },
                 {
-                    lastfmTags: {
+                    enrichmentTags: {
                         hasSome: ["party", "dance", "fun", "groovy"],
                     },
                 },
