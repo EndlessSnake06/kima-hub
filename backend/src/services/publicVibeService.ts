@@ -1,0 +1,342 @@
+/**
+ * Public vibe surface — the read-and-join logic in front of features that are
+ * otherwise auth-walled. This is not a new similarity or mapping feature:
+ *
+ *  - the 2D map already exists, cached in Redis and refreshed by the analysis
+ *    path (umapProjection.computeMapProjection)
+ *  - similar / search already exist (hybridSimilarity / textEmbeddingBridge)
+ *  - playback, the queue, the context are already persisted in PlaybackState
+ *
+ * The one genuinely new piece here is the join: playback knows a list of
+ * track-ids and the map knows each track's x,y, and nowhere in the app joins
+ * them. Every other function below is assembly over those three sources plus a
+ * tiny cache and a small decimation.
+ *
+ * Nothing here reads a user id from the request. The public user's id is read
+ * once, from SystemSettings, by the route; callers below receive it as a plain
+ * argument and cannot see anything else.
+ */
+import { prisma } from "../utils/db";
+import { logger } from "../utils/logger";
+import { computeMapProjection } from "./umapProjection";
+
+// The shape of the map payload we care about — a track's coordinates and the
+// bits needed to draw it. We read by structural access, not by depending on the
+// private fields of the projection's own type, so the producer can change.
+interface MapPoint {
+    id: string;
+    x: number;
+    y: number;
+    title: string;
+    artist: string;
+    albumId: string;
+    coverUrl: string | null;
+}
+
+// A queued track, whatever shape the client wrote it in. We only read the id
+// (to join to the map) and the title/artist the row already carried forward.
+interface QueueItem {
+    id: string;
+    title?: string;
+    artist?: { id?: string; name: string } | null;
+}
+
+interface PlaybackRow {
+    playbackType: string | null;
+    trackId: string | null;
+    queue: QueueItem[] | null;
+    currentIndex: number;
+    position: number;
+    updatedAt: Date;
+}
+
+const LIVE_CACHE_TTL_SECONDS = 2;
+const MAX_QUEUE_ITEMS = 500;
+const MAX_MAP_POINTS = 2000;
+
+// Only a real track plays to a point on the 2D map. An audiobook or podcast
+// plays, but there is no axis for it, so the queue and context still follow a
+// plain track queue and "now playing" is null for these.
+const PLAYABLE_TYPE = "track";
+
+// The map carries each track's coverUrl. For many of those it is a
+// `native:<albumId>.jpg` reference — a pointer to a file on the server, which
+// is the single thing this surface must never hand to a client. Those become a
+// public proxy URL; any other coverUrl (a remote http URL the map already held)
+// is passed through untouched. The proxied route resolves and serves the bytes.
+function toPublicCoverUrl(mapUrl: string | null, trackId: string): string | null {
+    if (mapUrl && mapUrl.startsWith("native:")) {
+        return `/api/public/vibe/cover/${encodeURIComponent(trackId)}`;
+    }
+    return mapUrl;
+}
+
+// Swap every coverUrl in a point object to its public proxy form, if it is one.
+function toPublicCover(trackId: string, track: MapPoint): MapPoint {
+    return { ...track, coverUrl: toPublicCoverUrl(track.coverUrl, trackId) };
+}
+
+// Swap every coverUrl across a point list. (Handled in-place by asMapPoints.)
+
+function asMapPoints(projection: any): MapPoint[] {
+    const tracks = (projection?.tracks ?? []) as unknown[];
+    const points = tracks.filter(
+        (t): t is MapPoint =>
+            !!t &&
+            typeof (t as Record<string, unknown>).x === "number" &&
+            typeof (t as Record<string, unknown>).y === "number",
+    );
+    return points.map((t) => toPublicCover(t.id, t));
+}
+
+// Deterministic cap: keep the first N, drop the rest, by stored-id order. The
+// map id set changes slowly, so slicing the same way every time gives the site
+// a stable frame, not reshuffled points.
+function decimate(points: MapPoint[], maxPoints: number): MapPoint[] {
+    if (points.length <= maxPoints) return points;
+    return points.slice(0, maxPoints);
+}
+
+async function lookupIds(ids: string[], points: MapPoint[]): Promise<MapPoint[]> {
+    const wanted = new Set(ids);
+    return points.filter((p) => wanted.has(p.id));
+}
+
+// Which index is playing, clamped to the (possibly capped) queue. A missing or
+// negative index falls back to the front.
+function clampQueueIndex(current: number, length: number): number {
+    if (!Number.isFinite(current)) return 0;
+    return Math.min(Math.max(0, Math.floor(current)), Math.max(0, length - 1));
+}
+
+// The stored queue is playback order. The item at the current index is what is
+// playing; everything after it is queued. If the index points past the end the
+// queue is exhausted ahead of now.
+function splitQueue(
+    queue: readonly QueueItem[] | null,
+    currentIndex: number,
+): { nowId: string | null; queued: QueueItem[] } {
+    if (!queue || queue.length === 0) {
+        return { nowId: null, queued: [] };
+    }
+    const length = Math.min(queue.length, MAX_QUEUE_ITEMS);
+    const clamped = clampQueueIndex(currentIndex, length);
+    return {
+        nowId: queue[clamped]?.id ?? null,
+        queued: queue.slice(clamped + 1),
+    };
+}
+
+/**
+ * The public user's playing point, joined to the map. `null` is a normal
+ * response (idle), never an error. Any failure to read the map or playback is
+ * likewise reported as "nothing playing" rather than thrown, so the site never
+ * renders a failure before the operator has anything public to show.
+ */
+export async function getPublicLive(
+    publicUserId: string,
+    maxPoints: number = MAX_MAP_POINTS,
+): Promise<{
+    nowPlaying: {
+        trackId: string;
+        x: number;
+        y: number;
+        title: string;
+        artist: string;
+        coverUrl: string | null;
+        position: number;
+        duration: number;
+    } | null;
+}> {
+    let playback: PlaybackRow | null = null;
+    try {
+        const row = await prisma.playbackState.findUnique({
+            where: { userId: publicUserId },
+        });
+        if (row) playback = row as unknown as PlaybackRow;
+    } catch (e) {
+        logger.warn("[PUBLIC-VIBE] playback read failed:", (e as Error).message);
+        return { nowPlaying: null };
+    }
+
+    if (!playback) return { nowPlaying: null };
+
+    // A non-track playback has no point on the 2D map.
+    if (playback.playbackType !== PLAYABLE_TYPE || !playback.trackId) {
+        return { nowPlaying: null };
+    }
+
+    try {
+        const projection = await computeMapProjection();
+        const points = decimate(asMapPoints(projection), maxPoints);
+        const [playing] = await lookupIds([playback.trackId], points);
+        if (!playing) return { nowPlaying: null };
+        return {
+            nowPlaying: {
+                trackId: playing.id,
+                x: playing.x,
+                y: playing.y,
+                title: playing.title,
+                artist: playing.artist,
+                coverUrl: playing.coverUrl,
+                position: playback.position,
+                duration: 0, // duration is not stored in PlaybackState
+            },
+        };
+    } catch (e) {
+        logger.warn("[PUBLIC-VIBE] map read failed:", (e as Error).message);
+        return { nowPlaying: null };
+    }
+}
+
+/**
+ * The queued tracks, joined to the map, in playback order and indexed from 0.
+ * A queued track not on the map (not analysed, or above the cap) is dropped;
+ * the site draws a line through the points it did resolve.
+ */
+export async function getPublicQueue(
+    publicUserId: string,
+    maxPoints: number = MAX_MAP_POINTS,
+): Promise<
+    {
+        index: number;
+        trackId: string;
+        x: number;
+        y: number;
+        title: string;
+        artist: string;
+        coverUrl: string | null;
+    }[]
+> {
+    let playback: PlaybackRow | null = null;
+    try {
+        const row = await prisma.playbackState.findUnique({
+            where: { userId: publicUserId },
+        });
+        if (row) playback = row as unknown as PlaybackRow;
+    } catch (e) {
+        logger.warn("[PUBLIC-VIBE] playback read failed:", (e as Error).message);
+        return [];
+    }
+    if (!playback) return [];
+
+    const projection = await computeMapProjection();
+    const points = decimate(asMapPoints(projection), maxPoints);
+    const { queued } = splitQueue(
+        playback.queue as QueueItem[] | null,
+        playback.currentIndex,
+    );
+
+    const ids = queued.map((q) => q.id).filter(Boolean);
+    const found = await lookupIds(ids, points);
+    const seen = new Set<string>();
+    const out: {
+        index: number;
+        trackId: string;
+        x: number;
+        y: number;
+        title: string;
+        artist: string;
+        coverUrl: string | null;
+    }[] = [];
+    for (const q of queued) {
+        const p = found.find((r) => r.id === q.id && !seen.has(r.id));
+        if (!p) continue;
+        seen.add(p.id);
+        out.push({
+            index: out.length,
+            trackId: p.id,
+            x: p.x,
+            y: p.y,
+            title: p.title,
+            artist: p.artist,
+            coverUrl: p.coverUrl,
+        });
+    }
+    return out;
+}
+
+/**
+ * The full map payload, capped to the operator's public ceiling. The map is the
+ * largest payload on the site, so we trim deterministically (first N by stored
+ * id order) and say in the envelope exactly how many points remain and how many
+ * were dropped, so the site can decide to redraw rather than hide the gap.
+ */
+export async function getPublicMap(
+    maxPoints: number = MAX_MAP_POINTS,
+): Promise<{
+    tracks: MapPoint[];
+    trackCount: number;
+    fullCount: number;
+    sampled: boolean;
+    sampledNote?: string;
+    computedAt: string;
+}> {
+    const projection = await computeMapProjection();
+    const all = asMapPoints(projection);
+    const limited = decimate(all, maxPoints);
+    const sampled = all.length > maxPoints;
+    return {
+        tracks: limited,
+        trackCount: limited.length,
+        fullCount: all.length,
+        sampled,
+        ...(sampled
+            ? {
+                  sampledNote: `Limited to ${limited.length} of ${
+                      all.length
+                  } tracks (public map cap ${maxPoints}).`,
+              }
+            : {}),
+        computedAt: new Date().toISOString(),
+    };
+}
+
+// Two-second edge cache of the live payload, keyed only on the public user.
+// Within the window a second read returns the first, so the route does not
+// re-join the map more often than the operator likely intended.
+interface LiveCacheEntry {
+    nowPlaying: NonNullable<{
+        trackId: string;
+        x: number;
+        y: number;
+        title: string;
+        artist: string;
+        coverUrl: string | null;
+        position: number;
+        duration: number;
+    }>;
+    cacheAt: number;
+}
+
+const liveCache = new Map<string, LiveCacheEntry>();
+
+export async function getPublicLiveCached(
+    publicUserId: string,
+    maxPoints: number = MAX_MAP_POINTS,
+): Promise<{
+    nowPlaying: {
+        trackId: string;
+        x: number;
+        y: number;
+        title: string;
+        artist: string;
+        coverUrl: string | null;
+        position: number;
+        duration: number;
+    } | null;
+}> {
+    const key = `vibe:map:v3:live:${publicUserId}`;
+
+    const cached = liveCache.get(key);
+    const fresh = !!cached && Date.now() - cached.cacheAt < LIVE_CACHE_TTL_SECONDS * 1000;
+    if (fresh) {
+        return { nowPlaying: cached.nowPlaying };
+    }
+
+    const value = await getPublicLive(publicUserId, maxPoints);
+    if (value.nowPlaying) {
+        liveCache.set(key, { nowPlaying: value.nowPlaying, cacheAt: Date.now() });
+    }
+    return value;
+}

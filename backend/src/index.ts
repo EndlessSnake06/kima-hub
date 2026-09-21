@@ -40,6 +40,7 @@ import browseRoutes from "./routes/browse";
 import analysisRoutes from "./routes/analysis";
 import releasesRoutes from "./routes/releases";
 import vibeRoutes from "./routes/vibe";
+import publicVibeRoutes from "./routes/publicVibe";
 import systemRoutes from "./routes/system";
 import shareRoutes from "./routes/share";
 import eventsRoutes from "./routes/events";
@@ -181,6 +182,11 @@ app.use("/api/browse", apiLimiter, browseRoutes);
 app.use("/api/analysis", apiLimiter, analysisRoutes);
 app.use("/api/releases", apiLimiter, releasesRoutes);
 app.use("/api/vibe", apiLimiter, vibeRoutes);
+// Public vibe surface: read-only, unauthenticated, rate-limited (apiLimiter,
+// per-IP like the rest of /api). Mounted before /api/events so the long-lived
+// /stream SSE connection registers first. Every route 404s until the operator
+// enables the surface in SystemSettings.
+app.use("/api/public/vibe", apiLimiter, publicVibeRoutes);
 app.use("/api/system", apiLimiter, systemRoutes);
 // SSE ticket endpoint (must be registered before /api/events)
 app.use("/api/events/ticket", apiLimiter, eventsTicketRoutes);

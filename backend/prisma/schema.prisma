@@ -707,6 +707,13 @@ model SystemSettings {
   soulseekMode                String?  @default("p2p")
   slskdUrl                    String?
   slskdApiKey                 String?
+  // Public vibe surface (chevron7.io): enabled flag + the user whose playback
+  // state the public API reads. Both live here because the surface is a
+  // system-wide feature, not a per-user one. publicVibeEnabled defaults false
+  // so a fresh install serves nothing publicly; publicVibeUserId is the one
+  // designated listener. See prisma/migrations/20260921120000_add_public_vibe_settings.
+  publicVibeEnabled           Boolean  @default(false)
+  publicVibeUserId            String?
 }
 
 model Track {
