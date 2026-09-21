@@ -49,6 +49,16 @@ async function getTwoVibeSearchQueries(page: Parameters<typeof loginAsTestUser>[
 
 // ---------------------------------------------------------------------------
 
+// Headless Chromium ships with NO WebGL -- the galaxy scene draws through
+// three.js/WebGL, so without SwiftShader it never mounts the track field and
+// every journey below would test the absence of a graphics stack. Same flags
+// and same measured rationale as walkthrough.spec.ts.
+test.use({
+    launchOptions: {
+        args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"],
+    },
+});
+
 test.describe("Vibe", () => {
     test.beforeEach(async ({ page }) => {
         await loginAsTestUser(page);
@@ -80,8 +90,8 @@ test.describe("Vibe", () => {
             return;
         }
 
-        await expect(page.locator('[title="Drift -- journey between two tracks"]')).toBeVisible({ timeout: 5_000 });
-        await expect(page.locator('[title="Blend -- mix tracks to find new vibes"]')).toBeVisible({ timeout: 5_000 });
+        await expect(page.locator('[title="Song Path -- build a queue that glides from one track to another"]')).toBeVisible({ timeout: 5_000 });
+        await expect(page.locator('[title="Blend -- combine tracks into a new playlist of similar vibes"]')).toBeVisible({ timeout: 5_000 });
         await expect(page.locator('[aria-label="Search tracks or artists"]')).toBeVisible({ timeout: 5_000 });
     });
 
@@ -177,7 +187,7 @@ test.describe("Vibe", () => {
         await Promise.race([canvas.waitFor({ timeout: 35_000 }), noData.waitFor({ timeout: 35_000 })]);
         if ((await noData.count()) > 0) { test.skip(); return; }
 
-        await page.locator('[title="Drift -- journey between two tracks"]').click();
+        await page.locator('[title="Song Path -- build a queue that glides from one track to another"]').click();
 
         await expect(page.locator('#path-start')).toBeVisible({ timeout: 5_000 });
         await expect(page.locator('#path-end')).toBeVisible({ timeout: 5_000 });
@@ -196,7 +206,7 @@ test.describe("Vibe", () => {
         await canvas.waitFor({ timeout: 35_000 });
 
         // Open drift form
-        await page.locator('[title="Drift -- journey between two tracks"]').click();
+        await page.locator('[title="Song Path -- build a queue that glides from one track to another"]').click();
         await expect(page.locator('#path-start')).toBeVisible({ timeout: 5_000 });
 
         // Search and select start track
@@ -239,7 +249,7 @@ test.describe("Vibe", () => {
         await Promise.race([canvas.waitFor({ timeout: 35_000 }), noData.waitFor({ timeout: 35_000 })]);
         if ((await noData.count()) > 0) { test.skip(); return; }
 
-        await page.locator('[title="Blend -- mix tracks to find new vibes"]').click();
+        await page.locator('[title="Blend -- combine tracks into a new playlist of similar vibes"]').click();
         await page.waitForTimeout(500);
 
         // Blend (alchemy) panel should appear -- close button has aria-label="Close alchemy"
