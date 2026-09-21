@@ -50,32 +50,37 @@ async function globalSetup(): Promise<void> {
         // cannot mount over tests (aria-modal intercepts all pointer events).
         // Best-effort: an empty pending list or a versioned endpoint that moved
         // must not fail setup.
+        // The backend rejects session cookies on /api (bearer-only on this
+        // origin), so a page-side cookie fetch 401s silently. Extract the JWT
+        // from storage the app itself uses and call the API with an auth header.
         try {
-            const { releases } = await page.evaluate(async () => {
-                const res = await fetch("/api/whats-new/pending", { credentials: "include" });
-                if (!res.ok) return { releases: [] };
-                return res.json();
-            });
+            // lib/api.ts persists the JWT under AUTH_TOKEN_KEY ("auth_token").
+            const token = await page.evaluate(() => window.localStorage.getItem("auth_token"));
+            if (!token) throw new Error("auth_token missing from localStorage");
+            const api = (path: string) => `${baseUrl}${path}`;
+            const readPending = async () => {
+                const res = await page.request.get(api("/api/whats-new/pending"), {
+                    headers: { Authorization: `Bearer ${token}` },
+                    maxRetries: 1,
+                });
+                return res.ok() ? ((await res.json()) as { releases: Array<{ version: string }> }) : { releases: [] };
+            };
+            let { releases } = await readPending();
             // Dismissing the first release advances the pending queue to the
             // next unseen one, so loop until the queue is actually empty.
             for (let i = 0; i < 10 && (releases?.length ?? 0) > 0; i++) {
-                await page.evaluate(async (v) => {
-                    await fetch(`/api/whats-new/${v}/dismiss`, {
-                        method: "POST",
-                        credentials: "include",
-                        headers: { "Content-Type": "application/json" },
-                        body: "{}",
-                    });
-                }, releases[0].version);
-                const again = await page.evaluate(async () => {
-                    const res = await fetch("/api/whats-new/pending", { credentials: "include" });
-                    return res.ok ? res.json() : { releases: [] };
+                const v = releases[0].version;
+                const dr = await page.request.post(api(`/api/whats-new/${v}/dismiss`), {
+                    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+                    data: {},
                 });
-                releases.splice(0, releases.length, ...(again.releases ?? []));
+                if (!dr.ok()) throw new Error(`dismiss ${v} -> ${dr.status()}`);
+                releases = (await readPending()).releases ?? [];
+                console.log(`[setup] Dismissed What's New ${v} (queue now ${releases.length}).`);
             }
-            if (releases?.length) console.log(`[setup] Dismissed ${releases.length} pending What's New release(s).`);
-        } catch {
-            console.log("[setup] What's New pre-dismiss skipped (endpoint unavailable).");
+            if (!(releases?.length)) console.log("[setup] What's New queue clear.");
+        } catch (e) {
+            console.log(`[setup] What's New pre-dismiss skipped: ${e instanceof Error ? e.message : String(e)}`);
         }
 
         await page.context().storageState({ path: "tests/e2e/.auth/user.json" });
