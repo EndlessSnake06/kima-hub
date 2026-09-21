@@ -583,7 +583,7 @@ export async function processScan(
         }
 
         // Trigger mood tag collection for new tracks whose artists are already enriched
-        // This ensures Last.fm mood tags are collected immediately after scan, not waiting 30s for background worker
+        // This ensures mood tags are collected immediately after scan, not waiting 30s for background worker
         if (result.tracksAdded > 0) {
             try {
                 logger.debug(

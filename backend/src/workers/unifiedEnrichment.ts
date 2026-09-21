@@ -2,8 +2,8 @@
  * Unified Enrichment Worker
  *
  * Handles ALL enrichment in one place:
- * - Artist metadata (Last.fm, MusicBrainz)
- * - Track mood tags (Last.fm)
+ * - Artist metadata (MusicBrainz, Wikidata, ListenBrainz)
+ * - Track mood tags (MusicBrainz genres)
  * - Audio analysis (triggers Essentia via Redis queue)
  *
  * Two modes:
@@ -133,7 +133,7 @@ async function clearPauseState(): Promise<void> {
     await resumeInfrastructure();
 }
 
-// Mood tags to extract from Last.fm
+// Mood tags to extract (matched against MusicBrainz genres)
 const MOOD_TAGS = new Set([
     // Energy/Activity
     "chill",
@@ -666,7 +666,7 @@ async function resetArtistsOnly(): Promise<{ count: number }> {
 
 /**
  * Reset only mood tags (keeps artist metadata and audio analysis intact)
- * Used when user wants to re-fetch Last.fm mood tags without touching other enrichment
+ * Used when user wants to re-fetch mood tags without touching other enrichment
  */
 async function resetMoodTagsOnly(): Promise<{ count: number }> {
     logger.debug("[Enrichment] Resetting ONLY mood tags...");
@@ -683,8 +683,8 @@ async function resetMoodTagsOnly(): Promise<{ count: number }> {
  * Main enrichment cycle
  *
  * Flow:
- * 1. Artist metadata (Last.fm/MusicBrainz) - blocking, required for track enrichment
- * 2. Track tags (Last.fm mood tags) - blocking, quick API calls
+ * 1. Artist metadata (MusicBrainz/Wikidata/ListenBrainz) - blocking, required for track enrichment
+ * 2. Track tags (MusicBrainz genres) - blocking, quick API calls
  * 3. Audio analysis (Essentia) - NON-BLOCKING, queued to Redis for background processing
  *
  * Steps 1 & 2 must complete before enrichment is "done".
@@ -1080,7 +1080,7 @@ async function runEnrichmentCycle(fullMode: boolean): Promise<{
 
 
 /**
- * Enrich a single track's tags from Last.fm.
+ * Enrich a single track's tags from MusicBrainz genres.
  * Used by the BullMQ track enrichment Worker (Phase 4).
  */
 export async function enrichSingleTrack(trackId: string): Promise<void> {

@@ -22,7 +22,6 @@ interface RateLimitConfig {
 }
 
 interface ServiceConfig {
-    lastfm: RateLimitConfig;
     musicbrainz: RateLimitConfig;
     deezer: RateLimitConfig;
     lidarr: RateLimitConfig;
@@ -38,13 +37,6 @@ interface ServiceConfig {
 
 // Service-specific rate limit configurations
 const SERVICE_CONFIGS: ServiceConfig = {
-    lastfm: {
-        intervalCap: 3, // 3 requests per second (Last.fm allows 5, but we're conservative)
-        interval: 1000,
-        concurrency: 2,
-        maxRetries: 3,
-        baseDelay: 1000,
-    },
     musicbrainz: {
         intervalCap: 1, // 1 request per second (MusicBrainz is strict)
         interval: 1100, // Slightly over 1 second to be safe

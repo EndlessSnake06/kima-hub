@@ -14,7 +14,7 @@ export function HowItWorks() {
                     <ChevronRight className="w-4 h-4 mt-0.5 text-purple-500/60 shrink-0" />
                     <p>
                         Analyzes your listening history and library using
-                        Last.fm similarity data
+                        ListenBrainz + local similarity data
                     </p>
                 </div>
                 <div className="flex items-start gap-3">

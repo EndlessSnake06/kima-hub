@@ -61,7 +61,8 @@ const TIER_DISTRIBUTION = {
     wildcard: 0.1, // 10% from deep cuts (variety)
 };
 
-// Tier thresholds calibrated to Last.fm's actual score distribution (typically 0.5-0.7 range)
+// Tier thresholds carried over from the old similarity source's score
+// distribution (typically 0.5-0.7 range)
 const TIER_THRESHOLDS = {
     high: 0.65,       // >=65% match
     medium: 0.50,     // 50-65% match
@@ -78,9 +79,9 @@ interface BatchLogEntry {
 }
 
 /**
- * Calculate tier from Last.fm similarity score
- * Last.fm typically returns scores in 0.5-0.7 range for similar artists
- * Adjusted thresholds calibrated to actual Last.fm distribution:
+ * Calculate tier from the similarity score
+ * The similarity engine typically returns scores in 0.5-0.7 range for
+ * similar artists; thresholds calibrated to that distribution:
  * - High Match: >=65% (0.65-1.0)
  * - Medium Match: 50-65% (0.50-0.64)
  * - Explore: 35-50% (0.35-0.49)
@@ -341,7 +342,6 @@ class DiscoverWeeklyService {
                             albumTitle: metadata.albumTitle,
                             artistName: metadata.artistName,
                             mbid: metadata.albumMbid,
-                            lastfmUrl: undefined,
                         },
                         {
                             userId: userId,
@@ -2938,7 +2938,7 @@ class DiscoverWeeklyService {
         const scoredArtists = this.scoreArtistsByCrossSeedFrequency(similarCache);
 
         // Group similar artists by tier (based on avgMatch across all seeds)
-        // Thresholds calibrated to Last.fm's actual distribution (0.5-0.7 range typically)
+        // Thresholds calibrated to the similarity engine's actual distribution (0.5-0.7 range typically)
         // Filter out low-quality matches below minimum threshold
         const byTier = {
             high: scoredArtists.filter((a) => a.avgMatch >= TIER_THRESHOLDS.high),

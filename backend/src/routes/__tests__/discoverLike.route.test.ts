@@ -62,7 +62,6 @@ jest.mock('../../middleware/auth', () => ({
 }));
 
 // Module-load-time imports in discover.ts that we do not exercise here.
-jest.mock('../../services/lastfm', () => ({ lastFmService: {} }));
 jest.mock('../../workers/queues', () => ({
     discoverQueue: { getJob: jest.fn(), add: jest.fn() },
     scanQueue: { add: jest.fn() },

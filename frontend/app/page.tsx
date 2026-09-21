@@ -109,13 +109,13 @@ export default function HomePage() {
                         )},
                         { key: "recommended", visible: recommended.length > 0, content: (
                             <section data-tv-section="recommended">
-                                <SectionHeader title="Recommended" showAllHref="/discover" badge="Last.FM" color="artists" />
+                                <SectionHeader title="Recommended" showAllHref="/discover" badge="Local Engine" color="artists" />
                                 <ArtistsGrid artists={recommended} />
                             </section>
                         )},
                         { key: "popular-artists", visible: popularArtists.length > 0, content: (
                             <section data-tv-section="popular-artists">
-                                <SectionHeader title="Popular Artists" badge="Last.FM" color="artists" />
+                                <SectionHeader title="Popular Artists" badge="Local Engine" color="artists" />
                                 <PopularArtistsGrid artists={popularArtists} />
                             </section>
                         )},

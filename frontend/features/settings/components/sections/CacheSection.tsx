@@ -203,13 +203,13 @@ const confirmMeta: Record<
     artists: {
         title: "Reset Artist Metadata?",
         message:
-        "This clears all artist bios, images, and similar-artist data and re-fetches everything from Last.fm. On large libraries this can take a while.",
+        "This clears all artist bios, images, and similar-artist data and re-fetches everything from the current sources (ListenBrainz, MusicBrainz, local similarity). On large libraries this can take a while.",
         confirmText: "Reset Artists",
     },
     moodTags: {
         title: "Reset Mood Tags?",
         message:
-        "This deletes all mood and vibe tags for every track. Re-running Last.fm tagging on a large library takes time.",
+        "This deletes all mood and vibe tags for every track. Re-running mood tagging on a large library takes time.",
         confirmText: "Reset Mood Tags",
     },
     audioAnalysis: {
@@ -731,7 +731,7 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                                     <EnrichmentStage
                                         icon={User}
                                         label="Artist Metadata"
-                                        description="Bios, images, and similar artists from Last.fm"
+                                        description="Bios, images, and similar artists from ListenBrainz + MusicBrainz"
                                         completed={enrichmentProgress.artists.completed}
                                         total={enrichmentProgress.artists.total}
                                         progress={enrichmentProgress.artists.progress}
@@ -755,7 +755,7 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                                     <EnrichmentStage
                                         icon={Heart}
                                         label="Mood Tags"
-                                        description="Vibes and mood data from Last.fm"
+                                        description="Vibes and mood data from the enrichment pipeline"
                                         completed={
                                             enrichmentProgress.trackTags.enriched
                                         }
@@ -1098,7 +1098,7 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                 {settings.autoEnrichMetadata && (
                     <SettingsRow
                         label="Metadata Fetch Speed"
-                        description="Parallel Last.fm/MusicBrainz requests for artist bios and mood tags"
+                        description="Parallel MusicBrainz/enrichment requests for artist bios and mood tags"
                     >
                         <div className="flex items-center gap-3">
                             <input

@@ -432,7 +432,7 @@ export function useSearchQuery(
 }
 
 /**
- * Hook to search discovery/Last.fm with debouncing
+ * Hook to search discovery with debouncing
  *
  * @param query - Search query string
  * @param type - Type filter (music, podcasts, all)
@@ -544,7 +544,7 @@ export function useMixQuery(id: string | undefined) {
 }
 
 /**
- * Hook to fetch popular artists from Last.fm
+ * Hook to fetch popular artists (local similarity engine)
  *
  * Cache time: 10 minutes (popular charts don't change frequently)
  *

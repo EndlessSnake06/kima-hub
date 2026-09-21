@@ -52,7 +52,6 @@ export async function writeEnvFile(
         "Database & Redis": ["DATABASE_URL", "REDIS_URL"],
         Server: ["PORT", "NODE_ENV", "SESSION_SECRET", "ALLOWED_ORIGINS"],
         Lidarr: ["LIDARR_ENABLED", "LIDARR_URL", "LIDARR_API_KEY"],
-        "Last.fm": ["LASTFM_API_KEY", "LASTFM_API_SECRET"],
         "Fanart.tv": ["FANART_API_KEY"],
         OpenAI: ["OPENAI_API_KEY"],
         Audiobookshelf: ["AUDIOBOOKSHELF_URL", "AUDIOBOOKSHELF_API_KEY"],

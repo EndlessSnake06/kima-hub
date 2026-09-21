@@ -148,7 +148,7 @@ class DeezerService {
     }
 
     /**
-     * Related artists for a seed artist (replaces lastFmService's
+     * Related artists for a seed artist (replaces the old Last.fm service's
      * artist.getSimilar). Searches Deezer by name to resolve the artist id,
      * then reads Deezer's public `artist/{id}/related` list.
      *

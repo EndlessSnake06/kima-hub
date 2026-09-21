@@ -71,13 +71,14 @@ describe("artwork has one door", () => {
         expect(offenders).toEqual([]);
     });
 
-    it("the Last.fm grey-star placeholder is filtered in exactly one place", () => {
+    it("the grey-star placeholder hash is gone with the service that used it", () => {
         // Five call sites used to carry their own copy of this hash, and one
-        // of them forgot, which is how grey stars reached artist pages.
+        // of them forgot, which is how grey stars reached artist pages. The
+        // service that owned the filter is deleted; nobody should cite it.
         const withHash = sourceFiles(SRC)
             .filter((f) => read(f).includes("2a96cbd8b46e442fc41c2b86b821562f"))
             .map(relative);
 
-        expect(withHash).toEqual(["services/lastfm.ts"]);
+        expect(withHash).toEqual([]);
     });
 });

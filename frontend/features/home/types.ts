@@ -63,7 +63,7 @@ export interface Mix {
 }
 
 /**
- * Popular artist with listener count from Last.fm
+ * Popular artist with listener count from the similarity engine
  */
 export interface PopularArtist {
     id?: string;

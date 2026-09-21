@@ -312,7 +312,7 @@ router.get("/discover", async (req, res) => {
 
 /**
  * GET /search/discover/similar?artist=name&mbid=xxx
- * Fetch musically similar artists (Last.fm getSimilar).
+ * Fetch musically similar artists (local centroid / ListenBrainz engine).
  * Separate from discover so main search results return immediately.
  * Cache TTL: 1 hour -- similar artists change very rarely.
  */

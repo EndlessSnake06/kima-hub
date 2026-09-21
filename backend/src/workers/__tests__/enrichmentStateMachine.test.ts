@@ -66,11 +66,6 @@ jest.mock("../../services/featureDetection", () => ({
     },
 }));
 
-jest.mock("../../services/lastfm", () => ({
-    lastFmService: {
-        getTrackTags: jest.fn().mockResolvedValue([]),
-    },
-}));
 
 const mockRedisPublish = jest.fn().mockResolvedValue(1);
 const mockRedisQuit = jest.fn().mockResolvedValue(undefined);

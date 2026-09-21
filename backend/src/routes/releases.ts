@@ -5,7 +5,7 @@ import { logger } from "../utils/logger";
  *
  * Provides upcoming and recent releases from:
  * 1. Lidarr monitored artists (via calendar API)
- * 2. Similar artists from user's library (Last.fm similar artists)
+ * 2. Similar artists from user's library (local similarity engine)
  */
 
 import { Router } from "express";

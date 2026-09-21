@@ -23,7 +23,6 @@ export interface SystemSettings {
     openaiModel: string;
     fanartEnabled: boolean;
     fanartApiKey: string;
-    lastfmApiKey: string;
     acoustidApiKey: string | null;
     // Audiobookshelf
     audiobookshelfEnabled: boolean;

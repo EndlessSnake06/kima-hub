@@ -86,16 +86,10 @@ export const config = {
               }
             : undefined,
 
-    // Last.fm
-    lastfm: {
-        apiKey: process.env.LASTFM_API_KEY || "c1797de6bf0b7e401b623118120cd9e1",
-    },
-
     // AcoustID - the shared opt-in client key baked in as a default so the
-    // fingerprint-identification path works out of the box. It is the same
-    // "shared" key policy Last.fm uses: operators are expected to drop their
-    // own key in ACOUSTID_CLIENT_KEY to lift the rate-limit ceiling, exactly as
-    // they would for Last.fm. Safe to store in config (public, opt-in).
+    // fingerprint-identification path works out of the box: operators are
+    // expected to drop their own key in ACOUSTID_CLIENT_KEY to lift the
+    // rate-limit ceiling. Safe to store in config (public, opt-in).
     acoustid: {
         clientKey: process.env.ACOUSTID_CLIENT_KEY || "JaLCkK9Xvt",
     },

@@ -255,7 +255,7 @@ class DataCacheService {
 
     /**
      * Fetch artist image from external APIs and store locally
-     * Order: Fanart.tv (if MBID) -> Deezer -> Last.fm
+     * Order: the artwork.ts single door (Fanart -> Deezer -> MusicBrainz)
      * Returns native path (e.g., "native:artists/{id}.jpg") or null
      */
     private async fetchArtistImage(

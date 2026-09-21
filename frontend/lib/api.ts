@@ -937,12 +937,6 @@ class ApiClient {
         });
     }
 
-    async testLastfm(apiKey: string) {
-        return this.request<ServiceTestResult>("/system-settings/test-lastfm", {
-            method: "POST",
-            body: JSON.stringify({ lastfmApiKey: apiKey }),
-        });
-    }
 
     async testOpenai(apiKey: string, model: string) {
         return this.request<ServiceTestResult>("/system-settings/test-openai", {
@@ -1747,16 +1741,6 @@ class ApiClient {
         return this.post("/notifications/clear-all");
     }
 
-    // Last.fm nudge
-
-    async getLastfmNudgeStatus(): Promise<{ ready: boolean }> {
-        return this.get("/lastfm/nudge/status");
-    }
-
-    async acknowledgeLastfmNudge(): Promise<{ acknowledged: boolean }> {
-        return this.post("/lastfm/nudge/ack");
-    }
-
     // Download Activity
     async getActiveDownloads(): Promise<
         Array<{
@@ -1935,7 +1919,6 @@ class ApiClient {
             moodElectronic: number | null;
             moodTags: string[] | null;
             essentiaGenres: string[] | null;
-            lastfmTags: string[] | null;
         }>(`/analysis/track/${trackId}`);
     }
 

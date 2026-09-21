@@ -461,7 +461,6 @@ Kima uses several sensitive environment variables. Never commit your `.env` file
 | `SOULSEEK_PASSWORD`       | Soulseek password              | If using Soulseek |
 | `LIDARR_API_KEY`          | Lidarr integration             | If using Lidarr   |
 | `OPENAI_API_KEY`          | AI features                    | Optional          |
-| `LASTFM_API_KEY`          | Artist recommendations         | Optional          |
 | `FANART_API_KEY`          | Artist images                  | Optional          |
 
 ### Authentication & Session Security

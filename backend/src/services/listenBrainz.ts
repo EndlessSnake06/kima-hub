@@ -79,7 +79,7 @@ class ListenBrainzService {
     /**
      * Similar artists for one artist, from LB's artist–artist similarity
      * dataset (via the lb-radio endpoint). Same return shape as the old
-     * lastFmService.getSimilarArtists so call sites swap import only.
+     * the old Last.fm service's getSimilarArtists so call sites swap import only.
      *
      * match is derived from total_listen_count of the connection (log-scaled
      * against the strongest connection in the batch), NOT a real similarity

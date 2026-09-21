@@ -110,7 +110,7 @@ downloadQueueManager.onUnavailableAlbum(async (info) => {
 });
 
 // Start unified enrichment worker
-// Handles: artist metadata, track tags (Last.fm), audio analysis queueing (Essentia)
+// Handles: artist metadata, track mood tags, audio analysis queueing (Essentia)
 startUnifiedEnrichmentWorker().catch((err) => {
     logger.error("Failed to start unified enrichment worker:", err);
 });

@@ -19,7 +19,7 @@ router.use(requireAuthOrToken);
  * Verify and potentially correct artist name before download
  * Uses multiple sources for canonical name resolution:
  * 1. MusicBrainz (if MBID provided) - most authoritative
- * 2. LastFM correction API - handles aliases and misspellings
+ * 2. MusicBrainz correction - handles aliases and misspellings
  * 3. Original name - fallback
  *
  * @returns Object with verified name and whether correction was applied
@@ -73,7 +73,7 @@ async function verifyArtistName(
         }
     } catch (error) {
         logger.warn(
-            `LastFM correction lookup failed for "${artistName}":`,
+            `MusicBrainz correction lookup failed for "${artistName}":`,
             error
         );
     }
@@ -301,8 +301,8 @@ async function processArtistDownload(
     logger.debug(`   Batch ID: ${batchId}`);
 
     // CRITICAL FIX: Resolve canonical artist name from MusicBrainz
-    // Last.fm may return aliases (e.g., "blink" for "blink-182")
-    // Lidarr needs the official name to find the correct artist
+    // Similar-artist sources may return aliases (e.g., "blink" for
+    // "blink-182"); Lidarr needs the official name to find the correct artist
     let canonicalArtistName = artistName;
     try {
         logger.debug(`   Resolving canonical artist name from MusicBrainz...`);
@@ -321,7 +321,7 @@ async function processArtistDownload(
         }
     } catch (mbError: any) {
         logger.warn(`   ⚠ MusicBrainz lookup failed: ${mbError.message}`);
-        // Fallback to LastFM correction
+        // Fallback to MusicBrainz correction
         try {
             const correction = await getArtistCorrection(
                 artistName

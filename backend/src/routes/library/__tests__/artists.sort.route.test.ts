@@ -51,7 +51,6 @@ jest.mock('../../../utils/logger', () => ({
     logger: { error: jest.fn(), warn: jest.fn(), info: jest.fn(), debug: jest.fn() },
 }));
 
-jest.mock('../../../services/lastfm', () => ({ lastFmService: {} }));
 jest.mock('../../../services/deezer', () => ({ deezerService: {} }));
 jest.mock('../../../services/musicbrainz', () => ({ musicBrainzService: {} }));
 jest.mock('../../../services/dataCache', () => ({

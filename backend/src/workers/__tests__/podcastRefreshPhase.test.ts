@@ -47,7 +47,6 @@ jest.mock("../../services/enrichmentState", () => ({
 jest.mock("../../services/enrichmentFailureService", () => ({
     enrichmentFailureService: { recordFailure: jest.fn(), getFailures: jest.fn() },
 }));
-jest.mock("../../services/lastfm", () => ({ lastFmService: {} }));
 jest.mock("ioredis", () => jest.fn().mockImplementation(() => ({
     on: jest.fn(), publish: jest.fn(), subscribe: jest.fn(), quit: jest.fn(),
 })));

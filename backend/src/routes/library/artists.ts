@@ -831,9 +831,9 @@ router.get("/artists/:id", async (req, res) => {
             libraryMatches.filter((a) => a.mbid).map((a) => [a.mbid!, a]),
           );
 
-          const lastfmDeezerLimit = pLimit(3);
+          const sourceLimit = pLimit(3);
           const similarWithImages = await Promise.all(
-            similar.map((s) => lastfmDeezerLimit(async () => {
+            similar.map((s) => sourceLimit(async () => {
               const libraryArtist =
                 (s.mbid && libraryByMbid.get(s.mbid)) ||
                 libraryByName.get(s.name.toLowerCase());

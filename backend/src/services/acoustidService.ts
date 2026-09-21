@@ -67,11 +67,12 @@ class AcoustIDService {
     }
 
     /**
-     * Key precedence (mirrors lastfm.ts getSettings): an explicitly passed
+     * Key precedence (mirrors the retired Last.fm service's getSettings): an explicitly passed
      * key wins, then the operator's encrypted SystemSettings value, then the
      * baked config default. A settings read that fails or returns nothing
      * degrades to the config key — this must never throw into the lookup
-     * path. getSystemSettings is lazily imported (same as lastfm.ts) to
+     * path. getSystemSettings is lazily imported (same as the retired
+     * Last.fm service did) to
      * avoid an import cycle through the settings/encryption utils.
      */
     private async resolveApiKey(explicit?: string): Promise<string | undefined> {
@@ -106,7 +107,7 @@ class AcoustIDService {
      * @param fingerprint Chromaprint fingerprint as produced by `fpcalc`.
      * @param clientKey Optional client key when the caller already holds one
      * (e.g. it just read SystemSettings for another reason). When omitted the
-     * key is resolved the same way lastfm.ts resolves its key: the encrypted
+     * key is resolved the same way the retired Last.fm service resolved its key: the encrypted
      * SystemSettings row first, then the baked config default (env
      * ACOUSTID_CLIENT_KEY overrides).
      * @returns The best matching recording + release-group identity, or null

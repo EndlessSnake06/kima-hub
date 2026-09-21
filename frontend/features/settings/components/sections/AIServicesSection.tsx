@@ -15,8 +15,6 @@ interface AIServicesSectionProps {
 export function AIServicesSection({ settings, onUpdate, onTest, isTesting }: AIServicesSectionProps) {
     const [fanartTestStatus, setFanartTestStatus] = useState<StatusType>("idle");
     const [fanartTestMessage, setFanartTestMessage] = useState("");
-    const [lastfmTestStatus, setLastfmTestStatus] = useState<StatusType>("idle");
-    const [lastfmTestMessage, setLastfmTestMessage] = useState("");
 
     const handleFanartTest = async () => {
         setFanartTestStatus("loading");
@@ -28,19 +26,6 @@ export function AIServicesSection({ settings, onUpdate, onTest, isTesting }: AIS
         } else {
             setFanartTestStatus("error");
             setFanartTestMessage(result.error || "Failed");
-        }
-    };
-
-    const handleLastfmTest = async () => {
-        setLastfmTestStatus("loading");
-        setLastfmTestMessage("Testing...");
-        const result = await onTest("lastfm");
-        if (result.success) {
-            setLastfmTestStatus("success");
-            setLastfmTestMessage("Connected");
-        } else {
-            setLastfmTestStatus("error");
-            setLastfmTestMessage(result.error || "Failed");
         }
     };
 
@@ -94,45 +79,6 @@ export function AIServicesSection({ settings, onUpdate, onTest, isTesting }: AIS
                     </div>
                 </>
             )}
-
-            {/* Last.fm */}
-            <div className="mt-6 pt-6 border-t border-white/5">
-                <div className="mb-4">
-                    <p className="text-xs text-[var(--text-muted)]">
-                        Last.fm is pre-configured with a default key. Add your own for higher rate limits.
-                    </p>
-                </div>
-
-                <SettingsRow label="Last.fm API Key (Optional)">
-                    <SettingsInput
-                        type="password"
-                        value={settings.lastfmApiKey || ""}
-                        onChange={(v) => onUpdate({ lastfmApiKey: v })}
-                        placeholder="Optional: Your Last.fm API key"
-                        className="w-64"
-                    />
-                </SettingsRow>
-
-                {settings.lastfmApiKey && (
-                    <div className="pt-2">
-                        <div className="inline-flex items-center gap-3">
-                            <button
-                                onClick={handleLastfmTest}
-                                disabled={isTesting}
-                                className="px-4 py-1.5 text-xs tabular-nums bg-white/5 border border-white/10 text-[var(--text-secondary)] rounded-lg
-                                    hover:bg-white/10 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                            >
-                                {lastfmTestStatus === "loading" ? "Testing..." : "Test Connection"}
-                            </button>
-                            <InlineStatus
-                                status={lastfmTestStatus}
-                                message={lastfmTestMessage}
-                                onClear={() => setLastfmTestStatus("idle")}
-                            />
-                        </div>
-                    </div>
-                )}
-            </div>
 
             {/* AcoustID */}
             <div className="mt-6 pt-6 border-t border-white/5">

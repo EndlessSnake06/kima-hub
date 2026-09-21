@@ -1,5 +1,5 @@
 /**
- * Artist name correction via MusicBrainz — replaces lastFmService
+ * Artist name correction via MusicBrainz — replaces the retired Last.fm service
  * .getArtistCorrection (the API that fed Lidarr/Soulseek acquisition).
  *
  * Same response shape as the Last.fm correction so the acquisition path

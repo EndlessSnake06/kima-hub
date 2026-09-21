@@ -70,13 +70,12 @@ jest.mock("../../eventBus", () => ({
 }));
 
 // Import-time-only heavy deps (BullMQ queues instantiate at module load,
-// lastfm/musicbrainz/acquisition pull network clients). Stub so the module
+// the musicbrainz/acquisition chain pulls network clients). Stub so the module
 // graph loads without opening Redis/HTTP handles.
 jest.mock("../../../workers/queues", () => ({
     scanQueue: { add: jest.fn() },
     discoverQueue: { add: jest.fn() },
 }));
-jest.mock("../../lastfm", () => ({ lastFmService: {} }));
 jest.mock("../../musicbrainz", () => ({ musicBrainzService: {} }));
 jest.mock("../../acquisitionService", () => ({ acquisitionService: {} }));
 jest.mock("../../discoveryLogger", () => ({

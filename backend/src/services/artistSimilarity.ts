@@ -1,5 +1,5 @@
 /**
- * Artist similarity — replaces lastFmService.getSimilarArtists.
+ * Artist similarity — replaces the retired Last.fm service's getSimilarArtists.
  *
  * Three sources, in order of trust ("lets try
  * listenbrainz with deezer fallback" — music discovery is the point, so
@@ -29,7 +29,7 @@
  * centroid distance — at most ±0.1 (RERANK_MAX_DELTA) — so taste leans
  * ours without hiding non-owned artists.
  *
- * The return shape is the old lastFmService.getSimilarArtists shape plus
+ * The return shape is the old Last.fm service's getSimilarArtists shape plus
  * the optional `inLibrary` flag, so the eight call sites compile unchanged.
  * The first argument is the MBID ("" when unknown), exactly like the old
  * signature.
@@ -147,7 +147,7 @@ export async function rebuildArtistCentroid(
 
 /**
  * Similar artists for one artist, keyed by MBID ("" when unknown) — same
- * signature as the old lastFmService.getSimilarArtists.
+ * signature as the old Last.fm service's getSimilarArtists.
  *
  * Tier 1 (ListenBrainz, needs the MBID) and Tier 2 (Deezer, keyed by name)
  * run concurrently; ListenBrainz wins outright when it fills the request.
@@ -456,7 +456,7 @@ function dedupeByName(list: SimilarArtist[]): SimilarArtist[] {
 
 /**
  * Build search-result entries from a SimilarArtist list — same shape as
- * lastFmService.enrichSimilarArtists so the search route swaps import only.
+ * the retired Last.fm service's enrichSimilarArtists so the search route swaps import only.
  * The first three get the full treatment (bio via Wikidata/Wikipedia,
  * artwork via the cascade, genres from the stored/MB data); the rest are
  * served from the similarity entry alone plus artwork.

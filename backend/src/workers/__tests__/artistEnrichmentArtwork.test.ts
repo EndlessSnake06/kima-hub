@@ -56,13 +56,6 @@ jest.mock("../../services/wikidata", () => ({
     wikidataService: { getArtistInfo: jest.fn().mockResolvedValue(null) },
 }));
 
-jest.mock("../../services/lastfm", () => ({
-    lastFmService: {
-        getArtistInfo: jest.fn().mockResolvedValue(null),
-        getSimilarArtists: jest.fn().mockResolvedValue([]),
-        getBestImage: jest.fn().mockReturnValue(null),
-    },
-}));
 
 const mockSearchArtist = jest.fn();
 jest.mock("../../services/musicbrainz", () => ({
@@ -123,7 +116,7 @@ describe("the enrichment worker asks every source", () => {
         });
 
         it("goes through the one door rather than Fanart-then-Deezer by hand", async () => {
-            mockFindArtistArtwork.mockResolvedValue({ url: HERO, source: "lastfm" });
+            mockFindArtistArtwork.mockResolvedValue({ url: HERO, source: "fanart" });
 
             await enrichSimilarArtist(artist);
 
@@ -133,10 +126,11 @@ describe("the enrichment worker asks every source", () => {
             });
         });
 
-        it("reaches Last.fm, which the old hand-rolled chain never did", async () => {
-            // The chain here was Fanart then Deezer and stopped. Any artist
-            // only Last.fm had a picture of got none.
-            mockFindArtistArtwork.mockResolvedValue({ url: HERO, source: "lastfm" });
+        it("stores whatever image the one door found", async () => {
+            // The old chain was Fanart then Deezer and stopped. Any artist
+            // only another source had a picture of got none; now the door
+            // walks the whole list and the worker stores whatever it finds.
+            mockFindArtistArtwork.mockResolvedValue({ url: HERO, source: "deezer" });
             mockDownloadAndStoreImage.mockResolvedValue("native:artists/art-1.jpg");
 
             await enrichSimilarArtist(artist);

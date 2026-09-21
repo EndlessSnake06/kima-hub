@@ -33,7 +33,6 @@ jest.mock("../audioCompletionSubscriber", () => ({
 }));
 jest.mock("../../services/enrichmentState", () => ({ enrichmentStateService: {} }));
 jest.mock("../../services/enrichmentFailureService", () => ({ enrichmentFailureService: {} }));
-jest.mock("../../services/lastfm", () => ({ lastFmService: {} }));
 jest.mock("ioredis", () => jest.fn().mockImplementation(() => ({
     on: jest.fn(), publish: jest.fn(), subscribe: jest.fn(), quit: jest.fn(),
 })));

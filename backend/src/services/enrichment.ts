@@ -17,7 +17,6 @@
 import { logger } from "../utils/logger";
 import { hasRealMbid } from "./artistIdentity";
 import { prisma } from "../utils/db";
-import { lastFmService } from "./lastfm";
 import { musicBrainzService } from "./musicbrainz";
 import { findAlbumArtwork, findArtistArtwork } from "./artwork";
 import { downloadAndStoreImage, isNativePath } from "./imageStorage";
@@ -34,7 +33,6 @@ interface EnrichmentSettings {
     autoEnrichOnScan: boolean;
     sources: {
         musicbrainz: boolean;
-        lastfm: boolean;
         coverArtArchive: boolean;
     };
     rateLimit: {
@@ -74,7 +72,6 @@ class EnrichmentService {
         autoEnrichOnScan: false,
         sources: {
             musicbrainz: true,
-            lastfm: true,
             coverArtArchive: true,
         },
         rateLimit: {
@@ -194,35 +191,34 @@ class EnrichmentService {
         }
 
         // Step 2: bio from Wikidata, similar artists from the local
-        // centroid / ListenBrainz path (replaces the dead Last.fm lookup).
-        if (config.sources.lastfm) {
-            try {
-                const artistMbid = enrichmentData.mbid || artist.mbid;
-                if (hasRealMbid(artistMbid)) {
-                    const wd = await wikidataService.getArtistInfo(
-                        artist.name,
-                        artistMbid
-                    );
-                    if (wd?.summary) {
-                        enrichmentData.bio = wd.summary;
-                        enrichmentData.confidence += 0.3;
-                    }
-                    const similar = await getSimilarArtists(
-                        artistMbid,
-                        artist.name,
-                        10
-                    );
-                    enrichmentData.similarArtists = similar.map(
-                        (a) => a.name
-                    );
-                    logger.debug(`  Found ${similar.length} similar artists`);
+        // centroid / ListenBrainz path (replaces the retired Last.fm lookup;
+        // runs unconditionally — there is no per-source toggle for it).
+        try {
+            const artistMbid = enrichmentData.mbid || artist.mbid;
+            if (hasRealMbid(artistMbid)) {
+                const wd = await wikidataService.getArtistInfo(
+                    artist.name,
+                    artistMbid
+                );
+                if (wd?.summary) {
+                    enrichmentData.bio = wd.summary;
+                    enrichmentData.confidence += 0.3;
                 }
-            } catch (error) {
-                logger.error(` Similarity/bio lookup failed:`, error);
+                const similar = await getSimilarArtists(
+                    artistMbid,
+                    artist.name,
+                    10
+                );
+                enrichmentData.similarArtists = similar.map(
+                    (a) => a.name
+                );
+                logger.debug(`  Found ${similar.length} similar artists`);
             }
+        } catch (error) {
+            logger.error(` Similarity/bio lookup failed:`, error);
         }
 
-        // Step 3: Get artist image from multiple sources (Deezer → Fanart → MusicBrainz → Last.fm)
+        // Step 3: Get artist image from multiple sources (Deezer → Fanart → MusicBrainz)
         try {
             const artistMbid = enrichmentData.mbid || artist.mbid;
             const imageResult = await findArtistArtwork({
@@ -405,24 +401,10 @@ class EnrichmentService {
             }
         }
 
-        // Step 2 removed: album tags/tracklists only existed on Last.fm.
-        // MusicBrainz (Step 1) already supplies genres and track counts,
-        // so there is nothing to replace here — keep MB + artwork cascade.
-        if (false) {
-            try {
-                const lastfmInfo = null as any;
-                if (lastfmInfo) {
-                    enrichmentData.tags =
-                        lastfmInfo.tags?.tag?.map((t: any) => t.name) || [];
-                    enrichmentData.genres = enrichmentData.tags?.slice(0, 3);
-                    enrichmentData.trackCount =
-                        lastfmInfo.tracks?.track?.length;
-                    enrichmentData.confidence += 0.3;
-                }
-            } catch (error) {
-                logger.error(` Album lookup skipped`, error);
-            }
-        }
+        // Step 2 removed: album tags/tracklists only existed on the retired
+        // Last.fm service. MusicBrainz (Step 1) already supplies genres and
+        // track counts, so there is nothing to replace here — keep MB +
+        // artwork cascade.
 
         // Step 3: Get cover art from multiple sources (Deezer → MusicBrainz → Fanart)
         try {

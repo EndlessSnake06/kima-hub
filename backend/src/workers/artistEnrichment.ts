@@ -11,10 +11,9 @@ import { redisClient } from "../utils/redis";
 import { downloadAndStoreImage, isNativePath, nativeFileExists } from "../services/imageStorage";
 
 /**
- * Enriches an artist with metadata from Wikidata and Last.fm
+ * Enriches an artist with metadata from Wikidata
  * - Fetches artist bio/summary and hero image from Wikidata
- * - Falls back to Last.fm if Wikidata fails
- * - Fetches similar artists from Last.fm
+ * - Similar artists from the local centroid / ListenBrainz engine
  */
 export async function enrichSimilarArtist(artist: Artist): Promise<void> {
     const logPrefix = `[ENRICH ${artist.name}]`;

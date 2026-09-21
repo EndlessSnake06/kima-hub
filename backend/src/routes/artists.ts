@@ -168,7 +168,7 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
         // If we have MBID but no name, get it from MusicBrainz.
         //
         // A well-formed id MusicBrainz does not recognise is not a server fault. It is the
-        // common case here rather than a malformed request: the ids reach us from Last.fm's
+        // common case here rather than a malformed request: the ids reach us from the similarity engine's
         // similar-artist data, which is full of MBIDs for artists that have since been
         // merged or deleted, and the "Fans Also Like" tiles navigate straight back into this
         // handler. Letting the throw escape answered 500 for an ordinary click.

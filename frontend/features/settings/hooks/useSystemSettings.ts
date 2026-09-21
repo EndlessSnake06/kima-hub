@@ -12,7 +12,6 @@ const defaultSystemSettings: SystemSettings = {
     openaiModel: "gpt-4",
     fanartEnabled: false,
     fanartApiKey: "",
-    lastfmApiKey: "",
         acoustidApiKey: "",
     audiobookshelfEnabled: false,
     audiobookshelfUrl: "http://localhost:13378",
@@ -137,9 +136,6 @@ export function useSystemSettings() {
                     break;
                 case "fanart":
                     result = await api.testFanart(systemSettings.fanartApiKey);
-                    break;
-                case "lastfm":
-                    result = await api.testLastfm(systemSettings.lastfmApiKey);
                     break;
                 case "audiobookshelf":
                     result = await api.testAudiobookshelf(

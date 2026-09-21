@@ -36,7 +36,6 @@ import homepageRoutes from "./routes/homepage";
 import deviceLinkRoutes from "./routes/deviceLink";
 import spotifyRoutes from "./routes/spotify";
 import notificationsRoutes from "./routes/notifications";
-import lastfmNudgeRoutes from "./routes/lastfmNudge";
 import browseRoutes from "./routes/browse";
 import analysisRoutes from "./routes/analysis";
 import releasesRoutes from "./routes/releases";
@@ -167,7 +166,6 @@ app.use("/api/search", apiLimiter, searchRoutes);
 app.use("/api/recommendations", apiLimiter, recommendationsRoutes);
 app.use("/api/downloads", apiLimiter, downloadsRoutes);
 app.use("/api/notifications", apiLimiter, notificationsRoutes);
-app.use("/api/lastfm/nudge", apiLimiter, lastfmNudgeRoutes);
 app.use("/api/webhooks", webhookLimiter, webhooksRoutes); // Excluded from apiLimiter; bounded by a dedicated webhookLimiter (120/min)
 // NOTE: /api/audiobooks has its own rate limiting (imageLimiter for covers, apiLimiter for others)
 app.use("/api/audiobooks", audiobooksRoutes);

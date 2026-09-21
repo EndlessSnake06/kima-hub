@@ -61,11 +61,6 @@ jest.mock("../../services/featureDetection", () => ({
     },
 }));
 
-jest.mock("../../services/lastfm", () => ({
-    lastFmService: {
-        getTrackInfo: jest.fn().mockResolvedValue({ toptags: { tag: [] } }),
-    },
-}));
 
 const mockIdentifyTrackByAcoustid = jest.fn().mockResolvedValue(null);
 const mockPersistAcoustidFingerprint = jest.fn().mockResolvedValue(undefined);

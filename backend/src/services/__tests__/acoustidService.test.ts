@@ -24,7 +24,7 @@
  *    WITHOUT throwing (the silent-fallthrough contract);
  *  - missing fingerprint or non-finite duration short-circuits to null
  *    without any HTTP call at all;
- *  - key precedence (pattern of lastfmApiKey): the operator's key
+ *  - key precedence (pattern of the retired Last.fm key): the operator's key
  *    from the encrypted SystemSettings row wins over the baked config
  *    default, an explicitly passed key wins over both, and a failed or
  *    empty settings read degrades to the config default without throwing;
@@ -67,7 +67,8 @@ jest.mock("../../services/rateLimiter", () => ({
     },
 }));
 
-// The service lazily imports this (same pattern as lastfm.ts); the mock
+// The service lazily imports this (same pattern as the retired Last.fm
+// service used); the mock
 // stands in for the encrypted SystemSettings row.
 const mockGetSystemSettings = jest.fn().mockResolvedValue(null);
 jest.mock("../../utils/systemSettings", () => ({
@@ -212,7 +213,7 @@ describe("acoustidService.lookup", () => {
     });
 });
 
-describe("acoustidService key precedence (spec D: pattern of lastfmApiKey)", () => {
+describe("acoustidService key precedence (spec D: pattern of the retired Last.fm key)", () => {
     it("sends the operator's SystemSettings key when one is stored", async () => {
         const post = setupClient();
         post.mockResolvedValue(lookupResponse([]));

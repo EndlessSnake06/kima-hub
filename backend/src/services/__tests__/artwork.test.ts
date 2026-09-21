@@ -60,22 +60,12 @@ jest.mock("../fanart", () => ({
     },
 }));
 
-const lastFmInfo = jest.fn();
-const lastFmBestImage = jest.fn();
-jest.mock("../lastfm", () => ({
-    lastFmService: {
-        getArtistInfo: (...a: unknown[]) => lastFmInfo(...a),
-        getBestImage: (...a: unknown[]) => lastFmBestImage(...a),
-    },
-}));
-
 import { findAlbumArtwork, findArtistArtwork, withAlbumArtwork } from "../artwork";
 import { validateUrlForFetch } from "../../utils/ssrf";
 
 const DEEZER_URL = "https://e-cdns-images.dzcdn.net/images/cover/abc/500x500.jpg";
 const ARCHIVE_URL = "https://coverartarchive.org/release-group/rg-1/front-1200.jpg";
 const FANART_URL = "https://assets.fanart.tv/fanart/music/xyz/albumcover/a.jpg";
-const LASTFM_URL = "https://lastfm.freetls.fastly.net/i/u/300x300/real.png";
 /** The address a route used to build by hand and never check. */
 const GUESS = "https://coverartarchive.org/release-group/rg-1/front-500";
 
@@ -90,10 +80,9 @@ describe("the one door for artwork", () => {
         mockGet.mockResolvedValue(null);
         mockSetex.mockResolvedValue("OK");
         (validateUrlForFetch as jest.Mock).mockResolvedValue(null);
-        for (const m of [deezerAlbum, deezerArtist, archiveCover, fanartAlbum, fanartArtist, lastFmInfo]) {
+        for (const m of [deezerAlbum, deezerArtist, archiveCover, fanartAlbum, fanartArtist]) {
             m.mockResolvedValue(null);
         }
-        lastFmBestImage.mockReturnValue(null);
         fetchSpy = jest
             .spyOn(globalThis, "fetch")
             .mockImplementation((async () =>
@@ -242,28 +231,6 @@ describe("the one door for artwork", () => {
             expect(found).toEqual({ url: DEEZER_URL, source: "deezer" });
         });
 
-        it("does not fall through to Last.fm anymore", async () => {
-            // The cascade ends at Deezer: the shared Last.fm key is dead
-            // and the endpoint only served the grey placeholder star.
-            lastFmInfo.mockResolvedValue({ image: [{ size: "mega", "#text": LASTFM_URL }] });
-            lastFmBestImage.mockReturnValue(LASTFM_URL);
-
-            const found = await findArtistArtwork(ARTIST);
-
-            expect(found).toBeNull();
-            expect(lastFmInfo).not.toHaveBeenCalled();
-            expect(lastFmBestImage).not.toHaveBeenCalled();
-        });
-
-        it("takes nothing from Last.fm when it only has its grey placeholder", async () => {
-            // Moot now that Last.fm left the cascade: the door is never
-            // knocked, so the placeholder never reaches the response.
-            lastFmInfo.mockResolvedValue({ image: [{ size: "mega", "#text": "grey" }] });
-            lastFmBestImage.mockReturnValue(null);
-
-            expect(await findArtistArtwork(ARTIST)).toBeNull();
-        });
-
         it("skips Fanart when the artist's id is one this app invented", async () => {
             deezerArtist.mockResolvedValue(DEEZER_URL);
 
@@ -323,7 +290,6 @@ describe("the one door for artwork", () => {
         it("applies the same rule to artists", async () => {
             fanartArtist.mockRejectedValue(new Error("fanart 503"));
             deezerArtist.mockRejectedValue(new Error("deezer down"));
-            lastFmInfo.mockRejectedValue(new Error("lastfm down"));
 
             expect(await findArtistArtwork(ARTIST)).toBeNull();
             expect(mockSetex).not.toHaveBeenCalled();

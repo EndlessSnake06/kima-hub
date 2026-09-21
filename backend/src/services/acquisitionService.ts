@@ -42,7 +42,6 @@ interface AlbumAcquisitionRequest {
     albumTitle: string;
     artistName: string;
     mbid?: string;
-    lastfmUrl?: string;
     requestedTracks?: Array<{ title: string; position?: number }>;
 }
 
@@ -534,7 +533,7 @@ class AcquisitionService {
 
     /**
      * Acquire album via Soulseek (track-by-track download)
-     * Gets track list from MusicBrainz or Last.fm, then batch downloads
+     * Gets track list from MusicBrainz, then batch downloads
      * Marks job as completed immediately (no webhook needed)
      *
      * @param request - Album to acquire
@@ -589,13 +588,12 @@ class AcquisitionService {
                 // Strategy 1: Get track list from MusicBrainz (mbid guaranteed by early guard above)
                 tracks = await musicBrainzService.getAlbumTracks(request.mbid!);
 
-                // Strategy 2: Fallback to Last.fm (always try when MusicBrainz fails)
                 if (!tracks || tracks.length === 0) {
                     logger.debug(
                         `[Acquisition/Soulseek] MusicBrainz has no tracks; no fallback source`
                     );
-                    // Last.fm removed (dead shared key); MusicBrainz is
-                    // the only track-list source now.
+                    // The retired Last.fm service was removed as a track-list
+                    // source (dead shared key); MusicBrainz is the only one now.
                 }
 
                 if (!tracks || tracks.length === 0) {
@@ -603,11 +601,11 @@ class AcquisitionService {
                     await this.updateJobStatus(
                         job.id,
                         "failed",
-                        "Could not get track list from MusicBrainz or Last.fm"
+                        "Could not get track list from MusicBrainz"
                     );
                     return {
                         success: false,
-                        error: "Could not get track list from MusicBrainz or Last.fm",
+                        error: "Could not get track list from MusicBrainz",
                     };
                 }
 

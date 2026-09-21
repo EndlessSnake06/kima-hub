@@ -1055,7 +1055,7 @@ router.get("/radio", async (req, res) => {
         });
         let similarArtistIds = similarInLibrary.map((s) => s.toArtistId);
         logger.debug(
-          `[Radio:artist] Found ${similarArtistIds.length} Last.fm similar artists in library`,
+          `[Radio:artist] Found ${similarArtistIds.length} similar artists in library`,
         );
 
         if (similarArtistIds.length < 5 && libraryArtistIds.size > 0) {
@@ -1706,7 +1706,7 @@ router.get("/radio", async (req, res) => {
           }`,
         );
         logger.debug(
-          `  Last.fm Tags: ${
+          `  Mood tags: ${
             ((srcTrack as any).lastfmTags || []).join(", ") || "N/A"
           }`,
         );

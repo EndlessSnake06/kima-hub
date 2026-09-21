@@ -38,7 +38,6 @@ jest.mock('../../middleware/auth', () => ({
     },
 }));
 
-jest.mock('../../services/lastfm', () => ({ lastFmService: {} }));
 jest.mock('../../workers/queues', () => ({
     discoverQueue: {
         getJob: jest.fn(),

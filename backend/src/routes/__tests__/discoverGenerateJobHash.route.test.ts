@@ -36,7 +36,6 @@ jest.mock('../../middleware/auth', () => ({
     },
 }));
 
-jest.mock('../../services/lastfm', () => ({ lastFmService: {} }));
 jest.mock('../../services/lidarr', () => ({ lidarrService: {} }));
 jest.mock('../../utils/systemSettings', () => ({
     getSystemSettings: jest.fn().mockResolvedValue({}),

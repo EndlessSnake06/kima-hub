@@ -390,7 +390,7 @@ export async function generateMelancholyMix(
                     "atmospheric",
                 ].includes(tag.toLowerCase())
             );
-            const hasLastfmSadTags = t.lastfmTags?.some((tag: string) =>
+            const hasMoodListSadTags = t.lastfmTags?.some((tag: string) =>
                 [
                     "sad",
                     "melancholic",
@@ -400,7 +400,7 @@ export async function generateMelancholyMix(
                     "heartbreak",
                 ].includes(tag.toLowerCase())
             );
-            return hasMinorKey || hasSadTags || hasLastfmSadTags;
+            return hasMinorKey || hasSadTags || hasMoodListSadTags;
         });
         logger.debug(
             `[MELANCHOLY MIX] After tag filter: ${tracks.length} tracks`

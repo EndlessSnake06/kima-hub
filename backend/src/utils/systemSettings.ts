@@ -62,11 +62,10 @@ export async function getSystemSettings(forceRefresh = false) {
             settings.lidarrWebhookSecret,
             "lidarrWebhookSecret",
         ),
-        openaiApiKey: safeDecrypt(settings.openaiApiKey, "openaiApiKey"),
-        lastfmApiKey: safeDecrypt(settings.lastfmApiKey, "lastfmApiKey"),
-        lastfmApiSecret: safeDecrypt(settings.lastfmApiSecret, "lastfmApiSecret"),
-        lastfmUserKey: safeDecrypt(settings.lastfmUserKey, "lastfmUserKey"),
-        fanartApiKey: safeDecrypt(settings.fanartApiKey, "fanartApiKey"),
+        openaiApiKey: safeDecrypt(
+            settings.openaiApiKey,
+            "openaiApiKey",
+        ),
         acoustidApiKey: safeDecrypt(settings.acoustidApiKey, "acoustidApiKey"),
         audiobookshelfApiKey: safeDecrypt(
             settings.audiobookshelfApiKey,

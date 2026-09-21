@@ -271,7 +271,7 @@ export default function DiscoverWeeklyPage() {
                                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
                                         <div className="border border-white/10 rounded-lg p-4 bg-white/[0.02]">
                                             <div className="text-xs text-purple-500 mb-1">Finds</div>
-                                            <div className="text-xs text-[var(--text-secondary)] leading-snug">Similar artists via Last.fm, grouped by similarity tier</div>
+                                            <div className="text-xs text-[var(--text-secondary)] leading-snug">Similar artists via ListenBrainz + local similarity, grouped by similarity tier</div>
                                         </div>
                                         <div className="border border-white/10 rounded-lg p-4 bg-white/[0.02]">
                                             <div className="text-xs text-purple-500 mb-1">Downloads</div>

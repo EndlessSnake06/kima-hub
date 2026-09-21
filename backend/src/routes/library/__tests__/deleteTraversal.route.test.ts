@@ -48,7 +48,6 @@ jest.mock('../../../utils/redis', () => ({
         keys: jest.fn().mockResolvedValue([]),
     },
 }));
-jest.mock('../../../services/lastfm', () => ({ lastFmService: {} }));
 jest.mock('../../../services/deezer', () => ({ deezerService: {} }));
 jest.mock('../../../services/musicbrainz', () => ({ musicBrainzService: {} }));
 jest.mock('../../../services/dataCache', () => ({ dataCacheService: { get: jest.fn(), set: jest.fn() } }));

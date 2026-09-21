@@ -60,11 +60,6 @@ const systemSettingsSchema = z.object({
   fanartApiKey: z.string().nullable().optional(),
   acoustidApiKey: z.string().nullable().optional(),
 
-  // Last.fm
-  lastfmApiKey: z.string().nullable().optional(),
-  lastfmApiSecret: z.string().nullable().optional(),
-  lastfmUserKey: z.string().nullable().optional(),
-  lastfmEnabled: z.boolean().nullable().optional(),
 
   // Media Services
   audiobookshelfEnabled: z.boolean().optional(),
@@ -165,9 +160,6 @@ router.get("/", async (req, res) => {
       openaiApiKey: safeDecrypt(settings.openaiApiKey),
       fanartApiKey: safeDecrypt(settings.fanartApiKey),
       acoustidApiKey: safeDecrypt(settings.acoustidApiKey),
-      lastfmApiKey: safeDecrypt(settings.lastfmApiKey),
-      lastfmApiSecret: safeDecrypt(settings.lastfmApiSecret),
-      lastfmUserKey: safeDecrypt(settings.lastfmUserKey),
       audiobookshelfApiKey: safeDecrypt(settings.audiobookshelfApiKey),
       soulseekPassword: safeDecrypt(settings.soulseekPassword),
       slskdApiKey: safeDecrypt(settings.slskdApiKey),
@@ -209,12 +201,6 @@ router.post("/", async (req, res) => {
       encryptedData.fanartApiKey = encrypt(data.fanartApiKey);
     if (data.acoustidApiKey)
       encryptedData.acoustidApiKey = encrypt(data.acoustidApiKey);
-    if (data.lastfmApiKey)
-      encryptedData.lastfmApiKey = encrypt(data.lastfmApiKey);
-    if (data.lastfmApiSecret)
-      encryptedData.lastfmApiSecret = encrypt(data.lastfmApiSecret);
-    if (data.lastfmUserKey)
-      encryptedData.lastfmUserKey = encrypt(data.lastfmUserKey);
     if (data.audiobookshelfApiKey)
       encryptedData.audiobookshelfApiKey = encrypt(data.audiobookshelfApiKey);
     if (data.soulseekPassword)
@@ -240,9 +226,9 @@ router.post("/", async (req, res) => {
 
     invalidateSystemSettingsCache();
 
-    // (Last.fm key refresh removed 2026-09-19 — Kima no longer calls
-    // Last.fm; similarity/correction/dates come from ListenBrainz,
-    // MusicBrainz and local centroid embeddings instead.)
+    // (The old Last.fm key refresh was removed 2026-09-19 — Kima no longer
+    // calls that service; similarity/correction/dates come from
+    // ListenBrainz, MusicBrainz and local centroid embeddings instead.)
 
     // Reconnect Soulseek only if connection-relevant settings actually changed
     // (not just present in payload). This covers P2P credentials AND the slskd
@@ -643,46 +629,6 @@ router.post("/test-fanart", async (req, res) => {
     });
   } catch (error) {
     safeError(res, "Fanart.tv connection test", error);
-  }
-});
-
-// Test Last.fm connection
-router.post("/test-lastfm", async (req, res) => {
-  try {
-    const { lastfmApiKey } = req.body;
-
-    if (!lastfmApiKey) {
-      return res.status(400).json({ error: "API key is required" });
-    }
-
-    const axios = require("axios");
-
-    // Test with a known artist (The Beatles)
-    const testArtist = "The Beatles";
-
-    const response = await axios.get("http://ws.audioscrobbler.com/2.0/", {
-      params: {
-        method: "artist.getinfo",
-        artist: testArtist,
-        api_key: lastfmApiKey,
-        format: "json",
-      },
-      timeout: 5000,
-    });
-
-    // If we get here and have artist data, the API key is valid
-    if (response.data.artist) {
-      res.json({
-        success: true,
-        message: "Last.fm connection successful",
-      });
-    } else {
-      res.status(500).json({
-        error: "Unexpected response from Last.fm",
-      });
-    }
-  } catch (error) {
-    safeError(res, "Last.fm connection test", error);
   }
 });
 

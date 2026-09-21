@@ -30,14 +30,6 @@ jest.mock("../../utils/logger", () => ({
     logger: { warn: jest.fn(), debug: jest.fn(), error: jest.fn(), info: jest.fn() },
 }));
 
-jest.mock("../lastfm", () => ({
-    lastFmService: {
-        getArtistInfo: jest.fn().mockResolvedValue(null),
-        getAlbumInfo: jest.fn().mockResolvedValue(null),
-        getBestImage: jest.fn().mockReturnValue(null),
-    },
-}));
-
 const mockGetReleaseGroups = jest.fn();
 const mockSearchAlbum = jest.fn();
 jest.mock("../musicbrainz", () => ({
@@ -99,7 +91,7 @@ const COVER = "https://e-cdns-images.dzcdn.net/images/cover/abc/500x500.jpg";
 const ON = {
     enabled: true,
     autoEnrichOnScan: true,
-    sources: { musicbrainz: true, lastfm: true, coverArtArchive: true },
+    sources: { musicbrainz: true, coverArtArchive: true },
     rateLimit: { maxRequestsPerMinute: 60, respectApiLimits: true },
     overwriteExisting: false,
     matchingConfidence: "moderate",
