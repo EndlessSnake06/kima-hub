@@ -122,7 +122,7 @@ export async function rebuildArtistCentroid(
     const rows = await prisma.$queryRaw<
         Array<{ embedding: unknown }>
     >`
-        SELECT te.embedding
+        SELECT te.embedding::text AS embedding
         FROM track_embeddings te
         JOIN "Track" t ON te.track_id = t.id
         JOIN "Album" al ON al.id = t."albumId"
