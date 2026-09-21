@@ -466,9 +466,19 @@ test.describe("Dogfood walkthrough", () => {
             const target = rows.first();
             await target.hover();
             await target.locator('[aria-label^="Remove "]').first().click();
-            await page.waitForTimeout(600);
-            const after = await queueLength();
-            expect(after, `remove clicked but queue went ${before} -> ${after}`).toBe(before - 1);
+            // The client persists the queue to the server on a 1s debounce, so a
+            // fixed short wait races the sync. Poll the API until it reflects the
+            // removal (or time out — that's a real failure worth reporting).
+            let after = before;
+            await expect
+                .poll(
+                    async () => {
+                        after = await queueLength();
+                        return after;
+                    },
+                    { timeout: 10_000, intervals: [500, 1_000, 1_000, 2_000] },
+                )
+                .toBe(before - 1);
             return { before, after };
         });
 
