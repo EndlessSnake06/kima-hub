@@ -67,8 +67,12 @@ export function TrackDrawer({ visible, onClose, children }: TrackDrawerProps) {
             style={{ visibility: visible ? "visible" : "hidden" }}
             onClick={(e) => {
                 // Only a genuine backdrop click dismisses, not a click on the
-                // drawer panel itself.
-                if (e.target === e.currentTarget) onClose();
+                // drawer panel itself. The tint div (inset-0) sits between the
+                // host and the pointer, so "did the click originate on the
+                // backdrop layer" must be answered with closest(), not an
+                // identity check — an identity check never fires because the
+                // tint always becomes e.target.
+                if (!(e.target as HTMLElement).closest("aside")) onClose();
             }}
         >
             <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" />

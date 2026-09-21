@@ -17,6 +17,20 @@ async function getVibeTrackIds(page: Parameters<typeof loginAsTestUser>[0]): Pro
         const data = await res.json() as { tracks?: Array<{ id: string; title: string; artist: string }> };
         const tracks = data.tracks ?? [];
         if (tracks.length < 2) return null;
+        // Song path needs two tracks far apart in vibe space; first/last in the
+        // payload can be acoustic near-duplicates and the endpoint correctly
+        // 400s those ("too similar for a meaningful journey"). Use the extremes
+        // of the map projection instead: min vs max x+y.
+        const withXY = tracks.filter((t) => typeof (t as { x?: number }).x === "number");
+        if (withXY.length >= 2) {
+            let lo = withXY[0], hi = withXY[0], loS = Infinity, hiS = -Infinity;
+            for (const t of withXY) {
+                const sum = (t as unknown as { x: number; y: number }).x + (t as unknown as { x: number; y: number }).y;
+                if (sum < loS) { loS = sum; lo = t; }
+                if (sum > hiS) { hiS = sum; hi = t; }
+            }
+            if (lo.id !== hi.id) return [lo.id, hi.id];
+        }
         return [tracks[0].id, tracks[tracks.length - 1].id];
     } catch {
         return null;
@@ -50,15 +64,11 @@ async function getTwoVibeSearchQueries(page: Parameters<typeof loginAsTestUser>[
 
 // ---------------------------------------------------------------------------
 
-// Headless Chromium ships with NO WebGL -- the galaxy scene draws through
-// three.js/WebGL, so without SwiftShader it never mounts the track field and
-// every journey below would test the absence of a graphics stack. Same flags
-// and same measured rationale as walkthrough.spec.ts.
-test.use({
-    launchOptions: {
-        args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"],
-    },
-});
+// NOTE: no custom GL launch flags here. The current bundled Chromium ships
+// SwiftShader by default; forcing --use-gl=angle/--use-angle=swiftshader on
+// top of it was measured to break r3f pointer picking (the raycast misses
+// every star), which made the drawer journey unrunnable. Without the
+// overrides the field mounts AND picks correctly.
 
 
 // The What's New modal (aria-modal) sits over the page on a fresh login and
@@ -295,6 +305,13 @@ test.describe("Vibe", () => {
     // drawer host is absent on pre-fix HEAD (old deck.gl grid, no detail surface)
     // and must appear here on post-fix galaxy.
     test("clicking a track opens a desktop drawer that shows that track's own data", async ({ page }) => {
+        // UI login (not storageState): the probe that proved the click path
+        // works used a fresh login; mirror it exactly.
+        await page.goto("/login");
+        await page.fill("#username", process.env.KIMA_TEST_USERNAME!);
+        await page.fill("#password", process.env.KIMA_TEST_PASSWORD!);
+        await page.getByRole("button", { name: "Sign In" }).click();
+        await page.waitForURL(/\/($|\?|home)/, { timeout: 20_000 });
         await page.goto("/vibe", { waitUntil: "domcontentloaded" });
         await dismissWhatsNew(page);
 
@@ -306,9 +323,19 @@ test.describe("Vibe", () => {
             test.skip(true, "no vibe tracks available on this testbed");
         }
 
-        // Clear any first-run hint sitting on the field so the click lands.
-        const dismissHint = page.locator('[aria-label="Dismiss"]').first();
-        if (await dismissHint.isVisible().catch(() => false)) await dismissHint.click();
+        // Clear the first-run onboarding card — it floats over the lower map
+        // and swallows clicks there until dismissed. Locate it by its role+
+        // text rather than a bare [aria-label=Dismiss].first(), which can
+        // resolve to an unrelated control.
+        const hint = page.locator("div", { hasText: "This is your music, mapped by sound." })
+            .locator('[aria-label="Dismiss"]');
+        if (await hint.isVisible().catch(() => false)) {
+            await hint.click();
+            await hint.waitFor({ state: "detached", timeout: 4000 }).catch(() => {});
+        }
+        // Let the intro camera animation settle — the stars drift during the
+        // fly-in, so pre-picked screen points go stale if we click too early.
+        await page.waitForTimeout(6_000);
 
         // The drawer host only renders post-fix (old deck.gl grid had no
         // selection drawer, so this selector is absent on pre-fix HEAD).
@@ -322,12 +349,16 @@ test.describe("Vibe", () => {
             by = box!.y,
             bw = box!.width,
             bh = box!.height;
+        // Star positions are polar on a disc (see trackGalaxyLayout.ts), so
+        // linear screen fractions can land on empty space. Probe along the
+        // dense diagonal bands of the rendered disc instead.
         const centers: Array<[number, number]> = [
-            [bx + bw * 0.5, by + bh * 0.5],
-            [bx + bw * 0.35, by + bh * 0.4],
-            [bx + bw * 0.65, by + bh * 0.4],
-            [bx + bw * 0.35, by + bh * 0.65],
-            [bx + bw * 0.65, by + bh * 0.65],
+            [bx + bw * 0.50, by + bh * 0.27],
+            [bx + bw * 0.40, by + bh * 0.40],
+            [bx + bw * 0.35, by + bh * 0.55],
+            [bx + bw * 0.60, by + bh * 0.35],
+            [bx + bw * 0.50, by + bh * 0.50],
+            [bx + bw * 0.45, by + bh * 0.45],
         ];
         let opened = false;
         for (const [mx, my] of centers) {
@@ -339,6 +370,9 @@ test.describe("Vibe", () => {
                 .catch(() => false);
         }
         expect(opened, "drawer host should become visible after clicking a star").toBe(true);
+        // From here on the drawer is open; subsequent probe clicks below must
+        // only run after Esc-closing, otherwise they land on the open drawer's
+        // backdrop and toggle it shut. Guard the re-open loop the same way.
 
         // Data is read from the already-loaded API payload (zero new fetches).
         const title = (await host.locator("p.font-semibold").first().textContent()) ?? "";
@@ -375,7 +409,10 @@ test.describe("Vibe", () => {
             if (await host.isVisible()) break;
         }
         await host.waitFor({ state: "visible", timeout: 3_000 });
-        await page.mouse.click(bw * 0.5 + bx - 200, by + 100);
+        // Backdrop = the map canvas itself. The drawer is right-aligned, so
+        // click the open field near its left edge (bx-200 lands on the nav
+        // rail, which does not close the drawer).
+        await page.mouse.click(bx + 60, by + bh * 0.5);
         await expect(host).toBeHidden({ timeout: 5_000 });
     });
 });
