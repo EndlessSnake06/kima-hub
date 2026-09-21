@@ -65,6 +65,7 @@
     --animate-pop: pop 200ms cubic-bezier(0.25, 1, 0.5, 1) both;
     --animate-panel-up: panel-up 300ms cubic-bezier(0.25, 1, 0.5, 1) both;
     --animate-panel-down: panel-down 220ms cubic-bezier(0.25, 1, 0.5, 1) both;
+    --animate-slide-in: slide-in 280ms cubic-bezier(0.25, 1, 0.5, 1) both;
 
     @keyframes rise {
         from { opacity: 0; transform: translateY(8px); }
@@ -606,6 +607,15 @@ button:disabled {
 
 .animate-fade-in {
     animation: fade-in 0.6s ease-out forwards;
+}
+
+@keyframes slide-in {
+    from { transform: translateX(100%); }
+    to { transform: translateX(0); }
+}
+
+.animate-slide-in {
+    animation: slide-in 280ms cubic-bezier(0.25, 1, 0.5, 1) both;
 }
 
 /* Shake animation for error messages */

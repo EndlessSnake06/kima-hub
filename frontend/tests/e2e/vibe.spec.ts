@@ -250,31 +250,94 @@ test.describe("Vibe", () => {
         if (await closeEl.isVisible()) await closeEl.click();
     });
 
-    // ---- Map / Galaxy view toggle -------------------------------------------
+    // ---- Selection drawer ----------------------------------------------------
 
-    test("Map and Galaxy view buttons are present and switch view", async ({ page }) => {
+    // A real star is picked by clicking anywhere on the interactive field; with
+    // a dense cloud the center (and the few alternating probes below) almost
+    // always lands on a node. Opening the drawer is selection-opened, so the
+    // drawer host is absent on pre-fix HEAD (old deck.gl grid, no detail surface)
+    // and must appear here on post-fix galaxy.
+    test("clicking a track opens a desktop drawer that shows that track's own data", async ({ page }) => {
         await page.goto("/vibe", { waitUntil: "domcontentloaded" });
 
-        const canvas = page.locator("canvas").first();
+        const gallery = page.getByTestId("galaxy-track-field").first();
         const noData = page.locator("text=/No tracks with vibe/i").first();
-        await Promise.race([canvas.waitFor({ timeout: 35_000 }), noData.waitFor({ timeout: 35_000 })]);
-        if ((await noData.count()) > 0) { test.skip(); return; }
 
-        // Map button (already active)
-        const mapBtn = page.locator("button").filter({ hasText: /^Map$/ }).first();
-        const galaxyBtn = page.locator("button").filter({ hasText: /^Galaxy$/ }).first();
-        await expect(mapBtn).toBeVisible({ timeout: 5_000 });
-        await expect(galaxyBtn).toBeVisible({ timeout: 5_000 });
+        await Promise.race([gallery.waitFor({ timeout: 35_000 }), noData.waitFor({ timeout: 35_000 })]);
+        if ((await noData.count()) > 0) {
+            test.skip(true, "no vibe tracks available on this testbed");
+        }
 
-        // Switch to Galaxy
-        await galaxyBtn.click();
-        await page.waitForTimeout(2_000);
-        // Canvas should still be present (WebGL scene renders)
-        await expect(canvas).toBeVisible();
+        // Clear any first-run hint sitting on the field so the click lands.
+        const dismissHint = page.locator('[aria-label="Dismiss"]').first();
+        if (await dismissHint.isVisible().catch(() => false)) await dismissHint.click();
 
-        // Switch back to Map
-        await mapBtn.click();
-        await page.waitForTimeout(800);
-        await expect(canvas).toBeVisible();
+        // The drawer host only renders post-fix (old deck.gl grid had no
+        // selection drawer, so this selector is absent on pre-fix HEAD).
+        const host = page.locator("#kima-track-drawer-host");
+
+        // Probe a few points until one registers on a star (mouse coords,
+        // since a clickable WebGL mesh cannot accept a locator x/y offset).
+        const box = await gallery.boundingBox();
+        expect(box, "galaxy field should render").not.toBeNull();
+        const bx = box!.x,
+            by = box!.y,
+            bw = box!.width,
+            bh = box!.height;
+        const centers: Array<[number, number]> = [
+            [bx + bw * 0.5, by + bh * 0.5],
+            [bx + bw * 0.35, by + bh * 0.4],
+            [bx + bw * 0.65, by + bh * 0.4],
+            [bx + bw * 0.35, by + bh * 0.65],
+            [bx + bw * 0.65, by + bh * 0.65],
+        ];
+        let opened = false;
+        for (const [mx, my] of centers) {
+            if (opened) break;
+            await page.mouse.move(mx, my);
+            await page.mouse.click(mx, my);
+            opened = await host.waitFor({ state: "visible", timeout: 3_000 })
+                .then(() => true)
+                .catch(() => false);
+        }
+        expect(opened, "drawer host should become visible after clicking a star").toBe(true);
+
+        // Data is read from the already-loaded API payload (zero new fetches).
+        const title = (await host.locator("p.font-semibold").first().textContent()) ?? "";
+        expect(title.trim().length).toBeGreaterThan(0);
+
+        const token = await getAuthToken(page);
+        const map = await page.request.get("/api/vibe/map", {
+            headers: { Authorization: `Bearer ${token}` },
+        });
+        const mapTracks = (await map.json()) as { tracks?: Array<{ id: string; title: string; artist: string }> };
+        const titles = (mapTracks.tracks ?? []).map((t) => t.title);
+        // The drawer shows THIS track's own title, not any other row.
+        expect(titles, "the drawer title must be one of the API track titles").toContain(title.trim());
+
+        // The artist is a link to the artist page, not plain text.
+        await expect(host.locator("a[href^='/artist/']")).toBeVisible({ timeout: 5_000 });
+
+        // The four actions: Play, Match Vibe, Find similar, Song path.
+        await expect(host.getByLabel("Play this track")).toBeVisible({ timeout: 5_000 });
+        await expect(host.getByLabel("Build vibe playlist from this track")).toBeVisible({ timeout: 5_000 });
+        await expect(host.getByLabel("Find tracks similar to this one")).toBeVisible({ timeout: 5_000 });
+        await expect(host.getByLabel("Start song path from this track")).toBeVisible({ timeout: 5_000 });
+
+        // Esc closes the drawer.
+        await page.keyboard.press("Escape");
+        await expect(host).toBeHidden({ timeout: 5_000 });
+
+        // Re-open, then dismiss via a genuine backdrop click (anything outside
+        // the drawer aside). The field center is left of the right-aligned
+        // drawer, so it lands on the backdrop, not on an aside control.
+        for (const [mx, my] of centers) {
+            await page.mouse.move(mx, my);
+            await page.mouse.click(mx, my);
+            if (await host.isVisible()) break;
+        }
+        await host.waitFor({ state: "visible", timeout: 3_000 });
+        await page.mouse.click(bw * 0.5 + bx - 200, by + 100);
+        await expect(host).toBeHidden({ timeout: 5_000 });
     });
 });

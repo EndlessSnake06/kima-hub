@@ -20,7 +20,7 @@ function loadPersistedPath(): { path: PathResult; highlightedIds: Set<string> } 
     }
 }
 
-export function useVibeMap() {
+export function useGalaxyMap() {
     const persisted = useMemo(() => loadPersistedPath(), []);
     const [mode, setMode] = useState<VibeMode>(persisted ? "path-result" : "idle");
     const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
@@ -30,7 +30,7 @@ export function useVibeMap() {
 
     const { data: mapData, isLoading, error, refetch } = useQuery({
         queryKey: ["vibe-map"],
-        queryFn: () => api.getVibeMap(),
+        queryFn: () => api.getGalaxyMap(),
         staleTime: 1000 * 60 * 60,
         gcTime: 1000 * 60 * 60 * 24,
         retry: 1,

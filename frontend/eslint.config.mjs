@@ -67,7 +67,6 @@ const eslintConfig = defineConfig([
       "features/settings/hooks/useSettingsData.ts",
       "features/settings/hooks/useSystemSettings.ts",
       "features/stats/components/ListeningClock.tsx",
-      "features/vibe/scenes/GravityGridScene.tsx",
       "hooks/useLastfmNudge.ts",
     ],
     rules: {

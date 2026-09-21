@@ -1836,7 +1836,7 @@ class ApiClient {
         });
     }
 
-    async getVibeMap() {
+    async getGalaxyMap() {
         return this.request<{
             tracks: Array<{
                 id: string;

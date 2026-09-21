@@ -9,7 +9,7 @@
  *     never labelled or picked.
  *   Layer 2 (real) — every track as a star at its real UMAP x,y (picking
  *     stays truthful: neighbours ARE similar songs). Selected, labelled,
- *     clickable -> opens VibePanelSheet; double-click -> play.
+ *     clickable -> opens the TrackDrawer (double-click -> play).
  *
  * Colour = vibeColor() OKLab mood-anchor blend fed by each track's REAL
  * moods record, chroma capped at 0.17 (matter-not-neon).
@@ -33,7 +33,7 @@ import {
     type RefObject,
 } from "react";
 import { Canvas, useThree } from "@react-three/fiber";
-import { OrbitControls, Line } from "@react-three/drei";
+import { OrbitControls } from "@react-three/drei";
 import { EffectComposer, Bloom, Noise, Vignette } from "@react-three/postprocessing";
 import { BlendFunction } from "postprocessing";
 import { type ThreeEvent } from "@react-three/fiber";
@@ -45,6 +45,7 @@ import { QuadTree } from "./quadtree";
 import { useGalaxyFrame, type OrbitControlsLike } from "./useGalaxyFrame";
 import { useGalaxyInteraction } from "./useGalaxyInteraction";
 import { GalaxyLabel, Reticle, RegionLabels } from "./labels";
+import { resolveLabels, MAX_LABELS } from "./labelPlacement";
 import { buildBaselineGeometry } from "./ambientBaseline";
 import { GALAXY_ZONES, zoneWorldPos } from "./zones";
 import type { MapTrack } from "../../types";
@@ -139,7 +140,7 @@ function Cosmos({
 function Scene(props: GalaxySceneProps) {
     const {
         tracks,
-        playingTrackId: _playingTrackId,
+        playingTrackId,
         selectedTrackId,
         showLabels,
         onTrackClick,
@@ -154,6 +155,7 @@ function Scene(props: GalaxySceneProps) {
     );
 
     useThree();
+    const { camera, gl } = useThree();
 
     const [near, setNear] = useState(false);
     const [clusterLabels, setClusterLabels] = useState<number[]>([]);
@@ -256,8 +258,8 @@ function Scene(props: GalaxySceneProps) {
         [onUp, onTrackDoubleClick, hover, field],
     );
 
-    // Right-click context menu (vibe/similar/drift) — same handlers the 2D
-    // VibeMap uses on page.tsx.
+    // Right-click context menu (vibe/similar/drift) — same handlers the old
+    // 2D grid view used on page.tsx.
     const onContextMenu = useCallback(
         (e: ThreeEvent<PointerEvent>) => {
             e.stopPropagation();
@@ -288,14 +290,18 @@ function Scene(props: GalaxySceneProps) {
         setClusterLabels,
     });
 
-    // ── SELECTION FOCUS (ported verbatim from rig): picking somebody recedes
-    // the rest of the galaxy so the thread between you and them is the only
-    // thing left reading. Exactly two points stay lit — them, and you. ────────
+    // ── SELECTION FOCUS (adapted from the rig): picking somebody recedes the
+    // rest of the galaxy so that track is the only one left reading. In the
+    // social rig a second lit point marked "you" at the other end of the
+    // thread; this is a *tracks* map with no self, so `uYouIdx` is pinned to
+    // -1 (unlit) and only the picked track stays bright. Keeping the attribute
+    // set (not dropping it) matters: ambient stars carry aIndex=-1, so without
+    // the uniform a "you" star could masquerade as the selection. ────────
     useEffect(() => {
         uniforms.uFocusIdx.value = selectedIndex;
-        uniforms.uYouIdx.value = field.youIndex;
+        uniforms.uYouIdx.value = -1; // no "you" in a tracks galaxy
         focusTarget.current = selectedIndex >= 0 ? 1 : 0;
-    }, [selectedIndex, field, uniforms]);
+    }, [selectedIndex, uniforms]);
 
     // ── fly to a track picked from toolbar search results (rig's focus fly) ──
     // `selectedTrackId` changing = a toolbar pick -> fly camera to that star.
@@ -306,15 +312,6 @@ function Scene(props: GalaxySceneProps) {
         flyGoal.current.set(field.xs[i], 0, field.zs[i]);
         flyDist.current = 32;
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selectedTrackId]);
-
-    // ── fly to a baseline ZONE (explore-a-vibe chip) ─────────────────────────
-     
-    // empty: page.tsx has no zone chip yet; the effect returns early today.
-    useEffect(() => {
-        if (!selectedTrackId || !controls.current) return;
-        return; // slot wired for a future focusZone prop.
-         
     }, [selectedTrackId]);
 
     // ── back to the whole-galaxy overview ────────────────────────────────────
@@ -329,17 +326,48 @@ function Scene(props: GalaxySceneProps) {
         }
     }, [selectedTrackId]);
 
-    const you3 = pos3(field.pos, field.youIndex);
+    // ── labels: ordered by presentation priority. Selection > hover >
+    // playing > nearest-to-focus; resolved against the view frustum + collides
+    // in screen space by resolveLabels, so the pile can
+    // never exceed MAX_LABELS. Priority index doubles as the candidate order.
+    const labelCandidates = useMemo(() => {
+        const out: {
+            world: [number, number, number];
+            name: string;
+            priority: number;
+            id: string;
+        }[] = [];
+        let priority = 0;
+        const add = (i: number | null) => {
+            if (i === null || i < 0 || i >= field.userIds.length) return;
+            const p = pos3(field.pos, i);
+            out.push({
+                world: [p[0], p[1] + 2.4, p[2]],
+                name: field.titles[i],
+                priority: priority++,
+                id: field.userIds[i],
+            });
+        };
+        // Highest priority first: the picked track, the hovered one, the playing
+        // one, then the camera-target neighbourhood (already nearest-first).
+        add(selectedIndex);
+        add(hover);
+        const playingIndex = playingTrackId != null ? field.userIds.indexOf(playingTrackId) : -1;
+        add(playingIndex);
+        for (const i of clusterLabels) add(i);
+        return out;
+    }, [field, hover, selectedIndex, playingTrackId, clusterLabels]);
 
-    // ── labels: overview -> you + closest few; dived-in -> neighbours ────────
-    const labelSet = useMemo(() => {
-        const s = new Set<number>([field.youIndex]);
-        if (near) clusterLabels.forEach((i) => s.add(i));
-        else field.nearYou.forEach((i) => s.add(i));
-        if (hover != null) s.add(hover);
-        if (selectedIndex >= 0) s.add(selectedIndex);
-        return [...s];
-    }, [field, near, clusterLabels, hover, selectedIndex]);
+    const labelRenderIdx = useMemo(() => {
+        const viewW = gl.domElement.clientWidth || 1;
+        const viewH = gl.domElement.clientHeight || 1;
+        return resolveLabels(labelCandidates, (w) => {
+            const v = new THREE.Vector3(w[0], w[1], w[2]).project(camera);
+            // camera.project() yields NDC in [-1,1]^2, y-up; resolveLabels maps
+            // that to device pixels internally, so hand the raw NDC through.
+            return [v.x, v.y];
+        }, viewW, viewH, MAX_LABELS);
+    }, [labelCandidates]);
 
     // ── playing track pulse (reserved for a future animated ring) ───────────
 
@@ -373,6 +401,7 @@ function Scene(props: GalaxySceneProps) {
 
             {/* Layer 2 — THE REAL TRACKS, bright cloud, rendered over the hole */}
             <points
+                data-testid="galaxy-track-field"
                 geometry={starGeo}
                 material={mat}
                 renderOrder={PEOPLE_ORDER}
@@ -403,9 +432,8 @@ function Scene(props: GalaxySceneProps) {
                 />
             </mesh>
 
-            {/* YOU marker — the persistent amber accent */}
-            <Reticle position={you3} color={AMBER} radius={2.6} renderOrder={PEOPLE_ORDER} />
-            {hover != null && hover !== field.youIndex && (
+            {/* hover reticle — the hovered track */}
+            {hover != null && (
                 <Reticle
                     position={pos3(field.pos, hover)}
                     color="#e8d6ad"
@@ -413,18 +441,12 @@ function Scene(props: GalaxySceneProps) {
                     renderOrder={PEOPLE_ORDER}
                 />
             )}
+            {/* selection focus — the picked star, lit by the shader glow.
+                There is no "you" star in a tracks galaxy, and no connecting
+                thread: the rig drew a thread between two people; a track map
+                has only one focal point. */}
             {selectedIndex >= 0 && (
                 <>
-                    {selectedIndex !== field.youIndex && (
-                        <Line
-                            points={[you3, pos3(field.pos, selectedIndex)]}
-                            color="#d8b98a"
-                            lineWidth={1}
-                            transparent
-                            opacity={0.32}
-                            renderOrder={PEOPLE_ORDER}
-                        />
-                    )}
                     <Reticle
                         position={pos3(field.pos, selectedIndex)}
                         color="#fff"
@@ -440,21 +462,24 @@ function Scene(props: GalaxySceneProps) {
                 </>
             )}
 
-            {/* labels — only the relevant few, LOD-gated */}
+            {/* labels — at most MAX_LABELS, chosen by presentation priority
+                (selected > hover > playing > nearest) and culled when their
+                screen rectangles collide, so the pile the operator reported
+                cannot recur. None show by default. */}
             {showLabels &&
-                labelSet.map((i) => {
-                    const isYou = i === field.youIndex;
-                    const dot = isYou
-                        ? AMBER
-                        : i === hover
-                          ? "#fff"
-                          : "#d8cfe6";
-                    const p = pos3(field.pos, i);
+                labelRenderIdx.map((ci) => {
+                    const cand = labelCandidates[ci];
+                    const dot =
+                        cand.id === selectedTrackId
+                            ? AMBER
+                            : cand.id === String(hover ?? "")
+                              ? "#fff"
+                              : "#d8cfe6";
                     return (
                         <GalaxyLabel
-                            key={field.userIds[i] ?? i}
-                            position={[p[0], p[1] + 2.4, p[2]]}
-                            name={field.names[i]}
+                            key={cand.id}
+                            position={cand.world}
+                            name={cand.name}
                             dot={dot}
                         />
                     );
@@ -574,11 +599,12 @@ function useTrackGalaxyField(
                 xs,
                 zs,
                 userIds: tracks.map((t) => t.id),
-                names: tracks.map(
+                titles: tracks.map(
                     (t) => `${t.title} — ${t.artist}`,
                 ),
-                youIndex: 0, // "you" = first track; nearYou = nearest N
-                nearYou: Array.from({ length: Math.min(6, count) }, (_, k) => k),
+                // Selection focus falls back to index 0 (the first track) when
+                // nothing is picked, so the "you" star is gone from the tree.
+                focusFallbackIndex: 0,
             },
             starGeo,
             quad,
