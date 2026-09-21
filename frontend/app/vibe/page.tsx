@@ -305,7 +305,7 @@ export default function VibePage() {
                 canvas, invisible to DOM queries — this wrapper is the findable
                 "field is mounted" node. */}
             <GalaxyErrorBoundary>
-                <div data-testid="galaxy-track-field" className="contents">
+                <div data-testid="galaxy-track-field" className="absolute inset-0">
                 <GalacticMap
                     tracks={mapData.tracks}
                     highlightedIds={highlightedIds}

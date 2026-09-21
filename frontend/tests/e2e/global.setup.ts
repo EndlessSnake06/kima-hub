@@ -46,6 +46,38 @@ async function globalSetup(): Promise<void> {
             );
         }
 
+        // Dismiss any pending What's New releases server-side, so the modal
+        // cannot mount over tests (aria-modal intercepts all pointer events).
+        // Best-effort: an empty pending list or a versioned endpoint that moved
+        // must not fail setup.
+        try {
+            const { releases } = await page.evaluate(async () => {
+                const res = await fetch("/api/whats-new/pending", { credentials: "include" });
+                if (!res.ok) return { releases: [] };
+                return res.json();
+            });
+            // Dismissing the first release advances the pending queue to the
+            // next unseen one, so loop until the queue is actually empty.
+            for (let i = 0; i < 10 && (releases?.length ?? 0) > 0; i++) {
+                await page.evaluate(async (v) => {
+                    await fetch(`/api/whats-new/${v}/dismiss`, {
+                        method: "POST",
+                        credentials: "include",
+                        headers: { "Content-Type": "application/json" },
+                        body: "{}",
+                    });
+                }, releases[0].version);
+                const again = await page.evaluate(async () => {
+                    const res = await fetch("/api/whats-new/pending", { credentials: "include" });
+                    return res.ok ? res.json() : { releases: [] };
+                });
+                releases.splice(0, releases.length, ...(again.releases ?? []));
+            }
+            if (releases?.length) console.log(`[setup] Dismissed ${releases.length} pending What's New release(s).`);
+        } catch {
+            console.log("[setup] What's New pre-dismiss skipped (endpoint unavailable).");
+        }
+
         await page.context().storageState({ path: "tests/e2e/.auth/user.json" });
         console.log(`[setup] E2E test user '${username}' verified, auth state saved.`);
     } finally {

@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { loginAsTestUser, getAuthToken } from "./fixtures/test-helpers";
 
 // ---------------------------------------------------------------------------
@@ -59,6 +60,26 @@ test.use({
     },
 });
 
+
+// The What's New modal (aria-modal) sits over the page on a fresh login and
+// intercepts every pointer event — each journey below must dismiss it before
+// touching the toolbar or the field.
+async function dismissWhatsNew(page: Page) {
+    const modal = page.locator('div[role="dialog"][aria-labelledby="whats-new-title"]');
+    const dismiss = modal.locator('[aria-label="Dismiss"]');
+    // The modal mounts late (after the version fetch over a cold session) and
+    // an aria-modal overlay intercepts every pointer event. Register a handler
+    // so any later action that gets blocked by it dismisses it automatically,
+    // then clear it now if it is already up.
+    await page.addLocatorHandler(modal, async () => {
+        if (await dismiss.isVisible().catch(() => false)) await dismiss.click();
+    });
+    if (await dismiss.isVisible({ timeout: 8000 }).catch(() => false)) {
+        await dismiss.click();
+        await dismiss.waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+    }
+}
+
 test.describe("Vibe", () => {
     test.beforeEach(async ({ page }) => {
         await loginAsTestUser(page);
@@ -68,6 +89,7 @@ test.describe("Vibe", () => {
 
     test("vibe page renders map or no-data state", async ({ page }) => {
         await page.goto("/vibe", { waitUntil: "domcontentloaded" });
+        await dismissWhatsNew(page);
 
         // Wait for loading to settle: either the track count appears (map loaded with data)
         // or the no-data placeholder appears (library has no vibe embeddings yet).
@@ -80,6 +102,7 @@ test.describe("Vibe", () => {
 
     test("toolbar buttons are present when map loads", async ({ page }) => {
         await page.goto("/vibe", { waitUntil: "domcontentloaded" });
+        await dismissWhatsNew(page);
 
         const canvas = page.locator("canvas").first();
         const noData = page.locator("text=/No tracks with vibe/i").first();
@@ -157,6 +180,7 @@ test.describe("Vibe", () => {
 
     test("vibe search highlights matching tracks", async ({ page }) => {
         await page.goto("/vibe", { waitUntil: "domcontentloaded" });
+        await dismissWhatsNew(page);
 
         const canvas = page.locator("canvas").first();
         const noData = page.locator("text=/No tracks with vibe/i").first();
@@ -181,6 +205,7 @@ test.describe("Vibe", () => {
 
     test("Drift button opens song path form", async ({ page }) => {
         await page.goto("/vibe", { waitUntil: "domcontentloaded" });
+        await dismissWhatsNew(page);
 
         const canvas = page.locator("canvas").first();
         const noData = page.locator("text=/No tracks with vibe/i").first();
@@ -201,6 +226,7 @@ test.describe("Vibe", () => {
         const [startQuery, endQuery] = queries;
 
         await page.goto("/vibe", { waitUntil: "domcontentloaded" });
+        await dismissWhatsNew(page);
 
         const canvas = page.locator("canvas").first();
         await canvas.waitFor({ timeout: 35_000 });
@@ -243,6 +269,7 @@ test.describe("Vibe", () => {
 
     test("Blend button opens blend panel", async ({ page }) => {
         await page.goto("/vibe", { waitUntil: "domcontentloaded" });
+        await dismissWhatsNew(page);
 
         const canvas = page.locator("canvas").first();
         const noData = page.locator("text=/No tracks with vibe/i").first();
@@ -269,6 +296,7 @@ test.describe("Vibe", () => {
     // and must appear here on post-fix galaxy.
     test("clicking a track opens a desktop drawer that shows that track's own data", async ({ page }) => {
         await page.goto("/vibe", { waitUntil: "domcontentloaded" });
+        await dismissWhatsNew(page);
 
         const gallery = page.getByTestId("galaxy-track-field").first();
         const noData = page.locator("text=/No tracks with vibe/i").first();
