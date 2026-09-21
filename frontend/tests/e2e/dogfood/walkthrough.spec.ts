@@ -537,8 +537,11 @@ test.describe("Dogfood walkthrough", () => {
             const clear = page.getByRole("button", { name: /clear queue/i });
             await expect(clear).toBeVisible({ timeout: 8_000 });
             await clear.click();
-            await page.waitForTimeout(800);
-            expect(await queueLength(), "Clear Queue clicked but the queue is not empty").toBe(0);
+            // Same 1s server-sync debounce as the remove step: poll instead of a
+            // fixed wait, so the assertion checks the outcome, not the timing.
+            await expect
+                .poll(async () => queueLength(), { timeout: 10_000, intervals: [500, 1_000, 1_000, 2_000] })
+                .toBe(0);
             return { cleared: true };
         });
 
