@@ -53,7 +53,7 @@ Thanks for your patience while I work through this.
 ### Your Music, Your Way
 
 -   **Stream your library** - FLAC, MP3, AAC, OGG, and other common formats work out of the box
--   **Automatic cataloging** - Kima scans your library and enriches it with metadata from MusicBrainz and Last.fm, including ISRC codes and genre tags
+-   **Automatic cataloging** - Kima scans your library and enriches it with metadata from MusicBrainz and AcoustID, including ISRC codes and genre tags
 -   **Audio transcoding** - Stream at original quality or transcode on-the-fly (320kbps, 192kbps, or 128kbps)
 -   **Lyrics** - Displays embedded lyrics or fetches them automatically from LRCLIB. Timed lyrics get line-by-line sync during playback; untimed lyrics display as static text. Coverage is good for major artists but varies for niche or independent music\*
 -   **Ultra-wide support** - Library grid scales up to 8 columns on large displays
@@ -78,7 +78,7 @@ Thanks for your patience while I work through this.
     -   Dynamic genre and decade stations generated from your library
 -   **Discover Weekly** - Weekly playlists of new music tailored to your listening habits (requires Lidarr)
 -   **Artist recommendations** - Find similar artists based on what you already love
--   **Artist name resolution** - Smart alias lookup via Last.fm (e.g., "of mice" → "Of Mice & Men")
+-   **Artist name resolution** - Smart alias lookup via MusicBrainz (e.g., "of mice" → "Of Mice & Men")
 -   **Discography sorting** - Sort artist albums by year or date added
 -   **Deezer previews** - Preview tracks you don't own before adding them to your library
 -   **Vibe matching** - Find tracks that match your current mood (see [The Vibe System](#the-vibe-system))
@@ -170,7 +170,7 @@ Import playlists from Spotify, Deezer, and YouTube, or browse and discover new m
 -   **OpenSubsonic API** - Use any Subsonic-compatible client (Symfonium, DSub, Ultrasonic, etc.) to stream your Kima library
 -   **Standard Subsonic auth** - paste your API token into the password field -- works with Amperfy, Symfonium, DSub, and any standard Subsonic client (MD5 token auth is not supported; see Native Apps below)
 -   **Per-client tokens** - Generate named API tokens in Settings > Native Apps; revoke them individually when a device is lost or replaced
--   **Enrichment-aware** - Genres and artist biographies exposed to clients come from Last.fm enrichment, not just file tags
+-   **Enrichment-aware** - Genres and artist biographies exposed to clients come from MusicBrainz and Wikidata enrichment, not just file tags
 -   **Lyrics, bookmarks, and play queue** - getLyrics, bookmarks, and savePlayQueue/getPlayQueue for cross-device resume
 
 ### Multi-User Support
@@ -684,7 +684,7 @@ Kima includes built-in Soulseek support for finding rare tracks and one-offs tha
 
 **How Search Works:**
 
-When you search for music in Kima's Discovery tab, Soulseek results appear alongside Last.fm and Deezer results. Each result shows the filename, file size, bitrate, and format (FLAC/MP3). Metadata like artist and album is parsed from the file path structure (typically `Artist/Album/01 - Track.flac`).
+When you search for music in Kima's Discovery tab, Soulseek results appear alongside your library results. Each result shows the filename, file size, bitrate, and format (FLAC/MP3). Metadata like artist and album is parsed from the file path structure (typically `Artist/Album/01 - Track.flac`).
 
 **How Download Works:**
 
@@ -727,7 +727,7 @@ Kima implements the [OpenSubsonic](https://opensubsonic.netlify.app/) REST API, 
 - MD5 token auth (`t=`/`s=`) is **not supported** -- it's a challenge-response scheme that requires the server to hold your token in a reversible form, which Kima no longer does (tokens are hashed at rest, the same way passwords are). A client hard-coded to that scheme will fail to authenticate; every client we've tested falls back to sending the password field instead, which works
 - Your account password also still works in the password field, unless you have two-factor authentication enabled -- a 2FA account must use a token there, since the Subsonic protocol has no way to prompt for a TOTP code
 - Each client should have its own token so you can revoke access per device
-- Genres and biographies surfaced to clients come from Last.fm enrichment, not just file tags
+- Genres and biographies surfaced to clients come from MusicBrainz and Wikidata enrichment, not just file tags
 - DISCOVER-location albums are excluded from all library views
 - OpenSubsonic extensions exposed: `apiKeyAuthentication`, `songLyrics`, `indexBasedQueue`, and `getPodcastEpisode`
 - Additional OpenSubsonic endpoints supported: `tokenInfo`, `startScan`, `getScanStatus`, `search`, `search2`, `search3`, `getUser`, `getUsers`, `createUser`, `updateUser`, `deleteUser`, `changePassword`, `getPlaylists`, `getPlaylist`, `createPlaylist`, `updatePlaylist`, `deletePlaylist`, `setRating`, `getPlayQueue`, `getPlayQueueByIndex`, `savePlayQueue`, `savePlayQueueByIndex`, `getBookmarks`, `createBookmark`, `deleteBookmark`, `getInternetRadioStations`, `createInternetRadioStation`, `updateInternetRadioStation`, `deleteInternetRadioStation`, `getAvatar`, `getShares`, `createShare`, `updateShare`, `deleteShare`, `getChatMessages`, `addChatMessage`, `getVideos`, `getVideoInfo`, `getCaptions`, `jukeboxControl`, `getTranscodeDecision`, `getTranscodeStream`, `hls`, `getLyricsBySongId`, `getLyrics`, `getNowPlaying`, `getTopSongs`, `getSongsByGenre`, `getSimilarSongs`, `getSimilarSongs2`, `getMusicDirectory`, `getPodcasts`, `getNewestPodcasts`, `getPodcastEpisode`, `refreshPodcasts`
@@ -774,7 +774,7 @@ After setup, your home screen displays:
 -   **Recently Added** - New additions to your library
 -   **Library Radio Stations** - One-click radio modes (Shuffle All, Workout, Discovery, Favorites, plus genre and decade stations)
 -   **Made For You** - Auto-generated mixes based on your library
--   **Recommended For You** - Artist recommendations from Last.fm
+-   **Recommended For You** - Artist recommendations seeded from your play history, matched via ListenBrainz and Deezer
 -   **Popular Podcasts** - Trending podcasts you might enjoy
 -   **Audiobooks** - Quick access to your audiobook library (if Audiobookshelf is connected)
 
@@ -784,7 +784,7 @@ Kima offers two search modes:
 
 **Library Search** - Find artists, albums, and tracks in your collection. Results are instant and searchable by name.
 
-**Discovery Search** - Find new music and podcasts you don't own. Powered by Last.fm for music and iTunes for podcasts. From discovery results, you can:
+**Discovery Search** - Find new music and podcasts you don't own. Music comes from the Soulseek network; podcasts from iTunes and Deezer. From discovery results, you can:
 
 -   Preview tracks via Deezer
 -   Request downloads through Lidarr
@@ -1047,7 +1047,9 @@ You are free to use, modify, and distribute this software under the terms of the
 
 Kima wouldn't be possible without these services and projects:
 
--   [Last.fm](https://www.last.fm/) - Artist recommendations and music metadata
+-   [ListenBrainz](https://listenbrainz.org/) - Similar artists, charts, and open scrobbling
+-   [AcoustID](https://acoustid.org/) - Audio-fingerprint track identification
+-   [Wikidata](https://www.wikidata.org/) - Artist biographies
 -   [MusicBrainz](https://musicbrainz.org/) - Comprehensive music database
 -   [iTunes Search API](https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/iTuneSearchAPI/) - Podcast discovery
 -   [Deezer](https://developers.deezer.com/) - Track previews and playlist browsing
