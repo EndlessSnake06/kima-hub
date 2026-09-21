@@ -572,14 +572,14 @@ router.get("/artists/:id", async (req, res) => {
       >`
         SELECT t.id, t.title, t.duration,
                t."albumId", a.title AS "albumTitle", a."coverUrl" AS "albumCoverUrl",
-               t."artistId", ar.name AS "artistName",
+               a."artistId", ar.name AS "artistName",
                COUNT(p.id)::bigint AS "playCount"
         FROM "Track" t
         JOIN "Album" a ON a.id = t."albumId"
-        JOIN "Artist" ar ON ar.id = t."artistId"
+        JOIN "Artist" ar ON ar.id = a."artistId"
         JOIN "Play" p ON p."trackId" = t.id
-        WHERE t."artistId" = ${artist.id}
-        GROUP BY t.id, t.title, t.duration, t."albumId", a.title, a."coverUrl", t."artistId", ar.name
+        WHERE a."artistId" = ${artist.id}
+        GROUP BY t.id, t.title, t.duration, t."albumId", a.title, a."coverUrl", a."artistId", ar.name
         HAVING COUNT(p.id) > 0
         ORDER BY COUNT(p.id) DESC, MAX(p."playedAt") DESC
         LIMIT 10

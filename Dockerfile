@@ -58,6 +58,7 @@ RUN apt-get install -y --no-install-recommends \
     redis-server \
     supervisor \
     ffmpeg \
+    libchromaprint-tools \
     tini \
     openssl \
     bash \

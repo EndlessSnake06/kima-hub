@@ -125,7 +125,8 @@ export async function rebuildArtistCentroid(
         SELECT te.embedding
         FROM track_embeddings te
         JOIN "Track" t ON te.track_id = t.id
-        WHERE t."artistId" = ${artistId}
+        JOIN "Album" al ON al.id = t."albumId"
+        WHERE al."artistId" = ${artistId}
     `;
     const vectors = rows
         .map((r) => parseVector(String(r.embedding)))

@@ -1806,13 +1806,14 @@ const CENTROID_REBUILD_BATCH = 50;
  */
 async function rebuildStaleArtistCentroids(): Promise<void> {
     const stale = await prisma.$queryRaw<Array<{ artistId: string }>>`
-        SELECT t."artistId"
+        SELECT al."artistId"
         FROM "Track" t
+        JOIN "Album" al ON al.id = t."albumId"
         JOIN track_embeddings te ON te.track_id = t.id
-        LEFT JOIN artist_embeddings ae ON ae."artistId" = t."artistId"
+        LEFT JOIN artist_embeddings ae ON ae."artistId" = al."artistId"
         WHERE ae."artistId" IS NULL
            OR ae."computedAt" < te.analyzed_at
-        GROUP BY t."artistId"
+        GROUP BY al."artistId"
         LIMIT ${CENTROID_REBUILD_BATCH}
     `;
     if (stale.length === 0) return;
