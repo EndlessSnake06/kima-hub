@@ -443,9 +443,17 @@ test.describe("Dogfood walkthrough", () => {
                 await row.hover();
                 await row.getByLabel("Add to queue").click();
             }
-            await page.waitForTimeout(600);
-            const len = await queueLength();
-            expect(len, `queue holds ${len} item(s) after adding two`).toBeGreaterThanOrEqual(3);
+            // Same server-sync debounce: poll until the additions reach the API.
+            let len = 0;
+            await expect
+                .poll(
+                    async () => {
+                        len = await queueLength();
+                        return len;
+                    },
+                    { timeout: 10_000, intervals: [500, 1_000, 1_000, 2_000] },
+                )
+                .toBeGreaterThanOrEqual(3);
             return { queueLength: len };
         });
 
