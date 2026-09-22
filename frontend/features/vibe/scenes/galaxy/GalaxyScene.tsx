@@ -47,7 +47,6 @@ import { useGalaxyInteraction } from "./useGalaxyInteraction";
 import { GalaxyLabel, Reticle, RegionLabels } from "./labels";
 import { resolveLabels, MAX_LABELS } from "./labelPlacement";
 import { buildBaselineGeometry } from "./ambientBaseline";
-import { buildVibeGalaxy } from "./vibeGalaxyLayout";
 import { buildBackgroundStars } from "./backgroundStars";
 import { restoreSavedCamera } from "./useGalaxyFrame";
 import {
@@ -135,17 +134,23 @@ function Cosmos({
             {/* Layer 0 — deep background stars: far shell around + beyond the disc */}
             <points geometry={backgroundGeo} material={mat} />
             <points geometry={baselineGeo} material={mat} />
-            {/* Two faint far nebula wisps — a whisper of violet depth at the edges. */}
+            {/* Deep-space nebula backdrop: light purple gradient clouds at
+                varying depths behind the disc — this is what makes the void
+                read as cosmic instead of black. Additive so they glow into
+                each other; far-placed so they never compete with the field. */}
             {[
-                { p: [-165, 26, -150] as const, s: 150, c: "#5f2f8e" },
-                { p: [160, -44, 120] as const, s: 150, c: "#7d2f66" },
+                { p: [-210, 40, -230] as const, s: 320, c: "#7b5fc0", o: 0.09 },
+                { p: [230, -70, 190] as const, s: 280, c: "#8a4f9e", o: 0.08 },
+                { p: [60, 90, -280] as const, s: 380, c: "#5a4a9e", o: 0.07 },
+                { p: [-140, -90, 240] as const, s: 250, c: "#a583d6", o: 0.06 },
+                { p: [190, 60, -260] as const, s: 220, c: "#4a3f8f", o: 0.08 },
             ].map((n, i) => (
-                <sprite key={i} position={n.p} scale={n.s}>
+                <sprite key={i} position={n.p} scale={n.s} renderOrder={-1}>
                     <spriteMaterial
                         map={glow}
                         color={n.c}
                         transparent
-                        opacity={0.04}
+                        opacity={n.o}
                         blending={THREE.AdditiveBlending}
                         depthWrite={false}
                     />
@@ -680,29 +685,21 @@ function useTrackGalaxyField(
 ) {
     const galaxy = useMemo(() => {
         // ── Layer 1: decorative ambient terrain ────────────────────────────
-        // The synth 10k galaxy (social-rig parity: buildVibeGalaxy) is the
-        // ambient DISC; the real tracks (below) are a bright overlay ON it.
-        // Using the tracks' own positions as the ambient field (the first
-        // port's shortcut) made the backdrop an echo of the data — with a
-        // 363-track library there was no galaxy feel at all.
-        const synth = buildVibeGalaxy({
-            count: 10000, // baseline in the social rig
-            seed: 0x51a2,
-            radius: DISC_RADIUS,
-        });
-        const baselineGeo = buildBaselineGeometry({
-            count: synth.count,
-            pos: synth.pos,
-            color: synth.color,
-        });
-
-        // ── Layer 0: deep background starfield (depth beyond the disc) ─────
-        const backgroundGeo = buildBackgroundStars();
-
+        // The LIBRARY is the map — no synthetic disc. This soft echo of the
+        // tracks' own field just thickens the arms; the depth comes from
+        // Layer 0 (backgroundStars) BEHIND it, not from fake stars on it.
         const layout = buildTrackGalaxy(
             { count: tracks.length, radius: DISC_RADIUS },
             tracks,
         );
+        const baselineGeo = buildBaselineGeometry({
+            count: layout.count,
+            pos: layout.pos,
+            color: layout.color,
+        });
+
+        // ── Layer 0: deep background starfield (depth beyond the disc) ─────
+        const backgroundGeo = buildBackgroundStars();
 
         // ── Layer 2: every track is a real pickable star ────────────────────
         const count = tracks.length;
