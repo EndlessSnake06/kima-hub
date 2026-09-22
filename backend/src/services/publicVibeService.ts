@@ -18,6 +18,7 @@
  */
 import { prisma } from "../utils/db";
 import { logger } from "../utils/logger";
+import crypto from "crypto";
 import { computeMapProjection } from "./umapProjection";
 
 // The shape of the map payload we care about — a track's coordinates and the
@@ -288,7 +289,10 @@ export async function getPublicMap(
                   } tracks (public map cap ${maxPoints}).`,
               }
             : {}),
-        computedAt: new Date().toISOString(),
+        // Deterministic stamp: derived from the payload, not the clock. A clock
+        // stamp made every /map response unique, which defeated the route's
+        // If-None-Match 304 revalidation (the etag changed on every request).
+        computedAt: derivePayloadStamp(limited),
     };
 }
 
@@ -339,4 +343,10 @@ export async function getPublicLiveCached(
         liveCache.set(key, { nowPlaying: value.nowPlaying, cacheAt: Date.now() });
     }
     return value;
+}
+
+// Stable digest of the point list — same tracks, same stamp.
+function derivePayloadStamp(points: MapPoint[]): string {
+    const json = JSON.stringify(points.map((p) => [p.id, p.x, p.y]));
+    return crypto.createHash("sha256").update(json).digest("hex").slice(0, 16);
 }
