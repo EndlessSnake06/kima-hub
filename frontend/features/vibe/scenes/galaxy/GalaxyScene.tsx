@@ -36,12 +36,14 @@ const bgDpr =
     typeof window !== "undefined" ? Math.min(window.devicePixelRatio, 1.5) : 1;
 const BG_MAT = new THREE.ShaderMaterial({
     uniforms: {
-        uSizeScale: { value: 150 },
+        uSizeScale: { value: 170 },
         uPixelRatio: { value: bgDpr },
         uOpacity: { value: 0.9 },
         uTime: { value: 0 },
-        uFocal: { value: 98 },
-        uDofRange: { value: 70 },
+        // DOF V-shape centered mid-depth so the whole 110-300 placement
+        // range renders near-crisp; the disc keeps its own 98/70 band.
+        uFocal: { value: 180 },
+        uDofRange: { value: 140 },
         uHiSector: { value: -1 },
         uHiStrength: { value: 0 },
         uFocusIdx: { value: -1 },

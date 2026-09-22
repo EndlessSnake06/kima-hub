@@ -30,7 +30,7 @@ function makeRng(seed: number) {
     };
 }
 
-export const BACKGROUND_COUNT = 900;
+export const BACKGROUND_COUNT = 1100;
 
 // Real stellar color families, weighted like the sky: few blue-whites, many
 // warm whites/golds, a violet tier for the nebular feel.
@@ -82,11 +82,16 @@ export function buildBackgroundStars(): THREE.BufferGeometry {
     const tanV = Math.tan((20 * Math.PI) / 180); // fov 40 → half 20
     const tanH = Math.tan(Math.atan(tanV * (16 / 9))); // 16:9 landscape
 
-    // Depth bands: near sky / mid / deep — smaller AND dimmer with distance.
+    // Depth bands (distance past the plane): the spread must be WIDE — that
+    // is what "varying distances" means — so we center the DOF V-shape on
+    // 180 with a 140 half-width: stars 110–300 from the camera sit within
+    // blur ≤ 1.0, most around 0.4–0.6. Sizes are kept tiny (0.5–1.65) so
+    // even fully-blurred stars stay 2–5px pinpoints — soft a touch, never
+    // the 20px bokeh discs of the rejected pass.
     const BANDS = [
-        { extraMin: 15, extraMax: 50, frac: 0.3, size: 1.0, bright: 0.5 },
-        { extraMin: 40, extraMax: 70, frac: 0.35, size: 0.85, bright: 0.34 },
-        { extraMin: 55, extraMax: 85, frac: 0.35, size: 0.6, bright: 0.22 },
+        { extraMin: 15, extraMax: 70, frac: 0.34, size: 1.3, bright: 0.55 },
+        { extraMin: 60, extraMax: 110, frac: 0.33, size: 1.0, bright: 0.4 },
+        { extraMin: 100, extraMax: 150, frac: 0.33, size: 0.8, bright: 0.3 },
     ];
 
     let i = 0;
@@ -94,8 +99,8 @@ export function buildBackgroundStars(): THREE.BufferGeometry {
         const n = Math.floor(BACKGROUND_COUNT * band.frac);
         for (let k = 0; k < n && i < BACKGROUND_COUNT; k++, i++) {
             // Sample a ray through the view frustum and place the star on it,
-            // past the disc plane. Reject rays whose plane crossing is too far
-            // (they can't stay inside the DOF band) and depths past 165.
+            // past the disc plane. Ray must descend; the plane crossing must
+            // sit within reach (t0 ≤ 210) so depths 110–300 stay coverable.
             let px = 0;
             let py = 0;
             let pz = 0;
@@ -112,9 +117,11 @@ export function buildBackgroundStars(): THREE.BufferGeometry {
                 const ndz = dz / dl;
                 if (ndy >= -0.05) continue; // must descend below the plane
                 const t0 = -cam.y / ndy; // distance to the y=0 crossing
-                if (t0 > 150) continue;
-                const d = t0 + band.extraMin + rnd() * (band.extraMax - band.extraMin);
-                if (d > 165) continue;
+                if (t0 < 30 || t0 > 210) continue;
+                const d = Math.min(
+                    t0 + band.extraMin + rnd() * (band.extraMax - band.extraMin),
+                    300,
+                );
                 px = cam.x + ndx * d;
                 py = cam.y + ndy * d;
                 pz = cam.z + ndz * d;
