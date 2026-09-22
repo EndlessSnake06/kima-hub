@@ -67,7 +67,7 @@ void main() {
   // Playing takes precedence over the dim (parity with the old VibeMap, which
   // returned pure white for the playing point before any highlight logic), so it
   // is computed independently and whitened wholesale in the fragment.
-  const isReal = step(0.0, aHighlight);
+  float isReal = step(0.0, aHighlight);
   float isPlaying = isReal * step(abs(aIndex - uPlayingIdx), 0.5);
   float vMatch = isReal * step(0.5, aHighlight);        // 1 = matched
   float dimAmt = (1.0 - vMatch) * (1.0 - isPlaying);    // unmarked, not-playing
