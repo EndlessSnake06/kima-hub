@@ -170,11 +170,14 @@ function Cosmos({
                 read as cosmic instead of black. Additive so they glow into
                 each other; far-placed so they never compete with the field. */}
             {[
-                { p: [-210, 40, -230] as const, s: 340, c: "#8f74d6", o: 0.28 },
-                { p: [230, -70, 190] as const, s: 300, c: "#a463b8", o: 0.24 },
-                { p: [60, 90, -280] as const, s: 400, c: "#6c5ac2", o: 0.22 },
-                { p: [-140, -90, 240] as const, s: 270, c: "#b495e4", o: 0.2 },
-                { p: [190, 60, -260] as const, s: 240, c: "#5b4fb0", o: 0.24 },
+                // Placed in the visible under-sky beyond the far rim (the
+                // overview camera looks down ~57 deg; anything above the plane
+                // behind the disc is out of frame — verified geometrically).
+                { p: [0, -150, -200] as const, s: 340, c: "#8f74d6", o: 0.3 },
+                { p: [-190, -110, -130] as const, s: 300, c: "#a463b8", o: 0.26 },
+                { p: [200, -120, -140] as const, s: 320, c: "#6c5ac2", o: 0.24 },
+                { p: [120, -200, 60] as const, s: 260, c: "#b495e4", o: 0.2 },
+                { p: [-130, -230, -20] as const, s: 280, c: "#5b4fb0", o: 0.26 },
             ].map((n, i) => (
                 <sprite key={i} position={n.p} scale={n.s} renderOrder={-1}>
                     <spriteMaterial

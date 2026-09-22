@@ -54,28 +54,31 @@ export function buildBackgroundStars(): THREE.BufferGeometry {
     const twAmp = new Float32Array(BACKGROUND_COUNT);
     const spark = new Float32Array(BACKGROUND_COUNT);
 
-    // Three distance bands behind the disc: nearer shell is sparser but
-    // brighter/larger; far shells denser but fainter. Parallax between the
-    // bands as the camera drifts is what sells the depth.
+    // Distribution shaped by how the scene is actually VIEWED: the overview
+    // camera sits ~57 deg above the plane looking down at the disc (fov 40),
+    // so the visible "beyond the galaxy" region is the under-sky BEYOND the
+    // far rim — below the disc plane, past r > 1.5x, all around in azimuth.
+    // A spherical shell would put most stars behind the camera (verified:
+    // 47-78 deg off-axis, never on screen). Stars here sit below the plane
+    // and outside the disc, so the orbit camera always has depth behind the
+    // library field, and the parallax between bands sells the distance.
     const BANDS = [
-        { rMin: DISC_R * 1.8, rMax: DISC_R * 2.6, frac: 0.22, size: 1.15, bright: 0.85 },
-        { rMin: DISC_R * 2.6, rMax: DISC_R * 3.8, frac: 0.33, size: 0.85, bright: 0.6 },
-        { rMin: DISC_R * 3.8, rMax: DISC_R * 5.5, frac: 0.45, size: 0.62, bright: 0.42 },
+        { rMin: DISC_R * 1.6, rMax: DISC_R * 2.4, frac: 0.30, size: 1.15, bright: 0.85 },
+        { rMin: DISC_R * 2.4, rMax: DISC_R * 3.4, frac: 0.34, size: 0.85, bright: 0.6 },
+        { rMin: DISC_R * 3.4, rMax: DISC_R * 5.0, frac: 0.36, size: 0.62, bright: 0.42 },
     ];
 
     let i = 0;
     for (const band of BANDS) {
         const n = Math.floor(BACKGROUND_COUNT * band.frac);
         for (let k = 0; k < n && i < BACKGROUND_COUNT; k++, i++) {
-            // Uniform direction on the sphere, flattened toward the plane so
-            // the band reads as a galaxy's outskirts, not a bubble.
-            const u = rnd() * 2 - 1;
             const theta = rnd() * Math.PI * 2;
-            const s = Math.sqrt(1 - u * u);
             const r = band.rMin + (band.rMax - band.rMin) * Math.pow(rnd(), 0.7);
-            pos[i * 3] = Math.cos(theta) * s * r;
-            pos[i * 3 + 1] = u * DISC_R * 0.5 * (0.3 + 0.7 * rnd());
-            pos[i * 3 + 2] = Math.sin(theta) * s * r;
+            pos[i * 3] = Math.cos(theta) * r;
+            // Below the plane, deeper the farther out: an under-sky bowl.
+            const depth = 40 + (r / (DISC_R * 5)) * 130;
+            pos[i * 3 + 1] = -depth * (0.35 + 0.65 * rnd());
+            pos[i * 3 + 2] = Math.sin(theta) * r;
 
             const [tr, tg, tb] = pickTint(rnd);
             const notable = rnd() < 0.1;
@@ -90,8 +93,6 @@ export function buildBackgroundStars(): THREE.BufferGeometry {
             // barely breathe, a few flicker sharply. Phase spread full circle.
             phase[i] = rnd() * 6.283;
             twAmp[i] = notable ? 0.08 + rnd() * 0.12 : 0.15 + rnd() * 0.4;
-            // rare sharp sparkles, some color-popping via the tint already in
-            // aColor (the fragment adds the sparkle term on top).
             spark[i] = rnd() < 0.045 ? 1 : 0;
         }
     }
