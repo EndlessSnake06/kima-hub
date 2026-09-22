@@ -1,11 +1,12 @@
-// Minimal jest config for service-level smoke tests that need NO database.
-// Omits the DB-provisioning globalSetup and only loads the env setup file.
+// Minimal jest config for route-level smoke tests that need NO database.
+// Exercises the REAL publicVibe router (gate + handlers + rate limiter) with
+// only the prisma/service/artwork boundaries mocked.
 /** @type {import('jest').Config} */
 module.exports = {
     preset: 'ts-jest',
     testEnvironment: 'node',
     setupFiles: ['<rootDir>/src/__mocks__/test-env.cjs'],
-    roots: ['<rootDir>/src/services'],
+    roots: ['<rootDir>/src/routes'],
     testMatch: ['**/__tests__/**/*.smoke.test.ts'],
     moduleFileExtensions: ['ts', 'js', 'json'],
     clearMocks: true,

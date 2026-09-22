@@ -52,6 +52,16 @@ interface PublicAccess {
 const publicAccess: PublicAccess = { enabled: false, userId: null, checkedAt: 0 };
 const ACCESS_TTL = 5 * 1000;
 
+// Exposed for tests only. The permission cache is a module singleton, so its
+// five-second TTL bleeds across cases that share the module; a test harness
+// can clear it to reset a case's view of the feature flag. Production never
+// imports this — it is a testability seam, not part of the surface.
+function __resetPublicAccess(): void {
+    publicAccess.enabled = false;
+    publicAccess.userId = null;
+    publicAccess.checkedAt = 0;
+}
+
 // Permission is one SystemSettings read, cheaply cached, so a hot route does
 // not hit the DB on every request. A missing row or a DB failure both read as
 // "disabled" — the safe default for a public surface.
@@ -292,6 +302,28 @@ const router = Router();
  * Cached ~2s at the service layer. nowPlaying is null when idle, which is
  * normal. Sent no-store so the edge owns freshness.
  */
+// Defence in depth: the service layer already rewrites `native:` covers, but
+// this router is the public boundary — it must not trust its caller. Every
+// payload shape that can carry a cover goes through here before res.json().
+function sanitizeLivePayload(
+    nowPlaying: Awaited<ReturnType<typeof getPublicLiveCached>>["nowPlaying"],
+): typeof nowPlaying {
+    if (!nowPlaying) return nowPlaying;
+    return {
+        ...nowPlaying,
+        coverUrl: proxiedCover(nowPlaying.trackId, nowPlaying.coverUrl),
+    };
+}
+
+function sanitizeQueuePayload(
+    queue: Awaited<ReturnType<typeof getPublicQueue>>,
+): typeof queue {
+    return queue.map((q) => ({
+        ...q,
+        coverUrl: proxiedCover(q.trackId, q.coverUrl),
+    }));
+}
+
 router.get(
     "/live",
     withPublic(
@@ -306,8 +338,8 @@ router.get(
             res.header("Cache-Control", "no-store");
             res.header("Vary", "Accept-Encoding");
             res.json({
-                nowPlaying,
-                queue,
+                nowPlaying: sanitizeLivePayload(nowPlaying),
+                queue: sanitizeQueuePayload(queue),
                 context: {
                     type: "queue",
                     name: "Public Queue",
@@ -364,8 +396,8 @@ router.get(
                     const queue = await getPublicQueue(userId, MAP_CAP_MAX);
                     const payload = {
                         type: "public:vibe:live",
-                        nowPlaying,
-                        queue,
+                        nowPlaying: sanitizeLivePayload(nowPlaying),
+                        queue: sanitizeQueuePayload(queue),
                         timestamp: new Date().toISOString(),
                     };
                     res.write(`data: ${JSON.stringify(payload)}\n\n`);
@@ -717,3 +749,4 @@ router.get(
 );
 
 export default router;
+export { __resetPublicAccess };
