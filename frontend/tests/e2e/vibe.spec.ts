@@ -439,7 +439,7 @@ test.describe("Vibe", () => {
         expect(trackId, "map should carry at least one track").toBeDefined();
         const playingId = trackId as string;
 
-        const put = await page.request.put("/api/playback-state", {
+        const post = await page.request.post("/api/playback-state", {
             headers: { Authorization: `Bearer ${token}` },
             data: {
                 playbackType: "track",
@@ -451,7 +451,7 @@ test.describe("Vibe", () => {
                 changedBy: "e2e-playing-marker",
             },
         });
-        expect(put.ok() || put.status() === 200 || put.status() === 204).toBeTruthy();
+        expect(post.status(), "playback-state seed should succeed").toBe(200);
 
         // Reload: the page hydrates audio state from playback-state, passes
         // playingTrackId down, and the wrapper exposes it as a DOM attribute —
