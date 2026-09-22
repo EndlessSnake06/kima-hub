@@ -47,6 +47,8 @@ import { useGalaxyInteraction } from "./useGalaxyInteraction";
 import { GalaxyLabel, Reticle, RegionLabels } from "./labels";
 import { resolveLabels, MAX_LABELS } from "./labelPlacement";
 import { buildBaselineGeometry } from "./ambientBaseline";
+import { buildVibeGalaxy } from "./vibeGalaxyLayout";
+import { buildBackgroundStars } from "./backgroundStars";
 import { restoreSavedCamera } from "./useGalaxyFrame";
 import {
     buildQueueSegments,
@@ -97,6 +99,16 @@ function pos3(pos: Float32Array, i: number): [number, number, number] {
     return [pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]];
 }
 
+function makeRng(seed: number) {
+    let a = seed >>> 0;
+    return () => {
+        a = (a + 0x6d2b79f5) | 0;
+        let t = Math.imul(a ^ (a >>> 15), 1 | a);
+        t = (t ^ (t >>> 14)) >>> 0;
+        return t / 4294967296;
+    };
+}
+
 /** The aColor attribute of the real-star geometry, for the path gradient. */
 function colorsOf(geo: THREE.BufferGeometry): Float32Array {
     return geo.getAttribute("aColor").array as Float32Array;
@@ -104,12 +116,14 @@ function colorsOf(geo: THREE.BufferGeometry): Float32Array {
 
 // ── Layer 1: the ambient "guitar-pick" terrain (decorative) ──────────────────
 function Cosmos({
+    backgroundGeo,
     baselineGeo,
     mat,
     glow,
     hole,
     coreRef,
 }: {
+    backgroundGeo: THREE.BufferGeometry;
     baselineGeo: THREE.BufferGeometry;
     mat: THREE.ShaderMaterial;
     glow: THREE.Texture;
@@ -118,6 +132,8 @@ function Cosmos({
 }) {
     return (
         <>
+            {/* Layer 0 — deep background stars: far shell around + beyond the disc */}
+            <points geometry={backgroundGeo} material={mat} />
             <points geometry={baselineGeo} material={mat} />
             {/* Two faint far nebula wisps — a whisper of violet depth at the edges. */}
             {[
@@ -169,7 +185,7 @@ function Scene(props: GalaxySceneProps) {
         onBackgroundClick,
     } = props;
 
-    const { field, starGeo, quad, baselineGeo } = useTrackGalaxyField(
+    const { field, starGeo, quad, baselineGeo, backgroundGeo } = useTrackGalaxyField(
         tracks,
         DISC_RADIUS,
     );
@@ -490,6 +506,7 @@ function Scene(props: GalaxySceneProps) {
         <>
             {/* Layer 1 — the ambient guitar-pick cosmos (terrain + hole + wisps) */}
             <Cosmos
+                backgroundGeo={backgroundGeo}
                 baselineGeo={baselineGeo}
                 mat={mat}
                 glow={glow}
@@ -663,18 +680,29 @@ function useTrackGalaxyField(
 ) {
     const galaxy = useMemo(() => {
         // ── Layer 1: decorative ambient terrain ────────────────────────────
-        // Reuse the rig's ambientBaseline which reads pos + color from the
-        // layout. It adds the fine-star look (bright few / faint many,
-        // twinkle, sparkle) and the sector attribute.
+        // The synth 10k galaxy (social-rig parity: buildVibeGalaxy) is the
+        // ambient DISC; the real tracks (below) are a bright overlay ON it.
+        // Using the tracks' own positions as the ambient field (the first
+        // port's shortcut) made the backdrop an echo of the data — with a
+        // 363-track library there was no galaxy feel at all.
+        const synth = buildVibeGalaxy({
+            count: 10000, // baseline in the social rig
+            seed: 0x51a2,
+            radius: DISC_RADIUS,
+        });
+        const baselineGeo = buildBaselineGeometry({
+            count: synth.count,
+            pos: synth.pos,
+            color: synth.color,
+        });
+
+        // ── Layer 0: deep background starfield (depth beyond the disc) ─────
+        const backgroundGeo = buildBackgroundStars();
+
         const layout = buildTrackGalaxy(
             { count: tracks.length, radius: DISC_RADIUS },
             tracks,
         );
-        const baselineGeo = buildBaselineGeometry({
-            count: layout.count,
-            pos: layout.pos,
-            color: layout.color,
-        });
 
         // ── Layer 2: every track is a real pickable star ────────────────────
         const count = tracks.length;
@@ -686,12 +714,22 @@ function useTrackGalaxyField(
             zs[i] = pos[i * 3 + 2];
         }
 
-        // Star attributes the shader expects.
+        // Star attributes the shader expects. Sizes get a real distribution —
+        // zeros would clamp every point to the shader's 2.2px floor, which is
+        // exactly the uniform-dim-dots look.
+        const rnd = makeRng(0x7ea2);
         const colors = new Float32Array(count * 3);
         const sizes = new Float32Array(count);
         const phase = new Float32Array(count);
         const twAmp = new Float32Array(count);
         const spark = new Float32Array(count);
+        for (let i = 0; i < count; i++) {
+            const notable = rnd() < 0.18;
+            sizes[i] = notable ? 2.0 + rnd() * 1.2 : 1.1 + rnd() * 0.7;
+            phase[i] = rnd() * 6.283;
+            twAmp[i] = 0.1 + rnd() * 0.16;
+            spark[i] = rnd() < 0.03 ? 1 : 0;
+        }
         // Tracks are never decorative-sector members -> -1 exempts them from
         // the explore-a-vibe glow (matches rig's real-person sector = -1).
         const sector = new Float32Array(count).fill(-1);
@@ -699,12 +737,14 @@ function useTrackGalaxyField(
         const index = new Float32Array(count);
         for (let i = 0; i < count; i++) index[i] = i;
 
-        // Base colour: the layout's OKLab mood colour (slightly lifted so
-        // real tracks read bright against the ambient field).
+        // Base colour: the layout's OKLab mood colour, lifted so real tracks
+        // read as the SUBJECT against the synth ambient field and the deep
+        // background (both of which run dimmer per-star).
         for (let i = 0; i < count; i++) {
-            colors[i * 3] = layout.color[i * 3];
-            colors[i * 3 + 1] = layout.color[i * 3 + 1];
-            colors[i * 3 + 2] = layout.color[i * 3 + 2];
+            const lift = 1.15;
+            colors[i * 3] = Math.min(1, layout.color[i * 3] * lift);
+            colors[i * 3 + 1] = Math.min(1, layout.color[i * 3 + 1] * lift);
+            colors[i * 3 + 2] = Math.min(1, layout.color[i * 3 + 2] * lift);
         }
 
         // ── quadtree over the disc plane (x, z) for O(log n) picking ────────
@@ -751,16 +791,18 @@ function useTrackGalaxyField(
             starGeo,
             quad,
             baselineGeo,
+            backgroundGeo,
         };
     }, [tracks, radius]);
 
     // r3f only auto-disposes JSX-declared objects; both geometries are built
     // imperatively — free them on unmount / field rebuild.
     useEffect(() => {
-        const { starGeo, baselineGeo } = galaxy;
+        const { starGeo, baselineGeo, backgroundGeo } = galaxy;
         return () => {
             starGeo.dispose();
             baselineGeo.dispose();
+            backgroundGeo.dispose();
         };
     }, [galaxy]);
 
