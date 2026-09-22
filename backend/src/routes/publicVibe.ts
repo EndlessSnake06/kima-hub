@@ -619,7 +619,7 @@ router.post(
                         te.embedding <=> ${searchEmbedding}::vector AS distance,
                         a.id AS "albumId",
                         a.title AS "albumTitle",
-                        a.coverUrl AS "albumCoverUrl",
+                        a."coverUrl" AS "albumCoverUrl",
                         ar.id AS "artistId",
                         ar.name AS "artistName",
                         t.energy,
