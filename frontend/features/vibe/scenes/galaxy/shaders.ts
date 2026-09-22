@@ -93,7 +93,7 @@ void main() {
   float ps = aSize * uSizeScale * uPixelRatio / depth;
   ps *= (1.0 + blur * 1.0);   // out-of-focus points swell into bokeh
   ps *= mix(1.0, vGlow, 0.6);  // glowing sector's stars grow, receding ones shrink
-  ps *= mix(1.0, 1.3, isPlaying); // PLAYING point: enlarge 1.3x exactly (parity)
+  ps *= mix(1.0, 2.2, isPlaying); // PLAYING point: enlarge 2.2x (reads at overview zoom)
   gl_PointSize = clamp(ps, 2.2, 40.0);
 }`;
 
@@ -120,7 +120,8 @@ void main() {
   float halo = pow(max(0.0, 1.0 - dd / 0.96), 2.0) * 0.6;
   float a = min(1.0, core * 0.92 + halo);
   a *= (1.0 - vBlur * 0.35); // out-of-focus dims a touch -> depth
-  gl_FragColor = vec4(fc, a * uOpacity * clamp(vTw, 0.0, 3.0) * vGlow);
+  // playing point reads at any zoom: skip twinkle attenuation, hold brightness
+  gl_FragColor = vec4(fc, a * uOpacity * clamp(vTw, 0.0, 3.0) * max(vGlow, vHighlight * 0.9));
 }`;
 
 /** Soft radial glow sprite — the faint nebula wisps. Client-only (uses <canvas>). */
