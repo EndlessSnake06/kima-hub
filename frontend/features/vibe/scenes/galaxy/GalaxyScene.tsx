@@ -23,6 +23,37 @@
  */
 "use client";
 
+import { useFrame } from "@react-three/fiber";
+
+// Background-layer material: module-level singleton, its uTime advanced per-frame
+// from the scene. Own uniforms because its stars sit at depth 120-330 (vs the
+// disc's ~60-120) and the shader's /depth term would otherwise shrink them under
+// the 2.2px clamp floor — invisible. The ~2.6x size-scale bump compensates the
+// distance; per-star aSize stays small so they still read as FAR, and the DOF
+// range is widened so the far bands do not blur out entirely.
+const bgDpr =
+    typeof window !== "undefined" ? Math.min(window.devicePixelRatio, 1.5) : 1;
+const BG_MAT = new THREE.ShaderMaterial({
+    uniforms: {
+        uSizeScale: { value: 310 },
+        uPixelRatio: { value: bgDpr },
+        uOpacity: { value: 0.95 },
+        uTime: { value: 0 },
+        uFocal: { value: 98 },
+        uDofRange: { value: 260 },
+        uHiSector: { value: -1 },
+        uHiStrength: { value: 0 },
+        uFocusIdx: { value: -1 },
+        uYouIdx: { value: -1 },
+        uFocusStrength: { value: 0 },
+        uPlayingIdx: { value: -1 },
+        uHighlightDim: { value: 0 },
+    },
+    vertexShader: STAR_VERT,
+    fragmentShader: STAR_FRAG,
+    transparent: true,
+    depthWrite: false,
+});
 import {
     useCallback,
     useEffect,
@@ -132,18 +163,18 @@ function Cosmos({
     return (
         <>
             {/* Layer 0 — deep background stars: far shell around + beyond the disc */}
-            <points geometry={backgroundGeo} material={mat} />
+            <points geometry={backgroundGeo} material={BG_MAT} />
             <points geometry={baselineGeo} material={mat} />
             {/* Deep-space nebula backdrop: light purple gradient clouds at
                 varying depths behind the disc — this is what makes the void
                 read as cosmic instead of black. Additive so they glow into
                 each other; far-placed so they never compete with the field. */}
             {[
-                { p: [-210, 40, -230] as const, s: 320, c: "#7b5fc0", o: 0.09 },
-                { p: [230, -70, 190] as const, s: 280, c: "#8a4f9e", o: 0.08 },
-                { p: [60, 90, -280] as const, s: 380, c: "#5a4a9e", o: 0.07 },
-                { p: [-140, -90, 240] as const, s: 250, c: "#a583d6", o: 0.06 },
-                { p: [190, 60, -260] as const, s: 220, c: "#4a3f8f", o: 0.08 },
+                { p: [-210, 40, -230] as const, s: 340, c: "#8f74d6", o: 0.28 },
+                { p: [230, -70, 190] as const, s: 300, c: "#a463b8", o: 0.24 },
+                { p: [60, 90, -280] as const, s: 400, c: "#6c5ac2", o: 0.22 },
+                { p: [-140, -90, 240] as const, s: 270, c: "#b495e4", o: 0.2 },
+                { p: [190, 60, -260] as const, s: 240, c: "#5b4fb0", o: 0.24 },
             ].map((n, i) => (
                 <sprite key={i} position={n.p} scale={n.s} renderOrder={-1}>
                     <spriteMaterial
@@ -209,20 +240,26 @@ function Scene(props: GalaxySceneProps) {
     const focusTarget = useRef(0); // selection focus target
     const savedCam = useRef(restoreSavedCamera()); // null = play the intro fly
 
+    useFrame(({ clock }) => {
+        BG_MAT.uniforms.uTime.value = clock.elapsedTime;
+    });
+
     const glow = useMemo(() => glowTexture(), []);
     const hole = useMemo(() => holeTexture(), []);
 
+    // The background layer shares the star shader but with its own size scale:
+    // its stars sit at depth 120-330 (vs the disc's ~60-120), and the shader's
+    // /depth term would otherwise shrink them under the 2.2px clamp floor —
+    // i.e. invisible. ~2.6x compensates the distance; the layer's own per-star
+    // sizes stay small so they still read as FAR.
     const uniforms = useMemo(
         () => ({
             uSizeScale: { value: 118 },
             uPixelRatio: {
-                value:
-                    Math.min(
-                        typeof window !== "undefined"
-                            ? window.devicePixelRatio
-                            : 1,
-                        1.5,
-                    ) ?? 1,
+                value: Math.min(
+                    typeof window !== "undefined" ? window.devicePixelRatio : 1,
+                    1.5,
+                ),
             },
             uOpacity: { value: 0.9 },
             uTime: { value: 0 },
@@ -258,6 +295,14 @@ function Scene(props: GalaxySceneProps) {
     useEffect(() => () => {
         mat.dispose();
     }, [mat]);
+
+    // The background layer shares the star shader but needs its own uniforms:
+    // its stars sit at depth 120-330 (vs the disc's ~60-120) and the shader's
+    // /depth term would shrink them under the 2.2px clamp floor — invisible.
+    // The ~2.6x size-scale bump compensates the distance; per-star aSize stays
+    // small so they still read as FAR, and the DOF range is widened so the far
+    // bands do not blur out entirely.
+
 
     // Real-star layer geometry is built in useTrackGalaxyField; it already
     // carries every attribute the shader needs.
