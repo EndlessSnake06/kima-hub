@@ -26,21 +26,22 @@
 import { useFrame } from "@react-three/fiber";
 
 // Background-layer material: module-level singleton, its uTime advanced per-frame
-// from the scene. Own uniforms because its stars sit at depth 120-330 (vs the
-// disc's ~60-120) and the shader's /depth term would otherwise shrink them under
-// the 2.2px clamp floor — invisible. The ~2.6x size-scale bump compensates the
-// distance; per-star aSize stays small so they still read as FAR, and the DOF
-// range is widened so the far bands do not blur out entirely.
+// from the scene. Own uniforms because its stars sit at depth 102-162 (vs the
+// disc's ~60-120); uSizeScale is tuned so they stay ABOVE the 2.2px shader
+// floor but SMALL (ps = aSize·150·dpr/depth ≈ 1.7–3.7px → pinpoints), and
+// uDofRange 70 keeps every layer-0 star inside the crisp DOF band — the
+// previous pass's uSizeScale 310 / uDofRange 260 made every far star a
+// blurred bokeh blob.
 const bgDpr =
     typeof window !== "undefined" ? Math.min(window.devicePixelRatio, 1.5) : 1;
 const BG_MAT = new THREE.ShaderMaterial({
     uniforms: {
-        uSizeScale: { value: 310 },
+        uSizeScale: { value: 150 },
         uPixelRatio: { value: bgDpr },
-        uOpacity: { value: 0.95 },
+        uOpacity: { value: 0.9 },
         uTime: { value: 0 },
         uFocal: { value: 98 },
-        uDofRange: { value: 260 },
+        uDofRange: { value: 70 },
         uHiSector: { value: -1 },
         uHiStrength: { value: 0 },
         uFocusIdx: { value: -1 },
@@ -165,19 +166,18 @@ function Cosmos({
             {/* Layer 0 — deep background stars: far shell around + beyond the disc */}
             <points geometry={backgroundGeo} material={BG_MAT} />
             <points geometry={baselineGeo} material={mat} />
-            {/* Deep-space nebula backdrop: light purple gradient clouds at
-                varying depths behind the disc — this is what makes the void
-                read as cosmic instead of black. Additive so they glow into
-                each other; far-placed so they never compete with the field. */}
+            {/* Deep-space backdrop — the aim is "a FEW very LIGHT
+                purple gradients", so this is exactly the unified rig's approved
+                pair of whisper wisps (opacity 0.04, scale 150, colors from
+                KIMA-SOCIAL-DESIGN-LANGUAGE.md), repositioned into the visible
+                under-sky beyond the far rim (the overview camera looks down
+                ~57°; anything above/behind the plane is out of frame). The
+                rejected pass ran five sprites at opacity 0.20–0.30 / scale
+                260–340 — that flooded the frame violet. Anything brighter
+                than ~0.05 is not "light". */}
             {[
-                // Placed in the visible under-sky beyond the far rim (the
-                // overview camera looks down ~57 deg; anything above the plane
-                // behind the disc is out of frame — verified geometrically).
-                { p: [0, -150, -200] as const, s: 340, c: "#8f74d6", o: 0.3 },
-                { p: [-190, -110, -130] as const, s: 300, c: "#a463b8", o: 0.26 },
-                { p: [200, -120, -140] as const, s: 320, c: "#6c5ac2", o: 0.24 },
-                { p: [120, -200, 60] as const, s: 260, c: "#b495e4", o: 0.2 },
-                { p: [-130, -230, -20] as const, s: 280, c: "#5b4fb0", o: 0.26 },
+                { p: [-40, -140, -190] as const, s: 150, c: "#5f2f8e", o: 0.045 },
+                { p: [80, -160, -160] as const, s: 150, c: "#7d2f66", o: 0.04 },
             ].map((n, i) => (
                 <sprite key={i} position={n.p} scale={n.s} renderOrder={-1}>
                     <spriteMaterial

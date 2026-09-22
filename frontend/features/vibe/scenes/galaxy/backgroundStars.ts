@@ -1,28 +1,36 @@
-// Layer 0 — the DEEP BACKGROUND starfield ("look BEYOND the galaxy —
-// other stars further back at varying distances, twinkling in various ways and
-// colors, to create depth").
+// Layer 0 — the DEEP BACKGROUND starfield ("other stars further back
+// at varying distances and twinkling in various ways and colors to create
+// depth", "the map itself some depth against a stark blackdrop").
 //
-// The library IS the map; this layer is everything BEHIND it: a far shell of
-// stars in varied real star colors (blue-white, white, warm gold, amber, and a
-// violet tier), at several distance bands so the camera's parallax separates
-// them, each twinkling on its own frequency/phase (varied ways), with rare
-// color-shifted sparkles. Pure decoration: never pickable, exempt from every
-// live-state effect (aIndex = aHighlight = aSector = -1, the PRESENT-and--1
-// rule — a missing attribute reads as 0, which is a real track's index).
+// Restraint rules, learned the hard way this week:
+//   - Stars are sampled in SCREEN SPACE off the overview camera: a random
+//     point in the view (u,v in the fov-40 frustum, 16:9), then a depth
+//     PAST the disc plane along that ray (t0 + 15..85, where t0 is where
+//     the ray crosses y=0). Every star is therefore provably on-screen at
+//     the overview angle, below the plane, and BEHIND the map — varying
+//     distances, never in front of the field. (Two earlier attempts sampled
+//     a spherical/annular shell around the scene; the geometry check showed
+//     those stars sat 35-78° off-axis — invisible — or blurred out.)
+//   - Star distance to the camera is 117-165, entirely inside the DOF crisp
+//     band (uFocal 98 ± uDofRange 70 → crisp to 168), so NOTHING here
+//     blooms into a bokeh blob; sizes stay tiny (0.5-1.65) and with
+//     uSizeScale 150 render ~1.7-6px. Pinpoints. The rejected pass ran
+//     uSizeScale 310 / uDofRange 260 — every far star was a soft blob.
+//   - Depth bands also dim the far layers (0.5 → 0.34 → 0.22 brightness)
+//     so the sky reads dark with depth, not lit evenly.
 import * as THREE from "three";
 
 function makeRng(seed: number) {
     let a = seed >>> 0;
     return () => {
         a = (a + 0x6d2b79f5) | 0;
-        let t = Math.imul(a ^ (a >>> 15), 1 | a);
+        let t = Math.imul(a ^ (a >>> 15), 1);
         t = (t ^ (t >>> 14)) >>> 0;
         return t / 4294967296;
     };
 }
 
-export const BACKGROUND_COUNT = 1800;
-const DISC_R = 60; // keep in step with GalaxyScene's DISC_RADIUS
+export const BACKGROUND_COUNT = 900;
 
 // Real stellar color families, weighted like the sky: few blue-whites, many
 // warm whites/golds, a violet tier for the nebular feel.
@@ -46,7 +54,7 @@ function pickTint(rnd: () => number): [number, number, number] {
 }
 
 export function buildBackgroundStars(): THREE.BufferGeometry {
-    const rnd = makeRng(0xbeef);
+    const rnd = makeRng(0x5eed);
     const pos = new Float32Array(BACKGROUND_COUNT * 3);
     const colors = new Float32Array(BACKGROUND_COUNT * 3);
     const sizes = new Float32Array(BACKGROUND_COUNT);
@@ -54,31 +62,73 @@ export function buildBackgroundStars(): THREE.BufferGeometry {
     const twAmp = new Float32Array(BACKGROUND_COUNT);
     const spark = new Float32Array(BACKGROUND_COUNT);
 
-    // Distribution shaped by how the scene is actually VIEWED: the overview
-    // camera sits ~57 deg above the plane looking down at the disc (fov 40),
-    // so the visible "beyond the galaxy" region is the under-sky BEYOND the
-    // far rim — below the disc plane, past r > 1.5x, all around in azimuth.
-    // A spherical shell would put most stars behind the camera (verified:
-    // 47-78 deg off-axis, never on screen). Stars here sit below the plane
-    // and outside the disc, so the orbit camera always has depth behind the
-    // library field, and the parallax between bands sells the distance.
+    // ── camera frame (matches the Canvas camera: pos [0,96,62], fov 40) ──
+    const cam = { x: 0, y: 96, z: 62 };
+    const fl = Math.hypot(cam.x, cam.y, cam.z);
+    const forward = { x: -cam.x / fl, y: -cam.y / fl, z: -cam.z / fl };
+    // right = forward × worldUp (worldUp = +y), then up = right × forward.
+    let right = {
+        x: forward.y * 0 - forward.z * 1, //  forward × (0,1,0)
+        y: forward.z * 0 - forward.x * 0,
+        z: forward.x * 1 - forward.y * 0,
+    };
+    const rl = Math.hypot(right.x, right.y, right.z) || 1;
+    right = { x: right.x / rl, y: right.y / rl, z: right.z / rl };
+    const up = {
+        x: right.y * forward.z - right.z * forward.y,
+        y: right.z * forward.x - right.x * forward.z,
+        z: right.x * forward.y - right.y * forward.x,
+    };
+    const tanV = Math.tan((20 * Math.PI) / 180); // fov 40 → half 20
+    const tanH = Math.tan(Math.atan(tanV * (16 / 9))); // 16:9 landscape
+
+    // Depth bands: near sky / mid / deep — smaller AND dimmer with distance.
     const BANDS = [
-        { rMin: DISC_R * 1.6, rMax: DISC_R * 2.4, frac: 0.30, size: 1.15, bright: 0.85 },
-        { rMin: DISC_R * 2.4, rMax: DISC_R * 3.4, frac: 0.34, size: 0.85, bright: 0.6 },
-        { rMin: DISC_R * 3.4, rMax: DISC_R * 5.0, frac: 0.36, size: 0.62, bright: 0.42 },
+        { extraMin: 15, extraMax: 50, frac: 0.3, size: 1.0, bright: 0.5 },
+        { extraMin: 40, extraMax: 70, frac: 0.35, size: 0.85, bright: 0.34 },
+        { extraMin: 55, extraMax: 85, frac: 0.35, size: 0.6, bright: 0.22 },
     ];
 
     let i = 0;
     for (const band of BANDS) {
         const n = Math.floor(BACKGROUND_COUNT * band.frac);
         for (let k = 0; k < n && i < BACKGROUND_COUNT; k++, i++) {
-            const theta = rnd() * Math.PI * 2;
-            const r = band.rMin + (band.rMax - band.rMin) * Math.pow(rnd(), 0.7);
-            pos[i * 3] = Math.cos(theta) * r;
-            // Below the plane, deeper the farther out: an under-sky bowl.
-            const depth = 40 + (r / (DISC_R * 5)) * 130;
-            pos[i * 3 + 1] = -depth * (0.35 + 0.65 * rnd());
-            pos[i * 3 + 2] = Math.sin(theta) * r;
+            // Sample a ray through the view frustum and place the star on it,
+            // past the disc plane. Reject rays whose plane crossing is too far
+            // (they can't stay inside the DOF band) and depths past 165.
+            let px = 0;
+            let py = 0;
+            let pz = 0;
+            let ok = false;
+            for (let tries = 0; tries < 16; tries++) {
+                const u = rnd() * 2 - 1;
+                const v = rnd() * 2 - 1;
+                const dx = forward.x + right.x * u * tanH + up.x * v * tanV;
+                const dy = forward.y + right.y * u * tanH + up.y * v * tanV;
+                const dz = forward.z + right.z * u * tanH + up.z * v * tanV;
+                const dl = Math.hypot(dx, dy, dz) || 1;
+                const ndx = dx / dl;
+                const ndy = dy / dl;
+                const ndz = dz / dl;
+                if (ndy >= -0.05) continue; // must descend below the plane
+                const t0 = -cam.y / ndy; // distance to the y=0 crossing
+                if (t0 > 150) continue;
+                const d = t0 + band.extraMin + rnd() * (band.extraMax - band.extraMin);
+                if (d > 165) continue;
+                px = cam.x + ndx * d;
+                py = cam.y + ndy * d;
+                pz = cam.z + ndz * d;
+                ok = true;
+                break;
+            }
+            if (!ok) {
+                sizes[i] = 0; // skipped → sub-pixel, invisible; buffers stay indexed
+                continue;
+            }
+
+            pos[i * 3] = px;
+            pos[i * 3 + 1] = py;
+            pos[i * 3 + 2] = pz;
 
             const [tr, tg, tb] = pickTint(rnd);
             const notable = rnd() < 0.1;
@@ -87,13 +137,13 @@ export function buildBackgroundStars(): THREE.BufferGeometry {
             colors[i * 3 + 1] = tg * b;
             colors[i * 3 + 2] = tb * b;
 
-            sizes[i] = band.size * (notable ? 1.3 + rnd() * 0.7 : 0.7 + rnd() * 0.5);
+            sizes[i] = band.size * (notable ? 1.15 + rnd() * 0.5 : 0.7 + rnd() * 0.45);
 
             // VARIED twinkle: wide spread of speed and depth — some stars
-            // barely breathe, a few flicker sharply. Phase spread full circle.
+            // barely breathe, a few flicker. Never uniform.
             phase[i] = rnd() * 6.283;
-            twAmp[i] = notable ? 0.08 + rnd() * 0.12 : 0.15 + rnd() * 0.4;
-            spark[i] = rnd() < 0.045 ? 1 : 0;
+            twAmp[i] = notable ? 0.1 + rnd() * 0.15 : 0.15 + rnd() * 0.35;
+            spark[i] = rnd() < 0.035 ? 1 : 0;
         }
     }
 
