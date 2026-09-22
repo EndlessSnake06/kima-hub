@@ -36,7 +36,7 @@ const bgDpr =
     typeof window !== "undefined" ? Math.min(window.devicePixelRatio, 1.5) : 1;
 const BG_MAT = new THREE.ShaderMaterial({
     uniforms: {
-        uSizeScale: { value: 170 },
+        uSizeScale: { value: 230 },
         uPixelRatio: { value: bgDpr },
         uOpacity: { value: 0.9 },
         uTime: { value: 0 },
