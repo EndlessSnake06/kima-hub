@@ -47,6 +47,16 @@ import { useGalaxyInteraction } from "./useGalaxyInteraction";
 import { GalaxyLabel, Reticle, RegionLabels } from "./labels";
 import { resolveLabels, MAX_LABELS } from "./labelPlacement";
 import { buildBaselineGeometry } from "./ambientBaseline";
+import { restoreSavedCamera } from "./useGalaxyFrame";
+import {
+    buildQueueSegments,
+    buildPathSegments,
+    buildLineMaterial,
+    sourceRingFromOp,
+    SOURCE_RING_RADIUS,
+} from "./overlayGeometry";
+import type { PathResult } from "../../types";
+import type { VibeOperation } from "@/lib/audio-state-context";
 import { GALAXY_ZONES, zoneWorldPos } from "./zones";
 import type { MapTrack } from "../../types";
 
@@ -74,7 +84,8 @@ export interface GalaxySceneProps {
     playingTrackId?: string | null;
     selectedTrackId: string | null;
     queueTrackIds?: string[];
-    activeOperation?: { type: string } | null;
+    activeOperation?: VibeOperation | null;
+    pathResult?: PathResult | null;
     showLabels?: boolean;
     onTrackClick: (trackId: string) => void;
     onTrackDoubleClick?: (trackId: string) => void;
@@ -84,6 +95,11 @@ export interface GalaxySceneProps {
 
 function pos3(pos: Float32Array, i: number): [number, number, number] {
     return [pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]];
+}
+
+/** The aColor attribute of the real-star geometry, for the path gradient. */
+function colorsOf(geo: THREE.BufferGeometry): Float32Array {
+    return geo.getAttribute("aColor").array as Float32Array;
 }
 
 // ── Layer 1: the ambient "guitar-pick" terrain (decorative) ──────────────────
@@ -142,6 +158,10 @@ function Scene(props: GalaxySceneProps) {
         tracks,
         playingTrackId,
         selectedTrackId,
+        highlightedIds,
+        queueTrackIds,
+        activeOperation,
+        pathResult,
         showLabels,
         onTrackClick,
         onTrackDoubleClick,
@@ -166,6 +186,7 @@ function Scene(props: GalaxySceneProps) {
     const flyDist = useRef<number | null>(null);
     const hiTarget = useRef(0); // explore-a-vibe glow target
     const focusTarget = useRef(0); // selection focus target
+    const savedCam = useRef(restoreSavedCamera()); // null = play the intro fly
 
     const glow = useMemo(() => glowTexture(), []);
     const hole = useMemo(() => holeTexture(), []);
@@ -191,6 +212,8 @@ function Scene(props: GalaxySceneProps) {
             uFocusIdx: { value: -1 },
             uYouIdx: { value: -1 },
             uFocusStrength: { value: 0 },
+            uPlayingIdx: { value: -1 },
+            uHighlightDim: { value: 0 },
         }),
         [],
     );
@@ -303,6 +326,38 @@ function Scene(props: GalaxySceneProps) {
         focusTarget.current = selectedIndex >= 0 ? 1 : 0;
     }, [selectedIndex, uniforms]);
 
+    // ── LIVE-STATE uniforms ─────────────────────────
+    // Playing track: -1 when nothing plays; the shader whitens + enlarges the
+    // star at uPlayingIdx (exact old-map behavior: pure white before any dim).
+    useEffect(() => {
+        uniforms.uPlayingIdx.value =
+            playingTrackId != null ? field.userIds.indexOf(playingTrackId) : -1;
+    }, [playingTrackId, field, uniforms]);
+
+    // Search/blend dimming: 1 while a highlight set is armed, 0 otherwise. The
+    // per-star decision (matched vs dimmed) is the aHighlight attribute below.
+    useEffect(() => {
+        uniforms.uHighlightDim.value = highlightedIds && highlightedIds.size > 0 ? 1 : 0;
+    }, [highlightedIds, uniforms]);
+
+    // Per-star matched flags: rewrite the aHighlight buffer in place (O(matched) —
+    // no rebuild, no per-frame work). Cleared wholesale when the set empties.
+    useEffect(() => {
+        const attr = starGeo.getAttribute("aHighlight") as
+            | THREE.BufferAttribute
+            | undefined;
+        if (!attr) return;
+        const arr = attr.array as Float32Array;
+        arr.fill(0);
+        if (highlightedIds) {
+            for (const id of highlightedIds) {
+                const i = field.userIds.indexOf(id);
+                if (i >= 0 && i < arr.length) arr[i] = 1;
+            }
+        }
+        attr.needsUpdate = true;
+    }, [highlightedIds, starGeo, field]);
+
     // ── fly to a track picked from toolbar search results (rig's focus fly) ──
     // `selectedTrackId` changing = a toolbar pick -> fly camera to that star.
     useEffect(() => {
@@ -314,9 +369,22 @@ function Scene(props: GalaxySceneProps) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedTrackId]);
 
+    // ── camera persistence: restore the saved view once controls are live ────
+    useEffect(() => {
+        const saved = savedCam.current;
+        const c = controls.current;
+        if (!saved || !c) return;
+        c.target.set(...saved.target);
+        camera.position.set(...saved.position);
+        c.update();
+        savedCam.current = null; // only the FIRST mount restores; later clears fly home
+    }, [camera]);
+
     // ── back to the whole-galaxy overview ────────────────────────────────────
     useEffect(() => {
         if (!selectedTrackId) {
+            // A restored camera replaces the intro fly-in on first mount.
+            if (savedCam.current) return;
             // When selection clears, return to overview (only if not mid-fly).
             if (!controls.current) return;
             flyGoal.current.set(0, 0, 0);
@@ -369,6 +437,50 @@ function Scene(props: GalaxySceneProps) {
         }, viewW, viewH, MAX_LABELS);
     }, [labelCandidates]);
 
+    // ── LIVE-STATE overlay lines (queue threads + song path) ────────────────
+    // Both are O(queue+path) useMemos keyed on their driving props — no per-frame
+    // work; the geometries are static between gestures. Disposed on change/unmount.
+    const lineMat = useMemo(() => buildLineMaterial(), []);
+    useEffect(() => () => { lineMat.dispose(); }, [lineMat]);
+
+    const queueGeo = useMemo(
+        () => buildQueueSegments(field.userIds, field.pos, queueTrackIds, playingTrackId),
+        [field, queueTrackIds, playingTrackId],
+    );
+    const pathGeo = useMemo(
+        () => buildPathSegments(field.userIds, field.pos, pathResult ?? null, colorsOf(starGeo)),
+        [field, pathResult, starGeo],
+    );
+    useEffect(() => {
+        return () => {
+            queueGeo?.dispose();
+            pathGeo?.dispose();
+        };
+    }, [queueGeo, pathGeo]);
+
+    // Operation source ring (drift/vibe/similar drag source) — a LineLoop.
+    const ring = useMemo(
+        () => sourceRingFromOp(activeOperation ?? null, field.userIds),
+        [activeOperation, field],
+    );
+    const ringGeo = useMemo(() => {
+        if (!ring) return null;
+        const i = field.userIds.indexOf(ring.id);
+        if (i < 0) return null;
+        const segs = 64;
+        const positions = new Float32Array(segs * 3);
+        for (let k = 0; k < segs; k++) {
+            const a = (k / segs) * Math.PI * 2;
+            positions[k * 3] = field.xs[i] + Math.cos(a) * SOURCE_RING_RADIUS;
+            positions[k * 3 + 1] = 0.5;
+            positions[k * 3 + 2] = field.zs[i] + Math.sin(a) * SOURCE_RING_RADIUS;
+        }
+        const g = new THREE.BufferGeometry();
+        g.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+        return g;
+    }, [ring, field]);
+    useEffect(() => () => { ringGeo?.dispose(); }, [ringGeo]);
+
     // ── playing track pulse (reserved for a future animated ring) ───────────
 
     return (
@@ -414,6 +526,27 @@ function Scene(props: GalaxySceneProps) {
                 }}
                 onPointerMissed={onBackgroundClick}
             />
+
+            {/* queue threads — gold, dim past the playhead (alpha 25) / bright ahead (50) */}
+            {queueGeo && <lineSegments geometry={queueGeo} material={lineMat} renderOrder={PEOPLE_ORDER + 1} />}
+
+            {/* song path — per-stop gradient from the track colours, full alpha */}
+            {pathGeo && <lineSegments geometry={pathGeo} material={lineMat} renderOrder={PEOPLE_ORDER + 1} />}
+
+            {/* operation source ring — the drift/vibe/similar drag origin */}
+            {ringGeo && (
+                <lineLoop
+                    geometry={ringGeo}
+                    renderOrder={PEOPLE_ORDER + 1}
+                >
+                    <lineBasicMaterial
+                        color={ring?.color ?? "#fff"}
+                        transparent
+                        opacity={0.9}
+                        depthWrite={false}
+                    />
+                </lineLoop>
+            )}
 
             {/* invisible pick plane feeding the quadtree (tracks only) */}
             <mesh
@@ -592,6 +725,12 @@ function useTrackGalaxyField(
         starGeo.setAttribute("aSpark", new THREE.BufferAttribute(spark, 1));
         starGeo.setAttribute("aSector", new THREE.BufferAttribute(sector, 1));
         starGeo.setAttribute("aIndex", new THREE.BufferAttribute(index, 1));
+        // Live-state highlight slot: 0 = real + unmarked, 1 = search/blend match.
+        // Ambient baseline stars carry -1 and are exempt (see ambientBaseline).
+        starGeo.setAttribute(
+            "aHighlight",
+            new THREE.BufferAttribute(new Float32Array(count), 1),
+        );
 
         return {
             field: {

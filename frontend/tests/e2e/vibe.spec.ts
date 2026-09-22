@@ -415,4 +415,53 @@ test.describe("Vibe", () => {
         await page.mouse.click(bx + 60, by + bh * 0.5);
         await expect(host).toBeHidden({ timeout: 5_000 });
     });
+
+    test("playing state reaches the galaxy scene (playing marker wiring)", async ({ page }) => {
+        await page.goto("/vibe", { waitUntil: "domcontentloaded" });
+        await dismissWhatsNew(page);
+
+        const gallery = page.getByTestId("galaxy-track-field").first();
+        const noData = page.locator("text=/No tracks with vibe/i").first();
+        await Promise.race([gallery.waitFor({ timeout: 35_000 }), noData.waitFor({ timeout: 35_000 })]);
+        if ((await noData.count()) > 0) {
+            test.skip(true, "no vibe tracks available on this testbed");
+        }
+
+        // Pick a real vibe track and set it as the server-side playback state —
+        // the same source the audio state machine hydrates from on load.
+        const token = await getAuthToken(page);
+        const map = await page.request.get("/api/vibe/map", {
+            headers: { Authorization: `Bearer ${token}` },
+        });
+        expect(map.ok()).toBeTruthy();
+        const mapData = (await map.json()) as { tracks?: Array<{ id: string }> };
+        const trackId = mapData.tracks?.[0]?.id;
+        expect(trackId, "map should carry at least one track").toBeDefined();
+        const playingId = trackId as string;
+
+        const put = await page.request.put("/api/playback-state", {
+            headers: { Authorization: `Bearer ${token}` },
+            data: {
+                playbackType: "track",
+                trackId,
+                position: 5_000,
+                queue: [{ id: trackId }],
+                currentIndex: 0,
+                isShuffle: false,
+                changedBy: "e2e-playing-marker",
+            },
+        });
+        expect(put.ok() || put.status() === 200 || put.status() === 204).toBeTruthy();
+
+        // Reload: the page hydrates audio state from playback-state, passes
+        // playingTrackId down, and the wrapper exposes it as a DOM attribute —
+        // DOM evidence the marker wiring works (the canvas star itself is GL).
+        await page.reload({ waitUntil: "domcontentloaded" });
+        await dismissWhatsNew(page);
+        const wrapper = page.getByTestId("galaxy-track-field").first();
+        await expect(wrapper).toBeAttached({ timeout: 35_000 });
+        await expect(wrapper).toHaveAttribute("data-playing-id", playingId, {
+            timeout: 20_000,
+        });
+    });
 });

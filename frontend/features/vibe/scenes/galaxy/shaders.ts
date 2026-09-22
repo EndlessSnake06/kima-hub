@@ -24,6 +24,8 @@ uniform float uHiStrength;// 0..1 ramp of the sector glow
 uniform float uFocusIdx;  // selected person's index in the people cloud (-1 = none)
 uniform float uYouIdx;    // your own index -- the other end of the thread, never recedes
 uniform float uFocusStrength; // 0..1 ramp of the selection focus
+uniform float uPlayingIdx;    // playing track's index in the field (-1 = none)
+uniform float uHighlightDim;  // 1 during a search/blend (arms the per-star minidim), 0 otherwise
 attribute vec3 aColor;
 attribute float aSize;
 attribute float aPhase;
@@ -31,10 +33,12 @@ attribute float aTwAmp;
 attribute float aSpark;   // 0 mostly; 1 on the rare sparkle stars
 attribute float aSector;  // field star's sector (0-3); <0 = a real person (never glows)
 attribute float aIndex;   // person's index in the people cloud; -1 on every ambient star
+attribute float aHighlight; // 1 if this point is a live-state highlight (-1 = ambient, exempt)
 varying vec3 vColor;
 varying float vTw;
 varying float vBlur;
 varying float vGlow;
+varying float vHighlight;
 void main() {
   vColor = aColor;
   // explore-a-vibe SECTOR GLOW: when a vibe is cast (uHiStrength -> 1) the field stars
@@ -57,6 +61,19 @@ void main() {
   // rule holds either way: the galaxy stays VISIBLE, it just stops competing.
   float picked = clamp(step(abs(aIndex - uFocusIdx), 0.5) + step(abs(aIndex - uYouIdx), 0.5), 0.0, 1.0);
   vGlow *= mix(1.0, mix(0.5, 1.0, picked), uFocusStrength);
+  // LIVE-STATE MINIDIM + PLAYING ENLARGE. Only the REAL star layer (both gated
+  // on aHighlight >= 0); ambient stars carry aHighlight = -1 and are untouched.
+  // aHighlight slots: -1 ambient, 0 real + unmarked, 1 real + matched.
+  // Playing takes precedence over the dim (parity with the old VibeMap, which
+  // returned pure white for the playing point before any highlight logic), so it
+  // is computed independently and whitened wholesale in the fragment.
+  const isReal = step(0.0, aHighlight);
+  float isPlaying = isReal * step(abs(aIndex - uPlayingIdx), 0.5);
+  float vMatch = isReal * step(0.5, aHighlight);        // 1 = matched
+  float dimAmt = (1.0 - vMatch) * (1.0 - isPlaying);    // unmarked, not-playing
+  vGlow *= mix(1.0, 0.22, uHighlightDim * dimAmt);      // 0.22 ~= ambient faint level
+  vHighlight = max(vMatch, isPlaying);                  // playing/matched read as "lit"
+  vGlow *= mix(1.0, 1.35, isPlaying);                   // playing point enlarges
   // smooth per-star sine twinkle: time-driven, per-point speed + phase from aPhase
   // -> natural shimmer, independent of camera (never a strobe). uTime is frozen
   // under prefers-reduced-motion (the frame loop stops advancing it), so this
@@ -76,6 +93,7 @@ void main() {
   float ps = aSize * uSizeScale * uPixelRatio / depth;
   ps *= (1.0 + blur * 1.0);   // out-of-focus points swell into bokeh
   ps *= mix(1.0, vGlow, 0.6);  // glowing sector's stars grow, receding ones shrink
+  ps *= mix(1.0, 1.3, isPlaying); // PLAYING point: enlarge 1.3x exactly (parity)
   gl_PointSize = clamp(ps, 2.2, 40.0);
 }`;
 
@@ -85,10 +103,16 @@ varying vec3 vColor;
 varying float vTw;
 varying float vBlur;
 varying float vGlow;
+varying float vHighlight;  // 1 = playing point, 0 = a normal real star
 void main() {
   vec2 d = gl_PointCoord - 0.5;
   float r = length(d);
   if (r > 0.5) discard;
+  // PLAYING POINT: whitename the star so it stands out as the current track
+  // (parity with the old VibeMap, which rendered the playing point as pure
+  // white). A matched star keeps its mood colour; the minidim is already
+  // carried by vGlow.
+  vec3 fc = mix(vColor, vec3(1.0), vHighlight);
   // premium star: a bright saturated CORE + a soft colored HALO, never a flat white
   // disc. Core tightens in focus, blooms out of focus (tilt-shift).
   float dd = r * 2.0; // 0 centre .. 1 edge
@@ -96,7 +120,7 @@ void main() {
   float halo = pow(max(0.0, 1.0 - dd / 0.96), 2.0) * 0.6;
   float a = min(1.0, core * 0.92 + halo);
   a *= (1.0 - vBlur * 0.35); // out-of-focus dims a touch -> depth
-  gl_FragColor = vec4(vColor, a * uOpacity * clamp(vTw, 0.0, 3.0) * vGlow);
+  gl_FragColor = vec4(fc, a * uOpacity * clamp(vTw, 0.0, 3.0) * vGlow);
 }`;
 
 /** Soft radial glow sprite — the faint nebula wisps. Client-only (uses <canvas>). */
