@@ -332,6 +332,9 @@ function Scene(props: GalaxySceneProps) {
     useEffect(() => {
         uniforms.uPlayingIdx.value =
             playingTrackId != null ? field.userIds.indexOf(playingTrackId) : -1;
+        // Expose the resolved index for e2e/debug (DOM evidence of scene state).
+        const host = document.querySelector('[data-testid="galaxy-track-field"]');
+        if (host) host.setAttribute("data-playing-idx", String(uniforms.uPlayingIdx.value));
     }, [playingTrackId, field, uniforms]);
 
     // Search/blend dimming: 1 while a highlight set is armed, 0 otherwise. The
