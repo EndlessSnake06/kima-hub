@@ -1,4 +1,5 @@
 import { Router } from "express";
+import fs from "node:fs";
 import { logger } from "../utils/logger";
 import { prisma } from "../utils/db";
 import { requireAuth } from "../middleware/auth";
@@ -57,9 +58,22 @@ interface TextSearchResult {
  * GET /api/vibe/map
  * Returns UMAP 2D projections for all tracks with embeddings.
  * Cached in Redis, invalidated when embedding count changes.
+ *
+ * DESIGN-INFRA MOCK: when MOCK_VIBE_MAP is set to a JSON file (a snapshot
+ * of a real instance's /api/vibe/map response), serve it verbatim instead
+ * of computing. This exists so the galaxy scene can be designed against the
+ * REAL embedded data on the testbed without touching any real
+ * database. Off by default — unset env = original behaviour. Never point it
+ * at committed data: the snapshot lives outside the repo and must not be
+ * committed (it is the operator's private library).
  */
 router.get("/map", requireAuth, async (req, res) => {
     try {
+        const mockPath = process.env.MOCK_VIBE_MAP;
+        if (mockPath && fs.existsSync(mockPath)) {
+            res.json(JSON.parse(fs.readFileSync(mockPath, "utf8")));
+            return;
+        }
         const mapData = await computeMapProjection();
         res.json(mapData);
     } catch (error) {
