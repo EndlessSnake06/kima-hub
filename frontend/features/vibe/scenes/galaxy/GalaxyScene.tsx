@@ -209,7 +209,13 @@ function Scene(props: GalaxySceneProps) {
 
     const uniforms = useMemo(
         () => ({
-            uSizeScale: { value: 118 },
+            // 230, not the reference's 118: at 118 every point (data AND
+            // sky) lands under the shader's 2.2px gl_PointSize floor and
+            // renders identical on a dpr-1 screen — the exact "no
+            // distinction between data and background" complaint, verified
+            // on the deployed build. Tracks use size 3.0 so they sit
+            // ~3.4-5px even at the far edge; sky stars stay 2.2-3px.
+            uSizeScale: { value: 230 },
             uPixelRatio: {
                 value:
                     Math.min(
@@ -589,7 +595,7 @@ function useTrackGalaxyField(
         const index = new Float32Array(count);
         for (let i = 0; i < count; i++) {
             index[i] = i;
-            sizes[i] = 2.0;
+            sizes[i] = 3.0;
             phase[i] = ((i * 2654435761) % 6283) / 1000;
             twAmp[i] = 0.08;
             spark[i] = 0;
