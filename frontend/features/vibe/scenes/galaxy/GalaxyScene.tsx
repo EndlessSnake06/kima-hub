@@ -1,25 +1,20 @@
 /**
- * GalaxyScene — the vibe "galaxy" view, built from the unified repo's
- * proven galaxy rig (kima-hub-unified frontend/features/social/galaxy/),
- * with our REAL data source swapped in (/api/vibe/map tracks).
+ * GalaxyScene — the vibe map: the user's OWN tracks in THEIR OWN vector space.
  *
- * TWO independent layers, same rig structure:
- *   Layer 1 (ambient) — the "guitar-pick" terrain built from real UMAP +
- *     mood PCA positions, coloured by OKLab mood anchors. Purely decorative;
- *     never labelled or picked.
- *   Layer 2 (real) — every track as a star at its real UMAP x,y (picking
- *     stays truthful: neighbours ARE similar songs). Selected, labelled,
- *     clickable -> opens the TrackDrawer (double-click -> play).
+ * The unified social galaxy is a REFERENCE for
+ * styling/libraries, not a shape to copy. There is no synthetic spiral and no
+ * decorative terrain underneath the data — every star here IS a real track at
+ * its real UMAP (x, y), coloured by its real mood vector. The only
+ * non-data elements are the static deep-background starfield (depth cue,
+ * never animated) and two whisper-faint nebula wisps.
  *
- * Colour = vibeColor() OKLab mood-anchor blend fed by each track's REAL
- * moods record, chroma capped at 0.17 (matter-not-neon).
- * Z axis = third PCA component of the 7-d mood covariance, scaled to
- * ±(discRadius * 0.06).
+ * Layout: direct affine map of UMAP space (see trackGalaxyLayout.ts) —
+ * neighbours in UMAP stay neighbours. Vertical = third PCA component of the
+ * 7-d mood covariance, ±(scene radius × 0.06).
  *
  * Post-processing: Bloom + Noise + Vignette (EffectComposer), tilt-shift
- * DOF (uFocal/uDofRange), per-star twinkle (aPhase/aTwAmp).
- * Selection focus: everything except selected recedes (uFocusIdx), 0.5
- * recede floor.
+ * DOF (uFocal/uDofRange). Selection focus: everything except the picked
+ * track recedes to a 0.5 floor (reference behaviour).
  */
 "use client";
 
@@ -39,7 +34,7 @@ import { BlendFunction } from "postprocessing";
 import { type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
 
-import { STAR_VERT, STAR_FRAG, glowTexture, holeTexture } from "./shaders";
+import { STAR_VERT, STAR_FRAG, glowTexture } from "./shaders";
 import { buildTrackGalaxy } from "./trackGalaxyLayout";
 import { buildBackgroundStars } from "./backgroundStars";
 import { QuadTree } from "./quadtree";
@@ -47,7 +42,6 @@ import { useGalaxyFrame, type OrbitControlsLike } from "./useGalaxyFrame";
 import { useGalaxyInteraction } from "./useGalaxyInteraction";
 import { GalaxyLabel, Reticle, RegionLabels } from "./labels";
 import { resolveLabels, MAX_LABELS } from "./labelPlacement";
-import { buildBaselineGeometry } from "./ambientBaseline";
 import { GALAXY_ZONES, zoneWorldPos } from "./zones";
 import type { MapTrack } from "../../types";
 
@@ -87,36 +81,30 @@ function pos3(pos: Float32Array, i: number): [number, number, number] {
     return [pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]];
 }
 
-// ── Layer 1: the ambient "guitar-pick" terrain (decorative) ──────────────────
+// ── The SKY behind the data: static deep stars + two faint wisps ─────────────
+// Nothing here is data. The deep starfield is a depth cue only — it NEVER
+// animates ("background stars that DON'T move"), so its
+// uTime uniform stays at 0 and the per-star phase in the shader gives a
+// static, varied brightness instead of a twinkle cycle. No synthetic spiral,
+// no decorative terrain, no event horizon: the track field's shape is the
+// real UMAP layout, whatever that looks like.
 function Cosmos({
-    baselineGeo,
-    mat,
     bgGeo,
     bgMat,
     glow,
-    hole,
-    coreRef,
 }: {
-    baselineGeo: THREE.BufferGeometry;
-    mat: THREE.ShaderMaterial;
     bgGeo: THREE.BufferGeometry;
     bgMat: THREE.ShaderMaterial;
     glow: THREE.Texture;
-    hole: THREE.Texture;
-    coreRef: RefObject<THREE.Mesh | null>;
 }) {
     return (
         <>
-            {/* Layer 0 — deep background starfield behind the disc (depth cue) */}
+            {/* Layer 0 — deep background starfield (static; never animated) */}
             <points geometry={bgGeo} material={bgMat} />
-            <points geometry={baselineGeo} material={mat} />
-            {/* Two faint nebula wisps — a whisper of violet depth. Placed
-                INSIDE the overview camera's view cone this time: the rig's
-                original positions (-165,26,-150)/(160,-44,120) sit 35-50°
-                off-axis from cam [0,96,62] fov 40 — invisible. These were
-                computed on rays through the frustum (up-left / low-right),
-                behind the plane, so they actually show and give the sky a
-                faint diagonal gradient like the c7-03 reference. */}
+            {/* Two faint nebula wisps — a whisper of violet depth, placed
+                on rays INSIDE the overview camera's frustum (upper-left /
+                lower-right), behind the plane, so the sky keeps a faint
+                diagonal gradient like the c7-03 reference. */}
             {[
                 { p: [-88.5, -71, -86] as const, s: 150, c: "#5f2f8e" },
                 { p: [73.4, -89.4, -30.9] as const, s: 150, c: "#7d2f66" },
@@ -132,19 +120,6 @@ function Cosmos({
                     />
                 </sprite>
             ))}
-            {/* Event horizon: a dark void the arms wind into, drawn over the field
-                (renderOrder 4). coreRef gets the gentle accretion pulse. */}
-            <group rotation-x={-Math.PI / 2}>
-                <mesh ref={coreRef} renderOrder={4}>
-                    <planeGeometry args={[15, 15]} />
-                    <meshBasicMaterial
-                        map={hole}
-                        transparent
-                        opacity={1}
-                        depthWrite={false}
-                    />
-                </mesh>
-            </group>
         </>
     );
 }
@@ -162,22 +137,25 @@ function Scene(props: GalaxySceneProps) {
         onBackgroundClick,
     } = props;
 
-    const { field, starGeo, quad, baselineGeo } = useTrackGalaxyField(
+    const { field, starGeo, quad } = useTrackGalaxyField(
         tracks,
         DISC_RADIUS,
     );
 
-    // Layer 0 geometry — screen-sampled deep starfield (see backgroundStars.ts;
-    // generator was verified in Node: every star on-screen, behind the disc,
-    // inside the crisp DOF band).
+    // Layer 0 geometry — screen-sampled deep starfield. NOT yet eyeball-
+    // verified as dense enough at these sizes; that check happens on the
+    // deployed build, not in Node.
     const bgGeo = useMemo(() => buildBackgroundStars(), []);
 
-    // Layer 0 material — its own uniforms: the deep stars sit at depth 117-165
-    // (vs the disc's ~60-120), so uFocal 180 / uDofRange 140 keeps the whole
-    // placement band inside the crisp DOF V, and uSizeScale 230 was measured
-    // to render the 0.5-1.65 world-unit stars as ~2-5px pinpoints. The previous
-    // pass's 310/260 turned every far star into a bokeh blob —
-    // rejected that; do not "improve" these numbers back without re-measuring.
+    // Layer 0 material — its own uniforms. The deep stars sit at depth
+    // 100-260 (vs the track cloud's ~60-120), so uFocal 180 / uDofRange
+    // 140 keeps the whole placement band inside the crisp DOF V — stars
+    // stay pinpoints, never bokeh discs (that's why uSizeScale stays 230;
+    // 310 turned every far star into a blob; do
+    // not "improve" these numbers back without re-measuring). The field
+    // NEVER animates: uTime is never advanced (background
+    // stars that DON'T move); per-star aPhase still gives varied static
+    // brightness, just not a twinkle cycle.
     const bgMat = useMemo(
         () =>
             new THREE.ShaderMaterial({
@@ -206,9 +184,6 @@ function Scene(props: GalaxySceneProps) {
             }),
         [],
     );
-    useFrame(({ clock }) => {
-        bgMat.uniforms.uTime.value = clock.elapsedTime;
-    });
     useEffect(
         () => () => {
             bgGeo.dispose();
@@ -231,7 +206,6 @@ function Scene(props: GalaxySceneProps) {
     const focusTarget = useRef(0); // selection focus target
 
     const glow = useMemo(() => glowTexture(), []);
-    const hole = useMemo(() => holeTexture(), []);
 
     const uniforms = useMemo(
         () => ({
@@ -272,8 +246,7 @@ function Scene(props: GalaxySceneProps) {
     // Free imperatively-created GPU resources on unmount.
     useEffect(() => () => {
         glow.dispose();
-        hole.dispose();
-    }, [glow, hole]);
+    }, [glow]);
     useEffect(() => () => {
         mat.dispose();
     }, [mat]);
@@ -436,15 +409,11 @@ function Scene(props: GalaxySceneProps) {
 
     return (
         <>
-            {/* Layer 1 — the ambient guitar-pick cosmos (terrain + hole + wisps) */}
+            {/* The sky behind the data: static deep stars + two faint wisps */}
             <Cosmos
-                baselineGeo={baselineGeo}
-                mat={mat}
                 bgGeo={bgGeo}
                 bgMat={bgMat}
                 glow={glow}
-                hole={hole}
-                coreRef={coreRef}
             />
 
             {/* decorative region wayfinding labels (overview only) */}
@@ -581,33 +550,22 @@ function Scene(props: GalaxySceneProps) {
     );
 }
 
-// ── field builder: Layer 1 (ambient) + Layer 2 (real tracks) + quadtree ──────
+// ── field builder: ONLY the real tracks (data), no decorative layer ──────────
 //
-// Same pattern as the rig's useGalaxyField, but Layer 2 is every track
-// (not just "you + matches"). The track's real UMAP (x,y) is placed on the
-// disc; y (mood PCA) is the vertical.
+// Every point is a real track at its real UMAP position. There is no
+// decorative terrain underneath — the reference's synthetic field existed
+// because the social map has ~30 people to show; here every track IS a
+// data point, so the sky behind them is the only decoration.
 function useTrackGalaxyField(
     tracks: MapTrack[],
     radius: number,
 ) {
     const galaxy = useMemo(() => {
-        // ── Layer 1: decorative ambient terrain ────────────────────────────
-        // Reuse the rig's ambientBaseline which reads pos + color from the
-        // layout. It adds the fine-star look (bright few / faint many,
-        // twinkle, sparkle) and the sector attribute.
-        const layout = buildTrackGalaxy(
-            { count: tracks.length, radius: DISC_RADIUS },
-            tracks,
-        );
-        const baselineGeo = buildBaselineGeometry({
-            count: layout.count,
-            pos: layout.pos,
-            color: layout.color,
-        });
+        // ── the field: real UMAP (x, y) → world (x, z); mood PCA → y ──────
+        const layout = buildTrackGalaxy({ radius: DISC_RADIUS }, tracks);
 
-        // ── Layer 2: every track is a real pickable star ────────────────────
         const count = tracks.length;
-        const pos = layout.pos; // shared xyz
+        const pos = layout.pos; // real xyz
         const xs = new Float32Array(count);
         const zs = new Float32Array(count);
         for (let i = 0; i < count; i++) {
@@ -615,22 +573,27 @@ function useTrackGalaxyField(
             zs[i] = pos[i * 3 + 2];
         }
 
-        // Star attributes the shader expects.
+        // Star attributes the shader expects — the reference's values for
+        // REAL nodes: steady (twAmp 0.08), deterministic per-index phase,
+        // no sparkle on data points.
         const colors = new Float32Array(count * 3);
         const sizes = new Float32Array(count);
         const phase = new Float32Array(count);
         const twAmp = new Float32Array(count);
         const spark = new Float32Array(count);
-        // Tracks are never decorative-sector members -> -1 exempts them from
-        // the explore-a-vibe glow (matches rig's real-person sector = -1).
+        // Tracks are not in any decorative sector -> -1 (the sector glow
+        // is a reference feature for the synthetic field; with no synthetic
+        // field it stays inert).
         const sector = new Float32Array(count).fill(-1);
         // Each track's own index for the selection-focus uniform.
         const index = new Float32Array(count);
-        for (let i = 0; i < count; i++) index[i] = i;
-
-        // Base colour: the layout's OKLab mood colour (slightly lifted so
-        // real tracks read bright against the ambient field).
         for (let i = 0; i < count; i++) {
+            index[i] = i;
+            sizes[i] = 2.0;
+            phase[i] = ((i * 2654435761) % 6283) / 1000;
+            twAmp[i] = 0.08;
+            spark[i] = 0;
+            // Real OKLab mood colour from the layout (not lifted — data).
             colors[i * 3] = layout.color[i * 3];
             colors[i * 3 + 1] = layout.color[i * 3 + 1];
             colors[i * 3 + 2] = layout.color[i * 3 + 2];
@@ -673,17 +636,15 @@ function useTrackGalaxyField(
             },
             starGeo,
             quad,
-            baselineGeo,
         };
     }, [tracks, radius]);
 
-    // r3f only auto-disposes JSX-declared objects; both geometries are built
-    // imperatively — free them on unmount / field rebuild.
+    // r3f only auto-disposes JSX-declared objects; the star geometry is
+    // built imperatively — free it on unmount / field rebuild.
     useEffect(() => {
-        const { starGeo, baselineGeo } = galaxy;
+        const { starGeo } = galaxy;
         return () => {
             starGeo.dispose();
-            baselineGeo.dispose();
         };
     }, [galaxy]);
 

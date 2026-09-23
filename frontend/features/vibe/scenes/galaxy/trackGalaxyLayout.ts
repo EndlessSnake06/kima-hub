@@ -1,26 +1,25 @@
-/**
- * trackGalaxyLayout — the DECORATIVE-FREE galaxy terrain built from REAL data.
- *
- * A faithful port of the approved rig's `vibeGalaxyLayout` (kima-hub-unified
- * frontend/features/social/galaxy/vibeGalaxyLayout.ts) with the Layer 1 data
- * source swapped:
- *   - RIG: synthetic spiral vectors (synthVectors) → a "guitar-pick" disc.
- *   - US:  real UMAP x,y (normalized 0→1 from /api/vibe/map) for the disc plane
- *           + a deterministic vertical from the 7-d mood covariance PCA.
- *
- * Layout (matches the rig's axis convention: x/z = disc plane, y = vertical):
- *   - x = UMAP x  → disc plane (centered, scaled to disc radius)
- *   - z = UMAP y  → disc plane (centered, scaled to disc radius)
- *   - y = third PCA component of the 7-d mood covariance, scaled to
- *     ±(discRadius * 0.06) for the real mood vector.
- *
- * Colour = the rig's vibeColor() OKLab mood-anchor blend (vibeGalaxyLayout.ts
- * ANCHOR palette), fed by each track's REAL `moods` record, chroma capped at
- * 0.17 (matter-not-neon).
- *
- * PCA is computed ONCE per dataset with a deterministic seed → stable z.
- * We do NOT re-run UMAP; the UMAP x,y come from the API.
- */
+// trackGalaxyLayout — the user's OWN music, in THEIR OWN vector space.
+//
+// reference]. Use it as a reference. The users' embedded music, IN their
+// vector space just like the old map was, just cleaner."
+//
+// Therefore — and this is the difference from every previous attempt:
+//   - The field IS the data. No synthetic spiral, no guitar-pick layout, no
+//     decorative terrain underneath. Nothing here invents points; every
+//     position is a real track's real UMAP (x, y).
+//   - Placement is a DIRECT affine map of UMAP space: x → world x, y →
+//     world z, scaled to span the disc the camera frames. The previous code
+//     re-mapped positions through polar coordinates (theta + sqrt radius),
+//     which bent the true layout into the reference's shape — that was the
+//     "you ported it" tell. Nothing is rearranged now: neighbours in UMAP
+//     stay neighbours, whatever shape that makes.
+//   - Vertical (y) comes from the third principal component of the 7-d mood
+//     vectors — a real height, ±(disc radius × 0.06).
+//   - Colour = the reference's OKLab mood-anchor blend fed by each track's
+//     REAL `moods` record (chroma capped at 0.17 — matter, not neon).
+//
+// Deterministic per dataset. We do NOT re-run UMAP; the UMAP x,y come from
+// /api/vibe/map.
 
 // ── Mood keys — EXACT match to the backend's 7-key moods record and the rig. ──
 const MOOD_KEYS = [
@@ -31,7 +30,7 @@ type MoodKey = (typeof MOOD_KEYS)[number];
 const D = MOOD_KEYS.length; // 7
 
 // ── KIMA identity palette (OKLCH, matter-not-neon) — one anchor per mood dim. ──
-// Exact copy from vibeGalaxyLayout.ts (the rig's approved palette).
+// Exact copy from the reference's vibeGalaxyLayout.ts.
 const ANCHOR: Record<MoodKey, { L: number; C: number; H: number }> = {
     moodHappy:      { L: 0.72, C: 0.09,  H: 62  },
     moodSad:        { L: 0.52, C: 0.10,  H: 300 },
@@ -47,7 +46,7 @@ const ANCHOR_LAB = MOOD_KEYS.map((k) => {
     return { L: v.L, a: v.C * Math.cos(h), b: v.C * Math.sin(h) };
 });
 
-// ── Linear algebra helpers (ported from vibeGalaxyLayout.ts, unchanged). ──────
+// ── Linear algebra helpers (ported from the reference, unchanged). ────────────
 function normalize(v: number[]): number[] {
     let n = 0;
     for (const x of v) n += x * x;
@@ -79,7 +78,7 @@ function topEigenvectors(cov: number[][], k: number): number[][] {
     return out;
 }
 
-// ── OKLab → sRGB (exact copy from vibeGalaxyLayout.ts). ───────────────────────
+// ── OKLab → sRGB (exact copy from the reference). ─────────────────────────────
 function oklabToRgb(L: number, a: number, b: number): [number, number, number] {
     const l_ = L + 0.3963377774 * a + 0.2158037573 * b;
     const m_ = L - 0.1055613458 * a - 0.0638541728 * b;
@@ -98,10 +97,8 @@ function oklabToRgb(L: number, a: number, b: number): [number, number, number] {
 
 /**
  * vibeColor — deterministic OKLab blend of a 7-d mood vector.
- *
- * The rig's identity colour (vibeGalaxyLayout.ts): cubic-weight the mood
- * anchors, normalise by total weight, cap chroma at 0.17 (matter-not-neon).
- * `lift` scales L to brighten/dim (kept for possible future use; default 1).
+ * Cubic-weight the mood anchors, normalise by total weight, cap chroma at
+ * 0.17 (matter-not-neon). `lift` scales L to brighten/dim.
  */
 export function vibeColor(vec: number[], lift = 1): [number, number, number] {
     let L = 0, a = 0, b = 0, wt = 0;
@@ -128,35 +125,36 @@ export function vibeColor(vec: number[], lift = 1): [number, number, number] {
 // ── Public interface ──────────────────────────────────────────────────────────
 export interface TrackGalaxy {
     count: number;
-    pos: Float32Array;   // xyz per point — x/z = UMAP disc, y = mood PCA vertical
-    color: Float32Array; // rgb per point (OKLab identity hue, pre-brightness)
+    pos: Float32Array;   // xyz per point — x/z = real UMAP, y = mood PCA height
+    color: Float32Array; // rgb per point (OKLab mood colour, pre-brightness)
 }
 
 export interface TrackGalaxyOpts {
-    count: number;
-    seed?: number;       // deterministic PCA seed (not used by real data, kept for signature parity)
-    radius?: number;     // disc radius in world units (default 60, matches rig)
-    thickness?: number;  // deprecated — spec uses radius*0.06
+    count?: number;      // unused; kept for call-site parity
+    radius?: number;     // scene radius in world units (default 60)
+    thickness?: number;  // unused; vertical is ±(radius * 0.06) from PCA
 }
 
 /**
- * Build the galaxy from REAL track data.
- *
- * `tracks` must be the /api/vibe/map tracks (MapTrack): each has `x`, `y`
- * (UMAP normalized 0→1) and `moods` (7 keys). The layout is deterministic
- * per dataset (only the data changes between fetches).
+ * Build the field from REAL track data. `tracks` is the /api/vibe/map set:
+ * each has `x`, `y` (UMAP coords) and `moods` (7 keys). Positions are a
+ * direct affine map of UMAP space — no polar re-arrangement, no layout
+ * imposed from the reference.
  */
-export function buildTrackGalaxy(opts: TrackGalaxyOpts, tracks: Array<{ x: number; y: number; moods: Record<string, number> }>): TrackGalaxy {
-    const N = opts.count;
+export function buildTrackGalaxy(
+    opts: TrackGalaxyOpts,
+    tracks: Array<{ x: number; y: number; moods: Record<string, number> }>,
+): TrackGalaxy {
+    const N = tracks.length;
     if (N === 0) {
         return { count: 0, pos: new Float32Array(0), color: new Float32Array(0) };
     }
 
     const R = opts.radius ?? 60;
-    // Card spec: vertical semi-thickness = ±(discRadius * 0.06).
+    // Card spec: vertical semi-thickness = ±(scene radius × 0.06).
     const VERT_SEMI = R * 0.06;
 
-    // 1. Build the 7-d mood vectors from real data.
+    // 1. Real 7-d mood vectors.
     const moods: number[][] = new Array(N);
     for (let i = 0; i < N; i++) {
         const m = tracks[i].moods;
@@ -168,7 +166,7 @@ export function buildTrackGalaxy(opts: TrackGalaxyOpts, tracks: Array<{ x: numbe
         moods[i] = vec;
     }
 
-    // 2. Compute the 7-d mood covariance (deterministic — no RNG needed).
+    // 2. 7-d mood covariance (deterministic — no RNG).
     const mean = new Array(D).fill(0);
     for (const v of moods) for (let i = 0; i < D; i++) mean[i] += v[i] / N;
     const cov: number[][] = Array.from({ length: D }, () => new Array(D).fill(0));
@@ -176,26 +174,24 @@ export function buildTrackGalaxy(opts: TrackGalaxyOpts, tracks: Array<{ x: numbe
         const di = v[i] - mean[i];
         for (let j = 0; j < D; j++) cov[i][j] += (di * (v[j] - mean[j])) / N;
     }
-    const basis = topEigenvectors(cov, 3); // 3 eigenvectors of the 7×7 matrix
+    const basis = topEigenvectors(cov, 3);
 
-    // 3. Project each track onto the 3 eigenvectors.
-    const c1: number[] = new Array(N);
-    const c2: number[] = new Array(N);
+    // 3. Project each track onto the third eigenvector (height only — the
+    //    first two axes ARE the UMAP plane; we never touch them).
     const c3: number[] = new Array(N);
     for (let i = 0; i < N; i++) {
         const d = moods[i].map((x, j) => x - mean[j]);
-        c1[i] = basis[0].reduce((s, e, j) => s + e * d[j], 0);
-        c2[i] = basis[1].reduce((s, e, j) => s + e * d[j], 0);
         c3[i] = basis[2].reduce((s, e, j) => s + e * d[j], 0);
     }
 
-    // 4. Scale the third component to ±VERT_SEMI (95th-percentile, like the rig's yScale).
+    // 4. Scale height to ±VERT_SEMI by 95th percentile (like the rig's yScale).
     const c3abs = c3.map(Math.abs).sort((a, b) => a - b);
     const c3max = c3abs[Math.floor(0.95 * (N - 1))] || 1;
     const zScale = VERT_SEMI / c3max;
 
-    // 5. Map UMAP (x, y) → disc plane (x, z). UMAP is normalized 0→1;
-    //    center around 0.5 and scale to disc radius.
+    // 5. DIRECT affine placement: center UMAP bounds on 0, scale so the
+    //    full extent spans 2R in each axis. Neighbour relationships are
+    //    preserved exactly — this is their space, not the reference's shape.
     let umapMinX = Infinity, umapMaxX = -Infinity, umapMinY = Infinity, umapMaxY = -Infinity;
     for (const t of tracks) {
         if (t.x < umapMinX) umapMinX = t.x;
@@ -207,33 +203,20 @@ export function buildTrackGalaxy(opts: TrackGalaxyOpts, tracks: Array<{ x: numbe
     const umapCenterY = (umapMinY + umapMaxY) / 2;
     const umapHalfX = (umapMaxX - umapMinX) / 2 || 0.5;
     const umapHalfY = (umapMaxY - umapMinY) / 2 || 0.5;
+    const span = R * 0.9; // UMAP cloud spans ±(0.9 R) per axis, so the
+    //      whole field fits the same overview frame the reference camera
+    //      was tuned for (dist ~113 from centre).
 
     // 6. Build position + color arrays.
     const pos = new Float32Array(N * 3);
     const color = new Float32Array(N * 3);
     for (let i = 0; i < N; i++) {
         const t = tracks[i];
-        const vec = moods[i];
+        pos[i * 3]     = ((t.x - umapCenterX) / umapHalfX) * span; // real UMAP x
+        pos[i * 3 + 1] = c3[i] * zScale;                            // mood PCA height
+        pos[i * 3 + 2] = ((t.y - umapCenterY) / umapHalfY) * span; // real UMAP y
 
-        // UMAP → disc (x, z). Polar mapping keeps the centre readable and
-        // wraps the range smoothly (matches the rig's polar disc layout).
-        const nx = (t.x - umapCenterX) / umapHalfX; // [-1, 1] (roughly)
-        const ny = (t.y - umapCenterY) / umapHalfY;
-        const r = Math.min(1, Math.hypot(nx, ny));
-        const theta = Math.atan2(ny, nx);
-        const discR = r * R;
-        const fx = Math.cos(theta) * discR;
-        const fz = Math.sin(theta) * discR;
-
-        // PCA third component → vertical (y), scaled to ±VERT_SEMI.
-        const fy = c3[i] * zScale;
-
-        pos[i * 3]     = fx;
-        pos[i * 3 + 1] = fy;
-        pos[i * 3 + 2] = fz;
-
-        // OKLab mood colour (chroma-capped).
-        const col = vibeColor(vec);
+        const col = vibeColor(moods[i]);
         color[i * 3]     = col[0];
         color[i * 3 + 1] = col[1];
         color[i * 3 + 2] = col[2];
