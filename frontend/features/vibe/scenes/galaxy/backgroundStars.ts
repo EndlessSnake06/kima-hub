@@ -14,14 +14,20 @@
 //     20-degree cone: "verified 858/900" was an OLDER version; re-checked
 //     the shipped file in Node — only 370 in cone. That is why the sky
 //     looked empty.)
-//   - Brightness has REAL dynamic range: ~10% notable stars at 0.8-1.0,
-//     the rest a long tail down to ~0.22 — a few bright anchors over a
-//     faint many, which is what a real sky looks like. Previous versions
-//     capped everything at 0.55 and read as flat static.
+//   - Brightness has a STRICT ceiling below the data (see hierarchy note
+//     below): ~10% anchor stars top out at 0.65, the rest sit 0.15-0.40 —
+//     a few brighter points over many faint ones, like a real sky, but
+//     always below whatever the tracks render at.
+//   - STRICT brightness/size hierarchy: every background star is dimmer and
+//     smaller than any track point (max 0.5 brightness / 1.4 size vs the
+//     tracks' full-colour size-2.0 points). The first generator gave
+//     background stars up to 1.0/3.0 — with 2200 of them against ~363
+//     tracks, the data drowned in its own decoration (seen in 4x zoom of
+//     the deployed build: "data indistinguishable from background stars").
 //   - All depths 100-260 stay inside the crisp DOF band (uFocal 180 /
 //     uDofRange 140 → crisp to 320), so nothing blooms into bokeh.
-//   - Sizes 1-3 world units → ps = aSize*uSizeScale(230)*dpr/depth ≈
-//     2-4.5px. Pinpoints with visible variance, never discs.
+//   - Sizes 0.5-1.4 world units → ps ≈ 1.5-3px with uSizeScale 230 —
+//     pinpoints, strictly smaller than the size-2.0 track points.
 import * as THREE from "three";
 
 function makeRng(seed: number) {
@@ -127,14 +133,18 @@ export function buildBackgroundStars(): THREE.BufferGeometry {
 
         const [tr, tg, tb] = pickTint(rnd);
         const notable = rnd() < 0.1; // ~10% bright anchors, the rest faint
-        const b = notable ? 0.8 + rnd() * 0.2 : 0.22 + rnd() * 0.3;
+        // STRICT ceiling: no background star may be brighter than any track
+        // (tracks render near L 0.5-0.7 with real colour). Decorative stars
+        // top out at 0.5 and mostly sit far below it, so the DATA always
+        // reads brighter than the SKY.
+        const b = notable ? 0.35 + rnd() * 0.15 : 0.12 + rnd() * 0.2;
         colors[i * 3] = tr * b;
         colors[i * 3 + 1] = tg * b;
         colors[i * 3 + 2] = tb * b;
 
-        // Size loosely coupled to brightness (brighter → bigger) with
-        // independent jitter so a faint star can still be a big soft one.
-        sizes[i] = notable ? 1.8 + rnd() * 1.2 : 0.7 + rnd() * 1.3;
+        // Size ceiling below the track points (2.0): decoration never
+        // out-sizes data.
+        sizes[i] = notable ? 1.0 + rnd() * 0.4 : 0.5 + rnd() * 0.5;
 
         // VARIED twinkle: wide spread of speed and depth — some stars
         // barely breathe, a few flicker; ~3% carry a sharp sparkle.
