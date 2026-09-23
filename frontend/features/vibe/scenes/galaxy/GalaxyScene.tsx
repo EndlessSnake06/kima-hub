@@ -110,17 +110,23 @@ function Cosmos({
             {/* Layer 0 — deep background starfield behind the disc (depth cue) */}
             <points geometry={bgGeo} material={bgMat} />
             <points geometry={baselineGeo} material={mat} />
-            {/* Two faint far nebula wisps — a whisper of violet depth at the edges. */}
+            {/* Two faint nebula wisps — a whisper of violet depth. Placed
+                INSIDE the overview camera's view cone this time: the rig's
+                original positions (-165,26,-150)/(160,-44,120) sit 35-50°
+                off-axis from cam [0,96,62] fov 40 — invisible. These were
+                computed on rays through the frustum (up-left / low-right),
+                behind the plane, so they actually show and give the sky a
+                faint diagonal gradient like the c7-03 reference. */}
             {[
-                { p: [-165, 26, -150] as const, s: 150, c: "#5f2f8e" },
-                { p: [160, -44, 120] as const, s: 150, c: "#7d2f66" },
+                { p: [-88.5, -71, -86] as const, s: 150, c: "#5f2f8e" },
+                { p: [73.4, -89.4, -30.9] as const, s: 150, c: "#7d2f66" },
             ].map((n, i) => (
                 <sprite key={i} position={n.p} scale={n.s}>
                     <spriteMaterial
                         map={glow}
                         color={n.c}
                         transparent
-                        opacity={0.04}
+                        opacity={0.055}
                         blending={THREE.AdditiveBlending}
                         depthWrite={false}
                     />
