@@ -301,17 +301,11 @@ export default function VibePage() {
 
     return (
         <div className="w-full h-full relative overflow-hidden animate-rise">
-            {/* DOM marker for e2e: the r3f <points data-testid> lives inside the
-                canvas, invisible to DOM queries — this wrapper is the findable
-                "field is mounted" node. */}
             <GalaxyErrorBoundary>
-                <div data-testid="galaxy-track-field" data-playing-id={currentTrack?.id ?? undefined} className="absolute inset-0">
                 <GalacticMap
                     tracks={mapData.tracks}
                     highlightedIds={highlightedIds}
                     selectedTrackId={selectedTrackId}
-                    playingTrackId={currentTrack?.id ?? null}
-                    pathResult={pathResult}
                     queueTrackIds={queueTrackIds}
                     activeOperation={activeOperation}
                     showLabels={showLabels}
@@ -320,7 +314,6 @@ export default function VibePage() {
                     onTrackContextMenu={handleTrackContextMenu}
                     onBackgroundClick={handleBackgroundClick}
                 />
-                </div>
             </GalaxyErrorBoundary>
 
             {/* Song-path source is picked by clicking a star on the field. */}

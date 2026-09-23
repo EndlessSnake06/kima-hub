@@ -27,11 +27,6 @@ interface StarUniforms {
     uFocusIdx: { value: number };
     uYouIdx: { value: number };
     uFocusStrength: { value: number };
-    // LIVE-STATE overlays: playing index (-1 = none, drives the enlarged white
-    // star), and 1 when a search/blend has armed the per-star minidim. Directly
-    // assignable here, exactly like the other uniforms below.
-    uPlayingIdx: { value: number };
-    uHighlightDim: { value: number };
 }
 
 export interface GalaxyFrameArgs {
@@ -51,26 +46,6 @@ export interface GalaxyFrameArgs {
     near: boolean;
     setNear: Dispatch<SetStateAction<boolean>>;
     setClusterLabels: Dispatch<SetStateAction<number[]>>;
-}
-
-const CAMERA_KEY = "kima_vibemap_camera";
-
-/** Restored camera state, or null when nothing was saved. */
-export function restoreSavedCamera():
-    | { position: [number, number, number]; target: [number, number, number] }
-    | null {
-    try {
-        const raw = sessionStorage.getItem(CAMERA_KEY);
-        if (!raw) return null;
-        const v = JSON.parse(raw) as {
-            position: [number, number, number];
-            target: [number, number, number];
-        };
-        if (!Array.isArray(v.position) || !Array.isArray(v.target)) return null;
-        return v;
-    } catch {
-        return null;
-    }
 }
 
 export function useGalaxyFrame(args: GalaxyFrameArgs) {
@@ -127,22 +102,6 @@ export function useGalaxyFrame(args: GalaxyFrameArgs) {
         if (z !== near) setNear(z);
 
         // zone-reactive LOD: whoever sits near the current focus gets labelled.
-        // Persist the camera so a revisit restores the last view instead of
-        // replaying the intro fly-in. Throttled to every 90 frames — a session-
-        // storage write is cheap but not free, and the view only changes when
-        // the user drags.
-        if (c && frame.current % 90 === 0) {
-            try {
-                sessionStorage.setItem(
-                    CAMERA_KEY,
-                    JSON.stringify({
-                        position: camera.position.toArray(),
-                        target: c.target.toArray(),
-                    }),
-                );
-            } catch { /* private mode / quota — persistence is best-effort */ }
-        }
-
         // Throttled; radius tightens as you approach.
         frame.current++;
         if (c && z && frame.current % 12 === 0) {

@@ -30,11 +30,6 @@ export function buildBaselineGeometry(galaxy: VibeGalaxy): THREE.BufferGeometry 
     const phase = new Float32Array(count);
     const twAmp = new Float32Array(count);
     const spark = new Float32Array(count);
-    // -1 everywhere: an ambient star is nobody, so it is exempt from the
-    // live-state minidim (vMatch=0, isReal=0 in STAR_VERT) and the selection
-    // thread. The attribute must be PRESENT, not merely absent -- a missing
-    // attribute reads as 0 in the shader, and 0 is a real track's index.
-    const highlight = new Float32Array(count).fill(-1);
     // Each field star's wayfinding sector (0-3), by its angle on the disc -> drives the
     // explore-a-vibe glow. Purely decorative partition of the deterministic field.
     const sector = new Float32Array(count);
@@ -67,6 +62,5 @@ export function buildBaselineGeometry(galaxy: VibeGalaxy): THREE.BufferGeometry 
     // attribute has to be PRESENT rather than merely absent -- a missing attribute
     // reads as 0 in the shader, and 0 is a real person's index.
     g.setAttribute("aIndex", new THREE.BufferAttribute(new Float32Array(count).fill(-1), 1));
-    g.setAttribute("aHighlight", new THREE.BufferAttribute(highlight, 1));
     return g;
 }

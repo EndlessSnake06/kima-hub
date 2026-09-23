@@ -23,40 +23,6 @@
  */
 "use client";
 
-import { useFrame } from "@react-three/fiber";
-
-// Background-layer material: module-level singleton, its uTime advanced per-frame
-// from the scene. Own uniforms because its stars sit at depth 102-162 (vs the
-// disc's ~60-120); uSizeScale is tuned so they stay ABOVE the 2.2px shader
-// floor but SMALL (ps = aSize·150·dpr/depth ≈ 1.7–3.7px → pinpoints), and
-// uDofRange 70 keeps every layer-0 star inside the crisp DOF band — the
-// previous pass's uSizeScale 310 / uDofRange 260 made every far star a
-// blurred bokeh blob.
-const bgDpr =
-    typeof window !== "undefined" ? Math.min(window.devicePixelRatio, 1.5) : 1;
-const BG_MAT = new THREE.ShaderMaterial({
-    uniforms: {
-        uSizeScale: { value: 230 },
-        uPixelRatio: { value: bgDpr },
-        uOpacity: { value: 0.9 },
-        uTime: { value: 0 },
-        // DOF V-shape centered mid-depth so the whole 110-300 placement
-        // range renders near-crisp; the disc keeps its own 98/70 band.
-        uFocal: { value: 180 },
-        uDofRange: { value: 140 },
-        uHiSector: { value: -1 },
-        uHiStrength: { value: 0 },
-        uFocusIdx: { value: -1 },
-        uYouIdx: { value: -1 },
-        uFocusStrength: { value: 0 },
-        uPlayingIdx: { value: -1 },
-        uHighlightDim: { value: 0 },
-    },
-    vertexShader: STAR_VERT,
-    fragmentShader: STAR_FRAG,
-    transparent: true,
-    depthWrite: false,
-});
 import {
     useCallback,
     useEffect,
@@ -66,7 +32,7 @@ import {
     type ComponentRef,
     type RefObject,
 } from "react";
-import { Canvas, useThree } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import { EffectComposer, Bloom, Noise, Vignette } from "@react-three/postprocessing";
 import { BlendFunction } from "postprocessing";
@@ -75,23 +41,13 @@ import * as THREE from "three";
 
 import { STAR_VERT, STAR_FRAG, glowTexture, holeTexture } from "./shaders";
 import { buildTrackGalaxy } from "./trackGalaxyLayout";
+import { buildBackgroundStars } from "./backgroundStars";
 import { QuadTree } from "./quadtree";
 import { useGalaxyFrame, type OrbitControlsLike } from "./useGalaxyFrame";
 import { useGalaxyInteraction } from "./useGalaxyInteraction";
 import { GalaxyLabel, Reticle, RegionLabels } from "./labels";
 import { resolveLabels, MAX_LABELS } from "./labelPlacement";
 import { buildBaselineGeometry } from "./ambientBaseline";
-import { buildBackgroundStars } from "./backgroundStars";
-import { restoreSavedCamera } from "./useGalaxyFrame";
-import {
-    buildQueueSegments,
-    buildPathSegments,
-    buildLineMaterial,
-    sourceRingFromOp,
-    SOURCE_RING_RADIUS,
-} from "./overlayGeometry";
-import type { PathResult } from "../../types";
-import type { VibeOperation } from "@/lib/audio-state-context";
 import { GALAXY_ZONES, zoneWorldPos } from "./zones";
 import type { MapTrack } from "../../types";
 
@@ -119,8 +75,7 @@ export interface GalaxySceneProps {
     playingTrackId?: string | null;
     selectedTrackId: string | null;
     queueTrackIds?: string[];
-    activeOperation?: VibeOperation | null;
-    pathResult?: PathResult | null;
+    activeOperation?: { type: string } | null;
     showLabels?: boolean;
     onTrackClick: (trackId: string) => void;
     onTrackDoubleClick?: (trackId: string) => void;
@@ -132,61 +87,40 @@ function pos3(pos: Float32Array, i: number): [number, number, number] {
     return [pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]];
 }
 
-function makeRng(seed: number) {
-    let a = seed >>> 0;
-    return () => {
-        a = (a + 0x6d2b79f5) | 0;
-        let t = Math.imul(a ^ (a >>> 15), 1 | a);
-        t = (t ^ (t >>> 14)) >>> 0;
-        return t / 4294967296;
-    };
-}
-
-/** The aColor attribute of the real-star geometry, for the path gradient. */
-function colorsOf(geo: THREE.BufferGeometry): Float32Array {
-    return geo.getAttribute("aColor").array as Float32Array;
-}
-
 // ── Layer 1: the ambient "guitar-pick" terrain (decorative) ──────────────────
 function Cosmos({
-    backgroundGeo,
     baselineGeo,
     mat,
+    bgGeo,
+    bgMat,
     glow,
     hole,
     coreRef,
 }: {
-    backgroundGeo: THREE.BufferGeometry;
     baselineGeo: THREE.BufferGeometry;
     mat: THREE.ShaderMaterial;
+    bgGeo: THREE.BufferGeometry;
+    bgMat: THREE.ShaderMaterial;
     glow: THREE.Texture;
     hole: THREE.Texture;
     coreRef: RefObject<THREE.Mesh | null>;
 }) {
     return (
         <>
-            {/* Layer 0 — deep background stars: far shell around + beyond the disc */}
-            <points geometry={backgroundGeo} material={BG_MAT} />
+            {/* Layer 0 — deep background starfield behind the disc (depth cue) */}
+            <points geometry={bgGeo} material={bgMat} />
             <points geometry={baselineGeo} material={mat} />
-            {/* Deep-space backdrop — the aim is "a FEW very LIGHT
-                purple gradients", so this is exactly the unified rig's approved
-                pair of whisper wisps (opacity 0.04, scale 150, colors from
-                KIMA-SOCIAL-DESIGN-LANGUAGE.md), repositioned into the visible
-                under-sky beyond the far rim (the overview camera looks down
-                ~57°; anything above/behind the plane is out of frame). The
-                rejected pass ran five sprites at opacity 0.20–0.30 / scale
-                260–340 — that flooded the frame violet. Anything brighter
-                than ~0.05 is not "light". */}
+            {/* Two faint far nebula wisps — a whisper of violet depth at the edges. */}
             {[
-                { p: [-40, -140, -190] as const, s: 150, c: "#5f2f8e", o: 0.045 },
-                { p: [80, -160, -160] as const, s: 150, c: "#7d2f66", o: 0.04 },
+                { p: [-165, 26, -150] as const, s: 150, c: "#5f2f8e" },
+                { p: [160, -44, 120] as const, s: 150, c: "#7d2f66" },
             ].map((n, i) => (
-                <sprite key={i} position={n.p} scale={n.s} renderOrder={-1}>
+                <sprite key={i} position={n.p} scale={n.s}>
                     <spriteMaterial
                         map={glow}
                         color={n.c}
                         transparent
-                        opacity={n.o}
+                        opacity={0.04}
                         blending={THREE.AdditiveBlending}
                         depthWrite={false}
                     />
@@ -215,10 +149,6 @@ function Scene(props: GalaxySceneProps) {
         tracks,
         playingTrackId,
         selectedTrackId,
-        highlightedIds,
-        queueTrackIds,
-        activeOperation,
-        pathResult,
         showLabels,
         onTrackClick,
         onTrackDoubleClick,
@@ -226,9 +156,59 @@ function Scene(props: GalaxySceneProps) {
         onBackgroundClick,
     } = props;
 
-    const { field, starGeo, quad, baselineGeo, backgroundGeo } = useTrackGalaxyField(
+    const { field, starGeo, quad, baselineGeo } = useTrackGalaxyField(
         tracks,
         DISC_RADIUS,
+    );
+
+    // Layer 0 geometry — screen-sampled deep starfield (see backgroundStars.ts;
+    // generator was verified in Node: every star on-screen, behind the disc,
+    // inside the crisp DOF band).
+    const bgGeo = useMemo(() => buildBackgroundStars(), []);
+
+    // Layer 0 material — its own uniforms: the deep stars sit at depth 117-165
+    // (vs the disc's ~60-120), so uFocal 180 / uDofRange 140 keeps the whole
+    // placement band inside the crisp DOF V, and uSizeScale 230 was measured
+    // to render the 0.5-1.65 world-unit stars as ~2-5px pinpoints. The previous
+    // pass's 310/260 turned every far star into a bokeh blob —
+    // rejected that; do not "improve" these numbers back without re-measuring.
+    const bgMat = useMemo(
+        () =>
+            new THREE.ShaderMaterial({
+                uniforms: {
+                    uSizeScale: { value: 230 },
+                    uPixelRatio: {
+                        value:
+                            typeof window !== "undefined"
+                                ? Math.min(window.devicePixelRatio, 1.5)
+                                : 1,
+                    },
+                    uOpacity: { value: 0.9 },
+                    uTime: { value: 0 },
+                    uFocal: { value: 180 },
+                    uDofRange: { value: 140 },
+                    uHiSector: { value: -1 },
+                    uHiStrength: { value: 0 },
+                    uFocusIdx: { value: -1 },
+                    uYouIdx: { value: -1 },
+                    uFocusStrength: { value: 0 },
+                },
+                vertexShader: STAR_VERT,
+                fragmentShader: STAR_FRAG,
+                transparent: true,
+                depthWrite: false,
+            }),
+        [],
+    );
+    useFrame(({ clock }) => {
+        bgMat.uniforms.uTime.value = clock.elapsedTime;
+    });
+    useEffect(
+        () => () => {
+            bgGeo.dispose();
+            bgMat.dispose();
+        },
+        [bgGeo, bgMat],
     );
 
     useThree();
@@ -243,28 +223,21 @@ function Scene(props: GalaxySceneProps) {
     const flyDist = useRef<number | null>(null);
     const hiTarget = useRef(0); // explore-a-vibe glow target
     const focusTarget = useRef(0); // selection focus target
-    const savedCam = useRef(restoreSavedCamera()); // null = play the intro fly
-
-    useFrame(({ clock }) => {
-        BG_MAT.uniforms.uTime.value = clock.elapsedTime;
-    });
 
     const glow = useMemo(() => glowTexture(), []);
     const hole = useMemo(() => holeTexture(), []);
 
-    // The background layer shares the star shader but with its own size scale:
-    // its stars sit at depth 120-330 (vs the disc's ~60-120), and the shader's
-    // /depth term would otherwise shrink them under the 2.2px clamp floor —
-    // i.e. invisible. ~2.6x compensates the distance; the layer's own per-star
-    // sizes stay small so they still read as FAR.
     const uniforms = useMemo(
         () => ({
             uSizeScale: { value: 118 },
             uPixelRatio: {
-                value: Math.min(
-                    typeof window !== "undefined" ? window.devicePixelRatio : 1,
-                    1.5,
-                ),
+                value:
+                    Math.min(
+                        typeof window !== "undefined"
+                            ? window.devicePixelRatio
+                            : 1,
+                        1.5,
+                    ) ?? 1,
             },
             uOpacity: { value: 0.9 },
             uTime: { value: 0 },
@@ -275,8 +248,6 @@ function Scene(props: GalaxySceneProps) {
             uFocusIdx: { value: -1 },
             uYouIdx: { value: -1 },
             uFocusStrength: { value: 0 },
-            uPlayingIdx: { value: -1 },
-            uHighlightDim: { value: 0 },
         }),
         [],
     );
@@ -300,14 +271,6 @@ function Scene(props: GalaxySceneProps) {
     useEffect(() => () => {
         mat.dispose();
     }, [mat]);
-
-    // The background layer shares the star shader but needs its own uniforms:
-    // its stars sit at depth 120-330 (vs the disc's ~60-120) and the shader's
-    // /depth term would shrink them under the 2.2px clamp floor — invisible.
-    // The ~2.6x size-scale bump compensates the distance; per-star aSize stays
-    // small so they still read as FAR, and the DOF range is widened so the far
-    // bands do not blur out entirely.
-
 
     // Real-star layer geometry is built in useTrackGalaxyField; it already
     // carries every attribute the shader needs.
@@ -397,41 +360,6 @@ function Scene(props: GalaxySceneProps) {
         focusTarget.current = selectedIndex >= 0 ? 1 : 0;
     }, [selectedIndex, uniforms]);
 
-    // ── LIVE-STATE uniforms ─────────────────────────
-    // Playing track: -1 when nothing plays; the shader whitens + enlarges the
-    // star at uPlayingIdx (exact old-map behavior: pure white before any dim).
-    useEffect(() => {
-        uniforms.uPlayingIdx.value =
-            playingTrackId != null ? field.userIds.indexOf(playingTrackId) : -1;
-        // Expose the resolved index for e2e/debug (DOM evidence of scene state).
-        const host = document.querySelector('[data-testid="galaxy-track-field"]');
-        if (host) host.setAttribute("data-playing-idx", String(uniforms.uPlayingIdx.value));
-    }, [playingTrackId, field, uniforms]);
-
-    // Search/blend dimming: 1 while a highlight set is armed, 0 otherwise. The
-    // per-star decision (matched vs dimmed) is the aHighlight attribute below.
-    useEffect(() => {
-        uniforms.uHighlightDim.value = highlightedIds && highlightedIds.size > 0 ? 1 : 0;
-    }, [highlightedIds, uniforms]);
-
-    // Per-star matched flags: rewrite the aHighlight buffer in place (O(matched) —
-    // no rebuild, no per-frame work). Cleared wholesale when the set empties.
-    useEffect(() => {
-        const attr = starGeo.getAttribute("aHighlight") as
-            | THREE.BufferAttribute
-            | undefined;
-        if (!attr) return;
-        const arr = attr.array as Float32Array;
-        arr.fill(0);
-        if (highlightedIds) {
-            for (const id of highlightedIds) {
-                const i = field.userIds.indexOf(id);
-                if (i >= 0 && i < arr.length) arr[i] = 1;
-            }
-        }
-        attr.needsUpdate = true;
-    }, [highlightedIds, starGeo, field]);
-
     // ── fly to a track picked from toolbar search results (rig's focus fly) ──
     // `selectedTrackId` changing = a toolbar pick -> fly camera to that star.
     useEffect(() => {
@@ -443,22 +371,9 @@ function Scene(props: GalaxySceneProps) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedTrackId]);
 
-    // ── camera persistence: restore the saved view once controls are live ────
-    useEffect(() => {
-        const saved = savedCam.current;
-        const c = controls.current;
-        if (!saved || !c) return;
-        c.target.set(...saved.target);
-        camera.position.set(...saved.position);
-        c.update();
-        savedCam.current = null; // only the FIRST mount restores; later clears fly home
-    }, [camera]);
-
     // ── back to the whole-galaxy overview ────────────────────────────────────
     useEffect(() => {
         if (!selectedTrackId) {
-            // A restored camera replaces the intro fly-in on first mount.
-            if (savedCam.current) return;
             // When selection clears, return to overview (only if not mid-fly).
             if (!controls.current) return;
             flyGoal.current.set(0, 0, 0);
@@ -511,59 +426,16 @@ function Scene(props: GalaxySceneProps) {
         }, viewW, viewH, MAX_LABELS);
     }, [labelCandidates]);
 
-    // ── LIVE-STATE overlay lines (queue threads + song path) ────────────────
-    // Both are O(queue+path) useMemos keyed on their driving props — no per-frame
-    // work; the geometries are static between gestures. Disposed on change/unmount.
-    const lineMat = useMemo(() => buildLineMaterial(), []);
-    useEffect(() => () => { lineMat.dispose(); }, [lineMat]);
-
-    const queueGeo = useMemo(
-        () => buildQueueSegments(field.userIds, field.pos, queueTrackIds, playingTrackId),
-        [field, queueTrackIds, playingTrackId],
-    );
-    const pathGeo = useMemo(
-        () => buildPathSegments(field.userIds, field.pos, pathResult ?? null, colorsOf(starGeo)),
-        [field, pathResult, starGeo],
-    );
-    useEffect(() => {
-        return () => {
-            queueGeo?.dispose();
-            pathGeo?.dispose();
-        };
-    }, [queueGeo, pathGeo]);
-
-    // Operation source ring (drift/vibe/similar drag source) — a LineLoop.
-    const ring = useMemo(
-        () => sourceRingFromOp(activeOperation ?? null, field.userIds),
-        [activeOperation, field],
-    );
-    const ringGeo = useMemo(() => {
-        if (!ring) return null;
-        const i = field.userIds.indexOf(ring.id);
-        if (i < 0) return null;
-        const segs = 64;
-        const positions = new Float32Array(segs * 3);
-        for (let k = 0; k < segs; k++) {
-            const a = (k / segs) * Math.PI * 2;
-            positions[k * 3] = field.xs[i] + Math.cos(a) * SOURCE_RING_RADIUS;
-            positions[k * 3 + 1] = 0.5;
-            positions[k * 3 + 2] = field.zs[i] + Math.sin(a) * SOURCE_RING_RADIUS;
-        }
-        const g = new THREE.BufferGeometry();
-        g.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-        return g;
-    }, [ring, field]);
-    useEffect(() => () => { ringGeo?.dispose(); }, [ringGeo]);
-
     // ── playing track pulse (reserved for a future animated ring) ───────────
 
     return (
         <>
             {/* Layer 1 — the ambient guitar-pick cosmos (terrain + hole + wisps) */}
             <Cosmos
-                backgroundGeo={backgroundGeo}
                 baselineGeo={baselineGeo}
                 mat={mat}
+                bgGeo={bgGeo}
+                bgMat={bgMat}
                 glow={glow}
                 hole={hole}
                 coreRef={coreRef}
@@ -601,27 +473,6 @@ function Scene(props: GalaxySceneProps) {
                 }}
                 onPointerMissed={onBackgroundClick}
             />
-
-            {/* queue threads — gold, dim past the playhead (alpha 25) / bright ahead (50) */}
-            {queueGeo && <lineSegments geometry={queueGeo} material={lineMat} renderOrder={PEOPLE_ORDER + 1} />}
-
-            {/* song path — per-stop gradient from the track colours, full alpha */}
-            {pathGeo && <lineSegments geometry={pathGeo} material={lineMat} renderOrder={PEOPLE_ORDER + 1} />}
-
-            {/* operation source ring — the drift/vibe/similar drag origin */}
-            {ringGeo && (
-                <lineLoop
-                    geometry={ringGeo}
-                    renderOrder={PEOPLE_ORDER + 1}
-                >
-                    <lineBasicMaterial
-                        color={ring?.color ?? "#fff"}
-                        transparent
-                        opacity={0.9}
-                        depthWrite={false}
-                    />
-                </lineLoop>
-            )}
 
             {/* invisible pick plane feeding the quadtree (tracks only) */}
             <mesh
@@ -735,9 +586,9 @@ function useTrackGalaxyField(
 ) {
     const galaxy = useMemo(() => {
         // ── Layer 1: decorative ambient terrain ────────────────────────────
-        // The LIBRARY is the map — no synthetic disc. This soft echo of the
-        // tracks' own field just thickens the arms; the depth comes from
-        // Layer 0 (backgroundStars) BEHIND it, not from fake stars on it.
+        // Reuse the rig's ambientBaseline which reads pos + color from the
+        // layout. It adds the fine-star look (bright few / faint many,
+        // twinkle, sparkle) and the sector attribute.
         const layout = buildTrackGalaxy(
             { count: tracks.length, radius: DISC_RADIUS },
             tracks,
@@ -747,9 +598,6 @@ function useTrackGalaxyField(
             pos: layout.pos,
             color: layout.color,
         });
-
-        // ── Layer 0: deep background starfield (depth beyond the disc) ─────
-        const backgroundGeo = buildBackgroundStars();
 
         // ── Layer 2: every track is a real pickable star ────────────────────
         const count = tracks.length;
@@ -761,22 +609,12 @@ function useTrackGalaxyField(
             zs[i] = pos[i * 3 + 2];
         }
 
-        // Star attributes the shader expects. Sizes get a real distribution —
-        // zeros would clamp every point to the shader's 2.2px floor, which is
-        // exactly the uniform-dim-dots look.
-        const rnd = makeRng(0x7ea2);
+        // Star attributes the shader expects.
         const colors = new Float32Array(count * 3);
         const sizes = new Float32Array(count);
         const phase = new Float32Array(count);
         const twAmp = new Float32Array(count);
         const spark = new Float32Array(count);
-        for (let i = 0; i < count; i++) {
-            const notable = rnd() < 0.18;
-            sizes[i] = notable ? 2.0 + rnd() * 1.2 : 1.1 + rnd() * 0.7;
-            phase[i] = rnd() * 6.283;
-            twAmp[i] = 0.1 + rnd() * 0.16;
-            spark[i] = rnd() < 0.03 ? 1 : 0;
-        }
         // Tracks are never decorative-sector members -> -1 exempts them from
         // the explore-a-vibe glow (matches rig's real-person sector = -1).
         const sector = new Float32Array(count).fill(-1);
@@ -784,14 +622,12 @@ function useTrackGalaxyField(
         const index = new Float32Array(count);
         for (let i = 0; i < count; i++) index[i] = i;
 
-        // Base colour: the layout's OKLab mood colour, lifted so real tracks
-        // read as the SUBJECT against the synth ambient field and the deep
-        // background (both of which run dimmer per-star).
+        // Base colour: the layout's OKLab mood colour (slightly lifted so
+        // real tracks read bright against the ambient field).
         for (let i = 0; i < count; i++) {
-            const lift = 1.15;
-            colors[i * 3] = Math.min(1, layout.color[i * 3] * lift);
-            colors[i * 3 + 1] = Math.min(1, layout.color[i * 3 + 1] * lift);
-            colors[i * 3 + 2] = Math.min(1, layout.color[i * 3 + 2] * lift);
+            colors[i * 3] = layout.color[i * 3];
+            colors[i * 3 + 1] = layout.color[i * 3 + 1];
+            colors[i * 3 + 2] = layout.color[i * 3 + 2];
         }
 
         // ── quadtree over the disc plane (x, z) for O(log n) picking ────────
@@ -815,12 +651,6 @@ function useTrackGalaxyField(
         starGeo.setAttribute("aSpark", new THREE.BufferAttribute(spark, 1));
         starGeo.setAttribute("aSector", new THREE.BufferAttribute(sector, 1));
         starGeo.setAttribute("aIndex", new THREE.BufferAttribute(index, 1));
-        // Live-state highlight slot: 0 = real + unmarked, 1 = search/blend match.
-        // Ambient baseline stars carry -1 and are exempt (see ambientBaseline).
-        starGeo.setAttribute(
-            "aHighlight",
-            new THREE.BufferAttribute(new Float32Array(count), 1),
-        );
 
         return {
             field: {
@@ -838,18 +668,16 @@ function useTrackGalaxyField(
             starGeo,
             quad,
             baselineGeo,
-            backgroundGeo,
         };
     }, [tracks, radius]);
 
     // r3f only auto-disposes JSX-declared objects; both geometries are built
     // imperatively — free them on unmount / field rebuild.
     useEffect(() => {
-        const { starGeo, baselineGeo, backgroundGeo } = galaxy;
+        const { starGeo, baselineGeo } = galaxy;
         return () => {
             starGeo.dispose();
             baselineGeo.dispose();
-            backgroundGeo.dispose();
         };
     }, [galaxy]);
 
