@@ -86,4 +86,3 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
 /**
  * Export the query client for use in server components or utilities
  */
-export { getQueryClient };

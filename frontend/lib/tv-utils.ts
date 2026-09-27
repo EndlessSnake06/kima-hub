@@ -6,7 +6,7 @@
 import { useState } from "react";
 
 // Check if running on Android TV
-export function isAndroidTV(): boolean {
+function isAndroidTV(): boolean {
     if (typeof window === "undefined") return false;
     
     // Check for leanback/TV user agent hints

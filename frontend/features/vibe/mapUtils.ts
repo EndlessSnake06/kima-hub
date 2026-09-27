@@ -15,9 +15,7 @@ export const MOOD_KEYS = [
 ] as const;
 
 /** Analysed, but no single mood stands out for the track. */
-export const NO_SINGLE_MOOD = "neutral";
 /** The track's mood analysis has not run yet. */
-export const NOT_ANALYSED = "unanalyzed";
 
 // Warm, muted "matter, not neon" tones so the map reads as a night sky, with
 // each mood still distinct from its neighbours.
@@ -31,7 +29,7 @@ export const MOOD_COLORS: Record<string, [number, number, number]> = {
     unanalyzed:     [96, 96, 104],   // Not analysed yet — dimmer grey
 };
 
-export const MOOD_LABEL_MAP: Record<string, string> = {
+const MOOD_LABEL_MAP: Record<string, string> = {
     moodHappy: "Upbeat",
     moodSad: "Melancholic",
     moodRelaxed: "Calm",

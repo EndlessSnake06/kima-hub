@@ -423,20 +423,6 @@ class NotificationPolicyService {
         );
         return "transient";
     }
-
-    /**
-     * Get configuration for notification policy
-     * Can be extended to pull from user settings or system config
-     */
-    getConfig(): {
-        retryWindowMinutes: number;
-        suppressTransientFailures: boolean;
-    } {
-        return {
-            retryWindowMinutes: DEFAULT_RETRY_WINDOW_MINUTES,
-            suppressTransientFailures: SUPPRESS_TRANSIENT_FAILURES,
-        };
-    }
 }
 
 // Singleton instance

@@ -39,24 +39,17 @@ interface EnrichmentState {
     completionNotificationSent?: boolean; // Prevent repeated completion notifications
     coreCacheCleared?: boolean; // Prevent repeated cache clearing on core complete
     fullCacheCleared?: boolean; // Prevent repeated cache clearing on full complete
-    stoppingInfo?: {
-        phase: string;
-        currentItem: string;
-        itemsRemaining: number;
-    };
 
     // Progress tracking
     artists: {
         total: number;
         completed: number;
         failed: number;
-        current?: string; // Currently processing artist name
     };
     tracks: {
         total: number;
         completed: number;
         failed: number;
-        current?: string; // Currently processing track
     };
     audio: {
         total: number;
@@ -300,14 +293,6 @@ class EnrichmentStateService {
     async clear(): Promise<void> {
         await this.redis.del(ENRICHMENT_STATE_KEY);
         logger.debug("[Enrichment State] Cleared");
-    }
-
-    /**
-     * Check if enrichment is currently running
-     */
-    async isRunning(): Promise<boolean> {
-        const state = await this.getState();
-        return state?.status === "running";
     }
 
     /**

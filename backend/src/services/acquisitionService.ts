@@ -13,10 +13,10 @@ import { simpleDownloadManager } from "./simpleDownloadManager";
 import { musicBrainzService } from "./musicbrainz";
 import { failureCause } from "../utils/outcome";
 import { getArtistCorrection } from "./artistCorrection";
-import { AcquisitionError, AcquisitionErrorType } from "./lidarr";
+import { AcquisitionErrorType } from "./lidarr";
 import { distributedLock } from "../utils/distributedLock";
 import PQueue from "p-queue";
-import { downloadJobsTotal, downloadJobDuration, activeDownloads } from "../utils/metrics";
+import { downloadJobsTotal, downloadJobDuration } from "../utils/metrics";
 import {
   UserFacingError,
   IntegrationError,

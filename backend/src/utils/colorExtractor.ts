@@ -10,11 +10,6 @@ interface ColorPalette {
     lightMuted: string;
 }
 
-interface RGBColor {
-    r: number;
-    g: number;
-    b: number;
-}
 
 /**
  * Calculate saturation of an RGB color

@@ -3,7 +3,6 @@ import { createShareLink, ShareError } from "../services/shareService";
 import { prisma } from "../utils/db";
 import { logger } from "../utils/logger";
 import { requireAuth } from "../middleware/auth";
-import { randomBytes } from "crypto";
 import rateLimit from "express-rate-limit";
 import path from "path";
 import fs from "fs";

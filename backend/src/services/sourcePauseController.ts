@@ -25,7 +25,7 @@ import { isRateLimited } from "./enrichmentErrorCodeClassifier";
 export type SourceName = string;
 
 /** How long a source rests after a rate limit before it is tried again. */
-export const DEFAULT_PAUSE_WINDOW_MS = 30_000;
+const DEFAULT_PAUSE_WINDOW_MS = 30_000;
 
 export interface SourcePauseState {
     source: SourceName;
@@ -43,7 +43,7 @@ export interface PauseOptions {
     evidence?: Record<string, unknown>;
 }
 
-export class SourcePauseController {
+class SourcePauseController {
     private readonly pauseWindowMs: number;
 
     constructor(opts?: { pauseWindowMs?: number }) {

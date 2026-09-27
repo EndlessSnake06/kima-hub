@@ -1806,4 +1806,3 @@ export const PG_LEADING_ARTICLE = new RegExp(
     "i"
 );
 
-export const UNACCENT_ENTRY_COUNT = UNACCENT.size;

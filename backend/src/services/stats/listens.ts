@@ -97,12 +97,6 @@ const WINDOW: Record<Exclude<Period, "all">, string> = {
     "12mo": "12 months",
 };
 
-/** What the window is called in a sentence. */
-export const PERIOD_LABEL: Record<Period, string> = {
-    "30d": "the last 30 days",
-    "12mo": "the last 12 months",
-    all: "all time",
-};
 
 /**
  * A `WITH RECURSIVE` chain ending in a relation `p`: one row per listen.

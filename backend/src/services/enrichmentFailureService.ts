@@ -380,45 +380,6 @@ class EnrichmentFailureService {
     }
 
     /**
-     * Mark failures as skipped (won't be retried automatically).
-     *
-     * A stage record is skipped by parking it `blocked` — the human-decided
-     * state the queue already honours; a ledger row by its skipped flag.
-     */
-    async skipFailures(ids: string[]): Promise<number> {
-        const { stageIds, ledgerIds } = await this.splitIds(ids);
-
-        let stageCount = 0;
-        if (stageIds.length > 0) {
-            const result = await prisma.trackStage.updateMany({
-                where: { id: { in: stageIds }, status: { in: ["failed", "pending", "working"] } },
-                data: {
-                    status: "blocked",
-                    retryable: false,
-                    nextRetryAt: null,
-                    decidedAt: new Date(),
-                    decidedBy: "skipped-via-failures-api",
-                },
-            });
-            stageCount = result.count;
-        }
-
-        let ledgerCount = 0;
-        if (ledgerIds.length > 0) {
-            const result = await prisma.enrichmentFailure.updateMany({
-                where: { id: { in: ledgerIds } },
-                data: {
-                    skipped: true,
-                    skippedAt: new Date(),
-                },
-            });
-            ledgerCount = result.count;
-        }
-
-        return stageCount + ledgerCount;
-    }
-
-    /**
      * Mark failures as resolved (manually fixed).
      *
      * Ledger rows follow migration 20260925150000 semantics: only UNRESOLVED

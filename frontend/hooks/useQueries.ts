@@ -95,91 +95,8 @@ export const queryKeys = {
     libraryDecades: () => ["library", "decades"] as const,
 };
 
-/**
- * Hook to fetch artist data with automatic library/discovery fallback
- *
- * Tries library first, falls back to discovery if not found.
- * Cache time: 10 minutes (artist data rarely changes)
- *
- * @param id - Artist ID or MusicBrainz ID
- * @returns Query result with artist data
- *
- * @example
- * const { data: artist, isLoading, error } = useArtistQuery("artist-123");
- */
-export function useArtistQuery(id: string | undefined) {
-    return useQuery({
-        queryKey: queryKeys.artist(id || ""),
-        queryFn: async () => {
-            if (!id) throw new Error("Artist ID is required");
 
-            // Try library first
-            try {
-                return await api.getArtist(id);
-            } catch {
-                // Fallback to discovery
-                return await api.getArtistDiscovery(id);
-            }
-        },
-        enabled: !!id,
-        staleTime: 10 * 60 * 1000, // 10 minutes
-        retry: 1,
-    });
-}
 
-/**
- * Hook to fetch album data with automatic library/discovery fallback
- *
- * Cache time: 10 minutes (album data rarely changes)
- *
- * @param id - Album ID or Release Group MBID
- * @returns Query result with album data
- *
- * @example
- * const { data: album, isLoading, error } = useAlbumQuery("album-123");
- */
-export function useAlbumQuery(id: string | undefined) {
-    return useQuery({
-        queryKey: queryKeys.album(id || ""),
-        queryFn: async () => {
-            if (!id) throw new Error("Album ID is required");
-
-            // Try library first
-            try {
-                return await api.getAlbum(id);
-            } catch {
-                // Fallback to discovery
-                return await api.getAlbumDiscovery(id);
-            }
-        },
-        enabled: !!id,
-        staleTime: 10 * 60 * 1000, // 10 minutes
-        retry: 1,
-    });
-}
-
-/**
- * Hook to fetch albums list with optional filters
- *
- * @param params - Filter parameters (artistId, limit, offset)
- * @returns Query result with albums array
- *
- * @example
- * const { data } = useAlbumsQuery({ artistId: "123", limit: 20 });
- */
-export function useAlbumsQuery(params?: {
-    artistId?: string;
-    limit?: number;
-    offset?: number;
-}) {
-    return useQuery({
-        queryKey: queryKeys.albums(params),
-        queryFn: () => api.getAlbums(params),
-        staleTime: 5 * 60 * 1000, // 5 minutes
-        // placeholderData to prevent flicker during refetches (same fix c564dc26 applied to library queries)
-        placeholderData: (previousData) => previousData,
-    });
-}
 
 /**
  * Hook to fetch recently listened items (Continue Listening)
@@ -352,52 +269,7 @@ export function useRecommendationsQuery(limit: number = 10) {
     });
 }
 
-/**
- * Hook to fetch similar artists based on a seed artist
- *
- * @param seedArtistId - Artist ID to find similar artists for
- * @param limit - Number of recommendations (default: 20)
- * @returns Query result with similar artists
- *
- * @example
- * const { data } = useSimilarArtistsQuery("artist-123", 20);
- */
-export function useSimilarArtistsQuery(
-    seedArtistId: string | undefined,
-    limit: number = 20,
-) {
-    return useQuery({
-        queryKey: queryKeys.similarArtists(seedArtistId || "", limit),
-        queryFn: async () => {
-            if (!seedArtistId) throw new Error("Seed artist ID is required");
-            return await api.getSimilarArtists(seedArtistId, limit);
-        },
-        enabled: !!seedArtistId,
-        staleTime: 10 * 60 * 1000, // 10 minutes
-    });
-}
 
-/**
- * Hook to fetch similar albums based on a seed album
- *
- * @param seedAlbumId - Album ID to find similar albums for
- * @param limit - Number of recommendations (default: 20)
- * @returns Query result with similar albums
- */
-export function useSimilarAlbumsQuery(
-    seedAlbumId: string | undefined,
-    limit: number = 20,
-) {
-    return useQuery({
-        queryKey: queryKeys.similarAlbums(seedAlbumId || "", limit),
-        queryFn: async () => {
-            if (!seedAlbumId) throw new Error("Seed album ID is required");
-            return await api.getSimilarAlbums(seedAlbumId, limit);
-        },
-        enabled: !!seedAlbumId,
-        staleTime: 10 * 60 * 1000, // 10 minutes
-    });
-}
 
 /**
  * Hook to search library with debouncing
@@ -720,34 +592,6 @@ export function useAddToPlaylistMutation() {
     });
 }
 
-/**
- * Hook to create a new playlist with cache invalidation
- *
- * @returns Mutation object with mutate function
- *
- * @example
- * const { mutate: createPlaylist } = useCreatePlaylistMutation();
- * createPlaylist({ name: "My Playlist", isPublic: false });
- */
-export function useCreatePlaylistMutation() {
-    const queryClient = useQueryClient();
-
-    return useMutation({
-        mutationFn: ({
-            name,
-            isPublic,
-        }: {
-            name: string;
-            isPublic?: boolean;
-        }) => api.createPlaylist(name, isPublic),
-        onSuccess: () => {
-            // Invalidate playlists list to show new playlist
-            queryClient.invalidateQueries({
-                queryKey: queryKeys.playlists(),
-            });
-        },
-    });
-}
 
 export function useRemoveFromPlaylistMutation() {
     const queryClient = useQueryClient();

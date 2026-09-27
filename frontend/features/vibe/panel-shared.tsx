@@ -13,13 +13,13 @@ import { X } from "lucide-react";
 
 export type VibeTab = "now-playing" | "queue" | "lyrics";
 
-export const TABS: { key: VibeTab; label: string }[] = [
+const TABS: { key: VibeTab; label: string }[] = [
     { key: "now-playing", label: "Now Playing" },
     { key: "queue", label: "Queue" },
     { key: "lyrics", label: "Lyrics" },
 ];
 
-export const ACTIVITY_LABELS: Record<ActivityType, string> = {
+const ACTIVITY_LABELS: Record<ActivityType, string> = {
     notifications: "Notifications",
     downloads: "Downloads",
     imports: "Imports",

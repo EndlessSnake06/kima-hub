@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useCallback, useRef, useSyncExternalStore, ReactNode } from "react";
+import { createContext, useContext, useCallback, useRef, ReactNode } from "react";
 
 export interface DownloadProgressData {
     bytesReceived?: number;
@@ -62,13 +62,4 @@ export function useDownloadProgress() {
         throw new Error("useDownloadProgress must be used within DownloadProgressProvider");
     }
     return context;
-}
-
-export function useJobProgress(jobId: string): DownloadProgressData | undefined {
-    const { getProgress, subscribe } = useDownloadProgress();
-    return useSyncExternalStore(
-        subscribe,
-        () => getProgress(jobId),
-        () => undefined
-    );
 }

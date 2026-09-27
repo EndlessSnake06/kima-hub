@@ -5,7 +5,6 @@ import { getSimilarArtists } from "../services/artistSimilarity";
 import { musicBrainzService } from "../services/musicbrainz";
 import { deezerService } from "../services/deezer";
 import { redisClient } from "../utils/redis";
-import { normalizeToArray } from "../utils/normalize";
 import { requireAuthOrToken } from "../middleware/auth";
 import {
     withAlbumArtwork,

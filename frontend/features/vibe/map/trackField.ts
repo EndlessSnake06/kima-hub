@@ -48,7 +48,7 @@ const REVEAL_SECTORS = 8;
 const REVEAL_SECTOR_GAP = 0.15;
 const REVEAL_WITHIN = 0.22;
 const REVEAL_JITTER = 0.16;
-export const REVEAL_FADE = 0.3;
+const REVEAL_FADE = 0.3;
 
 const STAR_WHITE = new THREE.Color("#f3ecdd");
 

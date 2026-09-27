@@ -19,7 +19,6 @@ import {
 } from "../utils/systemSettings";
 import { rateLimiter } from "../services/rateLimiter";
 import { redisClient } from "../utils/redis";
-import { repairBrokenCovers } from "../services/imageBackfill";
 import {
   DuplicateMbidError,
   reassignAlbumRgMbid,
@@ -165,26 +164,6 @@ router.post("/re-decide-everything", requireAuth, requireAdmin, async (req, res)
   }
 });
 
-/**
- * POST /enrichment/repair-covers
- * Scan for broken native cover paths and clear them for re-fetch.
- * Affected artists are reset to pending so enrichment will re-fetch images.
- * Admin only
- */
-router.post("/repair-covers", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const result = await repairBrokenCovers();
-
-    res.json({
-      message: "Cover art repair complete",
-      description: `Cleared ${result.artistsRepaired} artist images and ${result.albumsRepaired} album covers for re-fetch. Run enrichment or library scan to re-download.`,
-      ...result,
-    });
-  } catch (error) {
-    logger.error("Repair covers error:", error);
-    res.status(500).json({ error: "Failed to repair covers" });
-  }
-});
 
 /**
  * POST /enrichment/sync
@@ -205,35 +184,7 @@ router.post("/sync", requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-/**
- * GET /enrichment/settings
- * Get enrichment settings for current user
- */
-router.get("/settings", requireAuth, async (req, res) => {
-  try {
-    const userId = req.user!.id;
-    const settings = await enrichmentService.getSettings(userId);
-    res.json(settings);
-  } catch (error) {
-    logger.error("Get enrichment settings error:", error);
-    res.status(500).json({ error: "Failed to get settings" });
-  }
-});
 
-/**
- * PUT /enrichment/settings
- * Update enrichment settings for current user
- */
-router.put("/settings", requireAuth, async (req, res) => {
-  try {
-    const userId = req.user!.id;
-    const settings = await enrichmentService.updateSettings(userId, req.body);
-    res.json(settings);
-  } catch (error) {
-    logger.error("Update enrichment settings error:", error);
-    res.status(500).json({ error: "Failed to update settings" });
-  }
-});
 
 /**
  * POST /enrichment/artist/:id
@@ -487,85 +438,6 @@ router.post("/retry", requireAuth, requireAdmin, async (req, res) => {
     });
   } catch (error) {
     safeError(res, "Retry enrichment failures", error);
-  }
-});
-
-/**
- * POST /enrichment/skip
- * Skip specific failures (won't retry automatically)
- */
-router.post("/skip", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { ids } = req.body;
-
-    if (!ids || !Array.isArray(ids) || ids.length === 0) {
-      return res
-        .status(400)
-        .json({ error: "Must provide array of failure IDs" });
-    }
-
-    const count = await enrichmentFailureService.skipFailures(ids);
-    res.json({
-      message: `Skipped ${count} failures`,
-      count,
-    });
-  } catch (error) {
-    safeError(res, "Skip enrichment failures", error);
-  }
-});
-
-/**
- * POST /enrichment/failures/resolve
- * Resolve specific failure records. The ledger keeps its history:
- * resolution sets resolved/resolvedAt exactly like migration
- * 20260925150000 -- it never deletes.
- */
-router.post("/failures/resolve", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { ids } = req.body;
-
-    if (!ids || !Array.isArray(ids) || ids.length === 0) {
-      return res
-        .status(400)
-        .json({ error: "Must provide array of failure IDs" });
-    }
-
-    const count = await enrichmentFailureService.resolveFailures(ids);
-    res.json({
-      message: `Resolved ${count} failure${count !== 1 ? "s" : ""}`,
-      count,
-    });
-  } catch (error) {
-    safeError(res, "Resolve enrichment failures", error);
-  }
-});
-
-/**
- * POST /enrichment/failures/resolve-all
- * Resolve all unresolved failures (optionally filtered by type). Records are
- * kept and marked resolved/resolvedAt per migration 20260925150000 -- never
- * deleted.
- */
-router.post("/failures/resolve-all", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const entityType = req.query.entityType as
-      | "artist"
-      | "track"
-      | "audio"
-      | undefined;
-
-    if (entityType && !["artist", "track", "audio"].includes(entityType)) {
-      return res.status(400).json({ error: "Invalid entityType" });
-    }
-
-    const count = await enrichmentFailureService.resolveAllFailures(entityType);
-
-    res.json({
-      message: `Resolved ${count} failure${count !== 1 ? "s" : ""}`,
-      count,
-    });
-  } catch (error) {
-    safeError(res, "Resolve enrichment failures", error);
   }
 });
 

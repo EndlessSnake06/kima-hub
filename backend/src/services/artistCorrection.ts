@@ -33,7 +33,7 @@ const CORRECTION_TTL = 2592000;
  * "Gun N' Roses (feat. Codex)" → "Gun N' Roses"
  * "The Beatles [2009 Remaster]" → "The Beatles"
  */
-export function stripArtistSuffixes(name: string): string {
+function stripArtistSuffixes(name: string): string {
     let cleaned = name
         .replace(
             /\s*[\[(](?:feat|ft|featuring|with)\.?\s+[^\])]*[\])]/gi,

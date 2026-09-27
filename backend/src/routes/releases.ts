@@ -9,7 +9,7 @@ import { logger } from "../utils/logger";
  */
 
 import { Router } from "express";
-import { lidarrService, CalendarRelease } from "../services/lidarr";
+import { lidarrService } from "../services/lidarr";
 import { prisma } from "../utils/db";
 import { ConfigurationError } from "../utils/errors";
 import { requireAuthOrToken } from "../middleware/auth";

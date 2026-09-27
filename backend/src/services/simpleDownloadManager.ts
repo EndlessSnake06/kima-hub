@@ -73,16 +73,6 @@ class SimpleDownloadManager {
     /**
      * Get max retry attempts from user's discover config, fallback to default
      */
-    private async getMaxAttempts(userId: string): Promise<number> {
-        try {
-            const config = await prisma.userDiscoverConfig.findUnique({
-                where: { userId },
-            });
-            return config?.maxRetryAttempts || this.DEFAULT_MAX_ATTEMPTS;
-        } catch {
-            return this.DEFAULT_MAX_ATTEMPTS;
-        }
-    }
 
     /**
      * Transaction wrapper with retry logic for serialization conflicts

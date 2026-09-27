@@ -47,12 +47,12 @@ import { shuffleArray } from "../utils/shuffle";
 // 30.5% (+-3.7 points, 95%) with no single mood. Measured alternatives: 0.10
 // leaves 60% with no mood; 0.33 leaves 11% but puts a third of the library in
 // every bucket, so most tracks carry two or more moods.
-export const STANDOUT_SHARE = 0.2;
+const STANDOUT_SHARE = 0.2;
 // The heads' own yes/no boundary (two-class softmax argmax), not a tuned value.
 // It never binds at 0.2 on the sample (every head says yes for >= 20.5% of
 // tracks); it stops a library with few, say, upbeat tracks from labelling its
 // least-gloomy fifth "Upbeat" anyway.
-export const HEAD_DECISION = 0.5;
+const HEAD_DECISION = 0.5;
 
 export const MOODS = [
     { id: "happy", field: "moodHappy", name: "Upbeat", color: "from-yellow-400 to-orange-500", icon: "Smile" },
@@ -65,7 +65,7 @@ export const MOODS = [
 export type MoodType = (typeof MOODS)[number]["id"];
 export type MoodField = (typeof MOODS)[number]["field"];
 export const VALID_MOODS: MoodType[] = MOODS.map((m) => m.id);
-export const MOOD_FIELDS: MoodField[] = MOODS.map((m) => m.field);
+const MOOD_FIELDS: MoodField[] = MOODS.map((m) => m.field);
 
 /** Analysed, but no mood stands out for this track. */
 export const NEUTRAL = "neutral";

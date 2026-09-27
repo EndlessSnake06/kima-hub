@@ -35,7 +35,7 @@ import { prisma } from "../../utils/db";
 import { listenRows, type Period } from "./listens";
 
 /** No single play counts for more than ten minutes. See the note above. */
-export const PLAY_CREDIT_CAP_SECONDS = 600;
+const PLAY_CREDIT_CAP_SECONDS = 600;
 
 /** The resolution of the taste plot, per axis. 24 x 24 cells. */
 const SHAPE_BUCKETS = 24;

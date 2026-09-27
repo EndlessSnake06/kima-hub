@@ -4,7 +4,6 @@ import { prisma } from "../utils/db";
 import { redisClient } from "../utils/redis";
 import { requireAuth, requireAdmin } from "../middleware/auth";
 import { getSystemSettings, invalidateSystemSettingsCache } from "../utils/systemSettings";
-import { enrichmentFailureService } from "../services/enrichmentFailureService";
 import { eventBus } from "../services/eventBus";
 import { triggerEnrichmentNow, recordStageSuccess, recordStageFailure } from "../workers/unifiedEnrichment";
 import { appendTrackToProjection } from "../services/umapProjection";
@@ -86,131 +85,6 @@ async function dispatchWorkerCount(
 
 const router = Router();
 
-// Redis queue key for audio analysis (Essentia uses raw Redis BRPOP, not BullMQ)
-const ANALYSIS_QUEUE = "audio:analysis:queue";
-
-/**
- * GET /api/analysis/status
- * Get audio analysis status and progress
- */
-router.get("/status", requireAuth, async (req, res) => {
-    try {
-        // Get counts by status
-        const statusCounts = await prisma.track.groupBy({
-            by: ["analysisStatus"],
-            _count: true,
-        });
-
-        const rawTotal = statusCounts.reduce((sum, s) => sum + s._count, 0);
-        const completed = statusCounts.find(s => s.analysisStatus === "completed")?._count || 0;
-        const failed = statusCounts.find(s => s.analysisStatus === "failed")?._count || 0;
-        const processing = statusCounts.find(s => s.analysisStatus === "processing")?._count || 0;
-        const pending = statusCounts.find(s => s.analysisStatus === "pending")?._count || 0;
-        const permanentlyFailed = statusCounts.find(s => s.analysisStatus === "permanently_failed")?._count || 0;
-
-        // Exclude permanently_failed, corrupt and missing-file tracks from
-        // the progress denominator: none of them can be analysed.
-        const corruptCount = await prisma.track.count({ where: { corrupt: true, analysisStatus: { not: "permanently_failed" } } });
-        const missingCount = await prisma.track.count({ where: { missingSince: { not: null }, analysisStatus: { not: "permanently_failed" } } });
-        const total = rawTotal - permanentlyFailed - corruptCount - missingCount;
-
-        // Get queue length from Redis
-        const queueLength = await redisClient.llen(ANALYSIS_QUEUE);
-
-        // Get CLAP embedding count
-        const embeddingCount = await prisma.$queryRaw<{ count: bigint }[]>`
-            SELECT COUNT(*) as count FROM track_embeddings
-        `;
-        const withEmbeddings = Number(embeddingCount[0]?.count || 0);
-
-        const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
-
-        res.json({
-            total,
-            completed,
-            failed,
-            permanentlyFailed,
-            processing,
-            pending,
-            queueLength,
-            progress,
-            isComplete: pending === 0 && processing === 0 && queueLength === 0,
-            clap: {
-                withEmbeddings,
-                embeddingProgress: total > 0 ? Math.round((withEmbeddings / total) * 100) : 0,
-            },
-        });
-    } catch (error: any) {
-        logger.error("Analysis status error:", error);
-        res.status(500).json({ error: "Failed to get analysis status" });
-    }
-});
-
-/**
- * POST /api/analysis/start
- * Start audio analysis for pending tracks (admin only)
- */
-router.post("/start", requireAuth, requireAdmin, async (req, res) => {
-    try {
-        const { limit = 100, priority = "recent" } = req.body;
-        const capped = Math.min(limit, 1000);
-        const order = priority === "recent"
-            ? `t."fileModified" DESC`
-            : `t.title ASC`;
-
-        // The stage queue owns the feed, so this control brings it forward
-        // instead of pushing: pending/failed records whose retry backoff
-        // has not elapsed are reopened (nextRetryAt = NULL) so the next
-        // cycle offers them immediately, ordered per the request. `working`
-        // rows are left alone — their nextRetryAt is a live claim lease,
-        // and nulling it would make the record unclaimable (the claim's
-        // working branch requires a non-null lease).
-        await prisma.$executeRawUnsafe(
-            `UPDATE "TrackStage" ts
-                SET "nextRetryAt" = NULL
-               FROM "Track" t
-              WHERE ts."trackId" = t.id
-                AND ts.id IN (
-                    SELECT ts2.id FROM "TrackStage" ts2
-                    JOIN "Track" t2 ON ts2."trackId" = t2.id
-                    WHERE ts2.stage = 'analysis'
-                      AND ts2.status IN ('pending', 'failed')
-                      AND ts2.retryable = true
-                      AND ts2."nextRetryAt" IS NOT NULL
-                      AND ts2."nextRetryAt" > now()
-                    ORDER BY ${order}
-                    LIMIT ${capped})`,
-        );
-
-        // Whatever is due right now is what the next cycle will hand out.
-        const dueRows = await prisma.$queryRawUnsafe<Array<{ count: bigint }>>(
-            `SELECT count(*) FROM "TrackStage"
-              WHERE stage = 'analysis'
-                AND status IN ('pending', 'failed', 'working')
-                AND retryable = true
-                AND ("nextRetryAt" IS NULL OR "nextRetryAt" <= now())`,
-        );
-        const queued = Number(dueRows[0]?.count ?? 0);
-
-        if (queued === 0) {
-            return res.json({
-                message: "No pending tracks to analyze",
-                queued: 0,
-            });
-        }
-
-        logger.debug(`Analysis start: ${queued} analysis records due`);
-
-        res.json({
-            message: `${queued} tracks queued for analysis`,
-            queued,
-        });
-    } catch (error: any) {
-        logger.error("Analysis start error:", error);
-        res.status(500).json({ error: "Failed to start analysis" });
-    }
-});
-
 /**
  * POST /api/analysis/retry-failed
  * Retry failed analysis jobs (admin only)
@@ -224,7 +98,7 @@ router.post("/retry-failed", requireAuth, requireAdmin, async (req, res) => {
         // skip the spent rows or the second one would never match
         // anything, and spent records would restart with their budget
         // already consumed.
-        const failedResult = await prisma.$executeRawUnsafe(
+        await prisma.$executeRawUnsafe(
             `UPDATE "TrackStage"
                 SET status = 'pending', "nextRetryAt" = NULL, retryable = true,
                     "lastErrorCode" = NULL, "lastErrorMessage" = NULL,
@@ -232,7 +106,7 @@ router.post("/retry-failed", requireAuth, requireAdmin, async (req, res) => {
                     evidence = jsonb_build_object('reopenedBy', 'retry-failed')
               WHERE stage = 'analysis' AND status = 'failed' AND retryable = true`,
         );
-        const permFailedResult = await prisma.$executeRawUnsafe(
+        await prisma.$executeRawUnsafe(
             `UPDATE "TrackStage"
                 SET status = 'pending', attempt = 0, "nextRetryAt" = NULL, retryable = true,
                     "lastErrorCode" = NULL, "lastErrorMessage" = NULL,
@@ -288,84 +162,6 @@ router.post("/retry-failed", requireAuth, requireAdmin, async (req, res) => {
     }
 });
 
-/**
- * POST /api/analysis/analyze/:trackId
- * Queue a specific track for analysis
- */
-router.post("/analyze/:trackId", requireAuth, async (req, res) => {
-    try {
-        const { trackId } = req.params;
-
-        const track = await prisma.track.findUnique({
-            where: { id: trackId },
-            select: {
-                id: true,
-                filePath: true,
-                duration: true,
-                analysisStatus: true,
-            },
-        });
-
-        if (!track) {
-            return res.status(404).json({ error: "Track not found" });
-        }
-
-        // Don't disturb an attempt the stage queue has already claimed.
-        const inFlight = await prisma.$queryRawUnsafe<Array<{ status: string }>>(
-            `SELECT status FROM "TrackStage"
-              WHERE "trackId" = $1 AND stage = 'analysis' AND status = 'working'`,
-            trackId,
-        );
-        if (inFlight.length > 0) {
-            return res.json({
-                message: "Track is already being analyzed",
-                trackId,
-            });
-        }
-
-        // Reopen the question on the record (a pending record with a null
-        // nextRetryAt is immediately due) and mirror it on the columns the
-        // analyzer claims and the UI reads. Reopen, not delete: the attempt
-        // history survives the ask. The cycle's stage queue is the only
-        // producer; it picks this up on its next pass, so there is nothing
-        // to push here.
-        await prisma.$executeRawUnsafe(
-            `UPDATE "TrackStage"
-                SET status = 'pending',
-                    "lastErrorCode" = NULL,
-                    "lastErrorMessage" = NULL,
-                    "failureClass" = NULL,
-                    retryable = true,
-                    "nextRetryAt" = NULL,
-                    "startedAt" = NULL,
-                    "finishedAt" = NULL,
-                    "decidedAt" = NULL,
-                    "decidedBy" = NULL
-              WHERE "trackId" = $1 AND stage = 'analysis'`,
-            trackId,
-        );
-        await prisma.track.update({
-            where: { id: trackId },
-            data: {
-                analysisStatus: "pending",
-                // An explicit request to analyze this track is a request to start over.
-                // Left alone, a count already at the ceiling would brand the retry
-                // before the analyzer ever reached it.
-                analysisRetryCount: 0,
-                analysisError: null,
-                analysisStartedAt: null,
-            },
-        });
-
-        res.json({
-            message: "Track queued for analysis",
-            trackId,
-        });
-    } catch (error: any) {
-        logger.error("Analyze track error:", error);
-        res.status(500).json({ error: "Failed to queue track for analysis" });
-    }
-});
 
 /**
  * GET /api/analysis/track/:trackId
@@ -423,71 +219,6 @@ router.get("/track/:trackId", requireAuth, async (req, res) => {
     }
 });
 
-/**
- * GET /api/analysis/features
- * Get aggregated feature statistics for the library
- */
-router.get("/features", requireAuth, async (req, res) => {
-    try {
-        // Get analyzed tracks
-        const analyzed = await prisma.track.findMany({
-            where: {
-                analysisStatus: "completed",
-                bpm: { not: null },
-            },
-            select: {
-                bpm: true,
-                energy: true,
-                danceability: true,
-                valence: true,
-                keyScale: true,
-            },
-        });
-
-        if (analyzed.length === 0) {
-            return res.json({
-                count: 0,
-                averages: null,
-                distributions: null,
-            });
-        }
-
-        // Calculate averages
-        const avgBpm = analyzed.reduce((sum, t) => sum + (t.bpm || 0), 0) / analyzed.length;
-        const avgEnergy = analyzed.reduce((sum, t) => sum + (t.energy || 0), 0) / analyzed.length;
-        const avgDanceability = analyzed.reduce((sum, t) => sum + (t.danceability || 0), 0) / analyzed.length;
-        const avgValence = analyzed.reduce((sum, t) => sum + (t.valence || 0), 0) / analyzed.length;
-
-        // Key distribution
-        const majorCount = analyzed.filter(t => t.keyScale === "major").length;
-        const minorCount = analyzed.filter(t => t.keyScale === "minor").length;
-
-        // BPM distribution (buckets)
-        const bpmBuckets = {
-            slow: analyzed.filter(t => (t.bpm || 0) < 90).length,
-            moderate: analyzed.filter(t => (t.bpm || 0) >= 90 && (t.bpm || 0) < 120).length,
-            upbeat: analyzed.filter(t => (t.bpm || 0) >= 120 && (t.bpm || 0) < 150).length,
-            fast: analyzed.filter(t => (t.bpm || 0) >= 150).length,
-        };
-
-        res.json({
-            count: analyzed.length,
-            averages: {
-                bpm: Math.round(avgBpm),
-                energy: Math.round(avgEnergy * 100) / 100,
-                danceability: Math.round(avgDanceability * 100) / 100,
-                valence: Math.round(avgValence * 100) / 100,
-            },
-            distributions: {
-                key: { major: majorCount, minor: minorCount },
-                bpm: bpmBuckets,
-            },
-        });
-    } catch (error: any) {
-        logger.error("Get features error:", error);
-        res.status(500).json({ error: "Failed to get feature statistics" });
-    }
-});
 
 /**
  * GET /api/analysis/workers
@@ -812,75 +543,6 @@ router.post("/vibe/start", requireAuth, requireAdmin, async (req, res) => {
     }
 });
 
-/**
- * POST /api/analysis/vibe/retry
- * Retry failed vibe embeddings (admin only)
- */
-router.post("/vibe/retry", requireAuth, requireAdmin, async (req, res) => {
-    try {
-        // Get all vibe failures. Embedding failures live in TrackStage (the
-        // record the queue decides from); the service maps them onto the
-        // EnrichmentFailure shape, so the ids below are stage-record ids and
-        // resetRetryCount clears their attempt budget.
-        const { failures } = await enrichmentFailureService.getFailures({
-            entityType: "vibe",
-            includeSkipped: false,
-            includeResolved: false,
-        });
-
-        if (failures.length === 0) {
-            return res.json({
-                message: "No vibe failures to retry",
-                queued: 0,
-            });
-        }
-
-        // Get track details for failed tracks
-        const trackIds = failures.map(f => f.entityId);
-
-        // Reset Track-level retry counts so the UI shows them as owed again
-        await prisma.track.updateMany({
-            where: { id: { in: trackIds } },
-            data: { vibeAnalysisStatus: null, vibeAnalysisRetryCount: 0, vibeAnalysisStatusUpdatedAt: null },
-        });
-
-        // Reopen the embedding questions: a pending record is immediately
-        // due, and the cycle's executeVibePhase is the only producer.
-        // Reopen, not delete — the attempt history survives the ask.
-        await prisma.$executeRawUnsafe(
-            `UPDATE "TrackStage"
-                SET status = 'pending',
-                    "lastErrorCode" = NULL,
-                    "lastErrorMessage" = NULL,
-                    "failureClass" = NULL,
-                    retryable = true,
-                    "nextRetryAt" = NULL,
-                    "startedAt" = NULL,
-                    "finishedAt" = NULL,
-                    "decidedAt" = NULL,
-                    "decidedBy" = NULL
-              WHERE stage = 'embedding' AND "trackId" = ANY($1)`,
-            trackIds,
-        );
-
-        // Reset the stage records' retry budget (attempt = 0), mirroring the
-        // ledger reset the old EnrichmentFailure ids used to get.
-        await enrichmentFailureService.resetRetryCount(failures.map(f => f.id));
-
-        // Restart the enrichment cycle so executeVibePhase feeds the queue
-        await triggerEnrichmentNow();
-
-        logger.info(`Retrying ${trackIds.length} failed vibe embeddings`);
-
-        res.json({
-            message: `Queued ${trackIds.length} failed tracks for vibe embedding retry`,
-            queued: trackIds.length,
-        });
-    } catch (error: any) {
-        logger.error("Retry vibe failures error:", error);
-        res.status(500).json({ error: "Failed to retry vibe failures" });
-    }
-});
 
 /**
  * POST /api/analysis/vibe/success

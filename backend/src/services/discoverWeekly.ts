@@ -42,7 +42,6 @@ import {
     discoverySeeding,
 } from "./discovery";
 import { shuffleArray } from "../utils/shuffle";
-import { updateArtistCounts } from "./artistCountsService";
 import { config as appConfig } from "../config";
 import { eventBus } from "./eventBus";
 
@@ -74,12 +73,6 @@ const TIER_THRESHOLDS = {
     deepCutMax: 0.35,
     minimum: 0.20,    // Don't recommend anything below this (allows deep cuts)
 };
-
-interface BatchLogEntry {
-    timestamp: string;
-    level: "info" | "warn" | "error";
-    message: string;
-}
 
 /**
  * Calculate tier from the similarity score
@@ -2707,123 +2700,6 @@ class DiscoverWeeklyService {
      * TAG EXPLORATION STRATEGY
      * Find albums by the user's top genre tags via Last.fm
      */
-    private async tagExplorationStrategy(
-        userId: string,
-        targetCount: number,
-        seenAlbums: Set<string>
-    ): Promise<RecommendedAlbum[]> {
-        logger.debug(
-            `\n[STRATEGY] Tag Exploration - finding studio albums by genre`
-        );
-
-        const recommendations: RecommendedAlbum[] = [];
-        const genres = await this.getUserTopGenres(userId);
-
-        // Patterns to exclude non-studio releases
-        const EXCLUDE_PATTERNS = [
-            /\blive\b/i,
-            /\bep\b$/i,
-            /\bacoustic\b/i,
-            /\bsession[s]?\b/i,
-            /\bcompilation\b/i,
-            /\bgreatest\s*hits\b/i,
-            /\bbest\s*of\b/i,
-            /\bremix(es|ed)?\b/i,
-            /\bunplugged\b/i,
-            /\bcollection\b/i,
-            /\banthology\b/i,
-            /\bdemo[s]?\b/i,
-        ];
-
-        const isStudioAlbum = (title: string): boolean => {
-            return !EXCLUDE_PATTERNS.some((pattern) => pattern.test(title));
-        };
-
-        if (genres.length === 0) {
-            logger.debug(`   No genres found for user, using fallback tags`);
-            genres.push("rock", "indie", "alternative"); // Fallback
-        }
-
-        logger.debug(`   User's top genres: ${genres.slice(0, 5).join(", ")}`);
-
-        for (const genre of genres.slice(0, 5)) {
-            if (recommendations.length >= targetCount) break;
-
-            try {
-                // MB browse-by-tag (replaces tag.getTopAlbums): the
-                // release-groups returned are MB records already, so the
-                // old searchAlbum-by-name round-trip collapses to a direct
-                // {id, title}.
-                const tagAlbums = await musicBrainzService.searchReleaseGroupsByTag(
-                    genre,
-                    30
-                );
-                if (tagAlbums.kind !== "answered") {
-                    logger.debug(
-                        `   [tag:${genre}] ${
-                            tagAlbums.kind === "absent"
-                                ? "MusicBrainz has no albums for this tag"
-                                : failureCause(tagAlbums)
-                        }`
-                    );
-                    continue;
-                }
-
-                for (const album of tagAlbums.value) {
-                    if (recommendations.length >= targetCount) break;
-
-                    const artistName = album.artistName;
-                    if (!artistName || !album.title) continue;
-
-                    // Skip non-studio albums
-                    if (!isStudioAlbum(album.title)) continue;
-
-                    const mbAlbum = { id: album.id, title: album.title };
-                    if (seenAlbums.has(mbAlbum.id)) continue;
-
-                    // Owned / owned-by-name / excluded -- shared helper, run
-                    // concurrently. Dedups the 3rd copy of this logic and makes error
-                    // handling consistent with the other two call sites (skip the one
-                    // candidate on error rather than aborting the genre; DISC-11 follow-up).
-                    const candidate = await this.isValidUnownedAlbum(
-                        mbAlbum.id,
-                        userId,
-                        artistName,
-                        album.title
-                    );
-                    if (!candidate.valid) continue;
-
-                    // Check if artist is in library (prefer new artists)
-                    const inLibrary = await this.isArtistInLibrary(
-                        artistName,
-                        undefined
-                    );
-                    if (inLibrary) continue;
-
-                    seenAlbums.add(mbAlbum.id);
-                    recommendations.push({
-                        artistName,
-                        albumTitle: album.title,
-                        albumMbid: mbAlbum.id,
-                        similarity: 0.7, // Tag-based discovery
-                        tier: "wildcard",
-                    });
-                    logger.debug(
-                        `   ✓ TAG: ${artistName} - ${album.title} (${genre})`
-                    );
-                }
-            } catch (error: any) {
-                logger.warn(
-                    `   Tag search failed for ${genre}: ${error.message}`
-                );
-            }
-        }
-
-        logger.debug(
-            `   Tag exploration found ${recommendations.length} albums`
-        );
-        return recommendations;
-    }
 
     /**
      * Calculate tier distribution dynamically based on available candidates.
@@ -2915,7 +2791,7 @@ class DiscoverWeeklyService {
         }>();
 
         // Collect all artist occurrences across seed lists
-        for (const [seedKey, similar] of similarCache.entries()) {
+        for (const [, similar] of similarCache.entries()) {
             for (const artist of similar) {
                 const key = artist.mbid || artist.name.toLowerCase();
 

@@ -7,9 +7,7 @@ import PQueue from "p-queue";
 import { CoverArtExtractor } from "./coverArtExtractor";
 import { findAlbumArtwork } from "./artwork";
 import {
-    normalizeArtistName,
     canonicalizeVariousArtists,
-    parseArtistFromPath,
     extractArtistFromRelativePath,
     extractAlbumFromRelativePath,
     sanitizeTagString,
@@ -54,9 +52,6 @@ const identificationCounters: Record<IdentificationPath, number> = {
     placeholder: 0,
 };
 
-export function getIdentificationCounters() {
-    return { ...identificationCounters };
-}
 
 /**
  * Resolve the album identity for one scanned file from its tags only.

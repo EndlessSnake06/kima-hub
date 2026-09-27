@@ -9,7 +9,6 @@ import { musicBrainzService } from "./musicbrainz";
 import { deezerService } from "./deezer";
 import {
   createPlaylistLogger,
-  logPlaylistEvent,
 } from "../utils/playlistLogger";
 import { notificationService } from "./notificationService";
 import { getSystemSettings } from "../utils/systemSettings";

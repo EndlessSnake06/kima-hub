@@ -376,4 +376,3 @@ export async function shutdownWorkers(): Promise<void> {
 }
 
 // Export queues for use in other modules
-export { scanQueue, discoverQueue, importQueue };

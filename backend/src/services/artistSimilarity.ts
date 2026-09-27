@@ -79,12 +79,12 @@ const RERANK_MAX_DELTA = 0.1;
 /**
  * Parse a pgvector text literal ("[0.1,0.2,...]") into numbers.
  */
-export function parseVector(literal: string): number[] {
+function parseVector(literal: string): number[] {
     return JSON.parse(literal) as number[];
 }
 
 /** Elementwise mean of equal-length vectors; skips empty vectors. */
-export function meanVector(vectors: number[][]): number[] | null {
+function meanVector(vectors: number[][]): number[] | null {
     const usable = vectors.filter((v) => v.length > 0);
     if (usable.length === 0) return null;
     const dim = usable[0].length;

@@ -8,13 +8,6 @@
  * And nothing rounds to a lie: 0.4 hours is "24 minutes", not "0 hours".
  */
 
-export function hours(seconds: number): string {
-    if (seconds < 60) return "under a minute";
-    if (seconds < 3600) return `${Math.round(seconds / 60)} minutes`;
-    const h = seconds / 3600;
-    if (h < 10) return `${h.toFixed(1)} hours`;
-    return `${Math.round(h).toLocaleString()} hours`;
-}
 
 /** Just the figure, for when a label already says what it is. */
 export function hoursValue(seconds: number): string {

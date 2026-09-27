@@ -14,9 +14,6 @@ import type {
     LidarrTrack,
     LidarrTag,
     LidarrRootFolder,
-    LidarrQualityProfile,
-    LidarrWebhookPayload,
-    LidarrAddAlbumRequest,
     LidarrAddArtistRequest,
     LidarrQueueItem,
     LidarrQueueResponse,
@@ -89,7 +86,6 @@ class LidarrService {
     // Metadata fetching
     private readonly METADATA_FETCH_MAX_ATTEMPTS = 10;
     private readonly METADATA_FETCH_DELAY = 2000;
-    private readonly METADATA_FETCH_TOTAL_TIMEOUT = 20000;
 
     // Artist list cache (avoid fetching ALL artists on every album add)
     private artistCache: { data: LidarrArtist[]; fetchedAt: number } | null = null;

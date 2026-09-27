@@ -302,7 +302,11 @@ async function stageRow(trackId: string, stage: string) {
 
 async function wipe(): Promise<void> {
     await waitForFingerprintWork();
-    await prisma.$executeRawUnsafe(`DELETE FROM "TrackStage" WHERE "trackId" LIKE $1`, `${PREFIX}_%`);
+    // `redecideEverything` re-opens every matching row in the whole table,
+    // so its counts can only be asserted against a globally empty one —
+    // other suites in a serial run leave stage rows under other ids, and
+    // those rows legitimately get counted otherwise.
+    await prisma.$executeRawUnsafe(`DELETE FROM "TrackStage"`);
     await prisma.$executeRawUnsafe(`DELETE FROM "Track" WHERE id LIKE $1`, `${PREFIX}_%`);
     await prisma.$executeRawUnsafe(`DELETE FROM "Album" WHERE id = $1`, id("alb"));
     await prisma.$executeRawUnsafe(`DELETE FROM "Artist" WHERE id = $1`, id("art"));

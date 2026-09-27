@@ -21,7 +21,7 @@ import { logger } from "../utils/logger";
 import { rankAfter, rankBetween, rankSequence } from "../utils/lexoRank";
 
 /** Cap on a single bulk operation, so one request cannot pin a connection. */
-export const MAX_BULK_TRACKS = 1000;
+const MAX_BULK_TRACKS = 1000;
 
 export interface AddTracksResult {
     added: number;
