@@ -62,6 +62,10 @@ const mockSearchArtist = jest.fn();
 const mockGetArtist = jest.fn();
 const mockGetReleaseGroups = jest.fn();
 const mockGetReleaseGroup = jest.fn();
+const noData = { kind: "absent", evidence: { mocked: true } } as const;
+const answeredWith = (value: unknown) =>
+    ({ kind: "answered", value, evidence: { mocked: true } }) as const;
+
 jest.mock("../../services/musicbrainz", () => ({
     musicBrainzService: {
         searchArtist: (...a: unknown[]) => mockSearchArtist(...a),
@@ -70,7 +74,7 @@ jest.mock("../../services/musicbrainz", () => ({
         getArtist: (...a: unknown[]) => mockGetArtist(...a),
         getReleaseGroups: (...a: unknown[]) => mockGetReleaseGroups(...a),
         getReleaseGroup: (...a: unknown[]) => mockGetReleaseGroup(...a),
-        getRelease: jest.fn().mockResolvedValue(null),
+        getRelease: jest.fn().mockResolvedValue(noData),
     },
 }));
 
@@ -112,10 +116,10 @@ describe("the discovery routes and the pictures they promise", () => {
         mockGetTopTracks.mockResolvedValue([]);
         mockGetBestImage.mockReturnValue(null);
         mockGetSimilarArtists.mockResolvedValue([]);
-        mockSearchArtist.mockResolvedValue([]);
-        mockGetArtist.mockResolvedValue({ name: "Perturbator", id: MBID });
-        mockGetReleaseGroups.mockResolvedValue([]);
-        mockGetReleaseGroup.mockResolvedValue(null);
+        mockSearchArtist.mockResolvedValue(noData);
+        mockGetArtist.mockResolvedValue(answeredWith({ name: "Perturbator", id: MBID }));
+        mockGetReleaseGroups.mockResolvedValue(noData);
+        mockGetReleaseGroup.mockResolvedValue(noData);
         mockFindArtistArtwork.mockResolvedValue(null);
         mockFindAlbumArtwork.mockResolvedValue(null);
         // Stand in for the real helper: null every cover unless a test says so.
@@ -201,9 +205,9 @@ describe("the discovery routes and the pictures they promise", () => {
 
         it("runs the whole discography through the artwork sources", async () => {
             mockGetArtistInfo.mockResolvedValue({ name: "Perturbator" });
-            mockGetReleaseGroups.mockResolvedValue([
+            mockGetReleaseGroups.mockResolvedValue(answeredWith([
                 { id: "rg-1", title: "Dangerous Days", "primary-type": "Album", "first-release-date": "2014-05-01" },
-            ]);
+            ]));
             mockWithAlbumArtwork.mockImplementation(
                 async (items: any[], _read: any, write: any) => items.map((i) => write(i, COVER)),
             );
@@ -216,9 +220,9 @@ describe("the discovery routes and the pictures they promise", () => {
 
         it("names each album by its release-group id when it asks", async () => {
             mockGetArtistInfo.mockResolvedValue({ name: "Perturbator" });
-            mockGetReleaseGroups.mockResolvedValue([
+            mockGetReleaseGroups.mockResolvedValue(answeredWith([
                 { id: "rg-1", title: "Dangerous Days", "primary-type": "Album", "first-release-date": "2014-05-01" },
-            ]);
+            ]));
 
             await request(makeApp()).get(`/artists/discover/${MBID}`);
 
@@ -230,9 +234,9 @@ describe("the discovery routes and the pictures they promise", () => {
 
         it("carries no guessed archive address in its response", async () => {
             mockGetArtistInfo.mockResolvedValue({ name: "Perturbator" });
-            mockGetReleaseGroups.mockResolvedValue([
+            mockGetReleaseGroups.mockResolvedValue(answeredWith([
                 { id: "rg-1", title: "Dangerous Days", "primary-type": "Album", "first-release-date": "2014-05-01" },
-            ]);
+            ]));
 
             const res = await request(makeApp()).get(`/artists/discover/${MBID}`);
 
@@ -249,12 +253,12 @@ describe("the discovery routes and the pictures they promise", () => {
         });
 
         it("sends null rather than an address it knows may 404", async () => {
-            mockGetReleaseGroup.mockResolvedValue({
+            mockGetReleaseGroup.mockResolvedValue(answeredWith({
                 id: MBID,
                 title: "Dangerous Days",
                 "artist-credit": [{ name: "Perturbator" }],
                 releases: [],
-            });
+            }));
 
             const res = await request(makeApp()).get(`/artists/album/${MBID}`);
 
@@ -264,12 +268,12 @@ describe("the discovery routes and the pictures they promise", () => {
         });
 
         it("sends what the sources found", async () => {
-            mockGetReleaseGroup.mockResolvedValue({
+            mockGetReleaseGroup.mockResolvedValue(answeredWith({
                 id: MBID,
                 title: "Dangerous Days",
                 "artist-credit": [{ name: "Perturbator" }],
                 releases: [],
-            });
+            }));
             mockFindAlbumArtwork.mockResolvedValue({ url: COVER, source: "deezer" });
 
             const res = await request(makeApp()).get(`/artists/album/${MBID}`);

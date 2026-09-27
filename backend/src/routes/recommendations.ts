@@ -419,6 +419,16 @@ router.get("/tracks", async (req, res) => {
         // only return tracks that exist here.
         const similarTracks = await findSimilarTracks(seedTrackId as string, 20);
 
+        // Same contract as /vibe/similar: no similar rows means the seed has
+        // no fingerprint (or no analyzer is running), and the caller must get
+        // a 404 rather than an empty-but-successful payload.
+        if (similarTracks.length === 0) {
+            return res.status(404).json({
+                error: "No similar tracks found",
+                message: "This track may not have been analyzed yet, or no analyzer is running",
+            });
+        }
+
         const recommendations = similarTracks.map((t) => ({
             ...t,
             artist: t.artistName,
