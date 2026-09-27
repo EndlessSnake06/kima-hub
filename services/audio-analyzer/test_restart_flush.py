@@ -1,24 +1,34 @@
-"""
-Restart-flush test for the audio analyzer's queued-track reset.
+"""Restart safety of the audio analyzer without the old restart flush.
 
-On restart the analyzer resets 'queued' DB rows to 'pending' (the Redis list
-may have been lost or gated during downtime) and flushes the Redis queue list
-so the backend's re-push of those 'pending' rows can never double-queue the
-same track on top of stale list entries.
+The analyzer used to reset 'queued' DB rows to 'pending' and flush the Redis
+list on startup ("_reset_queued_on_restart"), rewriting Track columns from
+guesses. Under the stage design the TrackStage record owns every attempt: a
+job claimed before a crash is a 'working' record whose claim lease expires
+and is re-offered on its own, and a list entry lost in transit belongs to an
+unclaimed record the next dispatch offers again. The flush, the reconciliation
+re-push and the failed-track re-queue are therefore deleted outright.
 
-Runs the REAL _reset_queued_on_restart method with a fake DB cursor and fake
-Redis -- no postgres or redis server needed. Verify with:
+These tests pin the replacement: the column-rewriting paths are gone, the
+worker's only claim is the pre-decode one, and that claim accepts the states
+the stage queue legitimately dispatches from -- including the 'failed' verdict
+the old engine left on rows whose records were seeded failed+retryable.
 
-  python3 -m pytest test_restart_flush.py -q
+Runs the REAL AnalysisWorker claim with a fake DB cursor -- no postgres or
+redis server needed. Verify with:
+
+  cd services/audio-analyzer && python -m pytest test_restart_flush.py -q
 """
 import ast
+import inspect
 import importlib.util
+import os
 import sys
+from typing import Any
 
 # Load the REAL audio-analyzer module by absolute path under a UNIQUE name.
 # The clap service has its own analyzer.py, and both would otherwise collide
 # on sys.modules["analyzer"] when the two services' tests run in one session.
-_ANALYZER_PATH = "services/audio-analyzer/analyzer.py"
+_ANALYZER_PATH = os.path.join(os.path.dirname(__file__), "analyzer.py")
 _spec = importlib.util.spec_from_file_location("audio_analyzer_under_test", _ANALYZER_PATH)
 assert _spec and _spec.loader, f"cannot load {_ANALYZER_PATH}"
 analyzer = importlib.util.module_from_spec(_spec)
@@ -27,19 +37,21 @@ _spec.loader.exec_module(analyzer)
 
 
 class FakeCursor:
-    def __init__(self, rowcount: int):
+    def __init__(self, rowcount: int = 1):
         self.rowcount = rowcount
         self.executed: list[str] = []
+        self.last_params = None
 
     def execute(self, sql: str, *args):
         self.executed.append(sql)
+        self.last_params = args[0] if args else None
 
     def close(self):
         pass
 
 
 class FakeDb:
-    def __init__(self, rowcount: int):
+    def __init__(self, rowcount: int = 1):
         self.cursor = FakeCursor(rowcount)
         self.committed = 0
         self.rolled_back = 0
@@ -54,73 +66,56 @@ class FakeDb:
         self.rolled_back += 1
 
 
-class FakeRedis:
-    def __init__(self):
-        self.deleted: list[str] = []
-
-    def delete(self, key: str):
-        self.deleted.append(key)
-
-
-def make_worker(db: FakeDb, redis: FakeRedis) -> "analyzer.AnalysisWorker":
+def make_worker(db: FakeDb) -> Any:
     # Bypass __init__ (which opens real Redis/Postgres connections) by
     # constructing a bare object and setting only what the method touches.
-    worker = object.__new__(analyzer.AnalysisWorker)
+    worker: Any = object.__new__(analyzer.AnalysisWorker)
     worker.db = db
-    worker.redis = redis
     return worker
 
 
-def test_resets_queued_rows_to_pending():
-    db = FakeDb(rowcount=7)
-    w = make_worker(db, FakeRedis())
-    reset = w._reset_queued_on_restart()
-    assert reset == 7
-    assert "UPDATE \"Track\"" in db.cursor.executed[0]
-    assert "'pending'" in db.cursor.executed[0]
-    assert "'queued'" in db.cursor.executed[0]
+def test_column_rewriting_restart_paths_are_gone():
+    # The flush, the reconciliation re-push and the failed-track re-queue
+    # rewrote Track rows from column guesses; the record owns the attempt
+    # now, so none of them may exist.
+    for gone in ("_reset_queued_on_restart", "_run_db_reconciliation",
+                 "_retry_failed_tracks", "_cleanup_stale_processing"):
+        assert not hasattr(analyzer.AnalysisWorker, gone), f"{gone} still exists"
 
 
-def test_flushes_redis_queue_list():
-    r = FakeRedis()
-    db = FakeDb(rowcount=0)
-    w = make_worker(db, r)
-    w._reset_queued_on_restart()
-    assert r.deleted == ["audio:analysis:queue"]
+def test_start_makes_no_restart_time_track_writes():
+    # start() must not UPDATE "Track" at boot: a restart that rewrites the
+    # column contradicts whatever the stage record already answered.
+    start_src = inspect.getsource(analyzer.AnalysisWorker.start)
+    assert 'UPDATE "Track"' not in start_src
+    assert "_reset_queued_on_restart" not in start_src
+    assert "_cleanup_stale_processing" not in start_src
 
 
-def test_flush_error_does_not_break_reset():
-    class FlakyRedis(FakeRedis):
-        def delete(self, key):
-            raise ConnectionError("redis down")
-
-    # Even if the flush fails, the DB reset must have committed and the method
-    # must not raise.
-    db = FakeDb(rowcount=0)
-    w = make_worker(db, FlakyRedis())
-    reset = w._reset_queued_on_restart()
-    assert reset == 0
+def test_claim_accepts_seeded_failed_tracks():
+    # The stage queue re-asks tracks the old engine had marked failed (their
+    # records were seeded failed+retryable); the claim must take them.
+    db = FakeDb(rowcount=1)
+    w = make_worker(db)
+    claimed = w._mark_track_processing("trk1")
+    assert claimed is True
+    sql = db.cursor.executed[0]
+    assert 'UPDATE "Track"' in sql
+    assert "'processing'" in sql
+    for acceptable in ("'pending'", "'queued'", "'failed'"):
+        assert acceptable in sql, f"claim does not accept {acceptable}"
+    # And it commits exactly once, never rolling a claim back silently.
     assert db.committed == 1
+    assert db.rolled_back == 0
 
 
-def test_db_connect_failure_propagates():
-    # cursor acquisition is deliberately OUTSIDE the try: a DB connection
-    # failure at worker boot is fatal and must crash loudly, not be swallowed
-    # into a silent 0 (the worker would otherwise start believing it reset
-    # rows it never touched).
-    class BrokenDb:
-        def get_cursor(self):
-            raise RuntimeError("server gone")
-
-    w = make_worker(BrokenDb(), FakeRedis())
-    try:
-        w._reset_queued_on_restart()
-        raise AssertionError("expected RuntimeError to propagate")
-    except RuntimeError as e:
-        assert "server gone" in str(e)
+def test_unclaimed_track_reports_not_claimed():
+    db = FakeDb(rowcount=0)
+    w = make_worker(db)
+    assert w._mark_track_processing("trk1") is False
 
 
 def test_module_syntax_is_valid():
     # Belt-and-braces: the whole file must still parse after the refactor.
-    with open(analyzer.__file__) as f:
+    with open(_ANALYZER_PATH) as f:
         ast.parse(f.read())

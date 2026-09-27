@@ -181,16 +181,22 @@ ONNX_TEXT_MODEL_PATH = os.getenv(
 # Tokenizer for the text path. laion_clap uses RobertaTokenizer('roberta-base')
 # -- NOT the 'laion/clap-htsat-unfused' tokenizer -- and the Xenova ONNX export
 # was built with the same roberta-base vocab. Using the wrong tokenizer was the
-# cause of a measured 0.84 cosine vs the correct 1.0000 (text_parity_gate.py).
+# cause of a measured 0.84 cosine (text_parity_gate.py).
+# 77 is laion_clap's maximum text length; longer prompts are truncated.
 TEXT_MAX_LENGTH = 77
 
 
 class OnnxTextCLAPBackend:
     """Pure-ONNX text encoder: tokenizer + Xenova text_model.onnx.
 
-    Numerically identical (cosine == 1.0000) to laion_clap's torch text path on
-    the 12 prompts used by the zero-shot detectors (text_parity_gate.py,
-    2026-09-10). No torch, no laion_clap -- onnxruntime + transformers only.
+    The ONNX graph has no attention_mask input, so every token it is given is
+    attended to, padding included. Each prompt is therefore encoded on its own
+    at its true token length, which equals the masked HF/laion_clap text
+    embedding (test_text_parity.py). The earlier "cosine 1.0000" gate
+    (text_parity_gate.py, 2026-09-10) compared padded ids against a reference
+    run with attention_mask=ones, so both sides read the padding and the gate
+    could not see the defect. No torch, no laion_clap -- onnxruntime +
+    transformers only.
     """
 
     def __init__(self, model_path: str = ONNX_TEXT_MODEL_PATH):
@@ -213,16 +219,22 @@ class OnnxTextCLAPBackend:
         logger.info(f'ONNX text backend loaded from {self.model_path}')
 
     def embed_text(self, texts: list[str]) -> np.ndarray:
-        """Return [n, 512] L2-normalized text embeddings."""
+        """Return [n, 512] L2-normalized text embeddings.
+
+        One prompt per run, unpadded: with no attention_mask input, padding a
+        batch to a common length would change every shorter prompt's vector.
+        """
         self.load_model()
-        enc = self._tok(
-            texts,
-            padding='max_length',
-            truncation=True,
-            max_length=TEXT_MAX_LENGTH,
-            return_tensors='np',
-        )
-        ids = enc['input_ids'].astype(np.int64)
-        out = self._sess.run([self._out_name], {self._in_name: ids})[0]
+        rows = []
+        for text in texts:
+            ids = self._tok(
+                [text],
+                padding=False,
+                truncation=True,
+                max_length=TEXT_MAX_LENGTH,
+                return_tensors='np',
+            )['input_ids'].astype(np.int64)
+            rows.append(self._sess.run([self._out_name], {self._in_name: ids})[0][0])
+        out = np.stack(rows)
         norm = np.linalg.norm(out, axis=1, keepdims=True)
         return (out / np.maximum(norm, 1e-12)).astype(np.float32)

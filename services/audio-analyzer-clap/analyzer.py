@@ -232,7 +232,8 @@ class CLAPAnalyzer:
         Mirrors laion_clap's get_text_embedding(prompts, use_tensor=False)
         return shape: a list of 512-d float32 vectors. When CLAP_BACKEND=onnx
         this uses OnnxTextCLAPBackend (roberta-base tokenizer + Xenova
-        text_model.onnx, cosine 1.0000 vs laion_clap) — NO torch load. When
+        text_model.onnx, each prompt encoded unpadded so it matches the masked
+        laion_clap result; see test_text_parity.py) — NO torch load. When
         the text backend is unavailable it falls back to laion_clap so the
         default (torch) mode is untouched.
         """

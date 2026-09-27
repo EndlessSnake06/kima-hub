@@ -86,8 +86,9 @@ RUN echo "Models downloaded:" && ls -lh /app/models/
 # Install other dependencies
 RUN pip3 install --no-cache-dir redis psycopg2-binary 'numpy>=1.19.0,<2.0.0'
 
-# Copy application code
-COPY analyzer.py .
+# Copy application code -- analyzer.py imports classifier at module load,
+# so both files must land in the image or the worker cannot start.
+COPY analyzer.py classifier.py .
 
 # Create non-root user
 RUN useradd -m -u 1000 analyzer && \

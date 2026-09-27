@@ -1,94 +1,133 @@
 # CLAP Audio Analyzer Service - LAION CLAP embeddings for vibe similarity
-FROM python:3.10-slim
+#
+# ONNX only, and buildable from a fresh clone. This mirrors the published
+# all-in-one image (the repo-root Dockerfile) step for step: the audio encoder
+# is exported in a builder stage from the PUBLIC laion/clap-htsat-unfused
+# checkpoint, the text encoder is downloaded, the Hugging Face files the
+# runtime needs are baked into a cache, and every file is sha-gated. Nothing
+# is COPY'd from models/ -- that directory is gitignored, so an image that
+# needed it could only be built on a machine that already had the weights.
+# If the root Dockerfile's CLAP pins change, change them here too.
+
+# ============================================================
+# CLAP ONNX BUILDER STAGE
+# Exports hf_audio.onnx (sha256 37df17afb9881569c4f50e5b691167aa54586418059701a74a54934514969972)
+# from the public checkpoint with a pinned toolchain. Same pins -> same bytes
+# (proven on linux/amd64 and linux/arm64, 2026-09-16); the sha gate fails the
+# build on any drift.
+FROM python:3.11-slim AS clap-onnx-builder
+WORKDIR /build
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates
+
+RUN pip3 install --no-cache-dir \
+    --index-url https://download.pytorch.org/whl/cpu \
+    --extra-index-url https://pypi.org/simple \
+    'torch==2.8.0' 'transformers==4.57.6' 'onnx' 'numpy<2'
+COPY export_onnx.py .
+# All three files must live INSIDE ckpt/ -- from_pretrained('ckpt') finds
+# weights only in the snapshot dir. curl -o does not create parent dirs.
+RUN mkdir -p ckpt \
+    && curl -fL --retry 5 --retry-delay 5 --retry-all-errors -o ckpt/pytorch_model.bin \
+        'https://huggingface.co/laion/clap-htsat-unfused/resolve/8fa0f1c6d0433df6e97c127f64b2a1d6c0dcda8a/pytorch_model.bin' \
+    && echo '1cd3c601bc4afe0fa87be3de4c13dd2cfadd249fac1e29acf74a9b296c3219bb  ckpt/pytorch_model.bin' | sha256sum -c - \
+    && curl -fL --retry 5 --retry-delay 5 --retry-all-errors -o ckpt/config.json \
+        'https://huggingface.co/laion/clap-htsat-unfused/resolve/8fa0f1c6d0433df6e97c127f64b2a1d6c0dcda8a/config.json' \
+    && echo '9efb9557bc804f2ca6e394486af2e45dfed0b18554909735a99c6220b84e4288  ckpt/config.json' | sha256sum -c - \
+    && curl -fL --retry 5 --retry-delay 5 --retry-all-errors -o ckpt/preprocessor_config.json \
+        'https://huggingface.co/laion/clap-htsat-unfused/resolve/8fa0f1c6d0433df6e97c127f64b2a1d6c0dcda8a/preprocessor_config.json' \
+    && echo '9739f58296aa6f9ac18008fd0150fb2649bc554985fbde86d0a4041c882ac753  ckpt/preprocessor_config.json' | sha256sum -c -
+RUN python3 export_onnx.py --src ckpt --out hf_audio.onnx \
+    && echo '37df17afb9881569c4f50e5b691167aa54586418059701a74a54934514969972  hf_audio.onnx' | sha256sum -c - \
+    && echo '[builder] hf_audio.onnx exported and sha-verified'
+
+# ============================================================
+# RUNTIME
+FROM python:3.11-slim
 
 # Avoid interactive prompts
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=UTC
 
-# CPU thread limiting for PyTorch and numerical libraries
+# CPU thread limiting for numerical libraries
 # Prevents workers from using all CPU cores
 ENV OMP_NUM_THREADS=1 \
     OPENBLAS_NUM_THREADS=1 \
     MKL_NUM_THREADS=1 \
-    NUMEXPR_MAX_THREADS=1 \
-    TORCH_NUM_THREADS=1
+    NUMEXPR_MAX_THREADS=1
+
+# The baked Hugging Face cache lives here rather than in a home directory, so
+# the non-root runtime user reads the same cache the build wrote.
+ENV HF_HOME=/app/hf-cache
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libsndfile1 \
     curl \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install Python dependencies. Torch is installed from the CPU-only index:
-# the PyPI default wheel drags in nvidia CUDA libraries (~2.5GB) that this
-# analyzer can never use (CPU-only, `cpus`-limited, no GPU mounts), and the
-# base image has no room for them (the build failed the layer
-# export with "no space left on device" until this change). The CPU wheel
-# also keeps the deployed image small for every user.
+# Torch-free: requirements.txt carries the ONNX stack only. The legacy torch
+# backend is not installed (see requirements-torch.txt for why and how).
+# transformers is pinned exact, as in the all-in-one image: newer releases
+# reference torch.float8_e8m0fnu at import and crash when torch is absent, and
+# 4.57.6 is the version the ONNX parity was validated on.
 COPY requirements.txt .
-# Torch from the CPU-only wheel index: the PyPI default drags in nvidia CUDA
-# libraries (~2.5GB) this CPU-only analyzer can never use (no GPU mounts,
-# `cpus`-limited), which also blew the layer export on that build.
-# Arch-aware via `uname -m` (works for plain docker build AND buildx --platform,
-# where TARGETARCH is often unset): 2.6.0 is the newest amd64 cp310 CPU wheel,
-# but torchaudio 2.6.0 has NO aarch64 wheel -- arm64 needs the newer train that
-# ships both arches (2.14.0/2.11.0/0.29.0 all have cp310 linux aarch64 wheels).
-# --extra-index-url (not --index-url) keeps pip able to fetch build deps.
-RUN if [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ]; then \
-        pip install --no-cache-dir \
-            --extra-index-url https://download.pytorch.org/whl/cpu \
-            "torch==2.14.0+cpu" "torchaudio==2.11.0+cpu" "torchvision==0.29.0+cpu"; \
-    else \
-        pip install --no-cache-dir \
-            --extra-index-url https://download.pytorch.org/whl/cpu \
-            "torch==2.6.0+cpu" "torchaudio==2.6.0+cpu" "torchvision==0.21.0+cpu"; \
-    fi
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt 'transformers==4.57.6'
 
-# Create models directory
-RUN mkdir -p /app/models
+# Application code -- ALL of the runtime modules. analyzer.py imports
+# onnx_backend at module load, which imports clap_mel. verify_runtime.py and
+# the fixtures ride along for the build-time parity gate below.
+COPY analyzer.py onnx_backend.py clap_mel.py verify_runtime.py ./
+COPY test_fixtures/ ./test_fixtures/
 
-# Download CLAP model at build time
-# Using music_audioset checkpoint for music-specific embeddings
-RUN curl -L -o /app/models/music_audioset_epoch_15_esc_90.14.pt \
-    "https://huggingface.co/lukewys/laion_clap/resolve/main/music_audioset_epoch_15_esc_90.14.pt"
+# ============================================================
+# CLAP ONNX WEIGHTS -- PUBLIC SOURCES ONLY, SHA-GATED
+# hf_audio.onnx comes from the builder stage. text_model.onnx is byte-identical
+# to Xenova/clap-htsat-unfused's public ONNX text export. The graph has no
+# attention-mask input, so onnx_backend encodes each prompt unpadded; that matches
+# the masked HF text embedding (test_text_parity.py).
+# onnx_backend resolves both from /app/models by default.
+RUN mkdir -p /app/models \
+    && curl -fL --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30 --speed-limit 1024 --speed-time 60 \
+        -o /app/models/text_model.onnx \
+        'https://huggingface.co/Xenova/clap-htsat-unfused/resolve/main/onnx/text_model.onnx' \
+    && echo '6df7c51f2d78e236a03f2b816e613d538c815639d13644fe7c2124f439da9648  /app/models/text_model.onnx' | sha256sum -c -
+COPY --from=clap-onnx-builder /build/hf_audio.onnx /app/models/hf_audio.onnx
 
-# Verify model loads correctly
-RUN python -c "import laion_clap; model = laion_clap.CLAP_Module(enable_fusion=False, amodel='HTSAT-base'); model.load_ckpt('/app/models/music_audioset_epoch_15_esc_90.14.pt'); print('CLAP model verified successfully')"
+# ============================================================
+# OFFLINE HUGGINGFACE CACHE (boot without network)
+# The runtime lazily loads the laion preprocessor_config.json and the
+# roberta-base tokenizer. Pin the exact revisions; sha-gate every file.
+RUN LAION='https://huggingface.co/laion/clap-htsat-unfused/resolve/8fa0f1c6d0433df6e97c127f64b2a1d6c0dcda8a' \
+    && ROB='https://huggingface.co/roberta-base/resolve/e2da8e2f811d1448a5b465c236feacd80ffbac7b' \
+    && LDIR="$HF_HOME/hub/models--laion--clap-htsat-unfused" \
+    && RDIR="$HF_HOME/hub/models--roberta-base" \
+    && LS="$LDIR/snapshots/8fa0f1c6d0433df6e97c127f64b2a1d6c0dcda8a" \
+    && RS="$RDIR/snapshots/e2da8e2f811d1448a5b465c236feacd80ffbac7b" \
+    && mkdir -p "$LS" "$LDIR/refs" "$RS" "$RDIR/refs" \
+    && printf '%s' '8fa0f1c6d0433df6e97c127f64b2a1d6c0dcda8a' > "$LDIR/refs/main" \
+    && printf '%s' 'e2da8e2f811d1448a5b465c236feacd80ffbac7b' > "$RDIR/refs/main" \
+    && curl -fsSL --retry 5 --retry-all-errors -o "$LS/preprocessor_config.json" "$LAION/preprocessor_config.json" \
+    && echo '9739f58296aa6f9ac18008fd0150fb2649bc554985fbde86d0a4041c882ac753  '"$LS"'/preprocessor_config.json' | sha256sum -c - \
+    && curl -fsSL --retry 5 --retry-all-errors -o "$RS/vocab.json" "$ROB/vocab.json" \
+    && echo '9e7f63c2d15d666b52e21d250d2e513b87c9b713cfa6987a82ed89e5e6e50655  '"$RS"'/vocab.json' | sha256sum -c - \
+    && curl -fsSL --retry 5 --retry-all-errors -o "$RS/merges.txt" "$ROB/merges.txt" \
+    && echo '1ce1664773c50f3e0cc8842619a93edc4624525b728b188a9e0be33b7726adc5  '"$RS"'/merges.txt' | sha256sum -c - \
+    && curl -fsSL --retry 5 --retry-all-errors -o "$RS/tokenizer.json" "$ROB/tokenizer.json" \
+    && echo '847bbeab6174d66a88898f729d52fa8d355fafe1bea101cf960dd404581df70e  '"$RS"'/tokenizer.json' | sha256sum -c - \
+    && curl -fsSL --retry 5 --retry-all-errors -o "$RS/tokenizer_config.json" "$ROB/tokenizer_config.json" \
+    && echo '994f46754c5bf4014f1aa92d34b1374319c3a6b3f702105cd5b742beaecd18ce  '"$RS"'/tokenizer_config.json' | sha256sum -c -
 
-# Copy application code -- ALL of it. onnx_backend.py is imported by
-# analyzer.py at module load (analyzer.py:77), so a fresh image that omits it
-# cannot import at all; and the validated ONNX audio encoder must land at
-# /app/models/hf_audio.onnx so onnx_backend's default path resolves in-image.
-COPY analyzer.py .
-COPY onnx_backend.py .
-COPY models/hf_audio.onnx /app/models/hf_audio.onnx
-# The ONNX TEXT encoder (Xenova clap-htsat-unfused text_model.onnx, ~501MB).
-# The analyzer's text path (vibe search + the four zero-shot detectors) is
-# pure-ONNX under CLAP_BACKEND=onnx with 1.0000 parity to laion_clap
-# (text_parity_gate.py, 2026-09-10). If missing, ONNX-mode text calls fail.
-COPY models/text_model.onnx /app/models/text_model.onnx
-# Deploy note: both ONNX models are
-# gitignored (models/ dir) and MUST be present in the build context -- the
-# test-server deploy path carries them (rsync of the models/ dir). Do NOT
-# switch these COPYs to curl-at-build from HuggingFace: the HF
-# onnx/audio_model.onnx currently FAILS audio parity (cosine 0.49-0.71 vs the
-# validated export's 1.0000, measured 2026-09-10) -- it is a different model.
-# The validated weights exist only as the deploy artifact.
-
-# Verify the ONNX backend actually initializes from the shipped model. This is
-# the "no silent torch fallback" gate: if onnxruntime or the model were broken,
-# the image build fails HERE instead of shipping an image that claims ONNX and
-# runs torch. The model's sha256 (37df17af…) is pinned;
-# audio_model_patched.onnx from the POC scratch is a BROKEN draft and must
-# never be COPY'd in its place.
-RUN python -c "from onnx_backend import OnnxCLAPBackend; b = OnnxCLAPBackend(); b.load_model(); print('[CLAP] ONNX backend verified: ' + b.model_path)"
-# Verify the ONNX TEXT backend too (tokenizer + text model) so a broken text
-# export fails the build, not the first vibe-search query.
-RUN python -c "from onnx_backend import OnnxTextCLAPBackend, ONNX_TEXT_MODEL_PATH; b = OnnxTextCLAPBackend(ONNX_TEXT_MODEL_PATH); b.load_model(); print('[CLAP] ONNX text backend verified: ' + b.model_path)"
+# ============================================================
+# BUILD-TIME PARITY GATE
+# Embed the tracked fixtures through this image's own runtime stack, offline,
+# and require cosine >= 0.999 against the validated embeddings; also runs the
+# text encoder end to end. Any preprocessing/toolchain drift fails the build
+# here instead of shipping an image that embeds into a different space.
+RUN HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python verify_runtime.py
 
 # Create non-root user
 RUN useradd -m -u 1000 analyzer && \
@@ -96,8 +135,8 @@ RUN useradd -m -u 1000 analyzer && \
 
 USER analyzer
 
-# Health check that imports laion_clap
+# Health check: the ONNX backend imports (the torch stack is not in this image).
 HEALTHCHECK --interval=30s --timeout=30s --start-period=60s --retries=3 \
-    CMD python -c "import laion_clap; print('OK')" || exit 1
+    CMD python -c "import onnx_backend; print('OK')" || exit 1
 
 CMD ["python", "analyzer.py"]

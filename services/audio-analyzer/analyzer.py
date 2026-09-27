@@ -61,21 +61,19 @@ from typing import Dict, Any, Optional, List, Tuple
 import traceback
 import subprocess
 import numpy as np
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import (
+    ProcessPoolExecutor,
+    as_completed,
+    TimeoutError as FuturesTimeoutError,
+)
 import multiprocessing
 
-# BrokenProcessPool was added in Python 3.9, provide compatibility for Python 3.8
-try:
-    from concurrent.futures import BrokenProcessPool
-except ImportError:
-    # Python 3.8 fallback: use the internal class or create a compatible exception
-    try:
-        from concurrent.futures.process import BrokenProcessPool
-    except ImportError:
-        # If still not available, create a compatible exception class
-        class BrokenProcessPool(Exception):
-            """Compatibility shim for Python < 3.9"""
-            pass
+# BrokenProcessPool has always lived in concurrent.futures.process (3.7+);
+# `from concurrent.futures import BrokenProcessPool` raises ImportError on
+# every supported version -- the package never re-exported it -- so the old
+# three-way try/except chain always took its second branch and the fallback
+# shim class below it was dead code.
+from concurrent.futures.process import BrokenProcessPool
 
 # Force spawn mode for TensorFlow compatibility (must be called before any multiprocessing)
 try:
@@ -86,6 +84,17 @@ except RuntimeError:
 import redis
 import psycopg2
 from psycopg2.extras import RealDictCursor
+
+# Failure-class routing lives in classifier.py (pure stdlib). analyzer.py
+# must import and call it — the single failure choke point is
+# AnalysisWorker._save_failed, so every failure surface inherits the rule
+# with zero per-site plumbing.
+from classifier import (
+    classify_failure,
+    classify_with_codec,
+    tag_error,
+    Disposition,
+)
 
 # ProcessPoolExecutor gained max_tasks_per_child in Python 3.11. This image is
 # built on Ubuntu 20.04 for essentia-tensorflow compatibility, which ships
@@ -228,13 +237,28 @@ def _get_workers_from_db() -> int:
 DEFAULT_WORKERS = 2
 # Try to load from database first, fall back to env var or default
 NUM_WORKERS = _get_workers_from_db()
-ESSENTIA_VERSION = '2.1b6-enhanced-v2'
+# v3: mood heads read at their metadata-correct column, stored independently
+# (see HEAD_CLASSES). Migration 20260924120000_reset_inverted_mood_heads
+# re-queues every row analysed by an earlier version.
+ESSENTIA_VERSION = '2.1b6-enhanced-v3'
 
 # Retry configuration
 MAX_RETRIES = int(os.getenv('MAX_RETRIES', '3'))  # Max retry attempts per track
-# Seconds to allow the ffmpeg pre-decode integrity probe before giving up.
-PRE_DECODE_PROBE_TIMEOUT = int(os.getenv('PRE_DECODE_PROBE_TIMEOUT', '120'))
-STALE_PROCESSING_MINUTES = int(os.getenv('STALE_PROCESSING_MINUTES', '15'))  # Reset tracks stuck in 'processing' (synchronized with backend)
+
+# Retry cap + backoff ladder for the analysis stage record. Parity with the
+# engine's TypeScript twin (backend unifiedEnrichment.ts: STAGE_RETRY_CAP /
+# computeStageRetryWaitMs): INCONCLUSIVE stays retryable until 3 attempts,
+# waiting 30s, 60s, 120s -- never more -- and the cap closes the record.
+STAGE_RETRY_CAP = 3
+
+
+def compute_stage_retry_wait_seconds(attempt: int) -> int:
+    """Mirror of computeStageRetryWaitMs: min(120s, 30s * 2^(attempt-1))."""
+    return min(120, 30 * 2 ** (max(1, attempt) - 1))
+# Seconds to allow the single ffmpeg decode before giving up on the track.
+# Replaces PRE_DECODE_PROBE_TIMEOUT: there is no separate integrity probe
+# any more -- the one decode IS the check.
+DECODE_TIMEOUT = int(os.getenv('DECODE_TIMEOUT', '120'))
 
 # Queue names
 ANALYSIS_QUEUE = 'audio:analysis:queue'
@@ -267,12 +291,124 @@ MODELS = {
     'emomusic': os.path.join(MODEL_DIR, 'emomusic-msd-musicnn-2.pb'),
 }
 
+# Output column order of each classification head. Copied verbatim from the
+# "classes" field of Essentia's model metadata,
+# https://essentia.upf.edu/models/classification-heads/<head>/<head>-msd-musicnn-1.json
+# (fetched 2026-09-24). The order is NOT consistent across heads: happy,
+# aggressive, acoustic, electronic and danceability list the positive class
+# first, while sad, relaxed and party list it second. Reading column 1 for
+# every head (the pre-fix behaviour) stored "not happy" as moodHappy, etc.
+HEAD_CLASSES = {
+    'mood_happy': ['happy', 'non_happy'],
+    'mood_sad': ['non_sad', 'sad'],
+    'mood_relaxed': ['non_relaxed', 'relaxed'],
+    'mood_aggressive': ['aggressive', 'not_aggressive'],
+    'mood_party': ['non_party', 'party'],
+    'mood_acoustic': ['acoustic', 'non_acoustic'],
+    'mood_electronic': ['electronic', 'non_electronic'],
+    'danceability': ['danceable', 'not_danceable'],
+}
+HEAD_POSITIVE_CLASS = {
+    'mood_happy': 'happy',
+    'mood_sad': 'sad',
+    'mood_relaxed': 'relaxed',
+    'mood_aggressive': 'aggressive',
+    'mood_party': 'party',
+    'mood_acoustic': 'acoustic',
+    'mood_electronic': 'electronic',
+    'danceability': 'danceable',
+}
+
+
+def positive_class_index(head: str) -> int:
+    """Column of the head's softmax output that holds P(positive class)."""
+    return HEAD_CLASSES[head].index(HEAD_POSITIVE_CLASS[head])
+
+
 # Now that MODELS is defined, check if model files exist on disk
 TF_MODELS_AVAILABLE = os.path.exists(MODELS['musicnn'])
 if TF_MODELS_AVAILABLE:
     logger.info(f"MusiCNN model files found at {MODEL_DIR}")
 else:
     logger.info(f"MusiCNN model files not found at {MODEL_DIR} - Standard mode only")
+
+
+def _decode_to_stereo(file_path: str, duration: int = 90):
+    """Single decode path: ONE ffmpeg command that decodes exactly the
+    analysed window and hands back the samples to analyse.
+
+    Replaces the two-decoder design (a whole-file ``-xerror`` integrity
+    probe plus a separate ``es.MonoLoader`` read). The probe measured
+    nothing the analysis needed -- it condemned files ffmpeg itself
+    decodes fine (the 6-channel eac3 m4a, the Opus file) while the real
+    analysis only ever reads the first 90 s. One command does the whole
+    job now:
+
+    * ``-t`` before ``-i`` reads exactly the first ``duration`` seconds
+      -- the analysed window, never the whole file.
+    * ``-map 0:a:0`` takes the first audio stream only, so a malformed
+      embedded cover art cannot condemn the audio (analysis never
+      touches the artwork, so the artwork gets no vote).
+    * ``-ac 2`` downmixes any channel count above two to stereo; the
+      Essentia algorithms all take mono, so ``load_audio`` averages the
+      two channels down from there.
+    * ``-err_detect ignore_err`` and NO ``-xerror``: a bad frame is
+      skipped, not fatal. If samples come back, the track gets analysed
+      even when ffmpeg logged errors -- retrying a corrupt file just
+      reproduces the same corruption.
+
+    Returns ``(samples, sample_rate, channels, duration, command, rc,
+    stderr, class)``. ``samples`` is a ``(channels, samples)`` float32
+    array, or ``None`` when nothing decoded. ``class`` is the
+    ``Disposition`` from ``classifier.classify_failure`` over whatever
+    ffmpeg reported, so a genuinely damaged file can still be routed to
+    ``permanently_failed`` while a merely odd one stays retryable.
+    """
+    command = [
+        'ffmpeg', '-nostdin', '-v', 'error',
+        '-err_detect', 'ignore_err',
+        '-ss', '0', '-t', str(duration),
+        '-i', file_path,
+        '-map', '0:a:0', '-vn', '-sn', '-dn',
+        '-ac', '2', '-ar', '44100',
+        '-c:a', 'pcm_s16le',
+        '-f', 's16le', '-',
+    ]
+    try:
+        proc = subprocess.run(
+            command,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=DECODE_TIMEOUT,
+        )
+        rc = proc.returncode
+        stderr_text = proc.stderr.decode('utf-8', 'replace').strip()
+        raw = proc.stdout
+    except Exception as e:  # timeout, missing ffmpeg, spawn failure
+        return (None, 44100, 0, 0.0, command, -1,
+                f"decode command failed: {e}",
+                classify_failure(f"decode command failed: {e}"))
+
+    if raw:
+        samples = np.frombuffer(raw, dtype='<i2')
+        if samples.size % 2:
+            samples = samples[:samples.size - 1]  # truncated final frame
+        stereo = samples.reshape(2, -1).astype(np.float32) / 32768.0
+        window = stereo.shape[1] / 44100.0
+        # Samples arrived: analyse them. A logged decode error with usable
+        # output is a bad frame we tolerate, not a failure.
+        cls = classify_failure(stderr_text) if stderr_text else Disposition.INCONCLUSIVE
+        return (stereo, 44100, 2, window, command, rc, stderr_text, cls)
+
+    # Nothing decoded. The last stderr line is the honest failure reason;
+    # classify it so a truly damaged file gets a terminal disposition
+    # instead of three identical retries.
+    lines = stderr_text.splitlines() if stderr_text else []
+    detail = lines[-1] if lines else f"ffmpeg produced no samples (exit {rc})"
+    return (None, 44100, 0, 0.0, command, rc, detail,
+            classify_failure(detail))
+
 
 class AudioAnalyzer:
     """
@@ -412,121 +548,38 @@ class AudioAnalyzer:
             traceback.print_exc()
             self.enhanced_mode = False
     
-    def _is_decodable(self, file_path: str) -> Tuple[bool, Optional[str]]:
-        """Pre-decode integrity probe using the system ffmpeg, which tolerates
-        (and cleanly reports) the corrupt bitstreams that SIGSEGV Essentia's
-        bundled libavcodec. A bad file makes es.MonoLoader crash the entire
-        worker process via an uncatchable native fault, so we gate on ffmpeg
-        first and skip undecodable files rather than feeding them to Essentia.
-
-        Probes the AUDIO STREAMS ONLY (-map 0:a plus -vn/-sn/-dn). Without that,
-        ffmpeg also decodes the embedded cover art, and -xerror then condemns the
-        whole file over a malformed thumbnail. That is not hypothetical: on the
-        production library all twelve tracks of one album were marked corrupt with
-        "[mjpeg] No JPEG data found in image" while their audio decoded perfectly.
-        Analysis never touches the artwork, so the artwork must not get a vote.
-
-        Fails OPEN (returns decodable) if ffmpeg is missing or the probe itself
-        errors, so analysis is never blocked by a tooling gap. ffmpeg reads no
-        stdin (-nostdin) and exits non-zero on the first decode error (-xerror).
-        A file with no audio stream at all fails the map and is rejected, which
-        is the right answer for something the analyzer cannot read.
-        """
-        try:
-            proc = subprocess.run(
-                ['ffmpeg', '-nostdin', '-v', 'error', '-xerror',
-                 '-i', file_path, '-map', '0:a', '-vn', '-sn', '-dn',
-                 '-f', 'null', '-'],
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE,
-                timeout=PRE_DECODE_PROBE_TIMEOUT,
-            )
-        except FileNotFoundError:
-            return (True, None)  # ffmpeg unavailable -> never block analysis
-        except subprocess.TimeoutExpired:
-            return (False, "pre-decode probe timed out (corrupt/unreadable)")
-        except Exception as e:
-            logger.warning(f"Pre-decode probe error for {file_path}: {e}")
-            return (True, None)  # never let the gate itself reject an OK file
-        if proc.returncode != 0:
-            lines = proc.stderr.decode('utf-8', 'replace').strip().splitlines()
-            detail = lines[-1] if lines else f"ffmpeg exit {proc.returncode}"
-            return (False, f"corrupt bitstream (pre-decode gate): {detail[:160]}")
-        return (True, None)
-
     def load_audio(self, file_path: str, max_duration: int = 90) -> Optional[Any]:
-        """Load up to max_duration seconds of audio at 44.1kHz as mono signal"""
+        """Load up to max_duration seconds of audio at 44.1kHz as mono signal.
+
+        The single decode path is _decode_to_stereo: one ffmpeg command
+        per track, decoding exactly the analysed window and downmixing
+        any channel count to stereo. The Essentia algorithms all take
+        mono, so the stereo decode is averaged down to one channel here.
+        There is no pre-decode integrity gate any more: the one decode IS
+        the check, and a file that decodes with a logged bad frame is
+        analysed, not rejected.
+        """
         self._last_load_error = None
         if not ESSENTIA_AVAILABLE:
             return None
 
-        # Pre-decode gate: Essentia's MonoLoader takes an uncatchable native
-        # SIGSEGV on certain corrupt files (e.g. AAC "channel element N is not
-        # allocated", MP3 "Header missing"), killing the worker process and
-        # dumping a ~0.5G core. Probe with the tolerant system ffmpeg first and
-        # skip the file instead of crashing the pool. See _is_decodable.
-        decodable, probe_err = self._is_decodable(file_path)
-        if not decodable:
-            logger.error(f"Pre-decode gate rejected {file_path}: {probe_err}")
-            self._last_load_error = probe_err
+        (samples, sample_rate, channels, window,
+         command, rc, stderr, cls) = _decode_to_stereo(
+            file_path, duration=max_duration)
+        if samples is None:
+            logger.error(f"Decode failed for {file_path}: {stderr}")
+            self._last_load_error = tag_error(stderr, cls, "unknown")
             return None
+        if rc != 0:
+            # Tolerant decode: samples arrived despite ffmpeg reporting a
+            # bad frame -- analyse them, keep the evidence in the log.
+            logger.warning(
+                f"Decoded {file_path} with errors (rc={rc}): {stderr[-160:]}"
+            )
+        if samples.ndim == 2:
+            return samples.mean(axis=0)
+        return samples
 
-        try:
-            loader = es.MonoLoader(filename=file_path, sampleRate=44100)
-            audio = loader()
-            max_samples = int(44100 * max_duration)
-            if len(audio) > max_samples:
-                audio = audio[:max_samples]
-            return audio
-        except Exception as e:
-            logger.error(f"Failed to load audio {file_path}: {e}")
-            self._last_load_error = f"audio load failed: {e}"
-            return None
-
-    def validate_audio(self, audio, file_path: str) -> Tuple[bool, Optional[str]]:
-        """
-        Validate audio before analysis to detect edge cases that cause crashes.
-
-        Returns:
-            (is_valid, error_message) - error_message is None if valid
-        """
-        try:
-            duration = len(audio) / 44100
-
-            if duration < 5.0:
-                return (False, f"Audio too short: {duration:.1f}s (minimum 5s)")
-
-            if len(audio) == 0:
-                return (False, "Audio is empty")
-
-            if np.any(np.isnan(audio)) or np.any(np.isinf(audio)):
-                return (False, "Audio contains NaN or Inf values (corrupted)")
-
-            # Silence detection using vectorized RMS over chunks
-            try:
-                frame_size = 2048
-                hop_size = 1024
-                n_frames = max(1, (len(audio) - frame_size) // hop_size)
-                # Vectorized: compute RMS per frame using stride tricks
-                silent_count = 0
-                for i in range(0, min(n_frames * hop_size, len(audio) - frame_size), hop_size):
-                    rms_val = self.rms(audio[i:i + frame_size])
-                    if rms_val < 0.001:
-                        silent_count += 1
-
-                if n_frames > 0 and silent_count / n_frames > 0.8:
-                    ratio = silent_count / n_frames * 100
-                    return (False, f"Audio is {ratio:.0f}% silence (likely corrupted or blank)")
-            except Exception as silence_error:
-                logger.warning(f"Silence detection failed for {file_path}: {silence_error}")
-
-            return (True, None)
-
-        except Exception as e:
-            logger.warning(f"Audio validation error for {file_path}: {e}")
-            return (True, None)
-    
     def analyze(self, file_path: str) -> Dict[str, Any]:
         """
         Analyze audio file and extract all features.
@@ -576,13 +629,6 @@ class AudioAnalyzer:
             return result
         if audio_44k is None:
             result['_error'] = getattr(self, '_last_load_error', None) or 'Audio failed to load (corrupt or unreadable)'
-            return result
-
-        # Validate audio before analysis
-        is_valid, validation_error = self.validate_audio(audio_44k, file_path)
-        if not is_valid:
-            logger.warning(f"Audio validation failed for {file_path}: {validation_error}")
-            result['_error'] = validation_error
             return result
 
         try:
@@ -716,147 +762,53 @@ class AudioAnalyzer:
         
         Note: MusiCNN was trained on pop/rock music (Million Song Dataset).
         For genres outside this distribution (classical, piano, ambient),
-        predictions may be unreliable (all moods show high values).
-        We detect and normalize these cases.
+        predictions may be less reliable. Values are stored raw; ranking them
+        within the user's own library (backend) absorbs a library-wide skew.
         """
         result = {}
         
         if not self.musicnn_model:
             raise ValueError("MusiCNN model not loaded")
         
-        def safe_predict(model, embeddings, model_name: str) -> Tuple[float, float]:
+        def positive_prob(model_name: str, embeddings) -> Optional[float]:
             """
-            Safely extract prediction and return (value, confidence).
-            
-            Returns:
-                (value, variance) - value is the mean prediction, variance indicates confidence
-                High variance = model is uncertain across frames
+            Mean per-frame probability of the head's positive class, read from
+            the column its metadata names (see HEAD_CLASSES). None when the
+            prediction fails -- a missing value, never a made-up neutral one.
             """
             try:
-                preds = model(embeddings)
-                # preds shape: [frames, 2] for binary classification
-                # [:, 1] = probability of positive class
-                positive_probs = preds[:, 1]
-                raw_value = float(np.mean(positive_probs))
-                variance = float(np.var(positive_probs))
-                # Clamp to valid probability range
-                clamped = max(0.0, min(1.0, raw_value))
-                return (round(clamped, 3), round(variance, 4))
+                preds = self.prediction_models[model_name](embeddings)
+                raw_value = float(np.mean(preds[:, positive_class_index(model_name)]))
+                return round(max(0.0, min(1.0, raw_value)), 3)
             except Exception as e:
                 logger.warning(f"Prediction failed for {model_name}: {e}")
-                return (0.5, 0.0)
-        
+                return None
+
         # Step 1: Get embeddings from base MusiCNN model
         # Output shape: [frames, 200] - 200-dimensional embedding per frame
         embeddings = self.musicnn_model(audio_16k)
         logger.debug(f"MusiCNN embeddings shape: {embeddings.shape}")
-        
-        # Step 2: Pass embeddings through classification heads
-        # Each head outputs [frames, 2] where [:, 1] is probability of positive class
-        
-        # === MOOD PREDICTIONS ===
-        # Collect raw predictions with their variances
-        raw_moods = {}
-        
-        if 'mood_happy' in self.prediction_models:
-            val, var = safe_predict(self.prediction_models['mood_happy'], embeddings, 'mood_happy')
-            raw_moods['moodHappy'] = (val, var)
-        
-        if 'mood_sad' in self.prediction_models:
-            val, var = safe_predict(self.prediction_models['mood_sad'], embeddings, 'mood_sad')
-            raw_moods['moodSad'] = (val, var)
-        
-        if 'mood_relaxed' in self.prediction_models:
-            val, var = safe_predict(self.prediction_models['mood_relaxed'], embeddings, 'mood_relaxed')
-            raw_moods['moodRelaxed'] = (val, var)
-        
-        if 'mood_aggressive' in self.prediction_models:
-            val, var = safe_predict(self.prediction_models['mood_aggressive'], embeddings, 'mood_aggressive')
-            raw_moods['moodAggressive'] = (val, var)
-        
-        if 'mood_party' in self.prediction_models:
-            val, var = safe_predict(self.prediction_models['mood_party'], embeddings, 'mood_party')
-            raw_moods['moodParty'] = (val, var)
-        
-        if 'mood_acoustic' in self.prediction_models:
-            val, var = safe_predict(self.prediction_models['mood_acoustic'], embeddings, 'mood_acoustic')
-            raw_moods['moodAcoustic'] = (val, var)
-        
-        if 'mood_electronic' in self.prediction_models:
-            val, var = safe_predict(self.prediction_models['mood_electronic'], embeddings, 'mood_electronic')
-            raw_moods['moodElectronic'] = (val, var)
-        
-        # Log raw mood predictions for debugging
-        raw_values = {k: v[0] for k, v in raw_moods.items()}
-        logger.info(f"ML Raw Moods: H={raw_values.get('moodHappy')}, S={raw_values.get('moodSad')}, R={raw_values.get('moodRelaxed')}, A={raw_values.get('moodAggressive')}")
-        
-        # === DETECT UNRELIABLE PREDICTIONS (Entropy-based) ===
-        # Shannon entropy detects confused predictions better than min/max range.
-        # When the model is OOD, all moods fire high and uniformly.
-        all_mood_keys = list(raw_moods.keys())
-        all_mood_values = np.array([raw_moods[m][0] for m in all_mood_keys])
 
-        if len(all_mood_values) >= 4:
-            # Shannon entropy normalized to [0, 1]
-            total = all_mood_values.sum()
-            if total > 1e-6:
-                probs = all_mood_values / total
-                entropy = -np.sum(probs * np.log(probs + 1e-10)) / np.log(len(probs))
-            else:
-                entropy = 0.0
+        # Step 2: Pass embeddings through classification heads.
+        # Each head is an independent binary classifier; its value is stored
+        # as-is. The heads are not calibrated against each other, so any
+        # cross-mood comparison (e.g. "which mood is this track") is done
+        # per library by the backend (moodBucketService), not here.
+        mood_heads = {
+            'moodHappy': 'mood_happy',
+            'moodSad': 'mood_sad',
+            'moodRelaxed': 'mood_relaxed',
+            'moodAggressive': 'mood_aggressive',
+            'moodParty': 'mood_party',
+            'moodAcoustic': 'mood_acoustic',
+            'moodElectronic': 'mood_electronic',
+        }
+        for field, head in mood_heads.items():
+            if head in self.prediction_models:
+                result[field] = positive_prob(head, embeddings)
 
-            mean_val = float(np.mean(all_mood_values))
+        logger.info(f"ML Moods: H={result.get('moodHappy')}, S={result.get('moodSad')}, R={result.get('moodRelaxed')}, A={result.get('moodAggressive')}, P={result.get('moodParty')}")
 
-            # High entropy + high mean = classic OOD (everything fires high)
-            if entropy > 0.85 and mean_val > 0.5:
-                logger.warning(f"Detected OOD audio (entropy={entropy:.3f}, mean={mean_val:.3f}). Normalizing moods...")
-                min_mood = float(np.min(all_mood_values))
-                max_mood = float(np.max(all_mood_values))
-                for mood_key in all_mood_keys:
-                    old_val = raw_moods[mood_key][0]
-                    if max_mood > min_mood:
-                        normalized = 0.2 + (old_val - min_mood) / (max_mood - min_mood) * 0.6
-                    else:
-                        normalized = 0.5
-                    raw_moods[mood_key] = (round(normalized, 3), raw_moods[mood_key][1])
-                logger.info(f"Normalized moods: H={raw_moods.get('moodHappy', (0,0))[0]}, S={raw_moods.get('moodSad', (0,0))[0]}")
-
-        # === GROUPED SOFTMAX ON CONTRADICTORY PAIRS ===
-        # Force competition between semantically opposed moods.
-        # happy/sad and relaxed/aggressive cannot both be high simultaneously.
-        # Other moods (party, acoustic, electronic) remain independent.
-        contradictory_groups = [
-            ['moodHappy', 'moodSad'],
-            ['moodRelaxed', 'moodAggressive'],
-        ]
-        for group in contradictory_groups:
-            present = [k for k in group if k in raw_moods]
-            if len(present) < 2:
-                continue
-            values = np.array([raw_moods[k][0] for k in present])
-            values_clamped = np.clip(values, 0.01, 0.99)
-            logits = np.log(values_clamped / (1 - values_clamped))
-            # Temperature 1.5: moderate competition
-            scaled = logits / 1.5
-            exp_scaled = np.exp(scaled - np.max(scaled))
-            softmax_probs = exp_scaled / exp_scaled.sum()
-            for i, k in enumerate(present):
-                raw_moods[k] = (round(float(softmax_probs[i]), 3), raw_moods[k][1])
-
-        # === VARIANCE-BASED UNCERTAINTY SHRINKAGE ===
-        # High per-frame variance = model oscillating = uncertain prediction.
-        # Shrink uncertain predictions toward 0.5 (neutral).
-        for mood_key in all_mood_keys:
-            val, var = raw_moods[mood_key]
-            if var > 0.02:
-                shrinkage = min(1.0, var / 0.1)
-                shrunk = val * (1 - shrinkage) + 0.5 * shrinkage
-                raw_moods[mood_key] = (round(shrunk, 3), var)
-
-        # Store final mood values in result
-        for mood_key, (val, var) in raw_moods.items():
-            result[mood_key] = val
-        
         # === VALENCE & AROUSAL (ensemble of available regression models) ===
         va_models = [m for m in ['deam', 'emomusic'] if m in self.prediction_models]
         if va_models:
@@ -890,19 +842,22 @@ class AudioAnalyzer:
 
         # === ML DANCEABILITY ===
         if 'danceability' in self.prediction_models:
-            val, var = safe_predict(self.prediction_models['danceability'], embeddings, 'danceability')
-            result['danceabilityMl'] = val
+            result['danceabilityMl'] = positive_prob('danceability', embeddings)
 
         return result
     
     def _heuristic_valence_arousal(self, result: Dict[str, Any]):
-        """Derive valence/arousal from mood model predictions when V/A regression models are unavailable."""
+        """Derive valence/arousal from mood model predictions when V/A regression models are unavailable.
+        Leaves them unset if any input head failed, rather than inventing a neutral value."""
+        needed = ['moodHappy', 'moodSad', 'moodParty', 'moodAggressive', 'moodElectronic', 'moodRelaxed', 'moodAcoustic']
+        if any(result.get(k) is None for k in needed):
+            return
         result['valence'] = round(max(0.0, min(1.0,
-            result.get('moodHappy', 0.5) * 0.5 + result.get('moodParty', 0.5) * 0.3 + (1 - result.get('moodSad', 0.5)) * 0.2)), 3)
+            result['moodHappy'] * 0.5 + result['moodParty'] * 0.3 + (1 - result['moodSad']) * 0.2)), 3)
         result['arousal'] = round(max(0.0, min(1.0,
-            result.get('moodAggressive', 0.5) * 0.35 + result.get('moodParty', 0.5) * 0.25 +
-            result.get('moodElectronic', 0.5) * 0.2 + (1 - result.get('moodRelaxed', 0.5)) * 0.1 +
-            (1 - result.get('moodAcoustic', 0.5)) * 0.1)), 3)
+            result['moodAggressive'] * 0.35 + result['moodParty'] * 0.25 +
+            result['moodElectronic'] * 0.2 + (1 - result['moodRelaxed']) * 0.1 +
+            (1 - result['moodAcoustic']) * 0.1)), 3)
 
     def _apply_standard_estimates(self, result: Dict[str, Any], scale: str, bpm: float):
         """
@@ -1085,25 +1040,6 @@ def _pool_health_check():
     return True
 
 
-def _validate_track_in_process(args: Tuple[str, str]) -> Tuple[str, dict]:
-    """Lightweight validation -- file existence and size only.
-
-    Full Essentia decode happens during analysis. If a file passes this check
-    but fails decode, the analysis retry mechanism handles it (MAX_RETRIES=3
-    then permanently_failed). Node.js already runs a 16-byte header check
-    before queuing to Python.
-    """
-    track_id, file_path = args
-    full_path = os.path.join(MUSIC_PATH, file_path.replace('\\', '/'))
-
-    if not os.path.exists(full_path):
-        return (track_id, {'valid': False, 'error': 'File not found'})
-
-    if os.path.getsize(full_path) == 0:
-        return (track_id, {'valid': False, 'error': 'Empty file (0 bytes)'})
-
-    return (track_id, {'valid': True})
-
 def _init_worker_process():
     """
     Initialize the analyzer for a worker process.
@@ -1167,7 +1103,6 @@ def _analyze_track_in_process(args: Tuple[str, str]) -> Tuple[str, str, Dict[str
 class AnalysisWorker:
     """Worker that processes audio analysis jobs from Redis queue using parallel processing"""
     
-    IDLE_SHUTDOWN_CYCLES = 10  # Shut down pool after this many empty cycles (~50s at 5s interval)
 
     def __init__(self):
         self.redis = redis.from_url(REDIS_URL)
@@ -1175,14 +1110,12 @@ class AnalysisWorker:
         self.running = False
         self.executor = None
         self.pool_active = False
-        self.scan_executor = None  # Separate lightweight pool for scan validation
         self.consecutive_empty = 0
         self.is_paused = False  # Enrichment control: pause state
         self.pubsub = None  # Redis pub/sub for control signals
         self._last_work_time = time.time()
         self._pending_resize: int | None = None
         self._pending_resize_time: float = 0.0
-        self._last_perm_failed_count: int | None = None
         self._setup_control_channel()
     
     def _setup_control_channel(self):
@@ -1348,13 +1281,6 @@ class AnalysisWorker:
             logger.warning(f"Error during pool shutdown: {e}")
         self.executor = None
         self.pool_active = False
-        # Also shut down scan pool when idle
-        if self.scan_executor:
-            try:
-                self.scan_executor.shutdown(wait=False)
-            except Exception:
-                pass
-            self.scan_executor = None
         gc.collect()
         # Force glibc to return freed pages to OS (Python/PyTorch hold RSS otherwise)
         try:
@@ -1387,242 +1313,6 @@ class AnalysisWorker:
         self._ensure_pool()
         logger.info(f"Process pool recreated with {NUM_WORKERS} workers")
     
-    def _cleanup_stale_processing(self):
-        """Reset tracks stuck in 'processing' status (from crashed workers).
-        Checks for existing embeddings first to avoid resetting completed work.
-        """
-        cursor = self.db.get_cursor()
-        try:
-            # First: recover tracks that have embeddings but are stuck in processing
-            cursor.execute("""
-                UPDATE "Track" t
-                SET
-                    "analysisStatus" = 'completed',
-                    "analysisError" = NULL,
-                    "analysisStartedAt" = NULL
-                FROM track_embeddings te
-                WHERE t.id = te.track_id
-                AND t."analysisStatus" = 'processing'
-                AND (
-                    (t."analysisStartedAt" IS NOT NULL AND t."analysisStartedAt" < NOW() - INTERVAL '%s minutes')
-                    OR
-                    (t."analysisStartedAt" IS NULL AND t."updatedAt" < NOW() - INTERVAL '%s minutes')
-                )
-                RETURNING t.id
-            """, (STALE_PROCESSING_MINUTES, STALE_PROCESSING_MINUTES))
-
-            recovered_ids = cursor.fetchall()
-            recovered_count = len(recovered_ids)
-
-            if recovered_count > 0:
-                logger.info(f"Recovered {recovered_count} stale tracks that already had embeddings")
-
-            # Quarantine tracks that crashed/stalled MAX_RETRIES times: a worker
-            # that dies on a native fault (e.g. a SIGSEGV the pre-decode gate did
-            # not catch) leaves the track in 'processing' and never reaches the
-            # normal mark-failed path, so without this it would reset forever.
-            cursor.execute("""
-                UPDATE "Track" t
-                SET
-                    "analysisStatus" = 'failed',
-                    "analysisError" = 'Quarantined after repeated worker crash/stall',
-                    "analysisStartedAt" = NULL
-                WHERE t."analysisStatus" = 'processing'
-                AND (
-                    (t."analysisStartedAt" IS NOT NULL AND t."analysisStartedAt" < NOW() - INTERVAL '%s minutes')
-                    OR
-                    (t."analysisStartedAt" IS NULL AND t."updatedAt" < NOW() - INTERVAL '%s minutes')
-                )
-                AND COALESCE(t."analysisRetryCount", 0) >= %s
-                AND NOT EXISTS (SELECT 1 FROM track_embeddings te WHERE te.track_id = t.id)
-                RETURNING t.id
-            """, (STALE_PROCESSING_MINUTES, STALE_PROCESSING_MINUTES, MAX_RETRIES))
-
-            quarantined_ids = cursor.fetchall()
-            quarantined_count = len(quarantined_ids)
-            if quarantined_count > 0:
-                logger.warning(f"Quarantined {quarantined_count} stale 'processing' tracks past {MAX_RETRIES} retries (likely repeated worker crash)")
-
-            # Then: reset truly stale tracks (no embedding) back to pending, and
-            # count the crash as a retry so a poison file can't loop forever.
-            cursor.execute("""
-                UPDATE "Track" t
-                SET
-                    "analysisStatus" = 'pending',
-                    "analysisStartedAt" = NULL,
-                    "analysisRetryCount" = COALESCE(t."analysisRetryCount", 0) + 1
-                WHERE t."analysisStatus" = 'processing'
-                AND (
-                    (t."analysisStartedAt" IS NOT NULL AND t."analysisStartedAt" < NOW() - INTERVAL '%s minutes')
-                    OR
-                    (t."analysisStartedAt" IS NULL AND t."updatedAt" < NOW() - INTERVAL '%s minutes')
-                )
-                AND COALESCE(t."analysisRetryCount", 0) < %s
-                AND NOT EXISTS (SELECT 1 FROM track_embeddings te WHERE te.track_id = t.id)
-                RETURNING t.id
-            """, (STALE_PROCESSING_MINUTES, STALE_PROCESSING_MINUTES, MAX_RETRIES))
-
-            reset_ids = cursor.fetchall()
-            reset_count = len(reset_ids)
-
-            if reset_count > 0:
-                logger.info(f"Reset {reset_count} stale 'processing' tracks back to 'pending'")
-
-            self.db.commit()
-        except Exception as e:
-            logger.error(f"Failed to cleanup stale tracks: {e}")
-            self.db.rollback()
-        finally:
-            cursor.close()
-    
-    def _retry_failed_tracks(self):
-        """Retry failed tracks that haven't exceeded max retries.
-        Recovers tracks that have embeddings but are incorrectly marked failed.
-        """
-        cursor = self.db.get_cursor()
-        try:
-            # First: recover tracks marked failed that actually have embeddings
-            cursor.execute("""
-                UPDATE "Track" t
-                SET
-                    "analysisStatus" = 'completed',
-                    "analysisError" = NULL,
-                    "analysisStartedAt" = NULL
-                FROM track_embeddings te
-                WHERE t.id = te.track_id
-                AND t."analysisStatus" = 'failed'
-                RETURNING t.id
-            """)
-
-            recovered_ids = cursor.fetchall()
-            if len(recovered_ids) > 0:
-                logger.info(f"Recovered {len(recovered_ids)} 'failed' tracks that already had embeddings")
-
-            # Then: retry truly failed tracks (no embedding)
-            cursor.execute("""
-                UPDATE "Track" t
-                SET
-                    "analysisStatus" = 'pending',
-                    "analysisError" = NULL,
-                    "analysisRetryCount" = COALESCE(t."analysisRetryCount", 0)
-                WHERE t."analysisStatus" = 'failed'
-                AND COALESCE(t."analysisRetryCount", 0) < %s
-                AND NOT EXISTS (SELECT 1 FROM track_embeddings te WHERE te.track_id = t.id)
-                RETURNING t.id
-            """, (MAX_RETRIES,))
-            
-            retry_ids = cursor.fetchall()
-            retry_count = len(retry_ids)
-            
-            if retry_count > 0:
-                logger.info(f"Re-queued {retry_count} failed tracks for retry (max retries: {MAX_RETRIES})")
-            
-            # Also log tracks that have permanently failed
-            cursor.execute("""
-                SELECT COUNT(*) as count
-                FROM "Track"
-                WHERE "analysisStatus" = 'failed'
-                AND COALESCE("analysisRetryCount", 0) >= %s
-            """, (MAX_RETRIES,))
-            
-            perm_failed = cursor.fetchone()
-            perm_failed_count = perm_failed['count'] if perm_failed else 0
-            if perm_failed_count > 0 and perm_failed_count != self._last_perm_failed_count:
-                logger.warning(f"{perm_failed_count} tracks have permanently failed (exceeded {MAX_RETRIES} retries)")
-            self._last_perm_failed_count = perm_failed_count
-            
-            self.db.commit()
-        except Exception as e:
-            logger.error(f"Failed to retry failed tracks: {e}")
-            self.db.rollback()
-        finally:
-            cursor.close()
-    
-    def _run_db_reconciliation(self) -> bool:
-        """
-        Re-push tracks the backend already handed us but whose queue entry was lost.
-
-        Only 'queued' rows qualify. A 'queued' row is by definition one the backend
-        selected, checked against the corrupt-file gate, and pushed -- so putting it
-        back on the queue is genuine recovery.
-
-        This used to select 'pending' as well, which quietly made this method a second,
-        independent producer that never consulted "scanStatus". The effect was that the
-        file-validation phase gated nothing at all: every batch this analyzer ran came
-        from here rather than from the queue the validated tracks are pushed to, so a
-        corrupt file reached Essentia anyway and stalled a worker for the full decode
-        timeout. Pending tracks are the backend's to hand out, not ours to take.
-        """
-        if self.is_paused or self._is_gate_closed():
-            return False
-
-        cursor = self.db.get_cursor()
-        try:
-            cursor.execute("""
-                SELECT id, "filePath"
-                FROM "Track"
-                WHERE "analysisStatus" = 'queued'
-                AND COALESCE("analysisRetryCount", 0) < %s
-                ORDER BY "fileModified" DESC
-                LIMIT %s
-            """, (MAX_RETRIES, BATCH_SIZE))
-
-            tracks = cursor.fetchall()
-            if tracks:
-                logger.info(f"DB reconciliation found {len(tracks)} queued tracks, pushing to queue...")
-                pipe = self.redis.pipeline()
-                for t in tracks:
-                    pipe.rpush(ANALYSIS_QUEUE, json.dumps({
-                        'trackId': t['id'],
-                        'filePath': t['filePath']
-                    }))
-                pipe.execute()
-                return True
-            return False
-        except Exception as e:
-            logger.error(f"DB reconciliation failed: {e}")
-            self.db.rollback()
-            return False
-        finally:
-            cursor.close()
-
-    def _reset_queued_on_restart(self) -> int:
-        """Reset 'queued' tracks to 'pending' and flush the Redis queue list.
-
-        Called at worker start: the Redis queue may have been lost or gated
-        during the container's downtime, and any 'queued' row's list entry is
-        untrustworthy. The DB row is the durable truth; the list is a
-        rebuildable buffer (_run_db_reconciliation re-pushes anything the
-        backend re-marks). Flushing the list also prevents the backend from
-        re-pushing the same tracks on top of stale copies when it observes
-        'pending' rows -- without it, one restart double-queues everything.
-
-        Returns the number of rows reset.
-        """
-        cursor = self.db.get_cursor()
-        try:
-            cursor.execute("""
-                UPDATE "Track"
-                SET "analysisStatus" = 'pending'
-                WHERE "analysisStatus" = 'queued'
-            """)
-            queued_reset = cursor.rowcount
-            self.db.commit()
-            if queued_reset > 0:
-                logger.info(f"Reset {queued_reset} queued tracks to pending (Redis queue lost on restart)")
-            try:
-                self.redis.delete(ANALYSIS_QUEUE)
-                logger.info("Flushed Redis audio:analysis:queue to match queued->pending reset")
-            except Exception as e:
-                logger.warning(f"Failed to flush audio:analysis:queue on restart: {e}")
-            return queued_reset
-        except Exception as e:
-            logger.error(f"Failed to reset queued tracks: {e}")
-            self.db.rollback()
-            return 0
-        finally:
-            cursor.close()
-
     def start(self):
         """Start processing jobs with BRPOP-driven event loop"""
         cpu_count = os.cpu_count() or 4
@@ -1637,7 +1327,6 @@ class AnalysisWorker:
         logger.info(f"  BRPOP timeout: {BRPOP_TIMEOUT}s")
         logger.info(f"  Model idle timeout: {MODEL_IDLE_TIMEOUT}s")
         logger.info(f"  Max retries per track: {MAX_RETRIES}")
-        logger.info(f"  Stale processing timeout: {STALE_PROCESSING_MINUTES} minutes")
         logger.info(f"  Essentia available: {ESSENTIA_AVAILABLE}")
         logger.info(f"  ML models on disk: {TF_MODELS_AVAILABLE}")
         logger.info(f"  Worker pool: LAZY (starts on first job)")
@@ -1645,30 +1334,12 @@ class AnalysisWorker:
         self.db.connect()
         self.running = True
 
-        self._reset_queued_on_restart()
-
-        # Debounce stale cleanup -- skip if ran recently (prevents crash-loop inflation)
-        CLEANUP_DEBOUNCE_KEY = 'audio:cleanup:last_run'
-        last_cleanup = self.redis.get(CLEANUP_DEBOUNCE_KEY)
-        cleanup_debounce_seconds = 120
-
-        skip_cleanup = False
-        if last_cleanup:
-            elapsed = time.time() - float(last_cleanup)
-            if elapsed < cleanup_debounce_seconds:
-                logger.info(f"Skipping startup cleanup (ran {elapsed:.0f}s ago, debounce {cleanup_debounce_seconds}s)")
-                skip_cleanup = True
-
-        if not skip_cleanup:
-            logger.info("Cleaning up stale processing tracks...")
-            self._cleanup_stale_processing()
-            self.redis.set(CLEANUP_DEBOUNCE_KEY, str(time.time()), ex=cleanup_debounce_seconds)
-
-        logger.info("Checking for failed tracks to retry...")
-        self._retry_failed_tracks()
-
-        # Check for any already-queued work before entering BRPOP loop
-        self._run_db_reconciliation()
+        # No restart flush, stale sweep or re-queue here: those rewritten
+        # Track rows from column guesses. The TrackStage record owns each
+        # attempt now -- a job claimed before a crash is a 'working' record
+        # whose claim lease expires and comes back around on its own, and a
+        # queue entry lost in transit belongs to an unclaimed record that the
+        # next dispatch offers again.
 
         try:
             while self.running:
@@ -1690,9 +1361,6 @@ class AnalysisWorker:
                         time.sleep(1)
                         continue
 
-                    # Check scan validation queue (non-blocking, 1s timeout)
-                    self.process_scan_queue()
-
                     # BRPOP-driven: blocks until work arrives or timeout
                     has_work = self.process_batch_parallel()
 
@@ -1700,13 +1368,11 @@ class AnalysisWorker:
                         self.consecutive_empty = 0
                         self._last_work_time = time.time()
                     else:
-                        # BRPOP timed out -- run periodic maintenance
                         self.consecutive_empty += 1
-                        found_work = self._run_db_reconciliation()
 
                         # Unload models when idle: immediately if DB has no pending
                         # work, or after MODEL_IDLE_TIMEOUT as a fallback
-                        if self.pool_active and not found_work:
+                        if self.pool_active:
                             idle_seconds = time.time() - self._last_work_time
                             if idle_seconds >= MODEL_IDLE_TIMEOUT:
                                 self._shutdown_pool()
@@ -1716,20 +1382,12 @@ class AnalysisWorker:
                                 self._shutdown_pool()
                                 logger.info("All work complete, pool shut down (will restart when work arrives)")
 
-                        # Periodic cleanup every IDLE_SHUTDOWN_CYCLES timeouts
-                        if self.consecutive_empty >= self.IDLE_SHUTDOWN_CYCLES:
-                            self._cleanup_stale_processing()
-                            self.redis.set('audio:cleanup:last_run', str(time.time()), ex=120)
-                            self._retry_failed_tracks()
-                            self.consecutive_empty = 0
-
                 except KeyboardInterrupt:
                     logger.info("Shutdown requested")
                     self.running = False
                 except BrokenProcessPool:
                     logger.error("BrokenProcessPool detected, recreating pool...")
                     self._recreate_pool()
-                    self._cleanup_stale_processing()
                     continue
                 except Exception as e:
                     logger.error(f"Worker error: {e}")
@@ -1742,8 +1400,6 @@ class AnalysisWorker:
                             self.db.close()
                             time.sleep(2)
                             self.db.connect()
-                            self._cleanup_stale_processing()
-                            self._retry_failed_tracks()
                             if self.pool_active and not self._check_pool_health():
                                 self._recreate_pool()
                         except Exception as reconnect_err:
@@ -1793,15 +1449,18 @@ class AnalysisWorker:
     def _mark_track_processing(self, track_id: str) -> bool:
         """Claim a single track just before its worker starts.
 
-        The "scanStatus" condition is the corrupt-file gate. Every route into the Redis
-        queue converges on this claim, so this is the one place that can guarantee a
-        file the backend rejected never reaches Essentia. That matters because a corrupt
-        file which gets past it wedges a worker for the full 180-second decode timeout,
-        and then does it twice more before the retry ceiling condemns it.
+        There is no scan gate any more: the single ffmpeg decode is the
+        only check a file gets, and whoever holds the queue entry owns
+        the attempt -- so the claim keys on the analysis status alone.
+        'failed' is included because the stage queue re-asks tracks the
+        old engine had marked failed (the migration seeded their records
+        as failed+retryable): the record is the authority, the column
+        still carries the stale verdict. A track whose file is missing
+        or undecodable fails into _save_failed with a class-tagged
+        error; it is never deleted and its true state stays visible on
+        the row.
 
-        Returns True if the track was claimed. A track that is not scan-valid is handed
-        back to the backend as 'pending' rather than silently dropped, so it gets
-        re-validated instead of sitting at 'queued' with nobody willing to take it.
+        Returns True if the track was claimed.
         """
         cursor = self.db.get_cursor()
         try:
@@ -1810,27 +1469,9 @@ class AnalysisWorker:
                 SET "analysisStatus" = 'processing',
                     "analysisStartedAt" = %s
                 WHERE id = %s
-                  AND "analysisStatus" IN ('pending', 'queued')
-                  AND "scanStatus" = 'valid'
+                  AND "analysisStatus" IN ('pending', 'queued', 'failed')
             """, (datetime.now(timezone.utc), track_id))
             claimed = cursor.rowcount > 0
-
-            if not claimed:
-                # Either another worker claimed it first (its status is now 'processing'),
-                # or it never passed validation. Only the second case is ours to correct,
-                # and the status condition below is what tells the two apart.
-                cursor.execute("""
-                    UPDATE "Track"
-                    SET "analysisStatus" = 'pending'
-                    WHERE id = %s
-                      AND "analysisStatus" = 'queued'
-                      AND "scanStatus" <> 'valid'
-                """, (track_id,))
-                if cursor.rowcount > 0:
-                    logger.warning(
-                        f"Track {track_id} reached the analysis queue without passing "
-                        f"file validation; returned to the backend for re-validation"
-                    )
 
             self.db.commit()
             return claimed
@@ -1899,7 +1540,10 @@ class AnalysisWorker:
                     failed += 1
                     logger.error(f"✗ Pool crash (no penalty): {track_info[1]}")
             self._recreate_pool()
-        except TimeoutError:
+        except (TimeoutError, FuturesTimeoutError):
+            # On Python < 3.11 concurrent.futures.TimeoutError is a distinct
+            # class from the builtin, so the batch timeout must be caught by
+            # both names or the 3.8 image silently loses this whole branch.
             for future, track_info in futures.items():
                 if not future.done():
                     future.cancel()
@@ -1919,7 +1563,12 @@ class AnalysisWorker:
         logger.info(f"Batch complete: {completed} succeeded, {failed} failed in {elapsed:.1f}s ({rate:.1f} tracks/sec)")
     
     def _save_results(self, track_id: str, file_path: str, features: Dict[str, Any]):
-        """Save analysis results to database and resolve any stale EnrichmentFailure record."""
+        """Save analysis results to database and resolve any stale EnrichmentFailure record.
+
+        instrumentalness/acousticness are deliberately not written: CLAP is
+        their sole writer, and on a re-analysis this UPDATE would otherwise
+        wipe CLAP's values with NULL (the vibe phase does not re-run for a
+        track whose CLAP embedding already exists)."""
         cursor = self.db.get_cursor()
         try:
             cursor.execute("""
@@ -1936,8 +1585,6 @@ class AnalysisWorker:
                     danceability = %s,
                     valence = %s,
                     arousal = %s,
-                    instrumentalness = %s,
-                    acousticness = %s,
                     "moodTags" = %s,
                     "essentiaGenres" = %s,
                     "moodHappy" = %s,
@@ -1967,8 +1614,6 @@ class AnalysisWorker:
                 features['danceability'],
                 features['valence'],
                 features['arousal'],
-                features['instrumentalness'],
-                features['acousticness'],
                 features['moodTags'],
                 features['essentiaGenres'],
                 features.get('moodHappy'),
@@ -1988,12 +1633,49 @@ class AnalysisWorker:
                 logger.warning(f"Track {track_id} was reset by cleanup before save completed, skipping")
                 self.db.rollback()
                 return
-            # Resolve any stale EnrichmentFailure record from a previous attempt
+            # No EnrichmentFailure resolve here: the TrackStage
+            # record settled below IS the record of this success — a failed
+            # analysis simply disappears from the TrackStage-backed failures
+            # list. Writing a second ledger entry was the drift
+            # removes.
+
+            # Settle the analysis stage record: the dispatch claim marked it
+            # 'working' with attempt left untouched, so the answer lands with
+            # attempt advanced by exactly one -- which is the number the
+            # dispatched jobId carried (track-<id>-analysis-<attempt+1>).
             cursor.execute("""
-                UPDATE "EnrichmentFailure"
-                SET resolved = true, "resolvedAt" = %s
-                WHERE "entityType" = 'audio' AND "entityId" = %s AND resolved = false
-            """, (datetime.now(timezone.utc), track_id))
+                INSERT INTO "TrackStage"
+                    (id, "trackId", stage, status, source, attempt,
+                     "lastErrorCode", "lastErrorMessage", "failureClass",
+                     retryable, "nextRetryAt", evidence, "startedAt",
+                     "finishedAt", "decidedAt", "decidedBy")
+                VALUES (
+                    md5(%s || ':analysis'), %s, 'analysis', 'done', 'analyzer',
+                    COALESCE((SELECT attempt + 1 FROM "TrackStage"
+                              WHERE "trackId" = %s AND stage = 'analysis'), 1),
+                    NULL, NULL, NULL, false, NULL, %s::jsonb,
+                    (SELECT "startedAt" FROM "TrackStage"
+                     WHERE "trackId" = %s AND stage = 'analysis'),
+                    %s, now(), 'engine')
+                ON CONFLICT ("trackId", stage) DO UPDATE
+                    SET status = 'done',
+                        attempt = EXCLUDED.attempt,
+                        "lastErrorCode" = NULL,
+                        "lastErrorMessage" = NULL,
+                        "failureClass" = NULL,
+                        retryable = false,
+                        "nextRetryAt" = NULL,
+                        evidence = EXCLUDED.evidence,
+                        "finishedAt" = EXCLUDED."finishedAt",
+                        "decidedAt" = now(),
+                        "decidedBy" = 'engine'
+            """, (
+                track_id, track_id, track_id,
+                json.dumps({"analysisMode": features.get('analysisMode', 'standard'),
+                            "essentiaVersion": ESSENTIA_VERSION}),
+                track_id,
+                datetime.now(timezone.utc),
+            ))
 
             self.db.commit()
 
@@ -2017,14 +1699,63 @@ class AnalysisWorker:
             cursor.close()
     
     def _save_failed(self, track_id: str, error: str, is_timeout: bool = False):
-        """Mark track as failed.
+        """Mark track as failed, routed through the classifier.
 
-        If is_timeout=True, this was a batch timeout (innocent bystander) --
-        do NOT increment retryCount. Just reset to 'pending' so it gets
-        requeued without penalty.
+        This is the single failure choke point: every failure surface --
+        decode failure, analysis exception, worker death -- funnels the
+        raw message through classify_with_codec here.
+
+        A terminal disposition (DAMAGED / UNSUPPORTED / MULTICANNEL)
+          marks the track 'permanently_failed' with the class-tagged error
+          and does NOT bump analysisRetryCount -- re-offering the same
+          question to the same decoder cannot produce a different answer.
+          INCONCLUSIVE stays retryable -- 'failed' with the retry bump -- so
+          a transient IO hiccup can still recover, but only below the
+          engine's STAGE_RETRY_CAP (3), with the same backoff ladder the
+          TypeScript twin uses (30s/60s/120s): at the cap the record closes
+          terminally (retryable false, nextRetryAt NULL) and the column
+          mirrors permanently_failed. An already-closed record is never
+          resurrected. A batch timeout is an
+          innocent bystander: back to 'pending', no penalty, no class.
+
+        Every branch settles the TrackStage analysis record with the
+        same verdict (status, failureClass, retryable, nextRetryAt,
+        evidence) -- the record drives the stage queue, the column is
+        its mirror, and the two are written in one transaction.
         """
+        disp, codec = classify_with_codec(error)
         cursor = self.db.get_cursor()
         try:
+            # The INCONCLUSIVE verdict needs the record's CURRENT attempt
+            # before anything is written -- exactly what recordStageFailure
+            # (the TypeScript twin) does: read the row, attempt = row + 1,
+            # apply the shared cap and backoff ladder.
+            inconclusive_retryable = False
+            inconclusive_wait_seconds = None
+            inconclusive_attempt = 0
+            record_closed = False
+            if disp == Disposition.INCONCLUSIVE:
+                cursor.execute("""
+                    SELECT attempt, retryable, status FROM "TrackStage"
+                     WHERE "trackId" = %s AND stage = 'analysis'
+                """, (track_id,))
+                row = cursor.fetchone()
+                current_attempt = (row.get("attempt") or 0) if row else 0
+                inconclusive_attempt = current_attempt + 1
+                # A record already closed (failed, not retryable) is never
+                # resurrected -- the engine's rule. The column is still
+                # settled below (this worker owns that mirror), but the
+                # record is left exactly as it is.
+                record_closed = bool(row) and row.get("status") == "failed" and not row.get("retryable")
+                inconclusive_retryable = (
+                    not record_closed
+                    and inconclusive_attempt < STAGE_RETRY_CAP
+                )
+                inconclusive_wait_seconds = (
+                    compute_stage_retry_wait_seconds(inconclusive_attempt)
+                    if inconclusive_retryable else None
+                )
+
             if is_timeout:
                 cursor.execute("""
                     UPDATE "Track"
@@ -2034,7 +1765,20 @@ class AnalysisWorker:
                         "analysisStartedAt" = NULL
                     WHERE id = %s AND "analysisStatus" = 'processing'
                 """, (error[:500], track_id))
-            else:
+            elif disp == Disposition.INCONCLUSIVE and (record_closed or not inconclusive_retryable):
+                # At the cap (or against an already-closed record) the
+                # question is over: the column tells the same truth the
+                # record does -- terminal, no retry bump, because
+                # re-offering the same question cannot change the answer.
+                cursor.execute("""
+                    UPDATE "Track"
+                    SET
+                        "analysisStatus" = 'permanently_failed',
+                        "analysisError" = %s,
+                        "analysisStartedAt" = NULL
+                    WHERE id = %s AND "analysisStatus" = 'processing'
+                """, (error[:500], track_id))
+            elif disp == Disposition.INCONCLUSIVE:
                 cursor.execute("""
                     UPDATE "Track"
                     SET
@@ -2042,23 +1786,165 @@ class AnalysisWorker:
                         "analysisError" = %s,
                         "analysisRetryCount" = COALESCE("analysisRetryCount", 0) + 1
                     WHERE id = %s AND "analysisStatus" = 'processing'
-                    RETURNING "analysisRetryCount"
                 """, (error[:500], track_id))
+            else:
+                # Terminal: the answer is decided; do not spend another
+                # attempt on it and do not spend a retry on it either.
+                cursor.execute("""
+                    UPDATE "Track"
+                    SET
+                        "analysisStatus" = 'permanently_failed',
+                        "analysisError" = %s,
+                        "analysisStartedAt" = NULL
+                    WHERE id = %s AND "analysisStatus" = 'processing'
+                """, (tag_error(error, disp, codec)[:500], track_id))
 
             if cursor.rowcount == 0:
                 logger.warning(f"Track {track_id} was reset by cleanup before failure marked, skipping")
                 self.db.rollback()
                 return
 
-            if not is_timeout:
-                result = cursor.fetchone()
-                retry_count = result['analysisRetryCount'] if result else 0
-                if retry_count >= MAX_RETRIES:
-                    logger.warning(f"Track {track_id} has permanently failed after {retry_count} attempts")
-                else:
-                    logger.info(f"Track {track_id} failed (attempt {retry_count}/{MAX_RETRIES}, will retry)")
+            # Settle the analysis stage record with the classifier's answer:
+            # terminal dispositions close the question for good (retryable
+            # false, no nextRetryAt), INCONCLUSIVE stays due after a backoff,
+            # and a batch timeout reopens it as pending shortly. Attempt is
+            # advanced exactly once per settled answer, matching the
+            # dispatched jobId (track-<id>-analysis-<attempt+1>); the timeout
+            # path leaves it untouched -- that attempt was innocent.
+            if is_timeout:
+                cursor.execute("""
+                    INSERT INTO "TrackStage"
+                        (id, "trackId", stage, status, source, attempt,
+                         "lastErrorCode", "lastErrorMessage", "failureClass",
+                         retryable, "nextRetryAt", evidence, "startedAt",
+                         "finishedAt", "decidedAt", "decidedBy")
+                    VALUES (
+                        md5(%s || ':analysis'), %s, 'analysis', 'pending', 'analyzer',
+                        COALESCE((SELECT attempt FROM "TrackStage"
+                                  WHERE "trackId" = %s AND stage = 'analysis'), 0),
+                        NULL, %s, NULL, true,
+                        now() + interval '2 minutes', %s::jsonb,
+                        NULL, NULL, now(), 'engine')
+                    ON CONFLICT ("trackId", stage) DO UPDATE
+                        SET status = 'pending',
+                            "lastErrorCode" = NULL,
+                            "lastErrorMessage" = EXCLUDED."lastErrorMessage",
+                            "failureClass" = NULL,
+                            retryable = true,
+                            "nextRetryAt" = EXCLUDED."nextRetryAt",
+                            evidence = EXCLUDED.evidence,
+                            "startedAt" = NULL,
+                            "finishedAt" = NULL,
+                            "decidedAt" = now(),
+                            "decidedBy" = 'engine'
+                """, (
+                    track_id, track_id, track_id,
+                    error[:500],
+                    json.dumps({"timeout": True, "error": error[:500]}),
+                ))
+            elif disp == Disposition.INCONCLUSIVE and record_closed:
+                # Never resurrect a closed record: the TS twin returns
+                # without touching it. Nothing is written here.
+                pass
+            elif disp == Disposition.INCONCLUSIVE:
+                # Same verdict the TypeScript twin writes: failed with the
+                # attempt read from this very record, retryable only below
+                # STAGE_RETRY_CAP, nextRetryAt on the shared ladder -- and
+                # NULL once the cap closes the record for good.
+                cursor.execute("""
+                    INSERT INTO "TrackStage"
+                        (id, "trackId", stage, status, source, attempt,
+                         "lastErrorCode", "lastErrorMessage", "failureClass",
+                         retryable, "nextRetryAt", evidence, "startedAt",
+                         "finishedAt", "decidedAt", "decidedBy")
+                    VALUES (
+                        md5(%s || ':analysis'), %s, 'analysis', 'failed', 'analyzer',
+                        %s,
+                        NULL, %s, %s, %s,
+                        CASE WHEN %s::int IS NULL THEN NULL
+                             ELSE now() + (%s::int * interval '1 second') END,
+                        %s::jsonb,
+                        NULL, now(), now(), 'engine')
+                    ON CONFLICT ("trackId", stage) DO UPDATE
+                        SET status = 'failed',
+                            attempt = EXCLUDED.attempt,
+                            "lastErrorCode" = NULL,
+                            "lastErrorMessage" = EXCLUDED."lastErrorMessage",
+                            "failureClass" = EXCLUDED."failureClass",
+                            retryable = EXCLUDED.retryable,
+                            "nextRetryAt" = EXCLUDED."nextRetryAt",
+                            evidence = EXCLUDED.evidence,
+                            "startedAt" = NULL,
+                            "finishedAt" = now(),
+                            "decidedAt" = now(),
+                            "decidedBy" = 'engine'
+                """, (
+                    track_id, track_id,
+                    inconclusive_attempt,
+                    error[:500],
+                    'INCONCLUSIVE',
+                    inconclusive_retryable,
+                    inconclusive_wait_seconds,
+                    inconclusive_wait_seconds,
+                    json.dumps({"error": error[:500]}),
+                ))
             else:
+                cursor.execute("""
+                    INSERT INTO "TrackStage"
+                        (id, "trackId", stage, status, source, attempt,
+                         "lastErrorCode", "lastErrorMessage", "failureClass",
+                         retryable, "nextRetryAt", evidence, "startedAt",
+                         "finishedAt", "decidedAt", "decidedBy")
+                    VALUES (
+                        md5(%s || ':analysis'), %s, 'analysis', 'failed', 'analyzer',
+                        COALESCE((SELECT attempt + 1 FROM "TrackStage"
+                                  WHERE "trackId" = %s AND stage = 'analysis'), 1),
+                        %s, %s, %s, false,
+                        NULL, %s::jsonb,
+                        NULL, now(), now(), 'engine')
+                    ON CONFLICT ("trackId", stage) DO UPDATE
+                        SET status = 'failed',
+                            attempt = EXCLUDED.attempt,
+                            "lastErrorCode" = EXCLUDED."lastErrorCode",
+                            "lastErrorMessage" = EXCLUDED."lastErrorMessage",
+                            "failureClass" = EXCLUDED."failureClass",
+                            retryable = false,
+                            "nextRetryAt" = NULL,
+                            evidence = EXCLUDED.evidence,
+                            "startedAt" = NULL,
+                            "finishedAt" = now(),
+                            "decidedAt" = now(),
+                            "decidedBy" = 'engine'
+                """, (
+                    track_id, track_id, track_id,
+                    disp,
+                    tag_error(error, disp, codec)[:500],
+                    disp,
+                    json.dumps({"error": error[:500], "codec": codec}),
+                ))
+
+            if is_timeout:
                 logger.info(f"Track {track_id} reset to pending (batch timeout, no penalty)")
+            elif disp == Disposition.INCONCLUSIVE:
+                if record_closed:
+                    logger.warning(
+                        f"Track {track_id} analysis record already closed; "
+                        f"left closed (attempt stays {inconclusive_attempt})"
+                    )
+                elif inconclusive_retryable:
+                    logger.info(
+                        f"Track {track_id} failed (attempt "
+                        f"{inconclusive_attempt}/{STAGE_RETRY_CAP}, retry in "
+                        f"{inconclusive_wait_seconds}s)"
+                    )
+                else:
+                    logger.warning(
+                        f"Track {track_id} closed terminally after "
+                        f"{inconclusive_attempt} inconclusive attempts "
+                        f"(cap {STAGE_RETRY_CAP})"
+                    )
+            else:
+                logger.warning(f"Track {track_id} marked permanently_failed ({disp}, source {codec}) -- {error[:160]}")
 
             self.db.commit()
         except Exception as e:
@@ -2067,113 +1953,6 @@ class AnalysisWorker:
             self.db.rollback()
         finally:
             cursor.close()
-
-
-    def _ensure_scan_pool(self):
-        """Ensure the lightweight scan validation pool is running."""
-        if self.scan_executor is None:
-            self.scan_executor = ProcessPoolExecutor(
-                max_workers=2,
-                **_pool_recycle_kwargs(100),
-            )
-
-    def process_scan_queue(self):
-        """Process scan validation requests via a separate lightweight pool (non-blocking)."""
-        if self.is_paused or self._is_gate_closed():
-            return False
-
-        SCAN_QUEUE = 'audio:scan:queue'
-        raw = self.redis.lpop(SCAN_QUEUE)
-        if raw is None:
-            return False
-
-        jobs = [json.loads(raw)]
-        while len(jobs) < 50:
-            more = self.redis.lpop(SCAN_QUEUE)
-            if not more:
-                break
-            jobs.append(json.loads(more))
-
-        self._ensure_scan_pool()
-        futures = {}
-        for job in jobs:
-            tid = job['trackId']
-            fp = job.get('filePath', '')
-            futures[self.scan_executor.submit(_validate_track_in_process, (tid, fp))] = tid
-
-        cursor = self.db.get_cursor()
-        try:
-            for future in as_completed(futures, timeout=300):
-                try:
-                    track_id, result = future.result(timeout=60)
-                except BrokenProcessPool:
-                    track_id = futures[future]
-                    cursor.execute("""
-                        UPDATE "Track"
-                        SET "scanStatus" = 'pending', "scanError" = NULL
-                        WHERE id = %s
-                    """, (track_id,))
-                    self.db.commit()
-                    logger.error(f"Scan worker died for {track_id}, reset to pending")
-                    continue
-                except Exception as e:
-                    track_id = futures[future]
-                    cursor.execute("""
-                        UPDATE "Track"
-                        SET "scanStatus" = 'pending', "scanError" = NULL
-                        WHERE id = %s
-                    """, (track_id,))
-                    self.db.commit()
-                    logger.error(f"Scan validation error for {track_id}: {e}")
-                    continue
-
-                try:
-                    if result['valid']:
-                        cursor.execute("""
-                            UPDATE "Track"
-                            SET "scanStatus" = 'valid', "scanError" = NULL
-                            WHERE id = %s
-                        """, (track_id,))
-                    else:
-                        cursor.execute("""
-                            UPDATE "Track"
-                            SET "scanStatus" = 'invalid', "scanError" = %s
-                            WHERE id = %s
-                        """, (result['error'][:500], track_id))
-                    self.db.commit()
-                except Exception as db_err:
-                    try:
-                        self.db.rollback()
-                    except Exception:
-                        pass
-                    logger.warning(f"[Scan] DB update failed for {track_id} (will retry via stale cleanup): {db_err}")
-
-            logger.info(f"Scan validation: processed {len(jobs)} tracks")
-        except (BrokenProcessPool, TimeoutError):
-            # Pool crash or timeout -- reset all unfinished scan tracks to pending
-            for future, tid in futures.items():
-                if not future.done():
-                    future.cancel()
-                    cursor.execute("""
-                        UPDATE "Track"
-                        SET "scanStatus" = 'pending', "scanError" = NULL
-                        WHERE id = %s
-                    """, (tid,))
-            self.db.commit()
-            logger.error("Scan pool crash/timeout -- reset remaining tracks to pending")
-            try:
-                if self.scan_executor:
-                    self.scan_executor.shutdown(wait=False)
-            except Exception:
-                pass
-            self.scan_executor = None
-        except Exception as e:
-            logger.error(f"Scan validation failed: {e}")
-            self.db.rollback()
-        finally:
-            cursor.close()
-
-        return True
 
 
 def main():
