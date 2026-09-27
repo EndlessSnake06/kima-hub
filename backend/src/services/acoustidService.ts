@@ -1,13 +1,15 @@
 import axios, { AxiosInstance } from "axios";
 import { logger } from "../utils/logger";
 import { rateLimiter } from "./rateLimiter";
+import { sourcePauseController } from "./sourcePauseController";
 import { USER_AGENT, config } from "../config";
+import { Outcome, answered, absent, rateLimited, transient, permanent } from "../utils/outcome";
 
 /**
  * AcoustID lookup client (https://api.acoustid.org/v2/lookup).
  *
  * Wire format verified live against api.acoustid.org on 2026-09-10 with a
- * real Chromaprint fingerprint (Carpenter Brut, score 0.9986):
+ * real Chromaprint fingerprint (Carpentor Brut, score 0.9986):
  *  - POST body must be application/x-www-form-urlencoded. AcoustID's server
  *    does not apply form '+'-means-space decoding, so "meta" is sent
  *    space-separated and %20-encoded: "recordings%20releasegroups". That is
@@ -18,6 +20,10 @@ import { USER_AGENT, config } from "../config";
  *    {id: <recording MBID>, score, recordings: [{id, title, artists,
  *    releasegroups}]}. Results without a "recordings" array exist (bare
  *    fingerprint match) and must be skipped.
+ *
+ * The lookup answers with an `Outcome`: a refused or failed call is
+ * `transient`/`permanent`/`rateLimited` with the real cause, never a null
+ * that a caller could mistake for "the source has nothing".
  */
 interface AcoustIDRecording {
     id: string;
@@ -71,9 +77,8 @@ class AcoustIDService {
      * key wins, then the operator's encrypted SystemSettings value, then the
      * baked config default. A settings read that fails or returns nothing
      * degrades to the config key — this must never throw into the lookup
-     * path. getSystemSettings is lazily imported (same as the retired
-     * Last.fm service did) to
-     * avoid an import cycle through the settings/encryption utils.
+     * path. getSystemSettings is lazily imported to avoid an import cycle
+     * through the settings/encryption utils.
      */
     private async resolveApiKey(explicit?: string): Promise<string | undefined> {
         if (explicit) return explicit;
@@ -101,29 +106,25 @@ class AcoustIDService {
     }
 
     /**
-     * Look up a track by its Chromaprint fingerprint.
+     * Ask AcoustID which recording this fingerprint is. Never throws:
+     * every failure reaches the caller as a typed `Outcome` kind.
      *
      * @param duration Track length in seconds (AcoustID scores against it).
      * @param fingerprint Chromaprint fingerprint as produced by `fpcalc`.
-     * @param clientKey Optional client key when the caller already holds one
-     * (e.g. it just read SystemSettings for another reason). When omitted the
-     * key is resolved the same way the retired Last.fm service resolved its key: the encrypted
-     * SystemSettings row first, then the baked config default (env
-     * ACOUSTID_CLIENT_KEY overrides).
-     * @returns The best matching recording + release-group identity, or null
-     * when there is no confident match or the call failed. Null is the
-     * contract that lets the caller fall through to MusicBrainz silently —
-     * this function never throws.
+     * @param clientKey Optional client key when the caller already holds one.
      */
     async lookup(
         duration: number,
         fingerprint: string,
         clientKey?: string
-    ): Promise<AcoustIDResult | null> {
+    ): Promise<Outcome<AcoustIDResult>> {
         const apiKey = await this.resolveApiKey(clientKey);
         if (!apiKey) {
-            logger.debug("[AcoustID] No client key configured; skipping lookup");
-            return null;
+            logger.debug("[AcoustID] No client key configured; not asking");
+            return permanent(
+                "NO_CLIENT_KEY",
+                "No AcoustID client key configured — the question was never asked"
+            );
         }
         if (!fingerprint || !Number.isFinite(duration) || duration <= 0) {
             logger.debug(
@@ -131,7 +132,12 @@ class AcoustIDService {
                     fingerprint ? "present" : "missing"
                 }, duration=${duration}`
             );
-            return null;
+            return permanent(
+                "NO_FINGERPRINT",
+                `Cannot ask: fingerprint=${
+                    fingerprint ? "present" : "missing"
+                }, duration=${duration}`
+            );
         }
 
         try {
@@ -150,17 +156,29 @@ class AcoustIDService {
             );
 
             const data = response?.data as AcoustIDLookupResponse | undefined;
-            const recording = this.pickRecording(data, duration);
-            if (!recording) {
+            if (!data || data.status !== "ok") {
+                return transient(
+                    "BAD_RESPONSE",
+                    `AcoustID returned status '${data?.status ?? "unreadable"}'`
+                );
+            }
+            const picked = this.pickRecording(data, duration);
+            if (!picked) {
                 logger.debug(
                     `[AcoustID] No confident match for ${Math.round(duration)}s track`
                 );
-                return null;
+                return absent({
+                    askedDuration: Math.round(duration),
+                    topScore: data.results?.[0]?.score ?? null,
+                    reason:
+                        "no result above the confidence floor within the duration window",
+                });
             }
 
+            const { result, recording } = picked;
             const artist = recording.artists?.[0];
             const releaseGroup = recording.releasegroups?.[0];
-            const result: AcoustIDResult = {
+            const outcome: AcoustIDResult = {
                 recordingMbid: recording.id,
                 artistMbid: artist?.id || "",
                 releaseGroupMbid: releaseGroup?.id || "",
@@ -170,30 +188,41 @@ class AcoustIDService {
             };
 
             logger.debug(
-                `[AcoustID] Match recording=${result.recordingMbid} rg=${result.releaseGroupMbid} title="${result.title}"`
+                `[AcoustID] Match recording=${outcome.recordingMbid} rg=${outcome.releaseGroupMbid} title="${outcome.title}"`
             );
-            return result;
+            return answered(outcome, {
+                score: result.score,
+                acoustidId: result.id,
+            });
         } catch (error: any) {
-            // Network failure, bad key, non-2xx — all fall through to the
-            // MusicBrainz path. Never throw from here: AcoustID is best-effort.
-            logger.debug(
-                `[AcoustID] Lookup failed: ${error?.response?.status || error?.message}`
-            );
-            return null;
+            const message = error?.response?.status || error?.message;
+            if (await sourcePauseController.handleRateLimit("acoustid", error)) {
+                logger.warn(
+                    `[AcoustID] Rate limited; source 'acoustid' paused until ${
+                        (await sourcePauseController.getPause("acoustid"))?.until?.toISOString() ?? "?"
+                    }`
+                );
+                const pause = await sourcePauseController.getPause("acoustid");
+                return rateLimited(
+                    pause?.until ?? new Date(Date.now() + 30_000),
+                    { reason: "rate-limited", error: String(message) }
+                );
+            }
+            logger.debug(`[AcoustID] Lookup failed: ${message}`);
+            return transient("REQUEST_FAILED", String(message));
         }
     }
 
     /**
-     * Walk the ranked results and return the first recording that passes the
-     * confidence floor and the duration sanity window. Bare results (fingerprint
-     * match with no attached recording metadata) are skipped — they cannot
-     * identify anything for us.
+     * Walk the ranked results and return the first result that passes the
+     * confidence floor and the duration sanity window, with the recording
+     * attached. Bare results (fingerprint match with no recording metadata)
+     * are skipped — they cannot identify anything for us.
      */
     private pickRecording(
-        data: AcoustIDLookupResponse | undefined,
+        data: AcoustIDLookupResponse,
         duration: number
-    ): AcoustIDRecording | null {
-        if (!data || data.status !== "ok") return null;
+    ): { result: AcoustIDResultRaw; recording: AcoustIDRecording } | null {
         const results = data.results || [];
 
         for (const result of results) {
@@ -206,7 +235,7 @@ class AcoustIDService {
                 continue;
             }
             const recording = result.recordings?.[0];
-            if (recording) return recording;
+            if (recording) return { result, recording };
         }
         return null;
     }

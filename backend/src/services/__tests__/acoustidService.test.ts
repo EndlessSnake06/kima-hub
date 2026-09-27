@@ -1,7 +1,9 @@
 /**
  * AcoustID service tests — mocked HTTP (no live calls; AcoustID is a
- * rate-limited public API and the contract is that failures fall through
- * silently to the MusicBrainz path).
+ * rate-limited public API and the contract is that every outcome reaches
+ * the caller as a typed Outcome kind: "the source answered nothing"
+ * (absent) stays distinct from "the source did not answer"
+ * (transient/permanent).
  *
  * The mocked wire shape here is NOT invented: it is copied from a live
  * lookup against api.acoustid.org/v2/lookup (2026-09-10, Carpenter Brut
@@ -12,18 +14,17 @@
  * match) and must be skipped — covered below.
  *
  * Proves:
- *  - happy path: confident match with release-group resolves to the full
- *    AcoustIDResult shape;
- *  - low-score results are skipped; a result below the 0.5 floor never
- *    resolves;
+ *  - happy path: confident match with release-group answers with the full
+ *    AcoustIDResult shape and the live score in evidence;
+ *  - low-score results are skipped; a result below the 0.5 floor is
+ *    reported absent, not answered;
  *  - duration-sanity guard: a match whose canonical length is less than
  *    half the queried duration (or under 30s) is rejected — the
  *    "matched a 12-second sample" false-positive class;
- *  - a bare result (no recordings attached) never resolves;
- *  - network error / non-ok status / empty results all resolve to null
- *    WITHOUT throwing (the silent-fallthrough contract);
- *  - missing fingerprint or non-finite duration short-circuits to null
- *    without any HTTP call at all;
+ *  - a bare result (no recordings attached) never answers;
+ *  - network error / non-ok status answer `transient` WITHOUT throwing;
+ *  - missing fingerprint or non-finite duration short-circuit to
+ *    `permanent` without any HTTP call at all;
  *  - key precedence (pattern of the retired Last.fm key): the operator's key
  *    from the encrypted SystemSettings row wins over the baked config
  *    default, an explicitly passed key wins over both, and a failed or
@@ -118,17 +119,21 @@ beforeEach(() => {
 });
 
 describe("acoustidService.lookup", () => {
-    it("resolves a confident match to the full result shape", async () => {
+    it("answers a confident match with the full result shape", async () => {
         setupClient().mockResolvedValue(lookupResponse([recordingResult()]));
         const res = await acoustidService.lookup(200, "aqA_ fingerprint");
-        expect(res).toEqual({
-            recordingMbid: RECORDING,
-            artistMbid: ARTIST,
-            releaseGroupMbid: RG,
-            title: "Song",
-            artist: "Artist",
-            album: "Album",
-        });
+        expect(res.kind).toBe("answered");
+        if (res.kind === "answered") {
+            expect(res.value).toEqual({
+                recordingMbid: RECORDING,
+                artistMbid: ARTIST,
+                releaseGroupMbid: RG,
+                title: "Song",
+                artist: "Artist",
+                album: "Album",
+            });
+            expect(res.evidence).toMatchObject({ score: 0.92 });
+        }
     });
 
     it("skips results below the 0.5 score floor and takes the next that qualifies", async () => {
@@ -139,56 +144,69 @@ describe("acoustidService.lookup", () => {
             ]),
         );
         const res = await acoustidService.lookup(200, "fp");
-        expect(res?.releaseGroupMbid).toBe(RG);
+        if (res.kind === "answered") {
+            expect(res.value.releaseGroupMbid).toBe(RG);
+        } else {
+            throw new Error(`expected answered, got ${res.kind}`);
+        }
     });
 
-    it("rejects a match whose duration is less than half the queried duration", async () => {
+    it("reports a match whose duration is less than half the queried duration as absent", async () => {
         setupClient().mockResolvedValue(
             lookupResponse([recordingResult({ duration: 60 })]),
         );
-        // 60s record vs 200s query: the |rec−query| > query/2 guard fires.
+        // 60s record vs 200s query: the |rec−query| > query/2 guard fires —
+        // the source answered, and its answer is "nothing within the window".
         const res = await acoustidService.lookup(200, "fp");
-        expect(res).toBeNull();
+        expect(res.kind).toBe("absent");
     });
 
     it("rejects sub-30s matches even at score 1.0", async () => {
         setupClient().mockResolvedValue(
             lookupResponse([recordingResult({ duration: 25, score: 1.0 })]),
         );
-        expect(await acoustidService.lookup(200, "fp")).toBeNull();
+        expect((await acoustidService.lookup(200, "fp")).kind).toBe("absent");
     });
 
     it("skips a bare result with no recordings array (fingerprint-only match)", async () => {
         setupClient().mockResolvedValue(
             lookupResponse([{ id: RECORDING, score: 0.99 }]),
         );
-        expect(await acoustidService.lookup(200, "fp")).toBeNull();
+        expect((await acoustidService.lookup(200, "fp")).kind).toBe("absent");
     });
 
-    it("returns null without throwing on network error (silent fallthrough)", async () => {
+    it("answers transient on network error (never throws, never looks like 'no data')", async () => {
         setupClient().mockRejectedValue(new Error("ECONNREFUSED"));
-        await expect(acoustidService.lookup(200, "fp")).resolves.toBeNull();
+        const res = await acoustidService.lookup(200, "fp");
+        expect(res.kind).toBe("transient");
+        if (res.kind === "transient") {
+            expect(res.error.message).toContain("ECONNREFUSED");
+        }
     });
 
-    it("returns null when the API reports failure status", async () => {
+    it("answers transient when the API reports failure status", async () => {
         setupClient().mockResolvedValue({
             data: {
                 status: "error",
                 error: { message: "rate limit exceeded" },
             },
         });
-        expect(await acoustidService.lookup(200, "fp")).toBeNull();
+        const res = await acoustidService.lookup(200, "fp");
+        expect(res.kind).toBe("transient");
+        if (res.kind === "transient") {
+            expect(res.error.code).toBe("BAD_RESPONSE");
+        }
     });
 
-    it("returns null when there are no results", async () => {
+    it("answers absent when there are no results", async () => {
         setupClient().mockResolvedValue(lookupResponse([]));
-        expect(await acoustidService.lookup(200, "fp")).toBeNull();
+        expect((await acoustidService.lookup(200, "fp")).kind).toBe("absent");
     });
 
-    it("short-circuits to null on empty fingerprint or bad duration without any HTTP call", async () => {
-        expect(await acoustidService.lookup(200, "")).toBeNull();
-        expect(await acoustidService.lookup(0, "fp")).toBeNull();
-        expect(await acoustidService.lookup(NaN, "fp")).toBeNull();
+    it("short-circuits to permanent on empty fingerprint or bad duration without any HTTP call", async () => {
+        expect((await acoustidService.lookup(200, "")).kind).toBe("permanent");
+        expect((await acoustidService.lookup(0, "fp")).kind).toBe("permanent");
+        expect((await acoustidService.lookup(NaN, "fp")).kind).toBe("permanent");
         expect(setupClient()).not.toHaveBeenCalled();
     });
 
@@ -257,8 +275,8 @@ describe("acoustidService key precedence (spec D: pattern of the retired Last.fm
         post.mockResolvedValue(lookupResponse([]));
         mockGetSystemSettings.mockRejectedValue(new Error("db gone"));
 
-        // Empty results -> null, but the point is it must not THROW.
-        await expect(acoustidService.lookup(200, "fp")).resolves.toBeNull();
+        // Empty results -> absent, but the point is it must not THROW.
+        expect((await acoustidService.lookup(200, "fp")).kind).toBe("absent");
         expect(post.mock.calls[0][1]).toContain(
             `client=${config.acoustid.clientKey}`
         );

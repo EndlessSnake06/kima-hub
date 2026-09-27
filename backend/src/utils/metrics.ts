@@ -103,7 +103,9 @@ export const cacheMisses = new Counter({
 
 // AcoustID-first track identification: which path resolved the identity
 // (file_tag = tags already stamped in the file, fpcalc = computed fingerprint),
-// and how each attempt ended (resolved / no_match / error / skipped).
+// and how each attempt ended (resolved / no_match / refused, or the
+// outcome kind when the call itself failed: rateLimited / transient /
+// permanent).
 export const acoustidTrackIdentityTotal = new Counter({
   name: 'kima_acoustid_track_identity_total',
   help: 'AcoustID-first track identification attempts by path and outcome',

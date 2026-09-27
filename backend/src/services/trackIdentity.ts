@@ -2,6 +2,7 @@ import { prisma } from "../utils/db";
 import { logger } from "../utils/logger";
 import { songLinkService, SongLinkResult } from "./songlink";
 import { musicBrainzService } from "./musicbrainz";
+import { failureCause } from "../utils/outcome";
 
 interface ResolvedTrack {
     sourceUrl: string;
@@ -61,23 +62,29 @@ class TrackIdentityService {
         let tags: string[] = [];
 
         if (isrc) {
-            try {
-                const mbRecording = await musicBrainzService.lookupByIsrc(isrc);
-                if (mbRecording) {
-                    const genreData = await musicBrainzService.getRecordingGenres(mbRecording.recordingId);
-                    if (genreData) {
-                        genres = genreData.genres
-                            .sort((a, b) => b.count - a.count)
-                            .slice(0, 5)
-                            .map((g) => g.name);
-                        tags = genreData.tags
-                            .sort((a, b) => b.count - a.count)
-                            .slice(0, 10)
-                            .map((t) => t.name);
-                    }
+            const mbRecording = await musicBrainzService.lookupByIsrc(isrc);
+            if (mbRecording.kind === "answered") {
+                const genreData = await musicBrainzService.getRecordingGenres(
+                    mbRecording.value.recordingId
+                );
+                if (genreData.kind === "answered") {
+                    genres = genreData.value.genres
+                        .sort((a, b) => b.count - a.count)
+                        .slice(0, 5)
+                        .map((g) => g.name);
+                    tags = genreData.value.tags
+                        .sort((a, b) => b.count - a.count)
+                        .slice(0, 10)
+                        .map((t) => t.name);
+                } else if (genreData.kind !== "absent") {
+                    logger.debug(
+                        `MusicBrainz genre lookup ${genreData.kind} for ISRC ${isrc}: ${failureCause(genreData)}`
+                    );
                 }
-            } catch (err) {
-                logger.debug(`MusicBrainz genre lookup failed for ISRC ${isrc}: ${err}`);
+            } else if (mbRecording.kind !== "absent") {
+                logger.debug(
+                    `ISRC lookup ${mbRecording.kind} for ${isrc}: ${failureCause(mbRecording)}`
+                );
             }
         }
 
