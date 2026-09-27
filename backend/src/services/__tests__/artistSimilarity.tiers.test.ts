@@ -7,8 +7,8 @@
  * - ListenBrainz-first ordering; Deezer results discarded when LB fills the
  *   request.
  * - Deezer fallback when LB is empty; merge + name-dedupe when LB is short.
- * - Local-centroid Tier 3 when both remote tiers are empty; [] when the
- *   local path has nothing either.
+ * - Empty result when both remote tiers are empty — local only re-ranks,
+ *   never answers.
  * - inLibrary flag correctness (MBID-then-name lookup).
  * - Re-rank bound: match adjustments never exceed ±0.1, and an in-library
  *   artist's score moves by exactly the distance-derived delta.
@@ -68,7 +68,7 @@ beforeEach(() => {
     mockDeezer.getRelatedArtists.mockResolvedValue([]);
 });
 
-describe("getSimilarArtists — tier ordering (LB first, Deezer fallback, local last)", () => {
+describe("getSimilarArtists — tier ordering (LB first, Deezer fallback, local never answers)", () => {
     it("uses ListenBrainz alone when it fills the request", async () => {
         mockLb.getSimilarArtists.mockResolvedValue([
             lb("LB One", "m-lb-1", 0.95),
@@ -116,23 +116,23 @@ describe("getSimilarArtists — tier ordering (LB first, Deezer fallback, local 
         expect(result[0].url).toBe("https://listenbrainz.org/artist/m-same");
     });
 
-    it("serves local centroid NN when both remote tiers are empty", async () => {
+    it("returns [] when both remote tiers are empty — local never answers", async () => {
         mockLb.getSimilarArtists.mockResolvedValue([]);
         mockDeezer.getRelatedArtists.mockResolvedValue([]);
-        // Seed exists in the library with a usable centroid.
+        // Even with a seed row and a usable centroid, the local path must
+        // not substitute its own artists.
         mockPrisma.artist.findUnique.mockResolvedValue({ id: "a-seed" });
         mockPrisma.$queryRaw
-            .mockResolvedValueOnce([{ embedding: "[1,0,0]", trackCount: 5 }]) // centroid check
+            .mockResolvedValueOnce([{ embedding: "[1,0,0]", trackCount: 5 }])
             .mockResolvedValueOnce([
                 { artistId: "a-1", name: "Local One", mbid: "m-loc-1", distance: 0.3 },
                 { artistId: "a-2", name: "Local Two", mbid: "m-loc-2", distance: 0.5 },
-            ]); // NN
+            ]);
 
         const result = await getSimilarArtists(SEED_MBID, "Seed Artist", 5);
 
-        expect(result.map((r) => r.name)).toEqual(["Local One", "Local Two"]);
-        expect(result[0].match).toBeCloseTo(0.7, 5);
-        expect(result[0].url).toBe("https://musicbrainz.org/artist/m-loc-1");
+        expect(result).toEqual([]);
+        expect(mockPrisma.$queryRaw).not.toHaveBeenCalled();
     });
 
     it("returns [] when every source has nothing (and never throws)", async () => {

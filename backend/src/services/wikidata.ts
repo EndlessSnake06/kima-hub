@@ -55,11 +55,11 @@ class WikidataService {
                 return {};
             }
 
-            // Step 2: Get Wikipedia article and image
-            const [summary, heroUrl] = await Promise.all([
-                this.getWikipediaSummary(wikidataId),
-                this.getWikidataImage(wikidataId),
-            ]);
+            // Step 2: one EntityData fetch answers both — the sitelink
+            // title feeds the Wikipedia summary, the P18 claim the image.
+            const entity = await this.getEntity(wikidataId);
+            const summary = await this.getSummaryFromEntity(wikidataId, entity);
+            const heroUrl = this.getImageFromEntity(wikidataId, entity);
 
             const result: WikidataResult = { summary, heroUrl };
 
@@ -103,16 +103,26 @@ class WikidataService {
         return itemUrl.split("/").pop() || null;
     }
 
-    private async getWikipediaSummary(
-        wikidataId: string
-    ): Promise<string | undefined> {
+    private async getEntity(wikidataId: string): Promise<any | null> {
         try {
-            // Get English Wikipedia article title
             const response = await this.wikidataGet(
                 `https://www.wikidata.org/wiki/Special:EntityData/${wikidataId}.json`
             );
+            return response.data.entities?.[wikidataId] ?? null;
+        } catch (error) {
+            logger.error(
+                `Failed to fetch Wikidata entity ${wikidataId}:`,
+                error
+            );
+            return null;
+        }
+    }
 
-            const entity = response.data.entities?.[wikidataId];
+    private async getSummaryFromEntity(
+        wikidataId: string,
+        entity: any | null
+    ): Promise<string | undefined> {
+        try {
             const enWikiTitle = entity?.sitelinks?.enwiki?.title;
 
             if (!enWikiTitle) return undefined;
@@ -133,15 +143,11 @@ class WikidataService {
         }
     }
 
-    private async getWikidataImage(
-        wikidataId: string
-    ): Promise<string | undefined> {
+    private getImageFromEntity(
+        wikidataId: string,
+        entity: any | null
+    ): string | undefined {
         try {
-            const response = await this.wikidataGet(
-                `https://www.wikidata.org/wiki/Special:EntityData/${wikidataId}.json`
-            );
-
-            const entity = response.data.entities?.[wikidataId];
             const imageProperty = entity?.claims?.P18; // P18 is "image"
 
             if (!imageProperty || imageProperty.length === 0) return undefined;

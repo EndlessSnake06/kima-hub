@@ -2,16 +2,31 @@ import { AxiosRequestConfig } from "axios";
 import { logger } from "../utils/logger";
 import { CacheWrapper } from "../utils/cacheWrapper";
 import { rateLimitedGet } from "./httpClient";
+import { normalizeString } from "../utils/normalization";
 import type { SimilarArtist } from "./listenBrainz";
 
 /**
  * Deezer Service
- * 
+ *
  * Fetches images, previews, and public playlist data from Deezer.
  * No authentication required - Deezer's API is completely public.
  */
 
 const DEEZER_API = "https://api.deezer.com";
+
+// Does this search hit name the thing we searched for? Deezer ranks by
+// popularity, not exactness, so the first hit is routinely a different
+// record or artist. Nothing in this service accepts an unverified first
+// hit: a lookup answers only when the returned name agrees with the query
+// (identical text, or identical after normalization; an all-punctuation
+// name must match exactly, or every such name would "agree").
+function namesAgree(found: string | undefined, wanted: string): boolean {
+    if (found === undefined) return false;
+    const a = normalizeString(found);
+    const b = normalizeString(wanted);
+    if (a === "" || b === "") return found === wanted;
+    return a === b;
+}
 
 interface DeezerTrack {
     deezerId: string;
@@ -139,6 +154,12 @@ class DeezerService {
                 });
 
                 const artist = body?.data?.[0];
+                if (!namesAgree(artist?.name, artistName)) {
+                    logger.debug(
+                        `[DEEZER] No verified artist image for "${artistName}"`
+                    );
+                    return null;
+                }
                 return artist?.picture_xl || artist?.picture_big || artist?.picture_medium || null;
             });
         } catch (error: any) {
@@ -171,7 +192,15 @@ class DeezerService {
                     timeout: 5000,
                 });
                 const seed = search?.data?.[0];
-                if (!seed?.id) return [];
+                // Trust the related list only if the seed resolved to the
+                // artist we asked about — otherwise it is some other
+                // artist's neighbours.
+                if (!seed?.id || !namesAgree(seed?.name, artistName)) {
+                    logger.debug(
+                        `[DEEZER] Seed "${artistName}" unresolved or mis-resolved; no related artists`
+                    );
+                    return [];
+                }
 
                 const related = await this.deezerGet<any>(`/artist/${seed.id}/related`, {
                     params: { limit },
@@ -225,18 +254,19 @@ class DeezerService {
                     albums = unstructured?.data || [];
                 }
 
-                // Find the best match
-                let bestMatch = albums[0];
-
-                for (const album of albums) {
-                    if (album.artist?.name?.toLowerCase() === artistName.toLowerCase() &&
-                        album.title?.toLowerCase() === albumName.toLowerCase()) {
-                        bestMatch = album;
-                        break;
-                    }
+                const match = albums.find(
+                    (a: any) =>
+                        namesAgree(a?.artist?.name, artistName) &&
+                        namesAgree(a?.title, albumName)
+                );
+                if (!match) {
+                    logger.debug(
+                        `[DEEZER] No verified cover for "${artistName}" - "${albumName}"`
+                    );
+                    return null;
                 }
 
-                return bestMatch?.cover_xl || bestMatch?.cover_big || bestMatch?.cover_medium || null;
+                return match.cover_xl || match.cover_big || match.cover_medium || null;
             });
         } catch (error: any) {
             logger.error(`Deezer album cover error for ${artistName} - ${albumName}:`, error.message);
@@ -254,6 +284,15 @@ class DeezerService {
         });
 
         const track = body?.data?.[0];
+        if (
+            !namesAgree(track?.artist?.name ?? track?.artist, artistName) ||
+            !namesAgree(track?.title, trackName)
+        ) {
+            logger.debug(
+                `[DEEZER] No verified preview for "${artistName}" - "${trackName}"`
+            );
+            return null;
+        }
         return track?.preview || null;
     }
 
@@ -307,19 +346,17 @@ class DeezerService {
                     timeout: 5000,
                 });
 
-                // Find best match - prefer exact artist match
+                // Take a track only if it is by the queried artist and its
+                // title is the queried title (either spelling). No
+                // first-result fallback — that was some other record's
+                // album.
                 const tracks = body?.data || [];
-                const artistLower = artistName.toLowerCase();
-
-                // First try exact artist match
-                let match = tracks.find((t: any) =>
-                    t.artist?.name?.toLowerCase() === artistLower
+                const match = tracks.find(
+                    (t: any) =>
+                        namesAgree(t?.artist?.name, artistName) &&
+                        (namesAgree(t?.title, cleanTrackName) ||
+                            namesAgree(t?.title, trackName))
                 );
-
-                // Fall back to first result if no exact match
-                if (!match && tracks.length > 0) {
-                    match = tracks[0];
-                }
 
                 if (match?.album?.title) {
                     return {

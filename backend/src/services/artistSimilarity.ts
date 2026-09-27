@@ -152,8 +152,9 @@ export async function rebuildArtistCentroid(
  *
  * Tier 1 (ListenBrainz, needs the MBID) and Tier 2 (Deezer, keyed by name)
  * run concurrently; ListenBrainz wins outright when it fills the request.
- * If both come back empty, Tier 3 (local centroid NN) answers. Never
- * throws; returns [] when no source has data.
+ * When both come back empty the answer is empty — the local library only
+ * re-ranks candidates, it never substitutes its own.
+ * Never throws.
  */
 export async function getSimilarArtists(
     artistMbid: string,
@@ -206,8 +207,12 @@ export async function getSimilarArtists(
         // same artist from both sources appears once (LB entries win).
         results = dedupeByName([...lb, ...dz]).slice(0, limit);
     } else {
-        // --- Tier 3: local centroid NN (both remote tiers empty/failed) ---
-        results = await getLocalSimilarArtists(artistMbid, limit);
+        // Neither remote source has anything to say about this artist.
+        // Local centroids only re-rank candidates; they never answer
+        // ("never the sole source"). An empty answer
+        // is honest — the caller shows no similar artists rather than
+        // artists picked from our own shelves.
+        return [];
     }
 
     // Re-rank against the library, then cache and return.
@@ -220,79 +225,6 @@ export async function getSimilarArtists(
         await store(cacheKey, reranked);
     }
     return reranked;
-}
-
-/**
- * Tier 3: cosine nearest-neighbours over locally computed artist centroids.
- * Keyed by MBID — without a library row for the seed there is no centroid
- * to measure distance from, so an unknown-to-us artist gets nothing here.
- */
-async function getLocalSimilarArtists(
-    artistMbid: string,
-    limit: number
-): Promise<SimilarArtist[]> {
-    const hasMbid = typeof artistMbid === "string" && artistMbid.length > 0;
-    try {
-        const artistRow = hasMbid
-            ? await prisma.artist.findUnique({
-                  where: { mbid: artistMbid },
-                  select: { id: true },
-              })
-            : null;
-        if (!artistRow) return [];
-
-        const centroidRow = await prisma.$queryRaw<
-            Array<{ embedding: unknown; trackCount: number }>
-        >`
-            SELECT embedding, "trackCount"
-            FROM artist_embeddings
-            WHERE "artistId" = ${artistRow.id}
-        `;
-        const row = centroidRow[0];
-        if (!row || Number(row.trackCount) < MIN_LOCAL_TRACKS) return [];
-
-        const nn = await prisma.$queryRaw<
-            Array<{
-                artistId: string;
-                name: string;
-                mbid: string | null;
-                distance: number;
-            }>
-        >`
-            SELECT ae."artistId",
-                   a.name,
-                   a.mbid,
-                   ae.embedding <=> (
-                       SELECT embedding FROM artist_embeddings
-                       WHERE "artistId" = ${artistRow.id}
-                   ) AS distance
-            FROM artist_embeddings ae
-            JOIN "Artist" a ON a.id = ae."artistId"
-            WHERE ae."artistId" != ${artistRow.id}
-              AND ae."trackCount" >= ${MIN_LOCAL_TRACKS}
-            ORDER BY ae.embedding <=> (
-                SELECT embedding FROM artist_embeddings
-                WHERE "artistId" = ${artistRow.id}
-            )
-            LIMIT ${limit}
-        `;
-        return nn
-            .filter((r) => Number(r.distance) < 1)
-            .map((r) => ({
-                name: r.name,
-                mbid: r.mbid || undefined,
-                match: Math.max(0, 1 - Number(r.distance)),
-                url: r.mbid
-                    ? `https://musicbrainz.org/artist/${r.mbid}`
-                    : "",
-            }));
-    } catch (err) {
-        logger.warn(
-            `[ArtistSimilarity] local centroid path failed (seed ${artistMbid}):`,
-            err
-        );
-        return [];
-    }
 }
 
 /**

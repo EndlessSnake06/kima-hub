@@ -47,6 +47,12 @@ export function normalizeAlbumForMatching(str: string): string {
   return stripTrackSuffix(str).trim();
 }
 
+// Strips leading articles on top of the track-title normalizer; keeps
+// "The Beatles" and "Beatles" scoring as one artist.
+export function normalizeForMatching(str: string): string {
+  return normalizeTrackTitle(str.replace(/^(the|a|an)\s+/i, ""));
+}
+
 export function stringSimilarity(a: string, b: string): number {
   const s1 = normalizeString(a);
   const s2 = normalizeString(b);

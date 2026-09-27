@@ -35,6 +35,7 @@
 import { Prisma } from "@prisma/client";
 import { foldIdentityText, artistSortName } from "./artistIdentity";
 import { pgCollapseSpace, pgLower, pgTrim, stripNonAlnum } from "./pgTextRules";
+import { LIBRARY_LOCATION } from "./libraryFilters";
 
 /**
  * Titles too generic to identify a release group on their own. A cross-artist
@@ -175,7 +176,7 @@ export async function resolveAlbum(
         !isGenericAlbumTitle(title)
     ) {
         const shared = await db.album.findFirst({
-            where: { identityKey, year: input.year, location: "LIBRARY" },
+            where: { identityKey, year: input.year, location: LIBRARY_LOCATION },
         });
         if (shared) return shared;
     }
