@@ -46,8 +46,7 @@ function escapeRegExp(s: string): string {
 test.describe.configure({ mode: "serial" });
 
 // Headless Chromium ships with NO WebGL at all -- measured: both webgl and webgl2 come
-// back null on a default launch. The vibe map draws through deck.gl, so without this it
-// dies on startup with "Cannot read properties of null (reading 'luma')" and the map
+// back null on a default launch. The vibe map is a WebGL scene, so without this the map
 // journey would be testing the absence of a graphics stack rather than the app. These
 // flags turn on software rendering (SwiftShader), which is slower than a real GPU and
 // perfectly sufficient for confirming the map draws.
@@ -1847,7 +1846,7 @@ test.describe("Dogfood walkthrough", () => {
             return { queueFromPath: len, playing: true };
         });
 
-        await session.step("blend panel and view switch survive a look", async () => {
+        await session.step("blend panel and the map survive a look", async () => {
             await navigateByClick(page, "/vibe");
             await settle(page, 3000);
 
@@ -1863,16 +1862,7 @@ test.describe("Dogfood walkthrough", () => {
                 session.noteNotCovered("vibe blend panel: button not found on this build");
             }
 
-            const galaxy = page.getByRole("button", { name: "Galaxy", exact: true });
-            if (await galaxy.isVisible({ timeout: 3_000 }).catch(() => false)) {
-                await galaxy.click();
-                await settle(page, 2500);
-                await expect(page.locator("canvas").first()).toBeVisible({ timeout: 15_000 });
-                await page.getByRole("button", { name: "Map", exact: true }).click();
-                await settle(page, 2000);
-            } else {
-                session.noteNotCovered("vibe galaxy view: button not present (desktop-only)");
-            }
+            await expect(page.getByTestId("vibe-map-field")).toBeVisible({ timeout: 15_000 });
             return { looked: true };
         });
 

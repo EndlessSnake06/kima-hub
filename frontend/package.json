@@ -24,11 +24,6 @@
     "test:dogfood:headed": "playwright test tests/e2e/dogfood --headed --reporter=list"
   },
   "dependencies": {
-    "@deck.gl/core": "^9.2.11",
-    "@deck.gl/layers": "^9.2.11",
-    "@deck.gl/react": "^9.2.11",
-    "@luma.gl/core": "^9.2.6",
-    "@luma.gl/engine": "^9.2.6",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.5.0",
     "@react-three/postprocessing": "^3.0.4",
@@ -37,7 +32,6 @@
     "@tanstack/react-virtual": "^3.13.26",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
-    "deck.gl": "^9.2.11",
     "dompurify": "^3.3.1",
     "framer-motion": "^12.34.3",
     "lucide-react": "^0.552.0",

@@ -21,7 +21,6 @@
     "check:doc-refs": "node scripts/check-doc-refs.mjs",
     "sync": "tsx src/workers/sync.ts",
     "create:testuser": "tsx scripts/create-test-user.ts",
-    "generate:vocabulary": "tsx scripts/generateVibeVocabulary.ts",
     "gen:pg-text-rules": "tsx scripts/gen-pg-text-rules.ts"
   },
   "dependencies": {

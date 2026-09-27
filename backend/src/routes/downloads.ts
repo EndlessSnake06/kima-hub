@@ -10,6 +10,7 @@ import { getArtistCorrection } from "../services/artistCorrection";
 import { simpleDownloadManager } from "../services/simpleDownloadManager";
 import crypto from "crypto";
 import { safeError } from "../utils/errors";
+import { failureCause } from "../utils/outcome";
 
 const router = Router();
 
@@ -37,24 +38,24 @@ async function verifyArtistName(
 
     // Strategy 1: If we have MBID, use MusicBrainz as authoritative source
     if (artistMbid) {
-        try {
-            const mbArtist = await musicBrainzService.getArtist(artistMbid);
-            if (mbArtist?.name) {
-                return {
-                    verifiedName: mbArtist.name,
-                    wasCorrected:
-                        mbArtist.name.toLowerCase() !==
-                        artistName.toLowerCase(),
-                    source: "musicbrainz",
-                    originalName,
-                };
-            }
-        } catch (error) {
-            logger.warn(
-                `MusicBrainz lookup failed for MBID ${artistMbid}:`,
-                error
-            );
+        const mbArtist = await musicBrainzService.getArtist(artistMbid);
+        if (mbArtist.kind === "answered") {
+            return {
+                verifiedName: mbArtist.value.name,
+                wasCorrected:
+                    mbArtist.value.name.toLowerCase() !==
+                    artistName.toLowerCase(),
+                source: "musicbrainz",
+                originalName,
+            };
         }
+        logger.warn(
+            `MusicBrainz lookup for MBID ${artistMbid}: ${
+                mbArtist.kind === "absent"
+                    ? "no such artist"
+                    : failureCause(mbArtist)
+            }`
+        );
     }
 
     // Strategy 2: Use MusicBrainz correction
@@ -304,24 +305,30 @@ async function processArtistDownload(
     // Similar-artist sources may return aliases (e.g., "blink" for
     // "blink-182"); Lidarr needs the official name to find the correct artist
     let canonicalArtistName = artistName;
-    try {
-        logger.debug(`   Resolving canonical artist name from MusicBrainz...`);
-        const mbArtist = await musicBrainzService.getArtist(artistMbid);
-        if (mbArtist && mbArtist.name) {
-            canonicalArtistName = mbArtist.name;
-            if (canonicalArtistName !== artistName) {
-                logger.debug(
-                    `   ✓ Canonical name resolved: "${artistName}" → "${canonicalArtistName}"`
-                );
-            } else {
-                logger.debug(
-                    `   ✓ Name matches canonical: "${canonicalArtistName}"`
-                );
-            }
+    logger.debug(`   Resolving canonical artist name from MusicBrainz...`);
+    const mbArtist = await musicBrainzService.getArtist(artistMbid);
+    if (mbArtist.kind === "answered") {
+        canonicalArtistName = mbArtist.value.name;
+        if (canonicalArtistName !== artistName) {
+            logger.debug(
+                `   ✓ Canonical name resolved: "${artistName}" → "${canonicalArtistName}"`
+            );
+        } else {
+            logger.debug(
+                `   ✓ Name matches canonical: "${canonicalArtistName}"`
+            );
         }
-    } catch (mbError: any) {
-        logger.warn(`   ⚠ MusicBrainz lookup failed: ${mbError.message}`);
-        // Fallback to MusicBrainz correction
+    } else {
+        // The correction path exists for aliases and misspellings — an
+        // "absent" artist or a failed call both fall back to it, then to
+        // the original name.
+        logger.warn(
+            `   MusicBrainz lookup for ${artistMbid}: ${
+                mbArtist.kind === "absent"
+                    ? "no such artist"
+                    : failureCause(mbArtist)
+            }`
+        );
         try {
             const correction = await getArtistCorrection(
                 artistName
@@ -332,7 +339,7 @@ async function processArtistDownload(
                     `   ✓ Name resolved via MusicBrainz: "${artistName}" → "${canonicalArtistName}"`
                 );
             }
-        } catch (lfmError) {
+        } catch (correctionError) {
             logger.warn(
                 `   ⚠ MB correction also failed, using original name`
             );
@@ -355,11 +362,23 @@ async function processArtistDownload(
         logger.debug(`   Artist added to Lidarr (ID: ${lidarrArtist.id})`);
 
         // Fetch albums from MusicBrainz
-        const releaseGroups = await musicBrainzService.getReleaseGroups(
+        const discography = await musicBrainzService.getReleaseGroups(
             artistMbid,
             ["album", "ep"],
             100
         );
+        if (discography.kind === "absent") {
+            logger.debug(`   MusicBrainz has no albums for this artist`);
+            return [];
+        }
+        if (discography.kind !== "answered") {
+            // A failed question is not "no albums": rethrow so the job
+            // fails with the real cause instead of silently queuing zero.
+            throw new Error(
+                `Discography lookup ${discography.kind}: ${failureCause(discography)}`
+            );
+        }
+        const releaseGroups = discography.value;
 
         logger.debug(
             `   Found ${releaseGroups.length} albums/EPs from MusicBrainz`

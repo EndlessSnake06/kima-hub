@@ -51,10 +51,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     apt-get update
 
 # Install system dependencies including Python for audio analysis
+# pgvector pinned to the 0.8.x series (0.8.6 verified running): ef_search /
+# iterative_scan behaviour is version-sensitive and an unpinned PGDG package
+# floats across releases on rebuild.
 RUN apt-get install -y --no-install-recommends \
     postgresql-16 \
     postgresql-contrib-16 \
-    postgresql-16-pgvector \
+    postgresql-16-pgvector=0.8.* \
     redis-server \
     supervisor \
     ffmpeg \
@@ -165,8 +168,9 @@ RUN echo "Downloading ML models..." && \
     echo "All ML models downloaded" && \
     ls -lh /app/models/
 
-# Copy audio analyzer scripts
-COPY services/audio-analyzer/analyzer.py /app/audio-analyzer/
+# Copy audio analyzer scripts -- analyzer.py imports classifier at module
+# load, so both files must land in the image or the worker cannot start.
+COPY services/audio-analyzer/analyzer.py services/audio-analyzer/classifier.py /app/audio-analyzer/
 
 # ============================================
 # CLAP ANALYZER SETUP (Vibe Similarity)
@@ -194,8 +198,9 @@ RUN cd /app/audio-analyzer-clap &&     python3 -c "import onnx_backend; print('[
 # hf_audio.onnx comes from the builder stage (deterministic export of the
 # public laion/clap-htsat-unfused checkpoint, revision 8fa0f1c6..., sha-gated
 # there). text_model.onnx is byte-identical to Xenova/clap-htsat-unfused's
-# public ONNX text export (sha 6df7c51f...; the graph validated at cosine
-# 1.0000 against laion_clap torch, text_parity_gate.py 2026-09-10).
+# public ONNX text export (sha 6df7c51f...). The graph has no attention-mask
+# input, so onnx_backend encodes each prompt unpadded; that matches the masked
+# HF text embedding (test_text_parity.py).
 # A tampered or moved upstream file FAILS THE BUILD on checksum mismatch.
 RUN mkdir -p /app/audio-analyzer-clap/models \
     && curl -fL --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30 --speed-limit 1024 --speed-time 60 \

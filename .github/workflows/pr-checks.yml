@@ -77,7 +77,7 @@ jobs:
         # locally, and a schema sync from either one drops the other's tables.
         services:
             postgres:
-                image: pgvector/pgvector:pg16
+                image: pgvector/pgvector:0.8.6-pg16
                 env:
                     POSTGRES_USER: test
                     POSTGRES_PASSWORD: test
@@ -119,6 +119,35 @@ jobs:
               # OWN tables, not owned by these migrations. It bootstraps a
               # minimal stand-in; see that file's comment for the real boundary.)
               run: npm test -- --passWithNoTests --testPathIgnorePatterns="webhookEventStore"
+
+    python-analyzer-tests:
+        name: Python Analyzer Tests
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-python@v5
+              with:
+                  # Last CPython with numpy 1.24.4 wheels (see the pin below).
+                  python-version: "3.11"
+
+            - name: Install test dependencies
+              # numpy==1.24.4 is exactly what the shipped image pins (the root
+              # Dockerfile force-reinstalls it over tensorflow-cpu's numpy<1.24
+              # constraint); requirements.txt's stale 'numpy<1.24.0' would
+              # downgrade it again. redis + psycopg2-binary cover analyzer.py's
+              # module-level imports; the tests fake everything else and need
+              # no model weights.
+              run: |
+                  python -m pip install --upgrade pip
+                  pip install "numpy==1.24.4" redis psycopg2-binary pytest
+
+            - name: Run analyzer tests that need no model weights
+              working-directory: services/audio-analyzer
+              # test_save_failed_routing.py self-skips its three classifier
+              # tests: classifier.py is untracked, unfinished work (see the
+              # skip reasons in that file).
+              run: python -m pytest test_mood_heads.py test_restart_flush.py test_analyzer.py test_save_failed_routing.py -v
 
     build-docker:
         name: Docker Build Check

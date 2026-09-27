@@ -43,7 +43,7 @@ export default function SyncPage() {
         status: string;
         progress: number;
         jobId: string;
-        result?: { tracksAdded: number; tracksUpdated: number; tracksRemoved: number };
+        result?: { tracksAdded: number; tracksUpdated: number; tracksMissing: number };
         error?: string;
     } | null>({
         queryKey: ["scan-status", scanJobId],

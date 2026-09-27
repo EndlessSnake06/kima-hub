@@ -14,7 +14,9 @@
 
 services:
     postgres:
-        image: pgvector/pgvector:pg16
+        # Pinned to the pgvector release verified in production (0.8.6): the
+        # pg16 float tag moves across releases on pull.
+        image: pgvector/pgvector:0.8.6-pg16
         container_name: kima_v1_pg
         environment:
             POSTGRES_USER: kima

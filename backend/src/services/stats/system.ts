@@ -16,6 +16,7 @@
 
 import { prisma } from "../../utils/db";
 import { redisClient } from "../../utils/redis";
+import { enrichmentFailureService } from "../enrichmentFailureService";
 
 export interface SystemStats {
     version: string;
@@ -25,6 +26,8 @@ export interface SystemStats {
     redis: number | null;
     jobs: Array<{ status: string; count: number }>;
     corruptTracks: number;
+    /** Tracks the scan found without a file on disk; the flag carries the time. */
+    missingTracks: number;
     enrichmentFailures: number;
     library: { tracks: number; albums: number; artists: number; bytes: number };
     cache: { downloadedMb: number; transcodedMb: number };
@@ -42,7 +45,7 @@ async function timed(probe: () => Promise<unknown>): Promise<number | null> {
 }
 
 export async function systemStats(version: string): Promise<SystemStats> {
-    const [db, redis, jobs, corrupt, failures, library, cached, transcoded] = await Promise.all([
+    const [db, redis, jobs, corrupt, missing, failures, library, cached, transcoded] = await Promise.all([
         timed(() => prisma.$queryRaw`SELECT 1`),
         timed(() => redisClient.ping()),
 
@@ -51,7 +54,10 @@ export async function systemStats(version: string): Promise<SystemStats> {
         WHERE cleared = false GROUP BY 1 ORDER BY n DESC`,
 
         prisma.track.count({ where: { corrupt: true } }),
-        prisma.enrichmentFailure.count({ where: { resolved: false, skipped: false } }),
+        prisma.track.count({ where: { missingSince: { not: null } } }),
+        // Track-stage failures live in TrackStage (the record the engine
+        // decides from); the service adds the artist/podcast ledger rows.
+        enrichmentFailureService.getFailureCounts().then((c) => c.total),
 
         prisma.$queryRaw<Array<{ tracks: number; albums: number; artists: number; bytes: number }>>`
         SELECT count(t.id)::int                          AS tracks,
@@ -75,8 +81,9 @@ export async function systemStats(version: string): Promise<SystemStats> {
         db,
         redis,
         jobs: jobs.map((j) => ({ status: j.status, count: j.n })),
-        corruptTracks: corrupt,
-        enrichmentFailures: failures,
+          corruptTracks: corrupt,
+          missingTracks: missing,
+          enrichmentFailures: failures,
         library: {
             tracks: library[0]?.tracks ?? 0,
             albums: library[0]?.albums ?? 0,

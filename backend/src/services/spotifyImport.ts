@@ -18,11 +18,13 @@ import { LIBRARY_ALBUM_WHERE } from "./libraryFilters";
 import { redisClient } from "../utils/redis";
 import PQueue from "p-queue";
 import { acquisitionService } from "./acquisitionService";
+import { sourcePauseController } from "./sourcePauseController";
 import { normalizeArtistName } from "../utils/artistNormalization";
 import { parseCredit } from "./artistIdentity";
 import { rankAfter, rankForPosition } from "../utils/lexoRank";
 import { allocateAppendRanks } from "./playlistService";
 import { trackIdentityService } from "./trackIdentity";
+import { failureCause } from "../utils/outcome";
 import { songLinkService } from "./songlink";
 import { eventBus } from "./eventBus";
 import { extractPlaylist as ytdlpExtractPlaylist } from "./ytdlp";
@@ -749,39 +751,51 @@ class SpotifyImportService {
     artistName: string,
     albumName: string,
   ): Promise<{ artistMbid: string | null; albumMbid: string | null }> {
-    try {
-      // Search for artist first
-      const artists = await musicBrainzService.searchArtist(artistName, 5);
-      if (!artists || artists.length === 0) {
-        return { artistMbid: null, albumMbid: null };
-      }
-
-      // Find best matching artist
-      let bestArtist = artists[0];
-      for (const artist of artists) {
-        if (normalizeString(artist.name) === normalizeString(artistName)) {
-          bestArtist = artist;
-          break;
-        }
-      }
-
-      const artistMbid = bestArtist.id;
-
-      // Search for album by this artist
-      const releaseGroups =
-        await musicBrainzService.getReleaseGroups(artistMbid);
-
-      for (const rg of releaseGroups || []) {
-        if (stringSimilarity(rg.title, albumName) >= 80) {
-          return { artistMbid, albumMbid: rg.id };
-        }
-      }
-
-      return { artistMbid, albumMbid: null };
-    } catch (error) {
-      logger?.error("MusicBrainz lookup error:", error);
+    // Search for artist first
+    const artists = await musicBrainzService.searchArtist(artistName, 5);
+    if (artists.kind !== "answered") {
+      logger?.warn(
+        `MB artist search ${artists.kind}: ${
+          artists.kind === "absent"
+            ? "no match"
+            : failureCause(artists)
+        }`,
+      );
       return { artistMbid: null, albumMbid: null };
     }
+
+    // Find best matching artist
+    let bestArtist = artists.value[0];
+    for (const artist of artists.value) {
+      if (normalizeString(artist.name) === normalizeString(artistName)) {
+        bestArtist = artist;
+        break;
+      }
+    }
+
+    const artistMbid = bestArtist.id;
+
+    // Search for album by this artist
+    const discography =
+      await musicBrainzService.getReleaseGroups(artistMbid);
+    if (discography.kind !== "answered") {
+      logger?.warn(
+        `MB discography for ${artistName}: ${
+          discography.kind === "absent"
+            ? "no release-groups"
+            : failureCause(discography)
+        }`,
+      );
+      return { artistMbid, albumMbid: null };
+    }
+
+    for (const rg of discography.value) {
+      if (stringSimilarity(rg.title, albumName) >= 80) {
+        return { artistMbid, albumMbid: rg.id };
+      }
+    }
+
+    return { artistMbid, albumMbid: null };
   }
 
   /**
@@ -808,6 +822,17 @@ class SpotifyImportService {
     );
 
     if (unknownAlbumTracks.length === 0) {
+      return { resolved: 0, failed: 0, cached: new Map() };
+    }
+
+    // A paused source is not hammered: while MusicBrainz rests, these
+    // tracks simply stay unknown. That is NOT counted as failure — the
+    // question can be re-asked with the same attempt budget once the
+    // pause lifts (a rate limit is the source's weather, not bad work).
+    if (await sourcePauseController.isPaused("musicbrainz")) {
+      logger?.warn(
+        `${logPrefix} MusicBrainz paused (rate limited); leaving ${unknownAlbumTracks.length} Unknown-Album tracks unresolved this run`,
+      );
       return { resolved: 0, failed: 0, cached: new Map() };
     }
 
@@ -856,33 +881,39 @@ class SpotifyImportService {
         const cacheKey = `${track.artist.toLowerCase()}|||${track.title.toLowerCase()}`;
         const normalizedTitle = stripTrackSuffix(track.title);
 
-        try {
-          logger?.debug(
-            `${logPrefix} Looking up: "${track.title}" by ${track.artist}...`,
-          );
+        logger?.debug(
+          `${logPrefix} Looking up: "${track.title}" by ${track.artist}...`,
+        );
 
-          const recordingInfo = await musicBrainzService.searchRecording(
-            normalizedTitle,
-            track.artist,
-          );
+        const recordingInfo = await musicBrainzService.searchRecording(
+          normalizedTitle,
+          track.artist,
+        );
 
-          if (recordingInfo && recordingInfo.albumName) {
-            const result = {
-              albumName: recordingInfo.albumName,
-              albumId: recordingInfo.albumMbid,
-              albumMbid: recordingInfo.albumMbid,
-            };
-            return { track, cacheKey, result, status: "resolved" as const };
-          } else {
-            return { track, cacheKey, result: null, status: "failed" as const };
-          }
-        } catch (error: unknown) {
-          const errorMsg = error instanceof Error ? error.message : String(error);
-          logger?.error(
-            `${logPrefix} Error resolving "${track.title}": ${errorMsg}`,
-          );
+        if (recordingInfo.kind === "answered") {
+          const result = {
+            albumName: recordingInfo.value.albumName,
+            albumId: recordingInfo.value.albumMbid,
+            albumMbid: recordingInfo.value.albumMbid,
+          };
+          return { track, cacheKey, result, status: "resolved" as const };
+        }
+        if (recordingInfo.kind === "absent") {
           return { track, cacheKey, result: null, status: "failed" as const };
         }
+        // A rate limit pauses the source for the NEXT run and does not
+        // count this track as failed — it stays unresolved instead of
+        // burning the retry ladder against a refusing API.
+        if (recordingInfo.kind === "rateLimited") {
+          logger?.warn(
+            `${logPrefix} MusicBrainz rate-limited — "${track.title}" stays unresolved`,
+          );
+          return { track, cacheKey, result: null, status: "parked" as const };
+        }
+        logger?.error(
+          `${logPrefix} Error resolving "${track.title}": ${failureCause(recordingInfo)}`,
+        );
+        return { track, cacheKey, result: null, status: "failed" as const };
       }),
     );
 
@@ -896,6 +927,12 @@ class SpotifyImportService {
         resolved++;
         logger?.info(
           `${logPrefix} Resolved: "${track.title}" -> "${result.albumName}"`,
+        );
+      } else if (status === "parked") {
+        // Rate-limited: do NOT cache the miss (the question stays open
+        // for the next run) and do NOT count it as failed.
+        logger?.debug(
+          `${logPrefix} Parked (source paused): "${track.title}" by ${track.artist}`,
         );
       } else {
         resolutionCache.set(cacheKey, null);
@@ -1031,8 +1068,12 @@ class SpotifyImportService {
             albumMbid = preResolvedMbid;
             logger?.debug(`${logPrefix} Using pre-resolved MBID: ${albumMbid}`);
             const artists = await musicBrainzService.searchArtist(artistName, 1);
-            if (artists && artists.length > 0) {
-              artistMbid = artists[0].id;
+            if (artists.kind === "answered") {
+              artistMbid = artists.value[0]?.id ?? null;
+            } else if (artists.kind !== "absent") {
+              logger?.debug(
+                `${logPrefix} Artist search failed: ${failureCause(artists)}`,
+              );
             }
           } else if (albumName && albumName !== "Unknown Album") {
             const normalizedAlbumName = stripTrackSuffix(albumName);
@@ -1083,15 +1124,20 @@ class SpotifyImportService {
                 artistName,
               );
 
-              if (recordingInfo) {
-                resolvedAlbumName = recordingInfo.albumName;
-                artistMbid = recordingInfo.artistMbid;
-                albumMbid = recordingInfo.albumMbid;
+              if (recordingInfo.kind === "answered") {
+                resolvedAlbumName = recordingInfo.value.albumName;
+                artistMbid = recordingInfo.value.artistMbid;
+                albumMbid = recordingInfo.value.albumMbid;
 
                 logger?.debug(
                   `${logPrefix} ✓ Found via track: "${resolvedAlbumName}" (MBID: ${albumMbid})`,
                 );
                 break;
+              }
+              if (recordingInfo.kind !== "absent") {
+                logger?.debug(
+                  `${logPrefix}   Track lookup ${recordingInfo.kind}: ${failureCause(recordingInfo)}`,
+                );
               }
             }
           }
@@ -1184,10 +1230,6 @@ class SpotifyImportService {
     onFetchProgress?: (fetched: number, total: number) => void,
     onMatchingStart?: () => void,
   ): Promise<ImportPreview> {
-    // Clear any stale null cache entries before processing
-    // This ensures we retry previously failed lookups
-    await musicBrainzService.clearStaleRecordingCaches();
-
     const playlist = await spotifyService.getPlaylist(spotifyUrl, onFetchProgress);
     if (!playlist) {
       throw new Error(
@@ -1216,9 +1258,6 @@ class SpotifyImportService {
    * Converts Deezer tracks to Spotify format and processes them
    */
   async generatePreviewFromDeezer(deezerPlaylist: any): Promise<ImportPreview> {
-    // Clear any stale null cache entries before processing
-    await musicBrainzService.clearStaleRecordingCaches();
-
     const spotifyTracks: SpotifyTrack[] = deezerPlaylist.tracks.map(
       (track: any, index: number) => ({
         spotifyId: track.deezerId,
@@ -2542,45 +2581,56 @@ class SpotifyImportService {
 
     let enriched = 0;
     for (const track of tracksWithIsrc) {
-      try {
-        const recording = await musicBrainzService.lookupByIsrc(track.isrc!);
-        if (!recording) continue;
-
-        const genreData = await musicBrainzService.getRecordingGenres(
-          recording.recordingId,
-        );
-        if (!genreData || genreData.genres.length === 0) continue;
-
-        const topGenres = genreData.genres
-          .sort((a, b) => b.count - a.count)
-          .slice(0, 5)
-          .map((g) => g.name);
-
-        await trackIdentityService.populateTrackGenres(track.id, topGenres);
-
-        const existingTrack = await prisma.track.findUnique({
-          where: { id: track.id },
-          select: { enrichmentTags: true },
-        });
-        if (
-          existingTrack &&
-          existingTrack.enrichmentTags.length === 0 &&
-          genreData.tags.length > 0
-        ) {
-          const moodTags = genreData.tags
-            .sort((a, b) => b.count - a.count)
-            .slice(0, 10)
-            .map((t) => t.name);
-          await prisma.track.update({
-            where: { id: track.id },
-            data: { enrichmentTags: moodTags },
-          });
+      const recording = await musicBrainzService.lookupByIsrc(track.isrc!);
+      if (recording.kind !== "answered") {
+        if (recording.kind !== "absent") {
+          logger?.debug(
+            `ISRC lookup for ${track.title}: ${failureCause(recording)}`,
+          );
         }
-
-        enriched++;
-      } catch {
-        // Non-fatal -- continue with next track
+        continue;
       }
+
+      const genreData = await musicBrainzService.getRecordingGenres(
+        recording.value.recordingId,
+      );
+      if (genreData.kind !== "answered") {
+        if (genreData.kind !== "absent") {
+          logger?.debug(
+            `Genre lookup for ${track.title}: ${failureCause(genreData)}`,
+          );
+        }
+        continue;
+      }
+      if (genreData.value.genres.length === 0) continue;
+
+      const topGenres = genreData.value.genres
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5)
+        .map((g) => g.name);
+
+      await trackIdentityService.populateTrackGenres(track.id, topGenres);
+
+      const existingTrack = await prisma.track.findUnique({
+        where: { id: track.id },
+        select: { enrichmentTags: true },
+      });
+      if (
+        existingTrack &&
+        existingTrack.enrichmentTags.length === 0 &&
+        genreData.value.tags.length > 0
+      ) {
+        const moodTags = genreData.value.tags
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 10)
+          .map((t) => t.name);
+        await prisma.track.update({
+          where: { id: track.id },
+          data: { enrichmentTags: moodTags },
+        });
+      }
+
+      enriched++;
     }
 
     logger?.debug(

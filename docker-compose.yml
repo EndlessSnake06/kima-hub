@@ -106,7 +106,9 @@ services:
     # ==============================================================================
 
     postgres:
-        image: pgvector/pgvector:pg16
+        # Pinned to the pgvector release verified in production (0.8.6): the
+        # pg16 float tag moves across releases on pull.
+        image: pgvector/pgvector:0.8.6-pg16
         container_name: kima_db
         environment:
             POSTGRES_USER: ${POSTGRES_USER:-kimadb}
@@ -293,12 +295,11 @@ services:
             NUM_WORKERS: ${CLAP_WORKERS:-2}
             THREADS_PER_WORKER: ${CLAP_THREADS_PER_WORKER:-1}
             MODEL_IDLE_TIMEOUT: ${CLAP_MODEL_IDLE_TIMEOUT:-300}
-            # ONNX backend swap: default torch for
-            # backward compatibility; the full re-embed sweep MUST
-            # run with CLAP_BACKEND=onnx pinned so every embedding shares one
-            # vector space (the analyzer fails tracks loudly rather than
-            # falling back to torch mid-sweep).
-            CLAP_BACKEND: ${CLAP_BACKEND:-torch}
+            # ONNX everywhere: the same backend the
+            # all-in-one image runs, so every embedding shares one vector
+            # space. This image is torch-free; CLAP_BACKEND=torch here makes
+            # the analyzer refuse to embed rather than fall back.
+            CLAP_BACKEND: ${CLAP_BACKEND:-onnx}
             INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:-kima-internal-secret-change-me}
         volumes:
             - ${MUSIC_PATH:-./music}:/music:ro

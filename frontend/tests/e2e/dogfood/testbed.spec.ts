@@ -28,6 +28,13 @@ const ENRICHMENT_TIMEOUT_MS = 90 * 60 * 1000;
 
 test.describe.configure({ mode: "serial" });
 
+// Headless Chromium has no WebGL by default; the vibe map needs it to draw.
+test.use({
+    launchOptions: {
+        args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"],
+    },
+});
+
 test.describe("Testbed dogfood: fresh install", () => {
     let browser: Browser;
     let context: BrowserContext;
@@ -152,7 +159,7 @@ test.describe("Testbed dogfood: fresh install", () => {
             await close.first().click();
             await page.waitForTimeout(1000);
         }
-        await expect(page.locator("canvas").first()).toBeVisible({ timeout: 60000 });
+        await expect(page.getByTestId("vibe-map-field").locator("canvas")).toBeVisible({ timeout: 60000 });
     });
 
     test("6. podcasts page renders; no podcast data → graceful", async () => {

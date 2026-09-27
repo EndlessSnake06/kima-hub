@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **AcoustID track identification.** Tracks missing an ISRC are fingerprinted (fpcalc) and identified via AcoustID first, MusicBrainz text search second. Resolution outcomes are counted per path so the mix is observable.
 - **A queue-length setting** in Settings > Playback (default 10000, min 100, max 100000).
 - **The vibe analyzer is now ONNX** — torch-free, reproducible from public sources. The audio and text ONNX exports are built from the public `laion/clap-htsat-unfused` checkpoint and verified against fixed hashes at build time; the mel-spectrogram path is vendored as pure numpy so the stack runs without torch. Existing embeddings are from the old model; the window offers a re-embed run.
+- **A choice about your saved mood mix.** Moods were being read backwards, so a mood mix saved before 1.11 was picked from the wrong values. The release window asks what to do with it: rebuild it, keep it, or save it as an ordinary playlist (saving and rebuilding can be combined). A mix saved under a mood 1.11 removed (High Energy, Focus Mode, Deep Feels, Acoustic Vibes) can no longer be shown, so it offers save-as-playlist or remove instead, and is asked about again on the next visit until answered. Nothing is deleted until the user chooses.
 
 ### Changed
 

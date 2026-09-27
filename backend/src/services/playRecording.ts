@@ -46,6 +46,11 @@ export const MIN_DEDUP_WINDOW_MS = 30 * 1000;
  * same listen being described twice. Once it could have finished, a second
  * report is a second listen and suppressing it loses something real.
  *
+ * The window is applied on **both sides** of the play being reported (see
+ * `recordPlay`): a report that lands within one length BEFORE an existing row
+ * is the same listen described late, exactly as one that lands within one
+ * length AFTER it is the same listen described twice.
+ *
  * A flat five minutes was the first attempt and it is measurably wrong. Against
  * eight months of a real library it wrongly merged 250 genuine replays of short
  * tracks, and using the duration instead wrongly split 10. Twenty five to one,
@@ -129,21 +134,85 @@ function mirrorToListenBrainz(params: {
 }
 
 /**
+ * What the caller knows about the listening.
+ *
+ * - `secondsListened`: the web player measured it. The half-or-four-minutes
+ *   rule is applied to it here.
+ * - `clientAttestedComplete`: a Subsonic scrobble with `submission=true`. The
+ *   Subsonic contract leaves "was this played" to the client, which reports no
+ *   seconds, only that it counted the play. The listening rule is taken as met;
+ *   the 30-second track floor and the duplicate window still apply.
+ *
+ * Exactly one of the two, so a caller cannot pass a made-up number of seconds
+ * to stand in for "the client said so".
+ */
+export type PlayEvidence =
+    | { secondsListened: number; clientAttestedComplete?: never }
+    | { clientAttestedComplete: true; secondsListened?: never };
+
+/**
+ * Key space for the play dedupe lock.
+ *
+ * `pg_advisory_xact_lock` has a two-integer form and a one-integer form, and
+ * Postgres keeps them in **different** key spaces. `playlistService.ts` locks
+ * with the one-integer form (`hashtext(playlistId)`); using the two-integer
+ * form here with this namespace means a play can never wait on a playlist
+ * lock, or a playlist on a play, however their ids hash.
+ */
+const PLAY_DEDUP_LOCK_NAMESPACE = 7001;
+
+/**
+ * Serialise play reports for one (user, track) pair.
+ *
+ * The duplicate check and the insert have to be one decision. Two concurrent
+ * reports of the same play — a Subsonic client retrying a scrobble, or the
+ * same track started on two devices — otherwise both read "no earlier play"
+ * from an empty window and both write, because nothing between the two
+ * statements stops the second one. The lock is transaction-scoped, so it is
+ * released when the transaction that took it commits or rolls back.
+ *
+ * It has to be taken **inside** the transaction, and the transaction must run
+ * on the database's default READ COMMITTED. Do not add an `isolationLevel`:
+ * under REPEATABLE READ each transaction reads from the snapshot taken when it
+ * started, so the writer that waits on the lock still reads the pre-insert
+ * snapshot, still sees no duplicate, and still writes a second row — silently,
+ * with no error to notice it by.
+ */
+async function lockPlayDedupe(
+    tx: Pick<typeof prisma, "$executeRaw">,
+    userId: string,
+    trackId: string,
+): Promise<void> {
+    // Both arguments need the explicit `::int` cast: Prisma binds a JS number
+    // as `bigint`, and the two-argument `pg_advisory_xact_lock` only has an
+    // `(int, int)` signature — `(bigint, int)` matches nothing and the query
+    // fails with 42883 before the first statement even runs.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${PLAY_DEDUP_LOCK_NAMESPACE}::int, hashtext(${`${userId}:${trackId}`}))`;
+}
+
+/**
  * Record a play if the listening earns it.
  *
- * The caller reports how many seconds were actually heard; this decides. The
- * track's own duration is read here rather than trusted from the request, so a
- * client cannot claim a three-second track is an hour long and scrobble it on
- * two seconds of audio.
+ * The caller reports how many seconds were actually heard (or that a Subsonic
+ * client attested the play); this decides. The track's own duration is read
+ * here rather than trusted from the request, so a client cannot claim a
+ * three-second track is an hour long and scrobble it on two seconds of audio.
+ *
+ * The duplicate check and the insert are one transaction behind a
+ * per-(user, track) advisory lock, so two concurrent reports of one play —
+ * and the two reports of one play that arrive hours apart when a device
+ * back-fills — cannot both write.
  */
-export async function recordPlay(params: {
-    userId: string;
-    trackId: string;
-    secondsListened: number;
-    source?: ListenSource;
-    playedAt?: Date;
-}): Promise<PlayOutcome> {
-    const { userId, trackId, secondsListened, source = ListenSource.LIBRARY, playedAt } = params;
+export async function recordPlay(
+    params: {
+        userId: string;
+        trackId: string;
+        source?: ListenSource;
+        playedAt?: Date;
+    } & PlayEvidence,
+): Promise<PlayOutcome> {
+    const { userId, trackId, source = ListenSource.LIBRARY, playedAt } = params;
+    const attested = params.clientAttestedComplete === true;
 
     const track = await prisma.track.findUnique({
         where: { id: trackId },
@@ -158,47 +227,84 @@ export async function recordPlay(params: {
 
     const required = requiredListenSeconds(track.duration);
     if (required === null) return { recorded: false, reason: "too-short" };
-    if (!Number.isFinite(secondsListened) || secondsListened < required) {
-        return { recorded: false, reason: "not-enough-listened" };
+    if (!attested) {
+        const seconds = params.secondsListened;
+        if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < required) {
+            return { recorded: false, reason: "not-enough-listened" };
+        }
     }
 
-    const since = new Date((playedAt?.getTime() ?? Date.now()) - dedupWindowMs(track.duration));
-    const recent = await prisma.play.findFirst({
-        // `gt`, not `gte`. The rule above is that a row is a duplicate while
-        // the song could not have finished — strictly inside the window. At
-        // exactly one duration earlier the song HAS finished, so a second
-        // complete play back-to-back is a real replay. Subsonic clients
-        // scrobble with exact timestamps, which is precisely where two plays
-        // land one duration apart.
-        where: { userId, trackId, playedAt: { gt: since } },
-        select: { id: true },
-    });
-    if (recent) return { recorded: false, reason: "duplicate" };
+    // The window is centred on the play being reported, not started at it.
+    // A late sync reports something that happened hours ago; anything newer
+    // than that is a different listen and must not veto it.
+    const anchor = playedAt?.getTime() ?? Date.now();
+    const window = dedupWindowMs(track.duration);
 
-    const play = await prisma.play.create({
-        data: { userId, trackId, source, ...(playedAt ? { playedAt } : {}) },
-        select: { id: true },
-    });
+    // Check and insert inside one transaction, ordered by a per-(user, track)
+    // advisory lock — see `lockPlayDedupe`. No `isolationLevel` is passed on
+    // purpose: Prisma's default (READ COMMITTED) is what makes the lock work,
+    // and REPEATABLE READ would put the second writer back to a stale
+    // snapshot and restore the duplicate silently.
+    const outcome = await prisma.$transaction(async (tx) => {
+        await lockPlayDedupe(tx, userId, trackId);
 
-    logger.debug(
-        `[Play] ${trackId} counted for ${userId} after ${Math.round(secondsListened)}s ` +
-            `(needed ${Math.round(required)}s of ${track.duration}s)`,
-    );
-
-    // Mirror to ListenBrainz only when we know what was actually played.
-    // Mocked/partial track rows (tests, half-enriched libraries) simply
-    // skip the mirror; the local play log above is unaffected either way.
-    if (track.title && track.album?.artist?.name) {
-        mirrorToListenBrainz({
-            artistName: track.album.artist.name,
-            trackTitle: track.title,
-            releaseTitle: track.album.title,
-            // The play's own clock: Subsonic back-fills with the client's
-            // timestamp, and LB wants the listen anchored to when it
-            // happened, not to when the report arrived.
-            listenedAt: Math.floor((playedAt?.getTime() ?? Date.now()) / 1000),
+        const recent = await tx.play.findFirst({
+            // Both bounds strict, and both required. `gt`, not `gte`: the
+            // rule is that a row is a duplicate while the song could not have
+            // finished — strictly inside the window. At exactly one duration
+            // before or after the reported play the song HAS finished, so a
+            // play that far out is a real replay. Subsonic clients scrobble
+            // with exact timestamps, which is precisely where two plays land
+            // one duration apart.
+            where: {
+                userId,
+                trackId,
+                playedAt: {
+                    gt: new Date(anchor - window),
+                    lt: new Date(anchor + window),
+                },
+            },
+            select: { id: true },
         });
+        if (recent) return { recorded: false, reason: "duplicate" } as const;
+
+        const play = await tx.play.create({
+            data: { userId, trackId, source, ...(playedAt ? { playedAt } : {}) },
+            select: { id: true },
+        });
+        return { recorded: true, playId: play.id } as const;
+    });
+
+    // Past this point the row is committed (or the duplicate call is over), so
+    // nothing below may change `outcome` — the mirror is fire-and-forget.
+    if (outcome.recorded) {
+        logger.debug(
+            attested
+                ? `[Play] ${trackId} counted for ${userId} on the client's attestation (${track.duration}s track)`
+                : `[Play] ${trackId} counted for ${userId} after ${Math.round(params.secondsListened ?? 0)}s ` +
+                      `(needed ${Math.round(required)}s of ${track.duration}s)`,
+        );
+
+        // Mirror to ListenBrainz only when we know what was actually played.
+        // Mocked/partial track rows (tests, half-enriched libraries) simply
+        // skip the mirror; the local play log is unaffected either way.
+        if (track.title && track.album?.artist?.name) {
+            mirrorToListenBrainz({
+                artistName: track.album.artist.name,
+                trackTitle: track.title,
+                releaseTitle: track.album.title,
+                // The play's own clock: Subsonic back-fills with the client's
+                // timestamp, and LB wants the listen anchored to when it
+                // happened, not to when the report arrived.
+                listenedAt: Math.floor(anchor / 1000),
+            });
+        }
+    } else {
+        logger.debug(
+            `[Play] ${trackId} skipped for ${userId}: a play of it is already logged within ` +
+                `±${Math.round(window / 1000)}s of ${new Date(anchor).toISOString()}`,
+        );
     }
 
-    return { recorded: true, playId: play.id };
+    return outcome;
 }
