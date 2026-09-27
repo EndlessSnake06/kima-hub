@@ -29,13 +29,7 @@ import {
     getPublicMap,
 } from "../services/publicVibeService";
 import { findSimilarTracks, SimilarTrack } from "../services/hybridSimilarity";
-import { getTextEmbedding } from "../services/textEmbeddingBridge";
-import {
-    getVocabulary,
-    expandQueryWithVocabulary,
-    rerankWithFeatures,
-    VocabTerm,
-} from "../services/vibeVocabulary";
+import { searchTracksByText, TextSearchRow } from "../services/textEmbeddingBridge";
 import { getResizedImagePath, resizeImageBuffer } from "../services/imageStorage";
 import { findAlbumArtwork } from "../services/artwork";
 import path from "path";
@@ -547,37 +541,12 @@ router.get(
     ),
 );
 
-interface SearchResult {
-    id: string;
-    title: string;
-    duration: number | null;
-    distance: number;
-    albumId: string;
-    albumTitle: string;
-    albumCoverUrl: string | null;
-    artistId: string;
-    artistName: string;
-    energy: number | null;
-    valence: number | null;
-    danceabilityMl: number | null;
-    acousticness: number | null;
-    instrumentalness: number | null;
-    arousal: number | null;
-    moodHappy: number | null;
-    moodSad: number | null;
-    moodRelaxed: number | null;
-    moodAggressive: number | null;
-    moodParty: number | null;
-    moodAcoustic: number | null;
-    moodElectronic: number | null;
-}
-
 /**
  * POST /api/public/vibe/search
  *
- * Faithful port of the authed /vibe/search: same embedding, same vocabulary
- * expansion, same re-rank over the same nearest-neighbour query. Results are
- * reshaped for the client; native covers are proxied.
+ * Same ranked search as the authed /vibe/search (the shared
+ * searchTracksByText). Results are reshaped for the client; native covers are
+ * proxied.
  */
 router.post(
     "/search",
@@ -591,69 +560,10 @@ router.post(
             }
 
             const limit = parseListLimit(req.query.limit);
-            const maxDistance = 1 - 0.4; // reuse the authed minimum-similarity floor
 
             const trimmedQuery = query.trim();
             try {
-                const embedding = await getTextEmbedding(trimmedQuery);
-                const vocab = getVocabulary();
-                let searchEmbedding = embedding;
-                let genreConfidence = 0;
-                let matchedTerms: VocabTerm[] = [];
-                if (vocab) {
-                    const expansion = expandQueryWithVocabulary(
-                        embedding,
-                        trimmedQuery,
-                        vocab,
-                    );
-                    searchEmbedding = expansion.embedding;
-                    genreConfidence = expansion.genreConfidence;
-                    matchedTerms = expansion.matchedTerms;
-                }
-
-                const rawResults = await prisma.$queryRaw<SearchResult[]>`
-                    SELECT
-                        t.id,
-                        t.title,
-                        t.duration,
-                        te.embedding <=> ${searchEmbedding}::vector AS distance,
-                        a.id AS "albumId",
-                        a.title AS "albumTitle",
-                        a."coverUrl" AS "albumCoverUrl",
-                        ar.id AS "artistId",
-                        ar.name AS "artistName",
-                        t.energy,
-                        t.valence,
-                        t."danceabilityMl" AS danceabilityMl,
-                        t.acousticness,
-                        t.instrumentalness,
-                        t.arousal,
-                        t."moodHappy" AS moodHappy,
-                        t."moodSad" AS moodSad,
-                        t."moodRelaxed" AS moodRelaxed,
-                        t."moodAggressive" AS moodAggressive,
-                        t."moodParty" AS moodParty,
-                        t."moodAcoustic" AS moodAcoustic,
-                        t."moodElectronic" AS moodElectronic
-                    FROM track_embeddings te
-                    JOIN "Track" t ON te.track_id = t.id
-                    JOIN "Album" a ON t."albumId" = a.id
-                    JOIN "Artist" ar ON a."artistId" = ar.id
-                    WHERE te.embedding <=> ${searchEmbedding}::vector <= ${maxDistance}
-                    ORDER BY te.embedding <=> ${searchEmbedding}::vector
-                    LIMIT ${limit * 3}
-                `;
-
-                let ranked = rawResults;
-                if (vocab && matchedTerms.length > 0) {
-                    ranked = rerankWithFeatures<SearchResult>(
-                        rawResults,
-                        matchedTerms,
-                        genreConfidence,
-                    ).slice(0, limit);
-                } else {
-                    ranked = rawResults.slice(0, limit);
-                }
+                const ranked = await searchTracksByText(trimmedQuery, limit);
 
                 // Coordinates from the existing map, overlaying search hits.
                 let coordinates: Record<string, { x: number; y: number }> = {};
@@ -674,7 +584,7 @@ router.post(
                     query: trimmedQuery,
                     count: ranked.length,
                     tracks: ranked.map(
-                        (r: SearchResult) => ({
+                        (r: TextSearchRow) => ({
                             trackId: r.id,
                             title: r.title,
                             distance: r.distance,

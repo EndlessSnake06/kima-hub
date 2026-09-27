@@ -2,16 +2,7 @@ const AUTH_TOKEN_KEY = "auth_token";
 const REFRESH_TOKEN_KEY = "refresh_token";
 
 // Mood Bucket Types (simplified mood system)
-export type MoodType =
-    | "happy"
-    | "sad"
-    | "chill"
-    | "energetic"
-    | "party"
-    | "focus"
-    | "melancholy"
-    | "aggressive"
-    | "acoustic";
+export type MoodType = "happy" | "sad" | "chill" | "aggressive" | "party";
 
 export interface MoodBucketPreset {
     id: MoodType;
@@ -19,6 +10,8 @@ export interface MoodBucketPreset {
     color: string;
     icon: string;
     trackCount: number;
+    /** Tracks still waiting for audio analysis, so not yet sortable into moods. */
+    pendingTracks?: number;
 }
 
 export interface MoodBucketMix {
@@ -31,6 +24,22 @@ export interface MoodBucketMix {
     trackCount: number;
     color: string;
     tracks?: ApiData[];
+}
+
+/** The 1.11 release window's mood-mix question (backend services/releases/moodMixes.ts). */
+/** "remove" is what a retired mix's clear is called; it does the same as "rebuild". */
+export type MoodMixDecision = "rebuild" | "keep" | "remove";
+
+export interface MoodMixReleaseState {
+    /**
+     * The user's saved mood mix; null when they have none or cleared it.
+     * `retired`: saved under a mood 1.11 removed, so it can't be shown or kept.
+     */
+    mix: { id: string; name: string; mood: string; trackCount: number; retired: boolean } | null;
+    /** "rebuild" means the mix was cleared, by Rebuild or Remove. */
+    decision: "rebuild" | "keep" | null;
+    /** The playlist this mix was already saved as, if any. */
+    playlist: { id: string; name: string } | null;
 }
 
 interface ApiError extends Error {
@@ -549,7 +558,7 @@ class ApiClient {
         return this.request<{
             status: string;
             progress: number;
-            result?: { tracksAdded: number; tracksUpdated: number; tracksRemoved: number };
+            result?: { tracksAdded: number; tracksUpdated: number; tracksMissing: number };
         }>(`/library/scan/status/${jobId}`);
     }
 
@@ -1487,6 +1496,25 @@ class ApiClient {
         );
     }
 
+    // Release window: the 1.11 mood-mix question
+    async getMoodMixReleaseState() {
+        return this.get<MoodMixReleaseState>("/whats-new/mood-mixes");
+    }
+
+    async decideMoodMixes(decision: MoodMixDecision) {
+        return this.post<{ decision: MoodMixDecision; removed: number }>(
+            "/whats-new/mood-mixes/decision",
+            { decision }
+        );
+    }
+
+    async saveMoodMixAsPlaylist(mixId: string) {
+        return this.post<{ id: string; name: string; trackCount: number; created: boolean }>(
+            "/whats-new/mood-mixes/save",
+            { mixId }
+        );
+    }
+
     // Mood Bucket System (simplified, pre-computed)
     async getMoodBucketPresets() {
         return this.request<MoodBucketPreset[]>("/mixes/mood/buckets/presets");
@@ -1496,13 +1524,19 @@ class ApiClient {
         return this.request<MoodBucketMix>(`/mixes/mood/buckets/${mood}`);
     }
 
-    async saveMoodBucketMix(mood: MoodType) {
+    // Pass the ids that were actually played, so the saved mix is the one the
+    // user heard: without them the server draws a fresh selection, which now
+    // skips the tracks just served and never matches.
+    async saveMoodBucketMix(mood: MoodType, trackIds?: string[]) {
         return this.request<{
             success: boolean;
             mix: MoodBucketMix & { generatedAt: string };
         }>(
             `/mixes/mood/buckets/${mood}/save`,
-            { method: "POST" }
+            {
+                method: "POST",
+                body: JSON.stringify(trackIds ? { trackIds } : {}),
+            }
         );
     }
 
@@ -1523,6 +1557,7 @@ class ApiClient {
 
     async getEnrichmentProgress() {
         return this.request<{
+            source: string;
             artists: {
                 total: number;
                 completed: number;
@@ -1534,6 +1569,8 @@ class ApiClient {
                 total: number;
                 enriched: number;
                 pending: number;
+                /** Open but blocked behind the fingerprint → recording gate. */
+                waiting: number;
                 progress: number;
             };
             audioAnalysis: {
@@ -1561,47 +1598,20 @@ class ApiClient {
         }>("/enrichment/progress");
     }
 
-    async triggerFullEnrichment() {
-        return this.request<{ message: string; description: string }>(
-            "/enrichment/full",
-            { method: "POST" }
-        );
-    }
-
-    async resetArtistsOnly() {
+    async retryFailedAndBlocked() {
         return this.request<{
             message: string;
             description: string;
-            count: number;
-        }>("/enrichment/reset-artists", { method: "POST" });
+            queued: number;
+        }>("/enrichment/retry-failed-and-blocked", { method: "POST" });
     }
 
-    async resetMoodTagsOnly() {
+    async redecideEverything() {
         return this.request<{
             message: string;
             description: string;
-            count: number;
-        }>("/enrichment/reset-mood-tags", { method: "POST" });
-    }
-
-    async resetAudioAnalysisOnly() {
-        return this.request<{
-            message: string;
-            description: string;
-            count: number;
-        }>("/enrichment/reset-audio-analysis", { method: "POST" });
-    }
-
-    async resetAllEnrichmentData() {
-        return this.request<{
-            message: string;
-            tracksReset: number;
-            artistsReset: number;
-            failuresDeleted: number;
-            moodBucketsDeleted: number;
-        }>("/enrichment/reset-all", {
-            method: "POST",
-        });
+            reopened: number;
+        }>("/enrichment/re-decide-everything", { method: "POST" });
     }
 
     async retryFailedAnalysis() {
@@ -1823,25 +1833,20 @@ class ApiClient {
                     name: string;
                 };
             }>;
-            minSimilarity: number;
-            totalAboveThreshold: number;
-            debug?: {
-                matchedTerms: string[];
-                genreConfidence: number;
-                featureWeight: number;
-            };
         }>("/vibe/search", {
             method: "POST",
             body: JSON.stringify({ query, limit }),
         });
     }
 
-    async getGalaxyMap() {
-        return this.request<{
+    async getVibeMap() {
+        // 202 { computing: true } while the server lays the library out; the caller polls.
+        return this.request<{ computing: true } | {
             tracks: Array<{
                 id: string;
                 x: number;
                 y: number;
+                z?: number;
                 title: string;
                 artist: string;
                 artistId: string;
@@ -1854,6 +1859,8 @@ class ApiClient {
                 valence: number | null;
             }>;
             trackCount: number;
+            /** True when the library is larger than the map serves. */
+            sampled?: boolean;
             computedAt: string;
         }>("/vibe/map");
     }

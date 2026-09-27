@@ -42,7 +42,13 @@ export interface EnrichmentState {
 
 export interface EnrichmentFailure {
     id: string;
-    entityType: "artist" | "track" | "audio" | "vibe";
+    /**
+     * Track-stage failures (track/audio/vibe/scan) come from the engine's
+     * TrackStage records — the same record the failures API and the retry
+     * control act on — and artist/podcast failures from the ledger. The
+     * fields themselves are unchanged.
+     */
+    entityType: "artist" | "track" | "audio" | "vibe" | "scan";
     entityId: string;
     entityName: string | null;
     errorMessage: string | null;
@@ -63,6 +69,8 @@ export interface FailureCounts {
     track: number;
     audio: number;
     vibe: number;
+    /** Fingerprint-stage failures — TrackStage-backed, same as the rest. */
+    scan: number;
     podcast: number;
     total: number;
 }
@@ -125,7 +133,7 @@ export const enrichmentApi = {
      * Get enrichment failures with filtering
      */
     getFailures: async (params?: {
-        entityType?: "artist" | "track" | "audio" | "vibe";
+        entityType?: "artist" | "track" | "audio" | "vibe" | "scan";
         includeSkipped?: boolean;
         includeResolved?: boolean;
         limit?: number;

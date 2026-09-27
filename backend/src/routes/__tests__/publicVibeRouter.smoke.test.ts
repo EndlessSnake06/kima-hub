@@ -5,10 +5,13 @@
  * carries an ETag.
  *
  * This exercises the REAL publicVibe router (withPublic gate + handlers), not a
- * re-implementation. prisma, the service layer, the embedding path, and the
- * artwork/cover path are all mocked at their boundaries, so the assertions sit
+ * re-implementation. prisma, the service layer, the embedding path, and remote
+ * artwork lookups are mocked at their boundaries, so the assertions sit
  * on the routing/gate/response-shape logic — the mount + gate that a plain DB
- * run cannot reach. The disabled surface 404s from the gate (not a missing
+ * run cannot reach. /cover additionally walks the REAL filesystem under a
+ * per-run temp covers root (see smokeRoot), so its resolution/ETag/304/escape
+ * contract is asserted against actual bytes, not a stand-in. The disabled
+ * surface 404s from the gate (not a missing
  * route), and every enabled path is asserted against the full
  * /api/public/vibe mount path, just like chevron7.io.
  */
@@ -27,6 +30,11 @@ const prismaMock: any = new Proxy(
     {
         systemSettings: {
             findUnique: jest.fn(async () => enabledPayload),
+        },
+        // resolveCoverBytes reads the cover reference through track.findFirst;
+        // the /cover cases arm this per test so the route resolves real files.
+        track: {
+            findFirst: jest.fn(async () => null),
         },
     },
     {
@@ -110,14 +118,21 @@ jest.mock("../../services/hybridSimilarity", () => ({
     ]),
 }));
 
-// Embedded search returns a single seeded row so /search has something rank.
+// Text search returns a single ranked row so /search has something to reshape.
+const SEARCH_ROW = {
+    id: "csrch1fix000000000000000001",
+    title: "Match",
+    duration: 200,
+    trackNo: 1,
+    distance: 0.3,
+    albumId: "a1",
+    albumTitle: "Al",
+    albumCoverUrl: "native:a1.jpg",
+    artistId: "ar1",
+    artistName: "Ar",
+};
 jest.mock("../../services/textEmbeddingBridge", () => ({
-    getTextEmbedding: jest.fn(async () => [1, 0, 0, 0, 0, 0, 0, 0]),
-}));
-jest.mock("../../services/vibeVocabulary", () => ({
-    getVocabulary: () => null,
-    expandQueryWithVocabulary: () => ({ embedding: [1, 0, 0, 0, 0, 0, 0, 0], genreConfidence: 0, matchedTerms: [] }),
-    rerankWithFeatures: (r: any) => r,
+    searchTracksByText: jest.fn(),
 }));
 
 jest.mock("../../services/imageStorage", () => ({
@@ -130,6 +145,20 @@ jest.mock("../../services/artwork", () => ({
     findAlbumArtwork: jest.fn(async () => null),
 }));
 
+// getNativeCoverPath resolves `native:` refs against
+// resolve(config.music.transcodeCachePath, "../covers") on the REAL filesystem,
+// so the config mock points that root at a per-run temp dir. Hoisted function:
+// jest.mock factories run before the file body executes.
+function smokeRoot(): string {
+    return require("path").join(require("os").tmpdir(), `kima-pubvibe-smoke-${process.pid}`);
+}
+jest.mock("../../config", () => ({
+    USER_AGENT: "kima-public-vibe-smoke-test",
+    config: {
+        music: { transcodeCachePath: require("path").join(smokeRoot(), "transcodes") },
+    },
+}));
+
 jest.mock("../../middleware/rateLimiter", () => {
     // Identity-limiting passthrough limiter for the smoke test: it must NOT
     // throttle the handful of requests we make, and must not mutate the response.
@@ -138,6 +167,9 @@ jest.mock("../../middleware/rateLimiter", () => {
     };
 });
 
+import fs from "fs";
+import path from "path";
+import crypto from "crypto";
 import request from "supertest";
 import express from "express";
 import http from "http";
@@ -149,7 +181,7 @@ import {
     getPublicMap,
 } from "../../services/publicVibeService";
 import { findSimilarTracks } from "../../services/hybridSimilarity";
-import { getTextEmbedding } from "../../services/textEmbeddingBridge";
+import { searchTracksByText } from "../../services/textEmbeddingBridge";
 
 const app = express();
 app.use(express.json());
@@ -201,6 +233,9 @@ beforeEach(() => {
     (prismaMock.systemSettings.findUnique as jest.Mock).mockReset().mockResolvedValue(
         enabledPayload,
     );
+    // Default keeps the other paths failing cover resolution exactly where they
+    // did before; the /cover describe arms it per case.
+    (prismaMock.track.findFirst as jest.Mock).mockReset().mockResolvedValue(null);
     (getPublicLiveCached as jest.Mock).mockReset().mockResolvedValue({
         nowPlaying: {
             trackId: "clivefix0000000000000000001",
@@ -238,7 +273,7 @@ beforeEach(() => {
             artistName: "Ar",
         },
     ]);
-    (getTextEmbedding as jest.Mock).mockReset().mockResolvedValue([1, 0, 0, 0, 0, 0, 0, 0]);
+    (searchTracksByText as jest.Mock).mockReset().mockResolvedValue([SEARCH_ROW]);
 });
 
 describe("disabled surface", () => {
@@ -296,9 +331,13 @@ describe("enabled surface", () => {
     });
 
     it("POST /search returns neighbours (proxied covers)", async () => {
-        const res = await request(app).post("/api/public/vibe/search").send({ query: "song" });
+        const res = await request(app).post("/api/public/vibe/search").send({ query: " song " });
         expect(res.status).toBe(200);
-        expect(Array.isArray(res.body.tracks)).toBe(true);
+        expect(searchTracksByText).toHaveBeenCalledWith("song", expect.any(Number));
+        expect(res.body.tracks).toHaveLength(1);
+        expect(res.body.tracks[0].trackId).toBe(SEARCH_ROW.id);
+        expect(res.body.tracks[0].similarity).toBeCloseTo(0.7, 6);
+        expect(String(res.body.tracks[0].album.coverUrl)).not.toContain("native:");
     });
 
     it("/search rejects a 1-char query", async () => {
@@ -320,25 +359,80 @@ describe("enabled surface", () => {
         }
     });
 
-    it("GET /cover/:trackId streams 200 bytes as an image", async () => {
-        // Provide a cover file on disk so resolveCoverBytes returns bytes.
-        // The route resolves a native cover; point it at a temp file.
-        const fs = await import("fs");
-        const os = await import("os");
-        const path = await import("path");
-        const tmp = path.join(os.tmpdir(), `pubvibe-cover-${Date.now()}.jpg`);
-        fs.writeFileSync(tmp, FAKE_JPEG);
-        try {
-            // Register a track whose album cover resolves to the temp file. We
-            // cannot easily inject prisma.track, so exercise the recovery path:
-            // the artwork mock returns null, so the route tries remote fetch.
-            const res = await request(app).get("/api/public/vibe/cover/ccoverfix00000000000000001");
-            // Either 200 (bytes) or 304/404 are acceptable; the contract we test
-            // is that this path is reachable and returns image-ish headers when
-            // it serves. We assert reachability + that no native: leaks.
-            expect([200, 304, 404]).toContain(res.status);
-        } finally {
-            fs.rmSync(tmp, { force: true });
-        }
+    describe("GET /cover/:trackId", () => {
+        const COVER_ID = "ccoverfix00000000000000001"; // matches TRACK_ID_RE
+        const COVERS_DIR = path.join(smokeRoot(), "covers");
+        const COVER_FILE = path.join(COVERS_DIR, "alive.jpg");
+        // Lives OUTSIDE the covers root: reachable only if the path-escape
+        // guard is gone, which is exactly what the case below pins.
+        const ESCAPE_FILE = path.join(smokeRoot(), "secret.jpg");
+        const EXPECTED_ETAG =
+            '"' + crypto.createHash("md5").update(FAKE_JPEG).digest("hex") + '"';
+
+        const serveTrack = (coverUrl: string) => {
+            (prismaMock.track.findFirst as jest.Mock).mockResolvedValue({
+                album: {
+                    coverUrl,
+                    rgMbid: null, // recovery path bails immediately: no network
+                    title: "Seed Album",
+                    artist: { name: "Seed Artist" },
+                },
+            });
+        };
+
+        // supertest does not expose non-text bodies unless asked; buffer raw.
+        const rawBody = (res: http.IncomingMessage, cb: (e: Error | null, b: Buffer) => void) => {
+            const chunks: Buffer[] = [];
+            res.on("data", (c: Buffer) => chunks.push(c));
+            res.on("end", () => cb(null, Buffer.concat(chunks)));
+        };
+
+        beforeEach(() => {
+            fs.mkdirSync(COVERS_DIR, { recursive: true });
+            fs.writeFileSync(COVER_FILE, FAKE_JPEG);
+        });
+
+        afterEach(() => {
+            fs.rmSync(smokeRoot(), { recursive: true, force: true });
+        });
+
+        it("serves the resolved bytes with an image content type and ETag", async () => {
+            serveTrack("native:alive.jpg");
+            const res = await request(app)
+                .get(`/api/public/vibe/cover/${COVER_ID}`)
+                .buffer(true)
+                .parse(rawBody as any);
+            expect(res.status).toBe(200);
+            expect(res.headers["content-type"]).toContain("image/");
+            expect(res.body).toEqual(FAKE_JPEG);
+            expect(res.headers.etag).toBe(EXPECTED_ETAG);
+            expect(res.headers["cache-control"]).toContain("immutable");
+        });
+
+        it("answers 304 to If-None-Match carrying the served ETag", async () => {
+            serveTrack("native:alive.jpg");
+            const first = await request(app).get(`/api/public/vibe/cover/${COVER_ID}`);
+            expect(first.status).toBe(200);
+            const second = await request(app)
+                .get(`/api/public/vibe/cover/${COVER_ID}`)
+                .set("If-None-Match", first.headers.etag);
+            expect(second.status).toBe(304);
+        });
+
+        it("404s a native: path escaping the covers root even when the target exists", async () => {
+            // The file MUST exist on disk: a mutant that drops the containment
+            // check would serve these bytes with 200 instead of refusing.
+            fs.writeFileSync(ESCAPE_FILE, FAKE_JPEG);
+            serveTrack("native:../secret.jpg");
+            const res = await request(app).get(`/api/public/vibe/cover/${COVER_ID}`);
+            expect(fs.existsSync(ESCAPE_FILE)).toBe(true);
+            expect(res.status).toBe(404);
+        });
+
+        it("404s a remote (non-native) cover reference", async () => {
+            serveTrack("https://example.com/cover.jpg");
+            const res = await request(app).get(`/api/public/vibe/cover/${COVER_ID}`);
+            expect(res.status).toBe(404);
+        });
     });
 });

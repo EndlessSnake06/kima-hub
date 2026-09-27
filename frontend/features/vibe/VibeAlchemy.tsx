@@ -3,11 +3,14 @@
 import { useState, useCallback } from "react";
 import { X, Plus, Minus, FlaskConical, Search, Play } from "lucide-react";
 import { api } from "@/lib/api";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
+import type { LibraryIndex } from "./librarySearch";
+import { useTrackFinder } from "./useTrackFinder";
 import { useAudioControls } from "@/lib/audio-controls-context";
 import type { Track, VibeOperation } from "@/lib/audio-state-context";
 
 interface VibeAlchemyProps {
+    library: LibraryIndex;
     onHighlight: (ids: Set<string>) => void;
     onClose: () => void;
 }
@@ -18,7 +21,7 @@ interface SelectedTrack {
     artist: string;
 }
 
-export function VibeAlchemy({ onHighlight, onClose }: VibeAlchemyProps) {
+export function VibeAlchemy({ library, onHighlight, onClose }: VibeAlchemyProps) {
     const { replaceOperation } = useAudioControls();
     const [addTracks, setAddTracks] = useState<SelectedTrack[]>([]);
     const [subtractTracks, setSubtractTracks] = useState<SelectedTrack[]>([]);
@@ -36,16 +39,7 @@ export function VibeAlchemy({ onHighlight, onClose }: VibeAlchemyProps) {
     >([]);
     const [computeError, setComputeError] = useState<string | null>(null);
 
-    const { data: searchResults } = useQuery({
-        queryKey: ["alchemy-search", searchQuery],
-        queryFn: async () => {
-            if (searchQuery.length < 2) return [];
-            const result = await api.vibeSearch(searchQuery, 10);
-            return result.tracks;
-        },
-        enabled: searchQuery.length >= 2,
-        staleTime: 30000,
-    });
+    const finder = useTrackFinder(library, searchQuery, true);
 
     const addToColumn = useCallback(
         (track: { id: string; title: string; artist: { name: string } }) => {
@@ -117,7 +111,7 @@ export function VibeAlchemy({ onHighlight, onClose }: VibeAlchemyProps) {
     }, [results, addTracks, subtractTracks, replaceOperation]);
 
     return (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-(--z-scene) w-[calc(100vw-2rem)] sm:w-[480px] max-h-[70vh] bg-black/90 backdrop-blur-lg border border-white/10 rounded-xl flex flex-col overflow-hidden">
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-(--z-scene) w-[calc(100vw-2rem)] sm:w-[480px] max-h-[70vh] vibe-glass rounded-2xl flex flex-col overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
                 <h3 className="text-sm font-medium text-[var(--text-primary)] flex items-center gap-2">
                     <FlaskConical className="w-4 h-4" /> Blend
@@ -198,30 +192,32 @@ export function VibeAlchemy({ onHighlight, onClose }: VibeAlchemyProps) {
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         placeholder={`Search to add to "${addingTo === "add" ? "More Like" : "Less Like"}"...`}
-                        className="w-full pl-8 pr-3 py-2 bg-white/8 border border-white/10 rounded-lg text-sm text-white placeholder-white/30 focus:outline-none focus:border-white/20"
+                        className="w-full pl-8 pr-3 py-2 bg-white/8 border border-white/10 rounded-lg text-sm text-white placeholder-white/55 focus:outline-none focus:border-white/20"
                     />
                 </div>
 
-                {searchResults &&
-                    searchResults.length > 0 &&
-                    searchQuery.length >= 2 && (
-                        <div className="max-h-32 overflow-y-auto border border-white/10 rounded-lg">
-                            {searchResults.map((track) => (
-                                <button
-                                    key={track.id}
-                                    onClick={() => addToColumn(track)}
-                                    className="w-full px-3 py-2 hover:bg-white/10 text-left"
-                                >
-                                    <p className="text-sm text-[var(--text-primary)] truncate">
-                                        {track.title}
-                                    </p>
-                                    <p className="text-xs text-[var(--text-muted)] truncate">
-                                        {track.artist.name}
-                                    </p>
-                                </button>
-                            ))}
-                        </div>
-                    )}
+                {finder.items.length > 0 && (
+                    <div className="max-h-32 overflow-y-auto border border-white/10 rounded-lg">
+                        {finder.items.map((track) => (
+                            <button
+                                key={track.id}
+                                onClick={() => addToColumn(track)}
+                                className="w-full px-3 py-2 hover:bg-white/10 text-left"
+                            >
+                                <p className="text-sm text-[var(--text-primary)] truncate">{track.title}</p>
+                                <p className="text-xs text-white/60 truncate">
+                                    {track.artist.name}{track.via === "sound" ? " · sounds like it" : ""}
+                                </p>
+                            </button>
+                        ))}
+                    </div>
+                )}
+                {finder.searching && <p className="px-1 text-xs text-white/60" aria-live="polite">Searching…</p>}
+                {finder.empty && (
+                    <p className="px-1 text-xs text-white/60" aria-live="polite">
+                        No track or artist matches &ldquo;{searchQuery.trim()}&rdquo;.
+                    </p>
+                )}
 
                 <button
                     onClick={() => mutation.mutate()}

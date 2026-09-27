@@ -64,11 +64,14 @@ async function getTwoVibeSearchQueries(page: Parameters<typeof loginAsTestUser>[
 
 // ---------------------------------------------------------------------------
 
-// NOTE: no custom GL launch flags here. The current bundled Chromium ships
-// SwiftShader by default; forcing --use-gl=angle/--use-angle=swiftshader on
-// top of it was measured to break r3f pointer picking (the raycast misses
-// every star), which made the drawer journey unrunnable. Without the
-// overrides the field mounts AND picks correctly.
+// Headless Chromium launches without WebGL, which would leave the map an empty
+// sky. Software rendering (SwiftShader) draws it; picking runs on the CPU
+// against the map plane, so it does not depend on the GL backend.
+test.use({
+    launchOptions: {
+        args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"],
+    },
+});
 
 
 // The What's New modal (aria-modal) sits over the page on a fresh login and
@@ -123,8 +126,8 @@ test.describe("Vibe", () => {
             return;
         }
 
-        await expect(page.locator('[title="Song Path -- build a queue that glides from one track to another"]')).toBeVisible({ timeout: 5_000 });
-        await expect(page.locator('[title="Blend -- combine tracks into a new playlist of similar vibes"]')).toBeVisible({ timeout: 5_000 });
+        await expect(page.locator('[title^="Song Path"]')).toBeVisible({ timeout: 5_000 });
+        await expect(page.locator('[title^="Blend"]')).toBeVisible({ timeout: 5_000 });
         await expect(page.locator('[aria-label="Search tracks or artists"]')).toBeVisible({ timeout: 5_000 });
     });
 
@@ -222,7 +225,7 @@ test.describe("Vibe", () => {
         await Promise.race([canvas.waitFor({ timeout: 35_000 }), noData.waitFor({ timeout: 35_000 })]);
         if ((await noData.count()) > 0) { test.skip(); return; }
 
-        await page.locator('[title="Song Path -- build a queue that glides from one track to another"]').click();
+        await page.locator('[title^="Song Path"]').click();
 
         await expect(page.locator('#path-start')).toBeVisible({ timeout: 5_000 });
         await expect(page.locator('#path-end')).toBeVisible({ timeout: 5_000 });
@@ -242,7 +245,7 @@ test.describe("Vibe", () => {
         await canvas.waitFor({ timeout: 35_000 });
 
         // Open drift form
-        await page.locator('[title="Song Path -- build a queue that glides from one track to another"]').click();
+        await page.locator('[title^="Song Path"]').click();
         await expect(page.locator('#path-start')).toBeVisible({ timeout: 5_000 });
 
         // Search and select start track
@@ -286,7 +289,7 @@ test.describe("Vibe", () => {
         await Promise.race([canvas.waitFor({ timeout: 35_000 }), noData.waitFor({ timeout: 35_000 })]);
         if ((await noData.count()) > 0) { test.skip(); return; }
 
-        await page.locator('[title="Blend -- combine tracks into a new playlist of similar vibes"]').click();
+        await page.locator('[title^="Blend"]').click();
         await page.waitForTimeout(500);
 
         // Blend (alchemy) panel should appear -- close button has aria-label="Close alchemy"
@@ -297,16 +300,11 @@ test.describe("Vibe", () => {
         if (await closeEl.isVisible()) await closeEl.click();
     });
 
-    // ---- Selection drawer ----------------------------------------------------
+    // ---- Selected-track panel ------------------------------------------------
 
-    // A real star is picked by clicking anywhere on the interactive field; with
-    // a dense cloud the center (and the few alternating probes below) almost
-    // always lands on a node. Opening the drawer is selection-opened, so the
-    // drawer host is absent on pre-fix HEAD (old deck.gl grid, no detail surface)
-    // and must appear here on post-fix galaxy.
-    test("clicking a track opens a desktop drawer that shows that track's own data", async ({ page }) => {
-        // UI login (not storageState): the probe that proved the click path
-        // works used a fresh login; mirror it exactly.
+    // Stars are WebGL points, so a star is found by resting the pointer on the
+    // field until the hover nameplate (a DOM chip) appears, then clicking there.
+    test("clicking a star opens a panel with that track's own data", async ({ page }) => {
         await page.goto("/login");
         await page.fill("#username", process.env.KIMA_TEST_USERNAME!);
         await page.fill("#password", process.env.KIMA_TEST_PASSWORD!);
@@ -315,112 +313,66 @@ test.describe("Vibe", () => {
         await page.goto("/vibe", { waitUntil: "domcontentloaded" });
         await dismissWhatsNew(page);
 
-        const gallery = page.getByTestId("galaxy-track-field").first();
+        const field = page.getByTestId("vibe-map-field").first();
         const noData = page.locator("text=/No tracks with vibe/i").first();
-
-        await Promise.race([gallery.waitFor({ timeout: 35_000 }), noData.waitFor({ timeout: 35_000 })]);
+        await Promise.race([field.waitFor({ timeout: 35_000 }), noData.waitFor({ timeout: 35_000 })]);
         if ((await noData.count()) > 0) {
             test.skip(true, "no vibe tracks available on this testbed");
         }
 
-        // Clear the first-run onboarding card — it floats over the lower map
-        // and swallows clicks there until dismissed. Locate it by its role+
-        // text rather than a bare [aria-label=Dismiss].first(), which can
-        // resolve to an unrelated control.
-        const hint = page.locator("div", { hasText: "This is your music, mapped by sound." })
-            .locator('[aria-label="Dismiss"]');
-        if (await hint.isVisible().catch(() => false)) {
-            await hint.click();
-            await hint.waitFor({ state: "detached", timeout: 4000 }).catch(() => {});
-        }
-        // Let the intro camera animation settle — the stars drift during the
-        // fly-in, so pre-picked screen points go stale if we click too early.
-        await page.waitForTimeout(6_000);
+        // Let the opening camera flight settle so hovered points stay put.
+        await page.waitForTimeout(4_000);
+        const panel = page.locator("#vibe-track-panel");
+        const box = await field.boundingBox();
+        expect(box, "the map field should render").not.toBeNull();
 
-        // The drawer host only renders post-fix (old deck.gl grid had no
-        // selection drawer, so this selector is absent on pre-fix HEAD).
-        const host = page.locator("#kima-track-drawer-host");
+        const openFromHover = async () => {
+            for (let gy = 0.3; gy < 0.8; gy += 0.05) {
+                for (let gx = 0.25; gx < 0.65; gx += 0.04) {
+                    const x = box!.x + box!.width * gx;
+                    const y = box!.y + box!.height * gy;
+                    await page.mouse.move(x, y);
+                    // A star names itself only after the pointer rests on it briefly.
+                    await page.waitForTimeout(480);
+                    if ((await page.locator(".vibe-chip--focus").count()) === 0) continue;
+                    await page.mouse.click(x, y);
+                    if (await panel.waitFor({ state: "visible", timeout: 1_500 }).then(() => true).catch(() => false)) return true;
+                }
+            }
+            return false;
+        };
 
-        // Probe a few points until one registers on a star (mouse coords,
-        // since a clickable WebGL mesh cannot accept a locator x/y offset).
-        const box = await gallery.boundingBox();
-        expect(box, "galaxy field should render").not.toBeNull();
-        const bx = box!.x,
-            by = box!.y,
-            bw = box!.width,
-            bh = box!.height;
-        // Star positions are polar on a disc (see trackGalaxyLayout.ts), so
-        // linear screen fractions can land on empty space. Probe along the
-        // dense diagonal bands of the rendered disc instead.
-        const centers: Array<[number, number]> = [
-            [bx + bw * 0.50, by + bh * 0.27],
-            [bx + bw * 0.40, by + bh * 0.40],
-            [bx + bw * 0.35, by + bh * 0.55],
-            [bx + bw * 0.60, by + bh * 0.35],
-            [bx + bw * 0.50, by + bh * 0.50],
-            [bx + bw * 0.45, by + bh * 0.45],
-        ];
-        let opened = false;
-        for (const [mx, my] of centers) {
-            if (opened) break;
-            await page.mouse.move(mx, my);
-            await page.mouse.click(mx, my);
-            opened = await host.waitFor({ state: "visible", timeout: 3_000 })
-                .then(() => true)
-                .catch(() => false);
-        }
-        expect(opened, "drawer host should become visible after clicking a star").toBe(true);
-        // From here on the drawer is open; subsequent probe clicks below must
-        // only run after Esc-closing, otherwise they land on the open drawer's
-        // backdrop and toggle it shut. Guard the re-open loop the same way.
+        expect(await openFromHover(), "the panel should open after clicking a star").toBe(true);
+        await expect(field).not.toHaveAttribute("data-selected-id", "");
 
-        // Data is read from the already-loaded API payload (zero new fetches).
-        const title = (await host.locator("p.font-semibold").first().textContent()) ?? "";
-        expect(title.trim().length).toBeGreaterThan(0);
-
+        // The panel shows THIS track's title from the map payload.
+        const title = ((await page.locator("#vibe-track-panel-title").textContent()) ?? "").trim();
         const token = await getAuthToken(page);
-        const map = await page.request.get("/api/vibe/map", {
-            headers: { Authorization: `Bearer ${token}` },
-        });
-        const mapTracks = (await map.json()) as { tracks?: Array<{ id: string; title: string; artist: string }> };
-        const titles = (mapTracks.tracks ?? []).map((t) => t.title);
-        // The drawer shows THIS track's own title, not any other row.
-        expect(titles, "the drawer title must be one of the API track titles").toContain(title.trim());
+        const map = await page.request.get("/api/vibe/map", { headers: { Authorization: `Bearer ${token}` } });
+        const titles = (((await map.json()) as { tracks?: Array<{ title: string }> }).tracks ?? []).map((t) => t.title.normalize("NFC"));
+        expect(titles, "the panel title must be one of the API track titles").toContain(title);
 
-        // The artist is a link to the artist page, not plain text.
-        await expect(host.locator("a[href^='/artist/']")).toBeVisible({ timeout: 5_000 });
+        await expect(panel.locator("a[href^='/artist/']")).toBeVisible();
+        await expect(panel.getByLabel("Play this track")).toBeVisible();
+        await expect(panel.getByLabel("Build vibe playlist from this track")).toBeVisible();
+        await expect(panel.getByLabel("Find tracks similar to this one")).toBeVisible();
+        await expect(panel.getByLabel("Start song path from this track")).toBeVisible();
 
-        // The four actions: Play, Match Vibe, Find similar, Song path.
-        await expect(host.getByLabel("Play this track")).toBeVisible({ timeout: 5_000 });
-        await expect(host.getByLabel("Build vibe playlist from this track")).toBeVisible({ timeout: 5_000 });
-        await expect(host.getByLabel("Find tracks similar to this one")).toBeVisible({ timeout: 5_000 });
-        await expect(host.getByLabel("Start song path from this track")).toBeVisible({ timeout: 5_000 });
-
-        // Esc closes the drawer.
+        // Esc closes it.
         await page.keyboard.press("Escape");
-        await expect(host).toBeHidden({ timeout: 5_000 });
+        await expect(panel).toBeHidden({ timeout: 5_000 });
 
-        // Re-open, then dismiss via a genuine backdrop click (anything outside
-        // the drawer aside). The field center is left of the right-aligned
-        // drawer, so it lands on the backdrop, not on an aside control.
-        for (const [mx, my] of centers) {
-            await page.mouse.move(mx, my);
-            await page.mouse.click(mx, my);
-            if (await host.isVisible()) break;
-        }
-        await host.waitFor({ state: "visible", timeout: 3_000 });
-        // Backdrop = the map canvas itself. The drawer is right-aligned, so
-        // click the open field near its left edge (bx-200 lands on the nav
-        // rail, which does not close the drawer).
-        await page.mouse.click(bx + 60, by + bh * 0.5);
-        await expect(host).toBeHidden({ timeout: 5_000 });
+        // Re-open, then close with the panel's own button.
+        expect(await openFromHover(), "the panel should re-open").toBe(true);
+        await panel.getByLabel("Close track details").click();
+        await expect(panel).toBeHidden({ timeout: 5_000 });
     });
 
-    test("playing state reaches the galaxy scene (playing marker wiring)", async ({ page }) => {
+    test("playing state reaches the map (playing marker wiring)", async ({ page }) => {
         await page.goto("/vibe", { waitUntil: "domcontentloaded" });
         await dismissWhatsNew(page);
 
-        const gallery = page.getByTestId("galaxy-track-field").first();
+        const gallery = page.getByTestId("vibe-map-field").first();
         const noData = page.locator("text=/No tracks with vibe/i").first();
         await Promise.race([gallery.waitFor({ timeout: 35_000 }), noData.waitFor({ timeout: 35_000 })]);
         if ((await noData.count()) > 0) {
@@ -458,7 +410,7 @@ test.describe("Vibe", () => {
         // DOM evidence the marker wiring works (the canvas star itself is GL).
         await page.reload({ waitUntil: "domcontentloaded" });
         await dismissWhatsNew(page);
-        const wrapper = page.getByTestId("galaxy-track-field").first();
+        const wrapper = page.getByTestId("vibe-map-field").first();
         await expect(wrapper).toBeAttached({ timeout: 35_000 });
         await expect(wrapper).toHaveAttribute("data-playing-id", playingId, {
             timeout: 20_000,

@@ -13,6 +13,7 @@ import { searchService, normalizeCacheQuery, type SearchResults } from "../servi
 import axios from "axios";
 import { redisClient } from "../utils/redis";
 import { deezerService, mergeAndDedupePodcasts } from "../services/deezer";
+import { failureCause } from "../utils/outcome";
 
 const router = Router();
 
@@ -159,6 +160,10 @@ router.get("/discover", async (req, res) => {
         }
 
         const results: any[] = [];
+        // An empty section that came from a source failure must not be
+        // cached as an empty answer, or a recovered source keeps serving
+        // "no results" until the TTL expires.
+        let cacheable = true;
 
         // Resolve alias (sequential -- modifies the search query, cached 30 days)
         let searchQuery = query;
@@ -178,6 +183,7 @@ router.get("/discover", async (req, res) => {
                 }
             } catch (correctionError) {
                 logger.warn("[SEARCH DISCOVER] Correction check failed:", correctionError);
+                cacheable = false;
             }
         }
 
@@ -189,8 +195,21 @@ router.get("/discover", async (req, res) => {
             // search — the shared key is dead, and MB is the authority for
             // names, aliases and MBIDs anyway).
             promiseMap.artists = (async () => {
-                const mbArtists = await musicBrainzService.searchArtist(searchQuery, searchLimit);
-                const similar: SimilarArtist[] = mbArtists.map((a: { id: string; name: string }) => ({
+                const found = await musicBrainzService.searchArtist(searchQuery, searchLimit);
+                if (found.kind !== "answered") {
+                    // Empty section, not a fabricated answer: the real
+                    // cause goes to the log.
+                    logger.warn(
+                        `[SEARCH] MB artist search ${found.kind}: ${
+                            found.kind === "absent"
+                                ? "no matches"
+                                : failureCause(found)
+                        }`,
+                    );
+                    if (found.kind !== "absent") cacheable = false;
+                    return [];
+                }
+                const similar: SimilarArtist[] = found.value.map((a: { id: string; name: string }) => ({
                     name: a.name,
                     mbid: a.id,
                     match: 1,
@@ -237,6 +256,11 @@ router.get("/discover", async (req, res) => {
 
                 if (itunesResult.status === "rejected") {
                     logger.warn("[SEARCH DISCOVER] iTunes podcast search failed:", itunesResult.reason?.message || itunesResult.reason);
+                    cacheable = false;
+                }
+                if (deezerResult.status === "rejected") {
+                    logger.warn("[SEARCH DISCOVER] Deezer podcast search failed:", deezerResult.reason?.message || deezerResult.reason);
+                    cacheable = false;
                 }
 
                 const itunesMapped = itunesPodcasts.map((podcast: any) => ({
@@ -280,6 +304,7 @@ router.get("/discover", async (req, res) => {
             } else {
                 logger.error(`[SEARCH DISCOVER] ${k} search failed:`, result.reason);
                 resolved[k] = [];
+                cacheable = false;
             }
         });
 
@@ -297,10 +322,16 @@ router.get("/discover", async (req, res) => {
 
         const payload = { results, aliasInfo };
 
-        try {
-            await redisClient.setex(cacheKey, 900, JSON.stringify(payload));
-        } catch (err) {
-            logger.warn("[SEARCH DISCOVER] Redis write error:", err);
+        if (cacheable) {
+            try {
+                await redisClient.setex(cacheKey, 900, JSON.stringify(payload));
+            } catch (err) {
+                logger.warn("[SEARCH DISCOVER] Redis write error:", err);
+            }
+        } else {
+            logger.debug(
+                `[SEARCH DISCOVER] Not caching "${query}" — at least one section came from a source failure`
+            );
         }
 
         res.json(payload);

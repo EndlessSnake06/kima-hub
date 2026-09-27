@@ -20,7 +20,7 @@ function loadPersistedPath(): { path: PathResult; highlightedIds: Set<string> } 
     }
 }
 
-export function useGalaxyMap() {
+export function useVibeMap() {
     const persisted = useMemo(() => loadPersistedPath(), []);
     const [mode, setMode] = useState<VibeMode>(persisted ? "path-result" : "idle");
     const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
@@ -28,13 +28,18 @@ export function useGalaxyMap() {
     const [pathResult, setPathResult] = useState<PathResult | null>(persisted?.path ?? null);
     const [pathStartId, setPathStartId] = useState<string | null>(null);
 
-    const { data: mapData, isLoading, error, refetch } = useQuery({
+    const { data, isLoading, error, refetch } = useQuery({
         queryKey: ["vibe-map"],
-        queryFn: () => api.getGalaxyMap(),
+        queryFn: () => api.getVibeMap(),
         staleTime: 1000 * 60 * 60,
         gcTime: 1000 * 60 * 60 * 24,
         retry: 1,
+        // The first layout of a large library is computed in the background;
+        // the server answers "computing" and we ask again until it is ready.
+        refetchInterval: (query) => (query.state.data && "computing" in query.state.data ? 4000 : false),
     });
+    const computing = !!data && "computing" in data;
+    const mapData = data && !("computing" in data) ? data : undefined;
 
     const tracks = mapData?.tracks;
     const trackMap = useMemo(() => {
@@ -77,7 +82,7 @@ export function useGalaxyMap() {
         if (result) {
             try { sessionStorage.setItem(PATH_STORAGE_KEY, JSON.stringify(result)); } catch {}
         } else {
-            sessionStorage.removeItem(PATH_STORAGE_KEY);
+            try { sessionStorage.removeItem(PATH_STORAGE_KEY); } catch {}
         }
     }, []);
 
@@ -119,6 +124,7 @@ export function useGalaxyMap() {
     return {
         mapData,
         isLoading,
+        computing,
         error,
         refetch,
         trackMap,

@@ -1,25 +1,19 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import fs from "node:fs";
+import { promisify } from "node:util";
+import { gzip } from "node:zlib";
 import { logger } from "../utils/logger";
 import { prisma } from "../utils/db";
 import { requireAuth } from "../middleware/auth";
 import { findSimilarTracks } from "../services/hybridSimilarity";
-import { computeMapProjection } from "../services/umapProjection";
+import { getMapProjectionState } from "../services/umapProjection";
 import { generateSongPath } from "../services/songPath";
 import { parseEmbedding } from "../utils/embedding";
-import { getTextEmbedding } from "../services/textEmbeddingBridge";
-import {
-    getVocabulary,
-    expandQueryWithVocabulary,
-    rerankWithFeatures,
-    loadVocabulary,
-    VocabTerm
-} from "../services/vibeVocabulary";
+import { searchTracksByText } from "../services/textEmbeddingBridge";
+import { efFor, withEfSearch } from "../utils/knn";
 
 const router = Router();
-
-// Load vocabulary at module initialization
-loadVocabulary();
+const gzipAsync = promisify(gzip);
 
 const CUID_RE = /^c[a-z0-9]{20,30}$/;
 
@@ -27,31 +21,24 @@ function sanitizeForLog(s: string): string {
     return s.replace(/[\x00-\x1f\x7f]/g, "").slice(0, 100);
 }
 
-interface TextSearchResult {
-    id: string;
-    title: string;
-    duration: number;
-    trackNo: number;
-    distance: number;
-    albumId: string;
-    albumTitle: string;
-    albumCoverUrl: string | null;
-    artistId: string;
-    artistName: string;
-    // Audio features for re-ranking
-    energy: number | null;
-    valence: number | null;
-    danceability: number | null;
-    acousticness: number | null;
-    instrumentalness: number | null;
-    arousal: number | null;
-    moodHappy: number | null;
-    moodSad: number | null;
-    moodRelaxed: number | null;
-    moodAggressive: number | null;
-    moodParty: number | null;
-    moodAcoustic: number | null;
-    moodElectronic: number | null;
+// A large library's map is tens of megabytes of JSON that compresses ~8x, and
+// the app has no global compression middleware. Gzip it here, once per
+// computed map (keyed by computedAt), not once per request.
+let gzippedMap: { key: string; body: Buffer } | null = null;
+async function sendMapJson(req: Request, res: Response, mapData: { computedAt?: string }) {
+    const acceptsGzip = /\bgzip\b/.test(String(req.headers["accept-encoding"] ?? ""));
+    if (!acceptsGzip) {
+        res.json(mapData);
+        return;
+    }
+    const key = `${mapData.computedAt ?? ""}:${(mapData as { trackCount?: number }).trackCount ?? 0}`;
+    if (gzippedMap?.key !== key) {
+        gzippedMap = { key, body: await gzipAsync(Buffer.from(JSON.stringify(mapData))) };
+    }
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.setHeader("Content-Encoding", "gzip");
+    res.setHeader("Vary", "Accept-Encoding");
+    res.send(gzippedMap.body);
 }
 
 /**
@@ -74,8 +61,18 @@ router.get("/map", requireAuth, async (req, res) => {
             res.json(JSON.parse(fs.readFileSync(mockPath, "utf8")));
             return;
         }
-        const mapData = await computeMapProjection();
-        res.json(mapData);
+        const state = await getMapProjectionState();
+        if (state.status === "computing") {
+            // First layout of a large library: answer now, the client polls.
+            res.status(202).json({ computing: true });
+            return;
+        }
+        if (state.status === "failed") {
+            logger.error("Vibe map computation failed:", state.message);
+            res.status(500).json({ error: "Failed to compute map projection" });
+            return;
+        }
+        await sendMapJson(req, res, state.data);
     } catch (error) {
         logger.error("Vibe map error:", error);
         res.status(500).json({ error: "Failed to compute map projection" });
@@ -201,31 +198,37 @@ router.post("/alchemy", requireAuth, async (req, res) => {
             for (let i = 0; i < dim; i++) result[i] /= norm;
         }
 
-        // Query for nearest tracks, excluding inputs
-        const tracks = await prisma.$queryRaw<Array<{
-            id: string;
-            title: string;
-            duration: number;
-            distance: number;
-            albumId: string;
-            albumTitle: string;
-            albumCoverUrl: string | null;
-            artistId: string;
-            artistName: string;
-        }>>`
-            SELECT
-                t.id, t.title, t.duration,
-                te.embedding <=> ${result}::vector AS distance,
-                a.id as "albumId", a.title as "albumTitle", a."coverUrl" as "albumCoverUrl",
-                ar.id as "artistId", ar.name as "artistName"
-            FROM track_embeddings te
-            JOIN "Track" t ON te.track_id = t.id
-            JOIN "Album" a ON t."albumId" = a.id
-            JOIN "Artist" ar ON a."artistId" = ar.id
-            WHERE te.track_id != ALL(${allInputIds})
-            ORDER BY te.embedding <=> ${result}::vector
-            LIMIT ${limit}
-        `;
+        // Query for nearest tracks, excluding inputs. S1: the HNSW index walks
+        // hnsw.ef_search candidates (default 40) and the input exclusions are
+        // applied AFTER the walk, so each input also eats one of those 40
+        // candidates -- size the width from the limit plus the input count and
+        // run the query on the transaction's own connection.
+        const tracks = await withEfSearch(efFor(limit, allInputIds.length), (tx) =>
+            tx.$queryRaw<Array<{
+                id: string;
+                title: string;
+                duration: number;
+                distance: number;
+                albumId: string;
+                albumTitle: string;
+                albumCoverUrl: string | null;
+                artistId: string;
+                artistName: string;
+            }>>`
+                SELECT
+                    t.id, t.title, t.duration,
+                    te.embedding <=> ${result}::vector AS distance,
+                    a.id as "albumId", a.title as "albumTitle", a."coverUrl" as "albumCoverUrl",
+                    ar.id as "artistId", ar.name as "artistName"
+                FROM track_embeddings te
+                JOIN "Track" t ON te.track_id = t.id
+                JOIN "Album" a ON t."albumId" = a.id
+                JOIN "Artist" ar ON a."artistId" = ar.id
+                WHERE te.track_id != ALL(${allInputIds})
+                ORDER BY te.embedding <=> ${result}::vector
+                LIMIT ${limit}
+            `,
+        );
 
         res.json({
             tracks: tracks.map(t => ({
@@ -296,15 +299,15 @@ function distanceToSimilarity(distance: number): number {
     return Math.max(0, 1 - distance);
 }
 
-const MIN_SEARCH_SIMILARITY = 0.40;
-
 /**
  * POST /api/vibe/search
- * Search for tracks using natural language text via CLAP text embeddings
+ * Search for tracks using natural language text via CLAP text embeddings.
+ * Returns the nearest `limit` tracks, best first, with no similarity cut-off
+ * (see searchTracksByText for why a fixed or per-query floor does not work).
  */
 router.post("/search", requireAuth, async (req, res) => {
     try {
-        const { query, limit: requestedLimit, minSimilarity } = req.body;
+        const { query, limit: requestedLimit } = req.body;
 
         if (!query || typeof query !== "string" || query.trim().length < 2) {
             return res.status(400).json({
@@ -323,103 +326,30 @@ router.post("/search", requireAuth, async (req, res) => {
             100
         );
 
-        // Allow override but default to MIN_SEARCH_SIMILARITY
-        const similarityThreshold = typeof minSimilarity === "number"
-            ? Math.max(0, Math.min(1, minSimilarity))
-            : MIN_SEARCH_SIMILARITY;
-
-        // Convert similarity threshold to max distance
-        // similarity = 1 - distance, so distance = 1 - similarity
-        const maxDistance = 1 - similarityThreshold;
-
         const trimmedQuery = query.trim();
-        const safeQuery = sanitizeForLog(trimmedQuery);
-        const textEmbedding = await getTextEmbedding(trimmedQuery);
+        const rows = await searchTracksByText(trimmedQuery, limit);
 
-        const vocab = getVocabulary();
-        let searchEmbedding = textEmbedding;
-        let genreConfidence = 0;
-        let matchedTerms: VocabTerm[] = [];
-
-        if (vocab) {
-            const expansion = expandQueryWithVocabulary(textEmbedding, trimmedQuery, vocab);
-            searchEmbedding = expansion.embedding;
-            genreConfidence = expansion.genreConfidence;
-            matchedTerms = expansion.matchedTerms;
-
-            logger.debug(`[VIBE-SEARCH] Query "${safeQuery}" expanded with terms: ${matchedTerms.map(t => t.name).join(", ") || "none"}, genre confidence: ${(genreConfidence * 100).toFixed(0)}%`);
-        }
-
-        const similarTracks = await prisma.$queryRaw<TextSearchResult[]>`
-            SELECT
-                t.id,
-                t.title,
-                t.duration,
-                t."trackNo",
-                te.embedding <=> ${searchEmbedding}::vector AS distance,
-                a.id as "albumId",
-                a.title as "albumTitle",
-                a."coverUrl" as "albumCoverUrl",
-                ar.id as "artistId",
-                ar.name as "artistName",
-                t.energy,
-                t.valence,
-                t."danceabilityMl" as danceability,
-                t.acousticness,
-                t.instrumentalness,
-                t.arousal,
-                t."moodHappy",
-                t."moodSad",
-                t."moodRelaxed",
-                t."moodAggressive",
-                t."moodParty",
-                t."moodAcoustic",
-                t."moodElectronic"
-            FROM track_embeddings te
-            JOIN "Track" t ON te.track_id = t.id
-            JOIN "Album" a ON t."albumId" = a.id
-            JOIN "Artist" ar ON a."artistId" = ar.id
-            WHERE te.embedding <=> ${searchEmbedding}::vector <= ${maxDistance}
-            ORDER BY te.embedding <=> ${searchEmbedding}::vector
-            LIMIT ${limit * 3}
-        `;
-
-        logger.debug(`[VIBE-SEARCH] "${safeQuery}": ${similarTracks.length} candidates above ${Math.round(similarityThreshold * 100)}%`);
-
-        let rankedTracks: typeof similarTracks | ReturnType<typeof rerankWithFeatures<TextSearchResult>> = similarTracks;
-        if (vocab && matchedTerms.length > 0) {
-            const reranked = rerankWithFeatures(similarTracks, matchedTerms, genreConfidence);
-            rankedTracks = reranked.slice(0, limit);
-
-            logger.debug(`[VIBE-SEARCH] Re-ranked ${similarTracks.length} candidates, top: ${rankedTracks[0]?.title || "none"}`);
-        } else {
-            rankedTracks = similarTracks.slice(0, limit);
-        }
-
-
-        const tracks = rankedTracks.map((row) => ({
-            id: row.id,
-            title: row.title,
-            duration: row.duration,
-            trackNo: row.trackNo,
-            distance: row.distance,
-            similarity: "finalScore" in row ? row.finalScore : distanceToSimilarity(row.distance),
-            album: {
-                id: row.albumId,
-                title: row.albumTitle,
-                coverUrl: row.albumCoverUrl,
-            },
-            artist: {
-                id: row.artistId,
-                name: row.artistName,
-            },
-        }));
+        logger.debug(`[VIBE-SEARCH] "${sanitizeForLog(trimmedQuery)}": ${rows.length} tracks, top: ${rows[0]?.title || "none"}`);
 
         res.json({
             query: trimmedQuery,
-            tracks,
-            minSimilarity: similarityThreshold,
-            totalAboveThreshold: tracks.length,
+            tracks: rows.map((row) => ({
+                id: row.id,
+                title: row.title,
+                duration: row.duration,
+                trackNo: row.trackNo,
+                distance: row.distance,
+                similarity: distanceToSimilarity(row.distance),
+                album: {
+                    id: row.albumId,
+                    title: row.albumTitle,
+                    coverUrl: row.albumCoverUrl,
+                },
+                artist: {
+                    id: row.artistId,
+                    name: row.artistName,
+                },
+            })),
         });
     } catch (error) {
         logger.error("Vibe text search error:", error);

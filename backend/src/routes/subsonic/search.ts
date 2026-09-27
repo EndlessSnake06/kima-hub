@@ -230,6 +230,7 @@ searchRouter.all("/getSongsByGenre.view", wrap(async (req, res) => {
         JOIN "Album" al ON t."albumId" = al.id
         JOIN "Artist" ar ON al."artistId" = ar.id
         WHERE t.corrupt = false
+          AND t."missingSince" IS NULL
           AND al.location = 'LIBRARY'
           AND EXISTS (
             SELECT 1 FROM jsonb_array_elements_text(

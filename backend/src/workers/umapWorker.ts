@@ -8,7 +8,7 @@ const { embeddings, nNeighbors } = workerData as {
 
 try {
     const umap = new UMAP({
-        nComponents: 2,
+        nComponents: 3,
         nNeighbors,
         minDist: 0.1,
         spread: 1.0,

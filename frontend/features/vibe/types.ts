@@ -2,6 +2,8 @@ export interface MapTrack {
     id: string;
     x: number;
     y: number;
+    /** Third layout axis. Absent on maps computed before the 3D layout; treated as the middle. */
+    z?: number;
     title: string;
     artist: string;
     artistId: string;

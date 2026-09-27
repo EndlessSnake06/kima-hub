@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { EventEmitter } from "events";
 import { redisClient } from "../utils/redis";
 import { logger } from "../utils/logger";
+import { efFor, withEfSearch } from "../utils/knn";
 
 const REQUEST_CHANNEL = "audio:text:embed";
 const RESPONSE_PREFIX = "audio:text:embed:response:";
@@ -161,4 +162,80 @@ export async function getTextEmbedding(text: string): Promise<number[]> {
     }
 
     return embeddingPromise;
+}
+
+export interface TextSearchRow {
+    id: string;
+    title: string;
+    duration: number;
+    trackNo: number;
+    /** pgvector cosine distance between the track and the query text. */
+    distance: number;
+    albumId: string;
+    albumTitle: string;
+    albumCoverUrl: string | null;
+    artistId: string;
+    artistName: string;
+}
+
+/**
+ * Text search over the library's CLAP embeddings: the `limit` tracks nearest to
+ * the query's text embedding, best first. Shared by /api/vibe/search and the
+ * public copy so the two cannot drift.
+ *
+ * Ranks only; there is deliberately no similarity cut-off. A text-to-audio
+ * cosine is comparable only within one query (CLIP-style models turn it into a
+ * probability with a softmax at a learned temperature, never against a global
+ * constant). Measured on the 8,913-track full library with the
+ * padding-fixed text encoder:
+ *  - the old fixed 0.40 floor passed 4,789 tracks for "country music with
+ *    banjo" (no country in the library) and returned 41 of 745 synth-pop
+ *    tracks for "synth pop" (0 before the text encoder's padding fix);
+ *  - per-query rules fared no better: tracks 3+ standard deviations above the
+ *    query's library mean numbered 0 for "solo piano" (1,258 piano tracks,
+ *    top-20 precision 0.90) yet 57 for "jazz saxophone" (no jazz), and the
+ *    best score for absent genres (0.52-0.66) overlaps the best score for
+ *    present ones (0.48-0.70).
+ * No score threshold separates "nothing matches" from "many things match", so
+ * the honest contract is a ranked list.
+ */
+export async function searchTracksByText(
+    query: string,
+    limit: number,
+): Promise<TextSearchRow[]> {
+    return searchTracksByEmbedding(await getTextEmbedding(query), limit);
+}
+
+/** The ranking half of searchTracksByText, for an already-embedded query. */
+export async function searchTracksByEmbedding(
+    embedding: number[],
+    limit: number,
+): Promise<TextSearchRow[]> {
+    // pgvector's text form. Bound as a raw number[], an all-integer vector
+    // arrives as bigint[], which has no cast to vector.
+    const vector = `[${embedding.join(",")}]`;
+    // S1: the HNSW index walks hnsw.ef_search candidates (default 40), so any
+    // limit past 40 would come back short. No WHERE-clause exclusions here.
+    // The query must run on the transaction's own `tx` connection.
+    return withEfSearch(efFor(limit, 0), (tx) =>
+        tx.$queryRaw<TextSearchRow[]>`
+            SELECT
+                t.id,
+                t.title,
+                t.duration,
+                t."trackNo",
+                te.embedding <=> ${vector}::vector AS distance,
+                a.id AS "albumId",
+                a.title AS "albumTitle",
+                a."coverUrl" AS "albumCoverUrl",
+                ar.id AS "artistId",
+                ar.name AS "artistName"
+            FROM track_embeddings te
+            JOIN "Track" t ON te.track_id = t.id
+            JOIN "Album" a ON t."albumId" = a.id
+            JOIN "Artist" ar ON a."artistId" = ar.id
+            ORDER BY te.embedding <=> ${vector}::vector
+            LIMIT ${limit}
+        `,
+    );
 }

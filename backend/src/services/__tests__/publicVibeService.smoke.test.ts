@@ -256,3 +256,33 @@ describe("getPublicMap — cap + envelope", () => {
         expect(map.sampled).toBe(false);
     });
 });
+
+describe("getPublicMap — 3-D maps are flattened, not sliced", () => {
+    it("keeps clusters apart that differ only in depth, and fills 0..1", async () => {
+        // Two clusters sharing x and y, separated only along z.
+        const tracks: any[] = [];
+        for (let i = 0; i < 20; i++) {
+            const deep = i >= 10;
+            tracks.push({
+                id: `c_depth_${i}`,
+                x: 0.5 + (i % 5) * 0.001,
+                y: 0.5 + (i % 3) * 0.001,
+                z: deep ? 0.9 : 0.1,
+                title: `t ${i}`, artist: "A", albumId: `a_${i}`, coverUrl: null,
+            });
+        }
+        computeMapProjection.mockResolvedValueOnce({ tracks, trackCount: tracks.length, computedAt: "flat-test" });
+        const map = await getPublicMap(5000);
+        const near = map.tracks.filter((t: any) => !t.id.endsWith("_1") && Number(t.id.split("_").pop()) < 10);
+        const far = map.tracks.filter((t: any) => Number(t.id.split("_").pop()) >= 10);
+        const gap = Math.abs(near[0].x - far[0].x) + Math.abs(near[0].y - far[0].y);
+        expect(gap).toBeGreaterThan(0.5); // the depth split survives the flattening
+        for (const t of map.tracks as any[]) {
+            expect(t.x).toBeGreaterThanOrEqual(0);
+            expect(t.x).toBeLessThanOrEqual(1);
+            expect(t.y).toBeGreaterThanOrEqual(0);
+            expect(t.y).toBeLessThanOrEqual(1);
+            expect(t.z).toBeUndefined(); // the public contract stays 2-D
+        }
+    });
+});

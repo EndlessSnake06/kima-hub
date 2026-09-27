@@ -79,6 +79,42 @@ function toPublicCover(trackId: string, track: MapPoint): MapPoint {
 
 // Swap every coverUrl across a point list. (Handled in-place by asMapPoints.)
 
+// The private map is laid out in 3-D; the public page draws 2-D. Dropping the
+// third axis would stack clusters that sit apart only in depth, so points are
+// projected onto the cloud's two widest directions (its top principal axes)
+// and stretched to fill 0..1. Maps without a third axis pass through as-is.
+// Cached per projection version: the projection changes rarely, requests don't.
+let flatMemo: { key: string; points: Map<string, { x: number; y: number }> } | null = null;
+
+function flatten(tracks: Array<{ id: string; x: number; y: number; z?: number }>): Map<string, { x: number; y: number }> {
+    const n = tracks.length;
+    const mean = [0, 0, 0];
+    for (const t of tracks) { mean[0] += t.x; mean[1] += t.y; mean[2] += t.z ?? 0.5; }
+    mean.forEach((_, a) => { mean[a] /= Math.max(1, n); });
+    const cov = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+    for (const t of tracks) {
+        const d = [t.x - mean[0], t.y - mean[1], (t.z ?? 0.5) - mean[2]];
+        for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) cov[i][j] += d[i] * d[j];
+    }
+    const mul = (v: number[]) => cov.map((row) => row[0] * v[0] + row[1] * v[1] + row[2] * v[2]);
+    const norm = (v: number[]) => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return v.map((c) => c / l); };
+    // Power iteration for the widest axis, then again with it deflated away.
+    let a = norm([1, 0.3, 0.2]);
+    for (let k = 0; k < 64; k++) a = norm(mul(a));
+    let b = norm([0.2, 1, 0.3]);
+    for (let k = 0; k < 64; k++) {
+        b = mul(b);
+        const dot = b[0] * a[0] + b[1] * a[1] + b[2] * a[2];
+        b = norm([b[0] - dot * a[0], b[1] - dot * a[1], b[2] - dot * a[2]]);
+    }
+    const u = tracks.map((t) => (t.x - mean[0]) * a[0] + (t.y - mean[1]) * a[1] + ((t.z ?? 0.5) - mean[2]) * a[2]);
+    const v = tracks.map((t) => (t.x - mean[0]) * b[0] + (t.y - mean[1]) * b[1] + ((t.z ?? 0.5) - mean[2]) * b[2]);
+    const span = (xs: number[]) => { let lo = Infinity, hi = -Infinity; for (const x of xs) { if (x < lo) lo = x; if (x > hi) hi = x; } return [lo, hi - lo || 1]; };
+    const [u0, ur] = span(u);
+    const [v0, vr] = span(v);
+    return new Map(tracks.map((t, i) => [t.id, { x: (u[i] - u0) / ur, y: (v[i] - v0) / vr }]));
+}
+
 function asMapPoints(projection: any): MapPoint[] {
     const tracks = (projection?.tracks ?? []) as unknown[];
     const points = tracks.filter(
@@ -87,7 +123,16 @@ function asMapPoints(projection: any): MapPoint[] {
             typeof (t as Record<string, unknown>).x === "number" &&
             typeof (t as Record<string, unknown>).y === "number",
     );
-    return points.map((t) => toPublicCover(t.id, t));
+    const threeD = points.some((p) => typeof (p as MapPoint & { z?: unknown }).z === "number");
+    if (!threeD) return points.map((t) => toPublicCover(t.id, t));
+    const key = `${projection?.computedAt ?? ""}:${points.length}`;
+    if (flatMemo?.key !== key) flatMemo = { key, points: flatten(points as Array<MapPoint & { z?: number }>) };
+    const flat = flatMemo.points;
+    return points.map((t) => {
+        const f = flat.get(t.id);
+        const { z: _z, ...rest } = t as MapPoint & { z?: number };
+        return toPublicCover(t.id, f ? { ...rest, x: f.x, y: f.y } : rest);
+    });
 }
 
 // Deterministic cap: keep the first N, drop the rest, by stored-id order. The

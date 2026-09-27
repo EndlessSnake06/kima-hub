@@ -1,19 +1,23 @@
 /**
- * Hybrid similarity null-handling regression test.
+ * Similar-tracks ranking and null-handling regression test.
  *
- * Contract after the F4 fix (weighted-mean normalization over PRESENT features):
- * a null feature on EITHER side contributes 0 to the numerator AND drops its
- * weight from the denominator, so the score divides by the sum of present
- * weights rather than the full 1.0. This removes the old 0.5-at-full-weight
- * burial that capped under-analyzed tracks below a fully-analyzed one.
+ * With CLAP embeddings present, similar tracks rank on the fingerprint alone:
+ * audio features must not reorder them (the old 0.55/0.45 blend let features
+ * decide most of the top 20).
  *
- * Concretely: a candidate missing 3 of 8 features but matching the source on
- * everything present (and on CLAP) now scores 1.0, not the old 0.865 ceiling.
- * When NO feature is present the denominator is 0; hybrid mode falls back to the
- * CLAP term alone, features-only mode returns the neutral 0.5.
+ * Features-only fallback (no CLAP), after the F4 fix (weighted-mean
+ * normalization over PRESENT features): a null feature on EITHER side
+ * contributes 0 to the numerator AND drops its weight from the denominator, so
+ * the score divides by the sum of present weights rather than the full 1.0.
+ * When NO feature is present the denominator is 0 and the score is the neutral
+ * 0.5.
  *
  * F5: the features-only path no longer emits a fabricated constant-0 distance;
  * it emits (1 - similarity).
+ *
+ * S2: a seed without a fingerprint (or a nonexistent id) must return no rows --
+ * the empty seed CTE used to give every candidate a NULL distance and the
+ * endpoint answered with ~`limit` arbitrary tracks.
  *
  * These tests drive the SHIPPED functions (findSimilarTracks and its mode
  * selection), not a re-typed copy of the SQL -- a mirror can drift from the
@@ -26,7 +30,6 @@ import { prisma } from "../../utils/db";
 import { featureDetection } from "../../services/featureDetection";
 import {
     findSimilarTracks,
-    WEIGHTS,
     FEATURES_ONLY_WEIGHTS,
     SimilarTrack,
 } from "../hybridSimilarity";
@@ -73,12 +76,17 @@ async function seedTrack(id: string, over: Record<string, unknown>) {
     });
 }
 
-// A normalized non-zero 512-dim vector (all components equal). Identical
-// vectors across tracks => pgvector cosine distance ~0 => clap_sim ~1, so the
-// CLAP term never confounds the feature-math under test.
-const IDENTITY_VECTOR = `[${Array(512).fill(1 / Math.sqrt(512)).join(",")}]`;
+// A unit 512-dim vector whose cosine with the axis-0 unit vector is `cos`:
+// cos on axis 0, the remainder on `axis`, so each track's fingerprint
+// similarity to an axis-0 source is exactly `cos`.
+function unitVectorAt(cos: number, axis: number): string {
+    const v = Array(512).fill(0);
+    v[0] = cos;
+    v[axis] = Math.sqrt(1 - cos * cos);
+    return `[${v.join(",")}]`;
+}
 
-async function seedEmbedding(trackId: string) {
+async function seedEmbedding(trackId: string, vector: string) {
     // Mirrors services/audio-analyzer-clap/analyzer.py's insert shape
     // (%s::vector). Prisma cannot write Unsupported("vector") columns.
     await prisma.$executeRawUnsafe(
@@ -86,7 +94,7 @@ async function seedEmbedding(trackId: string) {
          VALUES ($1, $2::vector, 'laion-clap-music', now())
          ON CONFLICT (track_id) DO NOTHING`,
         trackId,
-        IDENTITY_VECTOR,
+        vector,
     );
 }
 
@@ -113,69 +121,41 @@ describe("hybridSimilarity null handling (DB, shipped functions)", () => {
         });
     });
 
-    it("hybrid: a candidate missing 3 features but matching on everything present scores ~1.0 and outranks the old 0.865 ceiling", async () => {
+    it("CLAP present: ranks on the fingerprint alone; distant audio features do not reorder it", async () => {
         setMode("hybrid");
-        const full = {
-            energy: 0.5, valence: 0.5, arousal: 0.5, bpm: 120,
-            danceabilityMl: 0.5, acousticness: 0.5, instrumentalness: 0.5,
+        const src = {
+            energy: 0.0, valence: 0.0, arousal: 0.0, bpm: 60,
+            danceabilityMl: 0.0, acousticness: 0.0, instrumentalness: 0.0,
             key: "C", keyScale: "major",
         };
-        // Source: all features present. Candidate: 3 nulls, matches source on the rest.
-        await seedTrack("src", { ...full });
-        await seedTrack("sparse", {
-            energy: null, valence: null, arousal: null,
-            bpm: 120, danceabilityMl: 0.5, acousticness: 0.5, instrumentalness: 0.5,
-            key: "C", keyScale: "major",
-        });
-        await seedEmbedding("trk_hs_src");
-        await seedEmbedding("trk_hs_sparse");
+        const opposite = {
+            energy: 1.0, valence: 1.0, arousal: 1.0, bpm: 97,
+            danceabilityMl: 1.0, acousticness: 1.0, instrumentalness: 1.0,
+            key: "F#", keyScale: "minor",
+        };
+        await seedTrack("fp_src", src);
+        // Closer fingerprint, every feature as far from the source as possible.
+        await seedTrack("fp_near", opposite);
+        // Farther fingerprint, every feature identical to the source. The old
+        // blend scored this ~0.945 against ~0.52 for fp_near and put it first.
+        await seedTrack("fp_far", { ...src });
+        await seedEmbedding("trk_hs_fp_src", unitVectorAt(1, 1));
+        await seedEmbedding("trk_hs_fp_near", unitVectorAt(0.95, 2));
+        await seedEmbedding("trk_hs_fp_far", unitVectorAt(0.9, 3));
 
-        const rows = await findSimilarTracks("trk_hs_src", 10);
-        const sparse = rows.find((r) => r.id === "trk_hs_sparse");
-        expect(sparse).toBeDefined();
+        const rows = await findSimilarTracks("trk_hs_fp_src", 10);
+        const near = rows.findIndex((r) => r.id === "trk_hs_fp_near");
+        const far = rows.findIndex((r) => r.id === "trk_hs_fp_far");
+        expect(near).toBeGreaterThanOrEqual(0);
+        expect(far).toBeGreaterThanOrEqual(0);
+        expect(near).toBeLessThan(far);
 
-        // Analytic expectation: every PRESENT feature matches and clap_sim ~1,
-        // so the weighted mean is ~1.0 -- the sparse candidate competes on
-        // equal footing with a fully-analyzed one.
-        expect(sparse!.similarity).toBeCloseTo(1.0, 5);
-
-        // For reference, the OLD code would have scored this candidate
-        // 0.55*1 + (0.07+0.05+0.03+0.02+0.01)*1 + (0.10+0.09+0.08)*0.5 = 0.865.
-        const oldCeiling =
-            WEIGHTS.clap * 1 +
-            (WEIGHTS.features.bpm + WEIGHTS.features.danceability +
-                WEIGHTS.features.acousticness + WEIGHTS.features.instrumentalness +
-                WEIGHTS.features.key) * 1 +
-            (WEIGHTS.features.energy + WEIGHTS.features.valence +
-                WEIGHTS.features.arousal) * 0.5;
-        expect(sparse!.similarity).toBeGreaterThan(oldCeiling);
-
-        // F5 sanity: hybrid mode's distance is a real pgvector cosine distance
-        // (identical vectors => ~0), never a fabricated constant.
-        expect(Number.isFinite(sparse!.distance)).toBe(true);
-        expect(sparse!.distance).toBeCloseTo(0.0, 5);
-    });
-
-    it("hybrid: a null feature on the SOURCE drops out entirely; matching candidate still scores ~1.0", async () => {
-        setMode("hybrid");
-        // Source: energy NULL. Candidate: energy 0.9 (far), everything else identical.
-        await seedTrack("src_null", { energy: null, valence: 0.1, arousal: 0.1, bpm: 120, danceabilityMl: 0.1, acousticness: 0.1, instrumentalness: 0.1, key: "C", keyScale: "major" });
-        await seedTrack("cand_full", { energy: 0.9, valence: 0.1, arousal: 0.1, bpm: 120, danceabilityMl: 0.1, acousticness: 0.1, instrumentalness: 0.1, key: "C", keyScale: "major" });
-        await seedEmbedding("trk_hs_src_null");
-        await seedEmbedding("trk_hs_cand_full");
-
-        // Sanity: the candidate really carries energy 0.9 in the DB.
-        const cand = await prisma.track.findUnique({ where: { id: "trk_hs_cand_full" } });
-        expect(cand?.energy).toBeCloseTo(0.9, 5);
-
-        const rows = await findSimilarTracks("trk_hs_src_null", 10);
-        const row = rows.find((r) => r.id === "trk_hs_cand_full");
-        expect(row).toBeDefined();
-        // The null source energy drops out of numerator AND denominator; the
-        // candidate matches on every present feature, so it scores ~1.0 (not a
-        // fabricated perfect match from the missing value, and not penalized
-        // for the source's missing value).
-        expect(row!.similarity).toBeCloseTo(1.0, 5);
+        // similarity is the fingerprint cosine, and distance its complement.
+        expect(rows[near].similarity).toBeCloseTo(0.95, 5);
+        expect(rows[far].similarity).toBeCloseTo(0.9, 5);
+        for (const r of [rows[near], rows[far]]) {
+            expect(r.distance).toBeCloseTo(1 - r.similarity, 5);
+        }
     });
 
     it("features-only: all features null on both sides returns neutral 0.5, not a divide-by-zero", async () => {
@@ -248,7 +228,7 @@ describe("hybridSimilarity null handling (DB, shipped functions)", () => {
         expect(byFar!.distance).toBeGreaterThan(0.1); // far track has real distance
     });
 
-    it("weights still sum to 1.0 in both modes, and the source carries no neutral-0.5 or constant-0 distance pattern (invariant)", () => {
+    it("features-only weights sum to 1.0, and the source carries no neutral-0.5 or constant-0 distance pattern (invariant)", () => {
         const src = require("fs").readFileSync(
             require("path").join(__dirname, "../../services/hybridSimilarity.ts"),
             "utf8",
@@ -264,9 +244,36 @@ describe("hybridSimilarity null handling (DB, shipped functions)", () => {
         // F5: no hardcoded constant-0 distance anywhere in the file.
         expect(src).not.toContain("0 as distance");
 
-        const featureWeightSum = Object.values(WEIGHTS.features).reduce((a, b) => a + b, 0);
         const featuresOnlySum = Object.values(FEATURES_ONLY_WEIGHTS).reduce((a, b) => a + b, 0);
-        expect(WEIGHTS.clap + featureWeightSum).toBeCloseTo(1.0, 6);
         expect(featuresOnlySum).toBeCloseTo(1.0, 6);
+    });
+});
+
+// S2: a seed with no CLAP fingerprint row must yield NO rows. The seed lives
+// in a CTE that the query reads only through a scalar subquery, so an empty
+// seed gave every candidate a NULL distance and the endpoint answered with
+// ~`limit` arbitrary tracks scored 0. The contract restored here: no seed
+// fingerprint => [], and the routes turn that into their "not analysed yet"
+// 404s (see routes/__tests__/similarUnanalysedSeed.route.test.ts).
+describe("unanalysed seed (no embedding row) returns no rows", () => {
+    it("CLAP mode: a seed track with no embedding row returns []", async () => {
+        setMode("hybrid");
+        // One embedded neighbour proves the library is not empty -- the bug
+        // returned real tracks, not an empty result of an empty DB.
+        await seedTrack("un_src", {});
+        await seedTrack("un_nb", {});
+        await seedEmbedding("trk_hs_un_nb", unitVectorAt(1, 1));
+
+        const rows = await findSimilarTracks("trk_hs_un_src", 10);
+        expect(rows).toEqual([]);
+    });
+
+    it("CLAP mode: a nonexistent track id returns []", async () => {
+        setMode("hybrid");
+        await seedTrack("un_nb2", {});
+        await seedEmbedding("trk_hs_un_nb2", unitVectorAt(1, 1));
+
+        const rows = await findSimilarTracks("ctrk_hs_does_not_exist", 10);
+        expect(rows).toEqual([]);
     });
 });
