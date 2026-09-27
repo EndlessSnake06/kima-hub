@@ -42,7 +42,7 @@ jest.mock('../../config', () => ({
 import { getSystemSettings } from '../../utils/systemSettings';
 import { config } from '../../config';
 
-const mockGetSystemSettings = getSystemSettings as jest.MockedFunction<typeof getSystemSettings>;
+const mockGetSystemSettings = getSystemSettings as jest.Mock;
 
 describe('Music Path Configuration', () => {
     beforeEach(() => {

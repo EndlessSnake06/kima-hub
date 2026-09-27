@@ -1,6 +1,7 @@
 import { prisma } from "../utils/db";
 import { logger } from "../utils/logger";
 import { parseEmbedding } from "../utils/embedding";
+import { efFor, withEfSearch } from "../utils/knn";
 
 const MIN_PATH_DISTANCE = 0.15;
 
@@ -152,32 +153,42 @@ async function fetchBatchCandidates(
 ): Promise<CandidateTrack[]> {
     const excluded = Array.from(excludeIds);
 
-    const promises = waypoints.map((emb, idx) =>
-        prisma.$queryRaw<Array<PathTrack & { distance: number }>>`
-            SELECT
-                t.id,
-                t.title,
-                t.duration,
-                a.id as "albumId",
-                a.title as "albumTitle",
-                a."coverUrl" as "albumCoverUrl",
-                ar.id as "artistId",
-                ar.name as "artistName",
-                te.embedding <=> ${emb}::vector AS distance
-            FROM track_embeddings te
-            JOIN "Track" t ON te.track_id = t.id
-            JOIN "Album" a ON t."albumId" = a.id
-            JOIN "Artist" ar ON a."artistId" = ar.id
-            WHERE te.track_id != ALL(${excluded})
-            ORDER BY te.embedding <=> ${emb}::vector
-            LIMIT ${candidatesPerWaypoint}
-        `.then(rows => rows.map(r => ({ ...r, waypointIndex: idx })))
+    // S1: the HNSW index walks hnsw.ef_search candidates (default 40) and the
+    // visited-set exclusions are applied AFTER the walk, so every excluded id
+    // eats one of the same 40 candidates -- later waypoints near already walked
+    // stretches would come up short. One transaction per batch (<= 10
+    // waypoints) raises the width once from the per-waypoint limit plus the
+    // exclusion count; the queries run serially on that transaction's own
+    // connection, the only place the setting is in effect.
+    return withEfSearch(
+        efFor(candidatesPerWaypoint, excluded.length),
+        async (tx) => {
+            const results: CandidateTrack[] = [];
+            for (const [idx, emb] of waypoints.entries()) {
+                const rows = await tx.$queryRaw<Array<PathTrack & { distance: number }>>`
+                    SELECT
+                        t.id,
+                        t.title,
+                        t.duration,
+                        a.id as "albumId",
+                        a.title as "albumTitle",
+                        a."coverUrl" as "albumCoverUrl",
+                        ar.id as "artistId",
+                        ar.name as "artistName",
+                        te.embedding <=> ${emb}::vector AS distance
+                    FROM track_embeddings te
+                    JOIN "Track" t ON te.track_id = t.id
+                    JOIN "Album" a ON t."albumId" = a.id
+                    JOIN "Artist" ar ON a."artistId" = ar.id
+                    WHERE te.track_id != ALL(${excluded})
+                    ORDER BY te.embedding <=> ${emb}::vector
+                    LIMIT ${candidatesPerWaypoint}
+                `;
+                results.push(...rows.map(r => ({ ...r, waypointIndex: idx })));
+            }
+            return results;
+        },
     );
-
-    const batchResults = await Promise.all(promises);
-    const results: CandidateTrack[] = [];
-    for (const batch of batchResults) results.push(...batch);
-    return results;
 }
 
 async function getTrackInfo(trackId: string): Promise<PathTrack | null> {

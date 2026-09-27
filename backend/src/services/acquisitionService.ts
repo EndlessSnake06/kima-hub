@@ -11,6 +11,7 @@ import { getSystemSettings } from "../utils/systemSettings";
 import { soulseekService } from "./soulseek";
 import { simpleDownloadManager } from "./simpleDownloadManager";
 import { musicBrainzService } from "./musicbrainz";
+import { failureCause } from "../utils/outcome";
 import { getArtistCorrection } from "./artistCorrection";
 import { AcquisitionError, AcquisitionErrorType } from "./lidarr";
 import { distributedLock } from "../utils/distributedLock";
@@ -116,7 +117,8 @@ class AcquisitionService {
         const settings = await getSystemSettings();
 
         // Get download source settings
-        const downloadSource = settings?.downloadSource || "soulseek";
+        const downloadSource =
+            settings?.downloadSource === "lidarr" ? "lidarr" : "soulseek";
         const primaryFailureFallback = settings?.primaryFailureFallback;
 
         // Determine actual availability
@@ -586,18 +588,15 @@ class AcquisitionService {
                 );
             } else {
                 // Strategy 1: Get track list from MusicBrainz (mbid guaranteed by early guard above)
-                tracks = await musicBrainzService.getAlbumTracks(request.mbid!);
-
-                if (!tracks || tracks.length === 0) {
+                const mbTracks = await musicBrainzService.getAlbumTracks(request.mbid!);
+                if (mbTracks.kind === "answered" && mbTracks.value.length > 0) {
+                    tracks = mbTracks.value;
+                } else if (mbTracks.kind === "answered" || mbTracks.kind === "absent") {
                     logger.debug(
                         `[Acquisition/Soulseek] MusicBrainz has no tracks; no fallback source`
                     );
                     // The retired Last.fm service was removed as a track-list
                     // source (dead shared key); MusicBrainz is the only one now.
-                }
-
-                if (!tracks || tracks.length === 0) {
-                    // Mark job as failed
                     await this.updateJobStatus(
                         job.id,
                         "failed",
@@ -606,6 +605,15 @@ class AcquisitionService {
                     return {
                         success: false,
                         error: "Could not get track list from MusicBrainz",
+                    };
+                } else {
+                    // A failed lookup must not look like "the album has no
+                    // tracks": the job fails with the real cause.
+                    const cause = failureCause(mbTracks);
+                    await this.updateJobStatus(job.id, "failed", `Track list lookup failed: ${cause}`);
+                    return {
+                        success: false,
+                        error: `Track list lookup failed: ${cause}`,
                     };
                 }
 

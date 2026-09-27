@@ -6,6 +6,8 @@ import { config } from "../config";
 import { getSystemSettings } from "../utils/systemSettings";
 import { stripAlbumEdition } from "../utils/artistNormalization";
 import { lidarrApiCallsTotal, lidarrApiDuration } from "../utils/metrics";
+import { sourcePauseController } from "./sourcePauseController";
+import { failureCause } from "../utils/outcome";
 import type {
     LidarrAlbum,
     LidarrArtist,
@@ -308,12 +310,25 @@ class LidarrService {
                     );
 
                     // Get artist info from MusicBrainz directly
-                    const mbArtists = await musicBrainzService.searchArtist(
+                    const found = await musicBrainzService.searchArtist(
                         artistName,
                         5
-                    ) as MusicBrainzArtist[];
+                    );
                     const mbArtist =
-                        mbArtists?.find((a) => a.id === mbid) || mbArtists?.[0];
+                        found.kind === "answered"
+                            ? found.value.find((a: MusicBrainzArtist) => a.id === mbid) ??
+                              found.value[0]
+                            : undefined;
+
+                    if (!mbArtist) {
+                        logger.debug(
+                            `   [FALLBACK] no artist answer for ${artistName}: ${
+                                found.kind === "answered" || found.kind === "absent"
+                                    ? "MusicBrainz has nothing"
+                                    : failureCause(found)
+                            }`
+                        );
+                    }
 
                     if (mbArtist) {
                         // Create a minimal Lidarr-compatible artist object
@@ -366,12 +381,25 @@ class LidarrService {
                     const { musicBrainzService } = await import(
                         "./musicbrainz"
                     );
-                    const mbArtists = await musicBrainzService.searchArtist(
+                    const found = await musicBrainzService.searchArtist(
                         artistName,
                         5
-                    ) as MusicBrainzArtist[];
+                    );
                     const mbArtist =
-                        mbArtists?.find((a) => a.id === mbid) || mbArtists?.[0];
+                        found.kind === "answered"
+                            ? found.value.find((a: MusicBrainzArtist) => a.id === mbid) ??
+                              found.value[0]
+                            : undefined;
+
+                    if (!mbArtist) {
+                        logger.debug(
+                            `   [FALLBACK] no artist answer for ${artistName}: ${
+                                found.kind === "answered" || found.kind === "absent"
+                                    ? "MusicBrainz has nothing"
+                                    : failureCause(found)
+                            }`
+                        );
+                    }
 
                     if (mbArtist) {
                         const fallbackArtist: LidarrArtist = {
@@ -933,6 +961,17 @@ class LidarrService {
 
         if (!this.enabled || !this.client) {
             throw new Error("Lidarr not enabled");
+        }
+
+        // A paused source is not hammered: while 'lidarr' rests (a
+        // rate-limit-shaped failure paused it, or an operator did), no
+        // new Lidarr queries are issued and the download simply does not
+        // start — it can be retried when the pause lifts.
+        if (await sourcePauseController.isPaused("lidarr")) {
+            logger.warn(
+                `   [Lidarr] Source paused; skipping add of "${albumTitle}" by ${artistName}`,
+            );
+            return null;
         }
 
         try {
@@ -2312,6 +2351,15 @@ class LidarrService {
 
         if (!this.enabled || !this.client) {
             throw new Error("Lidarr not enabled");
+        }
+
+        // Indexer searches are the slowest, most hammer-prone Lidarr
+        // queries — while the source is paused they are not issued at all.
+        if (await sourcePauseController.isPaused("lidarr")) {
+            logger.warn(
+                `[LIDARR] Source paused; skipping release query for album ${lidarrAlbumId}`,
+            );
+            return [];
         }
 
         try {

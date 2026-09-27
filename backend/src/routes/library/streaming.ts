@@ -76,6 +76,16 @@ router.get("/tracks/:id/stream", async (req, res) => {
       return res.status(404).json({ error: "Track not found" });
     }
 
+    // The scan never deletes a vanished file's row -- it flags it. The flag,
+    // not the failed open, is what answers a stream request: a clear
+    // not-found instead of a generic 500.
+    if (track.missingSince) {
+      logger.debug(
+        `[STREAM] Track ${track.id} is missing from disk (since ${track.missingSince.toISOString()})`,
+      );
+      return res.status(404).json({ error: "Track not available" });
+    }
+
     // Requesting bytes is not listening. A play is recorded by whoever knows
     // how much was actually heard -- the web player through POST /plays, a
     // Subsonic client through scrobble.view -- and judged against the Last.fm
@@ -152,7 +162,7 @@ router.post("/tracks/:id/prewarm", async (req, res) => {
       return res.status(404).json({ error: "Track not found" });
     }
 
-    if (!track.filePath || !track.fileModified) {
+    if (!track.filePath || !track.fileModified || track.missingSince) {
       return res.status(202).json({ ok: true });
     }
 

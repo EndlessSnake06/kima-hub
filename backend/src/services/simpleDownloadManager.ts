@@ -21,6 +21,9 @@ import { eventBus } from "./eventBus";
 import axios from "axios";
 import * as crypto from "crypto";
 import { activeDownloads } from "../utils/metrics";
+import { sourcePauseController } from "./sourcePauseController";
+import { isRateLimited } from "./enrichmentErrorCodeClassifier";
+import { failureCause } from "../utils/outcome";
 
 // Type for transactional prisma client
 type TransactionClient = Omit<
@@ -154,24 +157,27 @@ class SimpleDownloadManager {
 
             // Fetch artist MBID from MusicBrainz using the album MBID
             let artistMbid: string | undefined;
-            try {
-                logger.debug(`   Fetching artist MBID from MusicBrainz...`);
-                const releaseGroup = await musicBrainzService.getReleaseGroup(
-                    albumMbid
-                );
-
-                if (releaseGroup?.["artist-credit"]?.[0]?.artist?.id) {
-                    artistMbid = releaseGroup["artist-credit"][0].artist.id;
+            logger.debug(`   Fetching artist MBID from MusicBrainz...`);
+            const rgOutcome = await musicBrainzService.getReleaseGroup(
+                albumMbid
+            );
+            if (rgOutcome.kind === "answered") {
+                const credit = rgOutcome.value?.["artist-credit"]?.[0]?.artist?.id;
+                if (credit) {
+                    artistMbid = credit;
                     logger.debug(`   Found artist MBID: ${artistMbid}`);
                 } else {
                     logger.warn(
                         `   Could not extract artist MBID from release group`
                     );
                 }
-            } catch (mbError) {
+            } else if (rgOutcome.kind === "absent") {
+                logger.warn(
+                    `   Release group ${albumMbid} is not on MusicBrainz`
+                );
+            } else {
                 logger.error(
-                    `   Failed to fetch artist MBID from MusicBrainz:`,
-                    mbError
+                    `   Artist-MBID lookup ${rgOutcome.kind}: ${failureCause(rgOutcome)}`
                 );
             }
 
@@ -920,6 +926,18 @@ class SimpleDownloadManager {
     ): Promise<{ retried: boolean; failed: boolean; jobId?: string }> {
         logger.debug(`\n[RETRY] Import failed: ${downloadId}`);
         logger.debug(`   Reason: ${reason}`);
+
+        // A rate limit is the source's weather, not bad work: pause ONLY
+        // the source that refused us and do NOT count this against the
+        // job's failure ladder — the download can be retried once the
+        // pause lifts.
+        if (isRateLimited({ message: reason })) {
+            await sourcePauseController.handleRateLimit("lidarr", { message: reason });
+            logger.debug(
+                `   Rate-limit-shaped failure — 'lidarr' paused, failureCount NOT incremented`,
+            );
+            return { retried: false, failed: false, jobId: undefined };
+        }
 
         const result = await this.withTransaction(
             async (tx) => {

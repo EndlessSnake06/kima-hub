@@ -102,13 +102,55 @@ router.get("/corrupt-tracks", requireAdmin, async (_req, res) => {
   }
 });
 
+router.get("/missing-tracks", requireAdmin, async (_req, res) => {
+  try {
+    // The scan never deletes a track whose file is gone; it flags it with
+    // the time it was found missing. This is the true-state listing that
+    // decision promises: what is missing, and since when. The flag clears
+    // itself on the scan that finds the file again, so there is no clear
+    // control here -- clearing it by hand would claim a file is back.
+    const tracks = await prisma.track.findMany({
+      where: { missingSince: { not: null } },
+      include: { album: { include: { artist: { select: { name: true } } } } },
+      orderBy: { missingSince: "asc" },
+    });
+
+    res.json({
+      count: tracks.length,
+      tracks: tracks.map((t) => ({
+        id: t.id,
+        title: t.title,
+        artist: t.album.artist.name,
+        album: t.album.title,
+        missingSince: t.missingSince,
+      })),
+    });
+  } catch (error) {
+    logger.error("Get missing tracks error:", error);
+    res.status(500).json({ error: "Failed to get missing tracks" });
+  }
+});
+
 router.delete("/corrupt-tracks", requireAdmin, async (_req, res) => {
   try {
-    const result = await prisma.track.deleteMany({ where: { corrupt: true } });
-    res.json({ deleted: result.count, message: `Removed ${result.count} corrupt tracks` });
+    // The old handler ran `deleteMany({ where: { corrupt: true } })`, which
+    // deleted real state: the file still exists, the next scan would only
+    // re-create the row, and every stage answer recorded against it was
+    // lost with it. The operator pressing this means "I know -- re-check
+    // it", so we clear the flag and stop. The Track row, its stage
+    // records, and any answers already given are kept; the next scan
+    // re-answers the file-readable question from the flag.
+    const result = await prisma.track.updateMany({
+      where: { corrupt: true },
+      data: { corrupt: false },
+    });
+    res.json({
+      cleared: result.count,
+      message: `Cleared the corrupt flag on ${result.count} tracks (rows kept)`,
+    });
   } catch (error) {
-    logger.error("Delete corrupt tracks error:", error);
-    res.status(500).json({ error: "Failed to delete corrupt tracks" });
+    logger.error("Clear corrupt tracks error:", error);
+    res.status(500).json({ error: "Failed to clear corrupt tracks" });
   }
 });
 

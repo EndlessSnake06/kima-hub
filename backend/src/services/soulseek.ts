@@ -22,6 +22,7 @@ import {
     soulseekDownloadsTotal,
     soulseekDownloadDuration
 } from "../utils/metrics";
+import { sourcePauseController } from "./sourcePauseController";
 
 export interface SearchResult {
     user: string;
@@ -362,8 +363,8 @@ class SoulseekService {
         try {
             sessionLog("SOULSEEK", "Attempting login to Soulseek server...", "DEBUG");
             await this.client.login(
-                settings.username,
-                settings.password,
+                settings.username ?? "",
+                settings.password ?? "",
                 this.LOGIN_TIMEOUT // 10s (slskd default, reduced from 15s)
             );
             sessionLog("SOULSEEK", "Login successful", "DEBUG");
@@ -669,6 +670,18 @@ class SoulseekService {
         if (signal?.aborted) {
             return { found: false, bestMatch: null, allMatches: [] };
         }
+        // A paused source is not hammered: while 'soulseek' rests, every
+        // search returns not-found without consuming a rate-limiter slot
+        // or counting a failure. Callers that consult the pause
+        // (acquisition flows) skip the work entirely until the window lifts.
+        if (await sourcePauseController.isPaused("soulseek")) {
+            sessionLog(
+                "SOULSEEK",
+                `[Search] Source paused; skipping "${trackTitle}" by ${artistName}`,
+                "WARN",
+            );
+            return { found: false, bestMatch: null, allMatches: [] };
+        }
         const metricsStartTime = Date.now();
         this.totalSearches++;
         const searchId = this.totalSearches;
@@ -852,6 +865,19 @@ class SoulseekService {
             };
         } catch (err: any) {
             const searchDuration = Date.now() - searchStartTime;
+            // A rate limit is the source's weather, not bad work: pause
+            // ONLY 'soulseek' and return not-found without counting a
+            // failure against the consecutive-search ladder.
+            if (await sourcePauseController.handleRateLimit("soulseek", err)) {
+                sessionLog(
+                    "SOULSEEK",
+                    `[Search #${searchId}] Rate limited — 'soulseek' paused; not counted as failure`,
+                    "WARN",
+                );
+                soulseekSearchesTotal.inc({ status: 'not_found' });
+                soulseekSearchDuration.observe((Date.now() - metricsStartTime) / 1000);
+                return { found: false, bestMatch: null, allMatches: [] };
+            }
             sessionLog(
                 "SOULSEEK",
                 `[Search #${searchId}] Search error after ${searchDuration}ms: ${err.message}`,

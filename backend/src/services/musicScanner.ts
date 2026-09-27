@@ -17,6 +17,7 @@ import {
 import { parseCredit, resolveArtist } from "./artistIdentity";
 import { resolveAlbum } from "./albumIdentity";
 import { acoustidService } from "./acoustidService";
+import { failureCause } from "../utils/outcome";
 import { fpcalcService } from "./fpcalc";
 import { featureDetection } from "./featureDetection";
 import { backfillAllArtistCounts } from "./artistCountsService";
@@ -55,7 +56,7 @@ export function getIdentificationCounters() {
 }
 
 /**
- * Run fpcalc on a file; returns fingerprint + duration, or null.
+ * Run fpcalc on a file; returns fingerprint + duration, throws on failure.
  *
  * Delegates to the shared fpcalcService runner. fpcalc 1.5.x has NO
  * `-format=json` output flag (`-format` selects the *input* format); the
@@ -104,21 +105,39 @@ async function resolveAlbumIdentity(
     //    enrichment path: the fpcalc feature flag (binary present, not
     //    disabled) decides whether this path runs. The service resolves the
     //    client key itself — operator key from SystemSettings, baked default
-    //    as fallback — so no key plumbing happens here.
+    //    as fallback — so no key plumbing happens here. The shared runner now
+    //    THROWS on a real fpcalc failure; the scan only falls through to the
+    //    placeholder path (the stage records own per-track failures).
     const features = await featureDetection.getFeatures();
     if (features.fpcalc) {
-        const fp = await fingerprintFile(absolutePath);
+        let fp: { fingerprint: string; duration: number } | null = null;
+        try {
+            fp = await fingerprintFile(absolutePath);
+        } catch (err) {
+            logger.debug(
+                `[Scanner] fpcalc failed for ${path.basename(absolutePath)}: ${(err as Error).message}`,
+            );
+        }
         if (fp) {
             const match = await acoustidService.lookup(fp.duration, fp.fingerprint);
-            if (match?.releaseGroupMbid) {
+            if (match.kind === "answered") {
                 identificationCounters[acoustidTag ? "acoustid-tag" : "fpcalc"]++;
                 logger.info(
                     `[Scanner] Identified ${path.basename(absolutePath)} via ${
                         acoustidTag ? "AcoustID tag + fingerprint" : "fingerprint"
-                    }: ${match.releaseGroupMbid} (${match.title} — ${match.album})`,
+                    }: ${match.value.releaseGroupMbid} (${match.value.title} — ${match.value.album})`,
                 );
-                return { rgMbid: match.releaseGroupMbid, via: acoustidTag ? "acoustid-tag" : "fpcalc" };
+                return { rgMbid: match.value.releaseGroupMbid, via: acoustidTag ? "acoustid-tag" : "fpcalc" };
             }
+            // "No match" and "call failed" both fall through to the
+            // placeholder stands, but the log keeps the difference.
+            logger.debug(
+                `[Scanner] no fingerprint identification for ${path.basename(absolutePath)}: ${
+                    match.kind === "absent"
+                        ? "AcoustID has no match"
+                        : failureCause(match)
+                }`,
+            );
         }
     }
 
@@ -151,7 +170,8 @@ interface ScanProgress {
 interface ScanResult {
     tracksAdded: number;
     tracksUpdated: number;
-    tracksRemoved: number;
+    /** Tracks newly flagged missing this scan (file gone from disk). Never deletions. */
+    tracksMissing: number;
     tracksCorrupt: number;
     errors: Array<{ file: string; error: string }>;
     duration: number;
@@ -180,7 +200,7 @@ export class MusicScannerService {
         const result: ScanResult = {
             tracksAdded: 0,
             tracksUpdated: 0,
-            tracksRemoved: 0,
+            tracksMissing: 0,
             tracksCorrupt: 0,
             errors: [],
             duration: 0,
@@ -198,6 +218,7 @@ export class MusicScannerService {
                 id: true,
                 filePath: true,
                 fileModified: true,
+                missingSince: true,
             },
         });
 
@@ -286,19 +307,44 @@ export class MusicScannerService {
 
         await this.scanQueue.onIdle();
 
-        // Step 4: Remove tracks for files that no longer exist
+        // Step 4: True state for files whose fate the walk settled. A track
+        // whose file is missing is never deleted
+        // 2026-09-25): deleting the row cascaded away every Play, LikedTrack,
+        // TrackStage and embedding recorded against it, and the next scan
+        // re-created the row with none of that history. The flag is set with
+        // the time the file was found missing and cleared by the scan that
+        // finds the file again.
         const scannedPaths = new Set(
             audioFiles.map((f) => path.relative(musicPath, f))
         );
-        let tracksToRemove = existingTracks.filter(
+
+        // Found again: a row flagged missing on an earlier scan whose file is
+        // in this walk. Cleared here rather than in the per-file upsert
+        // because a restored mount can bring the file back with its OLD mtime
+        // -- the Step 3 "file hasn't changed" skip would then never re-process
+        // it, and the flag would stick to a track that is demonstrably back.
+        const returned = existingTracks.filter(
+            (t) => t.missingSince !== null && scannedPaths.has(t.filePath)
+        );
+        if (returned.length > 0) {
+            await prisma.track.updateMany({
+                where: { id: { in: returned.map((t) => t.id) } },
+                data: { missingSince: null },
+            });
+            logger.debug(
+                `Cleared the missing flag on ${returned.length} track(s) whose files are back`
+            );
+        }
+
+        const pathCandidates = existingTracks.filter(
             (t) => !scannedPaths.has(t.filePath)
         );
 
-        if (tracksToRemove.length > 0) {
+        if (pathCandidates.length > 0) {
             // Safety: verify files are truly missing (guard against path normalization issues)
-            const beforeCount = tracksToRemove.length;
+            const beforeCount = pathCandidates.length;
             const existChecks = await Promise.all(
-                tracksToRemove.map(async (t) => {
+                pathCandidates.map(async (t) => {
                     const fullPath = path.join(musicPath, t.filePath);
                     try {
                         await fs.promises.access(fullPath);
@@ -308,72 +354,31 @@ export class MusicScannerService {
                     }
                 })
             );
-            tracksToRemove = existChecks.filter((c) => !c.exists).map((c) => c.track);
-            const pathMismatches = beforeCount - tracksToRemove.length;
+            const vanished = existChecks
+                .filter((c) => !c.exists)
+                .map((c) => c.track);
+            const pathMismatches = beforeCount - vanished.length;
             if (pathMismatches > 0) {
                 logger.debug(
-                    `${pathMismatches} track(s) had path mismatches but files exist on disk (skipped removal)`
+                    `${pathMismatches} track(s) had path mismatches but files exist on disk (skipped missing flag)`
                 );
             }
 
-            if (tracksToRemove.length > 0) {
-                // Convert playlist-referenced tracks to pending entries before deletion
-                const playlistItems = await prisma.playlistItem.findMany({
-                    where: { trackId: { in: tracksToRemove.map((t) => t.id) } },
-                    select: {
-                        playlistId: true,
-                        sort: true,
-                        track: {
-                            select: {
-                                title: true,
-                                album: {
-                                    select: {
-                                        title: true,
-                                        artist: { select: { name: true } },
-                                    },
-                                },
-                            },
-                        },
+            if (vanished.length > 0) {
+                // Only rows not already flagged change: the timestamp is when
+                // THIS scan found the file gone, not a later one re-stamping
+                // an old fact.
+                const marked = await prisma.track.updateMany({
+                    where: {
+                        id: { in: vanished.map((t) => t.id) },
+                        missingSince: null,
                     },
+                    data: { missingSince: new Date() },
                 });
-
-                if (playlistItems.length > 0) {
-                    logger.debug(
-                        `Converting ${playlistItems.length} playlist reference(s) to pending entries (missing from disk)`
-                    );
-                    for (const item of playlistItems) {
-                        const artistName = item.track.album.artist.name;
-                        const trackTitle = item.track.title;
-                        await prisma.playlistPendingTrack.upsert({
-                            where: {
-                                playlistId_spotifyArtist_spotifyTitle: {
-                                    playlistId: item.playlistId,
-                                    spotifyArtist: artistName,
-                                    spotifyTitle: trackTitle,
-                                },
-                            },
-                            create: {
-                                playlistId: item.playlistId,
-                                spotifyArtist: artistName,
-                                spotifyTitle: trackTitle,
-                                spotifyAlbum: item.track.album.title,
-                                sort: item.sort,
-                                missingFromDisk: true,
-                            },
-                            update: {
-                                missingFromDisk: true,
-                                spotifyAlbum: item.track.album.title,
-                                sort: item.sort,
-                            },
-                        });
-                    }
-                }
-
-                await prisma.track.deleteMany({
-                    where: { id: { in: tracksToRemove.map((t) => t.id) } },
-                });
-                result.tracksRemoved = tracksToRemove.length;
-                logger.debug(`Removed ${tracksToRemove.length} missing tracks`);
+                result.tracksMissing = marked.count;
+                logger.debug(
+                    `Flagged ${marked.count} track(s) missing (files not found on disk)`
+                );
             }
         }
 
@@ -419,7 +424,7 @@ export class MusicScannerService {
 
         result.duration = Date.now() - startTime;
         logger.debug(
-            `Scan complete: +${result.tracksAdded} ~${result.tracksUpdated} -${result.tracksRemoved} corrupt:${result.tracksCorrupt} (${result.duration}ms)`
+            `Scan complete: +${result.tracksAdded} ~${result.tracksUpdated} missing:${result.tracksMissing} corrupt:${result.tracksCorrupt} (${result.duration}ms)`
         );
 
         // Update artist counts in background (non-blocking)

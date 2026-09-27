@@ -174,6 +174,7 @@ class DownloadQueueManager {
             const settings = await getSystemSettings();
 
             if (
+                !settings ||
                 !settings.lidarrEnabled ||
                 !settings.lidarrUrl ||
                 !settings.lidarrApiKey
@@ -216,6 +217,7 @@ class DownloadQueueManager {
             const settings = await getSystemSettings();
 
             if (
+                !settings ||
                 !settings.lidarrEnabled ||
                 !settings.lidarrUrl ||
                 !settings.lidarrApiKey
@@ -405,7 +407,7 @@ class DownloadQueueManager {
             );
             const settings = await getSystemSettings();
 
-            if (!settings.lidarrEnabled || !settings.lidarrUrl) {
+            if (!settings || !settings.lidarrEnabled || !settings.lidarrUrl) {
                 logger.debug(" Lidarr not configured, skipping");
                 return;
             }

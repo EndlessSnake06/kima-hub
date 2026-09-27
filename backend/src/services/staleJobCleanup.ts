@@ -1,7 +1,6 @@
 import { prisma } from "../utils/db";
 import { logger } from "../utils/logger";
 import { queues } from "../workers/queues";
-import { audioAnalysisCleanupService } from "./audioAnalysisCleanup";
 
 const STALE_THRESHOLDS = {
     discoveryBatch: 60 * 60 * 1000, // 1 hour
@@ -15,7 +14,6 @@ interface CleanupResult {
     downloadJobs: { cleaned: number; ids: string[] };
     spotifyImportJobs: { cleaned: number; ids: string[] };
     bullQueues: { cleaned: number; queues: string[] };
-    audioAnalysis: { reset: number; permanentlyFailed: number; recovered: number };
     totalCleaned: number;
 }
 
@@ -28,22 +26,18 @@ class StaleJobCleanupService {
             downloadJobs,
             spotifyImportJobs,
             bullQueues,
-            audioAnalysis,
         ] = await Promise.all([
             this.cleanupDiscoveryBatches(),
             this.cleanupDownloadJobs(),
             this.cleanupSpotifyImportJobs(),
             this.cleanupBullQueues(),
-            audioAnalysisCleanupService.cleanupStaleProcessing(),
         ]);
 
         const totalCleaned =
             discoveryBatches.cleaned +
             downloadJobs.cleaned +
             spotifyImportJobs.cleaned +
-            bullQueues.cleaned +
-            audioAnalysis.reset +
-            audioAnalysis.permanentlyFailed;
+            bullQueues.cleaned;
 
         logger.debug(`[STALE-CLEANUP] Complete. Total cleaned: ${totalCleaned}`);
 
@@ -52,7 +46,6 @@ class StaleJobCleanupService {
             downloadJobs,
             spotifyImportJobs,
             bullQueues,
-            audioAnalysis,
             totalCleaned,
         };
     }

@@ -19,6 +19,7 @@ import {
 } from "../../utils/metadataOverrides";
 import { safeError } from "../../utils/errors";
 import { hasRealMbid } from "../../services/artistIdentity";
+import { failureCause } from "../../utils/outcome";
 import pLimit from "p-limit";
 import { toAudioFeaturesDTO } from "../../utils/audioFeatures";
 import { resolveWithinMusicRoot } from "./trackPath";
@@ -367,34 +368,37 @@ router.get("/artists/:id", async (req, res) => {
       logger.debug(
         ` Artist has temp/no MBID, searching MusicBrainz for ${artist.name}...`,
       );
-      try {
-        const searchResults = await musicBrainzService.searchArtist(
-          artist.name,
-          1,
-        );
-        if (searchResults.length > 0) {
-          effectiveMbid = searchResults[0].id;
-          logger.debug(`  Found MBID: ${effectiveMbid}`);
+      const found = await musicBrainzService.searchArtist(
+        artist.name,
+        1,
+      );
+      if (found.kind === "answered" && found.value.length > 0) {
+        effectiveMbid = found.value[0].id;
+        logger.debug(`  Found MBID: ${effectiveMbid}`);
 
-          try {
-            await prisma.artist.update({
-              where: { id: artist.id },
-              data: { mbid: effectiveMbid },
-            });
-          } catch (mbidError: any) {
-            if (mbidError.code === "P2002") {
-              logger.debug(
-                `MBID ${effectiveMbid} already exists for another artist, skipping update`,
-              );
-            } else {
-              logger.error(`  ✗ Failed to update MBID:`, mbidError);
-            }
+        try {
+          await prisma.artist.update({
+            where: { id: artist.id },
+            data: { mbid: effectiveMbid },
+          });
+        } catch (mbidError: any) {
+          if (mbidError.code === "P2002") {
+            logger.debug(
+              `MBID ${effectiveMbid} already exists for another artist, skipping update`,
+            );
+          } else {
+            logger.error(`  ✗ Failed to update MBID:`, mbidError);
           }
-        } else {
-          logger.debug(`  ✗ No MusicBrainz match found for ${artist.name}`);
         }
-      } catch (error) {
-        logger.error(` MusicBrainz search failed:`, error);
+      } else if (
+        found.kind === "answered" ||
+        found.kind === "absent"
+      ) {
+        logger.debug(`  ✗ No MusicBrainz match found for ${artist.name}`);
+      } else {
+        logger.error(
+          `  MusicBrainz search ${found.kind}: ${failureCause(found)}`,
+        );
       }
     }
 
@@ -428,16 +432,29 @@ router.get("/artists/:id", async (req, res) => {
           );
         } else {
           logger.debug(`[Artist] Fetching discography from MusicBrainz...`);
-          releaseGroups = await musicBrainzService.getReleaseGroups(
+          const fetched = await musicBrainzService.getReleaseGroups(
             effectiveMbid,
             ["album", "ep"],
             100,
           );
-          await redisClient.setex(
-            discoCacheKey,
-            24 * 60 * 60,
-            JSON.stringify(releaseGroups),
-          );
+          if (fetched.kind === "answered") {
+            releaseGroups = fetched.value;
+            await redisClient.setex(
+              discoCacheKey,
+              24 * 60 * 60,
+              JSON.stringify(releaseGroups),
+            );
+          } else if (fetched.kind === "absent") {
+            logger.debug(
+              `[Artist] MusicBrainz has no release-groups for ${effectiveMbid}`,
+            );
+          } else {
+            // A failed question is not "no discography" — the catch
+            // below serves database albums and logs the real cause.
+            throw new Error(
+              `Discography lookup ${fetched.kind}: ${failureCause(fetched)}`,
+            );
+          }
         }
 
         logger.debug(

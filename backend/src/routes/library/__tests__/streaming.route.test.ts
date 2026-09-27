@@ -213,3 +213,40 @@ describe('the stream endpoint records no plays', () => {
         expect(prisma.play.findFirst).not.toHaveBeenCalled();
     });
 });
+
+// ── A track the scan flagged missing is not streamable ───────────────────────
+//
+// The scan never deletes a vanished file's row (its flag is
+// set and its true state shown). Streaming that row used to fall through to the
+// file open and answer a generic 500; the flag deserves a clear not-found.
+
+describe('a track flagged missing from disk', () => {
+    let app: express.Application;
+
+    beforeAll(() => {
+        app = makeApp();
+    });
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+        (prisma.track.findUnique as jest.Mock).mockResolvedValue({
+            ...TRACK,
+            missingSince: new Date('2026-09-25T12:00:00Z'),
+        });
+        (prisma.userSettings.findUnique as jest.Mock).mockResolvedValue(null);
+    });
+
+    it('gets a clear not-found, not a 500 from the failed open', async () => {
+        const res = await request(app).get(`/tracks/${TRACK.id}/stream`);
+        expect(res.status).toBe(404);
+        expect(res.body.error).toBe('Track not available');
+        // The streaming service was never asked for a file that is not there.
+        expect(getAudioStreamingService).not.toHaveBeenCalled();
+    });
+
+    it('is not prewarmed either -- prewarming pumps a file that does not exist', async () => {
+        const res = await request(app).post(`/tracks/${TRACK.id}/prewarm`);
+        expect(res.status).toBe(202);
+        expect(getAudioStreamingService).not.toHaveBeenCalled();
+    });
+});
