@@ -2,12 +2,11 @@
 
 import { use, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useQueryClient } from "@tanstack/react-query";
 import { useAudioState, useAudioPlayback, useAudioControls } from "@/lib/audio-context";
 import { LoadingScreen } from "@/components/ui/LoadingScreen";
 import { useImageColor } from "@/hooks/useImageColor";
 import { api } from "@/lib/api";
-import { queryKeys } from "@/hooks/useQueries";
+import { useAddToPlaylistMutation } from "@/hooks/useQueries";
 import { PlaylistSelector } from "@/components/ui/PlaylistSelector";
 import { useDownloadContext } from "@/lib/download-context";
 
@@ -32,8 +31,7 @@ interface AlbumPageProps {
 export default function AlbumPage({ params }: AlbumPageProps) {
     const { id } = use(params);
     const router = useRouter();
-    const queryClient = useQueryClient();
-    // Use split hooks to avoid re-renders from currentTime updates
+    const addToPlaylist = useAddToPlaylistMutation();    // Use split hooks to avoid re-renders from currentTime updates
     const { currentTrack } = useAudioState();
     const { isPlaying } = useAudioPlayback();
     const { pause } = useAudioControls();
@@ -192,9 +190,7 @@ export default function AlbumPage({ params }: AlbumPageProps) {
         // Errors propagate to the selector, which reports them and stays
         // open. Swallowing here closed the dialog and made a rejected add
         // look like success.
-        await api.addTracksToPlaylist(playlistId, pendingTrackIds);
-        queryClient.invalidateQueries({ queryKey: queryKeys.playlists() });
-        queryClient.invalidateQueries({ queryKey: queryKeys.playlist(playlistId) });
+        await addToPlaylist.mutateAsync({ playlistId, trackIds: pendingTrackIds });
         setPendingTrackIds([]);
         setShowPlaylistSelector(false);
     };

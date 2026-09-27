@@ -676,78 +676,6 @@ class CLAPAnalyzer:
         )
 
 
-class DatabaseConnection:
-    """PostgreSQL connection manager with pgvector support and auto-reconnect"""
-
-    def __init__(self, url: str):
-        self.url = url
-        self.conn = None
-
-    def connect(self):
-        """Establish database connection with pgvector extension"""
-        if not self.url:
-            raise ValueError("DATABASE_URL not set")
-
-        self.conn = psycopg2.connect(
-            self.url,
-            options="-c client_encoding=UTF8"
-        )
-        self.conn.set_client_encoding('UTF8')
-
-        # Register pgvector type. This issues a SELECT on pg_type; on a
-        # non-autocommit connection that opens a transaction which -- on the
-        # boot-time idle-monitor connection that never runs another statement
-        # -- sits 'idle in transaction' for the life of the container
-        # (observed 2026-09-13, xact_age ~2 days, last query = pg_type
-        # SELECT). Register under autocommit, then return
-        # to explicit transactions.
-        self.conn.autocommit = True
-        register_vector(self.conn)
-        self.conn.autocommit = False
-
-        logger.info("Connected to PostgreSQL with pgvector support")
-
-    def is_connected(self) -> bool:
-        """Check if the database connection is alive"""
-        if not self.conn:
-            return False
-        try:
-            cursor = self.conn.cursor()
-            cursor.execute("SELECT 1")
-            cursor.close()
-            return True
-        except Exception:
-            return False
-
-    def reconnect(self):
-        """Close existing connection and establish a new one"""
-        logger.info("Reconnecting to database...")
-        self.close()
-        self.connect()
-
-    def get_cursor(self):
-        """Get a database cursor, reconnecting if necessary"""
-        if not self.is_connected():
-            self.reconnect()
-        return self.conn.cursor(cursor_factory=RealDictCursor)
-
-    def commit(self):
-        if self.conn:
-            self.conn.commit()
-
-    def rollback(self):
-        if self.conn:
-            self.conn.rollback()
-
-    def close(self):
-        if self.conn:
-            try:
-                self.conn.close()
-            except Exception:
-                pass
-            self.conn = None
-
-
 def load_configured_workers() -> int:
     """
     How many jobs to run at once, according to the database.
@@ -1403,8 +1331,6 @@ def main():
     logger.info("Started control handler thread")
 
     # Main loop: monitor idle state and unload model when not needed
-    idle_db = DatabaseConnection(DATABASE_URL)
-    idle_db.connect()
     try:
         while not stop_event.is_set():
             time.sleep(5)
@@ -1417,8 +1343,6 @@ def main():
         logger.info("Keyboard interrupt received")
         stop_event.set()
 
-    # Cleanup
-    idle_db.close()
 
     # Wait for threads to finish
     logger.info("Waiting for threads to finish...")

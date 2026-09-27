@@ -97,6 +97,103 @@ export class NetworkError extends Error {
     name = "NetworkError";
 }
 
+// Enrichment engine contract (mirrors backend/src/services/enrichmentState
+// and the TrackStage records). These lived in a second client module
+// (lib/enrichmentApi.ts) until they were folded back in here.
+export interface EnrichmentState {
+    status: "idle" | "running" | "paused" | "stopping" | "failed";
+    startedAt?: string;
+    pausedAt?: string;
+    stoppedAt?: string;
+    currentPhase: "artists" | "tracks" | "audio" | "vibe" | "podcasts" | null;
+    lastActivity: string;
+    /** Set by the backend when status=running but nothing has moved for >15 min. */
+    hung?: boolean;
+    stoppingInfo?: {
+        phase: string;
+        currentItem: string;
+        itemsRemaining: number;
+    };
+    artists: {
+        total: number;
+        completed: number;
+        failed: number;
+        current?: string;
+    };
+    tracks: {
+        total: number;
+        completed: number;
+        failed: number;
+        current?: string;
+    };
+    audio: {
+        total: number;
+        completed: number;
+        failed: number;
+        processing: number;
+    };
+}
+
+export interface EnrichmentFailure {
+    id: string;
+    /**
+     * Track-stage failures (track/audio/vibe/scan) come from the engine's
+     * TrackStage records — the same record the failures API and the retry
+     * control act on — and artist/podcast failures from the ledger. The
+     * fields themselves are unchanged.
+     */
+    entityType: "artist" | "track" | "audio" | "vibe" | "scan";
+    entityId: string;
+    entityName: string | null;
+    errorMessage: string | null;
+    errorCode: string | null;
+    retryCount: number;
+    maxRetries: number;
+    firstFailedAt: string;
+    lastFailedAt: string;
+    skipped: boolean;
+    skippedAt: string | null;
+    resolved: boolean;
+    resolvedAt: string | null;
+    metadata: Record<string, unknown> | null;
+}
+
+export interface FailureCounts {
+    artist: number;
+    track: number;
+    audio: number;
+    vibe: number;
+    /** Fingerprint-stage failures — TrackStage-backed, same as the rest. */
+    scan: number;
+    podcast: number;
+    total: number;
+}
+
+export interface ConcurrencyConfig {
+    concurrency: number;
+    estimatedSpeed: string;
+    artistsPerMin: number;
+    tracksPerMin: number;
+}
+
+export interface AnalysisWorkersConfig {
+    workers: number;
+    cpuCores: number;
+    recommended: number;
+    description: string;
+    /**
+     * Whether an analyzer is actually running to obey this setting. The
+     * backend derives it from the heartbeat the analyzer writes to Redis every
+     * thirty seconds. Optional so an older backend still typechecks.
+     */
+    analyzerOnline?: boolean;
+    /**
+     * How many subscribers received the change. Redis reports this; zero means
+     * the number was stored but nothing was listening.
+     */
+    delivered?: number;
+}
+
 class ApiClient {
     private token: string | null = null;
     private tokenInitialized: boolean = false;
@@ -1620,6 +1717,97 @@ class ApiClient {
         });
     }
 
+    // Enrichment control and failure management (formerly lib/enrichmentApi.ts)
+
+    async getEnrichmentState() {
+        return this.get<EnrichmentState | null>("/enrichment/status");
+    }
+
+    async pauseEnrichment() {
+        return this.post<{ message: string; state: EnrichmentState }>(
+            "/enrichment/pause",
+            {}
+        );
+    }
+
+    async resumeEnrichment() {
+        return this.post<{ message: string; state: EnrichmentState }>(
+            "/enrichment/resume",
+            {}
+        );
+    }
+
+    async stopEnrichment() {
+        return this.post<{ message: string; state: EnrichmentState }>(
+            "/enrichment/stop",
+            {}
+        );
+    }
+
+    async getEnrichmentFailures(params?: {
+        entityType?: "artist" | "track" | "audio" | "vibe" | "scan";
+        includeSkipped?: boolean;
+        includeResolved?: boolean;
+        limit?: number;
+        offset?: number;
+    }) {
+        const query = new URLSearchParams();
+        if (params?.entityType) query.set("entityType", params.entityType);
+        if (params?.includeSkipped) query.set("includeSkipped", "true");
+        if (params?.includeResolved) query.set("includeResolved", "true");
+        if (params?.limit) query.set("limit", params.limit.toString());
+        if (params?.offset) query.set("offset", params.offset.toString());
+
+        const queryString = query.toString();
+        return this.get<{ failures: EnrichmentFailure[]; total: number }>(
+            `/enrichment/failures${queryString ? `?${queryString}` : ""}`
+        );
+    }
+
+    async getEnrichmentFailureCounts() {
+        return this.get<FailureCounts>("/enrichment/failures/counts");
+    }
+
+    async getEnrichmentConcurrency() {
+        return this.get<ConcurrencyConfig>("/enrichment/concurrency");
+    }
+
+    async setEnrichmentConcurrency(concurrency: number) {
+        return this.request<ConcurrencyConfig>("/enrichment/concurrency", {
+            method: "PUT",
+            body: JSON.stringify({ concurrency }),
+        });
+    }
+
+    async getAnalysisWorkers() {
+        return this.get<AnalysisWorkersConfig>("/analysis/workers");
+    }
+
+    async setAnalysisWorkers(workers: number) {
+        return this.request<AnalysisWorkersConfig>("/analysis/workers", {
+            method: "PUT",
+            body: JSON.stringify({ workers }),
+        });
+    }
+
+    async getClapWorkers() {
+        return this.get<AnalysisWorkersConfig>("/analysis/clap-workers");
+    }
+
+    async setClapWorkers(workers: number) {
+        return this.request<AnalysisWorkersConfig>("/analysis/clap-workers", {
+            method: "PUT",
+            body: JSON.stringify({ workers }),
+        });
+    }
+
+    async resetVibeEmbeddings() {
+        return this.post<{ message: string; queued: number }>(
+            "/analysis/vibe/start",
+            { force: true }
+        );
+    }
+
     async updateArtistMetadata(
         artistId: string,
         data: {
@@ -1730,11 +1918,6 @@ class ApiClient {
     > {
         return this.get("/notifications");
     }
-
-    async getUnreadNotificationCount(): Promise<{ count: number }> {
-        return this.get("/notifications/unread-count");
-    }
-
     async markNotificationAsRead(id: string): Promise<{ success: boolean }> {
         return this.post(`/notifications/${id}/read`);
     }

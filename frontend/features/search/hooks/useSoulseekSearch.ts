@@ -180,9 +180,24 @@ export function useSoulseekSearch({
     }, [toast, queryClient]);
 
     const handleBulkDownload = useCallback(async (results: SoulseekResult[]) => {
-        for (const result of results) {
-            await handleDownload(result);
-        }
+        // Four concurrent kickoffs instead of a serial await-per-result
+        // loop: an N-track selection used to pay N full round trips.
+        // handleDownload handles its own errors, so one failure does not
+        // stop the rest.
+        const POOL_SIZE = 4;
+        let next = 0;
+        const worker = async () => {
+            while (next < results.length) {
+                const result = results[next++];
+                await handleDownload(result);
+            }
+        };
+        await Promise.all(
+            Array.from(
+                { length: Math.min(POOL_SIZE, results.length) },
+                () => worker(),
+            ),
+        );
     }, [handleDownload]);
 
     const uniqueUserCount = useMemo(

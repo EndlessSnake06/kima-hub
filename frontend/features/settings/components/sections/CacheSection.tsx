@@ -3,8 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { SettingsSection, SettingsRow, SettingsToggle } from "../ui";
 import { SystemSettings } from "../../types";
-import { api } from "@/lib/api";
-import { enrichmentApi, type EnrichmentFailure } from "@/lib/enrichmentApi";
+import { api, type EnrichmentFailure } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useFeatures } from "@/lib/features-context";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -165,7 +164,7 @@ const secondaryBtnClass =`px-4 py-1.5 text-xs tabular-nums bg-white/5 border bor
 function EnrichmentFailuresList({ active = false }: { active?: boolean }) {
     const { data, isLoading } = useQuery({
         queryKey: ["enrichment-failures-inline"],
-        queryFn: () => enrichmentApi.getFailures({ limit: 50 }),
+        queryFn: () => api.getEnrichmentFailures({ limit: 50 }),
         // The list only changes while a run is in flight; when idle it is
         // fetched once on mount and left alone.
         refetchInterval: active ? 15000 : false,
@@ -248,7 +247,7 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
     // starting it or an SSE event arriving.
     const { data: enrichmentState } = useQuery({
         queryKey: ["enrichment-status"],
-        queryFn: () => enrichmentApi.getStatus(),
+        queryFn: () => api.getEnrichmentState(),
         refetchInterval: (query) =>
             query.state.data?.status && query.state.data.status !== "idle"
                 ? 3000
@@ -280,7 +279,7 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
 
     const { data: failureCounts } = useQuery({
         queryKey: ["enrichment-failure-counts"],
-        queryFn: () => enrichmentApi.getFailureCounts(),
+        queryFn: () => api.getEnrichmentFailureCounts(),
         // Failures only appear while something is being enriched.
         refetchInterval: enrichmentActive ? 10000 : false,
     });
@@ -288,19 +287,19 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
     const { data: concurrencyConfig, isLoading: isConcurrencyLoading } =
         useQuery({
             queryKey: ["enrichment-concurrency"],
-            queryFn: () => enrichmentApi.getConcurrency(),
+            queryFn: () => api.getEnrichmentConcurrency(),
             staleTime: 0,
         });
 
     const { data: workersConfig, isLoading: isWorkersLoading } = useQuery({
         queryKey: ["analysis-workers"],
-        queryFn: () => enrichmentApi.getAnalysisWorkers(),
+        queryFn: () => api.getAnalysisWorkers(),
         staleTime: 0,
     });
 
     const setConcurrencyMutation = useMutation({
         mutationFn: (concurrency: number) =>
-            enrichmentApi.setConcurrency(concurrency),
+            api.setEnrichmentConcurrency(concurrency),
         onMutate: async (newConcurrency) => {
             await queryClient.cancelQueries({
                 queryKey: ["enrichment-concurrency"],
@@ -324,7 +323,7 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
 
     const setAnalysisWorkersMutation = useMutation({
         mutationFn: (workers: number) =>
-            enrichmentApi.setAnalysisWorkers(workers),
+            api.setAnalysisWorkers(workers),
         onMutate: async (newWorkers) => {
             await queryClient.cancelQueries({
                 queryKey: ["analysis-workers"],
@@ -352,13 +351,13 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
 
     const { data: clapWorkersConfig, isLoading: isClapWorkersLoading } = useQuery({
         queryKey: ["clap-workers"],
-        queryFn: () => enrichmentApi.getClapWorkers(),
+        queryFn: () => api.getClapWorkers(),
         staleTime: 0,
     });
 
     const setClapWorkersMutation = useMutation({
         mutationFn: (workers: number) =>
-            enrichmentApi.setClapWorkers(workers),
+            api.setClapWorkers(workers),
         onMutate: async (newWorkers) => {
             await queryClient.cancelQueries({
                 queryKey: ["clap-workers"],
@@ -433,7 +432,7 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
 
         const checkStatus = async () => {
             try {
-                const status = await enrichmentApi.getStatus();
+                const status = await api.getEnrichmentState();
                 const elapsed = Date.now() - startTime;
                 if (status?.status === "idle" || elapsed > maxPollDuration) {
                     setSyncing(false);
@@ -560,7 +559,7 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
 
     const handlePause = async () => {
         try {
-            await enrichmentApi.pause();
+            await api.pauseEnrichment();
             queryClient.invalidateQueries({ queryKey: ["enrichment-status"] });
         } catch (err) {
             console.error("Pause error:", err);
@@ -570,7 +569,7 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
 
     const handleResume = async () => {
         try {
-            await enrichmentApi.resume();
+            await api.resumeEnrichment();
             queryClient.invalidateQueries({ queryKey: ["enrichment-status"] });
         } catch (err) {
             console.error("Resume error:", err);
@@ -580,7 +579,7 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
 
     const handleStop = async () => {
         try {
-            await enrichmentApi.stop();
+            await api.stopEnrichment();
             queryClient.invalidateQueries({ queryKey: ["enrichment-status"] });
             queryClient.invalidateQueries({
                 queryKey: ["enrichment-progress"],

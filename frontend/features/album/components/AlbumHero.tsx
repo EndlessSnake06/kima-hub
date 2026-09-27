@@ -7,6 +7,7 @@ import { Album, AlbumSource } from "../types";
 import { ReactNode, lazy, Suspense } from "react";
 import { useAlbumDisplayData } from "@/hooks/useMetadataDisplay";
 import type { ColorPalette } from "@/hooks/useImageColor";
+import { formatDuration } from "@/utils/formatTime";
 
 // Lazy load MetadataEditor - modal component opened on user action
 const MetadataEditor = lazy(() => import("@/components/MetadataEditor").then(mod => ({ default: mod.MetadataEditor })));
@@ -29,17 +30,8 @@ export function AlbumHero({
     children,
 }: AlbumHeroProps) {
     const displayData = useAlbumDisplayData(album);
-    const formatDuration = (seconds?: number) => {
-        if (!seconds) return "";
-        const hours = Math.floor(seconds / 3600);
-        const mins = Math.floor((seconds % 3600) / 60);
-        if (hours > 0) {
-            return `${hours} hr ${mins} min`;
-        }
-        return `${mins} min`;
-    };
 
-    const totalDuration = formatDuration(album.duration);
+    const totalDuration = album.duration ? formatDuration(album.duration) : "";
 
     return (
         <div className="relative animate-rise">

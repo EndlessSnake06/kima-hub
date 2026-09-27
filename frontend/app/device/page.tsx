@@ -8,6 +8,7 @@ import { useToast } from "@/lib/toast-context";
 import { QRCodeSVG } from "qrcode.react";
 import { Card } from "@/components/ui/Card";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
+import { formatTime } from "@/utils/formatTime";
 import {
     Smartphone,
     RefreshCw,
@@ -148,13 +149,6 @@ export default function DeviceLinkPage() {
         } catch (err) {
             console.error("Failed to revoke device:", err);
         }
-    };
-
-    // Format time remaining
-    const formatTime = (seconds: number) => {
-        const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
-        return `${mins}:${secs.toString().padStart(2, "0")}`;
     };
 
     // Build QR code URL (contains code and server URL)

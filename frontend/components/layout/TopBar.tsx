@@ -76,7 +76,6 @@ export function TopBar() {
     const hasPendingUploads =
         pendingDownloads.length > 0 &&
         pendingDownloads.some((p) => Date.now() - p.timestamp < 30000); // Only count recent pending
-    const hasFailedDownloads = downloadStatus.failedDownloads.length > 0;
 
     const handleSync = async () => {
         if (isPolling) return;
@@ -369,8 +368,6 @@ export function TopBar() {
                                     ? `${downloadStatus.activeDownloads.length} download(s) in progress`
                                     : hasPendingUploads
                                     ? `${pendingDownloads.length} download(s) starting`
-                                    : hasFailedDownloads
-                                    ? `${downloadStatus.failedDownloads.length} download(s) failed`
                                     : "Sync library"
                             }
                             className={cn(
@@ -379,8 +376,6 @@ export function TopBar() {
                                     ? "bg-white/10 text-[var(--text-muted)] cursor-not-allowed"
                                     : hasActiveDownloads
                                     ? " text-green-400 "
-                                    : hasFailedDownloads
-                                    ? "bg-red-500/20 text-red-400 hover:bg-red-500/30"
                                     : "bg-[var(--bg-primary)] text-white hover:bg-white/20"
                             )}
                             title={
@@ -390,8 +385,6 @@ export function TopBar() {
                                     ? `${downloadStatus.activeDownloads.length} download(s) in progress`
                                     : hasPendingUploads
                                     ? `${pendingDownloads.length} download(s) starting...`
-                                    : hasFailedDownloads
-                                    ? `${downloadStatus.failedDownloads.length} download(s) failed`
                                     : "Sync Library"
                             }
                         >

@@ -25,9 +25,7 @@ interface DownloadContextType {
     pendingDownloads: PendingDownload[];
     downloadStatus: {
         activeDownloads: DownloadHistoryItem[];
-        recentDownloads: DownloadHistoryItem[];
         hasActiveDownloads: boolean;
-        failedDownloads: DownloadHistoryItem[];
     };
     addPendingDownload: (
         type: "artist" | "album",
@@ -55,9 +53,7 @@ export function DownloadProvider({ children }: { children: ReactNode }) {
 
     const downloadStatus = useMemo(() => ({
         activeDownloads: activeDownloads.filter((d: DownloadHistoryItem) => d.status === "pending" || d.status === "processing"),
-        recentDownloads: [] as DownloadHistoryItem[],
         hasActiveDownloads: activeDownloads.some((d: DownloadHistoryItem) => d.status === "pending" || d.status === "processing"),
-        failedDownloads: [] as DownloadHistoryItem[],
     }), [activeDownloads]);
 
     // Render-time adjustment: remove stale pending downloads when they appear in active downloads

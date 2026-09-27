@@ -1,6 +1,7 @@
 "use client";
 
 import { iosAudioLog } from "./iosAudioLog";
+import { STORAGE_KEYS } from "./storage-keys";
 import type {
     EngineStatus,
     PauseClass,
@@ -1120,8 +1121,8 @@ export class AudioController {
         if (typeof window === "undefined") return;
 
         try {
-            const savedVolume = localStorage.getItem("kima_volume");
-            const savedMuted = localStorage.getItem("kima_muted");
+            const savedVolume = localStorage.getItem(STORAGE_KEYS.VOLUME);
+            const savedMuted = localStorage.getItem(STORAGE_KEYS.IS_MUTED);
 
             if (savedVolume) {
                 const parsed = parseFloat(savedVolume);

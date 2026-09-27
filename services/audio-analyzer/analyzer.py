@@ -243,18 +243,20 @@ NUM_WORKERS = _get_workers_from_db()
 ESSENTIA_VERSION = '2.1b6-enhanced-v3'
 
 # Retry configuration
-MAX_RETRIES = int(os.getenv('MAX_RETRIES', '3'))  # Max retry attempts per track
 
 # Retry cap + backoff ladder for the analysis stage record. Parity with the
 # engine's TypeScript twin (backend unifiedEnrichment.ts: STAGE_RETRY_CAP /
-# computeStageRetryWaitMs): INCONCLUSIVE stays retryable until 3 attempts,
-# waiting 30s, 60s, 120s -- never more -- and the cap closes the record.
-STAGE_RETRY_CAP = 3
+# computeStageRetryWaitMs): INCONCLUSIVE stays retryable through the
+# initial dispatch plus 3 retries -- waits of 1 min, 10 min, then 1 h --
+# and a 4th failure closes the record. A ladder that closes in 3.5 minutes
+# ends inside any real outage.
+STAGE_RETRY_LADDER_SECONDS = [60, 600, 3600]
+STAGE_RETRY_CAP = 4
 
 
 def compute_stage_retry_wait_seconds(attempt: int) -> int:
-    """Mirror of computeStageRetryWaitMs: min(120s, 30s * 2^(attempt-1))."""
-    return min(120, 30 * 2 ** (max(1, attempt) - 1))
+    """Mirror of computeStageRetryWaitMs: the ladder entry for that attempt."""
+    return STAGE_RETRY_LADDER_SECONDS[min(max(1, attempt), 3) - 1]
 # Seconds to allow the single ffmpeg decode before giving up on the track.
 # Replaces PRE_DECODE_PROBE_TIMEOUT: there is no separate integrity probe
 # any more -- the one decode IS the check.
@@ -650,8 +652,10 @@ class AudioAnalyzer:
                     logger.info(f"Fallback BPM estimate: {result['bpm']}")
                 except Exception as fallback_error:
                     logger.warning(f"Onset-based fallback also failed: {fallback_error}")
-                    bpm = 120.0
-                    result['bpm'] = 120.0
+                    # No measured tempo: report none. A fabricated 120 is a
+                    # fake answer that would flow into mood maths and the UI.
+                    bpm = None
+                    result['bpm'] = None
                     result['beatsCount'] = 0
 
             # Key Detection
@@ -662,11 +666,12 @@ class AudioAnalyzer:
                 result['keyStrength'] = round(float(strength), 3)
             except Exception as key_error:
                 logger.warning(f"Key extraction failed: {key_error}")
-                key = 'C'
-                scale = 'major'
-                result['key'] = key
-                result['keyScale'] = scale
-                result['keyStrength'] = 0.0
+                # No measured key: report none, never a fabricated C major.
+                key = None
+                scale = None
+                result['key'] = None
+                result['keyScale'] = None
+                result['keyStrength'] = None
 
             # Energy & Spectral features - frame-based extraction
             frame_size = 2048
@@ -883,8 +888,8 @@ class AudioAnalyzer:
         zcr = result.get('_zcr', 0.1) or 0.1
         
         # === VALENCE (happiness/positivity) ===
-        # Major key = happier, minor = sadder
-        key_valence = 0.65 if scale == 'major' else 0.35
+        # Major key = happier, minor = sadder, unknown key = neutral.
+        key_valence = 0.65 if scale == 'major' else (0.35 if scale == 'minor' else 0.5)
         
         # Higher tempo tends to be happier
         bpm_valence = 0.5
@@ -1326,7 +1331,6 @@ class AnalysisWorker:
         logger.info(f"  Worker processes: {NUM_WORKERS}")
         logger.info(f"  BRPOP timeout: {BRPOP_TIMEOUT}s")
         logger.info(f"  Model idle timeout: {MODEL_IDLE_TIMEOUT}s")
-        logger.info(f"  Max retries per track: {MAX_RETRIES}")
         logger.info(f"  Essentia available: {ESSENTIA_AVAILABLE}")
         logger.info(f"  ML models on disk: {TF_MODELS_AVAILABLE}")
         logger.info(f"  Worker pool: LAZY (starts on first job)")
@@ -1711,8 +1715,8 @@ class AnalysisWorker:
           question to the same decoder cannot produce a different answer.
           INCONCLUSIVE stays retryable -- 'failed' with the retry bump -- so
           a transient IO hiccup can still recover, but only below the
-          engine's STAGE_RETRY_CAP (3), with the same backoff ladder the
-          TypeScript twin uses (30s/60s/120s): at the cap the record closes
+          engine's STAGE_RETRY_CAP (4), with the same backoff ladder the
+          TypeScript twin uses (1min/10min/1h): at the cap the record closes
           terminally (retryable false, nextRetryAt NULL) and the column
           mirrors permanently_failed. An already-closed record is never
           resurrected. A batch timeout is an

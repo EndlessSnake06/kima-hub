@@ -15,7 +15,6 @@
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
-import { enrichmentApi } from "@/lib/enrichmentApi";
 import { WhatsNewWindow } from "./WhatsNewWindow";
 import { MoodMixChoice } from "./MoodMixChoice";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -75,7 +74,7 @@ export function WhatsNewGate() {
         setRunError(null);
         try {
             // Same endpoint the Settings "Re-run" for vibe embeddings calls.
-            await enrichmentApi.resetVibeEmbeddings();
+            await api.resetVibeEmbeddings();
             setStarted(reembed.key);
         } catch {
             setRunError("Couldn't start the rebuild. It's still in Settings, under Library Enrichment.");
