@@ -15,6 +15,7 @@ import {
 import { AccountSection } from "@/features/settings/components/sections/AccountSection";
 import { SubsonicSection } from "@/features/settings/components/sections/SubsonicSection";
 import { PlaybackSection } from "@/features/settings/components/sections/PlaybackSection";
+import { ScrobblingSection } from "@/features/settings/components/sections/ScrobblingSection";
 import { DownloadPreferencesSection } from "@/features/settings/components/sections/DownloadPreferencesSection";
 import { LidarrSection } from "@/features/settings/components/sections/LidarrSection";
 import { AudiobookshelfSection } from "@/features/settings/components/sections/AudiobookshelfSection";
@@ -30,6 +31,7 @@ const sidebarItems: SidebarItem[] = [
     { id: "account", label: "Account" },
     { id: "subsonic", label: "Native Apps" },
     { id: "playback", label: "Playback" },
+    { id: "scrobbling", label: "Scrobbling" },
     { id: "download-preferences", label: "Download Preferences", adminOnly: true },
     { id: "lidarr", label: "Download Services", adminOnly: true },
     { id: "audiobookshelf", label: "Media Servers", adminOnly: true },
@@ -54,6 +56,7 @@ export default function SettingsPage() {
         settings: userSettings,
         updateSettings: updateUserSettings,
         saveSettings: saveUserSettings,
+        loadSettings: reloadUserSettings,
     } = useSettingsData();
 
     // System settings hook (only used if admin)
@@ -153,6 +156,12 @@ export default function SettingsPage() {
                             ? (maxQueueLength) => updateSystemSettings({ maxQueueLength })
                             : undefined
                     }
+                />
+
+                {/* Per-user ListenBrainz scrobbling — each user's own optional token */}
+                <ScrobblingSection
+                    configured={!!userSettings.hasListenbrainzToken}
+                    onSaved={reloadUserSettings}
                 />
 
                 {/* Admin-only sections */}

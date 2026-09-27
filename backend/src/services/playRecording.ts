@@ -36,7 +36,7 @@ export const MAX_REQUIRED_SECONDS = 240;
  * The shortest window a repeat is ever suppressed for, whatever the track's
  * length. A ten second loop is a stuck client, not a listener.
  */
-export const MIN_DEDUP_WINDOW_MS = 30 * 1000;
+const MIN_DEDUP_WINDOW_MS = 30 * 1000;
 
 /**
  * How long a repeat of the same track is treated as the same listen.
@@ -105,14 +105,15 @@ export function qualifiesAsPlay(
  * never fail a play.
  */
 function mirrorToListenBrainz(params: {
+    userId: string;
     artistName: string;
     trackTitle: string;
     releaseTitle?: string | null;
     listenedAt: number; // unix seconds
 }): void {
-    const { artistName, trackTitle, releaseTitle, listenedAt } = params;
+    const { userId, artistName, trackTitle, releaseTitle, listenedAt } = params;
     listenBrainzService
-        .submitListens([
+        .submitListens(userId, [
             {
                 artist: artistName,
                 track: trackTitle,
@@ -290,6 +291,7 @@ export async function recordPlay(
         // skip the mirror; the local play log is unaffected either way.
         if (track.title && track.album?.artist?.name) {
             mirrorToListenBrainz({
+                userId,
                 artistName: track.album.artist.name,
                 trackTitle: track.title,
                 releaseTitle: track.album.title,

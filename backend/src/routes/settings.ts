@@ -5,6 +5,7 @@ import { prisma } from "../utils/db";
 import { z } from "zod";
 import { staleJobCleanupService } from "../services/staleJobCleanup";
 import { defaultUserSettingsFor } from "../utils/userSettingsDefaults";
+import { encryptField } from "../utils/encryption";
 
 const router = Router();
 
@@ -15,7 +16,19 @@ const settingsSchema = z.object({
     wifiOnly: z.boolean().optional(),
     offlineEnabled: z.boolean().optional(),
     maxCacheSizeMb: z.number().int().min(0).optional(),
+    // Write-only scrobble credential: accepted on save (null clears),
+    // never echoed back on GET.
+    listenbrainzToken: z.string().min(1).nullable().optional(),
 });
+
+/** Strip write-only secrets from a row before it goes to the client. */
+function publicSettings(settings: {
+    listenbrainzToken?: string | null;
+    [k: string]: unknown;
+}) {
+    const { listenbrainzToken, ...rest } = settings;
+    return { ...rest, hasListenbrainzToken: Boolean(listenbrainzToken) };
+}
 
 // GET /settings
 router.get("/", async (req, res) => {
@@ -33,7 +46,7 @@ router.get("/", async (req, res) => {
             });
         }
 
-        res.json(settings);
+        res.json(publicSettings(settings));
     } catch (error) {
         logger.error("Get settings error:", error);
         res.status(500).json({ error: "Failed to get settings" });
@@ -46,16 +59,23 @@ router.post("/", async (req, res) => {
         const userId = req.user!.id;
         const data = settingsSchema.parse(req.body);
 
+        const { listenbrainzToken, ...rest } = data;
+        const payload = {
+            ...rest,
+            ...(listenbrainzToken !== undefined
+                ? { listenbrainzToken: encryptField(listenbrainzToken) }
+                : {}),
+        };
         const settings = await prisma.userSettings.upsert({
             where: { userId },
             create: {
                 userId,
-                ...data,
+                ...payload,
             },
-            update: data,
+            update: payload,
         });
 
-        res.json(settings);
+        res.json(publicSettings(settings));
     } catch (error) {
         if (error instanceof z.ZodError) {
             return res

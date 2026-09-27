@@ -25,7 +25,8 @@ import { logger } from "../utils/logger";
 import { redisClient } from "../utils/redis";
 import { rateLimiter } from "./rateLimiter";
 import { USER_AGENT } from "../config";
-import { getSystemSettings } from "../utils/systemSettings";
+import { prisma } from "../utils/db";
+import { decrypt, isEncryptedFormat } from "../utils/encryption";
 
 export interface SimilarArtist {
     name: string;
@@ -55,11 +56,34 @@ class ListenBrainzService {
         headers: { "User-Agent": USER_AGENT },
     });
 
-    /** The operator's LB user token, or null when none is configured. */
-    async getUserToken(): Promise<string | null> {
-        const settings = await getSystemSettings();
-        const token = settings?.listenbrainzUserToken;
-        return token && token.length > 0 ? token : null;
+    /**
+     * The playing user's own LB token, or null when they have not saved
+     * one. Scrobbling is per-user — there is no server-wide token; rows
+     * that are not valid ciphertext (bad key, hand-edited value) fail
+     * closed to null, same policy as `utils/encryption`.
+     */
+    async getUserToken(userId: string): Promise<string | null> {
+        const row = await prisma.userSettings.findUnique({
+            where: { userId },
+            select: { listenbrainzToken: true },
+        });
+        const stored = row?.listenbrainzToken;
+        if (!stored) return null;
+        if (!isEncryptedFormat(stored)) {
+            logger.warn(
+                `[ListenBrainz] Unencrypted token stored for ${userId} — treating as not configured`
+            );
+            return null;
+        }
+        try {
+            const token = decrypt(stored);
+            return token.length > 0 ? token : null;
+        } catch (err) {
+            logger.warn(
+                `[ListenBrainz] Token for ${userId} cannot be decrypted — scrobbles skip`
+            );
+            return null;
+        }
     }
 
     private async rateLimitedGet<T = any>(
@@ -211,11 +235,13 @@ class ListenBrainzService {
     }
 
     /**
-     * Submit listens (scrobbling). Token-based: with no token configured this
-     * is a silent no-op (returns false) — Kima's play log is local and stays
-     * the source of truth; LB is a mirror, never the record.
+     * Submit listens (scrobbling) with the playing user's own token. With
+     * no token configured this is a silent no-op (returns false) — Kima's
+     * play log is local and stays the source of truth; LB is a mirror,
+     * never the record.
      */
     async submitListens(
+        userId: string,
         listens: Array<{
             artist: string;
             track: string;
@@ -226,7 +252,7 @@ class ListenBrainzService {
             listenedAt: number; // unix seconds
         }>
     ): Promise<boolean> {
-        const token = await this.getUserToken();
+        const token = await this.getUserToken(userId);
         if (!token) {
             logger.debug("[ListenBrainz] No user token configured — skipping submit");
             return false;

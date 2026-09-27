@@ -86,9 +86,6 @@ const systemSettingsSchema = z.object({
   spotifyClientId: z.string().nullable().optional(),
   spotifyClientSecret: z.string().nullable().optional(),
 
-  // ListenBrainz (scrobbling). The user token is write-only: accepted on
-  // save, never echoed back on GET (see the GET handler below).
-  listenbrainzUserToken: z.string().nullable().optional(),
 
   // Storage Paths
   musicPath: z.string().optional(),
@@ -142,10 +139,8 @@ router.get("/", async (req, res) => {
       });
     }
 
-    // Decrypt every field in ENCRYPTED_FIELDS before sending to the client;
-    // the ListenBrainz token is write-only and never echoed back.
+    // Decrypt every field in ENCRYPTED_FIELDS before sending to the client.
     const resolved = await resolveEncryptedSettings({ ...settings });
-    resolved.listenbrainzUserToken = null;
 
     res.json(resolved);
   } catch (error) {

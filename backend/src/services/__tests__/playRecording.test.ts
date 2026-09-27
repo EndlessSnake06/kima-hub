@@ -295,7 +295,7 @@ describe("ListenBrainz mirror", () => {
         expect(out.recorded).toBe(true);
         await flush();
         expect(listenBrainzService.submitListens).toHaveBeenCalledTimes(1);
-        expect(listenBrainzService.submitListens).toHaveBeenCalledWith([
+        expect(listenBrainzService.submitListens).toHaveBeenCalledWith("u1", [
             expect.objectContaining({
                 artist: "The Glazier",
                 track: "Windowless Pane",

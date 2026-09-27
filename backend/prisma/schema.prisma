@@ -685,7 +685,6 @@ model SystemSettings {
   soulseekDownloadPath        String?
   // ListenBrainz user token (encrypted). Replaces the Last.fm scrobble
   // stack: submitted via services/listenBrainz.ts when set.
-  listenbrainzUserToken       String?
   publicUrl                   String?
   registrationOpen            Boolean  @default(false)
   lidarrQualityProfileId      Int?
@@ -962,6 +961,9 @@ model UserSettings {
   wifiOnly        Boolean @default(false)
   offlineEnabled  Boolean @default(false)
   maxCacheSizeMb  Int     @default(10240)
+  // Write-only per-user scrobble credential (encrypted, `xc1.` prefix);
+  // never returned in full — see routes/settings.ts.
+  listenbrainzToken String?
   user            User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 

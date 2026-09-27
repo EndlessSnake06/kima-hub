@@ -857,34 +857,9 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                                                 "paused" && "Enrichment paused"}
                                                 {enrichmentState.status ===
                                                     "stopping" &&
-                                                    `Stopping... finishing ${
-                                                        enrichmentState.stoppingInfo
-                                                            ?.currentItem ||
-                                                            "current item"
-                                                    }`}
+                                                    "Stopping..."}
                                             </span>
                                         </div>
-                                        {enrichmentState.status === "running" &&
-                                            enrichmentState.currentPhase ===
-                                            "artists" &&
-                                            enrichmentState.artists?.current && (
-                                                <div className="mt-1 text-[var(--text-muted)] tabular-nums truncate">
-                                                    Current:{" "}
-                                                    {
-                                                        enrichmentState.artists
-                                                            .current
-                                                    }
-                                                </div>
-                                            )}
-                                        {enrichmentState.status === "running" &&
-                                            enrichmentState.currentPhase ===
-                                            "tracks" &&
-                                            enrichmentState.tracks?.current && (
-                                                <div className="mt-1 text-[var(--text-muted)] tabular-nums truncate">
-                                                    Current:{" "}
-                                                    {enrichmentState.tracks.current}
-                                                </div>
-                                            )}
                                             </>
                                         )}
                                     </div>

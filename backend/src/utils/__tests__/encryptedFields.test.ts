@@ -90,12 +90,12 @@ describe("the three fields the old lists disagreed about", () => {
 
     it("maps every field either side used to read or write alone", () => {
         // The audit's finding 1: the two hand-copied lists had to agree.
-        // One list now, so assert the full roster is the ten fields from
-        // the audit (route side: 3; getter side: 7; union: 10).
-        expect(Object.keys(ENCRYPTED_FIELDS)).toHaveLength(10);
+        // The roster is the audit's union of ten minus `listenbrainzUserToken`,
+        // which retired with the move to per-user scrobble tokens.
+        expect(Object.keys(ENCRYPTED_FIELDS)).toHaveLength(9);
         for (const field of ["fanartApiKey", "slskdApiKey", "spotifyClientSecret",
             "lidarrApiKey", "lidarrWebhookSecret", "acoustidApiKey",
-            "audiobookshelfApiKey", "soulseekPassword", "listenbrainzUserToken",
+            "audiobookshelfApiKey", "soulseekPassword",
             "openaiApiKey"]) {
             expect(ENCRYPTED_FIELDS).toHaveProperty(field);
         }
@@ -172,13 +172,13 @@ describe("broken stored values re-seed to \"needs re-entry\"", () => {
 describe("readable stored values resolve", () => {
     it("decrypts a correct ciphertext and a legacy AES one, without re-seeding", async () => {
         const settings = {
-            listenbrainzUserToken: encrypt("lb-token"),
+            soulseekPassword: encrypt("soulseek-pass"),
             audiobookshelfApiKey: legacyEncrypt("abs-key", SHA256_KEY),
         };
 
         const resolved = await resolveEncryptedSettings(settings);
 
-        expect(resolved.listenbrainzUserToken).toBe("lb-token");
+        expect(resolved.soulseekPassword).toBe("soulseek-pass");
         expect(resolved.audiobookshelfApiKey).toBe("abs-key");
         expect(mockUpdate).not.toHaveBeenCalled();
     });
