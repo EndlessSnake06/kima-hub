@@ -135,29 +135,6 @@ class NotificationService {
 
         return result;
     }
-
-    /**
-     * Delete old cleared notifications (cleanup job)
-     */
-    async deleteOldCleared(daysOld = 30) {
-        const cutoff = new Date();
-        cutoff.setDate(cutoff.getDate() - daysOld);
-
-        const result = await prisma.notification.deleteMany({
-            where: {
-                cleared: true,
-                createdAt: { lt: cutoff },
-            },
-        });
-
-        if (result.count > 0) {
-            logger.debug(
-                `[NOTIFICATION] Cleaned up ${result.count} old notifications`
-            );
-        }
-        return result;
-    }
-
     // === Convenience methods for common notification types ===
 
     /**
@@ -196,25 +173,6 @@ class NotificationService {
             metadata: { subject, error },
         });
     }
-
-    /**
-     * Notify user that a playlist is ready
-     */
-    async notifyPlaylistReady(
-        userId: string,
-        playlistName: string,
-        playlistId: string,
-        trackCount: number
-    ) {
-        return this.create({
-            userId,
-            type: "playlist_ready",
-            title: "Playlist Ready",
-            message: `"${playlistName}" is ready with ${trackCount} tracks`,
-            metadata: { playlistId, playlistName, trackCount },
-        });
-    }
-
     /**
      * Notify user that a Spotify import completed
      */

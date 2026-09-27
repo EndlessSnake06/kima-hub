@@ -4,6 +4,7 @@ import { prisma } from "../../utils/db";
 import { subsonicOk, subsonicError, SubsonicError } from "../../utils/subsonicResponse";
 import { mapArtist, mapAlbum, mapSong, firstArtistGenre, wrap } from "./mappers";
 import { LEADING_ARTICLES } from "../../services/pgTextRules";
+import { LIBRARY_LOCATION } from "../../services/libraryFilters";
 
 export const libraryRouter = Router();
 
@@ -79,7 +80,7 @@ libraryRouter.all("/getArtist.view", wrap(async (req, res) => {
         where: { id },
         include: {
             albums: {
-                where: { location: "LIBRARY", tracks: { some: {} } },
+                where: { location: LIBRARY_LOCATION, tracks: { some: {} } },
                 orderBy: { year: "desc" },
                 include: {
                     _count: { select: { tracks: true } },
@@ -150,7 +151,7 @@ libraryRouter.all("/getMusicDirectory.view", wrap(async (req, res) => {
         where: { id: artistId },
         include: {
             albums: {
-                where: { location: "LIBRARY", tracks: { some: {} } },
+                where: { location: LIBRARY_LOCATION, tracks: { some: {} } },
                 orderBy: { year: "desc" },
             },
         },
@@ -326,7 +327,7 @@ libraryRouter.all(["/getAlbumList2.view", "/getAlbumList.view"], wrap(async (req
     switch (type) {
         case "newest":
             albums = await prisma.album.findMany({
-                where: { location: "LIBRARY", tracks: { some: {} } },
+                where: { location: LIBRARY_LOCATION, tracks: { some: {} } },
                 orderBy: { lastSynced: "desc" },
                 take: size,
                 skip: offset,
@@ -336,7 +337,7 @@ libraryRouter.all(["/getAlbumList2.view", "/getAlbumList.view"], wrap(async (req
 
         case "alphabeticalByName":
             albums = await prisma.album.findMany({
-                where: { location: "LIBRARY", tracks: { some: {} } },
+                where: { location: LIBRARY_LOCATION, tracks: { some: {} } },
                 orderBy: { sortName: "asc" },
                 take: size,
                 skip: offset,
@@ -346,7 +347,7 @@ libraryRouter.all(["/getAlbumList2.view", "/getAlbumList.view"], wrap(async (req
 
         case "alphabeticalByArtist":
             albums = await prisma.album.findMany({
-                where: { location: "LIBRARY", tracks: { some: {} } },
+                where: { location: LIBRARY_LOCATION, tracks: { some: {} } },
                 // "alphabeticalByArtist" means alphabetical to the user, and a
                 // user does not file The Beatles under T.
                 orderBy: { artist: { sortName: "asc" } },
@@ -364,7 +365,7 @@ libraryRouter.all(["/getAlbumList2.view", "/getAlbumList.view"], wrap(async (req
             }
             albums = await prisma.album.findMany({
                 where: {
-                    location: "LIBRARY",
+                    location: LIBRARY_LOCATION,
                     year: {
                         gte: Math.min(fromYear, toYear),
                         lte: Math.max(fromYear, toYear),
@@ -410,7 +411,7 @@ libraryRouter.all(["/getAlbumList2.view", "/getAlbumList.view"], wrap(async (req
         case "starred":
             albums = await prisma.album.findMany({
                 where: {
-                    location: "LIBRARY",
+                    location: LIBRARY_LOCATION,
                     tracks: {
                         some: {
                             likedBy: { some: { userId } },
@@ -488,7 +489,7 @@ libraryRouter.all(["/getAlbumList2.view", "/getAlbumList.view"], wrap(async (req
 
         default:
             albums = await prisma.album.findMany({
-                where: { location: "LIBRARY", tracks: { some: {} } },
+                where: { location: LIBRARY_LOCATION, tracks: { some: {} } },
                 orderBy: { lastSynced: "desc" },
                 take: size,
                 skip: offset,

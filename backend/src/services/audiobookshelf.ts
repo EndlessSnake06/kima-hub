@@ -208,25 +208,6 @@ class AudiobookshelfService {
         );
         return response.data;
     }
-
-    /**
-     * Get a specific podcast by ID (alias for getAudiobook since API is the same)
-     */
-    async getPodcast(podcastId: string) {
-        return this.getAudiobook(podcastId);
-    }
-
-    /**
-     * Get user's progress for an audiobook
-     */
-    async getProgress(audiobookId: string) {
-        await this.ensureInitialized();
-        const response = await this.client!.get(
-            `/api/me/progress/${audiobookId}`
-        );
-        return response.data;
-    }
-
     /**
      * Update user's progress for an audiobook
      */
@@ -247,15 +228,6 @@ class AudiobookshelfService {
         );
         return response.data;
     }
-
-    /**
-     * Get stream URL for an audiobook
-     */
-    async getStreamUrl(audiobookId: string): Promise<string> {
-        await this.ensureInitialized();
-        return `${this.baseUrl}/api/items/${audiobookId}/play`;
-    }
-
     /**
      * Stream an audiobook with authentication.
      * Returns a readable stream that can be piped to the response.

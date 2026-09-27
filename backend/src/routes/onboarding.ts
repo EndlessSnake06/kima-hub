@@ -9,6 +9,7 @@ import { invalidateSystemSettingsCache } from "../utils/systemSettings";
 import { encryptField } from "../utils/encryption";
 import { writeEnvFile } from "../utils/envWriter";
 import { generateToken, requireAuth, requireAdmin } from "../middleware/auth";
+import { defaultUserSettingsFor } from "../utils/userSettingsDefaults";
 
 const router = Router();
 
@@ -135,15 +136,9 @@ router.post("/register", async (req, res) => {
             },
         });
 
-        // Create default user settings with optimal defaults
+        // Create default user settings
         await prisma.userSettings.create({
-            data: {
-                userId: user.id,
-                playbackQuality: "original",
-                wifiOnly: false,
-                offlineEnabled: false,
-                maxCacheSizeMb: 10240, // 10GB
-            },
+            data: defaultUserSettingsFor(user.id),
         });
 
         // Generate JWT token (same as login)

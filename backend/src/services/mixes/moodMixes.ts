@@ -390,17 +390,7 @@ export async function generateMelancholyMix(
                     "atmospheric",
                 ].includes(tag.toLowerCase())
             );
-            const hasMoodListSadTags = t.enrichmentTags?.some((tag: string) =>
-                [
-                    "sad",
-                    "melancholic",
-                    "melancholy",
-                    "depressing",
-                    "emotional",
-                    "heartbreak",
-                ].includes(tag.toLowerCase())
-            );
-            return hasMinorKey || hasSadTags || hasMoodListSadTags;
+            return hasMinorKey || hasSadTags;
         });
         logger.debug(
             `[MELANCHOLY MIX] After tag filter: ${tracks.length} tracks`
@@ -683,48 +673,6 @@ export async function generateInstrumentalMix(
     };
 }
 
-export async function generateMoodTagMix(
-    _userId: string,
-    today: string,
-    moodTag: string,
-    mixName: string,
-    mixDescription: string
-): Promise<ProgrammaticMix | null> {
-    const tracks = await prisma.track.findMany({
-        where: {
-            enrichmentTags: {
-                has: moodTag,
-            },
-        },
-        include: {
-            album: { select: { coverUrl: true } },
-        },
-        take: 100,
-    });
-
-    if (tracks.length < 15) return null;
-
-    const seed = getSeededRandom(`mood-${moodTag}-${today}`);
-    const shuffled = seededShuffle(tracks, seed);
-
-    const selectedTracks = shuffled.slice(0, TRACK_LIMIT);
-    const coverUrls = selectedTracks
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
-
-    return {
-        id: `mood-${moodTag}-${today}`,
-        type: `mood-${moodTag}`,
-        name: mixName,
-        description: mixDescription,
-        trackIds: selectedTracks.map((t) => t.id),
-        coverUrls,
-        trackCount: selectedTracks.length,
-        color: getMixColor("mood"),
-    };
-}
-
 export async function generateRoadTripMix(
     _userId: string,
     today: string
@@ -733,17 +681,11 @@ export async function generateRoadTripMix(
 
     const taggedTracks = await prisma.track.findMany({
         where: {
+            // Moods come from audio analysis only;
+            // "road trip"-style tags that no analysis produces are not a
+            // source. If nothing sits in the energetic/upbeat mood tags,
+            // the genre and audio fallbacks below answer instead.
             OR: [
-                {
-                    enrichmentTags: {
-                        hasSome: [
-                            "driving",
-                            "road trip",
-                            "travel",
-                            "summer",
-                        ],
-                    },
-                },
                 { moodTags: { hasSome: ["energetic", "upbeat", "happy"] } },
             ],
         },
@@ -848,16 +790,6 @@ export async function generateSadGirlSundays(
                         { arousal: { lte: 0.4 } },
                     ],
                 },
-                {
-                    enrichmentTags: {
-                        hasSome: [
-                            "sad",
-                            "melancholic",
-                            "heartbreak",
-                            "emotional",
-                        ],
-                    },
-                },
             ],
         },
         include: { album: { select: { coverUrl: true } } },
@@ -899,16 +831,6 @@ export async function generateMainCharacterEnergy(
                         { danceability: { gte: 0.5 } },
                     ],
                 },
-                {
-                    enrichmentTags: {
-                        hasSome: [
-                            "empowering",
-                            "confident",
-                            "uplifting",
-                            "anthemic",
-                        ],
-                    },
-                },
             ],
         },
         include: { album: { select: { coverUrl: true } } },
@@ -949,16 +871,6 @@ export async function generateVillainEra(
                 {
                     moodTags: {
                         hasSome: ["aggressive", "dark", "intense"],
-                    },
-                },
-                {
-                    enrichmentTags: {
-                        hasSome: [
-                            "dark",
-                            "aggressive",
-                            "intense",
-                            "powerful",
-                        ],
                     },
                 },
             ],
@@ -1142,11 +1054,6 @@ export async function generateGoldenHour(
                         { energy: { gte: 0.25, lte: 0.65 } },
                     ],
                 },
-                {
-                    enrichmentTags: {
-                        hasSome: ["warm", "sunset", "dreamy", "peaceful"],
-                    },
-                },
             ],
         },
         include: { album: { select: { coverUrl: true } } },
@@ -1224,16 +1131,6 @@ export async function generateInMyFeelings(
                         { arousal: { lte: 0.55 } },
                         { acousticness: { gte: 0.25 } },
                     ],
-                },
-                {
-                    enrichmentTags: {
-                        hasSome: [
-                            "emotional",
-                            "heartbreak",
-                            "feelings",
-                            "vulnerable",
-                        ],
-                    },
                 },
             ],
         },
@@ -1359,16 +1256,6 @@ export async function generateRomanticizeYourLife(
                         { arousal: { gte: 0.25, lte: 0.65 } },
                         { acousticness: { gte: 0.25 } },
                     ],
-                },
-                {
-                    enrichmentTags: {
-                        hasSome: [
-                            "dreamy",
-                            "aesthetic",
-                            "cinematic",
-                            "romantic",
-                        ],
-                    },
                 },
             ],
         },

@@ -11,7 +11,7 @@ import { prisma } from '../../utils/db';
 import { logger } from '../../utils/logger';
 import { lidarrService } from '../lidarr';
 import { subWeeks } from 'date-fns';
-import { normalizeForMatching, matchAlbum } from '../../utils/fuzzyMatch';
+import { normalizeForMatching, stringSimilarity } from '../../utils/normalization';
 
 export interface SeedArtist {
     name: string;
@@ -302,7 +302,10 @@ export class DiscoverySeeding {
                 );
 
                 for (const album of candidates) {
-                    if (matchAlbum(artistName, albumTitle, album.artistName, album.title)) {
+                    if (
+                        stringSimilarity(artistName, album.artistName) >= 75 &&
+                        stringSimilarity(albumTitle, album.title) >= 75
+                    ) {
                         logger.debug(`[DiscoverySeeding] Fuzzy match: ${artistName} - ${albumTitle} = ${album.artistName} - ${album.title}`);
                         return true;
                     }

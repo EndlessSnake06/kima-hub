@@ -2435,10 +2435,16 @@ class LidarrService {
     }
 
     /**
-     * Remove a download from queue and blocklist the release
-     * Use skipRedownload=true since we'll manually grab the next release
+     * Delete an already-located queue item and blocklist its release.
+     * The only implementation of the queue-delete HTTP call
+     * (one implementation wins, the copies are deleted).
+     * An already-gone item (404) counts as success.
+     * `skipRedownload: false` lets Lidarr search for an alternative.
      */
-    async blocklistAndRemove(downloadId: string): Promise<boolean> {
+    async removeItemAndBlocklist(
+        item: { id: number; title?: string },
+        opts: { skipRedownload?: boolean } = {}
+    ): Promise<boolean> {
         await this.ensureInitialized();
 
         if (!this.enabled || !this.client) {
@@ -2446,46 +2452,60 @@ class LidarrService {
         }
 
         try {
-            // Find the queue item by downloadId
-            const queueResponse = await this.client.get("/api/v1/queue", {
-                params: { page: 1, pageSize: 100 },
-            });
-
-            const queueData = queueResponse.data as LidarrQueueResponse;
-            const queueItem = queueData.records.find(
-                (item) => item.downloadId === downloadId
-            );
-
-            if (!queueItem) {
-                logger.debug(
-                    `[LIDARR] Download ${downloadId} not found in queue (may already be removed)`
-                );
-                return true; // Consider it success if not in queue
-            }
-
-            logger.debug(
-                `[LIDARR] Blocklisting and removing: ${queueItem.title}`
-            );
-
-            await this.client.delete(`/api/v1/queue/${queueItem.id}`, {
+            await this.client.delete(`/api/v1/queue/${item.id}`, {
                 params: {
                     removeFromClient: true,
                     blocklist: true,
-                    skipRedownload: true, // We'll grab the next release manually
+                    skipRedownload: opts.skipRedownload ?? false,
                 },
             });
-
             logger.debug(
-                `[LIDARR] Successfully blocklisted: ${queueItem.title}`
+                `[LIDARR] Removed from queue and blocklisted: ${item.title ?? item.id}`
             );
             return true;
         } catch (error: any) {
+            if (error.response?.status === 404) {
+                return true;
+            }
             logger.error(
-                `[LIDARR] Failed to blocklist:`,
+                `[LIDARR] Failed to remove queue item ${item.id}:`,
                 error.response?.data || error.message
             );
             return false;
         }
+    }
+
+    /**
+     * Find a queue item by its download id and blocklist-and-remove it.
+     * A download that is not in the queue counts as success.
+     */
+    async blocklistAndRemove(
+        downloadId: string,
+        opts: { skipRedownload?: boolean } = {}
+    ): Promise<boolean> {
+        await this.ensureInitialized();
+
+        if (!this.enabled || !this.client) {
+            throw new Error("Lidarr not enabled");
+        }
+
+        const queueResponse = await this.client.get("/api/v1/queue", {
+            params: { page: 1, pageSize: 100 },
+        });
+
+        const queueData = queueResponse.data as LidarrQueueResponse;
+        const queueItem = queueData.records.find(
+            (item) => item.downloadId === downloadId
+        );
+
+        if (!queueItem) {
+            logger.debug(
+                `[LIDARR] Download ${downloadId} not found in queue (may already be removed)`
+            );
+            return true;
+        }
+
+        return this.removeItemAndBlocklist(queueItem, opts);
     }
 
     /**
@@ -2964,27 +2984,13 @@ export async function cleanStuckDownloads(
                     : "stuck warning state";
                 logger.debug(`   [REMOVE] Removing ${item.title} (${reason})`);
 
-                try {
-                    // Remove from queue, blocklist the release, trigger new search
-                    await axios.delete(`${lidarrUrl}/api/v1/queue/${item.id}`, {
-                        params: {
-                            removeFromClient: true, // Remove from NZBGet too
-                            blocklist: true, // Don't try this release again
-                            skipRedownload: false, // DO trigger new search
-                        },
-                        headers: { "X-Api-Key": apiKey },
-                    });
-
+                // Same delete the rest of the codebase uses (class method;
+                // reads the same system settings as the url/key passed in)
+                const ok = await lidarrService.removeItemAndBlocklist(item, {
+                    skipRedownload: false,
+                });
+                if (ok) {
                     removed.push(item.title);
-                    logger.debug(`   Removed and blocklisted: ${item.title}`);
-                } catch (deleteError: any) {
-                    // Item might already be gone - that's fine
-                    if (deleteError.response?.status !== 404) {
-                        logger.error(
-                            `    Failed to remove ${item.title}:`,
-                            deleteError.message
-                        );
-                    }
                 }
             }
         }

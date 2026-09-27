@@ -105,31 +105,6 @@ router.get("/", async (req, res) => {
     }
 });
 
-// GET /search/genres
-router.get("/genres", async (_req, res) => {
-    try {
-        const genres = await prisma.genre.findMany({
-            orderBy: { name: "asc" },
-            include: {
-                _count: {
-                    select: { trackGenres: true },
-                },
-            },
-        });
-
-        res.json(
-            genres.map((g) => ({
-                id: g.id,
-                name: g.name,
-                trackCount: g._count.trackGenres,
-            }))
-        );
-    } catch (error) {
-        logger.error("Get genres error:", error);
-        res.status(500).json({ error: "Failed to get genres" });
-    }
-});
-
 /**
  * GET /search/discover?q=query&type=music|podcasts
  * Search for NEW content to discover (not in your library).

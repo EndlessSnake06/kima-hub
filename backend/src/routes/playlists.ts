@@ -19,18 +19,6 @@ const router = Router();
 
 router.use(requireAuthOrToken);
 
-// Serializable transactions abort a conflicting txn with Prisma P2034 rather than
-// blocking; retry once transparently (mirrors routes/share.ts) so a benign write-write
-// conflict on the same playlist doesn't surface to the client as an opaque 500.
-async function withSerializableRetry<T>(fn: () => Promise<T>): Promise<T> {
-    try {
-        return await fn();
-    } catch (e: any) {
-        if (e?.code === "P2034") return await fn();
-        throw e;
-    }
-}
-
 async function getOwnedPendingTrack(
     userId: string,
     playlistId: string,
@@ -869,17 +857,15 @@ router.post("/:id/pending/retry-all", async (req, res) => {
                         });
 
                         try {
-                            const { scanQueue } = await import("../workers/queues");
-                            await scanQueue.add(
-                                "scan",
-                                {
-                                    userId,
-                                    source: "retry-pending-track-batch",
-                                    albumMbid: pendingTrack.albumMbid || undefined,
-                                    artistMbid: pendingTrack.artistMbid || undefined,
-                                },
-                                { priority: 1, removeOnComplete: true }
-                            );
+                            const { requestScan } = await import("../workers/scanRequest");
+                            await requestScan({
+                                userId,
+                                source: "retry-pending-track-batch",
+                                albumMbid: pendingTrack.albumMbid || undefined,
+                                artistMbid: pendingTrack.artistMbid || undefined,
+                                priority: 1,
+                                removeOnComplete: true,
+                            });
                         } catch (scanError) {
                             logger.error(`[Retry-All] Failed to queue scan:`, scanError);
                         }
@@ -1127,29 +1113,24 @@ router.post("/:id/pending/:trackId/retry", async (req, res) => {
 
                     // Trigger a library scan to add the track and reconcile pending
                     try {
-                        const { scanQueue } = await import("../workers/queues");
-                        const scanJob = await scanQueue.add(
-                            "scan",
-                            {
-                                userId,
-                                source: "retry-pending-track",
-                                albumMbid: pendingTrack.albumMbid || undefined,
-                                artistMbid:
-                                    pendingTrack.artistMbid || undefined,
-                            },
-                            {
-                                priority: 1, // High priority
-                                removeOnComplete: true,
-                            }
-                        );
+                        const { requestScan } = await import("../workers/scanRequest");
+                        const scanResult = await requestScan({
+                            userId,
+                            source: "retry-pending-track",
+                            albumMbid: pendingTrack.albumMbid || undefined,
+                            artistMbid:
+                                pendingTrack.artistMbid || undefined,
+                            priority: 1, // High priority
+                            removeOnComplete: true,
+                        });
                         logger.debug(
                             `[Retry] Queued library scan to reconcile pending tracks`
                         );
                         sessionLog(
                             "PENDING-RETRY",
-                            `Queued library scan (bullJobId=${
-                                scanJob.id ?? "unknown"
-                            })`
+                            scanResult.queued
+                                ? `Queued library scan (bullJobId=${scanResult.jobId})`
+                                : `Library scan not re-queued: ${scanResult.reason}`
                         );
                     } catch (scanError) {
                         logger.error(

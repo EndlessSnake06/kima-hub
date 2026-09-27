@@ -154,45 +154,55 @@ export type TrackWithAlbumCover = {
             userGenres?: string[] | null;
         };
     };
-    enrichmentTags?: string[];
     essentiaGenres?: string[];
     [key: string]: unknown;
 };
 
 /**
  * Helper to find tracks matching genre patterns.
- * Uses enrichmentTags and essentiaGenres on tracks (String[]) first,
- * then falls back to filtering album.genres (JSON array) in memory.
+ * Queries the genre tables first (Genre/TrackGenre — the single genre
+ * source), then falls back to filtering album.genres
+ * (JSON array) and user genres in memory, so tracks whose genres never
+ * reached the tables can still fill a mix.
  */
 export async function findTracksByGenrePatterns(
     genrePatterns: string[],
     limit: number = 100
 ): Promise<TrackWithAlbumCover[]> {
-    const tagPatterns = genrePatterns.map((g) => g.toLowerCase());
-
-    const tracks = await prisma.track.findMany({
+    const genreRows = await prisma.genre.findMany({
         where: {
-            OR: [
-                { enrichmentTags: { hasSome: tagPatterns } },
-                { essentiaGenres: { hasSome: tagPatterns } },
-            ],
+            name: { in: genrePatterns, mode: "insensitive" },
         },
-        include: {
-            album: {
-                select: {
-                    coverUrl: true,
-                    genres: true,
-                    userGenres: true,
-                    artist: {
-                        select: {
-                            userGenres: true,
-                        },
-                    },
-                },
-            },
-        },
-        take: limit,
+        select: { id: true },
     });
+
+    const tracks =
+        genreRows.length === 0
+            ? []
+            : await prisma.track.findMany({
+                  where: {
+                      trackGenres: {
+                          some: {
+                              genreId: { in: genreRows.map((g) => g.id) },
+                          },
+                      },
+                  },
+                  include: {
+                      album: {
+                          select: {
+                              coverUrl: true,
+                              genres: true,
+                              userGenres: true,
+                              artist: {
+                                  select: {
+                                      userGenres: true,
+                                  },
+                              },
+                          },
+                      },
+                  },
+                  take: limit,
+              });
 
     if (tracks.length >= 15) {
         return tracks as TrackWithAlbumCover[];

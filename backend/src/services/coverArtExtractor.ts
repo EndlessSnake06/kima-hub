@@ -57,19 +57,4 @@ export class CoverArtExtractor {
             return null;
         }
     }
-
-    /**
-     * Get cover art URL for album
-     * Returns relative path if available, or null
-     */
-    async getCoverArtPath(albumId: string): Promise<string | null> {
-        const cacheFileName = `${albumId}.jpg`;
-        const cachePath = path.join(this.coverCachePath, cacheFileName);
-
-        if (fs.existsSync(cachePath)) {
-            return cacheFileName;
-        }
-
-        return null;
-    }
 }

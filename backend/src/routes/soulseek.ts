@@ -445,13 +445,14 @@ router.post(
                     },
                 });
 
-                // Trigger library scan to import the new file
+                // Trigger library scan to import the new file (keyed on
+                // this download job; a repeat click finds it queued/running)
                 try {
-                    const { scanQueue } = await import("../workers/queues");
-                    await scanQueue.add("scan", {
+                    const { requestScan } = await import("../workers/scanRequest");
+                    await requestScan({
                         userId,
                         source: "soulseek-manual-download",
-                        artistName: resolvedArtist,
+                        downloadId: job.id,
                     });
                     logger.debug(`[Soulseek] Library scan queued for: ${resolvedArtist} - ${resolvedTitle}`);
                 } catch (scanError: any) {

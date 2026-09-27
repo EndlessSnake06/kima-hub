@@ -383,11 +383,10 @@ export class AudioStreamingService {
      * Get total cache size in GB
      */
     async getCacheSize(): Promise<number> {
-        const cached = await prisma.transcodedFile.findMany({
-            select: { cacheSize: true },
+        const sum = await prisma.transcodedFile.aggregate({
+            _sum: { cacheSize: true },
         });
-        const totalBytes = cached.reduce((sum, f) => sum + Number(f.cacheSize), 0);
-        return totalBytes / (1024 * 1024 * 1024);
+        return Number(sum._sum.cacheSize ?? 0n) / (1024 * 1024 * 1024);
     }
 
     /**

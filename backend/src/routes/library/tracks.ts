@@ -41,7 +41,7 @@ router.get("/recently-listened", async (req, res) => {
             source: { in: ["LIBRARY", "DISCOVERY_KEPT"] },
             track: {
               album: {
-                location: "LIBRARY",
+                location: LIBRARY_LOCATION,
               },
             },
           },
@@ -209,7 +209,7 @@ router.get("/recently-added", async (req, res) => {
 
     const recentAlbums = await prisma.album.findMany({
       where: {
-        location: "LIBRARY",
+        location: LIBRARY_LOCATION,
         tracks: { some: {} },
       },
       orderBy: { lastSynced: "desc" },
@@ -240,7 +240,7 @@ router.get("/recently-added", async (req, res) => {
       by: ["artistId"],
       where: {
         artistId: { in: artistIds },
-        location: "LIBRARY",
+        location: LIBRARY_LOCATION,
         tracks: { some: {} },
       },
       _count: { id: true },
@@ -646,6 +646,9 @@ router.get("/genres", async (_req, res) => {
     );
 
     const minTracks = 15;
+    // An artist's tracks may live in the DISCOVER pile as well as the owned
+    // library; only owned tracks may feed the genre tallies (the whole point
+    // of the libraryFilters rule).
     const genreResults = await prisma.$queryRaw<
       { genre: string; track_count: bigint }[]
     >`
@@ -655,6 +658,7 @@ router.get("/genres", async (_req, res) => {
             JOIN "Album" a ON a."artistId" = ar.id
             JOIN "Track" t ON t."albumId" = a.id
             WHERE ar.genres IS NOT NULL
+              AND a.location = ${LIBRARY_LOCATION}
             GROUP BY LOWER(g.genre)
             HAVING COUNT(DISTINCT t.id) >= ${minTracks}
             ORDER BY track_count DESC

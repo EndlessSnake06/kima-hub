@@ -2,6 +2,7 @@ import { prisma } from "../../utils/db";
 import { logger } from "../../utils/logger";
 import { normalizeArtistName } from "../../utils/artistNormalization";
 import { getSimilarArtists } from "../artistSimilarity";
+import { LIBRARY_LOCATION } from "../libraryFilters";
 import {
     ProgrammaticMix,
     getMixColor,
@@ -68,7 +69,7 @@ export async function generateRediscoverMix(
 ): Promise<ProgrammaticMix | null> {
     const allTracks = await prisma.track.findMany({
         where: {
-            album: { location: "LIBRARY" },
+            album: { location: LIBRARY_LOCATION },
         },
         take: 5000,
         include: {

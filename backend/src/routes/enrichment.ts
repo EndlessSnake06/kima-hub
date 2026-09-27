@@ -191,7 +191,7 @@ router.post("/repair-covers", requireAuth, requireAdmin, async (req, res) => {
  * Trigger incremental enrichment (only processes pending items)
  * Fast sync that picks up new content without re-processing everything
  */
-router.post("/sync", requireAuth, async (req, res) => {
+router.post("/sync", requireAuth, requireAdmin, async (req, res) => {
   try {
     const result = await triggerEnrichmentNow();
 

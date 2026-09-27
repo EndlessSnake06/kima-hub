@@ -113,7 +113,7 @@ describe('DiscoveryAlbumLifecycle', () => {
                 create: {
                     artistId: 'artist-1',
                     rgMbid: 'rg-mbid-123',
-                    source: 'discover_liked',
+                    source: 'discovery_liked',
                 },
                 update: {},
             });

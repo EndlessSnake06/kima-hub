@@ -12,6 +12,7 @@
 
 import { prisma } from "../utils/db";
 import { logger } from "../utils/logger";
+import { LIBRARY_LOCATION } from "./libraryFilters";
 
 const BATCH_SIZE = 100;
 const BATCH_DELAY_MS = 50;
@@ -32,7 +33,7 @@ async function calculateArtistCounts(
     prisma.album.count({
       where: {
         artistId,
-        location: "LIBRARY",
+        location: LIBRARY_LOCATION,
         tracks: { some: {} },
       },
     }),

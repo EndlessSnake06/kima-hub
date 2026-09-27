@@ -2,6 +2,7 @@ import { Router } from "express";
 import { logger } from "../utils/logger";
 import bcrypt from "bcrypt";
 import { prisma } from "../utils/db";
+import { defaultUserSettingsFor } from "../utils/userSettingsDefaults";
 import { z } from "zod";
 import speakeasy from "speakeasy";
 import QRCode from "qrcode";
@@ -333,13 +334,7 @@ router.post("/create-user", requireAuth, requireAdmin, async (req, res) => {
 
         // Create default user settings
         await prisma.userSettings.create({
-            data: {
-                userId: user.id,
-                playbackQuality: "original",
-                wifiOnly: false,
-                offlineEnabled: false,
-                maxCacheSizeMb: 10240,
-            },
+            data: defaultUserSettingsFor(user.id),
         });
 
         res.json({
@@ -594,7 +589,7 @@ router.delete("/account", requireAuth, async (req, res) => {
 
                 // Every other User relation declares onDelete: Cascade; deleting the User
                 // row propagates automatically to ApiKey, Playlist, Play, LikedTrack,
-                // ListeningState, PlaybackState, Notification, AudiobookProgress,
+                // PlaybackState, Notification, AudiobookProgress,
                 // PodcastProgress, PodcastSubscription, PodcastDownload, CachedTrack,
                 // DeviceLinkCode, DownloadJob, DiscoveryAlbum, DiscoverExclusion,
                 // DislikedEntity, HiddenPlaylist, SpotifyImportJob, UnavailableAlbum,

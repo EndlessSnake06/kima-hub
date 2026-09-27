@@ -29,12 +29,13 @@ import { failureCause } from "../utils/outcome";
 import { sourcePauseController } from "./sourcePauseController";
 import { updateBatchStatus } from "./discovery/optimisticBatchUpdate";
 import { lidarrService } from "./lidarr";
-import { scanQueue } from "../workers/queues";
+import { requestScan } from "../workers/scanRequest";
 import { subWeeks } from "date-fns";
 import { resolveGenerationWeekStart } from "../lib/discoveryWeek";
 import { getSystemSettings } from "../utils/systemSettings";
 import { discoveryLogger } from "./discoveryLogger";
 import { acquisitionService } from "./acquisitionService";
+import { LIBRARY_LOCATION } from "./libraryFilters";
 import {
     discoveryBatchLogger,
     discoveryAlbumLifecycle,
@@ -597,9 +598,8 @@ class DiscoverWeeklyService {
                         continue;
                     }
 
-                    await scanQueue.add("scan", {
+                    await requestScan({
                         userId: batch.userId,
-                        type: "full",
                         source: "discover-weekly-completion",
                         discoveryBatchId: batch.id,
                     });
@@ -833,9 +833,8 @@ class DiscoverWeeklyService {
         );
 
         // Trigger ONE scan with batch ID
-        await scanQueue.add("scan", {
+        await requestScan({
             userId: batch.userId,
-            type: "full",
             source: "discover-weekly-completion",
             discoveryBatchId: batchId,
         });
@@ -1118,7 +1117,7 @@ class DiscoverWeeklyService {
                                     : []),
                             ],
                         },
-                        location: "LIBRARY",
+                        location: LIBRARY_LOCATION,
                         id: { notIn: Array.from(usedAlbumIds) }, // Exclude albums already in discovery
                     },
                     id: { notIn: Array.from(existingTrackIds) },
@@ -1178,7 +1177,7 @@ class DiscoverWeeklyService {
             const popularLibraryTracks = await prisma.track.findMany({
                 where: {
                     album: {
-                        location: "LIBRARY",
+                        location: LIBRARY_LOCATION,
                         id: { notIn: Array.from(usedAlbumIds) }, // 1 per album
                     },
                     id: { notIn: Array.from(usedTrackIds) },
@@ -1794,19 +1793,12 @@ class DiscoverWeeklyService {
 
                     if (isStuck) {
                         try {
-                            await axios.delete(
-                                `${settings.lidarrUrl}/api/v1/queue/${item.id}`,
-                                {
-                                    params: {
-                                        removeFromClient: true,
-                                        blocklist: true,
-                                    },
-                                    headers: {
-                                        "X-Api-Key": settings.lidarrApiKey,
-                                    },
-                                    timeout: 10000,
-                                }
-                            );
+                            // Same single implementation the download paths
+                            // use; skipRedownload=false so Lidarr may find
+                            // an alternative release.
+                            await lidarrService.blocklistAndRemove(downloadId, {
+                                skipRedownload: false,
+                            });
                             logger.debug(
                                 `   Removed orphaned queue item: ${item.title}`
                             );

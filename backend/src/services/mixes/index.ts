@@ -49,7 +49,6 @@ import {
 
 export type { ProgrammaticMix } from "./helpers";
 export { generateMoodOnDemand } from "./moodMixes";
-export { generateMoodTagMix } from "./moodMixes";
 
 export class ProgrammaticPlaylistService {
     private readonly DAILY_MIX_COUNT = 5;

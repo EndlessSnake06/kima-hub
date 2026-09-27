@@ -29,8 +29,9 @@ const mockTriggerEnrichmentNow = jest.fn().mockResolvedValue({
 });
 jest.mock("../../workers/unifiedEnrichment", () => ({
     triggerEnrichmentNow: (...a: unknown[]) => mockTriggerEnrichmentNow(...a),
-    settleStageDone: jest.fn().mockResolvedValue(undefined),
-    settleStageFailed: jest.fn().mockResolvedValue(undefined),
+    recordStageSuccess: jest.fn().mockResolvedValue(undefined),
+    recordStageFailure: jest.fn().mockResolvedValue(undefined),
+    recordStageAbsent: jest.fn().mockResolvedValue(undefined),
     invalidateEnrichmentProgress: jest.fn(),
 }));
 

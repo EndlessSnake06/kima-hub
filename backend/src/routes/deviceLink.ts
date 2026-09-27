@@ -94,6 +94,21 @@ router.post("/verify", async (req, res) => {
             return res.status(400).json({ error: "Code expired" });
         }
 
+        // Claim the code atomically (check-then-write let
+        // two concurrent /verify requests both mint a key). Only the request
+        // whose update lands may mint the key; the code is consumed even if
+        // minting later fails -- codes are single-use by design.
+        const claimed = await prisma.deviceLinkCode.updateMany({
+            where: { id: linkCode.id, usedAt: null },
+            data: {
+                usedAt: new Date(),
+                deviceName: deviceName || "Mobile Device",
+            },
+        });
+        if (claimed.count !== 1) {
+            return res.status(400).json({ error: "Code already used" });
+        }
+
         // Generate an API key for this device. The plaintext value goes back to
         // the device in the response below and is never stored -- the row keeps
         // only a SHA-256 digest.
@@ -103,14 +118,9 @@ router.post("/verify", async (req, res) => {
         );
         const apiKey = createdApiKey.key;
 
-        // Mark the link code as used
         await prisma.deviceLinkCode.update({
             where: { id: linkCode.id },
-            data: {
-                usedAt: new Date(),
-                deviceName: deviceName || "Mobile Device",
-                apiKeyId: createdApiKey.id,
-            },
+            data: { apiKeyId: createdApiKey.id },
         });
 
         res.json({
@@ -212,18 +222,3 @@ router.delete("/devices/:id", requireAuthOrToken, async (req, res) => {
 });
 
 export default router;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

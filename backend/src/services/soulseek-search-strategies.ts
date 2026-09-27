@@ -102,9 +102,11 @@ export function normalizeTrackTitle(title: string, level: 'aggressive' | 'modera
 }
 
 /**
- * Normalize artist name
+ * Build a search-friendly artist string: case-preserving, drops a leading
+ * "The " (except "The The"), maps "&" to "and", folds smart quotes.
+ * Not the DB lookup normalizer — that is utils/artistNormalization.
  */
-export function normalizeArtistName(artist: string): string {
+export function prepareArtistForSearch(artist: string): string {
     const artistLower = artist.toLowerCase();
 
     // Don't remove "the" for bands like "The The" where it's part of the name
@@ -131,7 +133,7 @@ const SEARCH_STRATEGIES: SearchStrategy[] = [
     {
         name: "artist-title-aggressive",
         buildQuery: (artist, track) => {
-            const normalizedArtist = normalizeArtistName(artist);
+            const normalizedArtist = prepareArtistForSearch(artist);
             const normalizedTitle = normalizeTrackTitle(track, 'aggressive');
             return `${normalizedArtist} ${normalizedTitle}`.trim();
         },
@@ -140,7 +142,7 @@ const SEARCH_STRATEGIES: SearchStrategy[] = [
     {
         name: "artist-title-moderate",
         buildQuery: (artist, track) => {
-            const normalizedArtist = normalizeArtistName(artist);
+            const normalizedArtist = prepareArtistForSearch(artist);
             const normalizedTitle = normalizeTrackTitle(track, 'moderate');
             return `${normalizedArtist} ${normalizedTitle}`.trim();
         },
@@ -167,7 +169,7 @@ const SEARCH_STRATEGIES: SearchStrategy[] = [
         name: "artist-album-title",
         buildQuery: (artist, track, album) => {
             if (!album) return "";
-            const normalizedArtist = normalizeArtistName(artist);
+            const normalizedArtist = prepareArtistForSearch(artist);
             const normalizedTitle = normalizeTrackTitle(track, 'moderate');
             return `${normalizedArtist} ${album} ${normalizedTitle}`.trim();
         },

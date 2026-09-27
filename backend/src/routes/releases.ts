@@ -102,13 +102,15 @@ router.get("/radar", async (req, res) => {
         logger.debug(`[Releases] Found ${lidarrReleases.length} Lidarr releases`);
         logger.debug(`[Releases] Found ${unmonitoredSimilar.length} unmonitored similar artists`);
 
-        // 4. Get albums in library to check what user already has
-        const libraryAlbums = await prisma.album.findMany({
-            select: {
-                rgMbid: true,
-            }
+        // 4. Check which of THESE releases the library already owns —
+        // bounded to the candidate MBIDs, not a scan of the whole Album
+        // table per request.
+        const candidateRgMbids = [...new Set(lidarrReleases.map(r => r.albumMbid).filter(Boolean))];
+        const ownedRows = await prisma.album.findMany({
+            where: { rgMbid: { in: candidateRgMbids } },
+            select: { rgMbid: true },
         });
-        const libraryAlbumMbids = new Set(libraryAlbums.map(a => a.rgMbid).filter(Boolean));
+        const libraryAlbumMbids = new Set(ownedRows.map(a => a.rgMbid).filter(Boolean));
 
         // 5. Transform Lidarr releases
         const rawReleases: ReleaseItem[] = lidarrReleases.map(release => {
@@ -228,11 +230,14 @@ router.get("/recent", async (req, res) => {
 
         const releases = await lidarrService.getCalendar(startDate, now);
         
-        // Get library albums to mark what's already downloaded
-        const libraryAlbums = await prisma.album.findMany({
-            select: { rgMbid: true }
+        // Check only these candidates against the library — no whole-table
+        // read per request.
+        const candidateRgMbids = [...new Set(releases.map(r => r.albumMbid).filter(Boolean))];
+        const ownedRows = await prisma.album.findMany({
+            where: { rgMbid: { in: candidateRgMbids } },
+            select: { rgMbid: true },
         });
-        const libraryMbids = new Set(libraryAlbums.map(a => a.rgMbid).filter(Boolean));
+        const libraryMbids = new Set(ownedRows.map(a => a.rgMbid).filter(Boolean));
 
         // Filter to releases not in library and sort (newest first)
         const notInLibrary = releases

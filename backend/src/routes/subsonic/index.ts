@@ -4,6 +4,7 @@ import { subsonicAuth } from "../../middleware/subsonicAuth";
 import { subsonicOk, subsonicError, SubsonicError } from "../../utils/subsonicResponse";
 import { prisma } from "../../utils/db";
 import { scanQueue } from "../../workers/queues";
+import { requestScan } from "../../workers/scanRequest";
 import { config } from "../../config";
 import { requireSubsonicAdmin } from "./userHelpers";
 import { hashApiKey } from "../../services/users/apiKeyStore";
@@ -169,11 +170,8 @@ subsonicRouter.all("/startScan.view", wrap(async (req: Request, res: Response) =
     }
 
     await withQueueDeadline(
-        scanQueue.add("scan", {
-            userId: req.user!.id,
-            musicPath: config.music.musicPath,
-        }),
-        "scanQueue.add"
+        requestScan({ userId: req.user!.id, source: "subsonic-scan" }),
+        "requestScan"
     );
 
     const counts = await withQueueDeadline(scanQueue.getJobCounts("active", "waiting", "delayed"), "getJobCounts");

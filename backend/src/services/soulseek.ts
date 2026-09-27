@@ -1499,7 +1499,7 @@ async searchAndDownloadAlbum(
             return results;
         }
 
-        const { normalizeArtistName, normalizeTrackTitle } = await import("./soulseek-search-strategies");
+        const { prepareArtistForSearch, normalizeTrackTitle } = await import("./soulseek-search-strategies");
         const { stripAlbumEdition, canonicalizeVariousArtists, VARIOUS_ARTISTS_CANONICAL } = await import("../utils/artistNormalization");
         const fuzz = await import("fuzzball");
 
@@ -1508,7 +1508,7 @@ async searchAndDownloadAlbum(
         const normalizedAlbum = stripAlbumEdition(albumName);
         const query = isVA
             ? normalizedAlbum
-            : `${normalizeArtistName(artistName)} ${normalizedAlbum}`;
+            : `${prepareArtistForSearch(artistName)} ${normalizedAlbum}`;
 
         sessionLog("SOULSEEK", `[Album Search] "${query}" (${tracks.length} tracks, VA=${isVA})`);
 
@@ -2130,54 +2130,6 @@ private async downloadWithRetry(
         }
     }
 
-    async saveSearchSession(sessionId: string, data: unknown, ttlSeconds: number = 300): Promise<void> {
-        try {
-            const key = `soulseek:search:${sessionId}`;
-            await redisClient.setex(key, ttlSeconds, JSON.stringify(data));
-        } catch (err: any) {
-            sessionLog("SOULSEEK", `Failed to save search session: ${err.message}`, "ERROR");
-        }
-    }
-
-    async getSearchSession(sessionId: string): Promise<unknown> {
-        try {
-            const key = `soulseek:search:${sessionId}`;
-            const data = await redisClient.get(key);
-            return data ? JSON.parse(data) : null;
-        } catch (err: any) {
-            sessionLog("SOULSEEK", `Failed to get search session: ${err.message}`, "ERROR");
-            return null;
-        }
-    }
-
-    async deleteSearchSession(sessionId: string): Promise<void> {
-        try {
-            const key = `soulseek:search:${sessionId}`;
-            await redisClient.del(key);
-        } catch (err: any) {
-            sessionLog("SOULSEEK", `Failed to delete search session: ${err.message}`, "ERROR");
-        }
-    }
-
-    async listSearchSessions(): Promise<string[]> {
-        try {
-            const keys = await redisClient.keys('soulseek:search:*');
-            return keys.map(key => key.replace('soulseek:search:', ''));
-        } catch (err: any) {
-            sessionLog("SOULSEEK", `Failed to list search sessions: ${err.message}`, "ERROR");
-            return [];
-        }
-    }
-
-    async extendSearchSessionTTL(sessionId: string, ttlSeconds: number = 300): Promise<void> {
-        try {
-            const key = `soulseek:search:${sessionId}`;
-            await redisClient.expire(key, ttlSeconds);
-        } catch (err: any) {
-            sessionLog("SOULSEEK", `Failed to extend search session TTL: ${err.message}`, "ERROR");
-        }
-    }
-
     async markUserFailed(username: string): Promise<void> {
         try {
             const key = `soulseek:failed-user:${username}`;
@@ -2212,38 +2164,6 @@ private async downloadWithRetry(
         } catch (err: any) {
             sessionLog("SOULSEEK", `Failed to check if user is blocked: ${err.message}`, "ERROR");
             return false;
-        }
-    }
-
-    async clearUserFailures(username: string): Promise<void> {
-        try {
-            const key = `soulseek:failed-user:${username}`;
-            await redisClient.del(key);
-        } catch (err: any) {
-            sessionLog("SOULSEEK", `Failed to clear user failures: ${err.message}`, "ERROR");
-        }
-    }
-
-    async getBlockedUsers(): Promise<string[]> {
-        try {
-            const keys = await redisClient.keys('soulseek:failed-user:*');
-            const blockedUsers: string[] = [];
-
-            for (const key of keys) {
-                const data = await redisClient.get(key);
-                if (data) {
-                    const record = JSON.parse(data);
-                    if (record.failures >= this.FAILURE_THRESHOLD) {
-                        const username = key.replace('soulseek:failed-user:', '');
-                        blockedUsers.push(username);
-                    }
-                }
-            }
-
-            return blockedUsers;
-        } catch (err: any) {
-            sessionLog("SOULSEEK", `Failed to get blocked users: ${err.message}`, "ERROR");
-            return [];
         }
     }
 }

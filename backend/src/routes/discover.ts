@@ -12,16 +12,17 @@ import { config } from "../config";
 import { resolveWithinMusicRoot } from "./library/trackPath";
 
 // Static imports for performance
-import { discoverQueue, scanQueue } from "../workers/queues";
+import { discoverQueue } from "../workers/queues";
+import { requestScan } from "../workers/scanRequest";
 import { getSystemSettings } from "../utils/systemSettings";
 import { lidarrService } from "../services/lidarr";
 import {
   UserFacingError,
   IntegrationError,
   ConfigurationError,
-  RateLimitError,
 } from '../utils/errors';
 import { distributedLock } from '../utils/distributedLock';
+import { LIBRARY_LOCATION } from "../services/libraryFilters";
 
 const router = Router();
 
@@ -285,12 +286,6 @@ router.post("/generate", async (req, res) => {
             });
         }
 
-        if (error instanceof RateLimitError) {
-            return res.status(429).json({
-                error: error.message,
-                retryAfter: error.retryAfter,
-            });
-        }
 
         if (error instanceof IntegrationError) {
             logger.error(`Integration error (${error.integration}):`, error);
@@ -1309,7 +1304,7 @@ router.delete("/clear", async (req, res) => {
                             create: {
                                 artistId: dbAlbum.artistId,
                                 rgMbid: dbAlbum.rgMbid,
-                                source: "discover_liked",
+                                source: "discovery_liked",
                             },
                             update: {}, // No update needed if exists
                         });
@@ -2151,10 +2146,7 @@ router.delete("/clear", async (req, res) => {
         // === PHASE 4: Trigger library scan to sync database with filesystem ===
         logger.debug(`\n[SCAN] Triggering library scan to sync database...`);
         try {
-            await scanQueue.add("scan", {
-                userId,
-                musicPath: config.music.musicPath,
-            });
+            await requestScan({ userId, source: "discover-cleanup" });
             logger.debug(`   Library scan queued successfully`);
         } catch (scanError: any) {
             logger.debug(`   Library scan queue failed: ${scanError.message}`);
@@ -2509,7 +2501,7 @@ router.post("/fix-tagging", requireAdmin, async (req, res) => {
             const mistaggedCount = await prisma.album.count({
                 where: {
                     artist: { mbid: da.artistMbid },
-                    location: "LIBRARY",
+                    location: LIBRARY_LOCATION,
                 },
             });
 
@@ -2524,7 +2516,7 @@ router.post("/fix-tagging", requireAdmin, async (req, res) => {
                 const updated = await prisma.album.updateMany({
                     where: {
                         artist: { mbid: da.artistMbid },
-                        location: "LIBRARY",
+                        location: LIBRARY_LOCATION,
                     },
                     data: { location: "DISCOVER" },
                 });

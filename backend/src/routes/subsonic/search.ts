@@ -4,6 +4,7 @@ import { prisma } from "../../utils/db";
 import { subsonicOk, subsonicError, SubsonicError } from "../../utils/subsonicResponse";
 import { searchService } from "../../services/search";
 import { wrap, clamp, parseIntParam, firstArtistGenre, mapSong } from "./mappers";
+import { LIBRARY_LOCATION } from "../../services/libraryFilters";
 
 export const searchRouter = Router();
 
@@ -44,7 +45,7 @@ searchRouter.all(["/search3.view", "/search2.view", "/search.view"], wrap(async 
     if (rawAlbums.length > 0) {
         const libraryIds = new Set(
             (await prisma.album.findMany({
-                where: { id: { in: rawAlbums.map((a) => a.id) }, location: "LIBRARY" },
+                where: { id: { in: rawAlbums.map((a) => a.id) }, location: LIBRARY_LOCATION },
                 select: { id: true },
             })).map((a) => a.id)
         );

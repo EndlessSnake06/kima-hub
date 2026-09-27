@@ -6,7 +6,7 @@ import { requireAuth, requireAdmin } from "../middleware/auth";
 import { getSystemSettings, invalidateSystemSettingsCache } from "../utils/systemSettings";
 import { enrichmentFailureService } from "../services/enrichmentFailureService";
 import { eventBus } from "../services/eventBus";
-import { triggerEnrichmentNow, settleStageDone, settleStageFailed } from "../workers/unifiedEnrichment";
+import { triggerEnrichmentNow, recordStageSuccess, recordStageFailure } from "../workers/unifiedEnrichment";
 import { appendTrackToProjection } from "../services/umapProjection";
 import os from "os";
 
@@ -159,9 +159,12 @@ router.post("/start", requireAuth, requireAdmin, async (req, res) => {
             : `t.title ASC`;
 
         // The stage queue owns the feed, so this control brings it forward
-        // instead of pushing: analysis records whose retry backoff or claim
-        // lease has not elapsed are reopened (nextRetryAt = NULL) so the next
-        // cycle offers them immediately, ordered per the request.
+        // instead of pushing: pending/failed records whose retry backoff
+        // has not elapsed are reopened (nextRetryAt = NULL) so the next
+        // cycle offers them immediately, ordered per the request. `working`
+        // rows are left alone — their nextRetryAt is a live claim lease,
+        // and nulling it would make the record unclaimable (the claim's
+        // working branch requires a non-null lease).
         await prisma.$executeRawUnsafe(
             `UPDATE "TrackStage" ts
                 SET "nextRetryAt" = NULL
@@ -171,7 +174,7 @@ router.post("/start", requireAuth, requireAdmin, async (req, res) => {
                     SELECT ts2.id FROM "TrackStage" ts2
                     JOIN "Track" t2 ON ts2."trackId" = t2.id
                     WHERE ts2.stage = 'analysis'
-                      AND ts2.status IN ('pending', 'failed', 'working')
+                      AND ts2.status IN ('pending', 'failed')
                       AND ts2.retryable = true
                       AND ts2."nextRetryAt" IS NOT NULL
                       AND ts2."nextRetryAt" > now()
@@ -215,16 +218,19 @@ router.post("/start", requireAuth, requireAdmin, async (req, res) => {
 router.post("/retry-failed", requireAuth, requireAdmin, async (req, res) => {
     try {
         // Reopen the analysis questions on the record: failed+retryable
-        // records become immediately due, and terminal answers are wiped --
-        // the operator explicitly re-decided them. The cycle's stage queue
-        // is the only producer; it picks these up on its next pass.
+        // records become immediately due, and records whose ladder is
+        // spent (retryable = false) are re-opened with a fresh budget —
+        // the operator explicitly re-decided them. The first UPDATE must
+        // skip the spent rows or the second one would never match
+        // anything, and spent records would restart with their budget
+        // already consumed.
         const failedResult = await prisma.$executeRawUnsafe(
             `UPDATE "TrackStage"
                 SET status = 'pending', "nextRetryAt" = NULL, retryable = true,
                     "lastErrorCode" = NULL, "lastErrorMessage" = NULL,
                     "failureClass" = NULL, "startedAt" = NULL, "finishedAt" = NULL,
                     evidence = jsonb_build_object('reopenedBy', 'retry-failed')
-              WHERE stage = 'analysis' AND status = 'failed'`,
+              WHERE stage = 'analysis' AND status = 'failed' AND retryable = true`,
         );
         const permFailedResult = await prisma.$executeRawUnsafe(
             `UPDATE "TrackStage"
@@ -663,17 +669,18 @@ router.post("/vibe/failure", async (req, res) => {
         // EnrichmentFailure write happens here — two ledgers for one fact
         // drifted apart until one was superseded.
 
-        // Settle the embedding stage record with the failure the CLAP worker
-        // reported: retryable with the standard backoff, so the stage queue
-        // re-asks it instead of the claim's lease silently re-offering an
-        // unanswered question.
-        await settleStageFailed(trackId, "embedding", {
-            errorCode: errorCode || null,
-            errorMessage: errorMessage || "Vibe embedding generation failed",
-            failureClass: "INCONCLUSIVE",
-            retryable: true,
-            evidence: { error: errorMessage || "Vibe embedding generation failed", trackName },
-        });
+        // Record the failure the CLAP worker reported on the stage
+        // record's own ladder: the error is classified, the attempt that
+        // was dispatched is consumed once, and the record closes when the
+        // ladder runs out — a reported failure that stays `retryable:
+        // true` forever re-asks a dead question every cycle.
+        await recordStageFailure(
+            trackId,
+            "embedding",
+            "clap",
+            new Error(errorMessage || "Vibe embedding generation failed"),
+            { reportedCode: errorCode, trackName },
+        );
 
         res.json({ message: "Failure recorded" });
         eventBus.emit({ type: "enrichment:progress", userId: "*", payload: { phase: "vibe" } });
@@ -894,14 +901,11 @@ router.post("/vibe/success", async (req, res) => {
         }
 
         // No ledger resolve here: the embedding stage record IS the failure
-        // record, and settleStageDone below answers it done — a
-        // failed embedding simply disappears from the TrackStage-backed
+        // record, and the CLAP worker's success answers it —
+        // a failed embedding simply disappears from the TrackStage-backed
         // failures list. Writing a second record was the drift this defect
         // removes.
-
-        // Settle the embedding stage record: the CLAP worker landed the
-        // embedding, so the question is answered done.
-        await settleStageDone(trackId, "embedding", {
+        await recordStageSuccess(trackId, "embedding", "clap", {
             outcome: "embedded",
         });
 

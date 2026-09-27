@@ -454,25 +454,20 @@ router.post(
                             });
 
                             try {
-                                const { scanQueue } = await import(
-                                    "../workers/queues"
+                                const { requestScan } = await import(
+                                    "../workers/scanRequest"
                                 );
-                                await scanQueue.add(
-                                    "scan",
-                                    {
-                                        userId: req.user!.id,
-                                        source: "retry-pending-track",
-                                        albumMbid:
-                                            pendingTrack.albumMbid || undefined,
-                                        artistMbid:
-                                            pendingTrack.artistMbid ||
-                                            undefined,
-                                    },
-                                    {
-                                        priority: 1,
-                                        removeOnComplete: true,
-                                    }
-                                );
+                                await requestScan({
+                                    userId: req.user!.id,
+                                    source: "retry-pending-track",
+                                    albumMbid:
+                                        pendingTrack.albumMbid || undefined,
+                                    artistMbid:
+                                        pendingTrack.artistMbid ||
+                                        undefined,
+                                    priority: 1,
+                                    removeOnComplete: true,
+                                });
                             } catch {
                                 // Best-effort; job status already reflects download
                             }
@@ -620,13 +615,13 @@ router.post(
                                 `[Retry] ✓ Soulseek downloaded ${result.successful} tracks for ${artistName} - ${albumTitle}`
                             );
 
-                            // Trigger library scan
-                            const { scanQueue } = await import(
-                                "../workers/queues"
+                            // Trigger library scan (full walk — the
+                            // download folder is not recorded, so there is
+                            // nothing narrower to scan)
+                            const { requestScan } = await import(
+                                "../workers/scanRequest"
                             );
-                            await scanQueue.add("scan", {
-                                paths: [],
-                                fullScan: false,
+                            await requestScan({
                                 userId: req.user!.id,
                                 source: "retry-spotify-import",
                             });

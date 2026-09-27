@@ -30,7 +30,6 @@ import {
 } from "../services/publicVibeService";
 import { findSimilarTracks, SimilarTrack } from "../services/hybridSimilarity";
 import { searchTracksByText, TextSearchRow } from "../services/textEmbeddingBridge";
-import { getResizedImagePath, resizeImageBuffer } from "../services/imageStorage";
 import { findAlbumArtwork } from "../services/artwork";
 import path from "path";
 import fs from "fs";
@@ -139,15 +138,6 @@ function parseListLimit(value: unknown): number {
     return Math.min(100, Math.max(1, Math.floor(n)));
 }
 
-// Maps carry `native:` coverUrls. Never hand those to a client: rewrite each
-// to the proxied cover endpoint, which resolves and serves the bytes.
-function proxyCover(url: string | null | undefined): string | null {
-    if (url && url.startsWith("native:")) {
-        return "/api/public/vibe/cover/native"; // replaced below with an id
-    }
-    return url ?? null;
-}
-
 // Convert a `native:` album cover to a proxied URL, carrying the owning track's
 // id so /cover can find the album.
 function proxiedCover(trackId: string, url: string | null | undefined): string | null {
@@ -157,21 +147,10 @@ function proxiedCover(trackId: string, url: string | null | undefined): string |
 }
 
 // One cover does not change, so it is immutable and its digest doubles as the
-// ETag.
+// ETag. Same digest as the authed cover route's, so both routes hand clients
+// the same tag for the same bytes.
 function etagFor(buffer: Buffer): string {
     return '"' + crypto.createHash("md5").update(buffer).digest("hex") + '"';
-}
-
-// Apply the cover-response headers, mirroring the authed cover-art route.
-function applyCoverHeaders(res: Response, size?: string): void {
-    const corsHeader: Record<string, string> = { "Access-Control-Allow-Origin": "*" };
-    const headers: Record<string, string> = {
-        "Content-Type": "image/jpeg",
-        "Cache-Control": "public, immutable, max-age=31536000, s-maxage=31536000",
-        ...corsHeader,
-    };
-    void size;
-    void headers;
 }
 
 // Best-effort recovery when a native cover file has gone missing from disk:
@@ -209,7 +188,6 @@ function getNativeCoverPath(nativePath: string): string | null {
 // missing file, a non-native reference, or a bad id all map to 404.
 async function resolveCoverBytes(
     trackId: string,
-    size?: string,
 ): Promise<{ buffer: Buffer; etag: string; contentType: string | null } | null> {
     const row = await prisma.track.findFirst({
         where: { id: trackId },
@@ -254,35 +232,10 @@ async function resolveCoverBytes(
     }
 
     const fileBuf = fs.readFileSync(abs);
-    let serve: Buffer | null = null;
-
-    // Honor a ?size= scale request, cached under the same validator.
-    if (size && /^\d+$/.test(size)) {
-        const width = Number.parseInt(size, 10);
-        if (width >= 16 && width <= 3072) {
-            const resizedPath = getResizedImagePath(`native:${nativePath}`, width);
-            if (resizedPath && fs.existsSync(resizedPath)) {
-                const cached = fs.readFileSync(resizedPath);
-                return {
-                    buffer: cached,
-                    etag: etagFor(cached),
-                    contentType: null,
-                };
-            }
-            try {
-                const resized = await resizeImageBuffer(fileBuf, width);
-                serve = resized ?? null;
-            } catch {
-                // fall through to serving the original
-            }
-        }
-    }
-
-    if (serve === null) serve = fileBuf;
 
     return {
-        buffer: serve,
-        etag: etagFor(serve),
+        buffer: fileBuf,
+        etag: etagFor(fileBuf),
         contentType: null,
     };
 }
@@ -625,18 +578,13 @@ router.get(
     withPublic(
         asyncHandler(async (req: Request, res: Response) => {
             const reqPub = req as PublicRequest;
-            const { trackId, size } = req.params;
+            const { trackId } = req.params;
             if (!requireTrackId(trackId)) {
                 res.status(400).json({ error: "Invalid trackId format" });
                 return;
             }
 
-            if (size && !/^\d+$/.test(size)) {
-                res.status(400).json({ error: "Invalid size parameter" });
-                return;
-            }
-
-            const resolved = await resolveCoverBytes(trackId, size);
+            const resolved = await resolveCoverBytes(trackId);
             if (!resolved) {
                 res.status(404).end();
                 return;

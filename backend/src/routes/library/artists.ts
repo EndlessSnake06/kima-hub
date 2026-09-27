@@ -24,6 +24,7 @@ import pLimit from "p-limit";
 import { toAudioFeaturesDTO } from "../../utils/audioFeatures";
 import { resolveWithinMusicRoot } from "./trackPath";
 import { findArtistArtwork } from "../../services/artwork";
+import { LIBRARY_LOCATION } from "../../services/libraryFilters";
 
 // Alphabetical ordering reads `sortName`, not `name`: the article-stripped,
 // unaccented, lowercased value written by `artistSortName` and backfilled by
@@ -731,7 +732,7 @@ router.get("/artists/:id", async (req, res) => {
             select: {
               albums: {
                 where: {
-                  location: "LIBRARY",
+                  location: LIBRARY_LOCATION,
                   tracks: { some: {} },
                 },
               },
@@ -829,7 +830,7 @@ router.get("/artists/:id", async (req, res) => {
                 select: {
                   albums: {
                     where: {
-                      location: "LIBRARY",
+                      location: LIBRARY_LOCATION,
                       tracks: { some: {} },
                     },
                   },

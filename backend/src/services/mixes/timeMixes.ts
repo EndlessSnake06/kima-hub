@@ -27,24 +27,9 @@ async function generateSundayMix(
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
         where: {
-            OR: [
-                {
-                    analysisStatus: "completed",
-                    energy: { lte: 0.5 },
-                    acousticness: { gte: 0.5 },
-                },
-                {
-                    enrichmentTags: {
-                        hasSome: [
-                            "relaxed",
-                            "calm",
-                            "peaceful",
-                            "chill",
-                            "sunday",
-                        ],
-                    },
-                },
-            ],
+            analysisStatus: "completed",
+            energy: { lte: 0.5 },
+            acousticness: { gte: 0.5 },
         },
         include: {
             album: { select: { coverUrl: true } },
@@ -78,23 +63,9 @@ async function generateMondayMix(
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
         where: {
-            OR: [
-                {
-                    analysisStatus: "completed",
-                    energy: { gte: 0.6 },
-                    valence: { gte: 0.5 },
-                },
-                {
-                    enrichmentTags: {
-                        hasSome: [
-                            "motivation",
-                            "uplifting",
-                            "energetic",
-                            "happy",
-                        ],
-                    },
-                },
-            ],
+            analysisStatus: "completed",
+            energy: { gte: 0.6 },
+            valence: { gte: 0.5 },
         },
         include: {
             album: { select: { coverUrl: true } },
@@ -128,18 +99,9 @@ async function generateFridayMix(
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
         where: {
-            OR: [
-                {
-                    analysisStatus: "completed",
-                    danceability: { gte: 0.7 },
-                    energy: { gte: 0.6 },
-                },
-                {
-                    enrichmentTags: {
-                        hasSome: ["party", "dance", "fun", "groovy"],
-                    },
-                },
-            ],
+            analysisStatus: "completed",
+            danceability: { gte: 0.7 },
+            energy: { gte: 0.6 },
         },
         include: {
             album: { select: { coverUrl: true } },

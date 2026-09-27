@@ -53,7 +53,7 @@ export class DiscoveryAlbumLifecycle {
                 create: {
                     artistId: dbAlbum.artistId,
                     rgMbid: dbAlbum.rgMbid,
-                    source: 'discover_liked',
+                    source: 'discovery_liked',
                 },
                 update: {},
             });

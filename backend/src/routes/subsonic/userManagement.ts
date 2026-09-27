@@ -2,6 +2,7 @@ import { Router } from "express";
 import { invalidateUserCache } from "../../middleware/auth";
 import bcrypt from "bcrypt";
 import { prisma } from "../../utils/db";
+import { defaultUserSettingsFor } from "../../utils/userSettingsDefaults";
 import { subsonicError, subsonicOk, SubsonicError } from "../../utils/subsonicResponse";
 import { wrap } from "./mappers";
 import { decodeSubsonicPassword, mapSubsonicUser, requireSubsonicAdmin } from "./userHelpers";
@@ -122,13 +123,7 @@ userManagementRouter.all("/createUser.view", wrap(async (req, res) => {
     await prisma.userSettings.upsert({
         where: { userId: user.id },
         update: {},
-        create: {
-            userId: user.id,
-            playbackQuality: "original",
-            wifiOnly: false,
-            offlineEnabled: false,
-            maxCacheSizeMb: 10240,
-        },
+        create: defaultUserSettingsFor(user.id),
     });
 
     return subsonicOk(req, res);

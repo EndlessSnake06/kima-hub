@@ -11,6 +11,7 @@ import path from "path";
 import fs from "fs";
 import pLimit from "p-limit";
 import { toAudioFeaturesDTO } from "../../utils/audioFeatures";
+import { LIBRARY_LOCATION } from "../../services/libraryFilters";
 
 // Alphabetical ordering reads `sortName`, not `title`: the article-stripped,
 // unaccented, lowercased value written wherever an album's title or
@@ -61,7 +62,7 @@ router.get("/albums", async (req, res) => {
       const ownedMbids = ownedAlbumMbids.map((oa) => oa.rgMbid);
 
       where.OR = [
-        { location: "LIBRARY", tracks: { some: {} } },
+        { location: LIBRARY_LOCATION, tracks: { some: {} } },
         { rgMbid: { in: ownedMbids }, tracks: { some: {} } },
       ];
     } else if (filter === "discovery") {

@@ -4,6 +4,7 @@ import { requireAuth, requireAdmin } from "../middleware/auth";
 import { prisma } from "../utils/db";
 import { z } from "zod";
 import { staleJobCleanupService } from "../services/staleJobCleanup";
+import { defaultUserSettingsFor } from "../utils/userSettingsDefaults";
 
 const router = Router();
 
@@ -28,13 +29,7 @@ router.get("/", async (req, res) => {
         // Create default settings if they don't exist
         if (!settings) {
             settings = await prisma.userSettings.create({
-                data: {
-                    userId,
-                    playbackQuality: "medium",
-                    wifiOnly: false,
-                    offlineEnabled: false,
-                    maxCacheSizeMb: 5120,
-                },
+                data: defaultUserSettingsFor(userId),
             });
         }
 
