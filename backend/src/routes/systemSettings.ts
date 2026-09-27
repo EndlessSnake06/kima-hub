@@ -5,24 +5,15 @@ import { prisma } from "../utils/db";
 import { z } from "zod";
 import { writeEnvFile } from "../utils/envWriter";
 import { invalidateSystemSettingsCache } from "../utils/systemSettings";
+import {
+    decryptOrNull,
+    encryptSettings,
+    resolveEncryptedSettings,
+} from "../utils/encryptedFields";
 import { queueCleaner } from "../jobs/queueCleaner";
-import { encrypt, decrypt } from "../utils/encryption";
 import { safeError } from "../utils/errors";
 
 const router = Router();
-
-/**
- * Safely decrypt a field, returning null if decryption fails
- */
-function safeDecrypt(value: string | null): string | null {
-  if (!value) return null;
-  try {
-    return decrypt(value);
-  } catch (error) {
-    logger.warn("[Settings Route] Failed to decrypt field, returning null");
-    return null;
-  }
-}
 
 // Public (any authenticated user) — returns only the configured server URL
 router.get("/public-config", requireAuth, async (_req, res) => {
@@ -151,26 +142,12 @@ router.get("/", async (req, res) => {
       });
     }
 
-    // Decrypt sensitive fields before sending to client
-    // Use safeDecrypt to handle corrupted encrypted values gracefully
-    const decryptedSettings = {
-      ...settings,
-      lidarrApiKey: safeDecrypt(settings.lidarrApiKey),
-      lidarrWebhookSecret: safeDecrypt(settings.lidarrWebhookSecret),
-      openaiApiKey: safeDecrypt(settings.openaiApiKey),
-      fanartApiKey: safeDecrypt(settings.fanartApiKey),
-      acoustidApiKey: safeDecrypt(settings.acoustidApiKey),
-      audiobookshelfApiKey: safeDecrypt(settings.audiobookshelfApiKey),
-      soulseekPassword: safeDecrypt(settings.soulseekPassword),
-      slskdApiKey: safeDecrypt(settings.slskdApiKey),
-      spotifyClientSecret: safeDecrypt(settings.spotifyClientSecret),
-      // Write-only: the LB user token is never sent back to the client.
-      // (The `...settings` spread would otherwise leak the ciphertext;
-      // nulling it also keeps the UI from re-submitting what it never saw.)
-      listenbrainzUserToken: null,
-    };
+    // Decrypt every field in ENCRYPTED_FIELDS before sending to the client;
+    // the ListenBrainz token is write-only and never echoed back.
+    const resolved = await resolveEncryptedSettings({ ...settings });
+    resolved.listenbrainzUserToken = null;
 
-    res.json(decryptedSettings);
+    res.json(resolved);
   } catch (error) {
     logger.error("Get system settings error:", error);
     res.status(500).json({ error: "Failed to get system settings" });
@@ -188,29 +165,9 @@ router.post("/", async (req, res) => {
       data.transcodeCacheMaxGb,
     );
 
-    // Encrypt sensitive fields
-    const encryptedData: any = { ...data };
-
-    if (data.lidarrApiKey)
-      encryptedData.lidarrApiKey = encrypt(data.lidarrApiKey);
-    if (data.lidarrWebhookSecret)
-      encryptedData.lidarrWebhookSecret = encrypt(data.lidarrWebhookSecret);
-    if (data.openaiApiKey)
-      encryptedData.openaiApiKey = encrypt(data.openaiApiKey);
-    if (data.fanartApiKey)
-      encryptedData.fanartApiKey = encrypt(data.fanartApiKey);
-    if (data.acoustidApiKey)
-      encryptedData.acoustidApiKey = encrypt(data.acoustidApiKey);
-    if (data.audiobookshelfApiKey)
-      encryptedData.audiobookshelfApiKey = encrypt(data.audiobookshelfApiKey);
-    if (data.soulseekPassword)
-      encryptedData.soulseekPassword = encrypt(data.soulseekPassword);
-    if (data.slskdApiKey)
-      encryptedData.slskdApiKey = encrypt(data.slskdApiKey);
-    if (data.spotifyClientSecret)
-      encryptedData.spotifyClientSecret = encrypt(data.spotifyClientSecret);
-    if (data.listenbrainzUserToken)
-      encryptedData.listenbrainzUserToken = encrypt(data.listenbrainzUserToken);
+    // Encrypt every supplied field from ENCRYPTED_FIELDS; fields the
+    // payload omits stay untouched by the upsert.
+    const encryptedData = encryptSettings(data as Record<string, unknown>) as any;
 
     // Fetch existing settings before save to detect credential changes
     const existingSettings = await prisma.systemSettings.findUnique({ where: { id: "default" } });
@@ -245,7 +202,7 @@ router.post("/", async (req, res) => {
     ) {
       try {
         const oldUsername = existingSettings?.soulseekUsername || "";
-        const oldPassword = existingSettings?.soulseekPassword ? safeDecrypt(existingSettings.soulseekPassword) : "";
+        const oldPassword = decryptOrNull("soulseekPassword", existingSettings?.soulseekPassword) ?? "";
         const newUsername = data.soulseekUsername !== undefined ? data.soulseekUsername : oldUsername;
         const newPassword = data.soulseekPassword !== undefined ? data.soulseekPassword : oldPassword;
 
@@ -253,7 +210,7 @@ router.post("/", async (req, res) => {
         const newMode = (data.soulseekMode !== undefined ? data.soulseekMode : oldMode) || "";
         const oldSlskdUrl = existingSettings?.slskdUrl || "";
         const newSlskdUrl = (data.slskdUrl !== undefined ? data.slskdUrl : oldSlskdUrl) || "";
-        const oldSlskdApiKey = existingSettings?.slskdApiKey ? safeDecrypt(existingSettings.slskdApiKey) : "";
+        const oldSlskdApiKey = decryptOrNull("slskdApiKey", existingSettings?.slskdApiKey) ?? "";
         const newSlskdApiKey = (data.slskdApiKey !== undefined ? data.slskdApiKey : oldSlskdApiKey) || "";
 
         const changed =

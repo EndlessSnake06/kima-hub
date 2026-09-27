@@ -1269,6 +1269,9 @@ router.delete("/clear", async (req, res) => {
 
         // Get system settings for Lidarr
         const settings = await getSystemSettings();
+        if (!settings) {
+            return res.status(500).json({ error: "System settings unavailable" });
+        }
 
         let likedMoved = 0;
         let activeDeleted = 0;
@@ -2295,6 +2298,7 @@ router.post("/cleanup-lidarr", requireAdmin, async (req, res) => {
         const settings = await getSystemSettings();
 
         if (
+            !settings ||
             !settings.lidarrEnabled ||
             !settings.lidarrUrl ||
             !settings.lidarrApiKey

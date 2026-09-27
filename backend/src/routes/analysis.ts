@@ -6,12 +6,7 @@ import { requireAuth, requireAdmin } from "../middleware/auth";
 import { getSystemSettings, invalidateSystemSettingsCache } from "../utils/systemSettings";
 import { enrichmentFailureService } from "../services/enrichmentFailureService";
 import { eventBus } from "../services/eventBus";
-import { vibeQueue } from "../workers/enrichmentQueues";
-import { triggerEnrichmentNow, markScanInvalid } from "../workers/unifiedEnrichment";
-import { validateAudioHeader } from "../services/audioScanValidator";
-import { config } from "../config";
-import path from "path";
-import { audioAnalysisCleanupService } from "../services/audioAnalysisCleanup";
+import { triggerEnrichmentNow, settleStageDone, settleStageFailed } from "../workers/unifiedEnrichment";
 import { appendTrackToProjection } from "../services/umapProjection";
 import os from "os";
 
@@ -113,9 +108,11 @@ router.get("/status", requireAuth, async (req, res) => {
         const pending = statusCounts.find(s => s.analysisStatus === "pending")?._count || 0;
         const permanentlyFailed = statusCounts.find(s => s.analysisStatus === "permanently_failed")?._count || 0;
 
-        // Exclude permanently_failed and corrupt tracks from progress denominator
+        // Exclude permanently_failed, corrupt and missing-file tracks from
+        // the progress denominator: none of them can be analysed.
         const corruptCount = await prisma.track.count({ where: { corrupt: true, analysisStatus: { not: "permanently_failed" } } });
-        const total = rawTotal - permanentlyFailed - corruptCount;
+        const missingCount = await prisma.track.count({ where: { missingSince: { not: null }, analysisStatus: { not: "permanently_failed" } } });
+        const total = rawTotal - permanentlyFailed - corruptCount - missingCount;
 
         // Get queue length from Redis
         const queueLength = await redisClient.llen(ANALYSIS_QUEUE);
@@ -156,68 +153,54 @@ router.get("/status", requireAuth, async (req, res) => {
 router.post("/start", requireAuth, requireAdmin, async (req, res) => {
     try {
         const { limit = 100, priority = "recent" } = req.body;
+        const capped = Math.min(limit, 1000);
+        const order = priority === "recent"
+            ? `t."fileModified" DESC`
+            : `t.title ASC`;
 
-        // Find pending tracks. scanStatus must be "valid": this endpoint feeds the same
-        // Redis list the Essentia analyzer decodes from, so skipping the corrupt-file
-        // check here would put exactly the files that hang a worker back in front of it.
-        const tracks = await prisma.track.findMany({
-            where: {
-                analysisStatus: "pending",
-                scanStatus: "valid",
-            },
-            select: {
-                id: true,
-                filePath: true,
-                duration: true,
-            },
-            orderBy: priority === "recent"
-                ? { fileModified: "desc" }
-                : { title: "asc" },
-            take: Math.min(limit, 1000),
-        });
+        // The stage queue owns the feed, so this control brings it forward
+        // instead of pushing: analysis records whose retry backoff or claim
+        // lease has not elapsed are reopened (nextRetryAt = NULL) so the next
+        // cycle offers them immediately, ordered per the request.
+        await prisma.$executeRawUnsafe(
+            `UPDATE "TrackStage" ts
+                SET "nextRetryAt" = NULL
+               FROM "Track" t
+              WHERE ts."trackId" = t.id
+                AND ts.id IN (
+                    SELECT ts2.id FROM "TrackStage" ts2
+                    JOIN "Track" t2 ON ts2."trackId" = t2.id
+                    WHERE ts2.stage = 'analysis'
+                      AND ts2.status IN ('pending', 'failed', 'working')
+                      AND ts2.retryable = true
+                      AND ts2."nextRetryAt" IS NOT NULL
+                      AND ts2."nextRetryAt" > now()
+                    ORDER BY ${order}
+                    LIMIT ${capped})`,
+        );
 
-        if (tracks.length === 0) {
-            // Separate "nothing to do" from "everything is still waiting on the
-            // corrupt-file check", which otherwise look identical from the UI.
-            const awaitingScan = await prisma.track.count({
-                where: {
-                    analysisStatus: "pending",
-                    scanStatus: { not: "valid" },
-                },
-            });
+        // Whatever is due right now is what the next cycle will hand out.
+        const dueRows = await prisma.$queryRawUnsafe<Array<{ count: bigint }>>(
+            `SELECT count(*) FROM "TrackStage"
+              WHERE stage = 'analysis'
+                AND status IN ('pending', 'failed', 'working')
+                AND retryable = true
+                AND ("nextRetryAt" IS NULL OR "nextRetryAt" <= now())`,
+        );
+        const queued = Number(dueRows[0]?.count ?? 0);
+
+        if (queued === 0) {
             return res.json({
-                message: awaitingScan > 0
-                    ? `No tracks ready to analyze -- ${awaitingScan} still awaiting file validation`
-                    : "No pending tracks to analyze",
+                message: "No pending tracks to analyze",
                 queued: 0,
-                awaitingScan,
             });
         }
 
-        // Queue tracks for analysis
-        const pipeline = redisClient.multi();
-        for (const track of tracks) {
-            pipeline.rpush(ANALYSIS_QUEUE, JSON.stringify({
-                trackId: track.id,
-                filePath: track.filePath,
-                duration: track.duration,
-            }));
-        }
-        await pipeline.exec();
-
-        // Claim the rows we just pushed. Without this they stay "pending", so the
-        // background producer re-selects and re-pushes the same tracks on its next
-        // cycle and the analyzer decodes each of them twice.
-        await prisma.track.updateMany({
-            where: { id: { in: tracks.map((t) => t.id) }, analysisStatus: "pending" },
-            data: { analysisStatus: "queued" },
-        });
-
-        logger.debug(`Queued ${tracks.length} tracks for audio analysis`);
+        logger.debug(`Analysis start: ${queued} analysis records due`);
 
         res.json({
-            message: `Queued ${tracks.length} tracks for analysis`,
-            queued: tracks.length,
+            message: `${queued} tracks queued for analysis`,
+            queued,
         });
     } catch (error: any) {
         logger.error("Analysis start error:", error);
@@ -231,7 +214,30 @@ router.post("/start", requireAuth, requireAdmin, async (req, res) => {
  */
 router.post("/retry-failed", requireAuth, requireAdmin, async (req, res) => {
     try {
-        const failedResult = await prisma.track.updateMany({
+        // Reopen the analysis questions on the record: failed+retryable
+        // records become immediately due, and terminal answers are wiped --
+        // the operator explicitly re-decided them. The cycle's stage queue
+        // is the only producer; it picks these up on its next pass.
+        const failedResult = await prisma.$executeRawUnsafe(
+            `UPDATE "TrackStage"
+                SET status = 'pending', "nextRetryAt" = NULL, retryable = true,
+                    "lastErrorCode" = NULL, "lastErrorMessage" = NULL,
+                    "failureClass" = NULL, "startedAt" = NULL, "finishedAt" = NULL,
+                    evidence = jsonb_build_object('reopenedBy', 'retry-failed')
+              WHERE stage = 'analysis' AND status = 'failed'`,
+        );
+        const permFailedResult = await prisma.$executeRawUnsafe(
+            `UPDATE "TrackStage"
+                SET status = 'pending', attempt = 0, "nextRetryAt" = NULL, retryable = true,
+                    "lastErrorCode" = NULL, "lastErrorMessage" = NULL,
+                    "failureClass" = NULL, "startedAt" = NULL, "finishedAt" = NULL,
+                    evidence = jsonb_build_object('reopenedBy', 'retry-failed')
+              WHERE stage = 'analysis' AND status = 'failed' AND retryable = false`,
+        );
+
+        // Mirror the re-ask on the columns the analyzer claims and the UI
+        // reads, so record and columns agree while the retry runs.
+        const failedTracks = await prisma.track.updateMany({
             where: { analysisStatus: "failed" },
             data: {
                 analysisStatus: "pending",
@@ -241,7 +247,7 @@ router.post("/retry-failed", requireAuth, requireAdmin, async (req, res) => {
             },
         });
 
-        const permFailedResult = await prisma.track.updateMany({
+        const permFailedTracks = await prisma.track.updateMany({
             where: { analysisStatus: "permanently_failed" },
             data: {
                 analysisStatus: "pending",
@@ -263,14 +269,12 @@ router.post("/retry-failed", requireAuth, requireAdmin, async (req, res) => {
             },
         });
 
-        audioAnalysisCleanupService.resetCircuitBreaker();
-
-        const totalReset = failedResult.count + permFailedResult.count;
+        const totalReset = failedTracks.count + permFailedTracks.count;
         res.json({
             message: `Reset ${totalReset} failed tracks to pending`,
             reset: totalReset,
-            failed: failedResult.count,
-            permanentlyFailed: permFailedResult.count,
+            failed: failedTracks.count,
+            permanentlyFailed: permFailedTracks.count,
         });
     } catch (error: any) {
         logger.error("Retry failed error:", error);
@@ -300,62 +304,50 @@ router.post("/analyze/:trackId", requireAuth, async (req, res) => {
             return res.status(404).json({ error: "Track not found" });
         }
 
-        // Don't disturb a track a worker is already decoding.
-        if (track.analysisStatus === "processing") {
+        // Don't disturb an attempt the stage queue has already claimed.
+        const inFlight = await prisma.$queryRawUnsafe<Array<{ status: string }>>(
+            `SELECT status FROM "TrackStage"
+              WHERE "trackId" = $1 AND stage = 'analysis' AND status = 'working'`,
+            trackId,
+        );
+        if (inFlight.length > 0) {
             return res.json({
                 message: "Track is already being analyzed",
                 trackId,
             });
         }
 
-        // Check the file before handing it to Essentia. This is the same header check
-        // the background scan phase runs; doing it inline here means a single-track
-        // request gets an answer immediately instead of silently queueing a file that
-        // will stall a worker for three minutes and then be retried twice more.
-        const musicPath = config.music.musicPath;
-        if (!musicPath) {
-            // Without it we cannot resolve the file to check it, and queueing an
-            // unchecked track is exactly what the gate exists to prevent.
-            return res.status(503).json({
-                error: "Music library path is not configured",
-                trackId,
-            });
-        }
-
-        const result = await validateAudioHeader(path.join(musicPath, track.filePath));
-        if (!result.valid) {
-            const reason = result.error ?? "Unknown validation failure";
-            await markScanInvalid(track.id, reason);
-            return res.status(422).json({
-                error: "Track failed file validation",
-                reason,
-                trackId,
-            });
-        }
-        await prisma.track.update({
-            where: { id: trackId },
-            data: { scanStatus: "valid", scanError: null, scanStartedAt: null },
-        });
-
-        // Queue for analysis, then claim the row -- same order as the background
-        // producer. The analyzer flushes this list on worker start, so an entry left
-        // behind by a crash between the two is dropped rather than double-decoded.
-        await redisClient.rpush(ANALYSIS_QUEUE, JSON.stringify({
-            trackId: track.id,
-            filePath: track.filePath,
-            duration: track.duration,
-        }));
-
+        // Reopen the question on the record (a pending record with a null
+        // nextRetryAt is immediately due) and mirror it on the columns the
+        // analyzer claims and the UI reads. Reopen, not delete: the attempt
+        // history survives the ask. The cycle's stage queue is the only
+        // producer; it picks this up on its next pass, so there is nothing
+        // to push here.
+        await prisma.$executeRawUnsafe(
+            `UPDATE "TrackStage"
+                SET status = 'pending',
+                    "lastErrorCode" = NULL,
+                    "lastErrorMessage" = NULL,
+                    "failureClass" = NULL,
+                    retryable = true,
+                    "nextRetryAt" = NULL,
+                    "startedAt" = NULL,
+                    "finishedAt" = NULL,
+                    "decidedAt" = NULL,
+                    "decidedBy" = NULL
+              WHERE "trackId" = $1 AND stage = 'analysis'`,
+            trackId,
+        );
         await prisma.track.update({
             where: { id: trackId },
             data: {
-                analysisStatus: "queued",
+                analysisStatus: "pending",
                 // An explicit request to analyze this track is a request to start over.
-                // Left alone, a count already at the ceiling would have the next
-                // enrichment cycle condemn the track to permanently_failed before the
-                // analyzer ever reached it.
+                // Left alone, a count already at the ceiling would brand the retry
+                // before the analyzer ever reached it.
                 analysisRetryCount: 0,
                 analysisError: null,
+                analysisStartedAt: null,
             },
         });
 
@@ -666,12 +658,21 @@ router.post("/vibe/failure", async (req, res) => {
             return res.status(400).json({ error: "trackId is required" });
         }
 
-        await enrichmentFailureService.recordFailure({
-            entityType: "vibe",
-            entityId: trackId,
-            entityName: trackName,
+        // The stage record is the ONLY record of this failure:
+        // the failures API reads TrackStage for track stages, so no second
+        // EnrichmentFailure write happens here — two ledgers for one fact
+        // drifted apart until one was superseded.
+
+        // Settle the embedding stage record with the failure the CLAP worker
+        // reported: retryable with the standard backoff, so the stage queue
+        // re-asks it instead of the claim's lease silently re-offering an
+        // unanswered question.
+        await settleStageFailed(trackId, "embedding", {
+            errorCode: errorCode || null,
             errorMessage: errorMessage || "Vibe embedding generation failed",
-            errorCode: errorCode,
+            failureClass: "INCONCLUSIVE",
+            retryable: true,
+            evidence: { error: errorMessage || "Vibe embedding generation failed", trackName },
         });
 
         res.json({ message: "Failure recorded" });
@@ -692,69 +693,111 @@ router.post("/vibe/start", requireAuth, requireAdmin, async (req, res) => {
     try {
         const { limit = 500, force = false } = req.body;
 
-        // If force mode, delete all existing embeddings first
         if (force) {
-            await prisma.$executeRaw`DELETE FROM track_embeddings`;
-            await enrichmentFailureService.clearAllFailures("vibe");
-            // Every embedding is gone, so every status must go too --
-            // leaving 'completed' on rows with no embedding made any
-            // consumer keying on vibeAnalysisStatus lie mid-rebuild.
-            await prisma.track.updateMany({
-                where: {},
-                data: { vibeAnalysisStatus: null, vibeAnalysisRetryCount: 0, vibeAnalysisStatusUpdatedAt: null },
-            });
-            logger.info("Cleared all vibe embeddings for re-generation");
+            // Force = "re-decide everything the vibe engine ever answered".
+            // Step 2's rule: re-asking must never delete the data first.
+            // The existing embeddings stay readable — the vibe map keeps
+            // working while the rebuild runs — and the embedding worker
+            // OVERWRITES each track's row as its new embedding lands. So
+            // the only thing force does is re-open every embedding
+            // question (the same reopen `redecideEverything` performs):
+            // the embedding rows are not removed, no failure clearing, no
+            // status nulling, no record deletion. A record saying `done`
+            // would keep the stage queue from ever re-asking; a `pending`
+            // one with the old answer still on disk asks again while
+            // nothing is lost.
+            await prisma.$executeRawUnsafe(
+                `UPDATE "TrackStage"
+                    SET status = 'pending',
+                        attempt = 0,
+                        "lastErrorCode" = NULL,
+                        "lastErrorMessage" = NULL,
+                        "failureClass" = NULL,
+                        retryable = true,
+                        "nextRetryAt" = NULL,
+                        "startedAt" = NULL,
+                        "finishedAt" = NULL,
+                        "decidedAt" = NULL,
+                        "decidedBy" = NULL
+                  WHERE stage = 'embedding'`,
+            );
+            logger.info(
+                "Re-opened every vibe embedding question for re-generation (existing embeddings stay readable until each is overwritten)",
+            );
+        } else {
+            // Reopen the embedding questions for analysed tracks whose row is
+            // missing, so the stage queue (the only producer) offers them.
+            // Gating reads the analysis RECORD, not the status column.
+            // Reopen, not delete: "ask again" is a pending record, and the
+            // attempt history survives the ask.
+            await prisma.$executeRawUnsafe(
+                `UPDATE "TrackStage" ts
+                    SET status = 'pending',
+                        "lastErrorCode" = NULL,
+                        "lastErrorMessage" = NULL,
+                        "failureClass" = NULL,
+                        retryable = true,
+                        "nextRetryAt" = NULL,
+                        "startedAt" = NULL,
+                        "finishedAt" = NULL,
+                        "decidedAt" = NULL,
+                        "decidedBy" = NULL
+                   FROM "TrackStage" a, "Track" t
+                  WHERE ts.stage = 'embedding'
+                    AND a."trackId" = ts."trackId" AND a.stage = 'analysis' AND a.status = 'done'
+                    AND t.id = ts."trackId"
+                    AND ts.status <> 'pending'
+                    AND NOT EXISTS (SELECT 1 FROM track_embeddings te WHERE te.track_id = ts."trackId")
+                    ${limit ? `AND ts.ctid IN (
+                        SELECT ts2.ctid FROM "TrackStage" ts2
+                        JOIN "TrackStage" a2 ON a2."trackId" = ts2."trackId" AND a2.stage = 'analysis' AND a2.status = 'done'
+                        WHERE ts2.stage = 'embedding'
+                          AND ts2.status <> 'pending'
+                          AND NOT EXISTS (SELECT 1 FROM track_embeddings te2 WHERE te2.track_id = ts2."trackId")
+                        LIMIT ${Math.min(Number(limit) || 500, 10000)})` : ""}`,
+            );
         }
 
-        // Find analyzed tracks without vibe embeddings (all tracks if force was used).
-        // Requires analysisStatus = "completed" to match the reactive pub/sub path
-        // in audioCompletionSubscriber.ts.
-        const tracks = await prisma.$queryRaw<{ id: string; filePath: string; duration: number; title: string }[]>`
-            SELECT t.id, t."filePath", t.duration, t.title
-            FROM "Track" t
-            LEFT JOIN track_embeddings te ON t.id = te.track_id
-            WHERE te.track_id IS NULL
-            AND t."filePath" IS NOT NULL
-            AND t."analysisStatus" = 'completed'
-            ORDER BY t."fileModified" DESC
-            LIMIT ${limit}
-        `;
+        // Count what is now owed: an analysis-done track whose embedding
+        // question is open. After a force re-decide the answers still exist
+        // (they are being REPLACED, not deleted), so the NOT EXISTS filter
+        // that counts only missing answers must not apply — the reopened
+        // questions are owed precisely because they were re-opened.
+        const owedRows = force
+            ? await prisma.$queryRaw<Array<{ count: bigint }>>`
+                  SELECT count(*) FROM "TrackStage" ts
+                  JOIN "TrackStage" a ON a."trackId" = ts."trackId" AND a.stage = 'analysis' AND a.status = 'done'
+                  WHERE ts.stage = 'embedding'
+                    AND ts.status IN ('pending', 'failed', 'working')
+                    AND ts.retryable = true
+                    AND (ts."nextRetryAt" IS NULL OR ts."nextRetryAt" <= now())
+              `
+            : await prisma.$queryRaw<Array<{ count: bigint }>>`
+                  SELECT count(*) FROM "TrackStage" ts
+                  JOIN "TrackStage" a ON a."trackId" = ts."trackId" AND a.stage = 'analysis' AND a.status = 'done'
+                  WHERE ts.stage = 'embedding'
+                    AND ts.status IN ('pending', 'failed', 'working')
+                    AND ts.retryable = true
+                    AND (ts."nextRetryAt" IS NULL OR ts."nextRetryAt" <= now())
+                    AND NOT EXISTS (SELECT 1 FROM track_embeddings te WHERE te.track_id = ts."trackId")
+              `;
+        const queued = Number(owedRows[0]?.count ?? 0);
 
-        if (tracks.length === 0) {
+        if (queued === 0) {
             return res.json({
                 message: "All tracks have vibe embeddings",
                 queued: 0,
             });
         }
 
-        // Clean completed AND failed jobs so jobId dedup can't silently drop a
-        // re-queued track. This is a manual retry action, so failed jobs are
-        // cleared immediately (grace 0) -- the user asked to retry now.
-        await vibeQueue.clean(0, 0, "completed");
-        await vibeQueue.clean(0, 0, "failed");
-
-        // Queue tracks for CLAP embedding via BullMQ (jobId deduplication)
-        await vibeQueue.addBulk(
-            tracks.map((track) => ({
-                name: "embed",
-                data: { trackId: track.id, filePath: track.filePath, duration: track.duration },
-                opts: { jobId: `vibe-${track.id}` },
-            })),
-        );
-
-        // Clear any existing vibe failures for these tracks
-        for (const track of tracks) {
-            await enrichmentFailureService.clearFailure("vibe", track.id);
-        }
-
-        // Restart the enrichment cycle so executeVibePhase sweeps remaining tracks
+        // Restart the enrichment cycle so executeVibePhase feeds the queue
         await triggerEnrichmentNow();
 
-        logger.info(`Queued ${tracks.length} tracks for vibe embedding${force ? " (force reset)" : ""}`);
+        logger.info(`${queued} tracks owed vibe embedding${force ? " (force reset)" : ""}`);
 
         res.json({
-            message: `Queued ${tracks.length} tracks for vibe embedding`,
-            queued: tracks.length,
+            message: `Queued ${queued} tracks for vibe embedding`,
+            queued,
         });
     } catch (error: any) {
         logger.error("Start vibe embedding error:", error);
@@ -768,7 +811,10 @@ router.post("/vibe/start", requireAuth, requireAdmin, async (req, res) => {
  */
 router.post("/vibe/retry", requireAuth, requireAdmin, async (req, res) => {
     try {
-        // Get all vibe failures
+        // Get all vibe failures. Embedding failures live in TrackStage (the
+        // record the queue decides from); the service maps them onto the
+        // EnrichmentFailure shape, so the ids below are stage-record ids and
+        // resetRetryCount clears their attempt budget.
         const { failures } = await enrichmentFailureService.getFailures({
             entityType: "vibe",
             includeSkipped: false,
@@ -784,43 +830,44 @@ router.post("/vibe/retry", requireAuth, requireAdmin, async (req, res) => {
 
         // Get track details for failed tracks
         const trackIds = failures.map(f => f.entityId);
-        const tracks = await prisma.track.findMany({
-            where: { id: { in: trackIds } },
-            select: { id: true, filePath: true, duration: true, title: true },
-        });
 
-        // Reset Track-level retry counts so the vibe queue can pick them up again
+        // Reset Track-level retry counts so the UI shows them as owed again
         await prisma.track.updateMany({
             where: { id: { in: trackIds } },
             data: { vibeAnalysisStatus: null, vibeAnalysisRetryCount: 0, vibeAnalysisStatusUpdatedAt: null },
         });
 
-        // Clean completed AND failed jobs so jobId dedup can't silently drop a
-        // re-queued track. This is a manual retry action, so failed jobs are
-        // cleared immediately (grace 0) -- the user asked to retry now.
-        await vibeQueue.clean(0, 0, "completed");
-        await vibeQueue.clean(0, 0, "failed");
-
-        // Queue for retry via BullMQ (jobId deduplication)
-        await vibeQueue.addBulk(
-            tracks.map((track) => ({
-                name: "embed",
-                data: { trackId: track.id, filePath: track.filePath, duration: track.duration },
-                opts: { jobId: `vibe-${track.id}` },
-            })),
+        // Reopen the embedding questions: a pending record is immediately
+        // due, and the cycle's executeVibePhase is the only producer.
+        // Reopen, not delete — the attempt history survives the ask.
+        await prisma.$executeRawUnsafe(
+            `UPDATE "TrackStage"
+                SET status = 'pending',
+                    "lastErrorCode" = NULL,
+                    "lastErrorMessage" = NULL,
+                    "failureClass" = NULL,
+                    retryable = true,
+                    "nextRetryAt" = NULL,
+                    "startedAt" = NULL,
+                    "finishedAt" = NULL,
+                    "decidedAt" = NULL,
+                    "decidedBy" = NULL
+              WHERE stage = 'embedding' AND "trackId" = ANY($1)`,
+            trackIds,
         );
 
-        // Reset EnrichmentFailure retry counts
+        // Reset the stage records' retry budget (attempt = 0), mirroring the
+        // ledger reset the old EnrichmentFailure ids used to get.
         await enrichmentFailureService.resetRetryCount(failures.map(f => f.id));
 
-        // Restart the enrichment cycle so executeVibePhase sweeps remaining tracks
+        // Restart the enrichment cycle so executeVibePhase feeds the queue
         await triggerEnrichmentNow();
 
-        logger.info(`Retrying ${tracks.length} failed vibe embeddings`);
+        logger.info(`Retrying ${trackIds.length} failed vibe embeddings`);
 
         res.json({
-            message: `Queued ${tracks.length} failed tracks for vibe embedding retry`,
-            queued: tracks.length,
+            message: `Queued ${trackIds.length} failed tracks for vibe embedding retry`,
+            queued: trackIds.length,
         });
     } catch (error: any) {
         logger.error("Retry vibe failures error:", error);
@@ -846,8 +893,17 @@ router.post("/vibe/success", async (req, res) => {
             return res.status(400).json({ error: "trackId is required" });
         }
 
-        // Resolve any stale failure records for this track
-        await enrichmentFailureService.resolveByEntity("vibe", trackId);
+        // No ledger resolve here: the embedding stage record IS the failure
+        // record, and settleStageDone below answers it done — a
+        // failed embedding simply disappears from the TrackStage-backed
+        // failures list. Writing a second record was the drift this defect
+        // removes.
+
+        // Settle the embedding stage record: the CLAP worker landed the
+        // embedding, so the question is answered done.
+        await settleStageDone(trackId, "embedding", {
+            outcome: "embedded",
+        });
 
         // Incrementally add to vibe map projection (non-blocking)
         appendTrackToProjection(trackId).catch(e =>

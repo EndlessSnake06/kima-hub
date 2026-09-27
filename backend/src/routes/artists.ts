@@ -14,6 +14,7 @@ import {
 } from "../services/artwork";
 import { safeError } from "../utils/errors";
 import { upstreamHeader } from "../utils/upstreamHeaders";
+import { failureCause } from "../utils/outcome";
 
 const router = Router();
 router.use(requireAuthOrToken);
@@ -155,32 +156,47 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
 
         // If we have a name but no MBID, search for it
         if (!mbid && artistName) {
-            const mbResults = await musicBrainzService.searchArtist(
+            const found = await musicBrainzService.searchArtist(
                 artistName,
                 1
             );
-            if (mbResults.length > 0) {
-                mbid = mbResults[0].id;
-                artistName = mbResults[0].name;
+            if (found.kind === "answered") {
+                if (found.value.length > 0) {
+                    mbid = found.value[0].id;
+                    artistName = found.value[0].name;
+                }
+            } else if (found.kind === "absent") {
+                logger.debug(
+                    `[Discovery] no artist matches ${artistName} on MusicBrainz`
+                );
+            } else {
+                // A failed search is not "no such artist": serve the page
+                // without the MBID-backed data and say so in the log.
+                logger.debug(
+                    `[Discovery] MB artist search ${found.kind} for ${artistName}: ${failureCause(found)}`
+                );
             }
         }
 
         // If we have MBID but no name, get it from MusicBrainz.
         //
-        // A well-formed id MusicBrainz does not recognise is not a server fault. It is the
-        // common case here rather than a malformed request: the ids reach us from the similarity engine's
-        // similar-artist data, which is full of MBIDs for artists that have since been
-        // merged or deleted, and the "Fans Also Like" tiles navigate straight back into this
-        // handler. Letting the throw escape answered 500 for an ordinary click.
+        // A well-formed id MusicBrainz does not recognise is not a server
+        // fault: the ids reach us from the similarity engine's
+        // similar-artist data, which is full of MBIDs for artists that have
+        // since been merged or deleted, and the "Fans Also Like" tiles
+        // navigate straight back into this handler. `absent` answers the
+        // 404 below; a failed call logs with its real cause and also
+        // lands there rather than 500-ing an ordinary click.
         if (mbid && !artistName) {
-            try {
-                const mbArtist = await musicBrainzService.getArtist(mbid);
-                artistName = mbArtist.name;
-            } catch (error: any) {
-                const upstreamStatus = error.response?.status;
-                if (!(upstreamStatus >= 400 && upstreamStatus < 500)) throw error;
-                // Fall through: artistName stays empty and the 404 below answers.
+            const mbArtist = await musicBrainzService.getArtist(mbid);
+            if (mbArtist.kind === "answered") {
+                artistName = mbArtist.value.name;
+            } else if (mbArtist.kind === "absent") {
                 logger.debug(`MusicBrainz does not know artist ${mbid}`);
+            } else {
+                logger.debug(
+                    `MusicBrainz artist lookup ${mbArtist.kind} for ${mbid}: ${failureCause(mbArtist)}`
+                );
             }
         }
 
@@ -229,13 +245,22 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
         // Discography from MusicBrainz (parallel)
         const discographyPromise = (async (): Promise<any[]> => {
             if (!mbid) return [];
-            try {
-                const releaseGroups = await musicBrainzService.getReleaseGroups(
-                    mbid
+            const rgs = await musicBrainzService.getReleaseGroups(
+                mbid
+            );
+            if (rgs.kind !== "answered") {
+                logger.debug(
+                    `[Discovery] discography for ${artistName}: ${
+                        rgs.kind === "absent"
+                            ? "MusicBrainz has no release-groups"
+                            : failureCause(rgs)
+                    }`
                 );
-
+                return [];
+            }
+            try {
                 // Filter albums - only show studio albums and EPs
-                const filteredReleaseGroups = releaseGroups.filter(
+                const filteredReleaseGroups = rgs.value.filter(
                     (rg: any) => {
                         const isPrimaryType =
                             rg["primary-type"] === "Album" ||
@@ -342,17 +367,19 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
         // Genres: MusicBrainz artist record (replaces Last.fm tags).
         let tags: string[] = [];
         if (mbid) {
-            try {
-                const mbArtist = await musicBrainzService.getArtist(mbid, [
-                    "genres",
-                ]);
-                tags = (mbArtist?.genres || [])
+            const mbArtist = await musicBrainzService.getArtist(mbid, [
+                "genres",
+            ]);
+            if (mbArtist.kind === "answered") {
+                tags = (mbArtist.value.genres || [])
                     .sort((a: any, b: any) => (b.count || 0) - (a.count || 0))
                     .slice(0, 5)
                     .map((g: any) => g.name)
                     .filter(Boolean);
-            } catch (err) {
-                logger.debug(`MB genres failed for ${artistName}:`, err);
+            } else if (mbArtist.kind !== "absent") {
+                logger.debug(
+                    `MB genres ${mbArtist.kind} for ${artistName}: ${failureCause(mbArtist)}`
+                );
             }
         }
 
@@ -429,51 +456,63 @@ router.get("/album/:mbid", async (req, res) => {
         let release: any = null;
         let releaseGroupId: string = mbid;
 
-        // Try as release-group first, then as release
-        try {
-            releaseGroup = await musicBrainzService.getReleaseGroup(mbid);
-        } catch (error: any) {
-            // Any "you asked for something that isn't there" answer means this is not a
-            // release-group, so try it as a release. Only a 404 was handled before, which
-            // left every other client-side rejection to escape as a 500.
-            const upstreamStatus = error.response?.status;
-            if (upstreamStatus >= 400 && upstreamStatus < 500) {
-                logger.debug(
-                    `${mbid} is not a release-group, trying as release...`
-                );
-                try {
-                    release = await musicBrainzService.getRelease(mbid);
-                } catch (releaseError: any) {
-                    // A well-formed id that MusicBrainz knows nothing about as either a
-                    // release-group or a release is simply an album that does not exist.
-                    // Letting this escape reported it as a server fault.
-                    const releaseStatus = releaseError.response?.status;
-                    if (releaseStatus >= 400 && releaseStatus < 500) {
-                        return res.status(404).json({ error: "Album not found" });
-                    }
-                    throw releaseError;
-                }
-                releaseGroupId = release["release-group"]?.id || mbid;
-
-                // Now get the release group to get the type and first-release-date
-                if (releaseGroupId) {
-                    try {
-                        releaseGroup = await musicBrainzService.getReleaseGroup(
-                            releaseGroupId
-                        );
-                    } catch (err) {
-                        logger.error(
-                            `Failed to get release-group ${releaseGroupId}`
-                        );
-                    }
-                }
+        // Try as release-group first, then as release.
+        const rgOutcome = await musicBrainzService.getReleaseGroup(mbid);
+        if (rgOutcome.kind === "answered") {
+            releaseGroup = rgOutcome.value;
+        } else if (
+            rgOutcome.kind === "absent" ||
+            rgOutcome.kind === "permanent"
+        ) {
+            // Any "you asked for something that isn't there" answer means
+            // this is not a release-group, so try it as a release.
+            logger.debug(`${mbid} is not a release-group, trying as release...`);
+            const relOutcome = await musicBrainzService.getRelease(mbid);
+            if (relOutcome.kind === "answered") {
+                release = relOutcome.value;
+            } else if (relOutcome.kind === "absent") {
+                // A well-formed id that MusicBrainz knows nothing about as
+                // either a release-group or a release is simply an album
+                // that does not exist.
+                return res.status(404).json({ error: "Album not found" });
             } else {
-                throw error;
+                // A failed call is not "album not found": the page cannot
+                // be built honestly without the data, so say what happened.
+                logger.debug(
+                    `MB release lookup ${relOutcome.kind} for ${mbid}: ${failureCause(relOutcome)}`
+                );
+                return res
+                    .status(503)
+                    .json({ error: "MusicBrainz is not answering" });
             }
-        }
+            releaseGroupId = release["release-group"]?.id || mbid;
 
-        if (!releaseGroup && !release) {
-            return res.status(404).json({ error: "Album not found" });
+            // Now get the release group to get the type and first-release-date
+            if (releaseGroupId) {
+                const rg2 = await musicBrainzService.getReleaseGroup(
+                    releaseGroupId
+                );
+                if (rg2.kind === "answered") {
+                    releaseGroup = rg2.value;
+                } else {
+                    logger.debug(
+                        `Failed to get release-group ${releaseGroupId}: ${
+                            rg2.kind === "absent"
+                                ? "no such release-group"
+                                : failureCause(rg2)
+                        }`
+                    );
+                }
+            }
+        } else {
+            // Neither answer nor "not there" — the lookup itself failed;
+            // that is a server-side problem, not a missing album.
+            logger.debug(
+                `MB release-group lookup ${rgOutcome.kind} for ${mbid}: ${failureCause(rgOutcome)}`
+            );
+            return res
+                .status(503)
+                .json({ error: "MusicBrainz is not answering" });
         }
 
         // Get the artist name and MBID from either release-group or release
@@ -494,14 +533,18 @@ router.get("/album/:mbid", async (req, res) => {
             tracks = release.media?.[0]?.tracks || [];
         } else if (releaseGroup?.releases && releaseGroup.releases.length > 0) {
             const firstRelease = releaseGroup.releases[0];
-            try {
-                const releaseDetails = await musicBrainzService.getRelease(
-                    firstRelease.id
-                );
-                tracks = releaseDetails.media?.[0]?.tracks || [];
-            } catch (error) {
+            const releaseDetails = await musicBrainzService.getRelease(
+                firstRelease.id
+            );
+            if (releaseDetails.kind === "answered") {
+                tracks = releaseDetails.value.media?.[0]?.tracks || [];
+            } else {
                 logger.error(
-                    `Failed to get tracks for release ${firstRelease.id}`
+                    `Failed to get tracks for release ${firstRelease.id}: ${
+                        releaseDetails.kind === "absent"
+                            ? "no data on MusicBrainz"
+                            : failureCause(releaseDetails)
+                    }`
                 );
             }
         }

@@ -25,6 +25,8 @@ import {
     type SimilarArtist,
 } from "./artistSimilarity";
 import { musicBrainzService } from "./musicbrainz";
+import { failureCause } from "../utils/outcome";
+import { sourcePauseController } from "./sourcePauseController";
 import { updateBatchStatus } from "./discovery/optimisticBatchUpdate";
 import { lidarrService } from "./lidarr";
 import { scanQueue } from "../workers/queues";
@@ -133,6 +135,11 @@ class DiscoverWeeklyService {
 
             // CRITICAL: Process previous week's liked albums before generating new ones
             discoveryLogger.section("PROCESSING PREVIOUS WEEK");
+            if (!settings) {
+                discoveryLogger.error("System settings row missing — cannot process previous week");
+                discoveryLogger.end(false, "System settings missing");
+                throw new Error("System settings row missing");
+            }
             await discoveryAlbumLifecycle.processBeforeGeneration(userId, settings);
 
             const targetCount = config.playlistSize;
@@ -468,9 +475,16 @@ class DiscoverWeeklyService {
         // ListenBrainz dataset has data — so the old retry-on-429 loop is
         // gone; there is nothing to retry, and a cold seed should fall
         // through to the next strategy instead of stalling the run.
+        // While the ListenBrainz source is PAUSED (a rate limit was seen),
+        // even the local-first call is skipped: seeds answer from the
+        // local centroid / next strategy, and the dataset is tried again
+        // when the pause lifts.
         const fetchWithRetry = async (
             seed: SeedArtist
         ): Promise<SimilarArtist[]> => {
+            if (await sourcePauseController.isPaused("listenbrainz")) {
+                return [];
+            }
             return getSimilarArtists(seed.mbid || "", seed.name, 20);
         };
 
@@ -2174,8 +2188,18 @@ class DiscoverWeeklyService {
                         ["album"],
                         5
                     );
+                    if (rgs.kind !== "answered") {
+                        logger.debug(
+                            `[Discovery]   ${similar.name}: ${
+                                rgs.kind === "absent"
+                                    ? "MusicBrainz has no release-groups"
+                                    : failureCause(rgs)
+                            }`
+                        );
+                        continue;
+                    }
 
-                    for (const rg of rgs) {
+                    for (const rg of rgs.value) {
                         if (mbLookupsAttempted >= MAX_MB_LOOKUPS) {
                             logger.debug(
                                 `[Discovery]   Reached MusicBrainz lookup cap (${MAX_MB_LOOKUPS}) for this replacement search`
@@ -2326,17 +2350,24 @@ class DiscoverWeeklyService {
             // artist.getTopAlbums). No MBID → nothing to ask about; the
             // mbid-keyed browse is exact, so the old searchAlbum-by-name
             // round-trip below collapses to a direct {id, title}.
-            const rgs: Array<{ id: string; title: string }> = artist.mbid
-                ? await musicBrainzService.getReleaseGroups(
-                      artist.mbid,
-                      ["album"],
-                      10
-                  )
-                : [];
-            const topAlbums = rgs.map((rg) => ({
-                name: rg.title,
-                mbid: rg.id,
-            }));
+            let topAlbums: Array<{ name: string; mbid: string }> = [];
+            if (artist.mbid) {
+                const rgs = await musicBrainzService.getReleaseGroups(
+                    artist.mbid,
+                    ["album"],
+                    10
+                );
+                if (rgs.kind === "answered") {
+                    topAlbums = rgs.value.map((rg) => ({
+                        name: rg.title,
+                        mbid: rg.id,
+                    }));
+                } else if (rgs.kind !== "absent") {
+                    logger.debug(
+                        `      [SKIP] ${artist.name}: ${failureCause(rgs)}`
+                    );
+                }
+            }
 
             if (topAlbums.length === 0) {
                 return {
@@ -2373,25 +2404,36 @@ class DiscoverWeeklyService {
 
                 // Get detailed album information
                 const details = await musicBrainzService.getAlbumDetails(mbAlbum.id);
-                if (!details) {
+                if (details.kind !== "answered") {
+                    // "Absent" is the honest no-data case; a failed
+                    // lookup is logged with its cause. Both skip this
+                    // album — the next one gets asked.
                     skippedNoMbid++;
+                    if (details.kind !== "absent") {
+                        logger.debug(
+                            `      [SKIP] ${album.name}: ${failureCause(details)}`
+                        );
+                    }
                     continue;
                 }
 
                 // Skip non-studio albums (use MusicBrainz metadata instead of regex)
-                if (details.primaryType !== 'Album') {
+                if (details.value.primaryType !== 'Album') {
                     continue;
                 }
-                if (details.secondaryTypes?.includes('Live')) {
+                if (details.value.secondaryTypes?.includes('Live')) {
                     continue;
                 }
-                if (details.secondaryTypes?.includes('Compilation')) {
+                if (details.value.secondaryTypes?.includes('Compilation')) {
                     continue;
                 }
 
                 // Skip EPs (< 7 tracks)
-                if (details.trackCount && details.trackCount < MIN_TRACK_COUNT) {
-                    logger.debug(`      [SKIP] ${album.name} - only ${details.trackCount} tracks (EP)`);
+                if (
+                    details.value.trackCount &&
+                    details.value.trackCount < MIN_TRACK_COUNT
+                ) {
+                    logger.debug(`      [SKIP] ${album.name} - only ${details.value.trackCount} tracks (EP)`);
                     continue;
                 }
 
@@ -2419,7 +2461,9 @@ class DiscoverWeeklyService {
                 let score = 0;
 
                 // Recent albums get bonus (last 5 years)
-                const releaseYear = details.releaseDate ? parseInt(details.releaseDate.split('-')[0]) : 0;
+                const releaseYear = details.value.releaseDate
+                    ? parseInt(details.value.releaseDate.split('-')[0])
+                    : 0;
                 if (releaseYear >= currentYear - RECENT_YEARS) {
                     score += 10;
                 }
@@ -2432,7 +2476,7 @@ class DiscoverWeeklyService {
                     albumMbid: mbAlbum.id,
                     score,
                     releaseYear,
-                    trackCount: details.trackCount || 0,
+                    trackCount: details.value.trackCount || 0,
                 });
             }
 
@@ -2722,8 +2766,18 @@ class DiscoverWeeklyService {
                     genre,
                     30
                 );
+                if (tagAlbums.kind !== "answered") {
+                    logger.debug(
+                        `   [tag:${genre}] ${
+                            tagAlbums.kind === "absent"
+                                ? "MusicBrainz has no albums for this tag"
+                                : failureCause(tagAlbums)
+                        }`
+                    );
+                    continue;
+                }
 
-                for (const album of tagAlbums) {
+                for (const album of tagAlbums.value) {
                     if (recommendations.length >= targetCount) break;
 
                     const artistName = album.artistName;

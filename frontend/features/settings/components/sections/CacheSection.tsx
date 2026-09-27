@@ -5,6 +5,7 @@ import { SettingsSection, SettingsRow, SettingsToggle } from "../ui";
 import { SystemSettings } from "../../types";
 import { api } from "@/lib/api";
 import { enrichmentApi, type EnrichmentFailure } from "@/lib/enrichmentApi";
+import { useAuth } from "@/lib/auth-context";
 import { useFeatures } from "@/lib/features-context";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import {
@@ -188,63 +189,37 @@ function EnrichmentFailuresList({ active = false }: { active?: boolean }) {
     );
 }
 
-type ConfirmTarget =
-    | "artists"
-    | "moodTags"
-    | "audioAnalysis"
-    | "vibeEmbeddings"
-    | "allEnrichment"
-    | null;
+type ConfirmTarget = "retryFailedAndBlocked" | "redecideEverything" | null;
 
 const confirmMeta: Record<
     NonNullable<ConfirmTarget>,
     { title: string; message: string; confirmText: string }
 > = {
-    artists: {
-        title: "Reset Artist Metadata?",
+    retryFailedAndBlocked: {
+        title: "Retry Failed and Blocked?",
         message:
-        "This clears all artist bios, images, and similar-artist data and re-fetches everything from the current sources (ListenBrainz, MusicBrainz, local similarity). On large libraries this can take a while.",
-        confirmText: "Reset Artists",
+        "This re-queues every track that is still owed an answer -- failed, blocked, or never asked. Done answers are not re-asked and nothing is wiped; the queue simply takes the work again.",
+        confirmText: "Retry Failed and Blocked",
     },
-    moodTags: {
-        title: "Reset Mood Tags?",
+    redecideEverything: {
+        title: "Re-decide Everything?",
         message:
-        "This deletes all mood and vibe tags for every track. Re-running mood tagging on a large library takes time.",
-        confirmText: "Reset Mood Tags",
-    },
-    audioAnalysis: {
-        title: "Reset Audio Analysis?",
-        message:
-        "This deletes BPM, key, energy, and danceability results for every track. Re-analysis is CPU-intensive and can take a long time on large libraries.",
-        confirmText: "Reset Audio Analysis",
-    },
-    vibeEmbeddings: {
-        title: "Reset Vibe Embeddings?",
-        message:
-        "This deletes all CLAP audio embeddings used for vibe similarity. Re-embedding is CPU-intensive and can take a long time on large libraries.",
-        confirmText: "Reset Vibe Embeddings",
-    },
-    allEnrichment: {
-        title: "Reset All Enrichment Data?",
-        message:
-        "This wipes everything: artist metadata, audio analysis, vibe embeddings, mood tags, and all failure records. Your entire library will be re-enriched from scratch. This is slow to rebuild on large libraries.",
-        confirmText: "Reset Everything",
+        "This re-opens every stage question, answered or not, so the sweep asks again. It never re-runs AcoustID over a track that already has a recording match, and it deletes no answers -- only the queue's own state moves.",
+        confirmText: "Re-decide Everything",
     },
 };
 
 export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
     const { musicCNN, vibeEmbeddings, loading: featuresLoading } = useFeatures();
+    const { user: currentUser } = useAuth();
     const [syncing, setSyncing] = useState(false);
     const [clearingCaches, setClearingCaches] = useState(false);
-    const [reEnriching, setReEnriching] = useState(false);
     const [cleaningStaleJobs, setCleaningStaleJobs] = useState(false);
-    const [resettingArtists, setResettingArtists] = useState(false);
-    const [resettingMoodTags, setResettingMoodTags] = useState(false);
-    const [resettingAudio, setResettingAudio] = useState(false);
-    const [resettingVibe, setResettingVibe] = useState(false);
-    const [resettingEnrichment, setResettingEnrichment] = useState(false);
+    const [retryingAll, setRetryingAll] = useState(false);
+    const [redeciding, setRedeciding] = useState(false);
     const [retryingFailed, setRetryingFailed] = useState(false);
     const [retryResult, setRetryResult] = useState<{ reset: number } | null>(null);
+    const [queueResult, setQueueResult] = useState<number | null>(null);
     const [confirmTarget, setConfirmTarget] = useState<ConfirmTarget>(null);
     const [maintenanceOpen, setMaintenanceOpen] = useState(false);
     const [cleanupResult, setCleanupResult] = useState<{
@@ -499,78 +474,35 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
         }
     };
 
-    const handleFullEnrichment = async () => {
-        setReEnriching(true);
+    const execRetryFailedAndBlocked = async () => {
+        setRetryingAll(true);
         setError(null);
         try {
-            await api.triggerFullEnrichment();
-            refreshNotifications();
+            const result = await api.retryFailedAndBlocked();
+            setQueueResult(result.queued);
             refetchProgress();
+            refreshNotifications();
         } catch (err) {
-            console.error("Full enrichment error:", err);
-            setError("Failed to start full enrichment");
+            console.error("Retry failed and blocked error:", err);
+            setError("Failed to re-queue failed and blocked work");
         } finally {
-            setReEnriching(false);
+            setRetryingAll(false);
         }
     };
 
-    const execResetArtists = async () => {
-        setResettingArtists(true);
+    const execRedecideEverything = async () => {
+        setRedeciding(true);
         setError(null);
         try {
-            await api.resetArtistsOnly();
-            refreshNotifications();
+            const result = await api.redecideEverything();
+            setQueueResult(result.reopened);
             refetchProgress();
-        } catch (err) {
-            console.error("Reset artists error:", err);
-            setError("Failed to reset artist enrichment");
-        } finally {
-            setResettingArtists(false);
-        }
-    };
-
-    const execResetMoodTags = async () => {
-        setResettingMoodTags(true);
-        setError(null);
-        try {
-            await api.resetMoodTagsOnly();
             refreshNotifications();
-            refetchProgress();
         } catch (err) {
-            console.error("Reset mood tags error:", err);
-            setError("Failed to reset mood tags");
+            console.error("Re-decide everything error:", err);
+            setError("Failed to re-open stage questions");
         } finally {
-            setResettingMoodTags(false);
-        }
-    };
-
-    const execResetAudioAnalysis = async () => {
-        setResettingAudio(true);
-        setError(null);
-        try {
-            await api.resetAudioAnalysisOnly();
-            refreshNotifications();
-            refetchProgress();
-        } catch (err) {
-            console.error("Reset audio analysis error:", err);
-            setError("Failed to reset audio analysis");
-        } finally {
-            setResettingAudio(false);
-        }
-    };
-
-    const execResetVibeEmbeddings = async () => {
-        setResettingVibe(true);
-        setError(null);
-        try {
-            await enrichmentApi.resetVibeEmbeddings();
-            refreshNotifications();
-            refetchProgress();
-        } catch (err) {
-            console.error("Reset vibe embeddings error:", err);
-            setError("Failed to reset vibe embeddings");
-        } finally {
-            setResettingVibe(false);
+            setRedeciding(false);
         }
     };
 
@@ -619,29 +551,11 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
         }
     };
 
-    const execResetEnrichment = async () => {
-        setResettingEnrichment(true);
-        setError(null);
-        try {
-            await api.resetAllEnrichmentData();
-            refetchProgress();
-            refreshNotifications();
-        } catch (err) {
-            console.error("Reset enrichment error:", err);
-            setError("Failed to reset enrichment data");
-        } finally {
-            setResettingEnrichment(false);
-        }
-    };
-
     const handleConfirmAction = async () => {
         const target = confirmTarget;
         setConfirmTarget(null);
-        if (target === "artists") await execResetArtists();
-        else if (target === "moodTags") await execResetMoodTags();
-        else if (target === "audioAnalysis") await execResetAudioAnalysis();
-        else if (target === "vibeEmbeddings") await execResetVibeEmbeddings();
-        else if (target === "allEnrichment") await execResetEnrichment();
+        if (target === "retryFailedAndBlocked") await execRetryFailedAndBlocked();
+        else if (target === "redecideEverything") await execRedecideEverything();
     };
 
     const handlePause = async () => {
@@ -726,53 +640,27 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
 
                         <div className="space-y-1">
                             {/* Artist Metadata */}
-                            <div className="flex items-start gap-2">
-                                <div className="flex-1">
-                                    <EnrichmentStage
-                                        icon={User}
-                                        label="Artist Metadata"
-                                        description="Bios, images, and similar artists from ListenBrainz + MusicBrainz"
-                                        completed={enrichmentProgress.artists.completed}
-                                        total={enrichmentProgress.artists.total}
-                                        progress={enrichmentProgress.artists.progress}
-                                        failed={enrichmentProgress.artists.failed}
-                                    />
-                                </div>
-                                <button
-                                    onClick={() => setConfirmTarget("artists")}
-                                    disabled={resettingArtists || syncing || reEnriching || isEnrichmentActive}
-                                    aria-label="Reset and re-run artist metadata enrichment"
-                                    className="mt-1 px-3 py-2.5 min-h-[44px] text-micro tabular-nums bg-white/5 border border-white/10 text-[var(--text-muted)] rounded-lg
-                                    hover:bg-white/10 hover:text-white/60 disabled:opacity-30 disabled:cursor-not-allowed transition-all whitespace-nowrap"
-                                >
-                                    {resettingArtists ? "Resetting..." : "Re-run"}
-                                </button>
-                            </div>
+                            <EnrichmentStage
+                                icon={User}
+                                label="Artist Metadata"
+                                description="Bios, images, and similar artists from ListenBrainz + MusicBrainz"
+                                completed={enrichmentProgress.artists.completed}
+                                total={enrichmentProgress.artists.total}
+                                progress={enrichmentProgress.artists.progress}
+                                failed={enrichmentProgress.artists.failed}
+                            />
 
                             {/* Mood Tags */}
-                            <div className="flex items-start gap-2">
-                                <div className="flex-1">
-                                    <EnrichmentStage
-                                        icon={Heart}
-                                        label="Mood Tags"
-                                        description="Vibes and mood data from the enrichment pipeline"
-                                        completed={
-                                            enrichmentProgress.trackTags.enriched
-                                        }
-                                        total={enrichmentProgress.trackTags.total}
-                                        progress={enrichmentProgress.trackTags.progress}
-                                    />
-                                </div>
-                                <button
-                                    onClick={() => setConfirmTarget("moodTags")}
-                                    disabled={resettingMoodTags || syncing || reEnriching || isEnrichmentActive}
-                                    aria-label="Reset and re-run mood tag enrichment"
-                                    className="mt-1 px-3 py-2.5 min-h-[44px] text-micro tabular-nums bg-white/5 border border-white/10 text-[var(--text-muted)] rounded-lg
-                                    hover:bg-white/10 hover:text-white/60 disabled:opacity-30 disabled:cursor-not-allowed transition-all whitespace-nowrap"
-                                >
-                                    {resettingMoodTags ? "Resetting..." : "Re-run"}
-                                </button>
-                            </div>
+                            <EnrichmentStage
+                                icon={Heart}
+                                label="Mood Tags"
+                                description="Vibes and mood data from the enrichment pipeline"
+                                completed={
+                                    enrichmentProgress.trackTags.enriched
+                                }
+                                total={enrichmentProgress.trackTags.total}
+                                progress={enrichmentProgress.trackTags.progress}
+                            />
 
                             {/* Audio Analysis */}
                             {/* audioAnalysis is absent from the progress payload
@@ -780,38 +668,25 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                                 crashed the whole Cache page rather than hiding one
                                 stage. */}
                             {!featuresLoading && musicCNN && enrichmentProgress.audioAnalysis ? (
-                                <div className="flex items-start gap-2">
-                                    <div className="flex-1">
-                                        <EnrichmentStage
-                                            icon={Activity}
-                                            label="Audio Analysis"
-                                            description="BPM, key, energy, and danceability from audio files"
-                                            completed={
-                                                enrichmentProgress.audioAnalysis.completed
-                                            }
-                                            total={enrichmentProgress.audioAnalysis.total}
-                                            progress={
-                                                enrichmentProgress.audioAnalysis.progress
-                                            }
-                                            processing={
-                                                enrichmentProgress.audioAnalysis.processing
-                                            }
-                                            queued={enrichmentProgress.audioAnalysis.queued}
-                                            failed={enrichmentProgress.audioAnalysis.failed}
-                                            permanentlyFailed={enrichmentProgress.audioAnalysis.permanentlyFailed}
-                                            isBackground={true}
-                                        />
-                                    </div>
-                                    <button
-                                        onClick={() => setConfirmTarget("audioAnalysis")}
-                                        disabled={resettingAudio || syncing || reEnriching || isEnrichmentActive}
-                                        aria-label="Reset and re-run audio analysis"
-                                        className="mt-1 px-3 py-2.5 min-h-[44px] text-micro tabular-nums bg-white/5 border border-white/10 text-[var(--text-muted)] rounded-lg
-                                        hover:bg-white/10 hover:text-white/60 disabled:opacity-30 disabled:cursor-not-allowed transition-all whitespace-nowrap"
-                                    >
-                                        {resettingAudio ? "Resetting..." : "Re-run"}
-                                    </button>
-                                </div>
+                                <EnrichmentStage
+                                    icon={Activity}
+                                    label="Audio Analysis"
+                                    description="BPM, key, energy, and danceability from audio files"
+                                    completed={
+                                        enrichmentProgress.audioAnalysis.completed
+                                    }
+                                    total={enrichmentProgress.audioAnalysis.total}
+                                    progress={
+                                        enrichmentProgress.audioAnalysis.progress
+                                    }
+                                    processing={
+                                        enrichmentProgress.audioAnalysis.processing
+                                    }
+                                    queued={enrichmentProgress.audioAnalysis.queued}
+                                    failed={enrichmentProgress.audioAnalysis.failed}
+                                    permanentlyFailed={enrichmentProgress.audioAnalysis.permanentlyFailed}
+                                    isBackground={true}
+                                />
                             ) : !featuresLoading ? (
                                 <div className="opacity-50 py-2">
                                     <h4 className="text-sm font-medium text-[var(--text-secondary)]">Audio Analysis</h4>
@@ -825,30 +700,17 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                             {/* CLAP Embeddings */}
                             {!featuresLoading && vibeEmbeddings ? (
                                 enrichmentProgress.clapEmbeddings && (
-                                    <div className="flex items-start gap-2">
-                                        <div className="flex-1">
-                                            <EnrichmentStage
-                                                icon={Waves}
-                                                label="Vibe Embeddings"
-                                                description="CLAP audio embeddings for similarity search"
-                                                completed={enrichmentProgress.clapEmbeddings.completed}
-                                                total={enrichmentProgress.clapEmbeddings.total}
-                                                progress={enrichmentProgress.clapEmbeddings.progress}
-                                                processing={enrichmentProgress.clapEmbeddings.processing}
-                                                failed={enrichmentProgress.clapEmbeddings.failed}
-                                                isBackground={true}
-                                            />
-                                        </div>
-                                        <button
-                                            onClick={() => setConfirmTarget("vibeEmbeddings")}
-                                            disabled={resettingVibe || syncing || reEnriching || isEnrichmentActive}
-                                            aria-label="Reset and re-run vibe embedding generation"
-                                            className="mt-1 px-3 py-2.5 min-h-[44px] text-micro tabular-nums bg-white/5 border border-white/10 text-[var(--text-muted)] rounded-lg
-                                            hover:bg-white/10 hover:text-white/60 disabled:opacity-30 disabled:cursor-not-allowed transition-all whitespace-nowrap"
-                                        >
-                                            {resettingVibe ? "Resetting..." : "Re-run"}
-                                        </button>
-                                    </div>
+                                    <EnrichmentStage
+                                        icon={Waves}
+                                        label="Vibe Embeddings"
+                                        description="CLAP audio embeddings for similarity search"
+                                        completed={enrichmentProgress.clapEmbeddings.completed}
+                                        total={enrichmentProgress.clapEmbeddings.total}
+                                        progress={enrichmentProgress.clapEmbeddings.progress}
+                                        processing={enrichmentProgress.clapEmbeddings.processing}
+                                        failed={enrichmentProgress.clapEmbeddings.failed}
+                                        isBackground={true}
+                                    />
                                 )
                             ) : !featuresLoading ? (
                                 <div className="opacity-50 py-2">
@@ -866,7 +728,7 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                             <button
                                 onClick={handleSyncAndEnrich}
                                 disabled={
-                                    syncing || reEnriching || isEnrichmentActive
+                                    syncing || isEnrichmentActive
                                 }
                                 className="px-3 py-2.5 min-h-[44px] text-xs font-semibold bg-brand text-black rounded-lg
                                 hover:bg-[#f97316] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -874,15 +736,32 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                                 {syncing ? "Syncing..." : "Sync New"}
                             </button>
                             <button
-                                onClick={handleFullEnrichment}
+                                onClick={() => setConfirmTarget("retryFailedAndBlocked")}
                                 disabled={
-                                    syncing || reEnriching || isEnrichmentActive
+                                    retryingAll || syncing || isEnrichmentActive
                                 }
                                 className="px-3 py-2.5 min-h-[44px] text-xs tabular-nums bg-white/5 border border-white/10 text-[var(--text-secondary)] rounded-lg
                                 hover:bg-white/10 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                             >
-                                {reEnriching ? "Starting..." : "Re-enrich All"}
+                                {retryingAll ? "Re-queuing..." : "Retry failed and blocked"}
                             </button>
+                            {currentUser?.role === "admin" && (
+                                <button
+                                    onClick={() => setConfirmTarget("redecideEverything")}
+                                    disabled={
+                                        redeciding || syncing || isEnrichmentActive
+                                    }
+                                    className="px-3 py-2.5 min-h-[44px] text-xs tabular-nums bg-white/5 border border-white/10 text-[var(--text-secondary)] rounded-lg
+                                    hover:bg-white/10 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                                >
+                                    {redeciding ? "Re-opening..." : "Re-decide everything"}
+                                </button>
+                            )}
+                            {queueResult !== null && (
+                                <span className="self-center text-xs tabular-nums text-green-400">
+                                    Re-queued {queueResult} stage questions
+                                </span>
+                            )}
 
                             {isEnrichmentActive && (
                                 <>
@@ -1255,7 +1134,7 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                                 Maintenance Operations
                             </span>
                             <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                                Destructive actions -- cache clearing, job cleanup, full resets
+                                Cache clearing, stale job cleanup, failed-analysis retry
                             </p>
                         </div>
                         <ChevronDown
@@ -1292,23 +1171,6 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                                         ? "Retrying..."
                                         : `Retry Failed Analysis (${(enrichmentProgress?.audioAnalysis?.failed || 0) + (enrichmentProgress?.audioAnalysis?.permanentlyFailed || 0)})`}
                                 </button>
-                            )}
-
-                            {/* Full enrichment reset -- most destructive, visually distinct */}
-                            {enrichmentProgress && (
-                                <div className="pt-2 border-t border-white/5">
-                                    <button
-                                        onClick={() => setConfirmTarget("allEnrichment")}
-                                        disabled={resettingEnrichment || isEnrichmentActive}
-                                        className="px-3 py-2.5 min-h-[44px] text-xs font-semibold bg-red-600/80 text-white rounded-lg
-                                            hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                                    >
-                                        {resettingEnrichment ? "Resetting..." : "Reset All Enrichment Data"}
-                                    </button>
-                                    <p className="mt-1.5 text-xs text-[var(--text-muted)]">
-                                        Wipes artists, audio analysis, vibe embeddings, and mood tags
-                                    </p>
-                                </div>
                             )}
 
                             {retryResult && (

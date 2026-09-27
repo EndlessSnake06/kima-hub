@@ -1,41 +1,22 @@
 import { prisma } from "./db";
-import { logger } from "./logger";
-import { encrypt, decrypt, encryptField } from "./encryption";
+import { resolveEncryptedSettings } from "./encryptedFields";
 
 const CACHE_TTL_MS = 60 * 1000;
 
-let cachedSettings: any | null = null;
-let cacheExpiry = 0;
+async function buildSettings() {
+    const settings = await prisma.systemSettings.findUnique({
+        where: { id: "default" },
+    });
+    if (!settings) return null;
+    return resolveEncryptedSettings(settings);
+}
 
-// Re-export encryptField for backwards compatibility
-export { encryptField };
+let cachedSettings: Awaited<ReturnType<typeof buildSettings>> | null = null;
+let cacheExpiry = 0;
 
 export function invalidateSystemSettingsCache() {
     cachedSettings = null;
     cacheExpiry = 0;
-}
-
-/**
- * Safely decrypt a field, returning null if decryption fails
- * This prevents one corrupted encrypted field from breaking all settings
- */
-// Track logged warnings to prevent spam
-const loggedDecryptionWarnings = new Set<string>();
-
-function safeDecrypt(value: string | null, fieldName?: string): string | null {
-    if (!value) return null;
-    try {
-        return decrypt(value);
-    } catch (error) {
-        const key = fieldName || "field";
-        if (!loggedDecryptionWarnings.has(key)) {
-            logger.warn(
-                `[Settings] Failed to decrypt ${key}, returning null (suppressing further warnings for this field)`,
-            );
-            loggedDecryptionWarnings.add(key);
-        }
-        return null;
-    }
 }
 
 export async function getSystemSettings(forceRefresh = false) {
@@ -44,46 +25,14 @@ export async function getSystemSettings(forceRefresh = false) {
         return { ...cachedSettings };
     }
 
-    const settings = await prisma.systemSettings.findUnique({
-        where: { id: "default" },
-    });
-
-    if (!settings) {
+    const resolved = await buildSettings();
+    if (!resolved) {
         cachedSettings = null;
         cacheExpiry = 0;
         return null;
     }
 
-    // Decrypt sensitive fields - use safeDecrypt to handle corrupted fields gracefully
-    const decrypted = {
-        ...settings,
-        lidarrApiKey: safeDecrypt(settings.lidarrApiKey, "lidarrApiKey"),
-        lidarrWebhookSecret: safeDecrypt(
-            settings.lidarrWebhookSecret,
-            "lidarrWebhookSecret",
-        ),
-        openaiApiKey: safeDecrypt(
-            settings.openaiApiKey,
-            "openaiApiKey",
-        ),
-        acoustidApiKey: safeDecrypt(settings.acoustidApiKey, "acoustidApiKey"),
-        audiobookshelfApiKey: safeDecrypt(
-            settings.audiobookshelfApiKey,
-            "audiobookshelfApiKey",
-        ),
-        soulseekPassword: safeDecrypt(
-            settings.soulseekPassword,
-            "soulseekPassword",
-        ),
-        // Stored encrypted by the settings route; submitListens needs the
-        // plaintext user token, so decrypt it like every other key here.
-        listenbrainzUserToken: safeDecrypt(
-            settings.listenbrainzUserToken,
-            "listenbrainzUserToken",
-        ),
-    };
-
-    cachedSettings = decrypted;
+    cachedSettings = resolved;
     cacheExpiry = now + CACHE_TTL_MS;
-    return { ...decrypted };
+    return { ...resolved };
 }

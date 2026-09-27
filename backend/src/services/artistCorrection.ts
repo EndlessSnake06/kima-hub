@@ -16,6 +16,7 @@ import * as fuzz from "fuzzball";
 import { logger } from "../utils/logger";
 import { redisClient } from "../utils/redis";
 import { musicBrainzService } from "./musicbrainz";
+import { failureCause } from "../utils/outcome";
 import { normalizeArtistName } from "../utils/artistNormalization";
 
 export interface ArtistCorrection {
@@ -70,7 +71,21 @@ export async function getArtistCorrection(
     const cleaned = stripArtistSuffixes(artistName);
 
     try {
-        const candidates = await musicBrainzService.searchArtist(cleaned, 5);
+        const found = await musicBrainzService.searchArtist(cleaned, 5);
+
+        if (
+            found.kind === "rateLimited" ||
+            found.kind === "transient" ||
+            found.kind === "permanent"
+        ) {
+            logger.warn(
+                `MB correction ${found.kind} for ${artistName}: ${failureCause(found)}`
+            );
+            // Do NOT cache failures — a timeout must not freeze a
+            // correction (or its absence) for 30 days.
+            return null;
+        }
+        const candidates = found.kind === "answered" ? found.value : [];
 
         // Score candidates with token-set fuzzy match against the cleaned
         // query; require a confident match (>= 90) before correcting.
@@ -79,10 +94,7 @@ export async function getArtistCorrection(
             mbid: string;
             score: number;
         }
-        const scored: Scored[] = ((candidates || []) as Array<{
-            name: string;
-            id: string;
-        }>)
+        const scored: Scored[] = candidates
             .map((a) => ({
                 name: a.name,
                 mbid: a.id,

@@ -5,7 +5,8 @@ import bcrypt from "bcrypt";
 import { z } from "zod";
 import axios from "axios";
 import crypto from "crypto";
-import { encryptField, invalidateSystemSettingsCache } from "../utils/systemSettings";
+import { invalidateSystemSettingsCache } from "../utils/systemSettings";
+import { encryptField } from "../utils/encryption";
 import { writeEnvFile } from "../utils/envWriter";
 import { generateToken, requireAuth, requireAdmin } from "../middleware/auth";
 

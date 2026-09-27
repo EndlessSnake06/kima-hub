@@ -1,6 +1,7 @@
 /**
- * At-rest encryption for stored credentials: the nine `SystemSettings` API-key
- * columns, `User.twoFactorSecret` and `User.twoFactorRecoveryCodes`.
+ * At-rest encryption for the `SystemSettings` fields listed in
+ * `encryptedFields.ts`'s `ENCRYPTED_FIELDS`, plus `User.twoFactorSecret`
+ * and `User.twoFactorRecoveryCodes`.
  *
  * Two things changed here, and the second is the one that matters.
  *
@@ -21,10 +22,9 @@
  * them was meant to remove. Every path out of `decrypt` is now either a
  * verified plaintext or a throw.
  *
- * Callers already expect that. `utils/systemSettings.ts` wraps every field in
- * `safeDecrypt`, which turns a throw into `null` and logs once per field, so a
- * single unreadable credential disables one integration instead of taking the
- * settings load with it.
+ * Callers already expect that. `encryptedFields.ts`'s `resolveEncryptedSettings`
+ * turns a throw into `null` and re-seeds the field, so a single unreadable
+ * credential disables one integration instead of taking the settings load with it.
  *
  * **Existing AES-256-CBC values still read.** They are live in production and
  * cannot be converted without the key and a running server, so `decrypt`
@@ -196,6 +196,11 @@ function decryptLegacy(text: string): string {
  */
 export function isLegacyCiphertext(value: string | null | undefined): boolean {
     return Boolean(value) && LEGACY_SHAPE.test(value as string);
+}
+
+/** Whether a value carries either recognised format (`xc1.` or `iv:cipher`). */
+export function isEncryptedFormat(value: string): boolean {
+    return value.startsWith(V2_PREFIX) || LEGACY_SHAPE.test(value);
 }
 
 /**

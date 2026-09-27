@@ -318,7 +318,7 @@ libraryRouter.all(["/getAlbumList2.view", "/getAlbumList.view"], wrap(async (req
     const albumInclude = {
         artist: { select: { id: true, name: true, displayName: true, genres: true, userGenres: true } },
         _count: { select: { tracks: true } },
-        tracks: { where: { corrupt: false }, select: { duration: true } },
+        tracks: { where: { corrupt: false, missingSince: null }, select: { duration: true } },
     } as const;
 
     let albums: AlbumWithArtist[] = [];
@@ -389,8 +389,8 @@ libraryRouter.all(["/getAlbumList2.view", "/getAlbumList.view"], wrap(async (req
                 SELECT a.id, a.title, a."displayTitle", a.year, a."coverUrl", a."userCoverUrl", a."artistId",
                        json_build_object('id', ar.id, 'name', ar.name, 'displayName', ar."displayName",
                            'genres', ar.genres, 'userGenres', ar."userGenres") as artist,
-                       (SELECT COUNT(*)::int FROM "Track" t2 WHERE t2."albumId" = a.id AND t2.corrupt = false) as "songCount",
-                       (SELECT COALESCE(SUM(t2.duration), 0) FROM "Track" t2 WHERE t2."albumId" = a.id AND t2.corrupt = false) as "totalDuration"
+                       (SELECT COUNT(*)::int FROM "Track" t2 WHERE t2."albumId" = a.id AND t2.corrupt = false AND t2."missingSince" IS NULL) as "songCount",
+                       (SELECT COALESCE(SUM(t2.duration), 0) FROM "Track" t2 WHERE t2."albumId" = a.id AND t2.corrupt = false AND t2."missingSince" IS NULL) as "totalDuration"
                 FROM "Album" a
                 JOIN "Artist" ar ON a."artistId" = ar.id
                 WHERE a."location" = 'LIBRARY'
@@ -429,8 +429,8 @@ libraryRouter.all(["/getAlbumList2.view", "/getAlbumList.view"], wrap(async (req
                 SELECT a.id, a.title, a."displayTitle", a.year, a."coverUrl", a."userCoverUrl", a."artistId",
                        json_build_object('id', ar.id, 'name', ar.name, 'displayName', ar."displayName",
                            'genres', ar.genres, 'userGenres', ar."userGenres") as artist,
-                       (SELECT COUNT(*)::int FROM "Track" t2 WHERE t2."albumId" = a.id AND t2.corrupt = false) as "songCount",
-                       (SELECT COALESCE(SUM(t2.duration), 0) FROM "Track" t2 WHERE t2."albumId" = a.id AND t2.corrupt = false) as "totalDuration"
+                       (SELECT COUNT(*)::int FROM "Track" t2 WHERE t2."albumId" = a.id AND t2.corrupt = false AND t2."missingSince" IS NULL) as "songCount",
+                       (SELECT COALESCE(SUM(t2.duration), 0) FROM "Track" t2 WHERE t2."albumId" = a.id AND t2.corrupt = false AND t2."missingSince" IS NULL) as "totalDuration"
                 FROM "Album" a
                 JOIN "Artist" ar ON a."artistId" = ar.id
                 WHERE a."location" = 'LIBRARY'
@@ -447,8 +447,8 @@ libraryRouter.all(["/getAlbumList2.view", "/getAlbumList.view"], wrap(async (req
                 SELECT a.id, a.title, a."displayTitle", a.year, a."coverUrl", a."userCoverUrl", a."artistId",
                        json_build_object('id', ar.id, 'name', ar.name, 'displayName', ar."displayName",
                            'genres', ar.genres, 'userGenres', ar."userGenres") as artist,
-                       (SELECT COUNT(*)::int FROM "Track" t2 WHERE t2."albumId" = a.id AND t2.corrupt = false) as "songCount",
-                       (SELECT COALESCE(SUM(t2.duration), 0) FROM "Track" t2 WHERE t2."albumId" = a.id AND t2.corrupt = false) as "totalDuration"
+                       (SELECT COUNT(*)::int FROM "Track" t2 WHERE t2."albumId" = a.id AND t2.corrupt = false AND t2."missingSince" IS NULL) as "songCount",
+                       (SELECT COALESCE(SUM(t2.duration), 0) FROM "Track" t2 WHERE t2."albumId" = a.id AND t2.corrupt = false AND t2."missingSince" IS NULL) as "totalDuration"
                 FROM "Album" a
                 JOIN "Artist" ar ON a."artistId" = ar.id
                 JOIN "Track" t ON t."albumId" = a.id
@@ -469,8 +469,8 @@ libraryRouter.all(["/getAlbumList2.view", "/getAlbumList.view"], wrap(async (req
                 SELECT a.id, a.title, a."displayTitle", a.year, a."coverUrl", a."userCoverUrl", a."artistId",
                        json_build_object('id', ar.id, 'name', ar.name, 'displayName', ar."displayName",
                            'genres', ar.genres, 'userGenres', ar."userGenres") as artist,
-                       (SELECT COUNT(*)::int FROM "Track" t2 WHERE t2."albumId" = a.id AND t2.corrupt = false) as "songCount",
-                       (SELECT COALESCE(SUM(t2.duration), 0) FROM "Track" t2 WHERE t2."albumId" = a.id AND t2.corrupt = false) as "totalDuration"
+                       (SELECT COUNT(*)::int FROM "Track" t2 WHERE t2."albumId" = a.id AND t2.corrupt = false AND t2."missingSince" IS NULL) as "songCount",
+                       (SELECT COALESCE(SUM(t2.duration), 0) FROM "Track" t2 WHERE t2."albumId" = a.id AND t2.corrupt = false AND t2."missingSince" IS NULL) as "totalDuration"
                 FROM "Album" a
                 JOIN "Artist" ar ON a."artistId" = ar.id
                 JOIN "Track" t ON t."albumId" = a.id

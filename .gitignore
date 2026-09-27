@@ -203,3 +203,4 @@ frontend/pnpm-workspace.yaml
 # Model caches are large binaries, not source
 services/audio-analyzer-clap/cache/
 .mock/
+

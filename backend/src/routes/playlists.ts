@@ -770,12 +770,13 @@ router.post("/:id/pending/retry-all", async (req, res) => {
         const { getSystemSettings } = await import("../utils/systemSettings");
 
         const settings = await getSystemSettings();
-        if (!settings?.musicPath) {
+        if (!settings || !settings.musicPath) {
             return res.status(400).json({ error: "Music path not configured" });
         }
-        if (!settings?.soulseekUsername || !settings?.soulseekPassword) {
+        if (!settings.soulseekUsername || !settings.soulseekPassword) {
             return res.status(400).json({ error: "Soulseek credentials not configured" });
         }
+        const musicPath = settings.musicPath;
 
         // Create download jobs for all pending tracks
         const downloadJobs = [];
@@ -851,7 +852,7 @@ router.post("/:id/pending/retry-all", async (req, res) => {
                         pendingTrack.spotifyTitle,
                         albumName,
                         searchResult.allMatches,
-                        settings.musicPath
+                        musicPath
                     );
 
                     if (result.success) {
@@ -1003,7 +1004,7 @@ router.post("/:id/pending/:trackId/retry", async (req, res) => {
         const { getSystemSettings } = await import("../utils/systemSettings");
 
         const settings = await getSystemSettings();
-        if (!settings?.musicPath) {
+        if (!settings || !settings.musicPath) {
             sessionLog("PENDING-RETRY", `Music path not configured`, "WARN");
             await prisma.downloadJob.update({
                 where: { id: downloadJob.id },

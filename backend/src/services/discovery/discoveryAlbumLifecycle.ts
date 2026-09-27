@@ -22,8 +22,8 @@ export interface DiscoveryAlbumInfo {
 
 export interface LidarrSettings {
     lidarrEnabled?: boolean;
-    lidarrUrl?: string;
-    lidarrApiKey?: string;
+    lidarrUrl?: string | null;
+    lidarrApiKey?: string | null;
 }
 
 export class DiscoveryAlbumLifecycle {

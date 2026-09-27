@@ -323,14 +323,14 @@ playbackRouter.all("/scrobble.view", wrap(async (req, res) => {
         // claims, and services/playRecording.ts owns that judgement.
         //
         // A client reporting a scrobble has, by the contract, already decided the
-        // track was played, so the seconds are taken as satisfied rather than
+        // track was played, so the play is passed as client-attested rather than
         // re-measured; the duration floor and the duplicate window still apply.
         const timeMs = req.query.time ? parseInt(req.query.time as string, 10) : Date.now();
         const playedAt = isNaN(timeMs) ? new Date() : new Date(timeMs);
         await recordPlay({
             userId,
             trackId: id,
-            secondsListened: Number.POSITIVE_INFINITY,
+            clientAttestedComplete: true,
             source: ListenSource.SUBSONIC,
             playedAt,
         }).catch((err: unknown) => logger.warn("[Subsonic] scrobble play-log failed:", err));
