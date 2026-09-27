@@ -17,6 +17,7 @@ import { Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { enrichmentApi } from "@/lib/enrichmentApi";
 import { WhatsNewWindow } from "./WhatsNewWindow";
+import { MoodMixChoice } from "./MoodMixChoice";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 interface Release {
@@ -90,7 +91,12 @@ export function WhatsNewGate() {
                 release={current}
                 onClose={() => setQueue(rest)}
                 renderAction={(item) =>
-                item.key === "plays.repair" ? (
+                item.key === "moods.mixes" || item.key === "moods.mixes.retired" ? (
+                    // Rebuild / keep / save as playlist, or for a mix under a
+                    // removed mood, save / remove. The server only sends these
+                    // to users who have that kind of saved mix.
+                    <MoodMixChoice />
+                ) : item.key === "plays.repair" ? (
                     // The review lives on the stats page and stays there. A
                     // dialogue is a bad place to work through forty tracks, and
                     // a second copy of a destructive tool is worse.

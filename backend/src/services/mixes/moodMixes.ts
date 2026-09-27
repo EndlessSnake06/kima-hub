@@ -1764,8 +1764,6 @@ export type MoodOnDemandParams = {
     moodRelaxed?: { min?: number; max?: number };
     moodAggressive?: { min?: number; max?: number };
     moodParty?: { min?: number; max?: number };
-    moodAcoustic?: { min?: number; max?: number };
-    moodElectronic?: { min?: number; max?: number };
     limit?: number;
 };
 
@@ -1783,8 +1781,6 @@ export async function generateMoodOnDemand(
         "moodRelaxed",
         "moodAggressive",
         "moodParty",
-        "moodAcoustic",
-        "moodElectronic",
     ];
     const usesMLMoods = mlMoodParams.some(
         (key) => params[key as keyof typeof params] !== undefined
@@ -1852,8 +1848,6 @@ export async function generateMoodOnDemand(
             delete params.moodRelaxed;
             delete params.moodAggressive;
             delete params.moodParty;
-            delete params.moodAcoustic;
-            delete params.moodElectronic;
         }
     }
 
@@ -1961,21 +1955,6 @@ export async function generateMoodOnDemand(
         if (params.moodParty.max !== undefined)
             where.moodParty.lte = params.moodParty.max;
     }
-    if (params.moodAcoustic) {
-        where.moodAcoustic = {};
-        if (params.moodAcoustic.min !== undefined)
-            where.moodAcoustic.gte = params.moodAcoustic.min;
-        if (params.moodAcoustic.max !== undefined)
-            where.moodAcoustic.lte = params.moodAcoustic.max;
-    }
-    if (params.moodElectronic) {
-        where.moodElectronic = {};
-        if (params.moodElectronic.min !== undefined)
-            where.moodElectronic.gte = params.moodElectronic.min;
-        if (params.moodElectronic.max !== undefined)
-            where.moodElectronic.lte = params.moodElectronic.max;
-    }
-
     // useEnhancedMode is referenced above; suppress unused variable warning
     void useEnhancedMode;
 

@@ -55,6 +55,19 @@ export type ReleaseItem =
           confirmTitle?: string;
           confirmMessage?: string;
           confirmLabel?: string;
+          /**
+           * What closing the window without acting means for this item, said
+           * in the footer. Set it when the item asks for a decision, so the
+           * footer does not claim there is nothing to decide.
+           */
+          ifClosed?: string;
+          /**
+           * Only show this item to users it applies to. The server drops it
+           * for everyone else (see `pendingReleases`). "savedMoodMix": a mood
+           * mix under one of the current moods; "retiredMoodMix": a mix under
+           * a mood 1.11 removed, which the app can no longer show.
+           */
+          requires?: "savedMoodMix" | "retiredMoodMix";
       }
     | {
           kind: "choice";
@@ -128,6 +141,31 @@ export const RELEASES: Release[] = [
                     "You can run it from here once, or from the Stats page whenever you like.",
                 cta: "Take me to it",
                 settingsPath: "/stats#false-starts",
+            },
+            {
+                kind: "action",
+                key: "moods.mixes",
+                title: "Your mood mix needs rebuilding",
+                body:
+                    "Moods were being read backwards: calm tracks could land in Intense, sad ones in Upbeat. That's fixed, and every track's mood is being re-analysed. " +
+                    "Your saved mood mix was picked from the old, wrong moods.\n\n" +
+                    "Rebuild clears it; pick a mood in the Mood Mixer on the home page to make a fresh one. Keep leaves it exactly as it is. " +
+                    "If you like it as it is, save it as a playlist first — then you can rebuild and still keep those tracks.",
+                cta: "Rebuild",
+                ifClosed: "If you close now, your mood mix stays as it is.",
+                requires: "savedMoodMix",
+            },
+            {
+                kind: "action",
+                key: "moods.mixes.retired",
+                title: "Your old mood mix can't be shown any more",
+                body:
+                    "Moods were being read backwards, and fixing that left five moods: Upbeat, Melancholic, Calm, Intense and Energetic. " +
+                    "Your saved mood mix was made under one that's gone, so Kima can't show it any more. Its tracks are all still in your library.\n\n" +
+                    "Save it as a playlist to keep those tracks together, or remove it. Nothing is deleted until you pick one.",
+                cta: "Save as playlist",
+                ifClosed: "If you close now, nothing is deleted, and you'll be asked again next time.",
+                requires: "retiredMoodMix",
             },
             {
                 kind: "action",

@@ -8,7 +8,8 @@
 import { ChoiceDecidedBy } from "@prisma/client";
 import { prisma } from "../../utils/db";
 import { logger } from "../../utils/logger";
-import { RELEASES, choicesIn, findRelease, type Release } from "./catalog";
+import { RELEASES, choicesIn, findRelease, type Release, type ReleaseItem } from "./catalog";
+import { MOOD_MIX_RELEASE, moodMixState, type MoodMixState } from "./moodMixes";
 
 export { RELEASES, findRelease } from "./catalog";
 export type { Release, ReleaseItem } from "./catalog";
@@ -30,16 +31,64 @@ export async function pendingReleases(userId: string): Promise<Release[]> {
     // order: the array is edited newest-entry-first by habit, and a reader
     // who has been away for three versions must meet them in the order they
     // happened, answering the older consent questions before the newer ones.
-    return RELEASES.filter((r) => !seen.has(r.version)).sort((a, b) =>
+    const pending = RELEASES.filter((r) => !seen.has(r.version)).sort((a, b) =>
         a.date === b.date ? a.version.localeCompare(b.version) : a.date < b.date ? -1 : 1,
     );
+
+    // Items that only apply to some users are dropped for the rest: asking
+    // someone with no mood mix to rebuild it would be noise. The mood-mix
+    // state is only read when something depends on it.
+    let state: MoodMixState | undefined;
+    const mixState = async () => (state ??= await moodMixState(userId));
+    const applies = async (item: ReleaseItem): Promise<boolean> => {
+        if (item.kind !== "action" || !item.requires) return true;
+        const { mix } = await mixState();
+        return item.requires === "retiredMoodMix" ? mix?.retired === true : mix?.retired === false;
+    };
+
+    const out: Release[] = [];
+    for (const r of pending) {
+        const items: ReleaseItem[] = [];
+        for (const i of r.items) if (await applies(i)) items.push(i);
+        out.push(items.length === r.items.length ? r : { ...r, items });
+    }
+
+    // A mix under a mood 1.11 removed cannot be shown, so closing the window
+    // must not be the last word on it: until the user saves or removes it,
+    // the question comes back on the next visit, on its own.
+    if (seen.has(MOOD_MIX_RELEASE)) {
+        const release = findRelease(MOOD_MIX_RELEASE);
+        const retired = release?.items.find((i) => i.kind === "action" && i.requires === "retiredMoodMix");
+        const s = retired ? await mixState() : undefined;
+        if (release && retired && s?.mix?.retired && s.decision === null && s.playlist === null) {
+            out.push({
+                ...release,
+                title: "One thing left from 1.11",
+                summary: "Your old mood mix is still waiting for an answer.",
+                items: [retired],
+            });
+        }
+    }
+    return out;
 }
+
+/**
+ * A `/choice` body naming a key the release never asked about.
+ *
+ * The choice endpoint records deliberate consent, so a made-up key must not
+ * land in the table as one — and `moods.mixes.rebuild` must not arrive through
+ * this door either: it is an `action`, and its answers belong to
+ * `decideMoodMixes`, which refuses "keep" on a retired mix. Letting the choice
+ * endpoint take the key would be a way around that refusal.
+ */
+export class UnknownChoiceError extends Error {}
 
 /**
  * Record an explicit answer to one choice.
  *
- * Explicit answers are never overwritten by a later dismissal — see
- * `dismissRelease`.
+ * The key must be a `choice` item of that release; anything else is
+ * UnknownChoiceError. Explicit answers are never overwritten by a later
+ * dismissal — see `dismissRelease`.
  */
 export async function setChoice(params: {
     userId: string;
@@ -48,6 +97,10 @@ export async function setChoice(params: {
     enabled: boolean;
 }): Promise<void> {
     const { userId, version, key, enabled } = params;
+    const release = findRelease(version);
+    if (!release || !choicesIn(release).some((c) => c.key === key)) {
+        throw new UnknownChoiceError(key);
+    }
     await prisma.releaseChoice.upsert({
         where: { userId_key: { userId, key } },
         create: { userId, version, key, enabled, decidedBy: ChoiceDecidedBy.EXPLICIT },

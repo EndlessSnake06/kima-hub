@@ -77,8 +77,6 @@ router.post("/mood", async (req, res) => {
             "moodRelaxed",
             "moodAggressive",
             "moodParty",
-            "moodAcoustic",
-            "moodElectronic",
             // Other
             "limit",
         ];
@@ -151,7 +149,7 @@ router.get("/mood/presets", asyncHandler(async (req, res) => {
     const presets = [
         {
             id: "happy",
-            name: "Happy & Upbeat",
+            name: "Upbeat",
             color: "from-yellow-400 to-orange-500",
             params: {
                 moodHappy: { min: 0.5 },
@@ -171,7 +169,7 @@ router.get("/mood/presets", asyncHandler(async (req, res) => {
         },
         {
             id: "chill",
-            name: "Chill & Relaxed",
+            name: "Calm",
             color: "from-teal-400 to-cyan-500",
             params: {
                 moodRelaxed: { min: 0.5 },
@@ -201,7 +199,7 @@ router.get("/mood/presets", asyncHandler(async (req, res) => {
         },
         {
             id: "dance",
-            name: "Dance Party",
+            name: "Energetic",
             color: "from-pink-500 to-rose-600",
             params: {
                 moodParty: { min: 0.5 },
@@ -213,9 +211,9 @@ router.get("/mood/presets", asyncHandler(async (req, res) => {
             id: "acoustic",
             name: "Acoustic Vibes",
             color: "from-amber-500 to-yellow-600",
+            // CLAP's acousticness: acoustic vs electronic is not a mood.
             params: {
-                moodAcoustic: { min: 0.5 },
-                moodElectronic: { max: 0.4 },
+                acousticness: { min: 0.6 },
             },
         },
         {
@@ -336,13 +334,28 @@ router.get("/mood/buckets/:mood", async (req, res) => {
             });
         }
 
-        const mix = await moodBucketService.getMoodMix(mood);
+        // Skip what this user was already served, then remember the ids this
+        // mix actually went out with, so the next one doesn't repeat them.
+        const userId = getRequestUserId(req);
+        const remembered = userId
+            ? await moodBucketService.getRememberedTrackIds(userId, mood)
+            : [];
+
+        const mix = await moodBucketService.getMoodMix(
+            mood,
+            MOOD_MIX_LIMIT,
+            remembered
+        );
 
         if (!mix) {
             return res.status(400).json({
                 error: `Not enough tracks for mood: ${mood}`,
                 suggestion: "Wait for more tracks to be analyzed",
             });
+        }
+
+        if (userId) {
+            await moodBucketService.recordServedTracks(userId, mood, mix.trackIds);
         }
 
         // Load full track details

@@ -13,12 +13,8 @@ import {
     Smile,
     Frown,
     Coffee,
-    Zap,
     PartyPopper,
-    Brain,
-    CloudRain,
     Flame,
-    Guitar,
 } from "lucide-react";
 import { useToast } from "@/lib/toast-context";
 
@@ -27,9 +23,16 @@ interface MoodMixerProps {
     onClose: () => void;
 }
 
-// Mood configuration with icons and colors
+// The five moods the server sorts tracks into (moodBucketService.MOODS).
+// Keys are the stable API ids; labels are what people see.
+type BucketMood = Extract<MoodType, "happy" | "sad" | "chill" | "aggressive" | "party">;
+
+// The presets endpoint also reports how many library tracks still await mood
+// analysis, so an empty mood can say "not analysed yet" rather than look final.
+type PresetWithPending = MoodBucketPreset & { pendingTracks?: number };
+
 const MOOD_CONFIG: Record<
-    MoodType,
+    BucketMood,
     {
         icon: React.ComponentType<{ className?: string }>;
         color: string;
@@ -40,79 +43,45 @@ const MOOD_CONFIG: Record<
     happy: {
         icon: Smile,
         color: "from-yellow-500 to-orange-500",
-        label: "Happy",
-        description: "Uplifting & joyful",
-    },
-    sad: {
-        icon: Frown,
-        color: "from-blue-600 to-indigo-700",
-        label: "Sad",
-        description: "Melancholic & emotional",
-    },
-    chill: {
-        icon: Coffee,
-        color: "from-teal-500 to-cyan-600",
-        label: "Chill",
-        description: "Relaxed & mellow",
-    },
-    energetic: {
-        icon: Zap,
-        color: "from-orange-500 to-red-500",
-        label: "Energetic",
-        description: "High energy & pumped",
+        label: "Upbeat",
+        description: "Bright & uplifting",
     },
     party: {
         icon: PartyPopper,
         color: "from-violet-500 to-purple-700",
-        label: "Party",
-        description: "Dance & celebrate",
+        label: "Energetic",
+        description: "Lively & danceable",
     },
-    focus: {
-        icon: Brain,
-        color: "from-emerald-500 to-green-600",
-        label: "Focus",
-        description: "Concentration & flow",
+    chill: {
+        icon: Coffee,
+        color: "from-teal-500 to-cyan-600",
+        label: "Calm",
+        description: "Relaxed & mellow",
     },
-    melancholy: {
-        icon: CloudRain,
-        color: "from-slate-500 to-gray-600",
-        label: "Melancholy",
-        description: "Bittersweet & reflective",
+    sad: {
+        icon: Frown,
+        color: "from-blue-600 to-indigo-700",
+        label: "Melancholic",
+        description: "Wistful & reflective",
     },
     aggressive: {
         icon: Flame,
         color: "from-red-600 to-rose-700",
-        label: "Aggressive",
-        description: "Intense & powerful",
-    },
-    acoustic: {
-        icon: Guitar,
-        color: "from-amber-600 to-yellow-700",
-        label: "Acoustic",
-        description: "Organic & unplugged",
+        label: "Intense",
+        description: "Heavy & powerful",
     },
 };
 
-// Order for display in 3x3 grid
-const MOOD_ORDER: MoodType[] = [
-    "happy",
-    "energetic",
-    "party",
-    "chill",
-    "focus",
-    "acoustic",
-    "melancholy",
-    "sad",
-    "aggressive",
-];
+// Display order
+const MOOD_ORDER: BucketMood[] = ["happy", "party", "chill", "sad", "aggressive"];
 
 export function MoodMixer({ isOpen, onClose }: MoodMixerProps) {
     const { toast } = useToast();
     const { playTracks } = useAudioControls();
     const queryClient = useQueryClient();
-    const [presets, setPresets] = useState<MoodBucketPreset[]>([]);
+    const [presets, setPresets] = useState<PresetWithPending[]>([]);
     const [loading, setLoading] = useState(true);
-    const [generating, setGenerating] = useState<MoodType | null>(null);
+    const [generating, setGenerating] = useState<BucketMood | null>(null);
     const [isVisible, setIsVisible] = useState(false);
 
     const loadPresets = useCallback(async () => {
@@ -137,7 +106,7 @@ export function MoodMixer({ isOpen, onClose }: MoodMixerProps) {
         }
     }, [isOpen, loadPresets]);
 
-    const generateMix = async (mood: MoodType) => {
+    const generateMix = async (mood: BucketMood) => {
         const config = MOOD_CONFIG[mood];
         setGenerating(mood);
 
@@ -165,7 +134,7 @@ export function MoodMixer({ isOpen, onClose }: MoodMixerProps) {
                 playTracks(tracks, 0);
 
                 // Save as user's active mood mix
-                await api.saveMoodBucketMix(mood);
+                await api.saveMoodBucketMix(mood, tracks.map((t) => t.id));
 
                 toast.success(`${config.label} Mix - Playing ${tracks.length} tracks`);
 
@@ -194,11 +163,14 @@ export function MoodMixer({ isOpen, onClose }: MoodMixerProps) {
     };
 
     // Get track count for a mood
-    const getTrackCount = (mood: MoodType): number => {
+    const getTrackCount = (mood: BucketMood): number => {
         // MoodBucketPreset uses 'id' as the mood identifier
         const preset = presets.find((p) => p.id === mood);
         return preset?.trackCount || 0;
     };
+
+    // Tracks whose moods are not analysed yet (e.g. while a library re-analysis runs)
+    const pendingTracks = presets[0]?.pendingTracks ?? 0;
 
     if (!isVisible && !isOpen) return null;
 
@@ -241,7 +213,7 @@ export function MoodMixer({ isOpen, onClose }: MoodMixerProps) {
                             <Loader2 className="w-8 h-8 animate-spin text-brand" />
                         </div>
                     ) : (
-                        /* 3x3 Mood Grid */
+                        /* Mood Grid */
                         <div className="grid grid-cols-3 gap-3">
                             {MOOD_ORDER.map((mood, i) => {
                                 const config = MOOD_CONFIG[mood];
@@ -268,7 +240,9 @@ export function MoodMixer({ isOpen, onClose }: MoodMixerProps) {
                                         `}
                                         title={
                                             isDisabled
-                                                ? `Need at least 8 tracks (have ${trackCount})`
+                                                ? pendingTracks > 0
+                                                    ? `Not analysed yet — ${pendingTracks.toLocaleString()} tracks still being analysed`
+                                                    : `Need at least 8 tracks (have ${trackCount})`
                                                 : config.description
                                         }
                                         style={{ "--i": i } as CSSProperties}
@@ -311,7 +285,9 @@ export function MoodMixer({ isOpen, onClose }: MoodMixerProps) {
 
                     {/* Help text */}
                     <p className="text-center text-xs text-[var(--text-muted)] mt-4">
-                        Moods are based on audio analysis of your library
+                        {pendingTracks > 0
+                            ? `Moods not analysed yet for ${pendingTracks.toLocaleString()} tracks — mixes fill in as analysis finishes`
+                            : "Moods are based on audio analysis of your library"}
                     </p>
                 </div>
             </div>

@@ -8,7 +8,7 @@
  */
 
 import { ChoiceDecidedBy } from "@prisma/client";
-import { dismissRelease, hasOptedIn, pendingReleases, setChoice } from "../releases";
+import { UnknownChoiceError, dismissRelease, hasOptedIn, pendingReleases, setChoice } from "../releases";
 import * as catalog from "../releases/catalog";
 
 jest.mock("../../utils/db", () => {
@@ -26,8 +26,12 @@ jest.mock("../../utils/db", () => {
     };
 });
 
+jest.mock("../releases/moodMixes", () => ({ MOOD_MIX_RELEASE: "1.11.0", moodMixState: jest.fn() }));
+
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { prisma } = require("../../utils/db");
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { moodMixState } = require("../releases/moodMixes");
 const tx = prisma.__tx;
 
 /** A release that asks two things, so dismissal has something to settle. */
@@ -119,6 +123,32 @@ describe("setChoice", () => {
             }),
         );
     });
+
+    it("refuses a key the release does not offer as a choice, and writes nothing", async () => {
+        // `moods.mixes.rebuild` is a real catalog key, but an action, not a
+        // choice — recording it here would settle the mood-mix question
+        // without the checks `decideMoodMixes` makes ("keep" on a retired mix).
+        await expect(
+            setChoice({ userId: "u1", version: "9.9.9", key: "moods.mixes.rebuild", enabled: false }),
+        ).rejects.toBeInstanceOf(UnknownChoiceError);
+        await expect(
+            setChoice({ userId: "u1", version: "9.9.9", key: "no.such.key", enabled: true }),
+        ).rejects.toBeInstanceOf(UnknownChoiceError);
+        expect(prisma.releaseChoice.upsert).not.toHaveBeenCalled();
+    });
+
+    it("refuses a version it does not know", async () => {
+        jest.spyOn(catalog, "findRelease").mockReturnValue(undefined);
+        await expect(
+            setChoice({ userId: "u1", version: "0.0.0", key: "social.network", enabled: true }),
+        ).rejects.toBeInstanceOf(UnknownChoiceError);
+        expect(prisma.releaseChoice.upsert).not.toHaveBeenCalled();
+    });
+
+    it("accepts a choice the release actually asks", async () => {
+        await setChoice({ userId: "u1", version: "9.9.9", key: "commons.contribute", enabled: true });
+        expect(prisma.releaseChoice.upsert).toHaveBeenCalledTimes(1);
+    });
 });
 
 describe("hasOptedIn", () => {
@@ -147,7 +177,88 @@ describe("pendingReleases", () => {
     });
 });
 
+describe("pendingReleases — the 1.11 mood-mix items", () => {
+    const mixState = (mix: object | null, extra: object = {}) =>
+        moodMixState.mockResolvedValue({ mix, decision: null, playlist: null, ...extra });
+    const CURRENT = { id: "m", name: "Your Upbeat Mix", mood: "happy", trackCount: 3, retired: false };
+    const RETIRED = { id: "m", name: "Your Focus Mode Mix", mood: "focus", trackCount: 3, retired: true };
+    const keysOf111 = async () =>
+        (await pendingReleases("u1")).find((r) => r.version === "1.11.0")?.items.map((i) => i.key);
+
+    beforeEach(() => {
+        jest.restoreAllMocks();
+        prisma.releaseAcknowledgement.findMany.mockResolvedValue([{ version: "1.10.1" }]);
+    });
+
+    it("asks a user with a current mix to rebuild/keep, not the retired question", async () => {
+        mixState(CURRENT);
+        const keys = await keysOf111();
+        expect(keys).toContain("moods.mixes");
+        expect(keys).not.toContain("moods.mixes.retired");
+    });
+
+    it("asks a user with a retired mix to save/remove, not rebuild/keep", async () => {
+        mixState(RETIRED);
+        const keys = await keysOf111();
+        expect(keys).toContain("moods.mixes.retired");
+        expect(keys).not.toContain("moods.mixes");
+    });
+
+    it("drops both for a user without a mix, leaving the rest of the release", async () => {
+        mixState(null);
+        const keys = await keysOf111();
+        expect(keys).not.toContain("moods.mixes");
+        expect(keys).not.toContain("moods.mixes.retired");
+        expect(keys).toContain("stats.page");
+        // The shared catalog is not edited in place for the next user.
+        expect(catalog.RELEASES.find((r) => r.version === "1.11.0")!.items.map((i) => i.key)).toEqual(
+            expect.arrayContaining(["moods.mixes", "moods.mixes.retired"]),
+        );
+    });
+
+    describe("after 1.11 was closed", () => {
+        beforeEach(() => {
+            prisma.releaseAcknowledgement.findMany.mockResolvedValue([{ version: "1.10.1" }, { version: "1.11.0" }]);
+        });
+
+        it("asks again about an unanswered retired mix, and only that", async () => {
+            mixState(RETIRED);
+            const out = await pendingReleases("u1");
+            expect(out).toHaveLength(1);
+            expect(out[0].version).toBe("1.11.0");
+            expect(out[0].items.map((i) => i.key)).toEqual(["moods.mixes.retired"]);
+        });
+
+        it("stops asking once the retired mix is saved or answered", async () => {
+            mixState(RETIRED, { playlist: { id: "p", name: "x" } });
+            expect(await pendingReleases("u1")).toEqual([]);
+            mixState(RETIRED, { decision: "rebuild" });
+            expect(await pendingReleases("u1")).toEqual([]);
+        });
+
+        it("never re-asks about a current mix: closing meant keep", async () => {
+            mixState(CURRENT);
+            expect(await pendingReleases("u1")).toEqual([]);
+        });
+    });
+});
+
 describe("catalog", () => {
+    it("asks about mood mixes in 1.11.0 only, and says what closing means", () => {
+        const find = (key: string) =>
+            catalog.RELEASES.find((r) => r.version === "1.11.0")!.items.find(
+                (i): i is Extract<catalog.ReleaseItem, { kind: "action" }> => i.key === key,
+            );
+        expect(find("moods.mixes")).toMatchObject({ kind: "action", requires: "savedMoodMix" });
+        expect(find("moods.mixes")?.ifClosed).toMatch(/stays as it is/);
+        expect(find("moods.mixes.retired")).toMatchObject({ kind: "action", requires: "retiredMoodMix" });
+        expect(find("moods.mixes.retired")?.ifClosed).toMatch(/nothing is deleted/);
+        expect(find("moods.mixes.retired")?.body).toMatch(/can't show it/);
+        expect(
+            catalog.RELEASES.find((r) => r.version === "1.10.1")!.items.some((i) => i.key === "moods.mixes"),
+        ).toBe(false);
+    });
+
     it("has a 1.10.1 entry with the ONNX note and re-embed action", () => {
         const release = catalog.RELEASES.find((r) => r.version === "1.10.1");
         expect(release).toBeDefined();

@@ -1,42 +1,42 @@
 /**
  * Mood Bucket Worker
  *
- * This worker runs in the background and assigns newly analyzed tracks
- * to mood buckets. It watches for tracks that have:
- * - analysisStatus = 'completed'
- * - No existing MoodBucket entries
+ * Keeps the MoodBucket table in step with the library. Every cycle it checks
+ * the library's mood signature (analysed-track count, CLAP-complete count,
+ * latest analysis time); when that changed, it re-ranks the whole library and
+ * rebuilds every bucket (moodBucketService). A whole rebuild, not a per-track
+ * update, because moods are ranked within the library: one new track shifts
+ * every other track's rank.
  *
- * This is separate from the Python audio analyzer to keep mood bucket
- * logic in TypeScript and avoid modifying the Python code.
+ * On the first cycle after a deploy the signature is always "changed", so
+ * every existing track is re-sorted without any manual backfill. Tracks enter
+ * buckets only once BOTH audio analysis and CLAP analysis are complete.
  */
 
 import { logger } from "../utils/logger";
-import { prisma } from "../utils/db";
-import { moodBucketService } from "../services/moodBucketService";
+import { moodBucketService, refreshMoodSnapshot } from "../services/moodBucketService";
 
-// Configuration
-const BATCH_SIZE = 50;
 const WORKER_INTERVAL_MS = 30 * 1000; // Run every 30 seconds
 
 let isRunning = false;
 let workerInterval: NodeJS.Timeout | null = null;
+let lastBuiltSignature: string | null = null;
 
 /**
  * Start the mood bucket worker
  */
 export async function startMoodBucketWorker() {
     logger.debug("\n=== Starting Mood Bucket Worker ===");
-    logger.debug(`   Batch size: ${BATCH_SIZE}`);
     logger.debug(`   Interval: ${WORKER_INTERVAL_MS / 1000}s`);
     logger.debug("");
 
     // Run immediately
-    await processNewlyAnalyzedTracks();
+    await syncMoodBuckets();
 
     // Then run at interval with self-rescheduling setTimeout
     function scheduleNext() {
         workerInterval = setTimeout(async () => {
-            await processNewlyAnalyzedTracks();
+            await syncMoodBuckets();
             scheduleNext();
         }, WORKER_INTERVAL_MS);
     }
@@ -55,68 +55,27 @@ export function stopMoodBucketWorker() {
 }
 
 /**
- * Process newly analyzed tracks that don't have mood bucket assignments
+ * Rebuild the buckets if the library changed since the last rebuild.
+ * Returns true when a rebuild ran.
  */
-async function processNewlyAnalyzedTracks(): Promise<number> {
-    if (isRunning) return 0;
+export async function syncMoodBuckets(): Promise<boolean> {
+    if (isRunning) return false;
 
     try {
         isRunning = true;
+        const { snapshot } = await refreshMoodSnapshot();
+        if (snapshot.signature === lastBuiltSignature) return false;
 
-        // Find tracks that are analyzed but not in any mood bucket
-        // We use a subquery to find tracks without mood bucket entries
-        const tracksWithoutBuckets = await prisma.track.findMany({
-            where: {
-                analysisStatus: "completed",
-                moodBuckets: {
-                    none: {},
-                },
-            },
-            select: {
-                id: true,
-                title: true,
-            },
-            take: BATCH_SIZE,
-            orderBy: {
-                analyzedAt: "desc",
-            },
-        });
-
-        if (tracksWithoutBuckets.length === 0) {
-            return 0;
-        }
-
-        logger.debug(
-            `[Mood Bucket] Processing ${tracksWithoutBuckets.length} newly analyzed tracks...`
+        const result = await moodBucketService.rebuildBuckets(snapshot);
+        lastBuiltSignature = snapshot.signature;
+        logger.info(
+            `[Mood Bucket] Re-sorted library: ${result.tracks} tracks in ${result.assignments} mood buckets (${snapshot.views.size} analysed, ${snapshot.pending} awaiting analysis)`
         );
-
-        let assigned = 0;
-        for (const track of tracksWithoutBuckets) {
-            try {
-                const moods = await moodBucketService.assignTrackToMoods(
-                    track.id
-                );
-                if (moods.length > 0) {
-                    assigned++;
-                    logger.debug(` ${track.title}: [${moods.join(", ")}]`);
-                }
-            } catch (error: any) {
-                logger.error(
-                    `   ✗ ${track.title}: ${error?.message || error}`
-                );
-            }
-        }
-
-        logger.debug(
-            `[Mood Bucket] Assigned ${assigned}/${tracksWithoutBuckets.length} tracks to mood buckets`
-        );
-
-        return assigned;
+        return true;
     } catch (error) {
         logger.error("[Mood Bucket] Worker error:", error);
-        return 0;
+        return false;
     } finally {
         isRunning = false;
     }
 }
-

@@ -14,7 +14,14 @@ import { Router } from "express";
 import { z } from "zod";
 import { requireAuth } from "../middleware/auth";
 import { logger } from "../utils/logger";
-import { dismissRelease, findRelease, pendingReleases, setChoice } from "../services/releases";
+import { UnknownChoiceError, dismissRelease, findRelease, pendingReleases, setChoice } from "../services/releases";
+import {
+    MoodMixCannotKeepError,
+    MoodMixNotFoundError,
+    decideMoodMixes,
+    moodMixState,
+    saveMoodMixAsPlaylist,
+} from "../services/releases/moodMixes";
 
 const router = Router();
 router.use(requireAuth);
@@ -26,6 +33,64 @@ router.get("/pending", async (req, res) => {
     } catch (error) {
         logger.error("[WhatsNew] pending failed:", error);
         res.status(500).json({ error: "Failed to load releases" });
+    }
+});
+
+/**
+ * The 1.11 mood-mix question (see services/releases/moodMixes.ts). Registered
+ * before the `/:version/...` routes so "mood-mixes" is never read as a version.
+ */
+
+/** GET /whats-new/mood-mixes — the user's saved mix, and what they decided. */
+router.get("/mood-mixes", async (req, res) => {
+    try {
+        res.json(await moodMixState(req.user!.id));
+    } catch (error) {
+        logger.error("[WhatsNew] mood-mix state failed:", error);
+        res.status(500).json({ error: "Failed to load your mood mix" });
+    }
+});
+
+const moodMixDecisionSchema = z.object({ decision: z.enum(["rebuild", "keep", "remove"]) });
+
+/**
+ * POST /whats-new/mood-mixes/decision — rebuild or remove (both clear the saved
+ * mix), or keep. Keep is refused for a mix under a removed mood.
+ */
+router.post("/mood-mixes/decision", async (req, res) => {
+    try {
+        const { decision } = moodMixDecisionSchema.parse(req.body);
+        res.json(await decideMoodMixes(req.user!.id, decision));
+    } catch (error) {
+        if (error instanceof z.ZodError) {
+            return res.status(400).json({ error: "Invalid request", details: error.errors });
+        }
+        if (error instanceof MoodMixCannotKeepError) {
+            return res.status(400).json({
+                error: "This mood mix can't be shown any more. Save it as a playlist or remove it.",
+            });
+        }
+        logger.error("[WhatsNew] mood-mix decision failed:", error);
+        res.status(500).json({ error: "Failed to record your choice" });
+    }
+});
+
+const moodMixSaveSchema = z.object({ mixId: z.string().min(1) });
+
+/** POST /whats-new/mood-mixes/save — copy the saved mix into a playlist. */
+router.post("/mood-mixes/save", async (req, res) => {
+    try {
+        const { mixId } = moodMixSaveSchema.parse(req.body);
+        res.json(await saveMoodMixAsPlaylist(req.user!.id, mixId));
+    } catch (error) {
+        if (error instanceof z.ZodError) {
+            return res.status(400).json({ error: "Invalid request", details: error.errors });
+        }
+        if (error instanceof MoodMixNotFoundError) {
+            return res.status(404).json({ error: "Mood mix not found" });
+        }
+        logger.error("[WhatsNew] mood-mix save failed:", error);
+        res.status(500).json({ error: "Failed to save your mood mix" });
     }
 });
 
@@ -43,6 +108,9 @@ router.post("/:version/choice", async (req, res) => {
     } catch (error) {
         if (error instanceof z.ZodError) {
             return res.status(400).json({ error: "Invalid request", details: error.errors });
+        }
+        if (error instanceof UnknownChoiceError) {
+            return res.status(400).json({ error: "Unknown choice" });
         }
         logger.error("[WhatsNew] choice failed:", error);
         res.status(500).json({ error: "Failed to record choice" });

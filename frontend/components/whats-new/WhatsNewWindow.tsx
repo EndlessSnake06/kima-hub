@@ -42,6 +42,9 @@ type ReleaseItem =
           confirmTitle?: string;
           confirmMessage?: string;
           confirmLabel?: string;
+          /** What closing without acting means for this item; said in the footer. */
+          ifClosed?: string;
+          requires?: "savedMoodMix" | "retiredMoodMix";
       }
     | {
           kind: "choice";
@@ -76,6 +79,11 @@ export function WhatsNewWindow({
 
     const asks = release.items.filter((i) => i.kind === "choice");
     const unanswered = asks.filter((i) => choices[i.key] === undefined).length;
+    // Actions that ask for a decision (the 1.11 mood-mix question) say what
+    // closing means, so the footer must not claim there is nothing to decide.
+    const ifClosed = release.items
+        .map((i) => (i.kind === "action" ? i.ifClosed : undefined))
+        .filter((t): t is string => !!t);
 
     const close = useCallback(async () => {
         setClosing(true);
@@ -209,7 +217,9 @@ export function WhatsNewWindow({
                 <footer className="shrink-0 px-6 py-4 border-t border-white/10 flex items-center justify-between gap-4">
                     <p className="text-xs leading-relaxed text-[var(--text-muted)]">
                         {asks.length === 0
-                            ? "Nothing to decide here. (or press Esc)"
+                            ? ifClosed.length > 0
+                                ? ifClosed.join(" ")
+                                : "Nothing to decide here. (or press Esc)"
                             : unanswered > 0
                               ? `If you close now, ${unanswered === asks.length ? "these stay" : "the rest stay"} off. You can change your mind in Settings whenever.`
                               : "You can change your mind in Settings whenever."}
