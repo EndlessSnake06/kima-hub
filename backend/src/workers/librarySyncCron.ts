@@ -6,15 +6,14 @@
  * external tools) is picked up without a manual scan. Download-completion
  * webhooks already trigger scans; this is the fallback for everything else.
  *
- * No fixed jobId is used -- a fresh job each tick avoids BullMQ's failed/
- * completed dedup-marker trap, and at a 6h cadence scans cannot pile up.
+ * Scans go through requestScan, which dedupes on the shared "scan:full"
+ * key -- a tick while one is queued or running is a no-op.
  */
 
 import { logger } from "../utils/logger";
 import cron, { ScheduledTask } from "node-cron";
 import { getSystemSettings } from "../utils/systemSettings";
-import { config } from "../config";
-import { scanQueue } from "./queues";
+import { requestScan } from "./scanRequest";
 
 let cronTask: ScheduledTask | null = null;
 
@@ -31,20 +30,16 @@ export function startLibrarySyncCron() {
                 return;
             }
 
-            // Skip if a scan (manual, webhook, or a prior auto-sync) is already
-            // active or waiting -- no point queuing a redundant full rescan
-            // behind one that's about to cover the same files.
-            const counts = await scanQueue.getJobCounts("active", "waiting");
-            if ((counts.active ?? 0) + (counts.waiting ?? 0) > 0) {
-                logger.debug("[LibrarySync] scan already in progress, skipping");
-                return;
-            }
-
-            await scanQueue.add("scan", {
-                musicPath: config.music.musicPath,
+            // requestScan dedupes: if any full scan is already waiting,
+            // delayed, or active, this tick is a no-op.
+            const result = await requestScan({
                 source: "auto-sync",
             });
-            logger.debug("[LibrarySync] Enqueued automatic library scan");
+            if (result.queued) {
+                logger.debug("[LibrarySync] Enqueued automatic library scan");
+            } else {
+                logger.debug(`[LibrarySync] ${result.reason}, skipping`);
+            }
         } catch (error: any) {
             logger.error("[LibrarySync] cron error:", error.message);
         }

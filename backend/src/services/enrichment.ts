@@ -287,9 +287,14 @@ class EnrichmentService {
             confidence: 0,
         };
 
-        // Step 1: Try to find MBID
+        // Step 1: identify the release group, then take the whole
+        // catalogue from it in one two-request chain.
+        // Identification has two paths — the artist's discography (needs
+        // a real artist MBID) and a title-checked search — and the
+        // catalogue answers the remaining questions (genres, label,
+        // original year) from whichever id won, cached per album so two
+        // albums' worth of requests never repeat.
         if (config.sources.musicbrainz) {
-            // If artist has MBID, search their discography
             if (
                 album.artist.mbid &&
                 hasRealMbid(album.artist.mbid)
@@ -333,41 +338,6 @@ class EnrichmentService {
                             : undefined;
                         enrichmentData.confidence += 0.5;
                         logger.debug(`  Found MBID: ${enrichmentData.rgMbid}`);
-
-                        // Try to get label info from first release
-                        const rgDetails =
-                            await musicBrainzService.getReleaseGroup(
-                                match.id
-                            );
-                        const releaseId =
-                            rgDetails.kind === "answered"
-                                ? rgDetails.value?.releases?.[0]?.id
-                                : undefined;
-                        if (releaseId) {
-                            const releaseInfo =
-                                await musicBrainzService.getRelease(
-                                    releaseId
-                                );
-                            if (releaseInfo.kind === "answered") {
-                                const label =
-                                    releaseInfo.value?.["label-info"]?.[0]
-                                        ?.label?.name;
-                                if (label) {
-                                    enrichmentData.label = label;
-                                    logger.debug(
-                                        `  Found label: ${enrichmentData.label}`
-                                    );
-                                }
-                            } else if (releaseInfo.kind === "absent") {
-                                logger.debug(
-                                    `  Label lookup: MusicBrainz has nothing`
-                                );
-                            } else {
-                                logger.debug(
-                                    `  Label lookup ${releaseInfo.kind}: ${failureCause(releaseInfo)}`
-                                );
-                            }
-                        }
                     }
                 } else if (discography.kind === "absent") {
                     logger.debug(
@@ -408,7 +378,7 @@ class EnrichmentService {
                     enrichmentData.rgMbid = hit.value.id;
                     enrichmentData.confidence += 0.3;
                     logger.debug(
-                        `  Found MBID by search: ${hit.value.id} ("${hit.value.title}")`
+                        `  Found MBID by search: ${enrichmentData.rgMbid} ("${hit.value.title}")`
                     );
                 } else if (hit.kind === "answered") {
                     logger.debug(
@@ -422,12 +392,41 @@ class EnrichmentService {
                     );
                 }
             }
+
+            if (enrichmentData.rgMbid) {
+                const chain = await musicBrainzService.getAlbumCatalogue(
+                    enrichmentData.rgMbid
+                );
+                if (chain.kind === "answered") {
+                    if (chain.value.genres.length > 0) {
+                        enrichmentData.genres = [...chain.value.genres]
+                            .sort((a, b) => b.count - a.count)
+                            .slice(0, 5)
+                            .map((g) => g.name);
+                    }
+                    if (chain.value.label) {
+                        enrichmentData.label = chain.value.label;
+                        logger.debug(`  Found label: ${enrichmentData.label}`);
+                    }
+                    if (
+                        chain.value.originalYear != null &&
+                        !enrichmentData.releaseDate
+                    ) {
+                        enrichmentData.releaseDate = new Date(
+                            `${chain.value.originalYear}-01-01`
+                        );
+                    }
+                } else if (chain.kind !== "absent") {
+                    logger.debug(
+                        `  Album catalogue ${chain.kind}: ${failureCause(chain)}`
+                    );
+                }
+            }
         }
 
-        // Step 2 removed: album tags/tracklists only existed on the retired
-        // Last.fm service. MusicBrainz (Step 1) already supplies genres and
-        // track counts, so there is nothing to replace here — keep MB +
-        // artwork cascade.
+        // Step 2: genres, label, and original year all arrive with the
+        // Step 1 catalogue chain; moods come from audio analysis only
+        // so nothing else writes tag-like fields.
 
         // Step 3: Get cover art from multiple sources (Deezer → MusicBrainz → Fanart)
         try {
@@ -444,7 +443,7 @@ class EnrichmentService {
             }
         } catch (error) {
             logger.error(
-                `  ✗ Cover art lookup failed:`,
+                `  ✗ Album cover lookup failed:`,
                 error instanceof Error ? error.message : error
             );
         }

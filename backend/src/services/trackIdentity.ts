@@ -3,6 +3,7 @@ import { logger } from "../utils/logger";
 import { songLinkService, SongLinkResult } from "./songlink";
 import { musicBrainzService } from "./musicbrainz";
 import { failureCause } from "../utils/outcome";
+import { LIBRARY_LOCATION } from "./libraryFilters";
 
 interface ResolvedTrack {
     sourceUrl: string;
@@ -151,7 +152,7 @@ class TrackIdentityService {
         artistName: string;
     } | null> {
         const track = await prisma.track.findFirst({
-            where: { isrc, album: { location: "LIBRARY" } },
+            where: { isrc, album: { location: LIBRARY_LOCATION } },
             include: {
                 album: {
                     include: { artist: { select: { name: true } } },

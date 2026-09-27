@@ -123,17 +123,6 @@ export class SourcePauseController {
         };
     }
 
-    /** Lift the pause immediately (manual resume / operator decision). */
-    async resume(source: SourceName): Promise<void> {
-        await prisma.$executeRawUnsafe(
-            `UPDATE "SourceAttempt"
-                SET status = 'pending', "nextRetryAt" = NULL,
-                    "lastErrorCode" = NULL, "lastErrorMessage" = NULL
-              WHERE source = $1`,
-            source,
-        );
-    }
-
     /**
      * Handle a source refusal: if `err` carries a rate-limit signal, pause
      * ONLY that source for the window and report it handled — the failure

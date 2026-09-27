@@ -91,7 +91,7 @@ export function errorHandler(
     //         return res.status(400).json({ error: "Invalid request", details: error.errors });
     //     }
     //
-    // repeated in plays, settings, systemSettings, listeningState, offline and
+    // repeated in plays, settings, systemSettings, offline and
     // playlistImport. The sweep's instruction to "validate input with Zod" is
     // only safe once this exists; validating and letting it throw would have
     // answered 500 to a bad query string.

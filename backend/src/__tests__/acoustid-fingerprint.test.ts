@@ -63,12 +63,15 @@ const mockSearchRecording = jest.fn().mockResolvedValue(noData);
 const mockGetRecordingIsrc = jest.fn().mockResolvedValue(noData);
 const mockGetRecordingGenres = jest.fn().mockResolvedValue(noData);
 const mockLookupByIsrc = jest.fn().mockResolvedValue(noData);
+const mockGetAlbumCatalogue = jest.fn().mockResolvedValue(noData);
 jest.mock("../services/musicbrainz", () => ({
     musicBrainzService: {
         searchRecording: (...args: unknown[]) => mockSearchRecording(...args),
         getRecordingIsrc: (...args: unknown[]) => mockGetRecordingIsrc(...args),
         getRecordingGenres: (...args: unknown[]) => mockGetRecordingGenres(...args),
         lookupByIsrc: (...args: unknown[]) => mockLookupByIsrc(...args),
+        getAlbumCatalogue: (...args: unknown[]) => mockGetAlbumCatalogue(...args),
+        normalizeForSearch: (s: string) => s,
     },
 }));
 
@@ -305,9 +308,11 @@ describe("AcoustID: the fingerprint is the fingerprint stage's stored answer", (
         });
         // The fingerprint is untouched — nothing recomputed it.
         expect(track?.acoustidFingerprint).toBe(FINGERPRINT);
-        // Nothing matched, so no recording is invented.
+        // Nothing matched, so no recording is invented — and nothing is
+        // stamped on the track either (moods come from analysis only,
+        // the record owns the answered question).
         expect(track?.recordingMbid).toBeNull();
-        expect(track?.enrichmentTags).toEqual(["_not_found"]);
+        expect(track?.enrichmentTags).toEqual([]);
     });
 
     it("closes the question as answered when the lookup does not match", async () => {

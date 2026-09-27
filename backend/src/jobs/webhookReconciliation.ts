@@ -12,7 +12,7 @@
 
 import { logger } from "../utils/logger";
 import { webhookEventStore } from "../services/webhookEventStore";
-import { simpleDownloadManager } from "../services/simpleDownloadManager";
+import { dispatchWebhookEvent } from "../services/webhookHandlers";
 import { getSystemSettings } from "../utils/systemSettings";
 
 class WebhookReconciliationService {
@@ -139,96 +139,11 @@ class WebhookReconciliationService {
             `[WEBHOOK-RECONCILE] Processing ${eventType} event (retry ${event.retryCount})`
         );
 
-        switch (eventType) {
-            case "Grab":
-                return await this.handleGrab(payload);
-
-            case "Download":
-            case "AlbumDownload":
-            case "TrackRetag":
-            case "Rename":
-                return await this.handleDownload(payload);
-
-            case "ImportFailure":
-            case "DownloadFailed":
-            case "DownloadFailure":
-                return await this.handleImportFailure(payload);
-
-            default:
-                logger.debug(`[WEBHOOK-RECONCILE] Skipping ${eventType} event`);
-                return undefined;
-        }
-    }
-
-    /**
-     * Handle Grab event
-     */
-    private async handleGrab(payload: any): Promise<string | undefined> {
-        const downloadId = payload.downloadId;
-        const albumMbid = payload.albums?.[0]?.foreignAlbumId || payload.albums?.[0]?.mbId;
-        const albumTitle = payload.albums?.[0]?.title;
-        const artistName = payload.artist?.name;
-        const lidarrAlbumId = payload.albums?.[0]?.id;
-
-        if (!downloadId) {
-            return undefined;
-        }
-
-        const result = await simpleDownloadManager.onDownloadGrabbed(
-            downloadId,
-            albumMbid || "",
-            albumTitle || "",
-            artistName || "",
-            lidarrAlbumId || 0
-        );
-
-        return result.matched ? result.jobId : undefined;
-    }
-
-    /**
-     * Handle Download complete event
-     */
-    private async handleDownload(payload: any): Promise<string | undefined> {
-        const downloadId = payload.downloadId;
-        const albumTitle = payload.album?.title || payload.albums?.[0]?.title;
-        const artistName = payload.artist?.name;
-        const albumMbid = payload.album?.foreignAlbumId || payload.albums?.[0]?.foreignAlbumId;
-        const lidarrAlbumId = payload.album?.id || payload.albums?.[0]?.id;
-
-        if (!downloadId) {
-            return undefined;
-        }
-
-        const result = await simpleDownloadManager.onDownloadComplete(
-            downloadId,
-            albumMbid,
-            artistName,
-            albumTitle,
-            lidarrAlbumId
-        );
-
-        return result.jobId;
-    }
-
-    /**
-     * Handle Import failure event
-     */
-    private async handleImportFailure(payload: any): Promise<string | undefined> {
-        const downloadId = payload.downloadId;
-        const albumMbid = payload.album?.foreignAlbumId || payload.albums?.[0]?.foreignAlbumId;
-        const reason = payload.message || "Import failed";
-
-        if (!downloadId) {
-            return undefined;
-        }
-
-        const result = await simpleDownloadManager.onImportFailed(
-            downloadId,
-            reason,
-            albumMbid
-        );
-
-        return result.jobId;
+        // Same handlers as the live route (services/webhookHandlers.ts) —
+        // including the queueCleaner kick and the scan enqueue that the
+        // old private copy dropped, which made replay produce a different
+        // end state than live processing.
+        return dispatchWebhookEvent(eventType, payload);
     }
 
     /**

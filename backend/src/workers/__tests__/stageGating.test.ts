@@ -307,10 +307,12 @@ describe("per-track stage gating", () => {
             await executeVibePhase();
 
             // A failed job still holds `vibe-<id>`; attempt 1 must not reuse it.
+            // Per-offer jobId: `track-<id>-<stage>-<attempt>-r<redelivered>` —
+            // first dispatch, no prior lease expiry.
             expect(mockQueueAdd).toHaveBeenCalledWith(
                 "embed",
                 expect.objectContaining({ trackId: id("t1") }),
-                expect.objectContaining({ jobId: `track-${id("t1")}-embedding-1` }),
+                expect.objectContaining({ jobId: `track-${id("t1")}-embedding-1-r0` }),
             );
         });
     });
@@ -440,7 +442,7 @@ describe("per-track stage gating", () => {
             expect(pushed).toEqual([id("stuck")]);
         });
 
-        it("re-claims a record whose lease expired and advances its attempt", async () => {
+        it("re-claims a record whose lease expired without consuming an attempt", async () => {
             // First cycle: the record is claimed 'working' with a lease, so
             // a second cycle must NOT double-offer it while the lease holds.
             await seedTrack(id("t1"), {
@@ -461,7 +463,9 @@ describe("per-track stage gating", () => {
             expect(await executeAudioPhase()).toBe(0);
 
             // The lease elapses (the analyzer died mid-attempt): the record
-            // comes back with a fresh attempt number in the pushed entry.
+            // comes back on the SAME attempt — only the redelivery count moves
+            // so the offer key changes (`-r1`) without burning a
+            // ladder rung.
             await prisma.$executeRawUnsafe(
                 `UPDATE "TrackStage" SET "nextRetryAt" = now() - interval '1 minute'
                   WHERE "trackId" = $1 AND stage = 'analysis'`,
@@ -471,8 +475,8 @@ describe("per-track stage gating", () => {
             const pushed = mockRedis.rpush.mock.calls.map(
                 (c) => JSON.parse(c[1] as string) as { jobId: string },
             );
-            expect(pushed[0]?.jobId).toBe(`track-${id("t1")}-analysis-1`);
-            expect(pushed[1]?.jobId).toBe(`track-${id("t1")}-analysis-2`);
+            expect(pushed[0]?.jobId).toBe(`track-${id("t1")}-analysis-1-r0`);
+            expect(pushed[1]?.jobId).toBe(`track-${id("t1")}-analysis-1-r1`);
         });
 
         it("declares exactly the four stages of the graph", async () => {

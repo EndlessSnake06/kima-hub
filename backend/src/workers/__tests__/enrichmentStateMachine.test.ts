@@ -324,27 +324,26 @@ describe("Enrichment State Machine", () => {
             mockUpdateState.mockClear();
             mockGetState.mockResolvedValue({ status: "idle" });
 
-            // triggerEnrichmentNow always clears userStopped, so use a direct
-            // cycle simulation: call triggerEnrichmentNow without the immediate flag
-            // Actually, we can't call runEnrichmentCycle directly since it's not exported.
-            // But we CAN test that triggerEnrichmentNow works after stop:
+            // After the stop landed, a trigger still runs exactly one cycle
+            // (the immediate flag) — it does not re-arm the engine (design
+            // the timer must not auto-restart a stopped engine.
             const result2 = await triggerEnrichmentNow();
 
-            // triggerEnrichmentNow should clear userStopped and run
-            // (it calls clearPauseState which resets everything)
-            // The cycle should proceed (hit the isRunning or artists phase)
             expect(result2).toBeDefined();
         });
     });
 
-    describe("Python analyzer bridge (C2)", () => {
-        it("should publish resume to audio:analysis:control when triggerEnrichmentNow is called", async () => {
+    describe("trigger semantics", () => {
+        it("a trigger runs one cycle; it does not publish resume or lift a stop", async () => {
             await startUnifiedEnrichmentWorker();
             mockPublishToChannel.mockClear();
 
             await triggerEnrichmentNow();
 
-            expect(mockPublishToChannel).toHaveBeenCalledWith(
+            // A trigger is "run one cycle", not "undo what the operator
+            // stopped": it never publishes the resume signal on its own.
+            // (It still runs the one cycle via the immediate flag.)
+            expect(mockPublishToChannel).not.toHaveBeenCalledWith(
                 "audio:analysis:control",
                 "resume",
             );
@@ -373,9 +372,9 @@ describe("Enrichment State Machine", () => {
             simulatePauseViaStateService();
             const result = await triggerEnrichmentNow();
 
-            // triggerEnrichmentNow calls clearPauseState first, which resets isPaused.
-            // So the state sync re-reads and finds "paused", sets isPaused=true.
-            // Result should be empty (paused).
+            // The trigger does not clear anything on its own; the cycle's
+            // state sync reads "paused", parks isPaused, and declines.
+            // Result is the empty one because the engine stays paused.
             expect(result).toEqual({ artists: 0, tracks: 0, audioQueued: 0 });
         });
 
@@ -407,9 +406,10 @@ describe("Enrichment State Machine", () => {
             mockUpdateState.mockClear();
 
             // A SECOND explicit trigger is the user pressing "Run Enrichment":
-            // triggerEnrichmentNow -> clearPauseState() resets userStopped and
-            // resumes. This is designed behavior (the guard is against the
-            // TIMER auto-restarting, not against an explicit user action).
+            // the immediate flag runs one cycle even while userStopped is
+            // set. That is designed behavior (the guard is against the
+            // TIMER auto-restarting, not against an explicit user action);
+            // after this cycle the engine sits stopped again until Resume.
             await triggerEnrichmentNow();
             expect(mockUpdateState).toHaveBeenCalledWith(
                 expect.objectContaining({ status: "running" }),
@@ -436,12 +436,9 @@ describe("Enrichment State Machine", () => {
 
     describe("W2: reverse-sync must resume infrastructure, not just flip the local flag", () => {
         it("should call clearGate when reverse-syncing a stale pause to running", async () => {
-            // The reverse-sync branch only runs on the TIMER-driven cycle --
-            // triggerEnrichmentNow calls clearPauseState first, which resets the
-            // local flags before the cycle ever sees them. The wedge is a missed
-            // "resume" control message, so simulate exactly that: state says
-            // "paused" (the pause landed), then state says "running" (the resume
-            // was lost), then the next timer tick must self-heal the
+            // The wedge is a missed "resume" control message: state says
+            // "paused" (the pause landed), then state says "running" (the
+            // resume was lost), then the next timer tick must self-heal the
             // infrastructure, not just the flag.
             await startUnifiedEnrichmentWorker();
 
@@ -454,7 +451,7 @@ describe("Enrichment State Machine", () => {
             mockClearGate.mockClear();
             mockPublishToChannel.mockClear();
 
-            // Advance to the next scheduled cycle (timer path, no clearPauseState)
+            // Advance to the next scheduled cycle (timer path)
             await jest.advanceTimersByTimeAsync(60_000);
 
             // The reverse-sync must have resumed the real infrastructure,
@@ -510,7 +507,7 @@ describe("Enrichment State Machine", () => {
             // `analysisStatus: "pending"` select drove the choice.
             mockQueryRaw.mockImplementation(async (...args: unknown[]) => {
                 const sql = String(args[0]); const stage = args[1];
-                if (sql.includes("SET status = 'working'")) return [{ attempt: 0 }];
+                if (sql.includes("SET status = 'working'")) return [{ attempt: 1, redelivered: 0 }];
                 if (stage === "analysis") return stageRows([{ trackId: "t1", stage: "analysis" }]);
                 return [];
             });
@@ -528,7 +525,7 @@ describe("Enrichment State Machine", () => {
             // Only the recording stage is owed, and only for one track.
             mockQueryRaw.mockImplementation(async (...args: unknown[]) => {
                 const sql = String(args[0]); const stage = args[1];
-                if (sql.includes("SET status = 'working'")) return [{ attempt: 0 }];
+                if (sql.includes("SET status = 'working'")) return [{ attempt: 1, redelivered: 0 }];
                 if (stage === "recording") return stageRows([{ trackId: "t1", stage: "recording" }]);
                 return [];
             });
@@ -539,7 +536,7 @@ describe("Enrichment State Machine", () => {
             expect(mockQueueAdd).toHaveBeenCalledWith(
                 "enrich",
                 expect.objectContaining({ trackId: "t1" }),
-                expect.objectContaining({ jobId: "track-t1-recording-1" }),
+                expect.objectContaining({ jobId: "track-t1-recording-1-r0" }),
             );
         });
 
@@ -548,7 +545,7 @@ describe("Enrichment State Machine", () => {
             // gated by its own unfinished analysis, not by a global count.
             mockQueryRaw.mockImplementation(async (...args: unknown[]) => {
                 const sql = String(args[0]); const stage = args[1];
-                if (sql.includes("SET status = 'working'")) return [{ attempt: 0 }];
+                if (sql.includes("SET status = 'working'")) return [{ attempt: 1, redelivered: 0 }];
                 if (stage === "embedding") {
                     return stageRows([{ trackId: "ready", stage: "embedding" }]);
                 }
@@ -562,7 +559,7 @@ describe("Enrichment State Machine", () => {
             expect(mockQueueAdd).toHaveBeenCalledWith(
                 "embed",
                 expect.objectContaining({ trackId: "ready" }),
-                expect.objectContaining({ jobId: "track-ready-embedding-1" }),
+                expect.objectContaining({ jobId: "track-ready-embedding-1-r0" }),
             );
         });
 

@@ -5,9 +5,10 @@ import {
     cleanStuckDownloads,
     getRecentCompletedDownloads,
 } from "../services/lidarr";
-import { scanQueue } from "../workers/queues";
+import { requestScan } from "../workers/scanRequest";
 import { simpleDownloadManager } from "../services/simpleDownloadManager";
 import { yieldToEventLoop } from "../utils/async";
+import { stringSimilarity } from "../utils/normalization";
 
 class QueueCleanerService {
     private isRunning = false;
@@ -18,7 +19,6 @@ class QueueCleanerService {
 
     // Cached dynamic imports (lazy-loaded once, reused on subsequent calls)
     private discoverWeeklyService: typeof import("../services/discoverWeekly")["discoverWeeklyService"] | null = null;
-    private matchAlbum: typeof import("../utils/fuzzyMatch")["matchAlbum"] | null = null;
     private spotifyImportService: typeof import("../services/spotifyImport")["spotifyImportService"] | null = null;
 
     /**
@@ -41,17 +41,6 @@ class QueueCleanerService {
             this.spotifyImportService = module.spotifyImportService;
         }
         return this.spotifyImportService;
-    }
-
-    /**
-     * Get matchAlbum function (lazy-loaded and cached)
-     */
-    private async getMatchAlbum() {
-        if (!this.matchAlbum) {
-            const module = await import("../utils/fuzzyMatch");
-            this.matchAlbum = module.matchAlbum;
-        }
-        return this.matchAlbum;
     }
 
     /**
@@ -294,10 +283,12 @@ class QueueCleanerService {
                         logger.debug(
                             `    Triggering library scan for recovered job(s)...`
                         );
-                        await scanQueue.add("scan", {
-                            type: "full",
+                        const result = await requestScan({
                             source: "queue-cleaner-recovery",
                         });
+                        if (!result.queued) {
+                            logger.debug(`    Scan skipped: ${result.reason}`);
+                        }
                     }
                 }
             }
@@ -397,11 +388,14 @@ class QueueCleanerService {
                         `[IMPORT STUCK] Job ${job.id} stuck in scanning for ${Math.round(jobAge / 60000)}min - re-queuing scan`
                     );
 
-                    await scanQueue.add("scan", {
+                    const result = await requestScan({
                         userId: job.userId,
                         source: "spotify-import",
                         spotifyImportJobId: job.id,
                     });
+                    if (!result.queued) {
+                        logger.debug(`    Scan skipped: ${result.reason}`);
+                    }
 
                     // Touch updatedAt to prevent re-queuing every 30s
                     await prisma.spotifyImportJob.update({
@@ -498,9 +492,6 @@ class QueueCleanerService {
             exactIndex.set(key, true);
         }
 
-        // Get fuzzy matcher (lazy loaded)
-        const matchAlbum = await this.getMatchAlbum();
-
         // Check all jobs against index
         const toComplete: string[] = [];
         const discoveryBatchIds = new Set<string>();
@@ -546,14 +537,10 @@ class QueueCleanerService {
 
             // Strategy 3: Fuzzy match (more expensive, last resort)
             if (!matched) {
-                const fuzzyMatch = localAlbums.find((album) =>
-                    matchAlbum(
-                        artistName!,
-                        albumTitle!,
-                        album.artist.name,
-                        album.title,
-                        0.75
-                    )
+                const fuzzyMatch = localAlbums.find(
+                    (album) =>
+                        stringSimilarity(artistName!, album.artist.name) >= 75 &&
+                        stringSimilarity(albumTitle!, album.title) >= 75
                 );
 
                 if (fuzzyMatch) {

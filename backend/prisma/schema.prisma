@@ -367,20 +367,6 @@ model LikedTrack {
   @@index([userId])
 }
 
-model ListeningState {
-  id         String   @id @default(cuid())
-  userId     String
-  kind       String
-  entityId   String
-  trackId    String?
-  positionMs Int      @default(0)
-  updatedAt  DateTime @updatedAt
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, kind, entityId])
-  @@index([userId])
-}
-
 model MoodBucket {
   id        String   @id @default(cuid())
   trackId   String
@@ -923,7 +909,6 @@ model User {
   downloadJobs           DownloadJob[]
   hiddenPlaylists        HiddenPlaylist[]
   likedTracks            LikedTrack[]
-  listeningState         ListeningState[]
   notifications          Notification[]
   plays                  Play[]
   playbackState          PlaybackState?
@@ -1214,6 +1199,9 @@ model TrackStage {
   source           String?
   /// Attempts actually made. A timeout does not count as an attempt.
   attempt          Int       @default(0)
+  /// Times a claim was re-offered because its lease expired without an
+  /// answer (that never consumes an attempt; at 3 the record closes).
+  redelivered      Int       @default(0)
   lastErrorCode    String?
   lastErrorMessage String?
   failureClass     String?

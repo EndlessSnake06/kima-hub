@@ -5,11 +5,15 @@
  * Pins the order in unifiedEnrichment.enrichSingleTrack:
  *   1. The file's own identity tags — a musicbrainz_recordingid tag answers
  *      the recording question with no network call at all.
- *   2. The title-checked MusicBrainz name search — runs when the tags did
- *      not answer, and answers before AcoustID is ever asked.
- *   3. AcoustID for the remainder — only when tags and search both failed
- *      does the fingerprint path run, and its computed or tagged fingerprint
- *      is persisted even when the lookup does not match (dedupe value).
+ *   2. The album's catalogue — one two-request fetch chain per album
+ *      (release group → its earliest release with the tracklist); every
+ *      track the tracklist answers is answered from it, without a
+ *      per-track search.
+ *   3. The title-checked MusicBrainz name search — runs when tags and the
+ *      chain did not answer, and answers before AcoustID is ever asked.
+ *   4. AcoustID for the remainder — only when all of the above failed does
+ *      the fingerprint path run, and its computed or tagged fingerprint is
+ *      persisted even when the lookup does not match (dedupe value).
  *
  * The identification layer itself is mocked here — its wire contract is
  * covered by acoustidService.test.ts and the storage outcome by
@@ -71,12 +75,15 @@ const mockSearchRecording = jest.fn();
 const mockGetRecordingIsrc = jest.fn();
 const mockGetRecordingGenres = jest.fn();
 const mockLookupByIsrc = jest.fn();
+const mockGetAlbumCatalogue = jest.fn();
 jest.mock("../../services/musicbrainz", () => ({
     musicBrainzService: {
         searchRecording: (...args: unknown[]) => mockSearchRecording(...args),
         getRecordingIsrc: (...args: unknown[]) => mockGetRecordingIsrc(...args),
         getRecordingGenres: (...args: unknown[]) => mockGetRecordingGenres(...args),
         lookupByIsrc: (...args: unknown[]) => mockLookupByIsrc(...args),
+        getAlbumCatalogue: (...args: unknown[]) => mockGetAlbumCatalogue(...args),
+        normalizeForSearch: (s: string) => s,
     },
 }));
 
@@ -150,6 +157,7 @@ jest.mock("../audioCompletionSubscriber", () => ({
 
 const mockTrackFindUnique = jest.fn();
 const mockTrackUpdate = jest.fn().mockResolvedValue({});
+const mockAlbumUpdate = jest.fn().mockResolvedValue({});
 const mockExecuteRawUnsafe = jest.fn().mockResolvedValue(1);
 
 jest.mock("../../utils/db", () => ({
@@ -164,6 +172,9 @@ jest.mock("../../utils/db", () => ({
             update: (...args: unknown[]) => mockTrackUpdate(...args),
             updateMany: jest.fn().mockResolvedValue({ count: 0 }),
             count: jest.fn().mockResolvedValue(0),
+        },
+        album: {
+            update: (...args: unknown[]) => mockAlbumUpdate(...args),
         },
         $queryRaw: jest.fn().mockResolvedValue([]),
         $executeRaw: jest.fn().mockResolvedValue(0),
@@ -190,15 +201,32 @@ const TRACK_ID = "track-1";
 const RECORDING = "rec-aaaa-bbbb";
 const MB_TRACK = "mb-track-1";
 const FINGERPRINT = "AQAA0pMiRZkQ";
+// Daft Punk "Discovery" — real ids verified against the API; nothing here
+// hits the network, the service is mocked.
+const RG_MBID = "48117b90-a16e-34ca-a514-19c702df1158";
+const REL_MBID = "d073287b-d1bd-4f11-a933-a4386f8cf701";
 
-function seedTrack(overrides?: { isrc?: string | null }) {
+function seedTrack(
+    overrides?: { isrc?: string | null; rgMbid?: string | null },
+) {
     mockTrackFindUnique.mockResolvedValue({
         id: TRACK_ID,
         title: "Cheerleader Effect",
         filePath: "/music/artist/album/02 - Cheerleader Effect.mp3",
         duration: 218,
         isrc: overrides?.isrc ?? null,
-        album: { artist: { name: "Carpenter Brut" } },
+        acoustidFingerprint: null,
+        album: {
+            id: "album-1",
+            title: "Leather Teeth",
+            artist: { name: "Carpenter Brut" },
+            // A placeholder id is locally made up — with it the chain step
+            // is skipped and the per-track ladder runs.
+            rgMbid: overrides?.rgMbid ?? "temp-1693-abc",
+            year: null,
+            label: null,
+            genres: null,
+        },
     });
 }
 
@@ -335,21 +363,136 @@ describe("enrichSingleTrack: the 2026-09-24 identification order", () => {
             evidence: { fingerprint: FINGERPRINT },
         });
 
-        await enrichSingleTrack(TRACK_ID);
+        const result = await enrichSingleTrack(TRACK_ID);
 
-        // Nothing matched — an answer, not a failure: the record
-        // settles `done` on the no-match evidence, and the track keeps
-        // the no-tags sentinel.
-        expect(mockTrackUpdate).toHaveBeenCalledWith(
-            expect.objectContaining({
-                data: expect.objectContaining({ enrichmentTags: ["_not_found"] }),
-            }),
-        );
+        // Nothing matched — an answer, not a failure: the record settles
+        // `done` on the no-match evidence. Nothing is stamped on the track
+        // (moods come from analysis only), so the row
+        // is never written on a no-match.
+        expect(result).toBe("no_match");
+        expect(mockTrackUpdate).not.toHaveBeenCalled();
         expect(mockPersistAcoustidFingerprint).toHaveBeenCalledWith(
             TRACK_ID,
             FINGERPRINT,
         );
         expect(stageWrittenDone("acoustid")).toBe(true);
+    });
+
+    it("answers from the album chain before the per-track search", async () => {
+        seedTrack({ rgMbid: RG_MBID });
+        mockGetAlbumCatalogue.mockResolvedValue(
+            answeredWith({
+                releaseMbid: REL_MBID,
+                originalYear: 1997,
+                label: "Some Labels",
+                genres: [
+                    { name: "electronic", count: 5 },
+                    { name: "ambient", count: 2 },
+                ],
+                recordings: [
+                    {
+                        recordingId: MB_TRACK,
+                        title: "Cheerleader Effect",
+                        durationMs: 218000,
+                        isrcs: ["XX123"],
+                        genres: [{ name: "trip-hop", count: 3 }],
+                    },
+                ],
+            }),
+        );
+
+        const result = await enrichSingleTrack(TRACK_ID);
+
+        expect(result).toBe("identified");
+        expect(mockGetAlbumCatalogue).toHaveBeenCalledWith(RG_MBID);
+        // One chain for the album replaces every per-track ask — neither
+        // the name search nor AcoustID is reached.
+        expect(mockSearchRecording).not.toHaveBeenCalled();
+        expect(mockIdentifyTrackByAcoustid).not.toHaveBeenCalled();
+        expect(mockGetRecordingIsrc).not.toHaveBeenCalled();
+        expect(mockGetRecordingGenres).not.toHaveBeenCalled();
+        // The ISRC and the genres come from the tracklist row; the album
+        // row gets its year, label, and genres filled from the chain.
+        expect(mockStoreIsrc).toHaveBeenCalledWith(
+            TRACK_ID,
+            "XX123",
+            "musicbrainz",
+        );
+        expect(mockPopulateTrackGenres).toHaveBeenCalledWith(TRACK_ID, [
+            "trip-hop",
+        ]);
+        expect(mockAlbumUpdate).toHaveBeenCalledWith({
+            where: { id: "album-1" },
+            data: {
+                year: 1997,
+                label: "Some Labels",
+                genres: ["electronic", "ambient"],
+            },
+        });
+        expect(stageWrittenDone("musicbrainz")).toBe(true);
+    });
+
+    it("falls back to the per-track search when the file is not on the tracklist", async () => {
+        seedTrack({ rgMbid: RG_MBID });
+        mockGetAlbumCatalogue.mockResolvedValue(
+            answeredWith({
+                releaseMbid: REL_MBID,
+                originalYear: 1997,
+                label: "Some Labels",
+                genres: [],
+                recordings: [
+                    {
+                        recordingId: "mb-other",
+                        title: "Something Else Entirely",
+                        durationMs: 300000,
+                        isrcs: [],
+                        genres: [],
+                    },
+                ],
+            }),
+        );
+        mockSearchRecording.mockResolvedValue(
+            answeredWith({ trackMbid: MB_TRACK }),
+        );
+
+        await enrichSingleTrack(TRACK_ID);
+
+        // The chain did not list our file, so the search still runs —
+        // that is the fallback, and the album is not filled from a chain
+        // that never answered THIS track.
+        expect(mockSearchRecording).toHaveBeenCalledWith(
+            "Cheerleader Effect",
+            "Carpenter Brut",
+        );
+        expect(mockTrackUpdate).toHaveBeenCalledWith(
+            expect.objectContaining({
+                data: expect.objectContaining({ recordingMbid: MB_TRACK }),
+            }),
+        );
+        expect(mockAlbumUpdate).not.toHaveBeenCalled();
+    });
+
+    it("defers without falling through to the search when the chain call fails", async () => {
+        seedTrack({ rgMbid: RG_MBID });
+        mockGetAlbumCatalogue.mockResolvedValue({
+            kind: "transient",
+            error: {
+                code: "NETWORK",
+                message: "boom",
+                retryable: true,
+                retryAfterMs: 60_000,
+            },
+        });
+
+        const result = await enrichSingleTrack(TRACK_ID);
+
+        // A failed chain is MusicBrainz failing outright — the record
+        // defers with the real cause; the per-track ladder is not asked
+        // while the album's source is down.
+        expect(result).toBe("deferred");
+        expect(mockSearchRecording).not.toHaveBeenCalled();
+        expect(mockIdentifyTrackByAcoustid).not.toHaveBeenCalled();
+        expect(mockTrackUpdate).not.toHaveBeenCalled();
     });
 
     it("asks AcoustID even with the fpcalc flag off — the step needs a fingerprint, not the binary", async () => {

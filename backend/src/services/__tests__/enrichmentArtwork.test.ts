@@ -42,6 +42,7 @@ jest.mock("../musicbrainz", () => ({
         getArtist: jest.fn().mockResolvedValue(noData),
         searchReleaseGroup: jest.fn().mockResolvedValue(noData),
         getReleaseGroup: jest.fn().mockResolvedValue(noData),
+        getAlbumCatalogue: jest.fn().mockResolvedValue(noData),
         getReleaseGroups: (...a: unknown[]) => mockGetReleaseGroups(...a),
         searchAlbum: (...a: unknown[]) => mockSearchAlbum(...a),
         getRelease: jest.fn().mockResolvedValue(noData),

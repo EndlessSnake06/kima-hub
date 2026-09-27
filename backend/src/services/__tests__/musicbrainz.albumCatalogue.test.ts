@@ -1,0 +1,157 @@
+/**
+ * getAlbumCatalogue against REAL MusicBrainz JSON
+ * The fixtures in fixtures/mb/ are verbatim responses fetched from
+ * musicbrainz.org for Daft Punk "Discovery": the release group
+ * 48117b90-a16e-34ca-a514-19c702df1158 (inc=releases+tags) and its
+ * earliest release bd3bb36e-16c8-438f-850e-dfbf4d1478f0
+ * (inc=recordings+isrcs+labels+tags). This suite checks the extraction —
+ * that the parse produces the values actually present in the real
+ * responses — not just that the code survives mocked shapes.
+ *
+ * Run with: npx jest musicbrainz.albumCatalogue --no-coverage
+ */
+
+const rgFixture = require("./fixtures/mb/rg-discovery.json");
+const releaseFixture = require("./fixtures/mb/release-discovery-early.json");
+
+const RG_MBID = "48117b90-a16e-34ca-a514-19c702df1158";
+const EARLIEST_RELEASE = "bd3bb36e-16c8-438f-850e-dfbf4d1478f0";
+
+const mockGet = jest.fn();
+jest.mock("axios", () => ({
+    create: () => ({ get: (...args: unknown[]) => mockGet(...args) }),
+}));
+
+let redisStore: Record<string, string>;
+jest.mock("../../utils/redis", () => ({
+    redisClient: {
+        get: async (key: string) => redisStore[key] ?? null,
+        set: async (key: string, value: string) => {
+            redisStore[key] = value;
+            return "OK";
+        },
+        setex: async (key: string, _ttl: number, value: string) => {
+            redisStore[key] = value;
+            return "OK";
+        },
+    },
+}));
+
+jest.mock("../../services/rateLimiter", () => ({
+    rateLimiter: {
+        execute: async (_source: string, fn: () => Promise<unknown>) =>
+            fn(),
+    },
+}));
+
+const mockHandleRateLimit = jest.fn().mockResolvedValue(false);
+jest.mock("../../services/sourcePauseController", () => ({
+    sourcePauseController: {
+        handleRateLimit: (...args: unknown[]) =>
+            mockHandleRateLimit(...args),
+        getPause: jest.fn().mockResolvedValue(null),
+    },
+}));
+
+jest.mock("../../config", () => ({
+    USER_AGENT: "KimaTest/1.0 (test@kima.local)",
+    config: { musicbrainzBaseUrl: "https://musicbrainz.org/ws/2" },
+}));
+
+jest.mock("../../utils/logger", () => ({
+    logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+}));
+
+import { musicBrainzService } from "../musicbrainz";
+
+beforeEach(() => {
+    jest.clearAllMocks();
+    redisStore = {};
+    mockGet.mockImplementation(async (url: string) => {
+        if (url === `/release-group/${RG_MBID}`) {
+            return { data: rgFixture };
+        }
+        if (url === `/release/${EARLIEST_RELEASE}`) {
+            return { data: releaseFixture };
+        }
+        throw new Error(`unexpected url ${url}`);
+    });
+});
+
+describe("getAlbumCatalogue on real MusicBrainz responses", () => {
+    it("extracts the earliest release, its year, label, genres, and the full tracklist", async () => {
+        const out = await musicBrainzService.getAlbumCatalogue(RG_MBID);
+
+        expect(out.kind).toBe("answered");
+        if (out.kind !== "answered") return;
+
+        // The chain picked the chronologically first release of the group.
+        expect(out.value.releaseMbid).toBe(EARLIEST_RELEASE);
+        expect(out.value.originalYear).toBe(2001);
+        expect(out.value.label).toBe("Parlophone");
+
+        // Genres are the release group's tags — the real record carries
+        // club/dance with 4 votes; count-0 tags must not appear.
+        const clubDance = out.value.genres.find((g) => g.name === "club/dance");
+        expect(clubDance).toEqual({ name: "club/dance", count: 4 });
+        expect(out.value.genres.every((g) => g.count > 0)).toBe(true);
+
+        // The tracklist is the release's real one: 14 tracks, and the
+        // first row carries the actual recording id, length, ISRCs, and
+        // per-recording tags from the response.
+        expect(out.value.recordings).toHaveLength(14);
+        const oneMoreTime = out.value.recordings[0];
+        expect(oneMoreTime).toMatchObject({
+            recordingId: "60fa767a-d85d-4991-82bc-4294e0b11ae7",
+            title: "One More Time",
+            durationMs: 320746,
+        });
+        expect(oneMoreTime.isrcs).toContain("GBDUW0000053");
+        expect(oneMoreTime.genres).toContainEqual({ name: "club/dance", count: 7 });
+    });
+
+    it("asks the two requests with exactly the increments the contract needs", async () => {
+        await musicBrainzService.getAlbumCatalogue(RG_MBID);
+
+        expect(mockGet).toHaveBeenCalledTimes(2);
+        expect(mockGet).toHaveBeenNthCalledWith(1, `/release-group/${RG_MBID}`, {
+            params: { inc: "releases+tags", fmt: "json" },
+        });
+        // isrcs is only served together with recordings — requesting one
+        // without the other returns nothing (verified against the API).
+        expect(mockGet).toHaveBeenNthCalledWith(2, `/release/${EARLIEST_RELEASE}`, {
+            params: { inc: "recordings+isrcs+labels+tags", fmt: "json" },
+        });
+    });
+
+    it("answers `absent` for a made-up release-group id (real 404 → Not Found)", async () => {
+        mockGet.mockImplementation(async () => {
+            const err: any = new Error("Request failed with status code 404");
+            err.response = { status: 404, data: { error: "Not Found" } };
+            throw err;
+        });
+
+        const out = await musicBrainzService.getAlbumCatalogue(
+            "00000000-0000-0000-0000-000000000000",
+        );
+
+        // A 404 is "the source has nothing", not a failure — the ladder
+        // falls through to the per-track search.
+        expect(out.kind).toBe("absent");
+    });
+
+    it("serves a second call for the same album from cache without HTTP", async () => {
+        const first = await musicBrainzService.getAlbumCatalogue(RG_MBID);
+        expect(first.kind).toBe("answered");
+
+        const second = await musicBrainzService.getAlbumCatalogue(RG_MBID);
+
+        // Same answer straight from the cache envelope — the whole album
+        // pays the two requests once, not once per track.
+        expect(second.kind).toBe("answered");
+        if (first.kind === "answered" && second.kind === "answered") {
+            expect(second.value).toEqual(first.value);
+        }
+        expect(mockGet).toHaveBeenCalledTimes(2);
+    });
+});

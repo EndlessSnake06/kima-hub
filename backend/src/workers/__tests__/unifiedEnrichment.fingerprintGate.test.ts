@@ -139,6 +139,7 @@ jest.mock("../../services/musicbrainz", () => ({
         lookupByIsrc: jest.fn().mockResolvedValue({ kind: "absent", evidence: { mocked: true } }),
         getRecordingIsrc: jest.fn().mockResolvedValue({ kind: "absent", evidence: { mocked: true } }),
         getRecordingGenres: jest.fn().mockResolvedValue({ kind: "absent", evidence: { mocked: true } }),
+        getAlbumCatalogue: jest.fn().mockResolvedValue({ kind: "absent", evidence: { mocked: true } }),
     },
 }));
 

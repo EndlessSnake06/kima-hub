@@ -16,7 +16,6 @@ import whatsNewRoutes from "./routes/whatsNew";
 import statsRoutes from "./routes/stats";
 import settingsRoutes from "./routes/settings";
 import systemSettingsRoutes from "./routes/systemSettings";
-import listeningStateRoutes from "./routes/listeningState";
 import playbackStateRoutes from "./routes/playbackState";
 import offlineRoutes from "./routes/offline";
 import playlistsRoutes from "./routes/playlists";
@@ -159,7 +158,6 @@ app.use("/api/whats-new", apiLimiter, whatsNewRoutes);
 app.use("/api/stats", apiLimiter, statsRoutes);
 app.use("/api/settings", apiLimiter, settingsRoutes);
 app.use("/api/system-settings", apiLimiter, systemSettingsRoutes);
-app.use("/api/listening-state", apiLimiter, listeningStateRoutes);
 app.use("/api/playback-state", playbackStateRoutes); // No rate limit - syncs frequently
 app.use("/api/offline", apiLimiter, offlineRoutes);
 app.use("/api/playlists", apiLimiter, playlistsRoutes);
@@ -168,8 +166,10 @@ app.use("/api/recommendations", apiLimiter, recommendationsRoutes);
 app.use("/api/downloads", apiLimiter, downloadsRoutes);
 app.use("/api/notifications", apiLimiter, notificationsRoutes);
 app.use("/api/webhooks", webhookLimiter, webhooksRoutes); // Excluded from apiLimiter; bounded by a dedicated webhookLimiter (120/min)
-// NOTE: /api/audiobooks has its own rate limiting (imageLimiter for covers, apiLimiter for others)
-app.use("/api/audiobooks", audiobooksRoutes);
+// /api/audiobooks gets apiLimiter like every other mount; cover and stream
+// routes stay unauthenticated by design (the player and lockscreen artwork
+// request them), so the limiter is their only bound.
+app.use("/api/audiobooks", apiLimiter, audiobooksRoutes);
 app.use("/api/podcasts", apiLimiter, podcastsRoutes);
 app.use("/api/artists", apiLimiter, artistsRoutes);
 app.use("/api/soulseek", apiLimiter, soulseekRoutes);
@@ -612,12 +612,14 @@ async function main() {
     }, TWENTY_FOUR_HOURS);
     logger.debug("Podcast cache cleanup scheduled (daily, 30-day expiry)");
 
-    // Reconcile download queue state with database
-    const { downloadQueueManager } = await import("./services/downloadQueue");
+    // Fail download jobs that were "processing" when a previous process died.
+    const { reconcileStaleDownloadJobs } = await import(
+        "./services/downloadReconcile"
+    );
     try {
-        const result = await downloadQueueManager.reconcileOnStartup();
+        const result = await reconcileStaleDownloadJobs();
         logger.debug(
-            `Download queue reconciled: ${result.loaded} active, ${result.failed} marked failed`
+            `Download queue reconciled: ${result.failed} marked failed`
         );
     } catch (err) {
         logger.error("Download queue reconciliation failed:", err);

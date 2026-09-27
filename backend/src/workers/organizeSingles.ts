@@ -7,12 +7,11 @@
  * 2. Legacy slskd job cleanup (if any remain from before migration)
  */
 
-import { logger } from "../utils/logger";
 import path from "path";
-import fs from "fs";
-import { readdir, copyFile, unlink, mkdir, rmdir, writeFile, stat } from "fs/promises";
+import { readdir, copyFile, unlink, mkdir, rmdir, writeFile, stat, rename } from "fs/promises";
 import { sessionLog } from "../utils/playlistLogger";
 import { prisma } from "../utils/db";
+import { getSystemSettings } from "../utils/systemSettings";
 
 /** Async existsSync equivalent -- avoids blocking the event loop on a stat check. */
 async function pathExists(p: string): Promise<boolean> {
@@ -22,6 +21,33 @@ async function pathExists(p: string): Promise<boolean> {
     } catch {
         return false;
     }
+}
+
+/** True when the error means source and destination are on different volumes. */
+function isCrossDevice(err: unknown): boolean {
+    return (err as NodeJS.ErrnoException)?.code === "EXDEV";
+}
+
+/**
+ * Move one file with no gap between source and destination:
+ * same-volume rename is atomic; across volumes, copy first, check the copy
+ * matches the source's size, and only then delete the original — a short
+ * copy must never remove the only good file.
+ */
+async function moveFile(src: string, dest: string): Promise<void> {
+    try {
+        await rename(src, dest);
+        return;
+    } catch (err) {
+        if (!isCrossDevice(err)) throw err;
+    }
+    await copyFile(src, dest);
+    const expected = (await stat(src)).size;
+    if ((await stat(dest)).size !== expected) {
+        await unlink(dest).catch(() => {});
+        throw new Error(`Copy of ${src} came up short — original kept`);
+    }
+    await unlink(src);
 }
 
 /**
@@ -90,6 +116,7 @@ async function migrateExistingSoulseekFiles(musicPath: string): Promise<void> {
     sessionLog('ORGANIZE', `Found ${audioFiles.length} files to migrate`);
 
     let migrated = 0;
+    let failed = 0;
     for (const filePath of audioFiles) {
         try {
             // Get relative path from Soulseek folder
@@ -135,17 +162,18 @@ async function migrateExistingSoulseekFiles(musicPath: string): Promise<void> {
                 await mkdir(destDir, { recursive: true });
             } catch (err: any) {
                 sessionLog('ORGANIZE', `Failed to create directory ${destDir}: ${err.message}`, 'WARN');
+                failed++; // marker stays unwritten so this file is retried
                 continue; // Skip this file, try next
             }
 
-            // Move file (copy then delete original)
-            await copyFile(filePath, destFile);
-            await unlink(filePath);
+            // Move file with verification (rename, or copy → verify → unlink).
+            await moveFile(filePath, destFile);
             migrated++;
 
             sessionLog('ORGANIZE', `Migrated: ${filename} -> Singles/${artist}/${album}/`);
         } catch (err: any) {
             sessionLog('ORGANIZE', `Failed to migrate ${filePath}: ${err.message}`, 'WARN');
+            failed++; // marker stays unwritten so this file is retried
         }
     }
 
@@ -174,14 +202,26 @@ async function migrateExistingSoulseekFiles(musicPath: string): Promise<void> {
         // Ignore cleanup errors
     }
 
-    // Mark migration as complete
-    try {
-        await writeFile(migrationMarker, new Date().toISOString());
-    } catch (e) {
-        // Ignore
+    // Mark migration as complete — but only when nothing failed. Writing
+    // the marker after a partial run would strand every file that
+    // failed: the marker's whole job is to stop re-running this
+    // migration, so with failures it must stay unwritten and the next
+    // organize retries what's left (already-moved files skip via the
+    // destination-exists check).
+    if (failed === 0) {
+        try {
+            await writeFile(migrationMarker, new Date().toISOString());
+        } catch (e) {
+            // Ignore
+        }
+        sessionLog('ORGANIZE', `Migration complete: ${migrated}/${audioFiles.length} files moved to Singles`);
+    } else {
+        sessionLog(
+            'ORGANIZE',
+            `Migration incomplete: ${migrated} moved, ${failed} failed — next organize will retry the rest`,
+            'WARN',
+        );
     }
-
-    sessionLog('ORGANIZE', `Migration complete: ${migrated}/${audioFiles.length} files moved to Singles`);
 }
 
 /**
@@ -228,25 +268,15 @@ async function cleanupLegacySlskdJobs(): Promise<void> {
 export async function organizeSingles(): Promise<void> {
     sessionLog('ORGANIZE', '=== STARTING SINGLES ORGANIZATION ===');
 
-    // Get music path from environment variable
-    let musicPath = process.env.MUSIC_PATH;
-
-    // If not in env, try reading from .env file in project root
-    if (!musicPath) {
-        try {
-            const envPath = path.join(process.cwd(), "..", ".env");
-            const envContent = fs.readFileSync(envPath, "utf-8");
-            const match = envContent.match(/^MUSIC_PATH=(.+)$/m);
-            if (match) {
-                musicPath = match[1].trim().replace(/^["']|["']$/g, "");
-            }
-        } catch (error) {
-            // .env file doesn't exist or can't be read
-        }
-    }
+    // One source for the music folder: the settings row, same
+    // as every download writer. No env / repo-root `.env` fallback — a path
+    // read from a file the operator may not have is how files moved to the
+    // wrong volume.
+    const settings = await getSystemSettings();
+    const musicPath = settings?.musicPath;
 
     if (!musicPath) {
-        const error = "MUSIC_PATH is not set. Cannot organize downloads.";
+        const error = "Music path is not configured — set it on the Settings page.";
         sessionLog('ORGANIZE', error, 'ERROR');
         throw new Error(error);
     }

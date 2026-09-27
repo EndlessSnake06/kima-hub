@@ -154,7 +154,9 @@ describe("getFailures reads track stages from TrackStage", () => {
 
         const entry = failures.find((f) => f.entityId === trackId);
         expect(entry).toBeDefined();
-        // Same wire shape as before — only the source table changed.
+        // Same wire shape as before — only the source table changed. Both
+        // counts are whole dispatches now: 2 so far, 4 allowed
+        // (initial + 3 ladder rungs), so the UI reads "2 of 4".
         expect(entry).toMatchObject({
             id: stageId,
             entityType: "track",
@@ -162,7 +164,7 @@ describe("getFailures reads track stages from TrackStage", () => {
             entityName: `Track ${trackId}`,
             errorMessage: "MusicBrainz search found nothing",
             retryCount: 2,
-            maxRetries: 3,
+            maxRetries: 4,
             resolved: false,
             skipped: false,
         });

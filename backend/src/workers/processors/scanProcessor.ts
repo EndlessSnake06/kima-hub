@@ -3,6 +3,7 @@ import { logger } from "../../utils/logger";
 import { MusicScannerService } from "../../services/musicScanner";
 import { config } from "../../config";
 import { eventBus } from "../../services/eventBus";
+import { stringSimilarity } from "../../utils/normalization";
 import * as path from "path";
 
 /**
@@ -69,9 +70,6 @@ async function reconcileDownloadJobsWithScan(): Promise<number> {
         },
     });
 
-    // Import fuzzy matcher once
-    const { matchAlbum } = await import("../../utils/fuzzyMatch");
-
     // Match jobs to albums
     const jobsToComplete: string[] = [];
     const discoveryBatchIds: string[] = [];
@@ -90,13 +88,8 @@ async function reconcileDownloadJobsWithScan(): Promise<number> {
             matchedAlbum = candidateAlbums.find(
                 (album) =>
                     album.tracks.length > 0 &&
-                    matchAlbum(
-                        artistName!,
-                        albumTitle!,
-                        album.artist.name,
-                        album.title,
-                        0.75
-                    )
+                    stringSimilarity(artistName!, album.artist.name) >= 75 &&
+                    stringSimilarity(albumTitle!, album.title) >= 75
             );
         }
 
@@ -137,7 +130,7 @@ async function reconcileDownloadJobsWithScan(): Promise<number> {
 }
 
 export interface ScanJobData {
-    userId: string;
+    userId?: string; // Optional: scans can be triggered without a user
     musicPath?: string; // Optional: use custom path or default from config
     albumMbid?: string; // Optional: if scan triggered by download completion
     artistMbid?: string; // Optional: if scan triggered by download completion
@@ -582,59 +575,37 @@ export async function processScan(
             }
         }
 
-        // Trigger mood tag collection for new tracks whose artists are already enriched
-        // This ensures mood tags are collected immediately after scan, not waiting 30s for background worker
+        // New files are owed every stage's answer from the moment they
+        // exist: selection reads Track LEFT JOIN TrackStage, so the next
+        // cycle creates and dispatches their records. Triggering it here
+        // keeps that off the 30 s wait; the old `enrichmentTags` count
+        // was the retired sentinel acting as a queue flag —
+        // the records own what is owed, not the tag list.
         if (result.tracksAdded > 0) {
             try {
                 logger.debug(
-                    `[ScanJob ${job.id}] Checking for tracks needing mood tag enrichment...`
+                    `[ScanJob ${job.id}] ${result.tracksAdded} new track(s) added — starting an enrichment cycle`
                 );
-                const { prisma } = await import("../../utils/db");
-
-                // Count new tracks that need mood tags
-                // Note: We don't filter by artist enrichmentStatus here because
-                // triggerEnrichmentNow() runs runEnrichmentCycle() which handles
-                // artist enrichment first (Step 1), then track tags (Step 2)
-                const tracksNeedingTags = await prisma.track.count({
-                    where: {
-                        OR: [
-                            { enrichmentTags: { isEmpty: true } },
-                            { enrichmentTags: { equals: null } },
-                        ],
-                    },
-                });
-
-                if (tracksNeedingTags > 0) {
-                    logger.debug(
-                        `[ScanJob ${job.id}] Found ${tracksNeedingTags} tracks needing mood tags, triggering enrichment...`
-                    );
-
-                    // Trigger immediate enrichment cycle (non-blocking)
-                    const { triggerEnrichmentNow } = await import(
-                        "../unifiedEnrichment"
-                    );
-                    triggerEnrichmentNow()
-                        .then((result) => {
-                            if (result.tracks > 0) {
-                                logger.debug(
-                                    `[ScanJob ${job.id}] Mood tag enrichment completed: ${result.tracks} tracks enriched`
-                                );
-                            }
-                        })
-                        .catch((err) => {
-                            logger.error(
-                                `[ScanJob ${job.id}] Mood tag enrichment failed:`,
-                                err
+                const { triggerEnrichmentNow } = await import(
+                    "../unifiedEnrichment"
+                );
+                triggerEnrichmentNow()
+                    .then((result) => {
+                        if (result.tracks > 0) {
+                            logger.debug(
+                                `[ScanJob ${job.id}] Enrichment after scan completed: ${result.tracks} tracks`
                             );
-                        });
-                } else {
-                    logger.debug(
-                        `[ScanJob ${job.id}] No tracks need immediate mood tag enrichment`
-                    );
-                }
+                        }
+                    })
+                    .catch((err) => {
+                        logger.error(
+                            `[ScanJob ${job.id}] Enrichment for new tracks failed:`,
+                            err
+                        );
+                    });
             } catch (error) {
                 logger.error(
-                    `[ScanJob ${job.id}] Failed to check for mood tag enrichment:`,
+                    `[ScanJob ${job.id}] Failed to trigger enrichment:`,
                     error
                 );
             }

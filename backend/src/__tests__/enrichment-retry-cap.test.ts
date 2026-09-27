@@ -110,22 +110,20 @@ beforeEach(async () => {
     await wipe();
     await seedFkChain();
     // Never let a pause left over from another case hide the work under test.
-    await sourcePauseController.resume("musicbrainz");
+    await prisma.sourceAttempt.deleteMany({ where: { source: "musicbrainz" } });
 });
 
 afterAll(async () => {
     await wipe();
-    await sourcePauseController.resume("musicbrainz");
+    await prisma.sourceAttempt.deleteMany({ where: { source: "musicbrainz" } });
     await prisma.$disconnect();
 });
 
 describe("increasing waits for temporary errors", () => {
-    it("computeStageRetryWaitMs grows with the attempt count", () => {
-        const w1 = computeStageRetryWaitMs(1);
-        const w2 = computeStageRetryWaitMs(2);
-        const w3 = computeStageRetryWaitMs(3);
-        expect(w2).toBeGreaterThan(w1);
-        expect(w3).toBeGreaterThan(w2);
+    it("computeStageRetryWaitMs waits 1 min, 10 min, then 1 h", () => {
+        expect(computeStageRetryWaitMs(1)).toBe(60_000);
+        expect(computeStageRetryWaitMs(2)).toBe(600_000);
+        expect(computeStageRetryWaitMs(3)).toBe(3_600_000);
     });
 
     it("first failure parks the record until now + wait(1), second until now + wait(2)", async () => {
@@ -171,22 +169,24 @@ describe("increasing waits for temporary errors", () => {
 });
 
 describe("no retry past the cap", () => {
-    it("the cap is 3 attempts", () => {
-        expect(STAGE_RETRY_CAP).toBe(3);
+    it("the cap is 3 retries — 4 dispatches in all", () => {
+        expect(STAGE_RETRY_CAP).toBe(4);
     });
 
-    it("attempts 1 and 2 stay retryable; the third attempt closes the record", async () => {
+    it("attempts 1 to 3 stay retryable; the fourth failure closes the record", async () => {
         const trackId = id("cap");
         await seedTrack(trackId, { recording: { status: "working", attempt: 0 } });
 
-        await recordStageFailure(trackId, "recording", "musicbrainz", new Error("socket hang up"));
-        expect((await getRecord(trackId, "recording")).retryable).toBe(true);
-
-        await recordStageFailure(trackId, "recording", "musicbrainz", new Error("socket hang up"));
-        expect((await getRecord(trackId, "recording")).retryable).toBe(true);
+        for (let attempt = 1; attempt <= 3; attempt++) {
+            await recordStageFailure(trackId, "recording", "musicbrainz", new Error("socket hang up"));
+            const rec = await getRecord(trackId, "recording");
+            expect(rec.attempt).toBe(attempt);
+            expect(rec.retryable).toBe(true);
+        }
 
         await recordStageFailure(trackId, "recording", "musicbrainz", new Error("socket hang up"));
         const closed = await getRecord(trackId, "recording");
+        expect(closed.attempt).toBe(4);
         expect(closed.status).toBe("failed");
         expect(closed.retryable).toBe(false);
 

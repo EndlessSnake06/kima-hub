@@ -4,6 +4,7 @@ import { prisma } from "../../utils/db";
 import { logger } from "../../utils/logger";
 import { config } from "../../config";
 import { scanQueue } from "../../workers/queues";
+import { requestScan } from "../../workers/scanRequest";
 import { organizeSingles } from "../../workers/organizeSingles";
 
 const router = Router();
@@ -27,14 +28,13 @@ router.post("/scan", requireAdmin, async (req, res) => {
 
     const userId = req.user?.id || "system";
 
-    const job = await scanQueue.add("scan", {
-      userId,
-      musicPath: config.music.musicPath,
-    });
+    const result = await requestScan({ userId, source: "manual-scan" });
 
     res.json({
-      message: "Library scan started",
-      jobId: job.id,
+      message: result.queued
+        ? "Library scan started"
+        : `Library scan already queued or running (${result.reason})`,
+      jobId: result.jobId,
       musicPath: config.music.musicPath,
     });
   } catch (error) {

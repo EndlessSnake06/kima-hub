@@ -1,0 +1,127 @@
+/**
+ * The integrity check keeps every row a human decided.
+ *
+ * The check deletes only things a scan or re-discovery recreates
+ * (expired exclusions, orphaned DiscoveryTrack rows, stale download jobs)
+ * and REPORTS everything that carries a decision — orphaned DISCOVER
+ * albums, ghost albums, and orphaned OwnedAlbum keeps. Before this fix
+ * section 6 ran `DELETE FROM "OwnedAlbum"` for every keep whose Album row
+ * was gone, while the file's own comments claimed the opposite.
+ *
+ * Real DB, no prisma mock — the deletes and the anti-joins are the point.
+ * Run: cd backend && npx jest dataIntegrity --forceExit --maxWorkers=1
+ */
+
+import { prisma } from "../../utils/db";
+
+import { runDataIntegrityCheck } from "../dataIntegrity";
+
+const id = (n: string) => `dint_${n}`;
+
+async function wipe(): Promise<void> {
+    await prisma.$executeRawUnsafe(`DELETE FROM "OwnedAlbum" WHERE "artistId" LIKE 'dint_%'`);
+    await prisma.$executeRawUnsafe(`DELETE FROM "DiscoveryTrack" WHERE id LIKE 'dint_%'`);
+    await prisma.$executeRawUnsafe(`DELETE FROM "DiscoveryAlbum" WHERE id LIKE 'dint_%'`);
+    await prisma.$executeRawUnsafe(`DELETE FROM "DiscoverExclusion" WHERE id LIKE 'dint_%'`);
+    await prisma.$executeRawUnsafe(`DELETE FROM "User" WHERE id LIKE 'dint_%'`);
+    await prisma.$executeRawUnsafe(`DELETE FROM "Artist" WHERE id LIKE 'dint_%'`);
+}
+
+beforeEach(async () => {
+    await wipe();
+});
+
+afterAll(async () => {
+    await wipe();
+    await prisma.$disconnect();
+});
+
+describe("data integrity check", () => {
+    it("keeps every OwnedAlbum keep whose album is missing and reports them", async () => {
+        // A user kept a discovery album; its Album row was removed
+        // out-of-band (pruned, rgMbid corrected). The keep is a decision.
+        await prisma.artist.create({
+            data: { id: id("art"), name: "Kept Artist", identityKey: id("k") },
+        });
+        // Give the artist a live album (a different rgMbid than the keep's)
+        // so section 8's no-albums artist cleanup doesn't cascade the keep
+        // away — this test isolates section 6.
+        await prisma.album.create({
+            data: {
+                id: id("alb"),
+                rgMbid: id("rg-real"),
+                artistId: id("art"),
+                title: "Real Album",
+                primaryType: "Album",
+            },
+        });
+        await prisma.ownedAlbum.create({
+            data: { artistId: id("art"), rgMbid: id("rg-missing"), source: "discovery_liked" },
+        });
+
+        const report = await runDataIntegrityCheck();
+
+        // ≥1, not exactly 1: other fixtures on this worker DB may leave
+        // their own orphan keeps; the claim is that ours is counted and kept.
+        expect(report.orphanedOwnedAlbums).toBeGreaterThanOrEqual(1);
+        const stillThere = await prisma.ownedAlbum.findFirst({
+            where: { artistId: id("art") },
+        });
+        expect(stillThere).not.toBeNull();
+        expect(stillThere?.source).toBe("discovery_liked");
+
+        // A second run reports it again — nothing deleted it in between.
+        const second = await runDataIntegrityCheck();
+        expect(second.orphanedOwnedAlbums).toBeGreaterThanOrEqual(1);
+        expect(
+            await prisma.ownedAlbum.findFirst({ where: { artistId: id("art") } }),
+        ).not.toBeNull();
+    });
+
+    it("still clears rows a re-discovery recreates: expired exclusions and orphaned discovery tracks", async () => {
+        await prisma.user.create({
+            data: { id: id("user"), username: id("user"), passwordHash: "x" },
+        });
+        await prisma.discoverExclusion.create({
+            data: {
+                id: id("excl"),
+                userId: id("user"),
+                albumMbid: id("mb"),
+                expiresAt: new Date(Date.now() - 60_000),
+            },
+        });
+        // DiscoveryTrack.trackId has no FK (design DB-5): the dangling row
+        // below stays pointing at a track that never existed; only the
+        // anti-join finds it, and clearing it is the check's job.
+        await prisma.discoveryAlbum.create({
+            data: {
+                id: id("da"),
+                userId: id("user"),
+                rgMbid: id("rg"),
+                artistName: "Orphan Artist",
+                albumTitle: "Orphan Album",
+                weekStartDate: new Date(),
+            },
+        });
+        await prisma.discoveryTrack.create({
+            data: {
+                id: id("dt"),
+                discoveryAlbumId: id("da"),
+                trackId: id("gone-track"), // never existed in Track
+                fileName: "01 ghost.mp3",
+                filePath: "dint/ghost/01 ghost.mp3",
+            },
+        });
+
+        const report = await runDataIntegrityCheck();
+
+        expect(
+            await prisma.discoverExclusion.findFirst({ where: { id: id("excl") } }),
+        ).toBeNull();
+        expect(
+            await prisma.discoveryTrack.findFirst({ where: { id: id("dt") } }),
+        ).toBeNull();
+        expect(report.expiredExclusions).toBeGreaterThanOrEqual(1);
+        expect(report.orphanedDiscoveryTracks).toBeGreaterThanOrEqual(1);
+    });
+});

@@ -18,8 +18,6 @@ import {
     startMoodBucketWorker,
     stopMoodBucketWorker,
 } from "./moodBucketWorker";
-import { downloadQueueManager } from "../services/downloadQueue";
-import { prisma } from "../utils/db";
 import {
     startDiscoverWeeklyCron,
     stopDiscoverWeeklyCron,
@@ -62,52 +60,6 @@ const importWorker = new Worker(
         lockDuration: 600000, // 10 minutes -- imports with downloads can be slow
     }
 );
-
-// Register download queue callback for unavailable albums
-downloadQueueManager.onUnavailableAlbum(async (info) => {
-    logger.debug(
-        ` Recording unavailable album: ${info.artistName} - ${info.albumTitle}`
-    );
-
-    if (!info.userId) {
-        logger.debug(` No userId provided, skipping database record`);
-        return;
-    }
-
-    try {
-        // Get week start date from discovery album if it exists
-        const discoveryAlbum = await prisma.discoveryAlbum.findFirst({
-            where: { rgMbid: info.albumMbid },
-            orderBy: { downloadedAt: "desc" },
-        });
-
-        await prisma.unavailableAlbum.create({
-            data: {
-                userId: info.userId,
-                artistName: info.artistName,
-                albumTitle: info.albumTitle,
-                albumMbid: info.albumMbid,
-                artistMbid: info.artistMbid,
-                similarity: info.similarity || 0,
-                tier: info.tier || "unknown",
-                weekStartDate: discoveryAlbum?.weekStartDate || new Date(),
-                attemptNumber: 0,
-            },
-        });
-
-        logger.debug(`   Recorded in database`);
-    } catch (error: any) {
-        // Handle duplicate entries (album already marked as unavailable)
-        if (error.code === "P2002") {
-            logger.debug(`     Album already marked as unavailable`);
-        } else {
-            logger.error(
-                ` Failed to record unavailable album:`,
-                error.message
-            );
-        }
-    }
-});
 
 // Start unified enrichment worker
 // Handles: artist metadata, track mood tags, audio analysis queueing (Essentia)
@@ -409,9 +361,6 @@ export async function shutdownWorkers(): Promise<void> {
 
     // Stop library auto-sync cron
     stopLibrarySyncCron();
-
-    // Shutdown download queue manager
-    downloadQueueManager.shutdown();
 
     // Clear all timeouts
     for (const timeout of timeouts) {

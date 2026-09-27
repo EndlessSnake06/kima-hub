@@ -1,23 +1,32 @@
 /**
  * Data Integrity Worker
  *
- * Periodic cleanup to maintain database health:
+ * Periodic cleanup to maintain database health. Only rows that carry no
+ * user decision get deleted: expired exclusions, orphaned
+ * DiscoveryTrack rows, temp artists, stale download jobs — all things a
+ * scan or re-discovery recreates. Albums and OwnedAlbum keeps are reported
+ * for a human, never deleted in the background.
  * 1. Remove expired DiscoverExclusion records
  * 2. Clean up orphaned DiscoveryTrack records
- * 3. Clean up orphaned Album records (DISCOVER location with no DiscoveryAlbum)
+ * 3. Report orphaned Album records (DISCOVER location with no DiscoveryAlbum)
  * 4. Consolidate duplicate artists (temp MBID vs real MBID)
- * 5. Clean up orphaned artists (no albums)
- * 6. Clean up old completed/failed DownloadJob records
+ * 5. Report ghost albums (no tracks)
+ * 6. Report orphaned OwnedAlbum records (no matching Album)
+ * 7. Consolidate temp artists into real artists of the same name
+ * 8. Delete artists with no albums
+ * 9. Delete old completed/failed DownloadJob records
  */
 
 import { logger } from "../utils/logger";
 import { prisma } from "../utils/db";
+import { LIBRARY_LOCATION } from "../services/libraryFilters";
 
 interface IntegrityReport {
     expiredExclusions: number;
     orphanedDiscoveryTracks: number;
     mislocatedAlbums: number;
     orphanedAlbums: number;
+    orphanedOwnedAlbums: number;
     consolidatedArtists: number;
     orphanedArtists: number;
     oldDownloadJobs: number;
@@ -31,6 +40,7 @@ export async function runDataIntegrityCheck(): Promise<IntegrityReport> {
         orphanedDiscoveryTracks: 0,
         mislocatedAlbums: 0,
         orphanedAlbums: 0,
+        orphanedOwnedAlbums: 0,
         consolidatedArtists: 0,
         orphanedArtists: 0,
         oldDownloadJobs: 0,
@@ -114,34 +124,14 @@ export async function runDataIntegrityCheck(): Promise<IntegrityReport> {
         });
 
         if (orphanCandidates.length > 0) {
-            // Batch the playlist-reference safety check across all candidates too
-            const playlistRefs = await prisma.playlistItem.findMany({
-                where: { track: { albumId: { in: orphanCandidates.map((a) => a.id) } } },
-                select: { track: { select: { albumId: true } } },
-            });
-            const referencedAlbumIds = new Set(
-                playlistRefs.map((p) => p.track?.albumId).filter((id): id is string => !!id)
-            );
-
+            // Report-only: these albums have no active DiscoveryAlbum and
+            // no OwnedAlbum keeping them, but nothing in the background deletes
+            // rows a scan can bring back or a user chose to keep. They stay
+            // until a human re-decides.
             for (const album of orphanCandidates) {
-                if (referencedAlbumIds.has(album.id)) {
-                    logger.debug(
-                        `     Skipping orphaned album (referenced by playlist): ${album.artist.name} - ${album.title}`
-                    );
-                    continue;
-                }
-
-                await prisma.$transaction([
-                    prisma.track.deleteMany({
-                        where: { albumId: album.id },
-                    }),
-                    prisma.album.delete({
-                        where: { id: album.id },
-                    }),
-                ]);
                 report.orphanedAlbums++;
-                logger.debug(
-                    `     Removed orphaned album: ${album.artist.name} - ${album.title}`
+                logger.warn(
+                    `     Orphaned album (kept, needs a decision): ${album.artist.name} - ${album.title}`
                 );
             }
         }
@@ -187,7 +177,7 @@ export async function runDataIntegrityCheck(): Promise<IntegrityReport> {
     
     // Find LIBRARY albums that might be discovery
     const libraryAlbums = await prisma.album.findMany({
-        where: { location: "LIBRARY" },
+        where: { location: LIBRARY_LOCATION },
         include: { artist: true },
     });
     
@@ -261,15 +251,9 @@ export async function runDataIntegrityCheck(): Promise<IntegrityReport> {
             where: { id: album.id },
             data: { location: "DISCOVER" },
         });
-        
-        // Remove OwnedAlbum record (but only non-native ones)
-        await prisma.ownedAlbum.deleteMany({
-            where: { 
-                rgMbid: album.rgMbid,
-                source: { not: "native_scan" },
-            },
-        });
-        
+
+        // The OwnedAlbum record stays: if it says a user kept this album,
+        // that keep stands (the check does not delete user decisions).
         mislocatedAlbumsFixed++;
     }
     
@@ -288,35 +272,34 @@ export async function runDataIntegrityCheck(): Promise<IntegrityReport> {
     });
 
     for (const album of emptyAlbums) {
-        // Delete the album and its OwnedAlbum record together -- without a shared
-        // transaction, a crash between the two leaves either a dangling OwnedAlbum
-        // (if the album delete lands first) or the reverse.
-        await prisma.$transaction([
-            prisma.album.delete({
-                where: { id: album.id },
-            }),
-            prisma.ownedAlbum.deleteMany({
-                where: { rgMbid: album.rgMbid },
-            }),
-        ]);
-
+        // Report-only: a ghost album whose files are gone stays in the
+        // catalogue until a scan brings the files back or a user prunes it;
+        // the check itself never deletes.
         report.orphanedAlbums++;
-        logger.debug(
-            `     Removed empty album (no tracks): ${album.artist.name} - ${album.title}`
+        logger.warn(
+            `     Empty album kept (no tracks, needs a decision): ${album.artist.name} - ${album.title}`
         );
     }
 
-    // 6. Clean up orphaned OwnedAlbum records (no matching Album record)
-    // This happens when files are deleted but Lidarr records remain
-    const orphanedOwnedAlbums = await prisma.$executeRaw`
-        DELETE FROM "OwnedAlbum" oa
-        WHERE NOT EXISTS (
-            SELECT 1 FROM "Album" a WHERE a."rgMbid" = oa."rgMbid"
-        )
-    `;
-    if (orphanedOwnedAlbums > 0) {
-        logger.debug(
-            `     Removed ${orphanedOwnedAlbums} orphaned OwnedAlbum records`
+    // 6. Report orphaned OwnedAlbum records (no matching Album record).
+    // Report-only: a keep whose Album row was removed out-of-band is a
+    // user decision with a missing row, not garbage — a rescan can recreate
+    // the Album, and silently deleting the keep would undo what the user
+    // chose (e.g. a discovery_liked record that would no longer protect the
+    // album when it comes back).
+    const orphanedOwnedAlbums = await prisma.$queryRawUnsafe<
+        { artistId: string; rgMbid: string | null; source: string }[]
+    >(
+        `SELECT oa."artistId", oa."rgMbid", oa.source
+           FROM "OwnedAlbum" oa
+          WHERE NOT EXISTS (
+              SELECT 1 FROM "Album" a WHERE a."rgMbid" = oa."rgMbid"
+          )`,
+    );
+    report.orphanedOwnedAlbums = orphanedOwnedAlbums.length;
+    if (orphanedOwnedAlbums.length > 0) {
+        logger.warn(
+            `     Orphaned OwnedAlbum records (kept, need a decision): ${orphanedOwnedAlbums.length}`,
         );
     }
 
@@ -427,6 +410,7 @@ export async function runDataIntegrityCheck(): Promise<IntegrityReport> {
     );
     logger.debug(`   - Mislocated albums (LIBRARY->DISCOVER): ${report.mislocatedAlbums}`);
     logger.debug(`   - Orphaned albums: ${report.orphanedAlbums}`);
+    logger.debug(`   - Orphaned OwnedAlbum keeps: ${report.orphanedOwnedAlbums}`);
     logger.debug(`   - Consolidated artists: ${report.consolidatedArtists}`);
     logger.debug(`   - Orphaned artists: ${report.orphanedArtists}`);
     logger.debug(`   - Old download jobs: ${report.oldDownloadJobs}`);

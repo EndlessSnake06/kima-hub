@@ -32,7 +32,7 @@ interface EnrichmentState {
     startedAt?: string;
     pausedAt?: string;
     stoppedAt?: string;
-    /** Set when a run transitioned to failed (see markFailed). */
+    /** Set when a run transitioned to failed. */
     lastError?: string;
     currentPhase: EnrichmentPhase;
     lastActivity: string;
@@ -297,41 +297,6 @@ class EnrichmentStateService {
 
         return updated;
     }
-
-    /**
-     * Clear enrichment state (set to idle)
-     */
-    /**
-     * Mark the enrichment run failed. Used when runFullEnrichment throws after
-     * initializeState() already wrote status=running -- without this the state
-     * pins at running forever (the Aug-2026 class: fresh heartbeat, frozen
-     * counters, hang detector waiting for 15 silent minutes).
-     */
-    async markFailed(reason: string): Promise<void> {
-        const state = await this.getState();
-        await this.setState({
-            ...(state ?? { status: "running", currentPhase: null }),
-            status: "failed",
-            lastActivity: new Date().toISOString(),
-            lastError: reason,
-        } as EnrichmentState);
-    }
-
-    /**
-     * Resolves when the persisted status becomes one of `statuses` (poll every
-     * 250ms up to `timeoutMs`), or rejects on timeout. Lets HTTP routes await
-     * first-phase truth of a background run without holding a DB connection.
-     */
-    async waitForStatus(statuses: EnrichmentStatus[], timeoutMs = 15_000): Promise<EnrichmentStatus> {
-        const deadline = Date.now() + timeoutMs;
-        for (;;) {
-            const state = await this.getState();
-            if (state && statuses.includes(state.status)) return state.status;
-            if (Date.now() >= deadline) throw new Error(`waitForStatus(${statuses}) timed out after ${timeoutMs}ms`);
-            await new Promise((r) => setTimeout(r, 250));
-        }
-    }
-
     async clear(): Promise<void> {
         await this.redis.del(ENRICHMENT_STATE_KEY);
         logger.debug("[Enrichment State] Cleared");
@@ -372,10 +337,20 @@ class EnrichmentStateService {
 
     /**
      * Clear the synchronous gate so Python can process work again.
-     * Called by clearPauseState() when enrichment is explicitly resumed.
      */
     async clearGate(): Promise<void> {
         await this.redis.del(AUDIO_ANALYSIS_GATE_KEY);
+    }
+
+    /**
+     * Close the synchronous analysis gate without touching the
+     * enrichment state record. Used at startup when a persisted pause
+     * must be honored: the gate may be absent (Redis flushed, or the
+     * key expired) and an ungated analyzer would drain queued work
+     * straight through the operator's instruction.
+     */
+    async holdGateClosed(): Promise<void> {
+        await this.redis.set(AUDIO_ANALYSIS_GATE_KEY, "paused");
     }
 
     /**

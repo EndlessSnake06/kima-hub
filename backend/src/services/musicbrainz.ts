@@ -395,6 +395,119 @@ class MusicBrainzService {
         });
     }
 
+    /**
+     * The whole catalogue for one album from ONE fetch chain: the release
+     * group with its releases (request 1), then the earliest release with
+     * its full tracklist — recordings, ISRCs, per-recording tags — and its
+     * label-info (request 2). Every track on the album gets its answer
+     * from this chain instead of 2–5 requests of its own, so an album
+     * costs 2 requests at 1 req/s, and the 30-day answer cache means even
+     * that is paid once per album rather than once per cycle (Engine Spec
+     *
+     * `recordings` lists the chosen release's tracks in disc order;
+     * matching a file to one of them (title plus duration) is the
+     * caller's job — see enrichSingleTrack in the enrichment worker.
+     */
+    async getAlbumCatalogue(
+        rgMbid: string
+    ): Promise<
+        Outcome<{
+            releaseMbid: string;
+            originalYear: number | null;
+            label: string | null;
+            genres: { name: string; count: number }[];
+            recordings: Array<{
+                recordingId: string;
+                title: string;
+                durationMs: number | null;
+                isrcs: string[];
+                genres: { name: string; count: number }[];
+            }>;
+        }>
+    > {
+        const cacheKey = `mb:album:catalogue:${rgMbid}`;
+        return this.cachedOutcome(cacheKey, async () => {
+            try {
+                const rgResponse = await this.rateLimitedGet(
+                    `/release-group/${rgMbid}`,
+                    { params: { inc: "releases+tags", fmt: "json" } }
+                );
+                const rg = rgResponse.data;
+                const releases: any[] = rg.releases || [];
+                if (releases.length === 0) {
+                    return absent({
+                        rgMbid,
+                        reason: "release group has no releases",
+                    });
+                }
+
+                // Releases arrive chronologically; the earliest carries the
+                // original year and the tracks as they were first published.
+                const chosen = releases[0];
+                const releaseResponse = await this.rateLimitedGet(
+                    `/release/${chosen.id}`,
+                    {
+                        params: {
+                            inc: "recordings+isrcs+labels+tags",
+                            fmt: "json",
+                        },
+                    }
+                );
+                const release = releaseResponse.data;
+
+                const recordings = (release.media || [])
+                    .flatMap((medium: any) => medium.tracks || [])
+                    .filter((t: any) => t.recording)
+                    .map((t: any) => ({
+                        recordingId: t.recording.id as string,
+                        title: (t.title || t.recording.title) as string,
+                        durationMs:
+                            typeof t.recording.length === "number"
+                                ? t.recording.length
+                                : null,
+                        isrcs: (t.recording.isrcs || []) as string[],
+                        genres: (t.recording.tags || [])
+                            .filter((g: any) => g.count > 0)
+                            .map((g: any) => ({
+                                name: g.name,
+                                count: g.count,
+                            })),
+                    }));
+                if (recordings.length === 0) {
+                    return absent({
+                        rgMbid,
+                        releaseMbid: chosen.id,
+                        reason: "release has no tracklist",
+                    });
+                }
+
+                const year = Number.parseInt(
+                    rg["first-release-date"] || chosen.date || "",
+                    10
+                );
+
+                return answered(
+                    {
+                        releaseMbid: chosen.id,
+                        originalYear: Number.isFinite(year) ? year : null,
+                        label:
+                            release["label-info"]?.[0]?.label?.name ?? null,
+                        genres: (rg.tags || [])
+                            .filter((g: any) => g.count > 0)
+                            .map((g: any) => ({
+                                name: g.name,
+                                count: g.count,
+                            })),
+                        recordings,
+                    },
+                    { rgMbid, releaseMbid: chosen.id, source: "musicbrainz" }
+                );
+            } catch (err: any) {
+                return this.classifyError(err, true);
+            }
+        });
+    }
+
     extractPrimaryArtist(artistCredits: any[]): string {
         if (!artistCredits || artistCredits.length === 0)
             return "Unknown Artist";

@@ -347,7 +347,9 @@ describe("retryFailedAndBlocked — the queue-based path", () => {
         expect(mockQueueAdd).toHaveBeenCalledWith(
             "enrich",
             { trackId: id("fresh"), trackTitle: `Track ${id("fresh")}` },
-            { jobId: `track-${id("fresh")}-recording-1` },
+            // Per-offer jobId: first dispatch (attempt 1), no prior
+            // redelivery (suffix).
+            { jobId: `track-${id("fresh")}-recording-1-r0` },
         );
 
         // Dispatching CLAIMS the records, so the next sweep is not handed

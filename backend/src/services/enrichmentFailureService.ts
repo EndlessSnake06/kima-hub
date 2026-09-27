@@ -16,8 +16,9 @@
 import { logger } from "../utils/logger";
 import { prisma } from "../utils/db";
 
-/** STAGE_RETRY_CAP — mirrored here for the mapped maxRetries field. */
-const STAGE_RETRY_CAP = 3;
+/** STAGE_RETRY_CAP — mirrored here for the mapped maxRetries field
+ * (initial dispatch plus 3 retries); both count whole dispatches. */
+const STAGE_RETRY_CAP = 4;
 
 /**
  * The track stages whose failures the failures API serves, and the
@@ -600,27 +601,6 @@ class EnrichmentFailureService {
         );
         return result.count;
     }
-
-    /**
-     * Check if an entity has failed too many times
-     */
-    async hasExceededRetries(
-        entityType: string,
-        entityId: string
-    ): Promise<boolean> {
-        const failure = await prisma.enrichmentFailure.findUnique({
-            where: {
-                entityType_entityId: {
-                    entityType: entityType as any,
-                    entityId,
-                },
-            },
-        });
-
-        if (!failure) return false;
-        return failure.retryCount >= failure.maxRetries;
-    }
-
     /**
      * Clean up failures for entities that no longer exist in the database.
      * This resolves orphaned failure records where the track/artist was deleted.

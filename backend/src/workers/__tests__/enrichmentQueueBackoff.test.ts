@@ -163,8 +163,10 @@ describe("enrichment phases -- job keys and backoff", () => {
 
         it("keys each attempt with its own jobId, not the shared stage key", async () => {
             mockQueryRawUnsafe.mockImplementation(async (sql: string, ...args: unknown[]) => {
-                // The claim UPDATE returns the record's current attempt.
-                if (sql.includes("SET status = 'working'")) return [{ attempt: 2 }];
+                // The claim UPDATE moves the record from its failed attempt 2
+                // onto attempt 3 (a `failed` claim consumes the next rung).
+                if (sql.includes("SET status = 'working'"))
+                    return [{ attempt: 3, redelivered: 0 }];
                 if (args[0] === "recording") return [stageRow("t1", "recording", 2)];
                 return [];
             });
@@ -175,7 +177,7 @@ describe("enrichment phases -- job keys and backoff", () => {
             expect(mockTrackAdd).toHaveBeenCalledWith(
                 "enrich",
                 { trackId: "t1", trackTitle: "t1" },
-                { jobId: "track-t1-recording-3" },
+                { jobId: "track-t1-recording-3-r0" },
             );
         });
 

@@ -16,38 +16,41 @@ import {
 } from "../utils/artistNormalization";
 import { parseCredit, resolveArtist } from "./artistIdentity";
 import { resolveAlbum } from "./albumIdentity";
-import { acoustidService } from "./acoustidService";
-import { failureCause } from "../utils/outcome";
-import { fpcalcService } from "./fpcalc";
-import { featureDetection } from "./featureDetection";
 import { backfillAllArtistCounts } from "./artistCountsService";
 import { checkLocalArtistImage } from "./imageStorage";
+import { LIBRARY_LOCATION } from "./libraryFilters";
 
 /**
- * AcoustID-first identification.
+ * Identification happens in the stage ladder, not in the walk.
  *
- * Order of resolution for a file's album identity:
- *   1. the file's own `musicbrainz_releasegroupid` tag (unchanged path),
- *   2. the file's embedded AcoustID fingerprint tag -> AcoustID lookup,
- *   3. fpcalc on the file -> AcoustID lookup,
- *   4. nothing — resolveAlbum's `temp-<ts>-<random>` placeholder stands
- *      (enrichment's MusicBrainz title search stays the fallback; the
- *      placeholder scheme must NOT be retired — OwnedAlbum/DiscoveryAlbum
- *      key on the rgMbid string value, see albumIdentity.ts scope note).
+ * The scan resolves a file's album identity from its own tags only: the
+ * `musicbrainz_releasegroupid` tag, or nothing — resolveAlbum's
+ * `temp-<ts>-<random>` placeholder stands (the scheme must NOT be retired;
+ * OwnedAlbum/DiscoveryAlbum key on the rgMbid string value, see
+ * albumIdentity.ts scope note). Running fpcalc here would be the
+ * `fingerprint` stage's work done in the wrong place and thrown away;
+ * The engine forbids it, and the `recording` stage asks AcoustID with
+ * the stored fingerprint instead.
+ */
+/**
+ * Album identity for a scanned file comes only from the file's own tags.
+ *
+ * Engine rule ("no stage runs another stage's work"): the
+ * scan must NOT run fpcalc to answer the fingerprint question and then throw
+ * the fingerprint away — the `fingerprint` stage owns fpcalc, and the
+ * `recording` stage consumes the stored fingerprint through the one identify
+ * path. A file without usable tags therefore gets the `temp-<ts>-<random>`
+ * placeholder from resolveAlbum, and identification re-asks it with the
+ * ladder; an AcoustID ID tag alone cannot resolve anything without running
+ * fpcalc, so it too waits for the stage.
  *
  * Every outcome is counted so the sweep report can show which path resolved
- * each track. AcoustID is best-effort: any failure falls through silently.
+ * each track.
  */
-type IdentificationPath =
-    | "mbid-tag"
-    | "acoustid-tag"
-    | "fpcalc"
-    | "placeholder";
+type IdentificationPath = "mbid-tag" | "placeholder";
 
 const identificationCounters: Record<IdentificationPath, number> = {
     "mbid-tag": 0,
-    "acoustid-tag": 0,
-    fpcalc: 0,
     placeholder: 0,
 };
 
@@ -56,94 +59,58 @@ export function getIdentificationCounters() {
 }
 
 /**
- * Run fpcalc on a file; returns fingerprint + duration, throws on failure.
- *
- * Delegates to the shared fpcalcService runner. fpcalc 1.5.x has NO
- * `-format=json` output flag (`-format` selects the *input* format); the
- * output flag is `-json` on every version since 1.4 — verified live on both
- * 1.6.1 (this dev box) and the 1.5.1 sources.
- */
-async function fingerprintFile(
-    absolutePath: string,
-): Promise<{ fingerprint: string; duration: number } | null> {
-    return fpcalcService.fingerprintFile(absolutePath);
-}
-
-/**
- * Resolve the album identity for one scanned file, trying the AcoustID
- * paths only when the file carries no usable MusicBrainz tag. Returns the
- * rgMbid to hand to resolveAlbum plus which path resolved it.
+ * Resolve the album identity for one scanned file from its tags only.
+ * Returns the rgMbid to hand to resolveAlbum plus which path resolved it.
  */
 async function resolveAlbumIdentity(
-    absolutePath: string,
-    tagRgMbid: string | null | undefined,
-    tagAcoustidId: string | null | undefined,
-    duration: number,
+    tagRgMbid: string | null | undefined
 ): Promise<{ rgMbid: string | null; via: IdentificationPath }> {
-    // 1. File's own MusicBrainz tag — authoritative, no network.
+    // The file's own MusicBrainz tag — authoritative, no network, no
+    // fingerprinting.
     if (tagRgMbid?.trim()) {
         identificationCounters["mbid-tag"]++;
         return { rgMbid: tagRgMbid.trim(), via: "mbid-tag" };
     }
 
-    // 2. File's embedded AcoustID recording id (AcoustID:MBID:<uuid> or bare
-    //    uuid) — resolve it without fingerprinting.
-    const acoustidTag = tagAcoustidId?.trim();
-    if (acoustidTag) {
-        const mbid = acoustidTag.replace(/^AcoustID:MBID:/i, "");
-        // The tag gives a recording id, not a release-group id; use the
-        // fingerprint path only when we can actually look something up.
-        // Without a fingerprint there is nothing to query, so fall through
-        // to fpcalc rather than trusting a raw id we cannot resolve here.
-        logger.debug(
-            `[Scanner] AcoustID tag present (${mbid.slice(0, 12)}…), fingerprinting to resolve`,
-        );
-    }
-
-    // 3. fpcalc -> AcoustID lookup (covers both the tagged case, which needs
-    //    the fingerprint to resolve, and untagged files). Same gate as the
-    //    enrichment path: the fpcalc feature flag (binary present, not
-    //    disabled) decides whether this path runs. The service resolves the
-    //    client key itself — operator key from SystemSettings, baked default
-    //    as fallback — so no key plumbing happens here. The shared runner now
-    //    THROWS on a real fpcalc failure; the scan only falls through to the
-    //    placeholder path (the stage records own per-track failures).
-    const features = await featureDetection.getFeatures();
-    if (features.fpcalc) {
-        let fp: { fingerprint: string; duration: number } | null = null;
-        try {
-            fp = await fingerprintFile(absolutePath);
-        } catch (err) {
-            logger.debug(
-                `[Scanner] fpcalc failed for ${path.basename(absolutePath)}: ${(err as Error).message}`,
-            );
-        }
-        if (fp) {
-            const match = await acoustidService.lookup(fp.duration, fp.fingerprint);
-            if (match.kind === "answered") {
-                identificationCounters[acoustidTag ? "acoustid-tag" : "fpcalc"]++;
-                logger.info(
-                    `[Scanner] Identified ${path.basename(absolutePath)} via ${
-                        acoustidTag ? "AcoustID tag + fingerprint" : "fingerprint"
-                    }: ${match.value.releaseGroupMbid} (${match.value.title} — ${match.value.album})`,
-                );
-                return { rgMbid: match.value.releaseGroupMbid, via: acoustidTag ? "acoustid-tag" : "fpcalc" };
-            }
-            // "No match" and "call failed" both fall through to the
-            // placeholder stands, but the log keeps the difference.
-            logger.debug(
-                `[Scanner] no fingerprint identification for ${path.basename(absolutePath)}: ${
-                    match.kind === "absent"
-                        ? "AcoustID has no match"
-                        : failureCause(match)
-                }`,
-            );
-        }
-    }
-
-    // 4. Placeholder stands; enrichment's MusicBrainz path is the fallback.
+    // No usable tag: the placeholder stands and the recording stage's
+    // ladder (tags → title-checked name search → AcoustID) asks later.
     identificationCounters.placeholder++;
     return { rgMbid: null, via: "placeholder" };
+}
+
+/**
+ * A replaced file voids every answer recorded against the old content:
+ * all four stage records go back to `pending` with evidence "file
+ * changed". Records a human closed (`blocked`) stay
+ * closed — the machine never overrules a decision (S10). Records in
+ * `working` stay too: an attempt is already in flight against the old
+ * content, and flipping its row mid-lease would only make the next claim
+ * race the still-pending write-back; when that attempt lands or its
+ * lease expires, the record comes back through the ladder on its own.
+ */
+async function reopenStagesForChangedFile(trackId: string): Promise<void> {
+    const reopened = await prisma.$executeRaw`
+        UPDATE "TrackStage"
+           SET status = 'pending',
+               attempt = 0,
+               redelivered = 0,
+               "nextRetryAt" = NULL,
+               "startedAt" = NULL,
+               "finishedAt" = NULL,
+               "decidedAt" = NULL,
+               "decidedBy" = NULL,
+               "lastErrorCode" = NULL,
+               "lastErrorMessage" = NULL,
+               "failureClass" = NULL,
+               retryable = true,
+               evidence = jsonb_build_object('reason', 'file changed')
+         WHERE "trackId" = ${trackId}
+           AND status IN ('done', 'failed', 'pending')`;
+    if (reopened > 0) {
+        logger.debug(
+            `[Scanner] Re-opened ${reopened} stage record(s) for ${trackId}: file changed`
+        );
+    }
 }
 
 // Supported audio formats
@@ -265,7 +232,10 @@ export class MusicScannerService {
                             progress.filesScanned = filesScanned;
                             return;
                         }
-                        // File changed, will update
+                        // File changed: every recorded answer was computed
+                        // from the old content, so reopen the whole stage
+                        // set before re-processing the row.
+                        await reopenStagesForChangedFile(existingTrack.id);
                         result.tracksUpdated++;
                     } else {
                         // New file
@@ -620,7 +590,7 @@ export class MusicScannerService {
                         artist: {
                             name: { equals: artistName, mode: "insensitive" },
                         },
-                        location: "LIBRARY",
+                        location: LIBRARY_LOCATION,
                     },
                 });
 
@@ -880,20 +850,10 @@ export class MusicScannerService {
         // removed -- and it had no unique-violation retry.
         let isDiscoveryAlbum = false;
 
-        // AcoustID-first identification: try the file's MB tag, then its
-        // AcoustID tag / a fresh fingerprint, and only then let the
-        // placeholder stand (enrichment's MB title-search stays the fallback).
+        // Album identity from the file's own MB tag only; anything else
+        // waits for the recording stage's ladder.
         const identity = await resolveAlbumIdentity(
-            absolutePath,
             metadata.common.musicbrainz_releasegroupid,
-            (metadata.common as { acoustidId?: string }).acoustidId
-                ?? (metadata.native
-                      ? Object.values(metadata.native)
-                            .flat()
-                            .find((t) => t.id === "ACOUSTID_ID" || t.id === "Acoustid Id")
-                            ?.value?.toString()
-                      : undefined),
-            duration,
         );
 
         const album = await resolveAlbum(prisma, {

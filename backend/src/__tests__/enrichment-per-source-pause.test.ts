@@ -161,13 +161,13 @@ describe("the dequeuer consults the pause before handing out work", () => {
         expect(offered.map((w) => w.trackId)).toContain(id("a"));
     });
 
-    it("resume lifts the pause and work is offered again", async () => {
+    it("deleting the pause row lifts it and work is offered again", async () => {
         await sourcePauseController.pause("musicbrainz", {
             until: new Date(Date.now() + 60_000),
             code: "RATE_LIMITED",
             message: "MusicBrainz 503",
         });
-        await sourcePauseController.resume("musicbrainz");
+        await prisma.sourceAttempt.deleteMany({ where: { source: "musicbrainz" } });
         expect(await sourcePauseController.isPaused("musicbrainz")).toBe(false);
         const offered = await getNextWork(10);
         expect(offered.map((w) => w.trackId)).toContain(id("a"));
@@ -219,7 +219,7 @@ describe("a rate limit pauses only that source and is not a failure", () => {
         await recordStageFailure(id("a"), "recording", "musicbrainz", mb503);
         expect(await sourcePauseController.isPaused("musicbrainz")).toBe(true);
 
-        await sourcePauseController.resume("musicbrainz");
+        await prisma.sourceAttempt.deleteMany({ where: { source: "musicbrainz" } });
         const lm29 = new Error("MusicBrainz ok but: API error code 29: something");
         await recordStageFailure(id("a"), "recording", "musicbrainz", lm29);
         expect(await sourcePauseController.isPaused("musicbrainz")).toBe(true);

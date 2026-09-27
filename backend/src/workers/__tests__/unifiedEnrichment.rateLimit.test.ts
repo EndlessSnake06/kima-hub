@@ -127,6 +127,7 @@ jest.mock("../../services/musicbrainz", () => ({
         lookupByIsrc: (...a: unknown[]) => mockLookupByIsrc(...a),
         getRecordingIsrc: jest.fn().mockResolvedValue(noData),
         getRecordingGenres: jest.fn().mockResolvedValue(noData),
+        getAlbumCatalogue: jest.fn().mockResolvedValue(noData),
     },
 }));
 
@@ -333,12 +334,13 @@ describe("an honest no-match", () => {
         expect(stage.evidence.reason).toBe(
             "sources have no recording for this track",
         );
-        // The no-match still leaves the track without mood tags — there
-        // is no recording to take them from.
+        // The no-match leaves the track exactly as seeded — the record
+        // owns the answered question, and moods come from analysis only
+        // so nothing is stamped on the track row.
         const track = await prisma.track.findUnique({
             where: { id: trackId },
             select: { enrichmentTags: true },
         });
-        expect(track?.enrichmentTags).toEqual(["_not_found"]);
+        expect(track?.enrichmentTags).toEqual([]);
     });
 });
