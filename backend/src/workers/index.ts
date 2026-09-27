@@ -124,7 +124,7 @@ startMoodBucketWorker().catch((err) => {
 // Event handlers for scan worker
 scanWorker.on("completed", (job, result) => {
     logger.debug(
-        `Scan job ${job.id} completed: +${result.tracksAdded} ~${result.tracksUpdated} -${result.tracksRemoved}`
+        `Scan job ${job.id} completed: +${result.tracksAdded} ~${result.tracksUpdated} missing:${result.tracksMissing}`
     );
 });
 

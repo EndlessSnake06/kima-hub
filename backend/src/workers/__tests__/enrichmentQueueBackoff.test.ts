@@ -1,11 +1,15 @@
 /**
- * Regression guard for the dedup-on-failure trap on the artist and track
- * enrichment phases (the same class as the podcast wedge).
+ * Job-key and backoff behaviour for the artist and track enrichment phases.
  *
- * BullMQ keeps a failed job's jobId marker, so a failed enrichment can't be
- * re-queued until the marker is gone. Each automatic phase must clean both
- * "completed" (immediately reusable on success) and "failed" (reusable after a
- * backoff grace, so a permanently-failing entity doesn't re-add every cycle).
+ * The track phase used to re-dequeue from
+ * `Track.enrichmentTags` and reuse the jobId `track-<id>`, so one failed job
+ * held that key and silently defeated every later re-add until the marker
+ * aged out. With `TrackStage` the record owns the attempt and the jobId is per
+ * attempt, so there is no marker to hold and no `getJob` skip to test.
+ *
+ * The artist phase still selects from `Track.enrichmentStatus` (artists are
+ * not tracks, so there is no per-artist stage record), so its clean/backoff
+ * pins stay.
  */
 
 const mockArtistAdd = jest.fn().mockResolvedValue({ id: "j" });
@@ -16,6 +20,12 @@ const mockTrackClean = jest.fn().mockResolvedValue([]);
 const mockTrackGetJob = jest.fn().mockResolvedValue(null);
 
 jest.mock("../enrichmentQueues", () => ({
+    QUEUE_NAMES: {
+        ARTISTS: "enrichment-artists",
+        TRACKS: "enrichment-tracks",
+        VIBE: "enrichment-vibe",
+        PODCASTS: "enrichment-podcasts",
+    },
     artistQueue: { add: mockArtistAdd, clean: mockArtistClean, getJob: mockArtistGetJob, resume: jest.fn() },
     trackQueue: { add: mockTrackAdd, clean: mockTrackClean, getJob: mockTrackGetJob, resume: jest.fn() },
     vibeQueue: { add: jest.fn(), clean: jest.fn(), getJob: jest.fn(), resume: jest.fn() },
@@ -46,6 +56,9 @@ const mockArtistUpdate = jest.fn().mockResolvedValue({});
 const mockTrackFindMany = jest.fn();
 const mockTrackUpdateMany = jest.fn().mockResolvedValue({ count: 0 });
 const mockTrackUpdate = jest.fn().mockResolvedValue({});
+// The stage queue reads TrackStage through one raw query per stage; shape the
+// rows by the stage bind parameter ($1) rather than by the SQL text.
+const mockQueryRawUnsafe = jest.fn();
 
 jest.mock("../../utils/db", () => ({
     prisma: {
@@ -59,6 +72,8 @@ jest.mock("../../utils/db", () => ({
             updateMany: mockTrackUpdateMany,
             update: mockTrackUpdate,
         },
+        $queryRawUnsafe: mockQueryRawUnsafe,
+        $executeRawUnsafe: jest.fn().mockResolvedValue(1),
     },
 }));
 jest.mock("../../utils/logger", () => ({
@@ -74,77 +89,124 @@ import {
 const cleanCallsFor = (mock: jest.Mock, type: string) =>
     mock.mock.calls.filter((c) => c[2] === type);
 
-describe("enrichment phases -- clean completed immediately, failed with backoff", () => {
+/** One owed stage row for the stage the phase under test consults. */
+function stageRow(trackId: string, stage: string, attempt = 0) {
+    return {
+        trackId, stage, status: "pending", attempt, source: "musicbrainz",
+        filePath: `/music/${trackId}.flac`, duration: 200, title: trackId,
+    };
+}
+
+describe("enrichment phases -- job keys and backoff", () => {
     beforeEach(() => {
         jest.clearAllMocks();
         mockArtistGetJob.mockResolvedValue(null);
         mockTrackGetJob.mockResolvedValue(null);
-    });
-
-    it("artists phase cleans completed (grace 0) and failed (grace > 0) before queuing", async () => {
+        // Artists still select from Track.enrichmentStatus; the track phase
+        // selects from TrackStage.
         mockArtistFindMany.mockResolvedValue([{ id: "a1", name: "Artist One" }]);
-
-        await executeArtistsPhase();
-
-        const completed = cleanCallsFor(mockArtistClean, "completed");
-        const failed = cleanCallsFor(mockArtistClean, "failed");
-        expect(completed).toHaveLength(1);
-        expect(completed[0][0]).toBe(0); // grace 0 -- immediate reuse on success
-        expect(failed).toHaveLength(1);
-        expect(failed[0][0]).toBeGreaterThan(0); // backoff grace before retry
-        expect(mockArtistAdd).toHaveBeenCalledWith(
-            "enrich",
-            { artistId: "a1", artistName: "Artist One" },
-            { jobId: "artist-a1" },
-        );
-    });
-
-    it("mood-tags phase cleans completed (grace 0) and failed (grace > 0) before queuing", async () => {
-        mockTrackFindMany.mockResolvedValue([{ id: "t1", title: "Track One" }]);
-
-        await executeMoodTagsPhase();
-
-        const completed = cleanCallsFor(mockTrackClean, "completed");
-        const failed = cleanCallsFor(mockTrackClean, "failed");
-        expect(completed).toHaveLength(1);
-        expect(completed[0][0]).toBe(0);
-        expect(failed).toHaveLength(1);
-        expect(failed[0][0]).toBeGreaterThan(0);
-        expect(mockTrackAdd).toHaveBeenCalledWith(
-            "enrich",
-            { trackId: "t1", trackTitle: "Track One" },
-            { jobId: "track-t1" },
-        );
-    });
-
-    it("backs off (does not re-add or park) when the jobId slot is still held", async () => {
-        // A failed job younger than the grace still holds the jobId; getJob
-        // returns it, so the phase must skip -- not re-add, not park the entity
-        // out of selection.
-        mockArtistFindMany.mockResolvedValue([{ id: "a1", name: "Artist One" }]);
-        mockArtistGetJob.mockResolvedValue({ id: "artist-a1" }); // slot held
-        mockTrackFindMany.mockResolvedValue([{ id: "t1", title: "Track One" }]);
-        mockTrackGetJob.mockResolvedValue({ id: "track-t1" }); // slot held
-
-        await executeArtistsPhase();
-        await executeMoodTagsPhase();
-
-        expect(mockArtistAdd).not.toHaveBeenCalled();
-        expect(mockArtistUpdate).not.toHaveBeenCalled(); // not parked "enriching"
-        expect(mockTrackAdd).not.toHaveBeenCalled();
-        expect(mockTrackUpdateMany).not.toHaveBeenCalled(); // not parked "_queued"
-    });
-
-    it("no work: no clean, no queue", async () => {
-        mockArtistFindMany.mockResolvedValue([]);
         mockTrackFindMany.mockResolvedValue([]);
+        mockQueryRawUnsafe.mockImplementation(async (_sql: string, stage: string) => {
+            if (stage === "recording") return [stageRow("t1", "recording")];
+            return [];
+        });
+    });
 
-        await executeArtistsPhase();
-        await executeMoodTagsPhase();
+    describe("artist phase (no per-artist stage record — unchanged)", () => {
+        it("cleans completed (grace 0) and failed (grace > 0) before queuing", async () => {
+            await executeArtistsPhase();
 
-        expect(mockArtistClean).not.toHaveBeenCalled();
-        expect(mockTrackClean).not.toHaveBeenCalled();
-        expect(mockArtistAdd).not.toHaveBeenCalled();
-        expect(mockTrackAdd).not.toHaveBeenCalled();
+            const completed = cleanCallsFor(mockArtistClean, "completed");
+            const failed = cleanCallsFor(mockArtistClean, "failed");
+            expect(completed).toHaveLength(1);
+            expect(completed[0][0]).toBe(0); // grace 0 -- immediate reuse on success
+            expect(failed).toHaveLength(1);
+            expect(failed[0][0]).toBeGreaterThan(0); // backoff grace before retry
+            expect(mockArtistAdd).toHaveBeenCalledWith(
+                "enrich",
+                { artistId: "a1", artistName: "Artist One" },
+                { jobId: "artist-a1" },
+            );
+        });
+
+        it("backs off (does not re-add or park) when the jobId slot is still held", async () => {
+            // A failed job younger than the grace still holds the jobId; getJob
+            // returns it, so the phase must skip -- not re-add, not park the entity
+            // out of selection.
+            mockArtistGetJob.mockResolvedValue({ id: "artist-a1" }); // slot held
+
+            await executeArtistsPhase();
+
+            expect(mockArtistAdd).not.toHaveBeenCalled();
+            expect(mockArtistUpdate).not.toHaveBeenCalled(); // not parked "enriching"
+        });
+
+        it("no work: no clean, no queue", async () => {
+            mockArtistFindMany.mockResolvedValue([]);
+
+            await executeArtistsPhase();
+
+            expect(mockArtistClean).not.toHaveBeenCalled();
+            expect(mockArtistAdd).not.toHaveBeenCalled();
+        });
+    });
+
+    describe("track phase (stage record owns the attempt)", () => {
+        it("does not clean job markers — the per-attempt jobId makes dedup moot", async () => {
+            // Selection comes from TrackStage, so there is no marker to clear:
+            // a retry gets a fresh jobId instead of waiting for the old one to
+            // age out.
+            await executeMoodTagsPhase();
+
+            expect(mockTrackClean).not.toHaveBeenCalled();
+        });
+
+        it("keys each attempt with its own jobId, not the shared stage key", async () => {
+            mockQueryRawUnsafe.mockImplementation(async (sql: string, ...args: unknown[]) => {
+                // The claim UPDATE returns the record's current attempt.
+                if (sql.includes("SET status = 'working'")) return [{ attempt: 2 }];
+                if (args[0] === "recording") return [stageRow("t1", "recording", 2)];
+                return [];
+            });
+
+            await executeMoodTagsPhase();
+
+            // Attempt 2 already failed and is retryable, so this is attempt 3.
+            expect(mockTrackAdd).toHaveBeenCalledWith(
+                "enrich",
+                { trackId: "t1", trackTitle: "t1" },
+                { jobId: "track-t1-recording-3" },
+            );
+        });
+
+        it("claims the record instead of parking the entity on a sentinel", async () => {
+            // The old code wrote enrichmentTags = ['_queued'] to mark a track
+            // in flight; the stage record's `working` status does that now.
+            await executeMoodTagsPhase();
+
+            const sentinelWrites = mockTrackUpdateMany.mock.calls.filter(
+                (call) => JSON.stringify(call[0] ?? {}).includes("_queued"),
+            );
+            expect(sentinelWrites).toHaveLength(0);
+        });
+
+        it("does not select work from Track.enrichmentTags", async () => {
+            await executeMoodTagsPhase();
+
+            const recordDriven = mockTrackFindMany.mock.calls.filter(
+                (call) => JSON.stringify(call[0] ?? {}).includes("enrichmentTags"),
+            );
+            expect(recordDriven).toHaveLength(0);
+        });
+
+        it("does not re-queue a track whose recording record is answered", async () => {
+            // Nothing owes the recording stage this cycle.
+            mockQueryRawUnsafe.mockResolvedValue([]);
+
+            const queued = await executeMoodTagsPhase();
+
+            expect(queued).toBe(0);
+            expect(mockTrackAdd).not.toHaveBeenCalled();
+        });
     });
 });

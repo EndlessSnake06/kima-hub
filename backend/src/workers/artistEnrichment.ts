@@ -9,6 +9,7 @@ import { hasRealMbid } from "../services/artistIdentity";
 import { findAlbumArtwork, findArtistArtwork } from "../services/artwork";
 import { redisClient } from "../utils/redis";
 import { downloadAndStoreImage, isNativePath, nativeFileExists } from "../services/imageStorage";
+import { failureCause } from "../utils/outcome";
 
 /**
  * Enriches an artist with metadata from Wikidata
@@ -35,48 +36,52 @@ export async function enrichSimilarArtist(artist: Artist): Promise<void> {
             logger.debug(
                 `${logPrefix} Temp MBID detected, searching MusicBrainz...`
             );
-            try {
-                const mbResults = await musicBrainzService.searchArtist(
-                    artist.name,
-                    1
+            const found = await musicBrainzService.searchArtist(
+                artist.name,
+                1
+            );
+            if (found.kind === "answered" && found.value[0]?.id) {
+                const realMbid = found.value[0].id;
+                logger.debug(
+                    `${logPrefix} MusicBrainz: Found real MBID: ${realMbid}`
                 );
-                if (mbResults.length > 0 && mbResults[0].id) {
-                    const realMbid = mbResults[0].id;
-                    logger.debug(
-                        `${logPrefix} MusicBrainz: Found real MBID: ${realMbid}`
-                    );
 
-                    // Update artist with real MBID
-                    try {
-                        await prisma.artist.update({
-                            where: { id: artist.id },
-                            data: { mbid: realMbid },
-                        });
-                        artist.mbid = realMbid;
-                    } catch (mbidError: any) {
-                        if (mbidError.code === "P2002") {
-                            logger.debug(
-                                `${logPrefix} MBID ${realMbid} already used by another artist, keeping temp`
-                            );
-                        } else {
-                            throw mbidError;
-                        }
-                    }
-                } else {
-                    logger.debug(
-                        `${logPrefix} MusicBrainz: No match found, marking as unresolvable`
-                    );
+                // Update artist with real MBID
+                try {
                     await prisma.artist.update({
                         where: { id: artist.id },
-                        data: { enrichmentStatus: "unresolvable", lastEnriched: new Date() },
+                        data: { mbid: realMbid },
                     });
-                    return;
+                    artist.mbid = realMbid;
+                } catch (mbidError: any) {
+                    if (mbidError.code === "P2002") {
+                        logger.debug(
+                            `${logPrefix} MBID ${realMbid} already used by another artist, keeping temp`
+                        );
+                    } else {
+                        throw mbidError;
+                    }
                 }
-            } catch (error: any) {
+            } else if (
+                found.kind === "absent" ||
+                found.kind === "answered"
+            ) {
+                // Nothing usable in the answer — an honest "no match"
+                // (or a degenerate empty answer): mark unresolvable.
                 logger.debug(
-                    `${logPrefix} MusicBrainz: FAILED - ${
-                        error?.message || error
-                    }`
+                    `${logPrefix} MusicBrainz: No match found, marking as unresolvable`
+                );
+                await prisma.artist.update({
+                    where: { id: artist.id },
+                    data: { enrichmentStatus: "unresolvable", lastEnriched: new Date() },
+                });
+                return;
+            } else {
+                // A failed search keeps the question open: the artist
+                // stays on its temp MBID and the next cycle asks again —
+                // do not mark unresolvable on a source outage.
+                logger.debug(
+                    `${logPrefix} MusicBrainz search ${found.kind}: ${failureCause(found)}`
                 );
             }
         }
@@ -147,10 +152,10 @@ export async function enrichSimilarArtist(artist: Artist): Promise<void> {
 
         // Genre fallback: MusicBrainz curated genres
         if (genres.length === 0 && hasRealMbid(artist.mbid)) {
-            try {
-                const mbArtist = await musicBrainzService.getArtist(artist.mbid, ["genres"]);
-                if (mbArtist?.genres && Array.isArray(mbArtist.genres)) {
-                    genres = mbArtist.genres
+            const mbArtist = await musicBrainzService.getArtist(artist.mbid, ["genres"]);
+            if (mbArtist.kind === "answered") {
+                if (Array.isArray(mbArtist.value.genres)) {
+                    genres = mbArtist.value.genres
                         .sort((a: any, b: any) => (b.count || 0) - (a.count || 0))
                         .slice(0, 5)
                         .map((g: any) => g.name)
@@ -159,8 +164,8 @@ export async function enrichSimilarArtist(artist: Artist): Promise<void> {
                         logger.debug(`${logPrefix} MusicBrainz: ${genres.length} genres: ${genres.join(', ')}`);
                     }
                 }
-            } catch (error: any) {
-                logger.debug(`${logPrefix} MusicBrainz genres: FAILED - ${error?.message || error}`);
+            } else if (mbArtist.kind !== "absent") {
+                logger.debug(`${logPrefix} MusicBrainz genres: ${failureCause(mbArtist)}`);
             }
         }
 

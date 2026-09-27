@@ -1,0 +1,571 @@
+/**
+ * AcoustID fingerprint storage and identification order
+ * (one fingerprinter).
+ *
+ * The fingerprint is the FINGERPRINT STAGE's answer, stored on
+ * `Track.acoustidFingerprint`; the recording stage's AcoustID step reads it
+ * and NEVER runs fpcalc — a second decode path disagreed with the analyzer's
+ * about damaged files and wasted a second fpcalc run per track. Rules under
+ * test, run against this checkout's own test database:
+ *   - A stored or tagged fingerprint drives the AcoustID lookup; when the
+ *     lookup does not match, that is an answer: the record closes `done`
+ *     with the no-match evidence, consumes no attempt, and the
+ *     fingerprint stays on the track.
+ *   - The recording stage never reaches the AcoustID step while the
+ *     fingerprint question is open: the fingerprint → recording edge in
+ *     PREREQUISITE_STAGE keeps it unoffered until the question is settled
+ *     (`done`, or closed as a permanent failure — then the step is skipped
+ *     with the skip in the evidence). Called directly, bypassing the gate,
+ *     a fingerprint-less AcoustID step refuses: no fpcalc run, no fake
+ *     answer, and never a forever-pending record the sweep re-polls.
+ *   - When the lookup matches, `Track.recordingMbid` holds the matched
+ *     recording MBID.
+ *   - The 2026-09-24 identification order: file tags first (no network),
+ *     then the title-checked MusicBrainz name search, then AcoustID only for
+ *     the remainder.
+ *
+ * Run with:
+ *   npx jest src/__tests__/acoustid-fingerprint.test.ts --forceExit --maxWorkers=1
+ */
+
+// ── Mocks (must be before imports) ─────────────────────────────────────
+// The identification services are stubbed so the test drives the ORDER and
+// the STORAGE outcome, not the wire. The stubs answer with real `Outcome`
+// kinds — the services never throw and never return bare objects, so mocks
+// that did would be testing behaviour no real source has. `../utils/db` is
+// deliberately NOT mocked: the point of this file is that the values
+// actually land in the database the migrations built.
+
+const noData = { kind: "absent", evidence: { mocked: true } } as const;
+const answeredWith = (value: unknown) =>
+    ({ kind: "answered", value, evidence: { mocked: true } }) as const;
+
+const mockParseFile = jest.fn();
+jest.mock("music-metadata", () => ({
+    parseFile: (...args: unknown[]) => mockParseFile(...args),
+}));
+
+const mockIsAvailable = jest.fn().mockResolvedValue(true);
+const mockFingerprintFile = jest.fn();
+jest.mock("../services/fpcalc", () => ({
+    fpcalcService: {
+        isAvailable: (...args: unknown[]) => mockIsAvailable(...args),
+        fingerprintFile: (...args: unknown[]) => mockFingerprintFile(...args),
+    },
+}));
+
+const mockLookup = jest.fn();
+jest.mock("../services/acoustidService", () => ({
+    acoustidService: { lookup: (...args: unknown[]) => mockLookup(...args) },
+}));
+
+const mockSearchRecording = jest.fn().mockResolvedValue(noData);
+const mockGetRecordingIsrc = jest.fn().mockResolvedValue(noData);
+const mockGetRecordingGenres = jest.fn().mockResolvedValue(noData);
+const mockLookupByIsrc = jest.fn().mockResolvedValue(noData);
+jest.mock("../services/musicbrainz", () => ({
+    musicBrainzService: {
+        searchRecording: (...args: unknown[]) => mockSearchRecording(...args),
+        getRecordingIsrc: (...args: unknown[]) => mockGetRecordingIsrc(...args),
+        getRecordingGenres: (...args: unknown[]) => mockGetRecordingGenres(...args),
+        lookupByIsrc: (...args: unknown[]) => mockLookupByIsrc(...args),
+    },
+}));
+
+const mockStoreIsrc = jest.fn().mockResolvedValue(undefined);
+const mockPopulateTrackGenres = jest.fn().mockResolvedValue(undefined);
+jest.mock("../services/trackIdentity", () => ({
+    trackIdentityService: {
+        storeIsrc: (...args: unknown[]) => mockStoreIsrc(...args),
+        populateTrackGenres: (...args: unknown[]) => mockPopulateTrackGenres(...args),
+    },
+}));
+
+const mockGetFeatures = jest.fn().mockResolvedValue({
+    musicCNN: false,
+    vibeEmbeddings: false,
+    audiobookshelfEnabled: false,
+    fpcalc: true,
+});
+jest.mock("../services/featureDetection", () => ({
+    featureDetection: { getFeatures: (...args: unknown[]) => mockGetFeatures(...args) },
+}));
+
+jest.mock("../services/enrichmentState", () => ({
+    enrichmentStateService: {
+        updateState: jest.fn().mockResolvedValue({}),
+        getState: jest.fn().mockResolvedValue(null),
+        initializeState: jest.fn().mockResolvedValue({}),
+        clear: jest.fn().mockResolvedValue(undefined),
+        detectHang: jest.fn().mockResolvedValue(false),
+        clearGate: jest.fn().mockResolvedValue(undefined),
+        publishToChannel: jest.fn().mockResolvedValue(undefined),
+    },
+}));
+
+jest.mock("../services/enrichmentFailureService", () => ({
+    enrichmentFailureService: {
+        cleanupOrphanedFailures: jest.fn().mockResolvedValue({ cleaned: 0, checked: 0 }),
+        cleanupOldResolved: jest.fn().mockResolvedValue(0),
+        recordFailure: jest.fn().mockResolvedValue({}),
+        resolveByEntity: jest.fn().mockResolvedValue(true),
+        clearFailure: jest.fn().mockResolvedValue(true),
+        clearAllFailures: jest.fn().mockResolvedValue(0),
+    },
+}));
+
+const mockRedis = {
+    publish: jest.fn().mockResolvedValue(1),
+    quit: jest.fn().mockResolvedValue(undefined),
+    subscribe: jest.fn().mockResolvedValue(undefined),
+    on: jest.fn(),
+    set: jest.fn().mockResolvedValue("OK"),
+    rpush: jest.fn().mockResolvedValue(1),
+    llen: jest.fn().mockResolvedValue(0),
+    del: jest.fn().mockResolvedValue(1),
+    get: jest.fn().mockResolvedValue(null),
+    status: "ready",
+};
+jest.mock("ioredis", () => jest.fn(() => mockRedis));
+
+jest.mock("../config", () => ({
+    config: {
+        redisUrl: "redis://localhost:6379",
+        music: { musicPath: "/srv/music" },
+    },
+}));
+
+jest.mock("../workers/enrichmentQueues", () => ({
+    QUEUE_NAMES: {
+        ARTISTS: "enrichment-artists",
+        TRACKS: "enrichment-tracks",
+        VIBE: "enrichment-vibe",
+        PODCASTS: "enrichment-podcasts",
+    },
+    artistQueue: { add: jest.fn() },
+    trackQueue: { add: jest.fn() },
+    vibeQueue: { add: jest.fn() },
+    podcastQueue: { add: jest.fn() },
+    closeEnrichmentQueues: jest.fn().mockResolvedValue(undefined),
+}));
+
+jest.mock("../workers/artistEnrichmentWorker", () => ({
+    startArtistEnrichmentWorker: jest.fn().mockResolvedValue({}),
+}));
+jest.mock("../workers/trackEnrichmentWorker", () => ({
+    startTrackEnrichmentWorker: jest.fn().mockResolvedValue({}),
+}));
+jest.mock("../workers/podcastEnrichmentWorker", () => ({
+    startPodcastEnrichmentWorker: jest.fn().mockResolvedValue({}),
+}));
+jest.mock("../workers/audioCompletionSubscriber", () => ({
+    startAudioCompletionSubscriber: jest.fn(),
+    stopAudioCompletionSubscriber: jest.fn().mockResolvedValue(undefined),
+    haltVibeQueuing: jest.fn(),
+    resumeVibeQueuing: jest.fn(),
+}));
+
+jest.mock("../utils/logger", () => ({
+    logger: {
+        debug: jest.fn(),
+        info: jest.fn(),
+        warn: jest.fn(),
+        error: jest.fn(),
+    },
+}));
+
+// ── Imports (after mocks) ──────────────────────────────────────────────
+
+import { prisma } from "../utils/db";
+import { enrichSingleTrack } from "../workers/unifiedEnrichment";
+
+const PREFIX = "afp";
+const id = (n: string) => `${PREFIX}_${n}`;
+
+/**
+ * A realistic stand-in for a real fpcalc output: same shape (base64url of
+ * the chromaprint bits, "AQAD" prefix) and same size. ~3.4 kB for a
+ * ~3-minute track — the pinned size, chosen because it is what
+ * a real 30-second-per-track fingerprint sweep actually stores.
+ */
+function realisticFingerprint(seed: string, length = 3400): string {
+    const alphabet =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    let h = 2166136261;
+    for (const ch of seed) h = (h ^ ch.charCodeAt(0)) * 16777619 >>> 0;
+    let out = "AQAD";
+    for (let i = 4; i < length; i++) {
+        h = ((h * 1103515245 + 12345) >>> 0);
+        out += alphabet[h % alphabet.length];
+    }
+    return out;
+}
+
+const FINGERPRINT = realisticFingerprint("afp-t1");
+const TAGGED_FINGERPRINT = realisticFingerprint("afp-tag");
+const RECORDING = "1256eae7-b87d-4c53-9def-108ba484a97d";
+const MB_TRACK = "mb-track-afp";
+
+async function wipe(): Promise<void> {
+    await prisma.$executeRawUnsafe(`DELETE FROM "TrackStage" WHERE "trackId" LIKE $1`, `${PREFIX}_%`);
+    await prisma.$executeRawUnsafe(`DELETE FROM "Track" WHERE id LIKE $1`, `${PREFIX}_%`);
+    await prisma.$executeRawUnsafe(`DELETE FROM "Album" WHERE id = $1`, id("alb"));
+    await prisma.$executeRawUnsafe(`DELETE FROM "Artist" WHERE id = $1`, id("art"));
+}
+
+async function putTrack(data: {
+    isrc: string | null;
+    recordingMbid?: string | null;
+    acoustidFingerprint?: string | null;
+}): Promise<void> {
+    await prisma.artist.create({
+        data: { id: id("art"), name: "Test Artist", identityKey: id("a") },
+    });
+    await prisma.album.create({
+        data: { id: id("alb"), rgMbid: id("rg"), artistId: id("art"), title: "Test Album", primaryType: "Album" },
+    });
+    await prisma.track.create({
+        data: {
+            id: id("t1"),
+            albumId: id("alb"),
+            title: "Test Track",
+            trackNo: 1,
+            duration: 200,
+            filePath: "afp/test-track.flac",
+            fileModified: new Date(),
+            fileSize: 1000,
+            analysisStatus: "pending",
+            enrichmentTags: [],
+            isrc: data.isrc,
+            recordingMbid: data.recordingMbid ?? null,
+            acoustidFingerprint: data.acoustidFingerprint ?? null,
+        },
+    });
+    // Seed the per-track recording question the way the migration does it:
+    // open, so the sweep must answer it.
+    await prisma.$executeRawUnsafe(
+        `INSERT INTO "TrackStage"
+            (id, "trackId", stage, status, source, attempt, retryable, evidence)
+         VALUES ($1, $2, 'recording', 'pending', 'musicbrainz', 0, true, $3::jsonb)`,
+        `${id("t1")}__recording`, id("t1"),
+        JSON.stringify({ seededFrom: "test" }),
+    );
+}
+
+async function getStage(): Promise<any> {
+    const rows = await prisma.$queryRawUnsafe<any[]>(
+        `SELECT * FROM "TrackStage" WHERE "trackId" = $1 AND stage = $2`,
+        id("t1"), "recording",
+    );
+    return rows[0];
+}
+
+beforeEach(async () => {
+    jest.clearAllMocks();
+    mockGetFeatures.mockResolvedValue({
+        musicCNN: false,
+        vibeEmbeddings: false,
+        audiobookshelfEnabled: false,
+        fpcalc: true,
+    });
+    mockIsAvailable.mockResolvedValue(true);
+    mockSearchRecording.mockResolvedValue(noData);
+    mockGetRecordingIsrc.mockResolvedValue(noData);
+    mockGetRecordingGenres.mockResolvedValue(noData);
+    mockLookupByIsrc.mockResolvedValue(noData);
+    await wipe();
+});
+
+afterAll(async () => {
+    await wipe();
+    await prisma.$disconnect();
+});
+
+describe("AcoustID: the fingerprint is the fingerprint stage's stored answer", () => {
+    beforeEach(async () => {
+        // No useful tags; the fingerprint stage already answered with a
+        // realistic ~3.4 kB fingerprint; the AcoustID lookup finds nothing.
+        mockParseFile.mockResolvedValue({ common: {}, format: { duration: 200 } });
+        mockFingerprintFile.mockResolvedValue({ duration: 200, fingerprint: FINGERPRINT });
+        mockLookup.mockResolvedValue(noData);
+        await putTrack({ isrc: null, acoustidFingerprint: FINGERPRINT });
+    });
+
+    it("asks with the stored fingerprint; a real miss is the answer", async () => {
+        await enrichSingleTrack(id("t1"));
+
+        // Never a second fpcalc run — the recording stage reads what the
+        // fingerprint stage stored.
+        expect(mockFingerprintFile).not.toHaveBeenCalled();
+        expect(mockLookup).toHaveBeenCalledWith(200, FINGERPRINT);
+
+        const track = await prisma.track.findUnique({
+            where: { id: id("t1") },
+            select: { acoustidFingerprint: true, recordingMbid: true, enrichmentTags: true },
+        });
+        // The fingerprint is untouched — nothing recomputed it.
+        expect(track?.acoustidFingerprint).toBe(FINGERPRINT);
+        // Nothing matched, so no recording is invented.
+        expect(track?.recordingMbid).toBeNull();
+        expect(track?.enrichmentTags).toEqual(["_not_found"]);
+    });
+
+    it("closes the question as answered when the lookup does not match", async () => {
+        await enrichSingleTrack(id("t1"));
+
+        const record = await getStage();
+        // A correct "no" is an answer: the record closes `done`, the
+        // retry ladder is untouched (the question was seeded `pending`
+        // at attempt 0), and the evidence says who was asked.
+        expect(record.status).toBe("done");
+        expect(record.attempt).toBe(0);
+        expect(record.failureClass).toBeNull();
+        expect(record.nextRetryAt).toBeNull();
+        expect(record.evidence.reason).toBe(
+            "sources have no recording for this track",
+        );
+        expect(record.evidence.asked).toEqual(["mb-search", "acoustid"]);
+    });
+
+    it("no stored fingerprint anywhere: the step refuses — no fpcalc, no fake answer", async () => {
+        // The recording stage is gated on the fingerprint question being
+        // SETTLED (PREREQUISITE_STAGE), so the engine never reaches the
+        // AcoustID step in this state. Called directly (bypassing the
+        // gate), the step refuses rather than fake an answer: no fpcalc
+        // run, no lookup — and the record closes as that permanent
+        // refusal, with the real reason on it, rather than riding a retry
+        // ladder back to the same refusal every cycle.
+        await wipe();
+        mockLookup.mockClear();
+        await putTrack({ isrc: null, acoustidFingerprint: null });
+
+        await enrichSingleTrack(id("t1"));
+
+        expect(mockFingerprintFile).not.toHaveBeenCalled();
+        expect(mockLookup).not.toHaveBeenCalled();
+
+        const record = await getStage();
+        // A real answer: the step refused with NO_FINGERPRINT (permanent),
+        // so the question closes rather than ride a retry ladder back to
+        // the same refusal — and the record carries the real reason.
+        expect(record.status).toBe("failed");
+        expect(record.retryable).toBe(false);
+        expect(record.lastErrorMessage).toBeTruthy();
+
+        const track = await prisma.track.findUnique({
+            where: { id: id("t1") },
+            select: { recordingMbid: true, enrichmentTags: true },
+        });
+        expect(track?.recordingMbid).toBeNull();
+        // No `_not_found` here: nothing was identified AND nothing was
+        // excluded — the step refused to ask at all, which is not a
+        // no-match to quarantine against.
+        expect(track?.enrichmentTags).toEqual([]);
+    });
+});
+
+describe("AcoustID: a matched recording is stored in Track.recordingMbid", () => {
+    beforeEach(async () => {
+        mockParseFile.mockResolvedValue({ common: {}, format: { duration: 200 } });
+        mockFingerprintFile.mockResolvedValue({ duration: 200, fingerprint: FINGERPRINT });
+        mockLookup.mockResolvedValue(
+            answeredWith({
+                recordingMbid: RECORDING,
+                artistMbid: "artist-mbid",
+                releaseGroupMbid: "rg-mbid",
+                title: "Test Track",
+                artist: "Test Artist",
+                album: "Test Album",
+            }),
+        );
+        mockGetRecordingIsrc.mockResolvedValue(answeredWith("USX112345678"));
+        mockGetRecordingGenres.mockResolvedValue(
+            answeredWith({
+                genres: [{ name: "electronic", count: 3 }],
+                tags: [{ name: "electronic", count: 3 }],
+            }),
+        );
+        await putTrack({ isrc: null, acoustidFingerprint: FINGERPRINT });
+    });
+
+    it("writes the matched recording MBID to Track.recordingMbid", async () => {
+        await enrichSingleTrack(id("t1"));
+
+        const track = await prisma.track.findUnique({
+            where: { id: id("t1") },
+            select: { recordingMbid: true, acoustidFingerprint: true },
+        });
+        expect(track?.recordingMbid).toBe(RECORDING);
+        expect(track?.acoustidFingerprint).toBe(FINGERPRINT);
+    });
+
+    it("answers the recording question from the stored fingerprint, with the source recorded", async () => {
+        await enrichSingleTrack(id("t1"));
+
+        const record = await getStage();
+        expect(record.status).toBe("done");
+        // The answer's provenance: the fingerprint stage's stored value.
+        expect(record.source).toBe("stored");
+        expect(record.evidence).toEqual(
+            expect.objectContaining({ recordingMbid: RECORDING }),
+        );
+    });
+});
+
+describe("AcoustID: the 2026-09-24 identification order", () => {
+    afterEach(async () => {
+        await wipe();
+    });
+
+    it("takes the file's musicbrainz_recordingid tag with no network call at all", async () => {
+        mockParseFile.mockResolvedValue({
+            common: {
+                musicbrainz_recordingid: [RECORDING],
+                acoustid_fingerprint: [TAGGED_FINGERPRINT],
+            },
+            format: { duration: 200 },
+        });
+        await putTrack({ isrc: null });
+
+        await enrichSingleTrack(id("t1"));
+
+        expect(mockSearchRecording).not.toHaveBeenCalled();
+        expect(mockLookup).not.toHaveBeenCalled();
+        expect(mockFingerprintFile).not.toHaveBeenCalled();
+
+        const track = await prisma.track.findUnique({
+            where: { id: id("t1") },
+            select: { recordingMbid: true, acoustidFingerprint: true },
+        });
+        expect(track?.recordingMbid).toBe(RECORDING);
+        // The tag's fingerprint is stored too — dedupe value, zero cost.
+        expect(track?.acoustidFingerprint).toBe(TAGGED_FINGERPRINT);
+        const record = await getStage();
+        expect(record.status).toBe("done");
+        expect(record.source).toBe("file_tag");
+    });
+
+    it("runs the title-checked MusicBrainz search before AcoustID when there are no tags", async () => {
+        mockParseFile.mockResolvedValue({ common: {}, format: { duration: 200 } });
+        mockSearchRecording.mockResolvedValue(
+            answeredWith({
+                trackMbid: MB_TRACK,
+                albumName: "Test Album",
+                albumMbid: id("rg"),
+                artistMbid: "artist-mbid",
+            }),
+        );
+        await putTrack({ isrc: null });
+
+        await enrichSingleTrack(id("t1"));
+
+        // The search answered, so AcoustID is never asked and fpcalc is
+        // never run — this is the reversal of the 2026-09-01 order.
+        expect(mockSearchRecording).toHaveBeenCalledWith("Test Track", "Test Artist");
+        expect(mockLookup).not.toHaveBeenCalled();
+        expect(mockFingerprintFile).not.toHaveBeenCalled();
+
+        const track = await prisma.track.findUnique({
+            where: { id: id("t1") },
+            select: { recordingMbid: true },
+        });
+        expect(track?.recordingMbid).toBe(MB_TRACK);
+        const record = await getStage();
+        expect(record.status).toBe("done");
+        expect(record.source).toBe("musicbrainz");
+    });
+
+    it("asks AcoustID only for the track the name search could not answer", async () => {
+        mockParseFile.mockResolvedValue({
+            common: { acoustid_fingerprint: TAGGED_FINGERPRINT },
+            format: { duration: 200 },
+        });
+        mockSearchRecording.mockResolvedValue(noData);
+        mockLookup.mockResolvedValue(
+            answeredWith({
+                recordingMbid: RECORDING,
+                artistMbid: "artist-mbid",
+                releaseGroupMbid: "rg-mbid",
+                title: "Test Track",
+                artist: "Test Artist",
+                album: "Test Album",
+            }),
+        );
+        await putTrack({ isrc: null });
+
+        await enrichSingleTrack(id("t1"));
+
+        // Tags had no recording id → search ran and missed → only now the
+        // fingerprint path runs, and it uses the tag's fingerprint instead
+        // of running fpcalc again.
+        expect(mockSearchRecording).toHaveBeenCalled();
+        expect(mockFingerprintFile).not.toHaveBeenCalled();
+        expect(mockLookup).toHaveBeenCalledWith(200, TAGGED_FINGERPRINT);
+
+        const track = await prisma.track.findUnique({
+            where: { id: id("t1") },
+            select: { recordingMbid: true, acoustidFingerprint: true },
+        });
+        expect(track?.recordingMbid).toBe(RECORDING);
+        expect(track?.acoustidFingerprint).toBe(TAGGED_FINGERPRINT);
+    });
+
+    it("does not identify a track that already has an ISRC", async () => {
+        mockParseFile.mockResolvedValue({ common: {}, format: { duration: 200 } });
+        mockLookupByIsrc.mockResolvedValue(
+            answeredWith({
+                recordingId: RECORDING,
+                title: "Test Track",
+                artistName: "Test Artist",
+                artistMbid: "artist-mbid",
+            }),
+        );
+        mockGetRecordingGenres.mockResolvedValue(
+            answeredWith({
+                genres: [{ name: "electronic", count: 3 }],
+                tags: [],
+            }),
+        );
+        await putTrack({ isrc: "USX112345678" });
+
+        await enrichSingleTrack(id("t1"));
+
+        expect(mockSearchRecording).not.toHaveBeenCalled();
+        expect(mockLookup).not.toHaveBeenCalled();
+        expect(mockFingerprintFile).not.toHaveBeenCalled();
+
+        const track = await prisma.track.findUnique({
+            where: { id: id("t1") },
+            select: { recordingMbid: true },
+        });
+        expect(track?.recordingMbid).toBe(RECORDING);
+        const record = await getStage();
+        expect(record.status).toBe("done");
+        expect(record.source).toBe("isrc");
+    });
+
+    it("with the fpcalc flag off and no stored fingerprint, the step refuses — it never runs fpcalc", async () => {
+        mockParseFile.mockResolvedValue({ common: {}, format: { duration: 200 } });
+        mockGetFeatures.mockResolvedValue({
+            musicCNN: false,
+            vibeEmbeddings: false,
+            audiobookshelfEnabled: false,
+            fpcalc: false,
+        });
+        await putTrack({ isrc: null, acoustidFingerprint: null });
+
+        await enrichSingleTrack(id("t1"));
+
+        expect(mockFingerprintFile).not.toHaveBeenCalled();
+        expect(mockLookup).not.toHaveBeenCalled();
+        // The name search still answers what it can.
+        expect(mockSearchRecording).toHaveBeenCalledWith("Test Track", "Test Artist");
+        const record = await getStage();
+        // The fpcalc flag gates the FINGERPRINT stage, not this one. With no
+        // fingerprint anywhere the step refuses (waiting is the gate's job):
+        // closed as a permanent refusal, not an owed record the sweep
+        // re-polls.
+        expect(record.status).toBe("failed");
+        expect(record.retryable).toBe(false);
+    });
+});

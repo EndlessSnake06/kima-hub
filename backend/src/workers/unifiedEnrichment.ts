@@ -16,6 +16,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../utils/db";
 import Redis from "ioredis";
 import { config } from "../config";
+import os from "os";
 import path from "path";
 import type { Worker as BullWorker } from "bullmq";
 import {
@@ -24,6 +25,7 @@ import {
     vibeQueue,
     podcastQueue,
     closeEnrichmentQueues,
+    QUEUE_NAMES,
 } from "./enrichmentQueues";
 import { startArtistEnrichmentWorker } from "./artistEnrichmentWorker";
 import { startTrackEnrichmentWorker } from "./trackEnrichmentWorker";
@@ -37,20 +39,279 @@ import {
 import { enrichmentStateService } from "../services/enrichmentState";
 import { enrichmentFailureService } from "../services/enrichmentFailureService";
 import fs from "fs";
-import { audioAnalysisCleanupService } from "../services/audioAnalysisCleanup";
 import { featureDetection } from "../services/featureDetection";
 import { musicBrainzService } from "../services/musicbrainz";
 import { trackIdentityService } from "../services/trackIdentity";
 import {
     identifyTrackByAcoustid,
     persistAcoustidFingerprint,
-    TrackIdentification,
+    readIdentityTags,
 } from "../services/acoustidIdentification";
+import { fpcalcService } from "../services/fpcalc";
+import { resolveTrackFilePath } from "../routes/library/trackPath";
 import { precomputeProjection } from "../services/umapProjection";
 import {
     MIN_LOCAL_TRACKS,
     rebuildArtistCentroid,
 } from "../services/artistSimilarity";
+import {
+    classifyFailure,
+    isRateLimited,
+} from "../services/enrichmentErrorCodeClassifier";
+import type { Outcome } from "../utils/outcome";
+
+/** The three kinds that failed to answer anything, as opposed to `Absent`. */
+type FailureOutcome = Extract<
+    Outcome<unknown>,
+    { kind: "rateLimited" | "transient" | "permanent" }
+>;
+import { sourcePauseController } from "../services/sourcePauseController";
+
+// ── Per-track stage queue ────────────────────────
+
+/**
+ * The four questions this worker owes each track. `recording` ("which
+ * recording is this?") answers the identity, `analysis` answers "has this file
+ * been decoded and measured?", and `embedding` answers "has this track been
+ * embedded?". `fingerprint` answers "what does this file sound like to
+ * AcoustID?" — it is LOCAL (fpcalc) and has no prerequisite: the sweep covers
+ * every track, because the dedupe column wants
+ * the fingerprint whether or not any lookup matched. Each stage waits only for
+ * what its PREREQUISITE_STAGE entry declares (recording waits for the
+ * fingerprint question to be SETTLED; embedding waits for analysis's OUTPUT)
+ * — never for the whole library, and never by polling a sibling at runtime.
+ */
+export type StageName = "recording" | "analysis" | "embedding" | "fingerprint";
+
+export const STAGE_ORDER: readonly StageName[] = [
+    "recording",
+    "analysis",
+    "embedding",
+    "fingerprint",
+] as const;
+
+/**
+ * How a stage waits on its prerequisite, per edge:
+ *   - "output"  — the dependent stage READS the prerequisite's answer, so
+ *     only a `done` answer unblocks it. A closed failure wrote no output;
+ *     "the question is settled" is not "the output exists".
+ *   - "settled" — the dependent stage only needs the question ANSWERED,
+ *     either way: `done` (use the stored answer) or closed as a permanent
+ *     failure (`failed`, `retryable = false`; skip the step and record the
+ *     skip). A retryable failure or an open question is NOT settled.
+ */
+export type StageWaitKind = "output" | "settled";
+
+export interface StagePrerequisite {
+    stage: StageName;
+    wait: StageWaitKind;
+}
+
+/**
+ * Which stage must have answered before this one may be offered, and what
+ * kind of waiting that is. The map states each stage's real data
+ * dependencies — what the stage actually reads — which is NOT the order the
+ * stages are listed in. This is the ONE place the engine models "wait for
+ * another stage": a stage never polls or defers at runtime because a
+ * sibling has not answered.
+ */
+export const PREREQUISITE_STAGE: Record<StageName, StagePrerequisite | null> = {
+    // Reads file tags, then the name search, then AcoustID — and the
+    // AcoustID step consumes the fingerprint stage's STORED answer. It
+    // cannot be asked while the fingerprint question is open, and a
+    // fingerprint stage closed as a permanent failure will never produce
+    // one: either way the ANSWER (not an output) is what recording needs,
+    // so on a closed failure the AcoustID step is skipped and the skip is
+    // written into this stage's evidence.
+    recording: { stage: "fingerprint", wait: "settled" },
+    // Reads only the audio file (the Essentia analyzer decodes it itself).
+    analysis: null,
+    // Reads the Essentia valence/arousal that analysis wrote and blends them
+    // into the CLAP embedding, so an unanalysed track cannot be embedded —
+    // an analysis record closed as a failure wrote no valence/arousal, so
+    // only a done answer unblocks this stage.
+    embedding: { stage: "analysis", wait: "output" },
+    // Reads only the audio file (fpcalc on the local binary).
+    fingerprint: null,
+};
+
+/**
+ * One producer per queue: each stage maps to exactly one queue, and only the
+ * stage runner writes to it. Two producers on one queue is what let the same
+ * work be created in two places with two different job keys. `fingerprint`
+ * is the one stage with no queue at all: its producer executes the work
+ * inline (fpcalc is a local subprocess owned by this process), so there is
+ * no queue to name.
+ */
+export const STAGE_QUEUES: Record<StageName, string> = {
+    recording: QUEUE_NAMES.TRACKS,
+    // The analyzer consumes a plain Redis list, not a BullMQ queue.
+    analysis: "audio:analysis:queue",
+    embedding: QUEUE_NAMES.VIBE,
+    fingerprint: "inline",
+};
+
+/** One unit of work: a track, the stage it owes, and how to key the attempt. */
+export interface StageWork {
+    trackId: string;
+    stage: StageName;
+    status: string;
+    attempt: number;
+    source: string | null;
+    filePath: string | null;
+    duration: number;
+    title: string;
+    /** Stable identity of the question: `track-<id>-<stage>`. */
+    jobKey: string;
+    /** Identity of THIS attempt: `track-<id>-<stage>-<attempt>`. */
+    jobId: string;
+}
+
+/** A record is due when the answer is missing, a retry's backoff elapsed, or
+ * a claim's lease ran out (a `working` record whose `nextRetryAt` came round
+ * is an attempt that died without answering). */
+const DUE_STATUSES = ["pending", "failed"] as const;
+
+/** How long a claim holds a record before the attempt is presumed dead. */
+const STAGE_CLAIM_LEASE_MS = 15 * 60 * 1000;
+
+/**
+ * The next work owed, straight off `TrackStage`.
+ *
+ * One query per stage, each returning rows where the answer is missing or a
+ * retry is due, gated on the stage's declared prerequisite (PREREQUISITE_STAGE,
+ * if any) having answered for the same track — `done` for an "output" edge,
+ * `done` or a closed failure for a "settled" one. It
+ * deliberately does not filter on `Track.analysisStatus` / `Track.scanStatus`:
+ * those columns are how the old code decided what to offer, which is what let
+ * one failed track hold the whole library behind it. The record owns the
+ * answer; a terminal answer (`failed`, not retryable) is simply not offered
+ * again, and a `nextRetryAt` that has not elapsed is not due yet.
+ */
+export async function getNextWork(
+    limit: number,
+    stageFilter?: StageName,
+): Promise<StageWork[]> {
+    const now = new Date();
+    const work: StageWork[] = [];
+
+    for (const stage of STAGE_ORDER) {
+        if (work.length >= limit) break;
+        // A phase that owns one stage asks only for that stage, so a hot
+        // earlier stage cannot starve it of its share of the limit.
+        if (stageFilter && stage !== stageFilter) continue;
+
+        // A paused source is not handed out work: while the pause holds,
+        // every attempt would burn its timeout against a source that is
+        // refusing us — the "1,047 attempt-3 failures" pattern this
+        // replaces. The record waits; the cycle moves on. The fingerprint
+        // stage's source is 'fpcalc' — the LOCAL binary — so a paused
+        // 'acoustid' (the network lookup) never stops the fingerprint
+        // sweep, and 'fpcalc' itself has no pause key to hit unless fpcalc
+        // itself was rate-limited (it cannot be; nothing pauses it).
+        const source =
+            stage === "analysis"
+                ? "analyzer"
+                : stage === "embedding"
+                  ? "clap"
+                  : stage === "fingerprint"
+                    ? "fpcalc"
+                    : "musicbrainz";
+        if (await sourcePauseController.isPaused(source, now)) {
+            logger.debug(
+                `[Enrichment] '${stage}' skipped: source '${source}' is paused`,
+            );
+            continue;
+        }
+
+    const prerequisite = PREREQUISITE_STAGE[stage];
+        // A track with no record for this stage has never been asked — that is
+        // "answer missing", so it is due. When there is a record, only a
+        // pending or retryable-failed one is.
+        const rows = await prisma.$queryRawUnsafe<
+            Array<{
+                trackId: string;
+                status: string;
+                attempt: number;
+                source: string | null;
+                filePath: string;
+                duration: number;
+                title: string;
+            }>
+        >(
+            `SELECT t.id AS "trackId",
+                    COALESCE(ts.status, 'pending')      AS status,
+                    COALESCE(ts.attempt, 0)             AS attempt,
+                    COALESCE(ts.source, $4)             AS source,
+                    t."filePath",
+                    t.duration,
+                    t.title
+               FROM "Track" t
+               LEFT JOIN "TrackStage" ts
+                        ON ts."trackId" = t.id AND ts.stage = $1
+                WHERE (ts.id IS NULL
+                       OR ((ts.status = ANY($2)
+                            OR ts.status = 'working')
+                           AND ts.retryable = true
+                           AND (ts."nextRetryAt" IS NULL OR ts."nextRetryAt" <= $3)))
+                -- A track whose file the scan flagged missing has nothing to
+                -- fingerprint, analyse or embed. Skipped, never failed: when
+                -- the file returns the scan clears the flag and the question
+                -- is simply due again.
+                AND t."missingSince" IS NULL
+                  -- Gating reads the prerequisite stage's RECORD, not a column:
+                  -- a stage is offered only once its declared prerequisite
+                  -- (PREREQUISITE_STAGE, usually none) has answered for the
+                  -- same track — in the way the edge declares: an "output"
+                  -- edge unblocks on 'done' only (the dependent stage reads
+                  -- the answer's content), a "settled" edge unblocks on
+                  -- 'done' OR on a closed failure ('failed' and not
+                  -- retryable — the question will never answer differently
+                  -- on its own). An unanalysed track is never embedded; a
+                  -- track whose fingerprint question is open is never
+                  -- recording-polled; every other stage is offered
+                  -- regardless of its siblings.
+                  AND ($5::text IS NULL
+                     OR EXISTS (SELECT 1 FROM "TrackStage" prev
+                                 WHERE prev."trackId" = t.id
+                                   AND prev.stage = $5
+                                   AND (prev.status = 'done'
+                                        OR ($6::text = 'settled'
+                                            AND prev.status = 'failed'
+                                            AND prev.retryable = false))))
+                ORDER BY t."fileModified" DESC
+                LIMIT $7`,
+            stage,
+            [...DUE_STATUSES],
+            now,
+            source,
+            prerequisite?.stage ?? null,
+            prerequisite?.wait ?? null,
+            limit - work.length,
+        );
+
+        for (const row of rows) {
+            if (!row.filePath) continue;
+            const jobKey = `track-${row.trackId}-${stage}`;
+            work.push({
+                trackId: row.trackId,
+                stage,
+                status: row.status,
+                attempt: row.attempt,
+                source: row.source,
+                filePath: row.filePath,
+                duration: row.duration,
+                title: row.title,
+                jobKey,
+                // Per attempt, so a retry never reuses the key a failed job
+                // still holds.
+                jobId: `${jobKey}-${row.attempt + 1}`,
+            });
+        }
+    }
+
+    return work;
+}
 
 // Configuration
 const ARTIST_BATCH_SIZE = 10;
@@ -88,7 +349,6 @@ let immediateEnrichmentRequested = false;
 let activeEnrichmentWorkers: BullWorker[] = [];
 let consecutiveSystemFailures = 0; // Track consecutive system-level failures
 let lastRunTime = 0;
-let audioLastCycleCompletedCount: number | null = null;
 const MIN_INTERVAL_MS = 10000; // Minimum 10s between cycles
 
 const AUDIO_ANALYSIS_CONTROL_CHANNEL = "audio:analysis:control";
@@ -224,22 +484,348 @@ async function withTimeout<T>(
 }
 
 /**
- * Duration-aware per-track enrichment timeout.
- * A short clip stays tight; a long FLAC buys room. Base 30s + 40ms per second
- * of track duration, capped at 180s. Non-finite durations fall back to the
- * base floor.
+ * One timeout per stage, sized to that stage's real work
+ * (replaces the single duration-derived
+ * `computeTrackEnrichmentTimeoutMs` that applied one budget to every
+ * stage).
+ *
+ * The stage's work — not the track's length — decides the budget:
+ *   - `recording` is identification: file tags, at most two MusicBrainz
+ *     HTTP lookups, and an AcoustID question asked with the fingerprint
+ *     stage's stored answer (no fpcalc runs in this stage). A network
+ *     budget; track duration is irrelevant to it.
+ *   - `analysis` decodes the first 90 seconds of the file
+ *     and runs the Essentia chain; the analyzer's own
+ *     DECODE_TIMEOUT is 120s, so 300s covers the window with the design's
+ *     "plus two minutes" headroom to spare.
+ *   - `embedding` runs CLAP over that same 90s window — smaller than the
+ *     full analysis budget, larger than a pure network call.
+ *   - `fingerprint` runs fpcalc over the whole file; the subprocess is
+ *     bounded by fpcalcService's own timeout, so 30s bounds the record's
+ *     patience at the same figure.
+ *
+ * These bound the RECORD's patience too: a `working` record older than
+ * its stage's timeout is a dead attempt and gets re-queued (a timeout
+ * does not count as an attempt).
  */
-export function computeTrackEnrichmentTimeoutMs(
-    durationSeconds: number,
-): number {
-    const BASE_MS = 30_000;
-    const CAP_MS = 180_000;
-    const MS_PER_SECOND = 40;
-    if (!Number.isFinite(durationSeconds)) return BASE_MS;
-    return Math.min(
-        CAP_MS,
-        BASE_MS + Math.round(durationSeconds) * MS_PER_SECOND,
+export const STAGE_TIMEOUT_MS: Record<StageName, number> = {
+    recording: 30_000,
+    analysis: 300_000,
+    embedding: 120_000,
+    fingerprint: 30_000,
+};
+
+/** The timeout for one stage's real work — no shared budget anywhere. */
+export function getStageTimeoutMs(stage: StageName): number {
+    return STAGE_TIMEOUT_MS[stage];
+}
+
+/**
+ * Attempts allowed before a stage's record closes as terminal. Matches
+ * `DEFAULT_JOB_OPTIONS.attempts` (enrichmentQueues) and
+ * `EnrichmentFailure.maxRetries` — the same cap the old queue config used.
+ */
+export const STAGE_RETRY_CAP = 3;
+
+/**
+ * Increasing waits for temporary errors: 30s, 60s, 120s. The record's
+ * `nextRetryAt` is set from this so a source that is briefly down is
+ * retried on a widening schedule instead of every cycle — and, unlike the
+ * old flat 30s window, a persistent refusal eventually stops being asked.
+ */
+export function computeStageRetryWaitMs(attempt: number): number {
+    return Math.min(120_000, 30_000 * 2 ** (Math.max(1, attempt) - 1));
+}
+
+/**
+ * Write the answer to a track's stage record: the question is answered
+ * `done` by `source` with `evidence` explaining how it was reached.
+ * Idempotent — re-answering a `done` record just refreshes the truth.
+ */
+export async function recordStageSuccess(
+    trackId: string,
+    stage: StageName,
+    source: string,
+    evidence?: Record<string, unknown>,
+): Promise<void> {
+    await prisma.$executeRawUnsafe(
+        `INSERT INTO "TrackStage"
+            (id, "trackId", stage, status, source, attempt, retryable,
+             "nextRetryAt", evidence, "startedAt", "finishedAt")
+         VALUES ($1, $2, $3, 'done', $4, 1, true, NULL, $5::jsonb, now(), now())
+         ON CONFLICT ("trackId", stage) DO UPDATE
+            SET status = 'done',
+                source = EXCLUDED.source,
+                "lastErrorCode" = NULL,
+                "lastErrorMessage" = NULL,
+                "failureClass" = NULL,
+                retryable = true,
+                "nextRetryAt" = NULL,
+                evidence = EXCLUDED.evidence,
+                "finishedAt" = now()`,
+        `${trackId}__${stage}`,
+        trackId,
+        stage,
+        source,
+        JSON.stringify(evidence ?? { reason: "answered" }),
     );
+}
+
+/**
+ * Record a failed attempt against a track's stage record.
+ *
+ * Two paths, per the design's "Running the engine" rules:
+ *   - A rate limit is NOT a failure: the source gets paused (only it),
+ *     the record goes back to `pending` with `nextRetryAt` at the pause
+ *     deadline, and the attempt count does NOT move.
+ *   - Any other error writes `failed` with its class — an
+ *     unclassifiable error stays INCONCLUSIVE with its raw evidence
+ *     (never a generic "Work" code) and a retry due at
+ *     `now + computeStageRetryWaitMs(attempt)`. At the cap
+ *     (`STAGE_RETRY_CAP`) the record closes: `retryable = false`,
+ *     `nextRetryAt = null`, never offered again until a human re-decides.
+ *
+ * A record already closed (`failed`, not retryable) is never resurrected.
+ */
+export async function recordStageFailure(
+    trackId: string,
+    stage: StageName,
+    source: string,
+    err: unknown,
+    evidence?: Record<string, unknown>,
+): Promise<void> {
+    const message = err instanceof Error ? err.message : String(err);
+
+    if (await sourcePauseController.handleRateLimit(source, err, evidence)) {
+        // Source-caused, not work-caused: park the question until the
+        // pause lifts without consuming an attempt.
+        const pause = await sourcePauseController.getPause(source);
+        const until = pause?.until ?? new Date(Date.now() + sourcePauseController.windowMs);
+        await prisma.$executeRawUnsafe(
+            `INSERT INTO "TrackStage"
+                (id, "trackId", stage, status, source, attempt, retryable,
+                 "nextRetryAt", "lastErrorCode", "lastErrorMessage", evidence)
+             VALUES ($1, $2, $3, 'pending', $4, 0, true, $5, 'RATE_LIMITED', $6, $7::jsonb)
+             ON CONFLICT ("trackId", stage) DO UPDATE
+                SET status = 'pending',
+                    "nextRetryAt" = EXCLUDED."nextRetryAt",
+                    "lastErrorCode" = 'RATE_LIMITED',
+                    "lastErrorMessage" = EXCLUDED."lastErrorMessage",
+                    evidence = EXCLUDED.evidence
+              WHERE "TrackStage".status <> 'failed'
+                 OR "TrackStage".retryable = true`,
+            `${trackId}__${stage}`,
+            trackId,
+            stage,
+            source,
+            until,
+            message,
+            JSON.stringify({ reason: "rate-limited", error: message, ...evidence }),
+        );
+        return;
+    }
+
+    const failureClass = classifyFailure(err);
+    const rows = await prisma.$queryRawUnsafe<
+        Array<{ attempt: number; retryable: boolean; status: string }>
+    >(
+        `SELECT attempt, retryable, status FROM "TrackStage"
+          WHERE "trackId" = $1 AND stage = $2`,
+        trackId,
+        stage,
+    );
+    const current = rows[0];
+    if (current && current.status === "failed" && !current.retryable) return;
+
+    const attempt = (current?.attempt ?? 0) + 1;
+    // Terminal classes (DAMAGED / UNSUPPORTED / MULTICANNEL) close the
+    // record immediately; INCONCLUSIVE stays retryable until the cap.
+    const retryable = failureClass === "INCONCLUSIVE" && attempt < STAGE_RETRY_CAP;
+    const nextRetryAt = retryable
+        ? new Date(Date.now() + computeStageRetryWaitMs(attempt))
+        : null;
+
+    await prisma.$executeRawUnsafe(
+        `INSERT INTO "TrackStage"
+            (id, "trackId", stage, status, source, attempt,
+             "lastErrorCode", "lastErrorMessage", "failureClass",
+             retryable, "nextRetryAt", evidence, "startedAt", "finishedAt")
+         VALUES ($1, $2, $3, 'failed', $4, $5, $6, $7, $8, $9, $10, $11::jsonb, now(), now())
+         ON CONFLICT ("trackId", stage) DO UPDATE
+            SET status = 'failed',
+                source = EXCLUDED.source,
+                attempt = EXCLUDED.attempt,
+                "lastErrorCode" = EXCLUDED."lastErrorCode",
+                "lastErrorMessage" = EXCLUDED."lastErrorMessage",
+                "failureClass" = EXCLUDED."failureClass",
+                retryable = EXCLUDED.retryable,
+                "nextRetryAt" = EXCLUDED."nextRetryAt",
+                evidence = EXCLUDED.evidence,
+                "finishedAt" = now()`,
+        `${trackId}__${stage}`,
+        trackId,
+        stage,
+        source,
+        attempt,
+        failureClass,
+        message,
+        failureClass,
+        retryable,
+        nextRetryAt,
+        JSON.stringify({ error: message, ...evidence }),
+    );
+}
+
+/**
+ * Record a genuine "the sources have nothing" answer: the question is
+ * answered — `done`, no failure class, evidence naming what was asked.
+ * A record that keeps going to `failed` over a correct "no" wastes the
+ * retry ladder and never closes anything.
+ */
+export async function recordStageAbsent(
+    trackId: string,
+    stage: StageName,
+    source: string,
+    evidence?: Record<string, unknown>,
+): Promise<void> {
+    await prisma.$executeRawUnsafe(
+        `INSERT INTO "TrackStage"
+            (id, "trackId", stage, status, source, attempt, retryable,
+             "nextRetryAt", evidence, "startedAt", "finishedAt")
+         VALUES ($1, $2, $3, 'done', $4, 1, true, NULL, $5::jsonb, now(), now())
+         ON CONFLICT ("trackId", stage) DO UPDATE
+            SET status = 'done',
+                source = EXCLUDED.source,
+                "lastErrorCode" = NULL,
+                "lastErrorMessage" = NULL,
+                "failureClass" = NULL,
+                retryable = true,
+                "nextRetryAt" = NULL,
+                evidence = EXCLUDED.evidence,
+                "finishedAt" = now()`,
+        `${trackId}__${stage}`,
+        trackId,
+        stage,
+        source,
+        JSON.stringify(evidence ?? { reason: "sources have nothing" }),
+    );
+}
+
+/**
+ * Record the question against the outcome of an external call, per its
+ * `Outcome` kind:
+ *  - rateLimited: park until the call's `retryAfter` with no attempt
+ *    consumed (the service already paused the source);
+ *  - permanent: close with the given code — asking again changes nothing;
+ *  - transient: hand the real error to `recordStageFailure`, so the retry
+ *    ladder applies.
+ * `answered`/`absent` are answers, not failures — the caller decides what
+ * the question means.
+ */
+async function recordOutcomeFailure(
+    trackId: string,
+    stage: StageName,
+    source: string,
+    outcome: FailureOutcome,
+    evidence?: Record<string, unknown>,
+): Promise<void> {
+    if (outcome.kind === "rateLimited") {
+        await prisma.$executeRawUnsafe(
+            `INSERT INTO "TrackStage"
+                (id, "trackId", stage, status, source, attempt, retryable,
+                 "nextRetryAt", "lastErrorCode", "lastErrorMessage", evidence)
+             VALUES ($1, $2, $3, 'pending', $4, 0, true, $5, 'RATE_LIMITED', $6, $7::jsonb)
+             ON CONFLICT ("trackId", stage) DO UPDATE
+                SET status = 'pending',
+                    source = EXCLUDED.source,
+                    "nextRetryAt" = EXCLUDED."nextRetryAt",
+                    "lastErrorCode" = 'RATE_LIMITED',
+                    "lastErrorMessage" = EXCLUDED."lastErrorMessage",
+                    evidence = EXCLUDED.evidence
+              WHERE "TrackStage".status <> 'failed'
+                 OR "TrackStage".retryable = true`,
+            `${trackId}__${stage}`,
+            trackId,
+            stage,
+            source,
+            outcome.retryAfter,
+            `source '${source}' is paused until ${outcome.retryAfter.toISOString()}`,
+            JSON.stringify(outcome.evidence),
+        );
+        return;
+    }
+    if (outcome.kind === "permanent") {
+        const rows = await prisma.$queryRawUnsafe<
+            Array<{ attempt: number; retryable: boolean; status: string }>
+        >(
+            `SELECT attempt, retryable, status FROM "TrackStage"
+              WHERE "trackId" = $1 AND stage = $2`,
+            trackId,
+            stage,
+        );
+        const current = rows[0];
+        if (current && current.status === "failed" && !current.retryable) return;
+        await prisma.$executeRawUnsafe(
+            `INSERT INTO "TrackStage"
+                (id, "trackId", stage, status, source, attempt,
+                 "lastErrorCode", "lastErrorMessage", "failureClass",
+                 retryable, "nextRetryAt", evidence, "startedAt", "finishedAt")
+             VALUES ($1, $2, $3, 'failed', $4, $5, $6, $7, 'PERMANENT',
+                     false, NULL, $8::jsonb, now(), now())
+             ON CONFLICT ("trackId", stage) DO UPDATE
+                SET status = 'failed',
+                    source = EXCLUDED.source,
+                    "lastErrorCode" = EXCLUDED."lastErrorCode",
+                    "lastErrorMessage" = EXCLUDED."lastErrorMessage",
+                    "failureClass" = 'PERMANENT',
+                    retryable = false,
+                    "nextRetryAt" = NULL,
+                    evidence = EXCLUDED.evidence,
+                    "finishedAt" = now()`,
+            `${trackId}__${stage}`,
+            trackId,
+            stage,
+            source,
+            current?.attempt ?? 0,
+            outcome.error.code,
+            outcome.error.message,
+            JSON.stringify({ reason: outcome.error.message, ...evidence }),
+        );
+        return;
+    }
+    await recordStageFailure(
+        trackId,
+        stage,
+        source,
+        Object.assign(new Error(outcome.error.message), {
+            code: outcome.error.code,
+        }),
+        { kind: "transient", ...evidence },
+    );
+}
+
+/**
+ * Ask a source within the stage budget. A blown budget — or any throw
+ * from the call — is a failure to answer, not "the source has nothing":
+ * it reaches the caller as `transient` with the real cause.
+ */
+async function askWithinBudget<T>(
+    ask: () => Promise<Outcome<T>>,
+    timeoutMs: number,
+    label: string,
+): Promise<Outcome<T>> {
+    try {
+        return await withTimeout(ask(), timeoutMs, label);
+    } catch (err: any) {
+        const message = err instanceof Error ? err.message : String(err);
+        return {
+            kind: "transient",
+            error: {
+                code: message === label ? "TIMEOUT" : "REQUEST_FAILED",
+                message,
+            },
+        };
+    }
 }
 
 /**
@@ -325,64 +911,13 @@ export async function startUnifiedEnrichmentWorker() {
     logger.debug(`   Interval: ${ENRICHMENT_INTERVAL_MS / 1000}s`);
     logger.debug("");
 
-     // Crash recovery: reset orphaned entities stuck mid-processing from a previous crash
-     // Include "queued" -- Redis queue may have been lost during restart
-     // WRAPPED (2026-09-17): a throw here used to abort startUnifiedEnrichmentWorker()
-     // BEFORE the BullMQ workers registered -- one bad write at boot left zero
-     // consumers for the life of the process. Recovery is best-effort: log and
-     // continue so the workers always come up.
-     let orphanedAudio = { count: 0 };
-     let orphanedVibe = { count: 0 };
-     let orphanedArtists = { count: 0 };
-     let orphanedQueued = { count: 0 };
-     let orphanedScan = { count: 0 };
-     try {
-     orphanedAudio = await prisma.track.updateMany({
-         where: { analysisStatus: { in: ["processing", "queued"] } },
-         data: { analysisStatus: "pending", analysisStartedAt: null, analysisRetryCount: 0 },
-     });
-     // Flush the Redis audio-analysis list to match. Without this, a track that was
-     // rpush'd but crashed before its DB row got marked "queued" (see queueAudioAnalysis's
-     // two-phase push-then-mark) stays "pending" in Postgres while its entry lingers in
-     // the list -- the next cycle re-selects it as pending and re-pushes it, double-queuing
-     // it for the Python analyzer. Since we just reset every "queued"/"processing" track
-     // above, the list is redundant regardless of what it actually contains -- drop it.
-     try {
-         await getRedis().del("audio:analysis:queue");
-     } catch (err) {
-         logger.warn(`[Enrichment] Failed to flush audio:analysis:queue on crash recovery: ${(err as Error).message}`);
-     }
-     orphanedVibe = await prisma.track.updateMany({
-         where: { vibeAnalysisStatus: "processing" },
-         data: { vibeAnalysisStatus: "pending", vibeAnalysisStartedAt: null },
-     });
-     orphanedArtists = await prisma.artist.updateMany({
-         where: { enrichmentStatus: "enriching" },
-         data: { enrichmentStatus: "pending" },
-     });
-     orphanedQueued = await prisma.track.updateMany({
-         where: { enrichmentTags: { has: "_queued" } },
-         data: { enrichmentTags: [] },
-     });
-     // Crash recovery: reset tracks stuck in "validating" (scan queue may be lost)
-     orphanedScan = await prisma.track.updateMany({
-         where: { scanStatus: "validating" },
-         data: { scanStatus: "pending", scanError: null },
-     });
-     const totalOrphaned = orphanedAudio.count + orphanedVibe.count + orphanedArtists.count + orphanedQueued.count + orphanedScan.count;
-     if (totalOrphaned > 0) {
-         logger.info(
-             `[Enrichment] Crash recovery: reset ${orphanedAudio.count} audio, ${orphanedVibe.count} vibe, ${orphanedArtists.count} artists, ${orphanedQueued.count} _queued, ${orphanedScan.count} scan tracks`
-         );
-     }
-     } catch (recoveryErr) {
-         logger.error(
-             `[Enrichment] Crash recovery failed (continuing worker startup anyway): ${(recoveryErr as Error).message}`
-         );
-     }
-
-     // Reset circuit breaker so stale failure state from a previous run doesn't block queuing
-     audioAnalysisCleanupService.resetCircuitBreaker();
+     // No crash-recovery sweep here any more. This used to reset every
+     // `processing`/`queued` row back to `pending` on startup and flush
+     // `audio:analysis:queue` to match. That was a workaround for having no
+     // per-track record of the attempt: with `TrackStage` the attempt lives in
+     // the record, so a job that died mid-flight is a `working` record whose
+     // `nextRetryAt` comes round on its own, and a restart neither invents a
+     // second attempt nor throws away work still sitting in the list.
 
      // Reset local flags from any previous session
      isPaused = false;
@@ -482,8 +1017,8 @@ function scheduleNextEnrichmentCycle(delayMs: number = ENRICHMENT_INTERVAL_MS) {
                 result.artists > 0 ||
                 result.tracks > 0 ||
                 result.audioQueued > 0 ||
-                (result.scanQueued ?? 0) > 0 ||
-                (result.vibeQueued ?? 0) > 0;
+                (result.vibeQueued ?? 0) > 0 ||
+                (result.fingerprintsQueued ?? 0) > 0;
         } catch (error) {
             // Treat a failure as "work pending" so the retry is prompt rather
             // than backed off for a minute.
@@ -581,102 +1116,366 @@ export async function stopUnifiedEnrichmentWorker() {
 }
 
 /**
- * Run a full enrichment (re-enrich everything regardless of status)
- * Called from Settings > Enrich All
+ * Where a claimed attempt for each stage is handed to its queue.
+ *
+ * Declared once so the phase functions and the "Retry failed and blocked"
+ * control both dispatch through the same producer. Two producers on one queue
+ * is what let the same work be created in two places with two different job
+ * keys — see the note on STAGE_QUEUES.
  */
-export async function runFullEnrichment(): Promise<{
-    artists: number;
-    tracks: number;
-    audioQueued: number;
-}> {
-    logger.debug("\n=== FULL ENRICHMENT: Re-enriching everything ===\n");
+const STAGE_PRODUCERS: Record<StageName, (item: StageWork) => Promise<void>> = {
+    recording: async (item) => {
+        await trackQueue.add(
+            "enrich",
+            { trackId: item.trackId, trackTitle: item.title },
+            // Per-attempt jobId: a retry never reuses the key a failed job
+            // still holds.
+            { jobId: item.jobId },
+        );
+    },
+    analysis: async (item) => {
+        // The analyzer consumes a plain Redis list, not a BullMQ queue.
+        await getRedis().rpush(
+            STAGE_QUEUES.analysis,
+            JSON.stringify({
+                trackId: item.trackId,
+                filePath: item.filePath,
+                duration: item.duration, // Avoids file read in the analyzer
+                jobId: item.jobId,       // Per-attempt key; the analyzer logs it
+            }),
+        );
+    },
+    embedding: async (item) => {
+        await vibeQueue.add(
+            "embed",
+            { trackId: item.trackId, filePath: item.filePath, duration: item.duration },
+            { jobId: item.jobId },
+        );
+    },
+    fingerprint: async (item) => {
+        // Handed to the fingerprint pool (see runFingerprintInPool): local
+        // fpcalc at machine concurrency, per-call stage timeout, and the
+        // dispatch loop returns immediately so the other stages — and the
+        // cycle — are never gated behind the sweep. dispatchStageWork still
+        // owns the claim; runFingerprintStageWork owns the answer.
+        runFingerprintInPool(item);
+    },
+};
 
-    await clearPauseState();
-
-    // Initialize state for new enrichment
+/**
+ * Answer one claimed fingerprint question: run fpcalc on the file — LOCAL,
+ * no network, so no source pause can apply — and persist the fingerprint
+ * via `persistAcoustidFingerprint` whether or not any AcoustID lookup will
+ * ever match (the sweep covers every track;
+ * the dedupe column wants the fingerprint regardless of identity outcome).
+ *
+ * This is the stage that finally covers the ~7,264 ISRC tracks the old
+ * `enrichSingleTrack` path skipped: fingerprinting here is unconditional,
+ * identity is the recording stage's business.
+ *
+ * Failure handling is the same contract the recording job uses:
+ * `recordStageFailure` classifies the error onto the record — an ordinary
+ * fpcalc failure stays retryable INCONCLUSIVE with widening backoff until
+ * the retry cap closes it; the record is never silently skipped and never
+ * parked as done. The source is 'fpcalc' (the local binary), so neither a
+ * paused 'acoustid' network source nor a MusicBrainz pause can gate this
+ * work. A track that already carries its stored fingerprint (a previous
+ * attempt persisted but died before settling, or the recording stage
+ * stored it) is answered from the stored value — fetched once, never
+ * recomputed, never overwritten with nothing.
+ */
+async function runFingerprintStageWork(item: StageWork): Promise<void> {
     try {
-    await enrichmentStateService.initializeState();
-
-    // Reset all statuses to pending
-    await prisma.artist.updateMany({
-        where: { enrichmentStatus: { not: "processing" } },
-        data: { enrichmentStatus: "pending" },
-    });
-
-    await prisma.track.updateMany({
-        where: { analysisStatus: { not: "processing" } },
-        data: {
-            enrichmentTags: [],
-            analysisStatus: "pending",
-            analysisRetryCount: 0,
-            analysisError: null,
-        },
-    });
-
-    // Reset vibe embeddings so executeVibePhase re-queues everything
-    await prisma.$executeRaw`DELETE FROM track_embeddings`;
-    await prisma.track.updateMany({
-        where: { vibeAnalysisStatus: { not: null } },
-        data: {
-            vibeAnalysisStatus: null,
-            vibeAnalysisRetryCount: 0,
-            vibeAnalysisStatusUpdatedAt: null,
-            vibeAnalysisError: null,
-        },
-    });
-    await enrichmentFailureService.clearAllFailures("vibe");
-
-    // Now run the enrichment cycle
-    const result = await runEnrichmentCycle(true);
-
-    return result;
-    } catch (err) {
-        // A throw here used to pin state at running forever (initializeState
-        // had already written status=running; nothing ever moved it again, and
-        // detectHang needs 15 min of silence to flag). Mark failed so the UI
-        // and the ops tooling see the truth immediately.
-        logger.error(`[Enrichment] FULL ENRICHMENT FAILED: ${(err as Error).message}`);
-        try {
-            await enrichmentStateService.markFailed((err as Error).message);
-        } catch (markErr) {
-            logger.error(`[Enrichment] ...and marking state failed also failed: ${(markErr as Error).message}`);
+        const track = await prisma.track.findUnique({
+            where: { id: item.trackId },
+            select: { acoustidFingerprint: true },
+        });
+        if (!track) {
+            throw new Error(`ENTITY_NOT_FOUND: Track ${item.trackId} deleted`);
         }
-        throw err;
+
+        if (track.acoustidFingerprint) {
+            await settleStageDone(item.trackId, "fingerprint", {
+                source: "fpcalc",
+                reason: "fingerprint already stored",
+                characters: track.acoustidFingerprint.length,
+            });
+            return;
+        }
+
+        if (!item.filePath) {
+            throw new Error(
+                `Track ${item.trackId} has no file path to fingerprint`,
+            );
+        }
+        const absolutePath = resolveTrackFilePath(item.filePath);
+        if (!absolutePath) {
+            throw new Error(
+                `Track ${item.trackId} path escapes the music folder: ${item.filePath}`,
+            );
+        }
+
+        // Throws FpcalcFailure on a real failure — the error carries fpcalc's
+        // exit code and stderr, so classifyFailure below sees the true reason.
+        const fingerprint = await fpcalcService.fingerprintFile(absolutePath);
+
+        await persistAcoustidFingerprint(item.trackId, fingerprint.fingerprint);
+        await settleStageDone(item.trackId, "fingerprint", {
+            source: "fpcalc",
+            characters: fingerprint.fingerprint.length,
+            duration: fingerprint.duration,
+        });
+    } catch (err) {
+        logger.debug(
+            `[Enrichment] Fingerprint failed for ${item.trackId}: ${(err as Error).message}`,
+        );
+        await recordStageFailure(item.trackId, "fingerprint", "fpcalc", err, {
+            paths: ["fpcalc"],
+        });
     }
 }
 
 /**
- * Reset only artist enrichment (keeps mood tags and audio analysis intact)
- * Used when user wants to re-fetch artist metadata without touching track data
+ * The fingerprint stage's own worker loop.
+ *
+ * fpcalc is a local subprocess owned by this process, so no queue round-trip
+ * is paid — but the stage must never run ONE subprocess at a time inside the
+ * dispatch loop, never gate the other stages' dispatch (or the cycle) behind
+ * a full-library sweep, and never let one hung fpcalc stall anything. This
+ * pool takes each claimed item, runs up to `os.availableParallelism()`
+ * subprocesses at once, and bounds EVERY call with the stage's own timeout
+ * (getStageTimeoutMs('fingerprint')): a hung run rejects, and the rejection
+ * is recorded through recordStageFailure like any other fingerprint failure —
+ * classified, retryable, asked again after the backoff. The producer returns
+ * immediately; the answers land on the records on the pool's own schedule.
  */
-async function resetArtistsOnly(): Promise<{ count: number }> {
-    logger.debug("[Enrichment] Resetting ONLY artist enrichment status...");
+const FINGERPRINT_CONCURRENCY = Math.max(1, os.availableParallelism());
 
-    const result = await prisma.artist.updateMany({
-        where: { enrichmentStatus: { in: ["completed", "unresolvable"] } },
-        data: {
-            enrichmentStatus: "pending",
-            lastEnriched: null,
-        },
-    });
+class FingerprintPool {
+    private active = 0;
+    private waiting: Array<() => void> = [];
 
-    logger.debug(`[Enrichment] Reset ${result.count} artists to pending`);
-    return { count: result.count };
+    async run<T>(task: () => Promise<T>): Promise<T> {
+        while (this.active >= FINGERPRINT_CONCURRENCY) {
+            await new Promise<void>((resolve) => this.waiting.push(resolve));
+        }
+        this.active++;
+        try {
+            return await task();
+        } finally {
+            this.active--;
+            this.waiting.shift()?.();
+        }
+    }
+}
+const fingerprintPool = new FingerprintPool();
+const fingerprintWork = new Set<Promise<void>>();
+
+function runFingerprintInPool(item: StageWork): void {
+    const run = fingerprintPool
+        .run(() =>
+            withTimeout(
+                runFingerprintStageWork(item),
+                getStageTimeoutMs("fingerprint"),
+                `Timeout fingerprinting ${item.filePath ?? item.trackId}`,
+            ),
+        )
+        .catch((err: unknown) => {
+            // The per-call budget expired (or the pool itself broke):
+            // record it as the classified failure it is — never a silent
+            // drop, never an unhandled rejection.
+            logger.warn(
+                `[Enrichment] Fingerprint work for ${item.trackId} did not finish: ${(err as Error).message}`,
+            );
+            return recordStageFailure(
+                item.trackId,
+                "fingerprint",
+                "fpcalc",
+                err,
+                { paths: ["fpcalc"], timedOut: true },
+            );
+        })
+        .finally(() => {
+            fingerprintWork.delete(run);
+        });
+    fingerprintWork.add(run);
 }
 
 /**
- * Reset only mood tags (keeps artist metadata and audio analysis intact)
- * Used when user wants to re-fetch mood tags without touching other enrichment
+ * Resolves when every fingerprint run handed to the pool has settled (done,
+ * failed, or timed out). Observability/test hook — the engine itself never
+ * waits on the sweep.
  */
-async function resetMoodTagsOnly(): Promise<{ count: number }> {
-    logger.debug("[Enrichment] Resetting ONLY mood tags...");
+export async function waitForFingerprintWork(): Promise<void> {
+    while (fingerprintWork.size > 0) {
+        await Promise.allSettled([...fingerprintWork]);
+    }
+}
 
-    const result = await prisma.track.updateMany({
-        data: { enrichmentTags: [] },
+/**
+ * The fingerprint phase: answer every track's local fingerprint question.
+ * Its stage filter keeps a hot recording/analysis/embedding stage from
+ * starving the sweep of its share of the batch limit.
+ */
+export async function executeFingerprintPhase(): Promise<number> {
+    const features = await featureDetection.getFeatures();
+    // No fpcalc binary: the questions stay pending — owed, not failed.
+    // Installing chromaprint is what answers them; nothing is made up and
+    // nothing is marked done that was not measured.
+    if (!features.fpcalc) return 0;
+
+    const work = await getNextWork(TRACK_BATCH_SIZE, "fingerprint");
+    // The pool, not the raw worker: the dispatch loop hands out claims and
+    // returns; the subprocesses run on their own schedule at machine
+    // concurrency, bounded per call by the stage's own timeout.
+    return dispatchStageWork("fingerprint", work, async (item) => {
+        runFingerprintInPool(item);
+    });
+}
+
+/**
+ * Re-open the recording stages whose evidence shows they answered a no-match
+ * WITHOUT ever asking AcoustID — the fingerprint stage was settled as a
+ * permanent failure when they ran, so the AcoustID step was skipped and the
+ * skip recorded in the evidence (see `enrichSingleTrack`). Whenever a control
+ * re-opens or re-asks the fingerprint stage, a NEW fingerprint may land, so
+ * those no-matches are no longer honest answers: they never got to ask the
+ * question the new fingerprint answers.
+ *
+ * The evidence marker — not the mere absence of an MBID — is what selects a
+ * row: a no-match that DID run AcoustID (the fingerprint existed, the lookup
+ * missed) stays closed. The attempt is deliberately left alone: the re-open
+ * buys exactly one more ask with the new fingerprint; if that misses again
+ * the record closes terminal again.
+ */
+async function reopenRecordingsThatNeverAskedAcoustid(): Promise<number> {
+    const reopened = await prisma.$executeRawUnsafe(
+        `UPDATE "TrackStage" ts
+            SET status = 'pending',
+                retryable = true,
+                "nextRetryAt" = NULL,
+                "startedAt" = NULL
+          WHERE ts.stage = 'recording'
+            AND ts.status = 'failed'
+            AND ts.retryable = false
+            AND ts.evidence ->> 'acoustid' = 'skipped'`,
+    );
+    if (reopened > 0) {
+        logger.info(
+            `[Enrichment] Re-opened ${reopened} recording stage(s) that never asked AcoustID`,
+        );
+    }
+    return reopened;
+}
+
+/**
+ * "Retry failed and blocked" — the only re-queue control.
+ *
+ * One `getNextWork` over `TrackStage`: every track that still owes an answer,
+ * or is due a retry — one record per track per stage. Nothing is reset and
+ * nothing is wiped: the records already say what is owed, a `done` answer is
+ * not re-asked, and a terminal (`retryable = false`) answer stays closed.
+ *
+ * The one deliberate exception rides the same control: handing the
+ * fingerprint stage out again (a due retry) may settle a NEW fingerprint, so
+ * a recording stage that closed as a no-match WITHOUT AcoustID is re-opened
+ * right here, before the sweep reads the records. It is not offered yet —
+ * the fingerprint → recording gate keeps it unoffered while the fingerprint
+ * question is open — and once the retry lands it is due again, this time
+ * with a fingerprint to ask with.
+ *
+ * This replaces `runFullEnrichment`, which wiped every embedding and cleared
+ * every track's `enrichmentTags` to force a re-ask of questions most tracks
+ * had already answered correctly.
+ */
+export async function retryFailedAndBlocked(
+    limit = TRACK_BATCH_SIZE,
+): Promise<StageWork[]> {
+    await reopenRecordingsThatNeverAskedAcoustid();
+
+    const work = await getNextWork(limit);
+
+    // dispatchStageWork filters to the stage it is given, so passing the
+    // whole list to each producer hands out exactly that stage's owed rows.
+    for (const stage of STAGE_ORDER) {
+        await dispatchStageWork(stage, work, STAGE_PRODUCERS[stage]);
+    }
+
+    return work;
+}
+
+/**
+ * "Re-decide everything" — an operator override that deliberately ignores
+ * `done`, for the case "we know the answer was wrong".
+ *
+ * It re-opens every stage question, answered or not, so the sweep asks again.
+ * The one thing it never does is re-run AcoustID over a track we already
+ * identified: a track with a `recordingMbid` keeps its recording answer,
+ * because re-fingerprinting would spend a fingerprint and a lookup to
+ * rediscover something already in the column.
+ *
+ * Only the queue's own state moves. No answer is deleted — `track_embeddings`
+ * rows and `enrichmentTags` stay exactly as they are, which is the whole
+ * difference between this and the `resetAllEnrichmentData` it replaces.
+ */
+export async function redecideEverything(): Promise<{ reopened: number }> {
+    let reopened = 0;
+
+    for (const stage of STAGE_ORDER) {
+        reopened += await prisma.$executeRawUnsafe(
+            `UPDATE "TrackStage" ts
+                SET status = 'pending',
+                    attempt = 0,
+                    "lastErrorCode" = NULL,
+                    "lastErrorMessage" = NULL,
+                    "failureClass" = NULL,
+                    retryable = true,
+                    "nextRetryAt" = NULL,
+                    "startedAt" = NULL,
+                    "finishedAt" = NULL,
+                    "decidedAt" = NULL,
+                    "decidedBy" = NULL
+               FROM "Track" t
+              WHERE ts.stage = $1
+                AND t.id = ts."trackId"
+                -- AcoustID dedup guard: never re-ask a recording we found.
+                AND NOT (ts.stage = 'recording' AND t."recordingMbid" IS NOT NULL)`,
+            stage,
+        );
+    }
+
+    // The loop above re-opens the fingerprint stage (so new fingerprints
+    // land) — which is exactly when a recording no-match that never asked
+    // AcoustID stops being an honest answer. Re-open those with it, in the
+    // same place: the loop's own AcoustID dedup guard skips recording rows
+    // whose track carries a `recordingMbid`, and this catches the marked
+    // no-match rows even in that corner. The gate then holds the re-opened
+    // questions until the re-asked fingerprint question is settled.
+    reopened += await reopenRecordingsThatNeverAskedAcoustid();
+
+    // Mirror the reopen onto the columns the analyzer claims and the settings
+    // UI reads, so a record saying `pending` is not contradicted by a column
+    // still saying `completed` — that contradiction let reconcileStaleStage
+    // -Records flip a deliberately re-opened question straight back to `done`
+    // before anything had re-answered it.
+    await prisma.track.updateMany({
+        where: { analysisStatus: { not: "pending" } },
+        data: {
+            analysisStatus: "pending",
+            analysisStartedAt: null,
+            analysisRetryCount: 0,
+        },
     });
 
-    logger.debug(`[Enrichment] Reset mood tags for ${result.count} tracks`);
-    return { count: result.count };
+    logger.debug(`[Enrichment] Re-deciding everything: ${reopened} stage records reopened`);
+
+    // Do NOT dispatch here. The re-opened questions are pending, and the
+    // next scheduled cycle's getNextWork hands them out -- dispatching
+    // straight away would claim every record to `working` before the
+    // operator could even see the reopened state, and a claim whose job
+    // nobody consumed is exactly the parked-record pattern this replaces.
+
+    return { reopened };
 }
 
 /**
@@ -696,10 +1495,10 @@ async function runEnrichmentCycle(fullMode: boolean): Promise<{
     artists: number;
     tracks: number;
     audioQueued: number;
-    /** Queued for header validation this cycle. */
-    scanQueued?: number;
     /** Queued for embedding this cycle. */
     vibeQueued?: number;
+    /** Fingerprint answers landed this cycle (local fpcalc, inline). */
+    fingerprintsQueued?: number;
     /**
      * Set when the cycle declined to run at all rather than running and finding nothing.
      *
@@ -716,20 +1515,11 @@ async function runEnrichmentCycle(fullMode: boolean): Promise<{
     // This must run first because stop sets both isStopping AND isPaused.
     // If we checked isPaused first, we'd return early and never clear isStopping.
     if (isStopping) {
-        // Reset tracks the Python analyzer claimed but never processed
-        const orphanedAudio = await prisma.track.updateMany({
-            where: { analysisStatus: "processing" },
-            data: { analysisStatus: "pending", analysisStartedAt: null, analysisRetryCount: 0 },
-        });
-        const orphanedVibe = await prisma.track.updateMany({
-            where: { vibeAnalysisStatus: "processing" },
-            data: { vibeAnalysisStatus: "pending", vibeAnalysisStartedAt: null },
-        });
-        if (orphanedAudio.count > 0 || orphanedVibe.count > 0) {
-            logger.info(
-                `[Enrichment] Stop cleanup: reset ${orphanedAudio.count} audio + ${orphanedVibe.count} vibe processing tracks to pending`
-            );
-        }
+        // No "stop cleanup" reset. It flipped every `processing` row back to
+        // `pending` and zeroed the retry count, which is the same
+        // crash-recovery sweep in a different place: it re-asked questions the
+        // stage records have already answered and hid the true state. The
+        // record owns the attempt; stopping does not edit answers.
         await enrichmentStateService.updateState({ status: "idle", currentPhase: null });
         isStopping = false;
         isPaused = false;
@@ -768,15 +1558,10 @@ async function runEnrichmentCycle(fullMode: boolean): Promise<{
         if (state?.status === "paused") {
             isPaused = true;
         } else if (state?.status === "stopping") {
-            // State says stopping but we missed the control message
-            await prisma.track.updateMany({
-                where: { analysisStatus: "processing" },
-                data: { analysisStatus: "pending", analysisStartedAt: null, analysisRetryCount: 0 },
-            });
-            await prisma.track.updateMany({
-                where: { vibeAnalysisStatus: "processing" },
-                data: { vibeAnalysisStatus: "pending", vibeAnalysisStartedAt: null },
-            });
+            // State says stopping but we missed the control message. Same
+            // reasoning as the isStopping branch above: no reset of
+            // `processing` rows, because the stage record owns the attempt and
+            // rewriting the column would contradict it.
             await enrichmentStateService.updateState({ status: "idle", currentPhase: null });
             userStopped = true;
             return emptyResult;
@@ -813,8 +1598,8 @@ async function runEnrichmentCycle(fullMode: boolean): Promise<{
     let artistsProcessed = 0;
     let tracksProcessed = 0;
     let audioQueued = 0;
-    let scanQueued = 0;
     let vibeQueued = 0;
+    let fingerprintsQueued = 0;
 
     try {
         consecutiveSystemFailures = 0;
@@ -832,12 +1617,15 @@ async function runEnrichmentCycle(fullMode: boolean): Promise<{
         }
         tracksProcessed = trackResult;
 
-        // Pre-scan: validate audio headers before queuing for analysis
-        const scanResult = await runPhase("scan", executeScanPhase);
-        if (scanResult === null) {
+        // Fingerprint sweep — local fpcalc, no prerequisite: every track
+        // gets its fingerprint stored,
+        // independent of where its identity or analysis stand. A paused
+        // 'acoustid' source gates only the network lookup, never this.
+        const fingerprintResult = await runPhase("fingerprint", executeFingerprintPhase);
+        if (fingerprintResult === null) {
             return { artists: artistsProcessed, tracks: tracksProcessed, audioQueued: 0 };
         }
-        scanQueued = scanResult;
+        fingerprintsQueued = fingerprintResult;
 
         const audioResult = await runPhase("audio", executeAudioPhase);
         if (audioResult === null) {
@@ -872,7 +1660,10 @@ async function runEnrichmentCycle(fullMode: boolean): Promise<{
         // progress query set twice.
         const progress = await getEnrichmentProgress();
         const didWork =
-            artistsProcessed > 0 || tracksProcessed > 0 || audioQueued > 0;
+            artistsProcessed > 0 ||
+            tracksProcessed > 0 ||
+            audioQueued > 0 ||
+            fingerprintsQueued > 0;
 
          // Log progress (only if work was done)
          if (didWork) {
@@ -886,6 +1677,11 @@ async function runEnrichmentCycle(fullMode: boolean): Promise<{
             logger.debug(
                 `   Audio Analysis: ${progress.audioAnalysis.completed}/${progress.audioAnalysis.total} (${progress.audioAnalysis.progress}%) [background]`,
             );
+            if (features.fpcalc) {
+                logger.debug(
+                    `   Fingerprints: ${progress.fingerprints.completed}/${progress.fingerprints.total} (${progress.fingerprints.progress}%)`,
+                );
+            }
             if (features.vibeEmbeddings) {
                 logger.debug(
                     `   Vibe Embeddings: ${progress.clapEmbeddings.completed}/${progress.clapEmbeddings.total} (${progress.clapEmbeddings.progress}%) [background]`,
@@ -1010,16 +1806,20 @@ async function runEnrichmentCycle(fullMode: boolean): Promise<{
                 try {
                     const { notificationService } = await import("../services/notificationService");
                     const users = await prisma.user.findMany({ select: { id: true } });
-                    const failureCounts = await enrichmentFailureService.getFailureCounts();
+                      // The counts are TrackStage-backed for track stages
+                      // so the summary reports what the failures
+                      // API actually shows.
+                      const failureCounts = await enrichmentFailureService.getFailureCounts();
 
-                    for (const user of users) {
-                        if (failureCounts.total > 0) {
-                            const parts: string[] = [];
-                            if (failureCounts.artist > 0) parts.push(`${failureCounts.artist} artist(s)`);
-                            if (failureCounts.track > 0) parts.push(`${failureCounts.track} track(s)`);
-                            if (failureCounts.audio > 0) parts.push(`${failureCounts.audio} audio analysis`);
-                            if (failureCounts.vibe > 0) parts.push(`${failureCounts.vibe} vibe embedding(s)`);
-                            if (failureCounts.podcast > 0) parts.push(`${failureCounts.podcast} podcast(s)`);
+                      for (const user of users) {
+                          if (failureCounts.total > 0) {
+                              const parts: string[] = [];
+                              if (failureCounts.artist > 0) parts.push(`${failureCounts.artist} artist(s)`);
+                              if (failureCounts.track > 0) parts.push(`${failureCounts.track} track(s)`);
+                              if (failureCounts.audio > 0) parts.push(`${failureCounts.audio} audio analysis`);
+                              if (failureCounts.vibe > 0) parts.push(`${failureCounts.vibe} vibe embedding(s)`);
+                              if (failureCounts.scan > 0) parts.push(`${failureCounts.scan} fingerprint(s)`);
+                              if (failureCounts.podcast > 0) parts.push(`${failureCounts.podcast} podcast(s)`);
 
                             await notificationService.create({
                                 userId: user.id,
@@ -1052,7 +1852,10 @@ async function runEnrichmentCycle(fullMode: boolean): Promise<{
         // Circuit breaker: Stop recording system failures after threshold
         // This prevents infinite error loops when state management fails
         if (consecutiveSystemFailures <= MAX_CONSECUTIVE_SYSTEM_FAILURES) {
-            // Record system-level failure
+            // Record the SYSTEM-level failure. This is not a track-stage
+            // failure — per-track stage failures live only in TrackStage
+            // the EnrichmentFailure ledger remains for entities
+            // that have no stage record, and "the enrichment system" is one.
             await enrichmentFailureService
                 .recordFailure({
                     entityType: "artist", // Generic type for system errors
@@ -1075,15 +1878,58 @@ async function runEnrichmentCycle(fullMode: boolean): Promise<{
         isRunning = false;
     }
 
-    return { artists: artistsProcessed, tracks: tracksProcessed, audioQueued, scanQueued, vibeQueued };
+    return {
+        artists: artistsProcessed,
+        tracks: tracksProcessed,
+        audioQueued,
+        vibeQueued,
+        fingerprintsQueued,
+    };
 }
 
 
 /**
+ * True when the track's fingerprint stage closed as a PERMANENT failure
+ * (`failed`, `retryable = false`): the fingerprint question is settled —
+ * answered "never" — so the recording stage's AcoustID step is skipped and
+ * the skip recorded, instead of the stage polling for a fingerprint that
+ * will never arrive. A pending, working, or retryable-failed fingerprint
+ * record is NOT settled; those states never get this far, because the
+ * fingerprint → recording gate in PREREQUISITE_STAGE keeps the recording
+ * stage unoffered while the question is open.
+ */
+async function fingerprintStageSettledFailed(trackId: string): Promise<boolean> {
+    const rows = await prisma.$queryRawUnsafe<
+        Array<{ status: string; retryable: boolean }>
+    >(
+        `SELECT status, retryable FROM "TrackStage"
+          WHERE "trackId" = $1 AND stage = 'fingerprint'`,
+        trackId,
+    );
+    const row = rows[0];
+    return !!row && row.status === "failed" && !row.retryable;
+}
+
+/**
  * Enrich a single track's tags from MusicBrainz genres.
  * Used by the BullMQ track enrichment Worker (Phase 4).
+ *
+ * The `recording` record owns the answer: this function writes `done`
+ * (identified — with the source that answered) or `failed` (INCONCLUSIVE
+ * with its evidence) via the record functions, so a retry rides the
+ * record's `nextRetryAt` and a closed record is never re-offered. A
+ * rate-limit-shaped failure pauses only the source that refused us and
+ * does not consume an attempt.
+ *
+ * The AcoustID step runs only once the fingerprint question is settled
+ * (the fingerprint → recording edge in PREREQUISITE_STAGE): it reuses the
+ * stored fingerprint, or — when the fingerprint stage closed as a permanent
+ * failure — is skipped with the skip recorded in the evidence. It never
+ * waits here and never defers: waiting is the gate's job.
  */
-export async function enrichSingleTrack(trackId: string): Promise<void> {
+export async function enrichSingleTrack(
+    trackId: string,
+): Promise<"identified" | "no_match" | "deferred"> {
     const track = await prisma.track.findUnique({
         where: { id: trackId },
         include: {
@@ -1104,243 +1950,336 @@ export async function enrichSingleTrack(trackId: string): Promise<void> {
     const artistName = track.album.artist.name;
 
     // Mood tags + ISRC: identify the recording ONCE, then take both the
-    // mood tags and the ISRC from that same recording. Identification is
-    // AcoustID-first: the file tag or a
-    // fresh fpcalc lookup answers, and the MusicBrainz text search is only
-    // the fallback — a track whose identity came from a tag or a
-    // fingerprint never pays for a search. Tracks that already carry an
-    // ISRC identify their recording from it directly, so mood tags keep
-    // working without any AcoustID work.
+    // mood tags and the ISRC from that same recording. Identification
+    // order: (a) the file's own identity tags answer first with no
+    // network call, (b) the title-checked MusicBrainz name search answers
+    // second, and (c) AcoustID runs only for the remainder — and its
+    // computed or tagged fingerprint is stored either way, since the
+    // dedupe column wants the fingerprint whether or not the lookup
+    // matched. Tracks that already carry an ISRC identify their recording
+    // from it directly, so mood tags keep working without any AcoustID
+    // work.
     //
-    // Mood tags: MusicBrainz recording genres replace the dead Last.fm
-    // track.getTopTags call. Always mark enrichmentTags so the queue drains:
-    // ["_no_mood_tags"] when the recording has no genres, ["_not_found"]
-    // when no recording could be identified at all (same sentinels as
-    // before).
-    const timeoutMs = computeTrackEnrichmentTimeoutMs(track.duration);
+    // Mood tags: MusicBrainz recording genres fill enrichmentTags:
+    // ["_no_mood_tags"] when the identified recording has no genres,
+    // ["_not_found"] when no recording could be identified at all.
+    //
+    // The recording budget is the stage's own (STAGE_TIMEOUT_MS) — two or
+    // three HTTP calls' worth, independent of the track's duration and
+    // shared with no other stage.
+    const timeoutMs = getStageTimeoutMs("recording");
     let recordingMbid: string | null = null;
     let needsIsrc = false;
+    let answerSource = "musicbrainz";
+    let fingerprintToStore: string | null = null;
+    // First failed ask among the identity chain, with the source that
+    // failed. A failed call is NOT a no-match: the record defers with the
+    // real cause until the retry ladder or the source pause resolves.
+    let failedAsk: { source: string; outcome: FailureOutcome } | null = null;
+    // Set when the AcoustID step never ran — the fingerprint stage closed
+    // as a permanent failure, or the source is paused. The no-match (if it
+    // comes to that) must be honest about which identity steps ran.
+    let acoustidSkipped = false;
 
     if (!track.isrc) {
         needsIsrc = true;
-        let identified: TrackIdentification | null = null;
-        const features = await featureDetection.getFeatures();
-        if (features.fpcalc) {
-            identified = await identifyTrackByAcoustid({
-                id: track.id,
-                title: track.title,
-                filePath: track.filePath,
-                duration: track.duration,
-            });
-            if (identified?.fingerprint) {
-                await persistAcoustidFingerprint(track.id, identified.fingerprint);
+        const trackRef = {
+            id: track.id,
+            title: track.title,
+            filePath: track.filePath,
+            duration: track.duration,
+        };
+
+        // (a) File tags first — read once, no network.
+        const tags = await readIdentityTags(trackRef);
+        if (tags?.recordingMbid) {
+            recordingMbid = tags.recordingMbid;
+            answerSource = "file_tag";
+            if (tags.fingerprint) fingerprintToStore = tags.fingerprint;
+        } else {
+            // (b) The title-checked MusicBrainz name search.
+            const search = await askWithinBudget(
+                () =>
+                    musicBrainzService.searchRecording(track.title, artistName),
+                timeoutMs,
+                `Timeout searching MB recording: ${track.title}`,
+            );
+            if (search.kind === "answered") {
+                recordingMbid = search.value.trackMbid;
+            } else if (search.kind !== "absent") {
+                failedAsk = { source: "musicbrainz", outcome: search };
             }
-            if (identified) {
-                logger.debug(
-                    `[Track Enrichment] ${track.title}: AcoustID identified via ${identified.source} (recording ${identified.recordingMbid})`,
-                );
-                recordingMbid = identified.recordingMbid;
+
+            // (c) AcoustID for the remainder — only when neither the tags
+            // nor the name search answered.
+            //
+            // The gate (PREREQUISITE_STAGE: fingerprint → recording,
+            // "settled") guarantees the fingerprint QUESTION has been
+            // answered before this stage ever runs. Either a
+            // fingerprint is stored — the AcoustID step consumes it —
+            // or the fingerprint stage closed as a permanent failure
+            // and no fingerprint will ever arrive: then the step is
+            // skipped here and the skip is written into this stage's
+            // evidence, so the no-match (if it comes to that) is honest
+            // about which identity steps ran. The source pause still
+            // applies to the asking itself: an AcoustID rate limit must
+            // stop the asking, not the sweep. features.fpcalc gates the
+            // FINGERPRINT phase, never this step — this step never runs
+            // fpcalc.
+            if (!recordingMbid) {
+                if (
+                    !track.acoustidFingerprint &&
+                    (await fingerprintStageSettledFailed(track.id))
+                ) {
+                    acoustidSkipped = true;
+                    logger.debug(
+                        `[Track Enrichment] ${track.title}: AcoustID skipped — fingerprint stage closed as a permanent failure`,
+                    );
+                } else if (
+                    !(await sourcePauseController.isPaused("acoustid"))
+                ) {
+                    const identified = await askWithinBudget(
+                        () =>
+                            identifyTrackByAcoustid(
+                                trackRef,
+                                tags,
+                                // Reuse the fingerprint the fingerprint
+                                // stage already stored on the track —
+                                // never spend a second fpcalc run
+                                // recomputing what is on disk.
+                                track.acoustidFingerprint
+                                    ? { fingerprint: track.acoustidFingerprint }
+                                    : null,
+                            ),
+                        timeoutMs,
+                        `Timeout asking AcoustID: ${track.title}`,
+                    );
+                    if (identified.kind === "answered") {
+                        recordingMbid = identified.value.recordingMbid;
+                        answerSource = identified.value.source;
+                        fingerprintToStore =
+                            identified.value.fingerprint ?? null;
+                        logger.debug(
+                            `[Track Enrichment] ${track.title}: AcoustID identified via ${identified.value.source} (recording ${identified.value.recordingMbid})`,
+                        );
+                    } else if (identified.kind === "absent") {
+                        // Asked and nothing matched — an answer, not a
+                        // failure. The dedupe column still wants the
+                        // fingerprint (it is in the evidence).
+                        const fp = identified.evidence["fingerprint"];
+                        if (typeof fp === "string") fingerprintToStore = fp;
+                    } else if (!failedAsk) {
+                        failedAsk = { source: "acoustid", outcome: identified };
+                    }
+                } else {
+                    acoustidSkipped = true;
+                    logger.debug(
+                        `[Track Enrichment] ${track.title}: AcoustID skipped — source paused`,
+                    );
+                }
             }
         }
 
-        if (!identified) {
-            // Fallback: the pre-existing MusicBrainz title/artist search.
-            // Every identity outcome is counted in
-            // kima_acoustid_track_identity_total (path/outcome labels).
+        if (fingerprintToStore) {
             try {
-                const recording = await withTimeout(
-                    musicBrainzService.searchRecording(track.title, artistName),
-                    timeoutMs,
-                    `Timeout searching MB recording: ${track.title}`,
-                );
-                recordingMbid = recording?.trackMbid ?? null;
+                await persistAcoustidFingerprint(track.id, fingerprintToStore);
             } catch (err) {
-                logger.debug(
-                    `[Track Enrichment] MB recording search failed for ${track.title}: ${err}`,
-                );
+                // A failed fingerprint write is a real failure, not an
+                // empty warning: the record keeps the actual error and the
+                // question stays open with its own retry schedule.
+                await recordStageFailure(track.id, "recording", "acoustid", err, {
+                    stage: "persisting the fingerprint on Track",
+                });
+                return "deferred";
             }
         }
     } else {
         // Track already has an ISRC: find the recording from the known
         // identifier instead of re-identifying it.
-        try {
-            const rec = await withTimeout(
-                musicBrainzService.lookupByIsrc(track.isrc),
-                timeoutMs,
-                `Timeout looking up MB recording by ISRC: ${track.title}`,
-            );
-            recordingMbid = rec?.recordingId ?? null;
-        } catch (err) {
-            logger.debug(
-                `[Track Enrichment] MB ISRC lookup failed for ${track.title}: ${err}`,
-            );
+        const rec = await askWithinBudget(
+            () => musicBrainzService.lookupByIsrc(track.isrc!),
+            timeoutMs,
+            `Timeout looking up MB recording by ISRC: ${track.title}`,
+        );
+        if (rec.kind === "answered") {
+            recordingMbid = rec.value.recordingId;
+            answerSource = "isrc";
+        } else if (rec.kind !== "absent") {
+            failedAsk = { source: "musicbrainz", outcome: rec };
         }
     }
 
-    if (recordingMbid) {
-        try {
-            if (needsIsrc) {
-                const isrcData = await withTimeout(
-                    musicBrainzService.getRecordingIsrc(recordingMbid),
-                    timeoutMs,
-                    `Timeout fetching MB ISRC: ${track.title}`,
-                );
-                if (isrcData) {
-                    await trackIdentityService.storeIsrc(
-                        track.id,
-                        isrcData,
-                        "musicbrainz",
-                    );
-                }
-            }
-            const genreData = await withTimeout(
-                musicBrainzService.getRecordingGenres(recordingMbid),
-                timeoutMs,
-                `Timeout fetching MB genres: ${track.title}`,
-            );
-            if (genreData && genreData.genres.length > 0) {
-                const topGenres = genreData.genres
-                    .sort((a, b) => b.count - a.count)
-                    .slice(0, 5)
-                    .map((g) => g.name);
-                await trackIdentityService.populateTrackGenres(track.id, topGenres);
-                await prisma.track.update({
-                    where: { id: track.id },
-                    data: { enrichmentTags: topGenres },
-                });
-                logger.debug(
-                    `   ✓ ${track.title}: [${topGenres.slice(0, 3).join(", ")}...]`,
-                );
-            } else {
-                await prisma.track.update({
-                    where: { id: track.id },
-                    data: { enrichmentTags: ["_no_mood_tags"] },
-                });
-            }
-        } catch (err) {
-            logger.debug(
-                `[Track Enrichment] MB recording enrichment failed for ${track.title}: ${err}`,
+    if (failedAsk) {
+        // The question never got an answer: the source itself failed.
+        // recordOutcomeFailure parks the record with the REAL cause (a
+        // rate limit stays pending with nextRetryAt at the pause deadline
+        // and no attempt consumed; other failures take the retry ladder).
+        // No `_not_found` here: nothing was identified OR excluded.
+        await recordOutcomeFailure(
+            track.id,
+            "recording",
+            failedAsk.source,
+            failedAsk.outcome,
+            {
+                paths: track.isrc ? ["isrc"] : ["mb-search", "acoustid"],
+                ...(acoustidSkipped
+                    ? {
+                          acoustid: "skipped",
+                          reason:
+                              "fingerprint stage closed as a permanent failure, or the source is paused — AcoustID was never asked",
+                      }
+                    : {}),
+            },
+        );
+        return "deferred";
+    }
+
+    if (!recordingMbid) {
+        if (!acoustidSkipped) {
+            // Every identity source that could be asked was asked and
+            // answered "nothing": that is an answer, not a failure. The
+            // record closes `done` with evidence naming who was asked —
+            // a record whose correct answer is "does not exist" must not
+            // burn the retry ladder re-asking the same question.
+            await recordStageAbsent(
+                track.id,
+                "recording",
+                track.isrc ? "musicbrainz" : "acoustid",
+                {
+                    reason:
+                        "sources have no recording for this track",
+                    asked: track.isrc
+                        ? ["isrc", "acoustid"]
+                        : ["mb-search", "acoustid"],
+                },
             );
             await prisma.track.update({
                 where: { id: track.id },
                 data: { enrichmentTags: ["_not_found"] },
             });
+            return "no_match";
         }
-    } else {
+        // Nothing was asked or the only remaining source is paused — an
+        // unclassifiable miss stays INCONCLUSIVE on the record, with the
+        // raw evidence kept, so the question can be re-asked when its
+        // nextRetryAt lands (until the retry cap closes it).
+        const acoustidEvidence = acoustidSkipped
+            ? {
+                  acoustid: "skipped",
+                  reason:
+                      "fingerprint stage closed as a permanent failure — no fingerprint to ask with",
+              }
+            : {};
+        await recordStageFailure(
+            track.id,
+            "recording",
+            answerSource,
+            new Error(
+                `No recording identified for "${track.title}" by ${artistName}`,
+            ),
+            {
+                paths: track.isrc ? ["isrc"] : ["mb-search", "acoustid"],
+                ...acoustidEvidence,
+            },
+        );
         await prisma.track.update({
             where: { id: track.id },
             data: { enrichmentTags: ["_not_found"] },
         });
-    }
-}
-
-/**
- * Step 3: Queue pending tracks for audio analysis (Essentia)
- */
-async function queueAudioAnalysis(): Promise<number> {
-    const redis = getRedis();
-    const queueLength = await redis.llen("audio:analysis:queue");
-    // Soft watermark for logging/visibility, NOT a hard stop: the analyzer drains
-    // via brpop(1) + lpop(<=10 per batch), so a backlog above this while it is
-    // alive is transient by construction. Hard-stopping the feed here was part of
-    // the prod hang -- a temporarily idle (gate-closed or slow-starting) analyzer
-    // left the queue pinned at the cap and the pending pile froze forever while
-    // state claimed "running".
-    const MAX_QUEUE_SOFT_DEPTH = 50;
-    // True safety bound: memory for entries is ~200B each, an entire library fits
-    // in a few MB, and the analyzer's brpop drains it blockingly. Kill the supply
-    // only when the queue is absurdly deep, which means the analyzer is dead --
-    // in that case the circuit breaker + stale-processing cleanup take over.
-    const MAX_QUEUE_HARD_DEPTH = 10_000;
-
-    if (queueLength >= MAX_QUEUE_HARD_DEPTH) {
-        logger.warn(`[Audio Analysis] Queue depth ${queueLength} >= hard ceiling ${MAX_QUEUE_HARD_DEPTH}; analyzer appears stalled, skipping feed this cycle`);
-        return 0;
+        return "no_match";
     }
 
-    if (queueLength >= MAX_QUEUE_SOFT_DEPTH) {
-        // Keep feeding a bounded batch -- a live analyzer drains concurrently, a
-        // dead one is caught by the circuit breaker. Never return 0 on the soft
-        // watermark: that coupling was the hang.
-        logger.debug(`[Audio Analysis] Queue depth ${queueLength} above soft watermark ${MAX_QUEUE_SOFT_DEPTH}, feeding a bounded batch`);
-    }
-
-    const batchSize = Math.min(
-        // Feed up to the soft watermark above what's already queued when the
-        // backlog is small, else a bounded trickle -- never zero while pending
-        // exist and the analyzer has a heartbeat.
-        queueLength < MAX_QUEUE_SOFT_DEPTH
-            ? MAX_QUEUE_SOFT_DEPTH - queueLength
-            : 10,
-        MAX_QUEUE_HARD_DEPTH - queueLength,
-    );
-
-    const tracks = await prisma.track.findMany({
-        where: {
-            analysisStatus: "pending",
-            scanStatus: "valid",
-            analysisRetryCount: { lt: 3 }, // matches Python's MAX_RETRIES -- skip tracks the analyzer will ignore
-        },
-        select: {
-            id: true,
-            filePath: true,
-            title: true,
-            duration: true,
-        },
-        take: batchSize,
-        orderBy: { fileModified: "desc" },
+    // The answer lands on Track: "which recording is this?" needs an
+    // answer to KEEP, not just one to use for this run.
+    await prisma.track.update({
+        where: { id: track.id },
+        data: { recordingMbid },
     });
 
-    if (tracks.length === 0) return 0;
-
-    logger.debug(
-        `[Audio Analysis] Queueing ${tracks.length} tracks for Essentia...`,
-    );
-
-    let queued = 0;
-    const pushedIds: string[] = [];
-
-    // Phase 1: Push all tracks to Redis queue
-    for (const track of tracks) {
-        try {
-            await redis.rpush(
-                "audio:analysis:queue",
-                JSON.stringify({
-                    trackId: track.id,
-                    filePath: track.filePath,
-                    duration: track.duration, // Avoids file read in analyzer
-                }),
+    try {
+        if (needsIsrc) {
+            const isrc = await askWithinBudget(
+                () => musicBrainzService.getRecordingIsrc(recordingMbid),
+                timeoutMs,
+                `Timeout fetching MB ISRC: ${track.title}`,
             );
-            pushedIds.push(track.id);
-        } catch (error) {
-            logger.error(`   Failed to queue ${track.title}:`, error);
-        }
-    }
-
-    // Phase 2: Batch-mark as queued (single DB round-trip, no per-row deadlock risk)
-    if (pushedIds.length > 0) {
-        try {
-            const result = await prisma.track.updateMany({
-                where: { id: { in: pushedIds }, analysisStatus: "pending" },
-                data: { analysisStatus: "queued" },
-            });
-            queued = result.count;
-        } catch (error: any) {
-            // Deadlock with Python analyzer is non-fatal -- Python already claimed the tracks
-            if (error?.message?.includes("deadlock")) {
-                logger.debug(`[Audio Analysis] Deadlock on batch mark, Python likely claimed tracks`);
-            } else {
-                logger.error(`[Audio Analysis] Failed to mark tracks as queued:`, error);
+            if (isrc.kind === "answered") {
+                await trackIdentityService.storeIsrc(
+                    track.id,
+                    isrc.value,
+                    "musicbrainz",
+                );
             }
+            // `absent` — the identified recording has no ISRC — is an
+            // answer: there is nothing to store, and the question is done.
         }
+        const genres = await askWithinBudget(
+            () => musicBrainzService.getRecordingGenres(recordingMbid),
+            timeoutMs,
+            `Timeout fetching MB genres: ${track.title}`,
+        );
+        if (genres.kind === "answered") {
+            const topGenres = genres.value.genres
+                .sort((a, b) => b.count - a.count)
+                .slice(0, 5)
+                .map((g) => g.name);
+            await trackIdentityService.populateTrackGenres(track.id, topGenres);
+            await prisma.track.update({
+                where: { id: track.id },
+                data: { enrichmentTags: topGenres },
+            });
+            await recordStageSuccess(track.id, "recording", answerSource, {
+                recordingMbid,
+                reason: `identified via ${answerSource}`,
+                tags: topGenres,
+            });
+            logger.debug(
+                `   ✓ ${track.title}: [${topGenres.slice(0, 3).join(", ")}...]`,
+            );
+            return "identified";
+        }
+        if (genres.kind === "absent") {
+            // Identified, but the recording genuinely has no genres — that
+            // is an answer (`_no_mood_tags`), not a failure.
+            await prisma.track.update({
+                where: { id: track.id },
+                data: { enrichmentTags: ["_no_mood_tags"] },
+            });
+            await recordStageSuccess(track.id, "recording", answerSource, {
+                recordingMbid,
+                reason: `identified via ${answerSource}, recording carries no genres`,
+            });
+            return "identified";
+        }
+        // Identified, but the genres/ISRC question failed: record it with
+        // the real cause so the question is re-asked on the record's own
+        // schedule.
+        await recordOutcomeFailure(
+            track.id,
+            "recording",
+            "musicbrainz",
+            genres,
+            {
+                recordingMbid,
+                stage: "fetching genres/isrc for an identified recording",
+            },
+        );
+        return "deferred";
+    } catch (err) {
+        logger.debug(
+            `[Track Enrichment] MB recording enrichment failed for ${track.title}: ${err}`,
+        );
+        // An unexpected throw (a DB write, not a source answer): record it
+        // with its real error so the question is re-asked on the record's
+        // own schedule.
+        await recordStageFailure(track.id, "recording", answerSource, err, {
+            recordingMbid,
+            stage: "fetching genres/isrc for an identified recording",
+        });
+        return "deferred";
     }
-
-    if (queued > 0) {
-        logger.debug(` Queued ${queued} tracks for audio analysis`);
-    }
-
-    return queued;
 }
+
 
 /**
  * Check if enrichment should stop and handle state cleanup if stopping.
@@ -1363,7 +2302,14 @@ async function shouldHaltCycle(): Promise<boolean> {
  * Run a phase and return result. Returns null if cycle should halt.
  */
 async function runPhase(
-    phaseName: "artists" | "tracks" | "scan" | "audio" | "podcasts" | "vibe",
+    phaseName:
+        | "artists"
+        | "tracks"
+        | "scan"
+        | "audio"
+        | "podcasts"
+        | "vibe"
+        | "fingerprint",
     executor: () => Promise<number>,
 ): Promise<number | null> {
     await enrichmentStateService.updateState({
@@ -1453,341 +2399,398 @@ export async function executeArtistsPhase(): Promise<number> {
     return queued;
 }
 
-export async function executeMoodTagsPhase(): Promise<number> {
-    const tracks = await prisma.track.findMany({
-        where: {
-            OR: [
-                { enrichmentTags: { equals: [] } },
-                { enrichmentTags: { isEmpty: true } },
-            ],
-            // Exclude tracks already queued this cycle — prevents re-adding the
-            // same tracks on every 5s tick before the worker can process them.
-            // The worker always overwrites ["_queued"] with real data or a
-            // terminal sentinel (["_no_mood_tags"], ["_not_found"]).
-            NOT: { enrichmentTags: { has: "_queued" } },
-        },
-        select: { id: true, title: true },
-        take: TRACK_BATCH_SIZE,
-        orderBy: [{ fileModified: "desc" }],
-    });
-
-    if (tracks.length === 0) return 0;
-
-    // Free reusable jobIds: completed immediately, failed after a backoff grace.
-    // The worker clears a failed track's tags to re-enable it, but the held
-    // `track-<id>` marker silently defeats that re-pickup until cleaned.
-    try {
-        await trackQueue.clean(0, 0, "completed");
-        await trackQueue.clean(FAILED_JOB_RETRY_GRACE_MS, 0, "failed");
-    } catch (err) {
-        logger.warn(`[Enrichment] trackQueue clean failed: ${(err as Error).message}`);
+/**
+ * Claim the owed records for `stage` and put one job per track on its queue.
+ *
+ * This is the ONLY producer for each stage's queue. Selection comes from
+ * `TrackStage`, so a track whose record is answered — or is a terminal failure
+ * — is simply not offered, and no track's answer can hold another track's
+ * stage behind it.
+ */
+/**
+ * Sync stage records still in `working` against the truth in the columns.
+ *
+ * The `analysis` and `embedding` questions are answered by the Python
+ * consumers, which write `Track.analysisStatus` / `Track.vibeAnalysisStatus`
+ * / `track_embeddings` — never the record. Without this pass a record would
+ * sit in `working` forever after its answer landed, so the record could
+ * never gate the next stage. When the column has answered, the record is
+ * synced to that answer; when the attempt's own stage timeout elapsed with
+ * no answer, the attempt is dead — the record goes back to `pending` with a
+ * fresh `nextRetryAt`, and per the design a timeout does NOT count as an
+ * attempt (the attempt count stays where it was).
+ */
+async function reconcileStaleStageRecords(stage: StageName): Promise<void> {
+    if (stage === "recording") {
+        // The recording question is answered in-process by enrichSingleTrack;
+        // a `working` record older than the stage timeout is a dead attempt.
+        await prisma.$executeRawUnsafe(
+            `UPDATE "TrackStage"
+                SET status = 'pending',
+                    "nextRetryAt" = now() + ($3::double precision * interval '1 millisecond')
+              WHERE stage = $1
+                AND status = 'working'
+                AND "startedAt" < now() - ($2::double precision * interval '1 millisecond')`,
+            stage,
+            getStageTimeoutMs(stage),
+            computeStageRetryWaitMs(1),
+        );
+        return;
     }
 
-    const queuedIds: string[] = [];
-    for (const track of tracks) {
-        try {
-            // Only enqueue + mark "_queued" when the jobId slot is free. A failed
-            // job younger than the grace still holds it, so a plain add() would
-            // no-op while we marked the track in-flight anyway -- parking it out
-            // of selection until restart instead of retrying. Skipping leaves it
-            // selectable so it backs off and retries once the grace clean frees
-            // the slot.
-            const jobId = `track-${track.id}`;
-            if (await trackQueue.getJob(jobId)) continue;
-            await trackQueue.add(
-                "enrich",
-                { trackId: track.id, trackTitle: track.title },
-                { jobId },
+    if (stage === "analysis") {
+        const rows = await prisma.$queryRawUnsafe<
+            Array<{ trackId: string; answer: string; error: string | null }>
+        >(
+            `SELECT ts."trackId", t."analysisStatus" AS answer, t."analysisError" AS error
+               FROM "TrackStage" ts
+               JOIN "Track" t ON t.id = ts."trackId"
+              WHERE ts.stage = 'analysis'
+                AND ts.status = 'working'
+                AND t."analysisStatus" IN ('completed', 'failed', 'permanently_failed')`,
+        );
+        for (const row of rows) {
+            if (row.answer === "completed") {
+                await recordStageSuccess(row.trackId, "analysis", "analyzer", {
+                    syncedFrom: "analysisStatus",
+                    answer: "completed",
+                });
+            } else {
+                await recordStageFailure(
+                    row.trackId,
+                    "analysis",
+                    "analyzer",
+                    new Error(row.error ?? "analysis failed"),
+                    { syncedFrom: "analysisStatus", answer: row.answer },
+                );
+            }
+        }
+        return;
+    }
+
+    // embedding: the answer is a track_embeddings row, or a failed
+    // vibeAnalysisStatus — but only an answer that POSTDATES the current
+    // claim attempt. An embedding row left over from BEFORE the claim is
+    // the previous answer still being readable (a force re-decide keeps it
+    // so the vibe map keeps working), not the answer to this attempt;
+    // syncing from it would close a re-opened question without anything
+    // having re-answered it. A dead attempt (working past the stage
+    // timeout with no fresh answer) re-queues like recording's.
+    await prisma.$executeRawUnsafe(
+        `UPDATE "TrackStage"
+            SET status = 'pending',
+                "nextRetryAt" = now() + ($3::double precision * interval '1 millisecond')
+          WHERE stage = $1
+            AND status = 'working'
+            AND "startedAt" IS NOT NULL
+            AND "startedAt" < now() - ($2::double precision * interval '1 millisecond')
+            AND NOT EXISTS (
+                SELECT 1 FROM track_embeddings te
+                 WHERE te.track_id = "TrackStage"."trackId"
+                   AND te.analyzed_at >= "TrackStage"."startedAt"
+            )`,
+        stage,
+        getStageTimeoutMs(stage),
+        computeStageRetryWaitMs(1),
+    );
+    const rows = await prisma.$queryRawUnsafe<
+        Array<{ trackId: string; answer: string; error: string | null }>
+    >(
+        `SELECT ts."trackId",
+                CASE WHEN te.track_id IS NOT NULL THEN 'completed'
+                     ELSE t."vibeAnalysisStatus" END AS answer,
+                t."vibeAnalysisError" AS error
+           FROM "TrackStage" ts
+           JOIN "Track" t ON t.id = ts."trackId"
+           LEFT JOIN track_embeddings te
+                  ON te.track_id = t.id AND te.analyzed_at >= ts."startedAt"
+          WHERE ts.stage = 'embedding'
+            AND ts.status = 'working'
+            AND ts."startedAt" IS NOT NULL
+            AND (te.track_id IS NOT NULL
+                 OR (t."vibeAnalysisStatus" IN ('failed', 'permanently_failed')
+                     AND (t."vibeAnalysisStatusUpdatedAt" IS NULL
+                          OR t."vibeAnalysisStatusUpdatedAt" >= ts."startedAt")))`,
+    );
+    for (const row of rows) {
+        if (row.answer === "completed") {
+            await recordStageSuccess(row.trackId, "embedding", "clap", {
+                syncedFrom: "track_embeddings",
+                answer: "completed",
+            });
+        } else {
+            await recordStageFailure(
+                row.trackId,
+                "embedding",
+                "clap",
+                new Error(row.error ?? "embedding failed"),
+                { syncedFrom: "vibeAnalysisStatus", answer: row.answer },
             );
-            queuedIds.push(track.id);
-        } catch (err) {
-            logger.warn(`[Enrichment] Failed to queue track ${track.id}: ${(err as Error).message}`);
         }
     }
 
-    if (queuedIds.length > 0) {
-        // Mark as in-flight so the next orchestrator tick skips them
-        await prisma.track.updateMany({
-            where: { id: { in: queuedIds } },
-            data: { enrichmentTags: ["_queued"] },
-        });
-        logger.debug(`[Enrichment] Queued ${queuedIds.length} tracks`);
-    }
-    return queuedIds.length;
+    await prisma.$executeRawUnsafe(
+        `UPDATE "TrackStage"
+            SET status = 'pending',
+                "nextRetryAt" = now() + ($3::double precision * interval '1 millisecond')
+          WHERE stage = $1
+            AND status = 'working'
+            AND "startedAt" < now() - ($2::double precision * interval '1 millisecond')`,
+        stage,
+        getStageTimeoutMs(stage),
+        computeStageRetryWaitMs(1),
+    );
 }
 
-const SCAN_BATCH_SIZE = 100;
+async function dispatchStageWork(
+    stage: StageName,
+    work: StageWork[],
+    add: (item: StageWork) => Promise<void>,
+): Promise<number> {
+    let owed = work.filter((w) => w.stage === stage);
+    if (owed.length === 0) return 0;
 
-// How long a track may sit in "validating" before we assume its validation job is
-// gone and hand it back to the scan phase.
-const STALE_SCAN_MS = 10 * 60 * 1000;
+    // The record owns the answer: sync any record still `working` whose
+    // answer has already landed in the columns before deciding what to
+    // hand out.
+    await reconcileStaleStageRecords(stage);
 
-// Stop refilling the validation queue once this many jobs are already waiting. The
-// releasing pass above cannot tell "this job was lost" from "the analyzer is down and
-// hasn't got to it yet", so without a ceiling an offline analyzer would have the same
-// tracks pushed onto the list again every ten minutes, forever.
-const SCAN_QUEUE_MAX_DEPTH = 500;
+    // Defense in depth: getNextWork already skips a paused source, but a
+    // pause opened between the offer and the dispatch must not hand out
+    // more work for the same refusing source.
+    const source = owed[0].source
+        ?? (stage === "analysis"
+              ? "analyzer"
+              : stage === "embedding"
+                ? "clap"
+                : stage === "fingerprint"
+                  ? "fpcalc"
+                  : "musicbrainz");
+    if (await sourcePauseController.isPaused(source)) {
+        logger.debug(
+            `[Enrichment] ${stage}: source '${source}' paused — ${owed.length} owed attempts wait`,
+        );
+        return 0;
+    }
+
+    let queued = 0;
+    // Defense in depth: getNextWork already skips tracks the scan flagged
+    // missing, but a scan can flag a file between the offer and the
+    // dispatch. Such an item is dropped here BEFORE the claim, so no attempt
+    // is consumed and no failure is recorded for a file that is not there.
+    if (owed.length > 0) {
+        const missingIds = new Set(
+            (
+                await prisma.$queryRawUnsafe<Array<{ trackId: string }>>(
+                    `SELECT id AS "trackId" FROM "Track"
+                      WHERE "missingSince" IS NOT NULL AND id = ANY($1::text[])`,
+                    owed.map((w) => w.trackId),
+                )
+            ).map((r) => r.trackId),
+        );
+        if (missingIds.size > 0) {
+            logger.debug(
+                `[Enrichment] ${stage}: dropping ${missingIds.size} item(s) flagged missing between offer and dispatch`,
+            );
+        }
+        owed = owed.filter((w) => !missingIds.has(w.trackId));
+        if (owed.length === 0) return 0;
+    }
+    for (const item of owed) {
+        try {
+            // Claim the record before queueing: `working` keeps the next cycle
+            // from re-offering the same attempt, and the worker writes the
+            // answer (`done`/`failed`) when it lands. A track with no record
+            // yet has never been asked, so the claim creates one. The claim
+            // sets the lease -- if the worker dies mid-attempt the record
+            // comes due again when the lease elapses, with the attempt
+            // advanced so the re-offer never reuses the dead attempt's jobId.
+            // A record already answered (`done`, or a closed `failed`) is
+            // never claimed: the DO UPDATE's WHERE clause enforces that.
+            const claimed = await prisma.$queryRawUnsafe<Array<{ attempt: number }>>(
+                `INSERT INTO "TrackStage"
+                    (id, "trackId", stage, status, source, attempt, retryable, evidence,
+                     "startedAt", "nextRetryAt")
+                 VALUES ($1, $2, $3, 'working', $4, 0, true, $5::jsonb,
+                         now(), now() + make_interval(secs => $6))
+                 ON CONFLICT ("trackId", stage) DO UPDATE
+                    SET status = 'working',
+                        "startedAt" = now(),
+                        "nextRetryAt" = now() + make_interval(secs => $6),
+                        attempt = CASE WHEN "TrackStage".status = 'working'
+                                       THEN "TrackStage".attempt + 1
+                                       ELSE "TrackStage".attempt END
+                  WHERE ("TrackStage".status IN ('pending', 'failed')
+                         AND "TrackStage".retryable = true)
+                     OR ("TrackStage".status = 'working'
+                         AND "TrackStage"."nextRetryAt" IS NOT NULL
+                         AND "TrackStage"."nextRetryAt" <= now())
+                 RETURNING attempt`,
+                `${item.trackId}__${stage}`,
+                item.trackId,
+                stage,
+                source,
+                JSON.stringify({ question: item.jobKey }),
+                STAGE_CLAIM_LEASE_MS / 1000,
+            );
+            if (claimed.length === 0) continue;
+            // jobId must always be one past the attempt the DB just recorded,
+            // or a re-claim would reuse the dead attempt's BullMQ dedup key.
+            item.jobId = `${item.jobKey}-${claimed[0].attempt + 1}`;
+
+            await add(item);
+            queued++;
+        } catch (err) {
+            // Release the claim: the push never happened, so the record must
+            // stay due instead of parking in `working` past the lease.
+            await prisma.$executeRawUnsafe(
+                `UPDATE "TrackStage"
+                    SET status = 'pending', "startedAt" = NULL, "nextRetryAt" = NULL
+                  WHERE "trackId" = $1 AND stage = $2 AND status = 'working'`,
+                item.trackId,
+                stage,
+            ).catch(() => undefined);
+            logger.warn(
+                `[Enrichment] Failed to queue ${stage} for ${item.trackId}: ${(err as Error).message}`,
+            );
+        }
+    }
+
+    if (queued > 0) {
+        logger.debug(`[Enrichment] Queued ${queued} tracks for ${stage}`);
+    }
+    return queued;
+}
+
+/** How long a retryable failed stage waits before it is due again. The
+ * interim default (the migration seed uses the same); the retry/backoff work
+ * owns any smarter policy later. */
+export const STAGE_RETRY_BACKOFF_MS = 30 * 60 * 1000;
 
 /**
- * Mark a file as failing validation, and retire its analysis along with it.
- *
- * Every producer now refuses a track whose scanStatus is not "valid". Without the
- * second write, a file we positively identified as unreadable would sit at
- * analysisStatus "pending" forever -- counted as outstanding work, holding the
- * completion gate open, and picked up by nobody. The guard on the current analysis
- * status is what stops a bad header read from throwing away analysis a track
- * already has.
+ * Record a stage's answer: `done`, with the attempt advanced by exactly one
+ * (the dispatched jobId was `track-<id>-<stage>-<attempt+1>`). The writer is
+ * whichever process actually completed the stage; the record's other fields
+ * are cleared so the row carries no stale failure next to a good answer.
  */
-export async function markScanInvalid(trackId: string, reason: string): Promise<void> {
-    await prisma.track.update({
-        where: { id: trackId },
-        data: { scanStatus: "invalid", scanError: reason, scanStartedAt: null },
-    });
-    await prisma.track.updateMany({
-        where: {
-            id: trackId,
-            analysisStatus: { in: ["pending", "queued", "failed"] },
-        },
-        data: {
-            analysisStatus: "permanently_failed",
-            analysisError: reason,
-        },
+export async function settleStageDone(
+    trackId: string,
+    stage: StageName,
+    evidence: Record<string, unknown>,
+): Promise<void> {
+    await prisma.$executeRawUnsafe(
+        `UPDATE "TrackStage"
+            SET status = 'done',
+                attempt = attempt + 1,
+                "lastErrorCode" = NULL,
+                "lastErrorMessage" = NULL,
+                "failureClass" = NULL,
+                retryable = false,
+                "nextRetryAt" = NULL,
+                evidence = $3::jsonb,
+                "finishedAt" = now(),
+                "decidedAt" = now(),
+                "decidedBy" = 'engine'
+          WHERE "trackId" = $1 AND stage = $2 AND status IN ('working', 'pending')`,
+        trackId,
+        stage,
+        JSON.stringify(evidence),
+    );
+}
+
+/**
+ * Record a stage's failed answer. A retryable failure stays due after the
+ * backoff; a terminal one (retryable=false) closes the question for good.
+ */
+export async function settleStageFailed(
+    trackId: string,
+    stage: StageName,
+    opts: {
+        errorCode?: string | null;
+        errorMessage?: string | null;
+        failureClass?: string | null;
+        retryable: boolean;
+        evidence: Record<string, unknown>;
+    },
+): Promise<void> {
+    await prisma.$executeRawUnsafe(
+        `UPDATE "TrackStage"
+            SET status = 'failed',
+                attempt = attempt + 1,
+                "lastErrorCode" = $3,
+                "lastErrorMessage" = $4,
+                "failureClass" = $5,
+                retryable = $6,
+                "nextRetryAt" = CASE WHEN $6 THEN now() + make_interval(secs => $7) END,
+                evidence = $8::jsonb,
+                "finishedAt" = now(),
+                "decidedAt" = now(),
+                "decidedBy" = 'engine'
+          WHERE "trackId" = $1 AND stage = $2 AND status IN ('working', 'pending')`,
+        trackId,
+        stage,
+        opts.errorCode ?? null,
+        opts.errorMessage ?? null,
+        opts.failureClass ?? null,
+        opts.retryable,
+        STAGE_RETRY_BACKOFF_MS / 1000,
+        JSON.stringify(opts.evidence),
+    );
+}
+
+/**
+ * Phase 2 — the `recording` question (mood tags + ISRC).
+ *
+ * Replaces the record-driven re-queue, which re-selected every track whose
+ * `enrichmentTags` was empty and re-added `track-<id>`. That re-asked an
+ * already-answered question every tick, and the held `track-<id>` jobId let
+ * one failed job park the track until restart.
+ */
+export async function executeMoodTagsPhase(): Promise<number> {
+    const work = await getNextWork(TRACK_BATCH_SIZE);
+
+    return dispatchStageWork("recording", work, async (item) => {
+        await trackQueue.add(
+            "enrich",
+            { trackId: item.trackId, trackTitle: item.title },
+            // Per-attempt jobId: a retry never reuses the key a failed job
+            // still holds.
+            { jobId: item.jobId },
+        );
     });
 }
 
-async function executeScanPhase(): Promise<number> {
-    const musicPath = config.music.musicPath;
-    if (!musicPath) return 0;
-
-    // If the analyzer already has more validation work than it can get through, adding
-    // to the pile helps nobody -- and the releasing pass below would otherwise keep
-    // re-pushing the same tracks at an analyzer that is simply behind or offline.
-    const redis = getRedis();
-    const scanBacklog = await redis.llen("audio:scan:queue");
-    if (scanBacklog >= SCAN_QUEUE_MAX_DEPTH) {
-        logger.debug(
-            `[Enrichment] Scan queue holds ${scanBacklog} jobs, skipping validation this cycle`,
-        );
-        return 0;
-    }
-
-    // Hand back rows whose validation job never came home. "validating" used to have
-    // exactly one exit -- the crash-recovery pass that runs once at worker start -- so
-    // a scan queue that got flushed or dropped stranded every row in it until someone
-    // restarted the backend. That was survivable while the Python analyzer pulled work
-    // straight out of Postgres regardless of scan state; now that every producer
-    // genuinely refuses a non-valid track, a stuck row is a track that never gets
-    // analyzed at all.
-    //
-    // Rows written before scanStartedAt existed carry NULL, so fall back to updatedAt
-    // for those only -- they drain once, then the real timestamp takes over.
-    const scanCutoff = new Date(Date.now() - STALE_SCAN_MS);
-    const released = await prisma.track.updateMany({
-        where: {
-            scanStatus: "validating",
-            OR: [
-                { scanStartedAt: { lt: scanCutoff } },
-                { scanStartedAt: null, updatedAt: { lt: scanCutoff } },
-            ],
-        },
-        data: { scanStatus: "pending", scanStartedAt: null },
-    });
-    if (released.count > 0) {
-        logger.warn(
-            `[Enrichment] Released ${released.count} tracks stuck in scan validation for over ${Math.round(STALE_SCAN_MS / 60000)} minutes`,
-        );
-    }
-
-    const tracks = await prisma.track.findMany({
-        where: {
-            scanStatus: "pending",
-            corrupt: false,
-        },
-        select: { id: true, filePath: true, title: true },
-        take: SCAN_BATCH_SIZE,
-        orderBy: { fileModified: "desc" },
-    });
-
-    if (tracks.length === 0) return 0;
-
-    const { validateAudioHeader } = await import("../services/audioScanValidator");
-    let validated = 0;
-    let invalid = 0;
-
-    for (const track of tracks) {
-        if (await shouldHaltCycle()) return validated;
-
-        const fullPath = path.join(musicPath, track.filePath);
-        const result = await validateAudioHeader(fullPath);
-
-        if (result.valid) {
-            await prisma.track.update({
-                where: { id: track.id },
-                data: { scanStatus: "validating", scanStartedAt: new Date() },
-            });
-            await redis.rpush(
-                "audio:scan:queue",
-                JSON.stringify({ trackId: track.id, filePath: track.filePath }),
-            );
-            validated++;
-        } else {
-            const reason = result.error ?? "Unknown validation failure";
-            await markScanInvalid(track.id, reason);
-            await enrichmentFailureService.recordFailure({
-                entityType: "scan",
-                entityId: track.id,
-                entityName: track.title,
-                errorMessage: reason,
-                errorCode: "SCAN_INVALID",
-                metadata: { filePath: track.filePath },
-            });
-            invalid++;
-        }
-    }
-
-    if (invalid > 0) {
-        logger.info(`[Enrichment] Pre-scan: ${validated} valid, ${invalid} invalid`);
-    }
-
-    // Spot-check previously-valid tracks for file moves/deletes
-    const RECHECK_BATCH = 20;
-    const recheckTracks = await prisma.track.findMany({
-        where: { scanStatus: "valid", analysisStatus: "pending" },
-        select: { id: true, filePath: true },
-        take: RECHECK_BATCH,
-        orderBy: { updatedAt: "asc" },
-    });
-
-    for (const track of recheckTracks) {
-        const recheckPath = path.join(musicPath, track.filePath);
-        try {
-            await fs.promises.access(recheckPath, fs.constants.R_OK);
-        } catch {
-            await markScanInvalid(track.id, "File no longer accessible");
-        }
-    }
-
-    return validated;
-}
-
+/**
+ * Phase 3 — the `analysis` question (Essentia decode + measure).
+ *
+ * Deletes two workarounds this replaces:
+ *   - the LIVE dead-analyzer reset, which flushed `audio:analysis:queue` and
+ *     flipped every `queued` row back to `pending` on a stale heartbeat;
+ *   - the purgatory drain, which condemned past-cap tracks to
+ *     `permanently_failed` (or "recovered" them to `completed`) by rewriting
+ *     the column, so the answer in the record and the flag on the row could
+ *     contradict each other.
+ *
+ * Both existed because nothing owned "this track, this question". The record
+ * does now: a terminal answer is not offered again, a not-yet-due retry is not
+ * offered yet, and a track whose file is missing keeps its flag and its true
+ * state instead of being deleted or silently re-queued.
+ */
 export async function executeAudioPhase(): Promise<number> {
-    // Compare completed count to previous cycle (~1 min ago) — a much wider
-    // window than the milliseconds between two counts around cleanupStaleProcessing().
-    const currentCompleted = await prisma.track.count({
-        where: { analysisStatus: "completed" },
+    const work = await getNextWork(TRACK_BATCH_SIZE);
+
+    return dispatchStageWork("analysis", work, async (item) => {
+        const redis = getRedis();
+        await redis.rpush(
+            STAGE_QUEUES.analysis,
+            JSON.stringify({
+                trackId: item.trackId,
+                filePath: item.filePath,
+                duration: item.duration, // Avoids file read in the analyzer
+                jobId: item.jobId, // Per-attempt key; the analyzer logs it
+            }),
+        );
     });
-
-    if (audioLastCycleCompletedCount !== null && currentCompleted > audioLastCycleCompletedCount) {
-        audioAnalysisCleanupService.recordSuccess();
-    }
-    audioLastCycleCompletedCount = currentCompleted;
-
-    const cleanupResult =
-        await audioAnalysisCleanupService.cleanupStaleProcessing();
-    if (cleanupResult.reset > 0 || cleanupResult.permanentlyFailed > 0) {
-        logger.debug(
-            `[Enrichment] Audio analysis cleanup: ${cleanupResult.reset} reset, ${cleanupResult.permanentlyFailed} permanently failed, ${cleanupResult.recovered} recovered`,
-        );
-    }
-
-    // LIVE dead-analyzer recovery (F1/F2): rows marked 'queued' are in-flight to
-    // the analyzer and only 'processing' rows get cleaned by the stale pass --
-    // so if the analyzer process is down, 'queued' rows strand forever: they are
-    // not 'pending' (the feed skips them) and nothing else resets them. The
-    // analyzer heartbeats every loop iteration, so a STALE heartbeat while work
-    // is queued is the unambiguous "analyzer is down" signal. Reset those rows
-    // and flush the Redis list (exactly what startup crash-recovery does) so the
-    // feed can re-drive them the moment the analyzer returns -- without waiting
-    // for a container restart.
-    const AUDIO_ANALYZER_HEARTBEAT_KEY = "audio:worker:heartbeat";
-    const freeFeedFromDeadAnalyzer = async (): Promise<number> => {
-        const [heartbeatVal, queuedLen] = await Promise.all([
-            getRedis().get(AUDIO_ANALYZER_HEARTBEAT_KEY),
-            getRedis().llen("audio:analysis:queue"),
-        ]);
-        const heartbeatMs = heartbeatVal ? Number(heartbeatVal) : 0;
-        const heartbeatStale = Date.now() - heartbeatMs > 90_000; // analyzer pings every loop; 90s dead window
-        const hasQueuedWork = queuedLen > 0;
-        if (!heartbeatStale || !hasQueuedWork) return 0;
-        logger.warn(
-            `[Enrichment] Analyzer heartbeat stale (${heartbeatStale ? ">90s" : "fresh"}) with ${queuedLen} queued entries -- resetting stranded queued tracks to pending + flushing queue (live crash recovery)`,
-        );
-        const stranded = await prisma.track.updateMany({
-            where: { analysisStatus: "queued" },
-            data: { analysisStatus: "pending", analysisStartedAt: null },
-        });
-        await getRedis().del("audio:analysis:queue").catch(() => {});
-        if (stranded.count > 0) {
-            logger.warn(`[Enrichment] Freed ${stranded.count} stranded queued tracks back to pending (analyzer was down)`);
-        }
-        return stranded.count;
-    };
-    await freeFeedFromDeadAnalyzer();
-
-    // Drain purgatory: tracks stuck as pending/queued but retryCount >= MAX_RETRIES
-    const purgatoryTracks = await prisma.track.findMany({
-        where: {
-            analysisStatus: { in: ["pending", "queued"] },
-            analysisRetryCount: { gte: 3 },
-        },
-        select: { id: true, title: true, filePath: true, analysisRetryCount: true },
-    });
-    if (purgatoryTracks.length > 0) {
-        const recovered: string[] = [];
-        const condemned: typeof purgatoryTracks = [];
-
-        for (const track of purgatoryTracks) {
-            const hasEmbedding = await prisma.$queryRaw<{ count: bigint }[]>`
-                SELECT COUNT(*) as count FROM track_embeddings WHERE track_id = ${track.id}
-            `;
-            if (Number(hasEmbedding[0]?.count) > 0) {
-                recovered.push(track.id);
-            } else {
-                condemned.push(track);
-            }
-        }
-
-        if (recovered.length > 0) {
-            await prisma.track.updateMany({
-                where: { id: { in: recovered } },
-                data: {
-                    analysisStatus: "completed",
-                    analysisError: null,
-                },
-            });
-            logger.info(`[Enrichment] Recovered ${recovered.length} purgatory tracks with existing embeddings`);
-        }
-
-        if (condemned.length > 0) {
-            await prisma.track.updateMany({
-                where: { id: { in: condemned.map(t => t.id) } },
-                data: {
-                    analysisStatus: "permanently_failed",
-                    analysisError: "Exceeded retry limit -- track may be corrupted or unsupported",
-                },
-            });
-            for (const track of condemned) {
-                await enrichmentFailureService.recordFailure({
-                    entityType: "audio",
-                    entityId: track.id,
-                    entityName: track.title,
-                    errorMessage: "Exceeded retry limit -- track may be corrupted or unsupported",
-                    errorCode: "MAX_RETRIES_EXCEEDED",
-                    metadata: { filePath: track.filePath, retryCount: track.analysisRetryCount },
-                });
-            }
-            logger.warn(`[Enrichment] Drained ${condemned.length} purgatory tracks to permanently_failed`);
-        }
-    }
-
-    if (audioAnalysisCleanupService.isCircuitOpen()) {
-        logger.warn(
-            "[Enrichment] Audio analysis circuit breaker OPEN - skipping queue",
-        );
-        return 0;
-    }
-
-    return queueAudioAnalysis();
 }
 
 const VIBE_SWEEP_BATCH_SIZE = 100;
@@ -1840,58 +2843,20 @@ async function rebuildStaleArtistCentroids(): Promise<void> {
     );
 }
 
-async function executeVibePhase(): Promise<number> {
+/**
+ * Phase 4 — the `embedding` question (CLAP).
+ *
+ * The global `audioInFlight` count is gone. It asked "is ANY track still
+ * waiting or in flight?" and returned 0 for the whole phase if the answer was
+ * yes, so one unreadable file — permanently `pending`, never analysable —
+ * switched embedding off for the entire library forever. Gating is per track
+ * now: `embedding` is offered only for tracks whose OWN `analysis` record is
+ * `done`, which keeps the design's rule that an unanalysed track is never
+ * embedded without letting one track's answer hold anyone else's.
+ */
+export async function executeVibePhase(): Promise<number> {
     const features = await featureDetection.getFeatures();
     if (!features.vibeEmbeddings) {
-        return 0;
-    }
-
-    // Defer vibe phase until audio analysis is idle -- both ML models
-    // competing for CPU/GPU causes thrashing and UI flickering.
-    // permanently_failed tracks are terminal and should not block vibe phase
-    //
-    // `corrupt` has to be excluded or one unparseable file switches embedding off for good.
-    // The scanner sets that flag (services/musicScanner.ts:166) on files it cannot read;
-    // the header-validation phase skips those rows (`corrupt: false` in its where), so
-    // scanStatus stays "pending" forever, so the Essentia queue-filler -- which only takes
-    // scanStatus "valid" -- never touches them, so analysisStatus stays "pending" forever
-    // too. Counted here, that is a permanent >= 1, and this phase returns 0 on every cycle
-    // from then on. No track gets a CLAP embedding again and the vibe map quietly stops
-    // growing.
-    const audioInFlight = await prisma.track.count({
-        where: {
-            analysisStatus: { in: ["processing", "pending"] },
-            corrupt: false,
-        },
-    });
-    if (audioInFlight > 0) {
-        return 0;
-    }
-
-    // Find tracks with completed audio analysis but no embedding row.
-    // This catches:
-    //   - Tracks orphaned by migration wiping track_embeddings
-    //   - Tracks whose pub/sub completion event was missed (crash, restart)
-    //   - Tracks reset to null/pending by crash recovery
-    //   - Tracks with vibeAnalysisStatus='completed' but no actual embedding (stale status)
-    const tracks = await prisma.$queryRaw<{ id: string; filePath: string }[]>`
-        SELECT t.id, t."filePath"
-        FROM "Track" t
-        LEFT JOIN track_embeddings te ON t.id = te.track_id
-        WHERE te.track_id IS NULL
-          AND t."analysisStatus" = 'completed'
-          AND t."filePath" IS NOT NULL
-          AND (t."vibeAnalysisStatus" IS NULL
-               OR t."vibeAnalysisStatus" = 'pending'
-               OR t."vibeAnalysisStatus" = 'completed')
-          AND (t."vibeAnalysisStatus" IS DISTINCT FROM 'processing')
-        LIMIT ${VIBE_SWEEP_BATCH_SIZE}
-    `;
-
-    if (tracks.length === 0) {
-        // Steady state: nothing left to queue, but artists whose tracks
-        // gained embeddings between cycles may still need centroid rebuilds.
-        await rebuildStaleArtistCentroids();
         return 0;
     }
 
@@ -1905,44 +2870,15 @@ async function executeVibePhase(): Promise<number> {
     // paused it and the resume timer may have deferred (found audio still active)
     await vibeQueue.resume().catch(() => {});
 
-    // Clean completed AND failed jobs to prevent jobId dedup from silently
-    // losing re-queued tracks: BullMQ keeps the dedup marker for failed jobs
-    // too, so clearing only "completed" lets one failed job poison a track's
-    // jobId permanently.
-    await vibeQueue.clean(0, 0, 'completed');
-    await vibeQueue.clean(0, 0, 'failed');
-
-    // Reset stale vibeAnalysisStatus for these tracks before queuing
-    const trackIds = tracks.map((t) => t.id);
-    await prisma.track.updateMany({
-        where: { id: { in: trackIds } },
-        data: {
-            vibeAnalysisStatus: "pending",
-            vibeAnalysisError: null,
-        },
+    return dispatchStageWork("embedding", await getNextWork(VIBE_SWEEP_BATCH_SIZE), async (item) => {
+        await vibeQueue.add(
+            "embed",
+            { trackId: item.trackId, filePath: item.filePath, duration: item.duration },
+            // Per-attempt jobId, so a retry never lands on the dedup marker a
+            // failed job still holds.
+            { jobId: item.jobId },
+        );
     });
-
-    let queued = 0;
-    for (const track of tracks) {
-        try {
-            await vibeQueue.add(
-                "embed",
-                { trackId: track.id, filePath: track.filePath },
-                { jobId: `vibe-${track.id}` },
-            );
-            queued++;
-        } catch (err: any) {
-            if (!err?.message?.includes("Job already exists")) {
-                logger.warn(`[Enrichment] Failed to queue vibe job for ${track.id}: ${err?.message}`);
-            }
-        }
-    }
-
-    if (queued > 0) {
-        logger.debug(`[Enrichment] Vibe sweep: queued ${queued} tracks for embedding`);
-    }
-
-    return queued;
 }
 
 export async function executePodcastRefreshPhase(): Promise<number> {
@@ -2052,108 +2988,123 @@ async function computeEnrichmentProgress() {
     const artistPending =
         artistCounts.find((s) => s.enrichmentStatus === "pending")?._count || 0;
 
-    // ONE pass over Track with conditional aggregates, instead of seven separate
-    // COUNT queries. This function runs on every 5-second orchestrator tick, and
-    // several of those counts had no index to use -- notably the enrichmentTags
-    // predicate -- so each tick was issuing repeated sequential scans of the
-    // largest table in the schema against the same connection pool that serves
-    // audio streaming.
-    const [trackStats] = await prisma.$queryRaw<
-        {
-            total: bigint;
-            excluded: bigint;
-            tags_enriched: bigint;
-            audio_pending: bigint;
-            audio_queued: bigint;
-            audio_processing: bigint;
-            audio_completed: bigint;
-            audio_failed: bigint;
-            permanently_failed: bigint;
-            clap_processing: bigint;
-            clap_failed: bigint;
-        }[]
-    >`
-        SELECT
-            count(*)                                                  AS total,
-            count(*) FILTER (
-                WHERE "analysisStatus" = 'permanently_failed' OR "corrupt"
-            )                                                         AS excluded,
-            count(*) FILTER (
-                WHERE array_length("enrichmentTags", 1) > 0
-                  AND "analysisStatus" <> 'permanently_failed'
-                  AND NOT "corrupt"
-            )                                                         AS tags_enriched,
-            -- Excludes corrupt for the same reason as the vibe phase's in-flight count:
-            -- those rows are permanently pending, and isFullyComplete gates on this being
-            -- zero, so counting them means enrichment never reports complete and the
-            -- completion notification and vibe-map precompute never fire.
-            count(*) FILTER (
-                WHERE "analysisStatus" = 'pending' AND NOT "corrupt"
-            )                                                         AS audio_pending,
-            count(*) FILTER (WHERE "analysisStatus" = 'queued')       AS audio_queued,
-            count(*) FILTER (WHERE "analysisStatus" = 'processing')   AS audio_processing,
-            count(*) FILTER (WHERE "analysisStatus" = 'completed')    AS audio_completed,
-            count(*) FILTER (WHERE "analysisStatus" = 'failed')       AS audio_failed,
-            -- Reported separately from the excluded count, which also folds in corrupt.
-            count(*) FILTER (
-                WHERE "analysisStatus" = 'permanently_failed'
-            )                                                         AS permanently_failed,
-            count(*) FILTER (WHERE "vibeAnalysisStatus" = 'processing') AS clap_processing,
-            count(*) FILTER (WHERE "vibeAnalysisStatus" = 'failed')   AS clap_failed
-        FROM "Track"
+    // Per-track stages are counted from `TrackStage`, not from the Track
+    // columns and not from whether an answer row (`track_embeddings`,
+    // `enrichmentTags`) exists: the record owns the answer, so the record is
+    // what progress must read. A track with no record for a stage has never
+    // been asked -- that is owed work, not finished work. One query per
+    // stage, each a single LEFT JOIN from `Track`, so a missing record
+    // counts as pending rather than vanishing from the totals.
+    const stageCounts = await Promise.all(
+        STAGE_ORDER.map(async (stage) => {
+            const [row] = await prisma.$queryRaw<
+                {
+                    total: bigint;
+                    completed: bigint;
+                    working: bigint;
+                    retryable_failed: bigint;
+                    terminal_failed: bigint;
+                }[]
+            >`
+                SELECT
+                    count(*)                                                    AS total,
+                    count(*) FILTER (WHERE ts.status = 'done')                AS completed,
+                    count(*) FILTER (WHERE ts.status = 'working')             AS working,
+                    count(*) FILTER (
+                        WHERE ts.status = 'failed' AND ts.retryable
+                    )                                                           AS retryable_failed,
+                    count(*) FILTER (
+                        WHERE ts.status = 'failed' AND NOT ts.retryable
+                    )                                                           AS terminal_failed
+                FROM "Track" t
+                LEFT JOIN "TrackStage" ts
+                         ON ts."trackId" = t.id AND ts.stage = ${stage}
+            `;
+            return {
+                total: Number(row?.total ?? 0),
+                completed: Number(row?.completed ?? 0),
+                working: Number(row?.working ?? 0),
+                retryableFailed: Number(row?.retryable_failed ?? 0),
+                terminalFailed: Number(row?.terminal_failed ?? 0),
+            };
+        }),
+    );
+    const [recording, analysis, embedding, fingerprint] = stageCounts;
+
+    // Queue depth is NOT derived from the records -- a claimed (`working`)
+    // record covers a job that may still be sitting in the queue -- so the
+    // analysis queue's true depth is read from the Redis list itself. The
+    // embedding queue is BullMQ: a job waiting there is covered by its
+    // claimed (`working`) record, so the record count IS the true state
+    // for that stage and no queue call is needed.
+    const audioQueueLength = await getRedis().llen("audio:analysis:queue");
+
+    // A recording record whose fingerprint question is NOT settled is
+    // blocked, not owed: the fingerprint → recording edge in
+    // PREREQUISITE_STAGE keeps it unoffered, so counting it as pending work
+    // would show the UI a number the sweep cannot act on (and, before the
+    // gate existed, those blocked rows were re-polled forever). The same
+    // settled condition the gate enforces — done, or closed as a permanent
+    // failure — is what unblocks a row; everything else it could be is
+    // waiting. Reported separately in trackTags: an open question, just not
+    // an actionable one.
+    const [recordingWaitingRow] = await prisma.$queryRaw<{ waiting: bigint }[]>`
+        SELECT count(*) AS waiting
+          FROM "TrackStage" ts
+         WHERE ts.stage = 'recording'
+           AND (ts.status = 'pending'
+                OR (ts.status = 'failed' AND ts.retryable
+                    AND (ts."nextRetryAt" IS NULL
+                         OR ts."nextRetryAt" <= now())))
+           AND NOT EXISTS (
+               SELECT 1 FROM "TrackStage" prev
+                WHERE prev."trackId" = ts."trackId"
+                  AND prev.stage = 'fingerprint'
+                  AND (prev.status = 'done'
+                       OR (prev.status = 'failed'
+                           AND NOT prev.retryable))
+           )
     `;
-
-    const excludedCount = Number(trackStats?.excluded ?? 0);
-    const rawTrackTotal = Number(trackStats?.total ?? 0);
-    const trackTotal = rawTrackTotal - excludedCount;
-    const trackTagsEnriched = Number(trackStats?.tags_enriched ?? 0);
-    const audioPending = Number(trackStats?.audio_pending ?? 0);
-    const audioQueued = Number(trackStats?.audio_queued ?? 0);
-    const audioProcessing = Number(trackStats?.audio_processing ?? 0);
-    const clapProcessing = Number(trackStats?.clap_processing ?? 0);
-    // v1 still reports these; upstream dropped them when its vibe rebuild
-    // changed the return shape. They are counted in the SAME pass rather than
-    // restored as separate queries, which is the entire point of the change.
-    const audioCompleted = Number(trackStats?.audio_completed ?? 0);
-    const audioFailed = Number(trackStats?.audio_failed ?? 0);
-    const permanentlyFailedCount = Number(trackStats?.permanently_failed ?? 0);
-    const clapFailed = Number(trackStats?.clap_failed ?? 0);
-
-    // These three are NOT Track scans -- track_embeddings, a LEFT JOIN, and the
-    // queue -- so they were never part of the seven-count storm and stay
-    // separate. Run together rather than sequentially.
-    const [clapEmbeddingCount, clapQueueCounts] = await Promise.all([
-        prisma.$queryRaw<{ count: bigint }[]>`
-            SELECT COUNT(*) as count FROM track_embeddings
-        `,
-        vibeQueue.getJobCounts("active", "waiting", "delayed"),
-    ]);
-    const clapCompleted = Number(clapEmbeddingCount[0]?.count || 0);
-    const clapQueueLength =
-        (clapQueueCounts.active ?? 0) +
-        (clapQueueCounts.waiting ?? 0) +
-        (clapQueueCounts.delayed ?? 0);
-
-    // Kept separate because it joins track_embeddings. VIBE-owned: this gate
-    // exists only to drain tracks left mid-flight by a retired producer, and if
-    // it can be dropped this becomes a single query.
-    const clapUnembeddedCount = await prisma.$queryRaw<{ count: bigint }[]>`
-        SELECT COUNT(*) as count
-        FROM "Track" t
-        LEFT JOIN track_embeddings te ON t.id = te.track_id
-        WHERE te.track_id IS NULL
-          AND t."analysisStatus" = 'completed'
-          AND t."filePath" IS NOT NULL
-          AND (t."vibeAnalysisStatus" IS DISTINCT FROM 'failed')
-    `;
-    const clapUnembedded = Number(clapUnembeddedCount[0]?.count || 0);
+    const recordingWaiting = Number(recordingWaitingRow?.waiting ?? 0);
 
     // Core enrichment is complete when artists and track tags are done
     // Audio analysis is separate - it runs in background and doesn't block
+    const recordingPending =
+        recording.total -
+        recording.completed -
+        recording.terminalFailed -
+        recording.retryableFailed -
+        recording.working;
+    const analysisPending =
+        analysis.total -
+        analysis.completed -
+        analysis.terminalFailed -
+        analysis.retryableFailed -
+        analysis.working;
+    const embeddingPending =
+        embedding.total -
+        embedding.completed -
+        embedding.terminalFailed -
+        embedding.retryableFailed -
+        embedding.working;
+    const fingerprintPending =
+        fingerprint.total -
+        fingerprint.completed -
+        fingerprint.terminalFailed -
+        fingerprint.retryableFailed -
+        fingerprint.working;
     const coreComplete =
-        artistPending === 0 && trackTotal - trackTagsEnriched === 0;
+        artistPending === 0 &&
+        recordingPending === 0 &&
+        // A waiting recording is not a done answer: core completion must not
+        // fire while questions are parked behind the fingerprint gate.
+        recordingWaiting === 0;
 
     return {
+        // Where every number below comes from -- the settings UI and the
+        // state-service counters must not claim a column-derived figure.
+        source: "TrackStage",
+
         // Core enrichment (blocking)
         artists: {
             total: artistTotal,
@@ -2168,41 +3119,63 @@ async function computeEnrichmentProgress() {
                 :   0,
         },
         trackTags: {
-            total: trackTotal,
-            enriched: trackTagsEnriched,
-            pending: trackTotal - trackTagsEnriched,
+            total: recording.total,
+            enriched: recording.completed,
+            // Actionable now: the sweep can offer these.
+            pending: recordingPending - recordingWaiting,
+            // Open but blocked behind the fingerprint gate — the sweep
+            // cannot act on them until the fingerprint question settles.
+            waiting: recordingWaiting,
             progress:
-                trackTotal > 0 ?
-                    Math.round((trackTagsEnriched / trackTotal) * 100)
+                recording.total > 0 ?
+                    Math.round(
+                        (recording.completed / recording.total) * 100,
+                    )
                 :   0,
         },
 
         // Background enrichment (non-blocking, runs in audio-analyzer container)
         audioAnalysis: {
-            total: trackTotal,
-            completed: audioCompleted,
-            pending: audioPending,
-            queued: audioQueued,
-            processing: audioProcessing,
-            failed: audioFailed,
-            permanentlyFailed: permanentlyFailedCount,
+            total: analysis.total,
+            completed: analysis.completed,
+            pending: analysisPending,
+            queued: audioQueueLength,
+            processing: analysis.working,
+            failed: analysis.retryableFailed,
+            permanentlyFailed: analysis.terminalFailed,
             progress:
-                trackTotal > 0 ?
-                    Math.round((audioCompleted / trackTotal) * 100)
+                analysis.total > 0 ?
+                    Math.round((analysis.completed / analysis.total) * 100)
                 :   0,
             isBackground: true, // Flag to indicate this runs separately
         },
 
         // CLAP embeddings (for vibe similarity search)
         clapEmbeddings: {
-            total: trackTotal,
-            completed: clapCompleted,
-            pending: Math.max(0, trackTotal - clapCompleted - clapFailed),
-            processing: clapProcessing,
-            failed: clapFailed,
+            total: embedding.total,
+            completed: embedding.completed,
+            pending: embeddingPending,
+            processing: embedding.working,
+            failed: embedding.retryableFailed + embedding.terminalFailed,
             progress:
-                trackTotal > 0 ?
-                    Math.round((clapCompleted / trackTotal) * 100)
+                embedding.total > 0 ?
+                    Math.round((embedding.completed / embedding.total) * 100)
+                :   0,
+            isBackground: true,
+        },
+
+        // AcoustID fingerprints (local fpcalc; covers EVERY track — the
+        // dedupe column wants the fingerprint whether or not any lookup
+        // matched).
+        fingerprints: {
+            total: fingerprint.total,
+            completed: fingerprint.completed,
+            pending: fingerprintPending,
+            processing: fingerprint.working,
+            failed: fingerprint.retryableFailed + fingerprint.terminalFailed,
+            progress:
+                fingerprint.total > 0 ?
+                    Math.round((fingerprint.completed / fingerprint.total) * 100)
                 :   0,
             isBackground: true,
         },
@@ -2211,12 +3184,13 @@ async function computeEnrichmentProgress() {
         coreComplete, // True when artists + track tags are done
         isFullyComplete:
             coreComplete &&
-            audioPending === 0 &&
-            audioQueued === 0 &&
-            audioProcessing === 0 &&
-            clapProcessing === 0 &&
-            clapQueueLength === 0 &&
-            clapUnembedded === 0,
+            analysisPending === 0 &&
+            audioQueueLength === 0 &&
+            analysis.working === 0 &&
+            embeddingPending === 0 &&
+            embedding.working === 0 &&
+            fingerprintPending === 0 &&
+            fingerprint.working === 0,
     };
 }
 
@@ -2243,250 +3217,4 @@ export async function triggerEnrichmentNow(): Promise<{
     return runEnrichmentCycle(false);
 }
 
- /**
-  * Re-run artist enrichment only (from the beginning)
-  * Resets artist statuses and starts sequential enrichment from Phase 1
-  */
- export async function reRunArtistsOnly(): Promise<{ count: number }> {
-     logger.debug("[Enrichment] Re-running artist enrichment only...");
 
-     const result = await resetArtistsOnly();
-
-     logger.debug("[Enrichment] Starting sequential enrichment from artists phase...");
-     await clearPauseState();
-     immediateEnrichmentRequested = true;
-     invalidateEnrichmentProgress();
-     bumpScheduleToFastInterval();
-
-     // Run full cycle but it will stop after artists phase if paused/stopped
-     await runEnrichmentCycle(false);
-
-     return { count: result.count };
- }
-
- /**
-  * Re-run mood tags only (from the beginning)
-  * Resets mood tags and starts sequential enrichment from Phase 1
-  */
- export async function reRunMoodTagsOnly(): Promise<{ count: number }> {
-     logger.debug("[Enrichment] Re-running mood tags only...");
-
-     const result = await resetMoodTagsOnly();
-
-     logger.debug("[Enrichment] Starting sequential enrichment from mood tags phase...");
-     await clearPauseState();
-     immediateEnrichmentRequested = true;
-     invalidateEnrichmentProgress();
-     bumpScheduleToFastInterval();
-
-     await runEnrichmentCycle(false);
-
-     return { count: result.count };
- }
-
- /**
-  * Re-run audio analysis only
-  * Cleans up stale jobs and queues for audio analysis
-  */
- export async function reRunAudioAnalysisOnly(): Promise<number> {
-     logger.debug("[Enrichment] Re-running audio analysis only...");
-
-     // Reset circuit breaker first so cleanupStaleProcessing doesn't increment a failure
-     // count that we're about to discard anyway
-     audioAnalysisCleanupService.resetCircuitBreaker();
-
-     await audioAnalysisCleanupService.cleanupStaleProcessing();
-
-     // Reset all non-pending tracks so they get re-queued
-     const reset = await prisma.track.updateMany({
-         where: {
-             analysisStatus: { not: "pending" },
-         },
-         data: {
-             analysisStatus: "pending",
-             analysisStartedAt: null,
-             analysisRetryCount: 0,
-         },
-     });
-
-     logger.debug(`[Enrichment] Reset ${reset.count} tracks to pending for audio re-analysis`);
-
-     // Send anything that is not currently scan-valid back through validation. The
-     // queue below only takes scan-valid tracks, so a row left at "invalid" or stuck
-     // at "validating" would silently sit out the re-run. Tracks already marked valid
-     // are left alone so they can be queued immediately rather than waiting a cycle.
-     const rescan = await prisma.track.updateMany({
-         where: { scanStatus: { notIn: ["pending", "valid"] } },
-         data: { scanStatus: "pending", scanError: null, scanStartedAt: null },
-     });
-     if (rescan.count > 0) {
-         logger.debug(`[Enrichment] Reset ${rescan.count} tracks for re-validation`);
-     }
-
-
-     const queued = await queueAudioAnalysis();
-
-     logger.debug(`[Enrichment] Queued ${queued} tracks for audio analysis`);
-
-     // Trigger a cycle immediately so the UI shows running and progress updates
-     await clearPauseState();
-     immediateEnrichmentRequested = true;
-     runEnrichmentCycle(false).catch((err) =>
-         logger.error("[Enrichment] reRunAudioAnalysisOnly cycle error:", err)
-     );
-
-     return queued;
- }
-
-export async function resetAllEnrichmentData(): Promise<{
-    tracksReset: number;
-    artistsReset: number;
-    failuresDeleted: number;
-    moodBucketsDeleted: number;
-}> {
-    const redisInstance = getRedis();
-
-    // === PHASE 1: Stop everything BEFORE touching the database ===
-
-    // Set Node.js flags immediately
-    isStopping = false;
-    isPaused = false;
-    userStopped = true;
-    userStoppedWarned = false;
-
-    // Set synchronous gate FIRST -- Python checks this key before any work path,
-    // so even if it hasn't processed the pub/sub pause yet, it won't pick up new work.
-    // This eliminates the pub/sub race that required the old 3-second sleep.
-    await redisInstance.set("audio:analysis:gate", "paused");
-
-    // Flush all queues so Python can't pick up new work
-    await redisInstance.del(
-        "audio:analysis:queue",
-        "audio:scan:queue",
-    );
-
-    // Send pause to Python analyzer AND stop Node.js enrichment state.
-    // Gate is already set above, so this is best-effort for pub/sub notification.
-    try {
-        await enrichmentStateService.stop();
-    } catch {
-        // May throw if no active enrichment state exists -- gate handles it
-    }
-
-    // === PHASE 2: Wipe all enrichment data ===
-
-    const tracksReset = await prisma.track.updateMany({
-        data: {
-            analysisStatus: "pending",
-            analysisError: null,
-            analysisRetryCount: 0,
-            analysisStartedAt: null,
-            analysisVersion: null,
-            analysisMode: null,
-            analyzedAt: null,
-            scanStatus: "pending",
-            scanError: null,
-            scanStartedAt: null,
-            vibeAnalysisStatus: null,
-            vibeAnalysisStartedAt: null,
-            vibeAnalysisError: null,
-            vibeAnalysisRetryCount: 0,
-            vibeAnalysisStatusUpdatedAt: null,
-            bpm: null,
-            beatsCount: null,
-            key: null,
-            keyScale: null,
-            keyStrength: null,
-            energy: null,
-            loudness: null,
-            dynamicRange: null,
-            danceability: null,
-            valence: null,
-            arousal: null,
-            instrumentalness: null,
-            acousticness: null,
-            speechiness: null,
-            moodHappy: null,
-            moodSad: null,
-            moodRelaxed: null,
-            moodAggressive: null,
-            moodParty: null,
-            moodAcoustic: null,
-            moodElectronic: null,
-            danceabilityMl: null,
-            moodTags: [],
-            essentiaGenres: [],
-            enrichmentTags: [],
-        },
-    });
-
-    const artistsReset = await prisma.artist.updateMany({
-        data: {
-            enrichmentStatus: "pending",
-            lastEnriched: null,
-            summary: null,
-            heroUrl: null,
-            genres: Prisma.DbNull,
-            similarArtistsJson: Prisma.DbNull,
-        },
-    });
-    await prisma.similarArtist.deleteMany({});
-
-    await prisma.$executeRaw`TRUNCATE TABLE track_embeddings`;
-
-    const moodBucketsDeleted = await prisma.moodBucket.deleteMany({});
-
-    const failuresDeleted = await prisma.enrichmentFailure.deleteMany({});
-
-    // === PHASE 3: Clean up remaining Redis state ===
-
-    const keysToDelete = [
-        "audio:worker:heartbeat",
-        "audio:cleanup:last_run",
-        "enrichment:state",
-    ];
-    const vibeKeys = await redisInstance.keys("vibe:map:*");
-    if (vibeKeys.length > 0) keysToDelete.push(...vibeKeys);
-
-    if (keysToDelete.length > 0) {
-        await redisInstance.del(...keysToDelete);
-    }
-
-    // Clean completed/failed jobs from ALL BullMQ queues -- completed job hashes
-    // use jobId-based dedup, so stale entries prevent re-queuing after reset.
-    // Use clean() not obliterate() to preserve queue metadata and running workers.
-    for (const queue of [artistQueue, trackQueue, vibeQueue, podcastQueue]) {
-        try {
-            await queue.clean(0, 0, "completed");
-            await queue.clean(0, 0, "failed");
-            await queue.clean(0, 0, "wait");
-            await queue.clean(0, 0, "delayed");
-            await queue.clean(0, 0, "active");
-        } catch {
-            // Queue may not exist yet
-        }
-    }
-    // vibe-embedding is a separate queue not in the shared imports
-    try {
-        const { Queue } = await import("bullmq");
-        const vQueue = new Queue("vibe-embedding", { connection: redisInstance as any });
-        await vQueue.obliterate({ force: true });
-        await vQueue.close();
-    } catch {
-        // Queue may not exist yet
-    }
-
-    audioAnalysisCleanupService.resetCircuitBreaker();
-
-    // State key was deleted above. Don't re-initialize (that sets "running").
-    // Null state = idle/no active enrichment. User must explicitly start.
-
-    logger.info(`[Enrichment] Full reset: ${tracksReset.count} tracks, ${artistsReset.count} artists, embeddings truncated, ${failuresDeleted.count} failures cleared`);
-
-    return {
-        tracksReset: tracksReset.count,
-        artistsReset: artistsReset.count,
-        failuresDeleted: failuresDeleted.count,
-        moodBucketsDeleted: moodBucketsDeleted.count,
-    };
-}

@@ -57,11 +57,15 @@ jest.mock("../../services/wikidata", () => ({
 }));
 
 
+const noData = { kind: "absent", evidence: { mocked: true } } as const;
+const answeredWith = (value: unknown) =>
+    ({ kind: "answered", value, evidence: { mocked: true } }) as const;
+
 const mockSearchArtist = jest.fn();
 jest.mock("../../services/musicbrainz", () => ({
     musicBrainzService: {
         searchArtist: (...a: unknown[]) => mockSearchArtist(...a),
-        getArtist: jest.fn().mockResolvedValue(null),
+        getArtist: jest.fn().mockResolvedValue(noData),
     },
 }));
 
@@ -105,7 +109,7 @@ describe("the enrichment worker asks every source", () => {
         mockFindArtistArtwork.mockResolvedValue(null);
         mockFindAlbumArtwork.mockResolvedValue(null);
         mockDownloadAndStoreImage.mockResolvedValue(null);
-        mockSearchArtist.mockResolvedValue([]);
+        mockSearchArtist.mockResolvedValue(answeredWith([]));
     });
 
     describe("the artist's hero image", () => {
@@ -143,7 +147,11 @@ describe("the enrichment worker asks every source", () => {
             // so Fanart would 404 on every one. An artist keeps its temp id
             // when MusicBrainz is unreachable -- a no-match instead marks the
             // artist unresolvable and returns before any of this.
-            mockSearchArtist.mockRejectedValue(new Error("MusicBrainz timed out"));
+            // The service answers a timeout with `transient`; it never throws.
+            mockSearchArtist.mockResolvedValue({
+                kind: "transient",
+                error: { code: "TIMEOUT", message: "MusicBrainz timed out" },
+            });
             mockFindArtistArtwork.mockResolvedValue(null);
 
             await enrichSimilarArtist({ ...artist, mbid: "temp-9" });

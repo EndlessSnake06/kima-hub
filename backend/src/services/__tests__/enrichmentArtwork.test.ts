@@ -32,15 +32,19 @@ jest.mock("../../utils/logger", () => ({
 
 const mockGetReleaseGroups = jest.fn();
 const mockSearchAlbum = jest.fn();
+const noData = { kind: "absent", evidence: { mocked: true } } as const;
+const answeredWith = (value: unknown) =>
+    ({ kind: "answered", value, evidence: { mocked: true } }) as const;
+
 jest.mock("../musicbrainz", () => ({
     musicBrainzService: {
-        searchArtist: jest.fn().mockResolvedValue([]),
-        getArtist: jest.fn().mockResolvedValue(null),
-        searchReleaseGroup: jest.fn().mockResolvedValue([]),
-        getReleaseGroup: jest.fn().mockResolvedValue(null),
+        searchArtist: jest.fn().mockResolvedValue(noData),
+        getArtist: jest.fn().mockResolvedValue(noData),
+        searchReleaseGroup: jest.fn().mockResolvedValue(noData),
+        getReleaseGroup: jest.fn().mockResolvedValue(noData),
         getReleaseGroups: (...a: unknown[]) => mockGetReleaseGroups(...a),
         searchAlbum: (...a: unknown[]) => mockSearchAlbum(...a),
-        getRelease: jest.fn().mockResolvedValue(null),
+        getRelease: jest.fn().mockResolvedValue(noData),
         // Real, not a stub: how a title is reduced for matching is the thing
         // under test in the block below.
         normalizeForSearch: (str: string) =>
@@ -179,8 +183,8 @@ describe("enrichment keeps asking every source", () => {
         ];
 
         beforeEach(() => {
-            mockGetReleaseGroups.mockResolvedValue(groups);
-            mockSearchAlbum.mockResolvedValue(null);
+            mockGetReleaseGroups.mockResolvedValue(answeredWith(groups));
+            mockSearchAlbum.mockResolvedValue(noData);
         });
 
         it("finds the album whose title carries an edition marker", async () => {
@@ -203,10 +207,10 @@ describe("enrichment keeps asking every source", () => {
         });
 
         it("still matches a plain title, and prefers the exact one", async () => {
-            mockGetReleaseGroups.mockResolvedValue([
+            mockGetReleaseGroups.mockResolvedValue(answeredWith([
                 { id: "rg-live", title: "Delta Machine (Live)", "primary-type": "Album" },
                 { id: "rg-delta", title: "Delta Machine", "primary-type": "Album" },
-            ]);
+            ]));
             albumNamed("Delta Machine");
 
             const result = await enrichmentService.enrichAlbum("alb-1", ON);
@@ -226,7 +230,7 @@ describe("enrichment keeps asking every source", () => {
                 rgMbid: null,
                 artist: { name: "Depeche Mode", mbid: "temp-9" },
             });
-            mockSearchAlbum.mockResolvedValue({ id: "rg-delta", title: "Delta Machine" });
+            mockSearchAlbum.mockResolvedValue(answeredWith({ id: "rg-delta", title: "Delta Machine" }));
 
             const result = await enrichmentService.enrichAlbum("alb-1", ON);
 
@@ -240,11 +244,11 @@ describe("enrichment keeps asking every source", () => {
             // confidently wrong id is worse than none: it would attach this
             // album to another record permanently.
             albumNamed("Delta Machine");
-            mockGetReleaseGroups.mockResolvedValue([]);
-            mockSearchAlbum.mockResolvedValue({
+            mockGetReleaseGroups.mockResolvedValue(answeredWith([]));
+            mockSearchAlbum.mockResolvedValue(answeredWith({
                 id: "rg-wrong",
                 title: "Songs of Faith and Devotion",
-            });
+            }));
 
             const result = await enrichmentService.enrichAlbum("alb-1", ON);
 
@@ -253,8 +257,8 @@ describe("enrichment keeps asking every source", () => {
 
         it("accepts a search hit that differs only by an edition marker", async () => {
             albumNamed("Delta Machine (Deluxe Edition)");
-            mockGetReleaseGroups.mockResolvedValue([]);
-            mockSearchAlbum.mockResolvedValue({ id: "rg-delta", title: "Delta Machine" });
+            mockGetReleaseGroups.mockResolvedValue(answeredWith([]));
+            mockSearchAlbum.mockResolvedValue(answeredWith({ id: "rg-delta", title: "Delta Machine" }));
 
             const result = await enrichmentService.enrichAlbum("alb-1", ON);
 

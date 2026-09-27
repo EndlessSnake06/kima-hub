@@ -778,10 +778,30 @@ model Track {
   // two tracks that fingerprint identically can be matched without a live API
   // call. Kept nullable: pre-AcoustID tracks and tracks never fingerprinted
   // stay null until the enrichment path fills them in.
+  //
+  // Indexed by an md5(acoustidFingerprint) EXPRESSION index, not a plain
+  // btree on the column: real fpcalc fingerprints are ~3.3–3.6 kB base64,
+  // which overflows the ~2704-byte btree key. Prisma 5.22
+  // cannot express a functional/expression index in @@index, so the index is
+  // created in migration SQL only and is intentionally NOT declared here —
+  // do not re-add @@index([acoustidFingerprint]), it re-creates the broken
+  // btree.
   acoustidFingerprint         String?
 
-  @@index([acoustidFingerprint])
+  // The MusicBrainz recording this track's fingerprint/lookup matched, if any.
+  // The design's Stage 1 answer needs somewhere to live that is not the
+  // EnrichmentFailure text; this column holds the recording MBID itself so a
+  // re-ask can short-circuit on "already answered". Kept nullable: a track
+  // whose lookup found nothing stays null (never a made-up MBID).
+  recordingMbid               String?
+
   corrupt                     Boolean                  @default(false)
+  // Set (with the time it was found missing) by a library scan whose directory
+  // walk did not see the file; cleared (null) by the next scan that finds it.
+  // Null is the normal present-on-disk state. A missing track is never
+  // deleted: its plays, likes and stage answers must survive a NAS hiccup,
+  // and it is shown as missing rather than offered to streaming/enrichment.
+  missingSince                DateTime?
   scanStatus                  String                   @default("pending")
   scanError                   String?
   scanStartedAt               DateTime?
@@ -799,6 +819,7 @@ model Track {
   trackEmbedding              TrackEmbedding?
   trackLyrics                 TrackLyrics?
   playAuditIgnores            PlayAuditIgnore[]
+  trackStages                 TrackStage[]
 
   @@index([analysisStatus])
   @@index([scanStatus])
@@ -936,15 +957,16 @@ model UserDiscoverConfig {
 }
 
 model UserMoodMix {
-  id          String   @id @default(cuid())
-  userId      String   @unique
-  mood        String
-  trackIds    String[]
-  coverUrls   String[]
-  generatedAt DateTime
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  User        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  mood           String
+  trackIds       String[]
+  coverUrls      String[]
+  servedTrackIds String[]
+  generatedAt    DateTime
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  User           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }
@@ -1005,6 +1027,7 @@ model TrackEmbedding {
   analyzed_at   DateTime              @default(now()) @db.Timestamptz(6)
   map_x         Float?
   map_y         Float?
+  map_z         Float?
   track         Track                 @relation(fields: [track_id], references: [id], onDelete: Cascade)
 
   @@index([embedding])
@@ -1167,4 +1190,74 @@ model PlayAuditIgnore {
 
   @@id([userId, trackId])
   @@index([userId])
+}
+
+/// One answer per track per stage.
+/// The stage name is the question ("recording", "analysis",
+/// "embedding"); `status` is that question's answer, and `evidence` holds the
+/// probe that produced it. Because the answer lives on the record and not in a
+/// reused Track column, a track that is `failed` or `blocked` at one stage
+/// cannot hold another track's stage behind it — the sweep reads records, so a
+/// terminal answer is simply not offered again and a `nextRetryAt` that has not
+/// elapsed is not due yet.
+///
+/// `status` is one of: pending | working | done | failed | blocked.
+/// `failureClass` is one of: DAMAGED | UNSUPPORTED | MULTICANNEL | INCONCLUSIVE
+/// (the classifier's Disposition), or null while nothing has failed.
+model TrackStage {
+  id               String    @id @default(cuid())
+  trackId          String
+  /// Question being answered: "recording" | "analysis" | "embedding".
+  stage            String
+  status           String    @default("pending")
+  /// Which producer answers this stage ("analyzer", "clap", "musicbrainz"…).
+  source           String?
+  /// Attempts actually made. A timeout does not count as an attempt.
+  attempt          Int       @default(0)
+  lastErrorCode    String?
+  lastErrorMessage String?
+  failureClass     String?
+  /// False means terminal: never offered again until a human re-decides it.
+  retryable        Boolean   @default(true)
+  /// When a retry becomes due. Null on a first, unanswered attempt.
+  nextRetryAt      DateTime?
+  /// How the answer was reached: probe command, return code, stderr, decoder,
+  /// sample rate, channels, duration.
+  evidence         Json?
+  startedAt        DateTime?
+  finishedAt       DateTime?
+  /// When a human decided this answer was final, and who.
+  decidedAt        DateTime?
+  decidedBy        String?
+  track            Track     @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  /// One answer per stage per track — this is what stops the same question
+  /// being answered twice into two different rows.
+  @@unique([trackId, stage])
+  /// What the stage queue actually queries: "give me the next work per stage".
+  @@index([stage, status, nextRetryAt])
+  @@map("TrackStage")
+}
+
+/// One record per *source*, so a paused source is one row rather than 2,787
+/// A source pause is a fact about MusicBrainz/AcoustID/
+/// ListenBrainz, not about 2,787 tracks that all happen to be waiting on it.
+model SourceAttempt {
+  id               String    @id @default(cuid())
+  /// "musicbrainz" | "acoustid" | "listenbrainz" | …
+  source           String    @unique
+  status           String    @default("pending")
+  attempt          Int       @default(0)
+  lastErrorCode    String?
+  lastErrorMessage String?
+  failureClass     String?
+  retryable        Boolean   @default(true)
+  nextRetryAt      DateTime?
+  evidence         Json?
+  startedAt        DateTime?
+  finishedAt       DateTime?
+  decidedAt        DateTime?
+  decidedBy        String?
+
+  @@map("SourceAttempt")
 }

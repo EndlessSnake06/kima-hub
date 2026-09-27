@@ -150,7 +150,7 @@ export interface ScanJobData {
 export interface ScanJobResult {
     tracksAdded: number;
     tracksUpdated: number;
-    tracksRemoved: number;
+    tracksMissing: number;
     tracksCorrupt: number;
     errors: Array<{ file: string; error: string }>;
     duration: number;
@@ -228,14 +228,14 @@ export async function processScan(
                 userId,
                 payload: {
                     jobId: String(job.id),
-                    result: { tracksAdded: result.tracksAdded, tracksUpdated: result.tracksUpdated, tracksRemoved: result.tracksRemoved, tracksCorrupt: result.tracksCorrupt },
-                },
-            });
-        }
+                      result: { tracksAdded: result.tracksAdded, tracksUpdated: result.tracksUpdated, tracksMissing: result.tracksMissing, tracksCorrupt: result.tracksCorrupt },
+                  },
+              });
+          }
 
-        logger.debug(
-            `[ScanJob ${job.id}] Scan complete: +${result.tracksAdded} ~${result.tracksUpdated} -${result.tracksRemoved} corrupt:${result.tracksCorrupt}`
-        );
+          logger.debug(
+              `[ScanJob ${job.id}] Scan complete: +${result.tracksAdded} ~${result.tracksUpdated} missing:${result.tracksMissing} corrupt:${result.tracksCorrupt}`
+          );
 
         // If this scan was triggered by a download completion, mark download jobs as completed
         if (
@@ -496,7 +496,7 @@ export async function processScan(
                 await notificationService.notifySystem(
                     userId,
                     "Library Scan Complete",
-                    `Added ${result.tracksAdded} tracks, updated ${result.tracksUpdated}, removed ${result.tracksRemoved}${result.tracksCorrupt > 0 ? `, ${result.tracksCorrupt} corrupt` : ""}`
+                      `Added ${result.tracksAdded} tracks, updated ${result.tracksUpdated}, missing ${result.tracksMissing}${result.tracksCorrupt > 0 ? `, ${result.tracksCorrupt} corrupt` : ""}`
                 );
             } catch (error) {
                 logger.error(

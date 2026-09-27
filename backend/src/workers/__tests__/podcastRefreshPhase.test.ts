@@ -25,6 +25,12 @@ const mockPodcastFindMany = jest.fn();
 const mockPodcastUpdateMany = jest.fn().mockResolvedValue({ count: 0 });
 
 jest.mock("../enrichmentQueues", () => ({
+    QUEUE_NAMES: {
+        ARTISTS: "enrichment-artists",
+        TRACKS: "enrichment-tracks",
+        VIBE: "enrichment-vibe",
+        PODCASTS: "enrichment-podcasts",
+    },
     artistQueue: { add: mockQueueAdd, clean: mockQueueClean, resume: mockQueueResume },
     trackQueue: { add: mockQueueAdd, clean: mockQueueClean, resume: mockQueueResume },
     vibeQueue: { add: mockQueueAdd, clean: mockQueueClean, resume: mockQueueResume },

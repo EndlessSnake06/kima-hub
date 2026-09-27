@@ -18,6 +18,7 @@ import { logger } from "../utils/logger";
 import { hasRealMbid } from "./artistIdentity";
 import { prisma } from "../utils/db";
 import { musicBrainzService } from "./musicbrainz";
+import { failureCause } from "../utils/outcome";
 import { findAlbumArtwork, findArtistArtwork } from "./artwork";
 import { downloadAndStoreImage, isNativePath } from "./imageStorage";
 import {
@@ -175,18 +176,21 @@ class EnrichmentService {
             config.sources.musicbrainz &&
             !hasRealMbid(artist.mbid)
         ) {
-            try {
-                const mbResults = await musicBrainzService.searchArtist(
-                    artist.name,
-                    1
-                );
-                if (mbResults.length > 0) {
-                    enrichmentData.mbid = mbResults[0].id;
-                    enrichmentData.confidence += 0.4;
-                    logger.debug(`  Found MBID: ${enrichmentData.mbid}`);
-                }
-            } catch (error) {
-                logger.error(` MusicBrainz lookup failed:`, error);
+            const found = await musicBrainzService.searchArtist(
+                artist.name,
+                1
+            );
+            if (found.kind === "answered" && found.value[0]) {
+                enrichmentData.mbid = found.value[0].id;
+                enrichmentData.confidence += 0.4;
+                logger.debug(`  Found MBID: ${enrichmentData.mbid}`);
+            } else if (
+                found.kind === "answered" ||
+                found.kind === "absent"
+            ) {
+                logger.debug(`  No MusicBrainz match for ${artist.name}`);
+            } else {
+                logger.error(`  MusicBrainz lookup ${found.kind}: ${failureCause(found)}`);
             }
         }
 
@@ -285,19 +289,19 @@ class EnrichmentService {
 
         // Step 1: Try to find MBID
         if (config.sources.musicbrainz) {
-            try {
-                // If artist has MBID, search their discography
-                if (
-                    album.artist.mbid &&
-                    hasRealMbid(album.artist.mbid)
-                ) {
-                    const releaseGroups =
-                        await musicBrainzService.getReleaseGroups(
-                            album.artist.mbid,
-                            ["album", "ep"],
-                            50
-                        );
+            // If artist has MBID, search their discography
+            if (
+                album.artist.mbid &&
+                hasRealMbid(album.artist.mbid)
+            ) {
+                const discography =
+                    await musicBrainzService.getReleaseGroups(
+                        album.artist.mbid,
+                        ["album", "ep"],
+                        50
+                    );
 
+                if (discography.kind === "answered") {
                     // Match by title, in order of how sure we can be.
                     //
                     // Exact first, then punctuation-insensitive, then with
@@ -309,15 +313,15 @@ class EnrichmentService {
                     // match anything. On a real library that was about a third
                     // of the albums left without an id.
                     //
-                    // The album keeps its own title either way -- this decides
+                    // The album keeps its own title either way — this decides
                     // what the album IS, not what it is called.
                     const wanted = album.title;
                     const match =
-                        releaseGroups.find(
+                        discography.value.find(
                             (rg: any) =>
                                 rg.title.toLowerCase() === wanted.toLowerCase()
                         ) ||
-                        releaseGroups.find((rg: any) =>
+                        discography.value.find((rg: any) =>
                             titlesAgree(rg.title, wanted)
                         );
 
@@ -331,42 +335,56 @@ class EnrichmentService {
                         logger.debug(`  Found MBID: ${enrichmentData.rgMbid}`);
 
                         // Try to get label info from first release
-                        try {
-                            const rgDetails =
-                                await musicBrainzService.getReleaseGroup(
-                                    match.id
+                        const rgDetails =
+                            await musicBrainzService.getReleaseGroup(
+                                match.id
+                            );
+                        const releaseId =
+                            rgDetails.kind === "answered"
+                                ? rgDetails.value?.releases?.[0]?.id
+                                : undefined;
+                        if (releaseId) {
+                            const releaseInfo =
+                                await musicBrainzService.getRelease(
+                                    releaseId
                                 );
-                            if (rgDetails?.releases?.[0]?.id) {
-                                const releaseId = rgDetails.releases[0].id;
-                                const releaseInfo =
-                                    await musicBrainzService.getRelease(
-                                        releaseId
-                                    );
-                                if (
-                                    releaseInfo?.["label-info"]?.[0]?.label
-                                        ?.name
-                                ) {
-                                    enrichmentData.label =
-                                        releaseInfo["label-info"][0].label.name;
+                            if (releaseInfo.kind === "answered") {
+                                const label =
+                                    releaseInfo.value?.["label-info"]?.[0]
+                                        ?.label?.name;
+                                if (label) {
+                                    enrichmentData.label = label;
                                     logger.debug(
                                         `  Found label: ${enrichmentData.label}`
                                     );
                                 }
+                            } else if (releaseInfo.kind === "absent") {
+                                logger.debug(
+                                    `  Label lookup: MusicBrainz has nothing`
+                                );
+                            } else {
+                                logger.debug(
+                                    `  Label lookup ${releaseInfo.kind}: ${failureCause(releaseInfo)}`
+                                );
                             }
-                        } catch (error) {
-                            logger.debug(`Could not fetch label info`);
                         }
                     }
+                } else if (discography.kind === "absent") {
+                    logger.debug(
+                        `  MusicBrainz has no release-groups for ${album.artist.name}`
+                    );
+                } else {
+                    logger.error(
+                        `  Discography lookup ${discography.kind}: ${failureCause(discography)}`
+                    );
                 }
-            } catch (error) {
-                logger.error(` MusicBrainz lookup failed:`, error);
             }
 
             // Fallback: search MusicBrainz by name.
             //
             // The branch above needs the ARTIST to already carry a real MBID,
-            // and has no else. A library that was never tagged -- which is the
-            // normal case for anything not run through Picard or beets --
+            // and has no else. A library that was never tagged — which is the
+            // normal case for anything not run through Picard or beets —
             // starts with a placeholder id on every artist, so that branch
             // never fires and the album is never identified at all. This is
             // the path for those, and it is the search that already exists
@@ -375,28 +393,33 @@ class EnrichmentService {
             // What the search returns is NOT trusted on its own: it hands back
             // its best hit with no check that the title is even close, so
             // accepting it blindly would stamp confident, wrong ids onto
-            // albums -- worse than leaving them unidentified. The result has
+            // albums — worse than leaving them unidentified. The result has
             // to survive the same comparison the discography match uses.
             if (!enrichmentData.rgMbid) {
-                try {
-                    const hit = await musicBrainzService.searchAlbum(
-                        album.title,
-                        album.artist.name
-                    );
+                const hit = await musicBrainzService.searchAlbum(
+                    album.title,
+                    album.artist.name
+                );
 
-                    if (hit && titlesAgree(hit.title, album.title)) {
-                        enrichmentData.rgMbid = hit.id;
-                        enrichmentData.confidence += 0.3;
-                        logger.debug(
-                            `  Found MBID by search: ${hit.id} ("${hit.title}")`
-                        );
-                    } else if (hit) {
-                        logger.debug(
-                            `  Rejected search hit "${hit.title}" for "${album.title}" -- titles do not agree`
-                        );
-                    }
-                } catch (error) {
-                    logger.debug(`  MusicBrainz album search failed`);
+                if (
+                    hit.kind === "answered" &&
+                    titlesAgree(hit.value.title, album.title)
+                ) {
+                    enrichmentData.rgMbid = hit.value.id;
+                    enrichmentData.confidence += 0.3;
+                    logger.debug(
+                        `  Found MBID by search: ${hit.value.id} ("${hit.value.title}")`
+                    );
+                } else if (hit.kind === "answered") {
+                    logger.debug(
+                        `  Rejected search hit "${hit.value.title}" for "${album.title}" — titles do not agree`
+                    );
+                } else if (hit.kind === "absent") {
+                    logger.debug(`  No MusicBrainz hit for "${album.title}"`);
+                } else {
+                    logger.debug(
+                        `  MusicBrainz album search ${hit.kind}: ${failureCause(hit)}`
+                    );
                 }
             }
         }
@@ -569,11 +592,36 @@ class EnrichmentService {
  * Used to CHECK a candidate, never to rename anything. Locally "Playing the
  * Angel (Deluxe)" stays distinct from "Playing the Angel".
  */
-function titlesAgree(a: string, b: string): boolean {
-    const fold = (t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, "");
-    const bare = (t: string) => fold(musicBrainzService.normalizeForSearch(t));
+export function titlesAgree(a: string, b: string): boolean {
+    const bare = (t: string) => foldTitle(musicBrainzService.normalizeForSearch(t));
     if (!a || !b) return false;
-    return fold(a) === fold(b) || bare(a) === bare(b);
+    // Identical text is the same title even when nothing survives the fold
+    // (an album called "!!!"); the empty-fold guard below is for DIFFERENT text.
+    const exact = (t: string) => t.normalize("NFKC").toLowerCase().trim();
+    if (exact(a) !== "" && exact(a) === exact(b)) return true;
+    const same = (x: string, y: string) => x !== "" && x === y;
+    return same(foldTitle(a), foldTitle(b)) || same(bare(a), bare(b));
+}
+
+/**
+ * Reduce a title to the characters that carry its meaning, in any script.
+ *
+ * The first version kept only [a-z0-9], so every Japanese, Korean or Cyrillic
+ * title folded to "" and any two of them "agreed" -- a search hit for one
+ * record was accepted as another. Letters, numbers and combining marks of every
+ * script are kept now (marks, because in Devanagari or Thai they are part of the
+ * word, and in Japanese a dakuten changes the word). The one thing dropped from
+ * marks is a Latin accent, so "Café" and "Cafe" still agree the way tag
+ * spellings usually differ. An empty fold never agrees with anything: see the
+ * caller.
+ */
+function foldTitle(t: string): string {
+    return t
+        .normalize("NFKD")
+        .replace(/(\p{Script=Latin})\p{M}+/gu, "$1")
+        .normalize("NFKC")
+        .toLowerCase()
+        .replace(/[^\p{L}\p{M}\p{N}]/gu, "");
 }
 
 export const enrichmentService = new EnrichmentService();
