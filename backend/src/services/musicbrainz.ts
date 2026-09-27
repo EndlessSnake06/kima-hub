@@ -153,16 +153,33 @@ class MusicBrainzService {
                 evidence: outcome.evidence,
                 savedAt: new Date().toISOString(),
             };
-            await redisClient.setex(cacheKey, ANSWERED_TTL, JSON.stringify(envelope));
+            await this.cacheWrite(cacheKey, ANSWERED_TTL, envelope);
         } else if (outcome.kind === "absent") {
             const envelope: CacheEnvelope = {
                 __outcome: "absent",
                 evidence: outcome.evidence,
                 savedAt: new Date().toISOString(),
             };
-            await redisClient.setex(cacheKey, ABSENT_TTL, JSON.stringify(envelope));
+            await this.cacheWrite(cacheKey, ABSENT_TTL, envelope);
         }
         return outcome;
+    }
+
+    /**
+     * A failed cache write never un-answers the source: the envelope is
+     * for the next caller, and the caller in front of us already has the
+     * real answer.
+     */
+    private async cacheWrite(
+        cacheKey: string,
+        ttlSeconds: number,
+        envelope: CacheEnvelope
+    ): Promise<void> {
+        try {
+            await redisClient.setex(cacheKey, ttlSeconds, JSON.stringify(envelope));
+        } catch (err) {
+            logger.warn(`Redis cache write failed for ${cacheKey}:`, err);
+        }
     }
 
     async searchArtist(
