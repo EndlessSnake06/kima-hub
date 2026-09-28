@@ -197,7 +197,7 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
             return res.status(404).json({ error: "Artist not found" });
         }
 
-        // ── Parallelize independent external calls (Defect #1) ──
+        // ── Parallelize independent external calls ──
         // bio (Wikidata→Wikipedia), similar artists (local centroid /
         // ListenBrainz dataset), artwork, and getReleaseGroups are all
         // independent of each other. Run them in parallel so a dead
@@ -206,9 +206,7 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
         let albums: any[] = [];
 
         // Bio: Wikidata first, Wikipedia abstract via the MB sitelink
-        // second — both live inside wikidataService.getArtistInfo. This
-        // replaces the Last.fm bio tier; the disambiguation-page filter
-        // the old path needed is a Last.fm artifact and is gone with it.
+        // second — both live inside wikidataService.getArtistInfo.
         const wdInfo = mbid
             ? await withTimeout(
                   (await import("../services/wikidata")).wikidataService.getArtistInfo(
@@ -515,8 +513,8 @@ router.get("/album/:mbid", async (req, res) => {
         const artistMbid = artistCredit?.[0]?.artist?.id;
         const albumTitle = releaseGroup?.title || release?.title;
 
-        // Get album info from MusicBrainz (replaces the Last.fm album
-        // lookup). MB is the source of the release-group itself; the
+        // Get album info from MusicBrainz. MB is the source of the
+        // release-group itself; the
         // annotation carries the wiki-style summary when one exists, and
         // tags come from the release-group record. The cover cascade
         // (Deezer / CAA / fanart) is unchanged below.
@@ -542,14 +540,9 @@ router.get("/album/:mbid", async (req, res) => {
             }
         }
 
-        // Album cover art.
-        //
-        // This used to build a coverartarchive.org address by hand, HEAD it,
-        // fall back to Deezer, and -- when neither had anything -- send the
-        // archive address anyway, under a comment reading "might 404, but
-        // better than nothing". It is not better than nothing: the browser
-        // takes the 404, the page shows a broken box, and the failure never
-        // reaches this server. Ask the providers and accept null.
+        // Album cover art: ask the artwork cascade and accept null. A URL
+        // that was never verified renders a broken box the browser eats
+        // silently, and the failure never reaches this server.
         const coverUrl =
             (
                 await findAlbumArtwork({
