@@ -10,11 +10,17 @@
  * `kima_v1_test` database (the Jest harness clones one per worker), so they
  * verify the table that is actually applied — they fail until the migration
  * and `getNextWork` land.
- *
- * Run: cd backend && npx jest src/workers/__tests__/getNextWork.test.ts --forceExit --maxWorkers=1
  */
 
 import { prisma } from "../../utils/db";
+import { redisClient } from "../../utils/redis";
+import {
+  artistQueue,
+  trackQueue,
+  vibeQueue,
+  podcastQueue,
+} from "../enrichmentQueues";
+import { enrichmentStateService } from "../../services/enrichmentState";
 import {
   getNextWork,
   STAGE_QUEUES,
@@ -114,6 +120,18 @@ describe("getNextWork", () => {
   afterAll(async () => {
     await wipe();
     await prisma.$disconnect();
+    // Importing the real modules opens connections the unit under test never
+    // uses: the shared Redis client, four BullMQ queues built at module scope
+    // in enrichmentQueues, and the enrichmentState singleton's two clients.
+    // Left open, Jest finishes the suite and then outlives it on those sockets.
+    await Promise.all([
+      artistQueue.close(),
+      trackQueue.close(),
+      vibeQueue.close(),
+      podcastQueue.close(),
+      enrichmentStateService.disconnect(),
+    ]);
+    redisClient.disconnect();
   });
 
   it("returns the 20 due records and skips terminal, not-yet-due and blocked ones", async () => {
