@@ -30,6 +30,15 @@ jest.mock("../../services/umapProjection", () => ({
 }));
 
 import vibeRouter from "../vibe";
+import { redisClient } from "../../utils/redis";
+import { closeClient } from "../../utils/closeRedisClient";
+
+afterAll(async () => {
+    // The router pulls in services/featureDetection, which opens the shared
+    // Redis client at import. Left open, Jest finishes the suite and outlives
+    // the process on that socket.
+    await closeClient(redisClient);
+});
 
 function app() {
     const a = express();

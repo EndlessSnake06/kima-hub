@@ -81,6 +81,8 @@ import express from 'express';
 import request from 'supertest';
 import discoverRoutes from '../discover';
 import { prisma } from '../../utils/db';
+import { redisClient } from '../../utils/redis';
+import { closeClient } from '../../utils/closeRedisClient';
 
 // Pin the wall clock. /current computes its calendar week from real `new Date()`
 // (discover.ts:330), so without this the hardcoded CALENDAR_MONDAY='2026-05-25'
@@ -92,8 +94,12 @@ beforeAll(() => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date('2026-05-25T12:00:00.000Z'));
 });
-afterAll(() => {
+afterAll(async () => {
     jest.useRealTimers();
+    // The router pulls in services/listenBrainz, which opens the shared Redis
+    // client at import. Left open, Jest finishes the suite and outlives the
+    // process on that socket.
+    await closeClient(redisClient);
 });
 
 function makeApp() {

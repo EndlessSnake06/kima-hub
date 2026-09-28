@@ -15,6 +15,10 @@ import { prisma } from "../../utils/db";
 import authRoutes from "../auth";
 import { subsonicRouter } from "../subsonic/index";
 import { createApiKey, hashApiKey } from "../../services/users/apiKeyStore";
+import { queues } from "../../workers/queues";
+import { redisClient } from "../../utils/redis";
+import { closeClient } from "../../utils/closeRedisClient";
+import { closeQueue } from "../../utils/closeQueue";
 
 jest.setTimeout(30_000);
 
@@ -34,7 +38,15 @@ async function wipe() {
 }
 
 beforeEach(wipe);
-afterAll(wipe);
+afterAll(async () => {
+    await wipe();
+    await prisma.$disconnect();
+    // The subsonic router mounts routes from workers/queues, whose module
+    // scope builds three BullMQ queues; middleware/auth reaches the shared
+    // Redis client. Left open, Jest finishes and outlives those sockets.
+    await Promise.all(queues.map((q) => closeQueue(q)));
+    await closeClient(redisClient);
+});
 
 describe("API key auth, hashed at rest", () => {
     it("a freshly minted key authenticates via X-API-Key on a real protected route", async () => {

@@ -17,12 +17,13 @@
  *     (`pending`) until the pause lifts.
  *
  * Run with:
- *   npx jest src/__tests__/enrichment-per-source-pause.test.ts --forceExit --maxWorkers=1
+ *   npx jest src/__tests__/enrichment-per-source-pause.test.ts --maxWorkers=1
  */
 
 import { prisma } from "../utils/db";
 import { sourcePauseController } from "../services/sourcePauseController";
 import { getNextWork, recordStageFailure } from "../workers/unifiedEnrichment";
+import { closeEngineConnections } from "./helpers/engineConnections";
 
 const PREFIX = "pause";
 const id = (n: string) => `${PREFIX}_${n}`;
@@ -107,6 +108,11 @@ beforeEach(async () => {
 afterAll(async () => {
     await wipe();
     await prisma.$disconnect();
+    // Importing the real worker module opens connections the unit under
+    // test never uses: four BullMQ queues built at module scope in
+    // enrichmentQueues, the enrichmentState singleton's two clients, and
+    // the shared Redis client. Left open, Jest finishes and outlives it.
+    await closeEngineConnections();
 });
 
 describe("the dequeuer consults the pause before handing out work", () => {

@@ -25,14 +25,7 @@ import {
     type FailureClass,
 } from "../services/enrichmentErrorCodeClassifier";
 import { recordStageFailure } from "../workers/unifiedEnrichment";
-import {
-    artistQueue,
-    podcastQueue,
-    trackQueue,
-    vibeQueue,
-} from "../workers/enrichmentQueues";
-import { enrichmentStateService } from "../services/enrichmentState";
-import { redisClient } from "../utils/redis";
+import { closeEngineConnections } from "./helpers/engineConnections";
 
 const PREFIX = "incon";
 const id = (n: string) => `${PREFIX}_${n}`;
@@ -93,14 +86,7 @@ afterAll(async () => {
     // test never uses: four BullMQ queues built at module scope in
     // enrichmentQueues, the enrichmentState singleton's two clients, and
     // the shared Redis client. Left open, Jest finishes and outlives it.
-    await Promise.all([
-        artistQueue.close(),
-        trackQueue.close(),
-        vibeQueue.close(),
-        podcastQueue.close(),
-        enrichmentStateService.disconnect(),
-    ]);
-    await redisClient.quit();
+    await closeEngineConnections();
 });
 
 describe("classifyFailure — the four classes, matching classifier.py", () => {

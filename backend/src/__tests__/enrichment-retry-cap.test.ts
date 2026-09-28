@@ -18,7 +18,7 @@
  * forever.
  *
  * Run with:
- *   npx jest src/__tests__/enrichment-retry-cap.test.ts --forceExit --maxWorkers=1
+ *   npx jest src/__tests__/enrichment-retry-cap.test.ts --maxWorkers=1
  */
 
 import { prisma } from "../utils/db";
@@ -30,6 +30,7 @@ import {
     STAGE_RETRY_CAP,
 } from "../workers/unifiedEnrichment";
 import { sourcePauseController } from "../services/sourcePauseController";
+import { closeEngineConnections } from "./helpers/engineConnections";
 
 const PREFIX = "retrycap";
 const id = (n: string) => `${PREFIX}_${n}`;
@@ -117,6 +118,11 @@ afterAll(async () => {
     await wipe();
     await prisma.sourceAttempt.deleteMany({ where: { source: "musicbrainz" } });
     await prisma.$disconnect();
+    // Importing the real worker module opens connections the unit under
+    // test never uses: four BullMQ queues built at module scope in
+    // enrichmentQueues, the enrichmentState singleton's two clients, and
+    // the shared Redis client. Left open, Jest finishes and outlives it.
+    await closeEngineConnections();
 });
 
 describe("increasing waits for temporary errors", () => {

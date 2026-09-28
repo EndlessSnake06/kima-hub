@@ -13,14 +13,7 @@
  */
 
 import { prisma } from "../../utils/db";
-import { redisClient } from "../../utils/redis";
-import {
-  artistQueue,
-  trackQueue,
-  vibeQueue,
-  podcastQueue,
-} from "../enrichmentQueues";
-import { enrichmentStateService } from "../../services/enrichmentState";
+import { closeEngineConnections } from "../../__tests__/helpers/engineConnections";
 import {
   getNextWork,
   STAGE_QUEUES,
@@ -121,17 +114,9 @@ describe("getNextWork", () => {
     await wipe();
     await prisma.$disconnect();
     // Importing the real modules opens connections the unit under test never
-    // uses: the shared Redis client, four BullMQ queues built at module scope
-    // in enrichmentQueues, and the enrichmentState singleton's two clients.
-    // Left open, Jest finishes the suite and then outlives it on those sockets.
-    await Promise.all([
-      artistQueue.close(),
-      trackQueue.close(),
-      vibeQueue.close(),
-      podcastQueue.close(),
-      enrichmentStateService.disconnect(),
-    ]);
-    redisClient.disconnect();
+    // uses: the enrichment queues, the state singleton's clients, and the
+    // shared Redis client. Left open, Jest outlives the suite on them.
+    await closeEngineConnections();
   });
 
   it("returns the 20 due records and skips terminal, not-yet-due and blocked ones", async () => {

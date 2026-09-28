@@ -16,10 +16,19 @@
  * minutes" headroom to spare); embedding gets a CLAP-window-sized budget.
  *
  * Run with:
- *   npx jest src/__tests__/enrichment-timeout-per-stage.test.ts --forceExit --maxWorkers=1
+ *   npx jest src/__tests__/enrichment-timeout-per-stage.test.ts --maxWorkers=1
  */
 
 import * as unified from "../workers/unifiedEnrichment";
+import { closeEngineConnections } from "./helpers/engineConnections";
+
+afterAll(async () => {
+    // Reading constants still loads the module: the four BullMQ queues
+    // built at module scope in enrichmentQueues, the enrichmentState
+    // singleton's two clients, and the shared Redis client all come with
+    // it. Left open, Jest finishes and outlives those sockets.
+    await closeEngineConnections();
+});
 
 describe("per-stage timeouts", () => {
     describe("each stage has its own timeout", () => {

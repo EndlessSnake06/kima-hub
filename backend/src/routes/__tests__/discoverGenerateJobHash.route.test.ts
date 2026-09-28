@@ -64,6 +64,15 @@ import request from 'supertest';
 import discoverRoutes from '../discover';
 import { prisma } from '../../utils/db';
 import { discoverQueue } from '../../workers/queues';
+import { redisClient } from '../../utils/redis';
+import { closeClient } from '../../utils/closeRedisClient';
+
+afterAll(async () => {
+    // The router pulls in services/listenBrainz, which opens the shared Redis
+    // client at import. Left open, Jest finishes the suite and outlives the
+    // process on that socket.
+    await closeClient(redisClient);
+});
 
 function makeApp() {
     const app = express();

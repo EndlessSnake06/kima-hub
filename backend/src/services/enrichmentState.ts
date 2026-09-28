@@ -8,6 +8,7 @@
 import { logger } from "../utils/logger";
 import Redis from "ioredis";
 import { config } from "../config";
+import { closeClient } from "../utils/closeRedisClient";
 
 const ENRICHMENT_STATE_KEY = "enrichment:state";
 const ENRICHMENT_CONTROL_CHANNEL = "enrichment:control";
@@ -350,8 +351,8 @@ class EnrichmentStateService {
      * Cleanup connections
      */
     async disconnect(): Promise<void> {
-        await this.redis.quit().catch(() => {});
-        await this.publisher.quit().catch(() => {});
+        await closeClient(this.redis).catch(() => {});
+        await closeClient(this.publisher).catch(() => {});
     }
 }
 

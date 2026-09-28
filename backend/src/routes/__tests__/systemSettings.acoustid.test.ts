@@ -48,6 +48,18 @@ import request from "supertest";
 import express from "express";
 import systemSettingsRouter from "../systemSettings";
 import { prisma } from "../../utils/db";
+import { queues } from "../../workers/queues";
+import { redisClient } from "../../utils/redis";
+import { closeClient } from "../../utils/closeRedisClient";
+import { closeQueue } from "../../utils/closeQueue";
+
+afterAll(async () => {
+    // The router reaches jobs/queueCleaner, which enqueues through the real
+    // BullMQ queues, and its imports open the shared Redis client. Left open,
+    // Jest finishes the suite and outlives the process on those sockets.
+    await Promise.all(queues.map((q) => closeQueue(q)));
+    await closeClient(redisClient);
+});
 
 const app = express();
 app.use(express.json());

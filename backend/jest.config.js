@@ -11,6 +11,11 @@ module.exports = {
     preset: 'ts-jest',
     testEnvironment: 'node',
     setupFiles: ['<rootDir>/src/__mocks__/test-env.cjs'],
+    // Reaps ioredis clients (the shared redisClient, BullMQ queue connections,
+    // enrichmentState's pair) at every file boundary, so no client opened by a
+    // test file's imports keeps the event loop alive after Jest reports done.
+    // See clientReaper.cjs.
+    setupFilesAfterEnv: ['<rootDir>/src/__mocks__/clientReaper.cjs'],
     // Runs ONCE, in a separate process, before any worker/test file starts --
     // see test-global-setup.cjs for why the vibe-schema bootstrap has to live
     // here rather than in one test file's own beforeAll.
