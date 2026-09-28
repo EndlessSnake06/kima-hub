@@ -159,6 +159,7 @@ jest.mock("../../utils/db", () => ({
         },
         trackStage: {
             deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+            count: jest.fn().mockResolvedValue(0),
         },
         sourceAttempt: {
             deleteMany: jest.fn().mockResolvedValue({ count: 0 }),

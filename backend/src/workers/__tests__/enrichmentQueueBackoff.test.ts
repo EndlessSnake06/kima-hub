@@ -72,6 +72,9 @@ jest.mock("../../utils/db", () => ({
             updateMany: mockTrackUpdateMany,
             update: mockTrackUpdate,
         },
+        trackStage: {
+            count: jest.fn().mockResolvedValue(0),
+        },
         $queryRawUnsafe: mockQueryRawUnsafe,
         $executeRawUnsafe: jest.fn().mockResolvedValue(1),
     },
