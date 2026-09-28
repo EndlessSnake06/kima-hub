@@ -1,6 +1,7 @@
 import { Router } from "express";
 import axios from "axios";
 import { logger } from "../utils/logger";
+import { withTimeout } from "../utils/timeout";
 import { getSimilarArtists } from "../services/artistSimilarity";
 import { musicBrainzService } from "../services/musicbrainz";
 import { deezerService } from "../services/deezer";
@@ -27,13 +28,6 @@ const DISCOVERY_CACHE_TTL = 24 * 60 * 60; // 24 hours
  * Uses Promise.race so a 5-second timeout lets the caller fall back
  * to partial data instead of waiting for the HTTP keep-alive to expire.
  */
-function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
-    let timer: ReturnType<typeof setTimeout>;
-    const timeout = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`${label} timed out`)), ms);
-    });
-    return Promise.race([p.finally(() => clearTimeout(timer)), timeout]);
-}
 
 // GET /artists/preview/:artistName/:trackTitle - Get Deezer preview URL for a track
 router.get("/preview/:artistName/:trackTitle", async (req, res) => {
@@ -222,7 +216,7 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
                       mbid
                   ),
                   8000,
-                  "Wikidata getArtistInfo"
+                  "Wikidata getArtistInfo timed out"
               )
             : { summary: null, heroUrl: null };
         const bio = wdInfo?.summary || null;

@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import { EventEmitter } from "events";
 import { redisClient } from "../utils/redis";
+import { withTimeout } from "../utils/timeout";
 import { logger } from "../utils/logger";
 import { efFor, withEfSearch } from "../utils/knn";
 
@@ -31,13 +32,6 @@ function softDuplicate(): RedisConn {
 
 // Bound a Redis op so an unreachable server surfaces as an error instead of an
 // unbounded hang (the offline queue buffers commands indefinitely while down).
-function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const timeout = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`text-embed ${label} timed out`)), ms);
-    });
-    return Promise.race([p.finally(() => clearTimeout(timer)), timeout]);
-}
 
 let subscriber: RedisConn | null = null;
 let subscriberPromise: Promise<RedisConn> | null = null;
@@ -92,7 +86,7 @@ async function ensureSubscriber(): Promise<RedisConn> {
             // Offline queue buffers psubscribe until connected; bound it so a
             // genuinely unreachable Redis fails instead of hanging the caller (the
             // per-request timeout only starts after this resolves).
-            await withTimeout(sub.psubscribe(`${RESPONSE_PREFIX}*`), CONNECT_TIMEOUT_MS, "subscribe");
+            await withTimeout(sub.psubscribe(`${RESPONSE_PREFIX}*`), CONNECT_TIMEOUT_MS, "subscribe timed out");
         } catch (err) {
             sub.disconnect(); // close the half-open socket instead of leaking it
             throw err;
@@ -151,7 +145,7 @@ export async function getTextEmbedding(text: string): Promise<number[]> {
         await withTimeout(
             getPublisher().publish(REQUEST_CHANNEL, JSON.stringify({ requestId, text })),
             PUBLISH_TIMEOUT_MS,
-            "publish",
+            "publish timed out"
         );
     } catch (err) {
         // The request never reached the analyzer; tear down the pending listener

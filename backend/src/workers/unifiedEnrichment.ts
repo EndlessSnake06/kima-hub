@@ -12,6 +12,7 @@
  */
 
 import { logger } from "../utils/logger";
+import { withTimeout } from "../utils/timeout";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../utils/db";
 import Redis from "ioredis";
@@ -397,17 +398,6 @@ async function resumeInfrastructure(): Promise<void> {
  * Timeout wrapper to prevent operations from hanging indefinitely
  * If an operation takes longer than the timeout, it will fail and move to the next item
  */
-async function withTimeout<T>(
-    promise: Promise<T>,
-    timeoutMs: number,
-    errorMessage: string,
-): Promise<T> {
-    let timer: NodeJS.Timeout;
-    const timeoutPromise = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(errorMessage)), timeoutMs);
-    });
-    return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timer));
-}
 
 /**
  * One timeout per stage, sized to that stage's real work

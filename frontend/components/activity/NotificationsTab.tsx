@@ -14,6 +14,7 @@ import { cn } from "@/utils/cn";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
+import { timeAgo } from "@/lib/relative-time";
 
 interface Notification {
     id: string;
@@ -166,16 +167,6 @@ export function NotificationsTab() {
         return null;
     };
 
-    const formatTime = (dateStr: string) => {
-        const date = new Date(dateStr);
-        const now = new Date();
-        const diff = now.getTime() - date.getTime();
-
-        if (diff < 60000) return "Just now";
-        if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
-        if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
-        return date.toLocaleDateString();
-    };
 
     if (loading) {
         return (
@@ -263,7 +254,7 @@ export function NotificationsTab() {
                                     )}
                                     <div className="flex items-center gap-2 mt-1.5">
                                         <span className="text-xs tabular-nums text-[var(--text-muted)]">
-                                            {formatTime(notification.createdAt)}
+                                            {timeAgo(notification.createdAt)}
                                         </span>
                                         {link && (
                                             <Link

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { CheckCircle, XCircle, Trash2, RotateCcw, History, Disc, Music } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/utils/cn";
+import { timeAgo } from "@/lib/relative-time";
 
 interface DownloadHistory {
     id: string;
@@ -186,16 +187,6 @@ function HistoryItem({
     const isCompleted = item.status === "completed";
     const isFailed = item.status === "failed" || item.status === "exhausted";
 
-    const formatTime = (dateStr: string) => {
-        const date = new Date(dateStr);
-        const now = new Date();
-        const diff = now.getTime() - date.getTime();
-
-        if (diff < 60000) return "Just now";
-        if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
-        if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
-        return date.toLocaleDateString();
-    };
 
     return (
         <div className={cn(
@@ -236,7 +227,7 @@ function HistoryItem({
                         </span>
                         <span className="text-micro text-[var(--text-muted)]">•</span>
                         <span className="text-xs tabular-nums text-[var(--text-muted)]">
-                            {formatTime(item.completedAt || item.createdAt)}
+                            {timeAgo(item.completedAt || item.createdAt)}
                         </span>
                     </div>
                     {item.error && (

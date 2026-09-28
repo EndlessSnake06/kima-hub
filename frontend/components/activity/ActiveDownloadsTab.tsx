@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { cn } from "@/utils/cn";
 import { GradientSpinner } from "../ui/GradientSpinner";
 import { useActiveDownloads } from "@/hooks/useNotifications";
+import { timeAgo } from "@/lib/relative-time";
 
 export function ActiveDownloadsTab() {
     // Use shared React Query hook instead of duplicate polling
@@ -44,16 +45,6 @@ export function ActiveDownloadsTab() {
         }
     };
 
-    const formatTime = (dateStr: string) => {
-        const date = new Date(dateStr);
-        const now = new Date();
-        const diff = now.getTime() - date.getTime();
-
-        if (diff < 60000) return "Just started";
-        if (diff < 3600000) return `${Math.floor(diff / 60000)}m`;
-        if (diff < 86400000) return `${Math.floor(diff / 3600000)}h`;
-        return date.toLocaleDateString();
-    };
 
     if (loading) {
         return (
@@ -168,7 +159,7 @@ export function ActiveDownloadsTab() {
                                         •
                                     </span>
                                     <span className="text-xs tabular-nums text-[var(--text-muted)]">
-                                        {formatTime(download.createdAt)}
+                                        {timeAgo(download.createdAt)}
                                     </span>
                                 </div>
                             </div>

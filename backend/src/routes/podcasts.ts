@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { logger } from "../utils/logger";
+import { withTimeout } from "../utils/timeout";
 import { requireAuth, requireAuthOrToken } from "../middleware/auth";
 import { prisma } from "../utils/db";
 import { rssParserService } from "../services/rss-parser";
@@ -20,13 +21,6 @@ const router = Router();
 // (#168). The feed is non-critical for a preview; core data comes from
 // iTunes/Deezer, and both call sites already fall through to partial data.
 const PREVIEW_RSS_TIMEOUT_MS = 8000;
-function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
-    let timer: ReturnType<typeof setTimeout>;
-    const timeout = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`${label} timed out`)), ms);
-    });
-    return Promise.race([p.finally(() => clearTimeout(timer)), timeout]);
-}
 
 /**
  * POST /podcasts/sync-covers
@@ -452,7 +446,7 @@ router.get("/preview/:itunesId", requireAuth, async (req, res) => {
                 const feedResult = await withTimeout(
                     rssParserService.parseFeed(podcastData.feedUrl),
                     PREVIEW_RSS_TIMEOUT_MS,
-                    "RSS preview",
+                    "RSS preview timed out",
                 );
                 if (feedResult.notModified) throw new Error("Unexpected 304 on preview fetch");
                 description = feedResult.podcast.description || "";
@@ -544,7 +538,7 @@ async function previewDeezerPodcast(req: Request, res: Response, deezerId: strin
             const feedResult = await withTimeout(
                 rssParserService.parseFeed(feedUrl),
                 PREVIEW_RSS_TIMEOUT_MS,
-                "RSS preview",
+                "RSS preview timed out",
             );
             if (!feedResult.notModified) {
                 description = feedResult.podcast.description || description;

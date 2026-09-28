@@ -9,6 +9,7 @@ import { processScan } from "./processors/scanProcessor";
 import { processDiscoverWeekly } from "./processors/discoverProcessor";
 import { processImportJob } from "./processors/importProcessor";
 import { createWorkerConnection } from "./enrichmentQueues";
+import { withTimeout } from "../utils/timeout";
 import { spotifyImportService } from "../services/spotifyImport";
 import {
     startUnifiedEnrichmentWorker,
@@ -169,50 +170,6 @@ async function runDataIntegrityCycle() {
 timeouts.push(setTimeout(runDataIntegrityCycle, 10000));
 logger.debug("Data integrity check scheduled (every 24 hours, self-rescheduling)");
 
-/**
- * Wrap an async operation with a timeout to prevent indefinite hangs
- * Returns undefined if the operation times out (does not throw)
- */
-async function withTimeout<T>(
-    operation: () => Promise<T>,
-    timeoutMs: number,
-    operationName: string
-): Promise<T | undefined> {
-    let timeoutId: NodeJS.Timeout | undefined;
-    let timedOut = false;
-
-    const timeoutPromise = new Promise<undefined>((resolve) => {
-        timeoutId = setTimeout(() => {
-            timedOut = true;
-            logger.warn(
-                `Operation timed out after ${timeoutMs}ms: ${operationName}`
-            );
-            resolve(undefined);
-        }, timeoutMs);
-    });
-
-    // Hold the operation's promise directly (rather than inline in Promise.race) and
-    // attach a no-op catch to it: if the timeout wins the race, operation() keeps running
-    // unobserved, and a rejection that arrives afterward would otherwise surface as an
-    // unhandled rejection. This swallows that late rejection without affecting the value
-    // raced below.
-    const operationPromise = operation();
-    operationPromise.catch(() => {});
-
-    try {
-        const result = await Promise.race([operationPromise, timeoutPromise]);
-        if (!timedOut && timeoutId) {
-            clearTimeout(timeoutId);
-        }
-        return result;
-    } catch (error) {
-        if (timeoutId) {
-            clearTimeout(timeoutId);
-        }
-        throw error;
-    }
-}
-
 // Self-rescheduling reconciliation cycle (replaces setInterval to prevent pile-up)
 // Each cycle waits for the previous one to fully complete before scheduling the next.
 // This prevents zombie operations from accumulating when operations exceed their timeout.
@@ -222,15 +179,15 @@ async function runReconciliationCycle() {
     try {
         const { lidarrService } = await import("../services/lidarr");
         const snapshot = await withTimeout(
-            () => lidarrService.getReconciliationSnapshot(),
+            lidarrService.getReconciliationSnapshot(),
             30000,
-            "getReconciliationSnapshot"
+            "getReconciliationSnapshot timed out"
         );
 
         const staleCount = await withTimeout(
-            () => simpleDownloadManager.markStaleJobsAsFailed(snapshot),
+            simpleDownloadManager.markStaleJobsAsFailed(snapshot),
             120000,
-            "markStaleJobsAsFailed"
+            "markStaleJobsAsFailed timed out"
         );
         if (staleCount && staleCount > 0) {
             logger.debug(
@@ -239,9 +196,9 @@ async function runReconciliationCycle() {
         }
 
         const lidarrResult = await withTimeout(
-            () => simpleDownloadManager.reconcileWithLidarr(snapshot),
+            simpleDownloadManager.reconcileWithLidarr(snapshot),
             120000,
-            "reconcileWithLidarr"
+            "reconcileWithLidarr timed out"
         );
         if (lidarrResult && lidarrResult.reconciled > 0) {
             logger.debug(
@@ -250,9 +207,9 @@ async function runReconciliationCycle() {
         }
 
         const localResult = await withTimeout(
-            () => queueCleaner.reconcileWithLocalLibrary(),
+            queueCleaner.reconcileWithLocalLibrary(),
             120000,
-            "reconcileWithLocalLibrary"
+            "reconcileWithLocalLibrary timed out"
         );
         if (localResult && localResult.reconciled > 0) {
             logger.debug(
@@ -261,9 +218,9 @@ async function runReconciliationCycle() {
         }
 
         const syncResult = await withTimeout(
-            () => simpleDownloadManager.syncWithLidarrQueue(snapshot),
+            simpleDownloadManager.syncWithLidarrQueue(snapshot),
             120000,
-            "syncWithLidarrQueue"
+            "syncWithLidarrQueue timed out"
         );
         if (syncResult && syncResult.cancelled > 0) {
             logger.debug(
@@ -292,9 +249,9 @@ async function runLidarrCleanupCycle() {
     lidarrCleanupRunning = true;
     try {
         const result = await withTimeout(
-            () => simpleDownloadManager.clearLidarrQueue(),
+            simpleDownloadManager.clearLidarrQueue(),
             180000,
-            "clearLidarrQueue"
+            "clearLidarrQueue timed out"
         );
         if (result && result.removed > 0) {
             logger.debug(

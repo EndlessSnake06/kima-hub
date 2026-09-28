@@ -15,6 +15,7 @@ import { api } from "@/lib/api";
 import { cn } from "@/utils/cn";
 import { GradientSpinner } from "../ui/GradientSpinner";
 import { useAuth } from "@/lib/auth-context";
+import { timeAgo } from "@/lib/relative-time";
 
 interface ImportJob {
     id: string;
@@ -75,13 +76,6 @@ function statusColor(status: string): string {
     return "text-[var(--text-muted)]";
 }
 
-function formatAge(dateStr: string): string {
-    const diff = Date.now() - new Date(dateStr).getTime();
-    if (diff < 60000) return "Just now";
-    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
-    return new Date(dateStr).toLocaleDateString();
-}
 
 export function ImportsTab() {
     const { isAuthenticated } = useAuth();
@@ -283,7 +277,7 @@ function ImportJobCard({
                             --
                         </span>
                         <span className="text-xs tabular-nums text-[var(--text-muted)]">
-                            {formatAge(job.createdAt)}
+                            {timeAgo(job.createdAt)}
                         </span>
                     </div>
 
