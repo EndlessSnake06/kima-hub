@@ -1544,6 +1544,45 @@ export async function redecideEverything(): Promise<{ reopened: number }> {
  *
  * @param fullMode - If true, processes everything. If false, only pending items.
  */
+/**
+ * Announce a finished run to every user. One alert per user, never two
+ * (invariant 8): failures present, the error alert alone names them; a
+ * clean run, the system alert. A run that completed with failures is not
+ * also reported as simply complete.
+ */
+export async function sendCompletionNotifications(progress: EnrichmentProgress): Promise<void> {
+    const { notificationService } = await import("../services/notificationService");
+    const users = await prisma.user.findMany({ select: { id: true } });
+    // The counts are TrackStage-backed for track stages: the summary
+    // reports what the failures API actually shows.
+    const failureCounts = await enrichmentFailureService.getFailureCounts();
+
+    for (const user of users) {
+        if (failureCounts.total > 0) {
+            const parts: string[] = [];
+            if (failureCounts.artist > 0) parts.push(`${failureCounts.artist} artist(s)`);
+            if (failureCounts.track > 0) parts.push(`${failureCounts.track} track(s)`);
+            if (failureCounts.audio > 0) parts.push(`${failureCounts.audio} audio analysis`);
+            if (failureCounts.vibe > 0) parts.push(`${failureCounts.vibe} vibe embedding(s)`);
+            if (failureCounts.scan > 0) parts.push(`${failureCounts.scan} fingerprint(s)`);
+            if (failureCounts.podcast > 0) parts.push(`${failureCounts.podcast} podcast(s)`);
+
+            await notificationService.create({
+                userId: user.id,
+                type: "error",
+                title: "Enrichment Completed with Errors",
+                message: `${failureCounts.total} failures: ${parts.join(", ")}. Check Settings > Enrichment for details.`,
+            });
+        } else {
+            await notificationService.notifySystem(
+                user.id,
+                "Enrichment Complete",
+                `Enriched ${progress.artists.completed} artists, ${progress.trackTags.enriched} tracks, ${progress.audioAnalysis.completed} audio analyses`,
+            );
+        }
+    }
+}
+
 async function runEnrichmentCycle(fullMode: boolean): Promise<{
     artists: number;
     tracks: number;
@@ -1868,37 +1907,7 @@ async function runEnrichmentCycle(fullMode: boolean): Promise<{
 
             if (!stateBeforeNotify?.completionNotificationSent) {
                 try {
-                    const { notificationService } = await import("../services/notificationService");
-                    const users = await prisma.user.findMany({ select: { id: true } });
-                      // The counts are TrackStage-backed for track stages
-                      // so the summary reports what the failures
-                      // API actually shows.
-                      const failureCounts = await enrichmentFailureService.getFailureCounts();
-
-                      for (const user of users) {
-                          if (failureCounts.total > 0) {
-                              const parts: string[] = [];
-                              if (failureCounts.artist > 0) parts.push(`${failureCounts.artist} artist(s)`);
-                              if (failureCounts.track > 0) parts.push(`${failureCounts.track} track(s)`);
-                              if (failureCounts.audio > 0) parts.push(`${failureCounts.audio} audio analysis`);
-                              if (failureCounts.vibe > 0) parts.push(`${failureCounts.vibe} vibe embedding(s)`);
-                              if (failureCounts.scan > 0) parts.push(`${failureCounts.scan} fingerprint(s)`);
-                              if (failureCounts.podcast > 0) parts.push(`${failureCounts.podcast} podcast(s)`);
-
-                            await notificationService.create({
-                                userId: user.id,
-                                type: "error",
-                                title: "Enrichment Completed with Errors",
-                                message: `${failureCounts.total} failures: ${parts.join(", ")}. Check Settings > Enrichment for details.`,
-                            });
-                        }
-
-                        await notificationService.notifySystem(
-                            user.id,
-                            "Enrichment Complete",
-                            `Enriched ${progress.artists.completed} artists, ${progress.trackTags.enriched} tracks, ${progress.audioAnalysis.completed} audio analyses`,
-                        );
-                    }
+                    await sendCompletionNotifications(progress);
 
                     await enrichmentStateService.updateState({ completionNotificationSent: true });
                     logger.debug("[Enrichment] Completion notification sent");
