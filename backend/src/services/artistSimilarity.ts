@@ -313,7 +313,7 @@ async function rerankWithLibrary(
                     trackCount: number;
                 }>
             >`
-                SELECT "artistId", embedding, "trackCount"
+                SELECT "artistId", embedding::text AS embedding, "trackCount"
                 FROM artist_embeddings
                 WHERE "artistId" = ANY(${[...ids]})
             `;
