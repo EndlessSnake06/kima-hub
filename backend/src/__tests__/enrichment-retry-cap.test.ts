@@ -23,8 +23,10 @@
 
 import { prisma } from "../utils/db";
 import {
+    closeOrphanedDependents,
     computeStageRetryWaitMs,
     getNextWork,
+    recordStageAbsent,
     recordStageFailure,
     recordStageSuccess,
     STAGE_RETRY_CAP,
@@ -247,5 +249,77 @@ describe("a question with an answer is never re-offered", () => {
                 .filter((w) => w.stage === "recording")
                 .map((w) => w.trackId),
         ).not.toContain(trackId);
+    });
+});
+
+describe("a closed record always carries its start stamp", () => {
+    it("a success close of a never-claimed record stamps startedAt with the close", async () => {
+        const trackId = id("stamp-done");
+        await seedTrack(trackId, { recording: { status: "pending" } });
+        expect((await getRecord(trackId, "recording")).startedAt).toBeNull();
+
+        await recordStageSuccess(trackId, "recording", "file_tag", { recordingMbid: "mb-1" });
+
+        const rec = await getRecord(trackId, "recording");
+        expect(rec.status).toBe("done");
+        expect(rec.startedAt).toBeTruthy();
+        expect(new Date(rec.startedAt).getTime()).toBeLessThanOrEqual(
+            new Date(rec.finishedAt).getTime(),
+        );
+    });
+
+    it("an absent close of a never-claimed record stamps startedAt", async () => {
+        const trackId = id("stamp-absent");
+        await seedTrack(trackId, { recording: { status: "pending" } });
+
+        await recordStageAbsent(trackId, "recording", "musicbrainz", {
+            reason: "sources have no recording for this track",
+        });
+
+        const rec = await getRecord(trackId, "recording");
+        expect(rec.status).toBe("done");
+        expect(rec.startedAt).toBeTruthy();
+    });
+
+    it("a failure close of a never-claimed record stamps startedAt", async () => {
+        const trackId = id("stamp-fail");
+        await seedTrack(trackId, { recording: { status: "pending" } });
+
+        await recordStageFailure(trackId, "recording", "musicbrainz", new Error("socket hang up"));
+
+        const rec = await getRecord(trackId, "recording");
+        expect(rec.status).toBe("failed");
+        expect(rec.startedAt).toBeTruthy();
+    });
+
+    it("a re-answer keeps the original claim stamp", async () => {
+        const trackId = id("stamp-keep");
+        await seedTrack(trackId, { recording: { status: "working", attempt: 1 } });
+        const claimTime = new Date(Date.now() - 3_600_000);
+        await prisma.$executeRawUnsafe(
+            `UPDATE "TrackStage" SET "startedAt" = $2 WHERE "trackId" = $1 AND stage = 'recording'`,
+            trackId,
+            claimTime,
+        );
+
+        await recordStageSuccess(trackId, "recording", "acoustid", { recordingMbid: "mb-2" });
+
+        const rec = await getRecord(trackId, "recording");
+        expect(new Date(rec.startedAt).getTime()).toBe(claimTime.getTime());
+    });
+
+    it("a dependency-closed record carries both stamps", async () => {
+        const trackId = id("stamp-dep");
+        await seedTrack(trackId, { recording: { status: "done", attempt: 1 } });
+        await putStage(trackId, "analysis", "failed", { attempt: 4, retryable: false });
+        await putStage(trackId, "embedding", "pending");
+
+        await closeOrphanedDependents();
+
+        const rec = await getRecord(trackId, "embedding");
+        expect(rec.status).toBe("failed");
+        expect(rec.failureClass).toBe("DEPENDENCY_CLOSED");
+        expect(rec.startedAt).toBeTruthy();
+        expect(rec.finishedAt).toBeTruthy();
     });
 });
