@@ -16,7 +16,7 @@
  *     not kept alongside.
  *
  * Run with:
- *   npx jest src/__tests__/enrichment-inconclusive-errors.test.ts --forceExit --maxWorkers=1
+ *   npx jest src/__tests__/enrichment-inconclusive-errors.test.ts --maxWorkers=1
  */
 
 import { prisma } from "../utils/db";
@@ -25,6 +25,14 @@ import {
     type FailureClass,
 } from "../services/enrichmentErrorCodeClassifier";
 import { recordStageFailure } from "../workers/unifiedEnrichment";
+import {
+    artistQueue,
+    podcastQueue,
+    trackQueue,
+    vibeQueue,
+} from "../workers/enrichmentQueues";
+import { enrichmentStateService } from "../services/enrichmentState";
+import { redisClient } from "../utils/redis";
 
 const PREFIX = "incon";
 const id = (n: string) => `${PREFIX}_${n}`;
@@ -81,6 +89,18 @@ beforeEach(async () => {
 afterAll(async () => {
     await wipe();
     await prisma.$disconnect();
+    // Importing the real worker module opens connections the unit under
+    // test never uses: four BullMQ queues built at module scope in
+    // enrichmentQueues, the enrichmentState singleton's two clients, and
+    // the shared Redis client. Left open, Jest finishes and outlives it.
+    await Promise.all([
+        artistQueue.close(),
+        trackQueue.close(),
+        vibeQueue.close(),
+        podcastQueue.close(),
+        enrichmentStateService.disconnect(),
+    ]);
+    await redisClient.quit();
 });
 
 describe("classifyFailure — the four classes, matching classifier.py", () => {

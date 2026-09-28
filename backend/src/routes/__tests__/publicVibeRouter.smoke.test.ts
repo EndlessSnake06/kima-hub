@@ -210,6 +210,10 @@ function readFrames(port: number, path: string, ms = 300): Promise<{ headers: an
         const finish = () => {
             if (settled) return;
             settled = true;
+            // /stream never ends on its own: without destroying the client
+            // request here, its socket stays open after the assertions and
+            // Jest outlives the suite on it.
+            socket.destroy();
             resolve({ headers, body: chunks.join("") });
         };
         const socket = http.request(
