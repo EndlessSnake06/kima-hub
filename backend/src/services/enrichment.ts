@@ -195,8 +195,8 @@ class EnrichmentService {
         }
 
         // Step 2: bio from Wikidata, similar artists from the local
-        // centroid / ListenBrainz path (replaces the retired Last.fm lookup;
-        // runs unconditionally — there is no per-source toggle for it).
+        // centroid / ListenBrainz path — runs unconditionally, there is no
+        // per-source toggle for it.
         try {
             const artistMbid = enrichmentData.mbid || artist.mbid;
             if (hasRealMbid(artistMbid)) {

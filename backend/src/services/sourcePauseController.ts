@@ -1,9 +1,7 @@
 /**
- * Per-source pause, backed by the `SourceAttempt` table
- * (replaces `workers/quotaPauseController.ts`, which was
- * written for this purpose but imported by nothing — the "1,047 attempt-3
- * failures, 16 cores 96% idle" casualty pattern where every cycle kept
- * dequeuing tracks for a source that was refusing us).
+ * Per-source pause, backed by the `SourceAttempt` table: while a source is
+ * refusing us, no work is dequeued for it, so a full library of tracks
+ * waiting on it cannot burn their attempts against a closed door.
  *
  * This is the record the dequeuer actually consults: a paused source is
  * ONE row (`source` is unique, so 2,787 tracks waiting on MusicBrainz do

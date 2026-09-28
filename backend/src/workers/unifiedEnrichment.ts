@@ -71,7 +71,7 @@ type FailureOutcome = Extract<
 import { sourcePauseController } from "../services/sourcePauseController";
 import { distributedLock } from "../utils/distributedLock";
 
-// ── Per-track stage queue ────────────────────────
+// ── Per-track stage queue ────────────────────────────────────────────────
 
 /**
  * The four questions this worker owes each track. `recording` ("which
@@ -189,12 +189,11 @@ const STAGE_REDELIVERY_CAP = 3;
  * One query per stage, each returning rows where the answer is missing or a
  * retry is due, gated on the stage's declared prerequisite (PREREQUISITE_STAGE,
  * if any) having answered for the same track — `done` for an "output" edge,
- * `done` or a closed failure for a "settled" one. It
- * deliberately does not filter on `Track.analysisStatus` / `Track.scanStatus`:
- * those columns are how the old code decided what to offer, which is what let
- * one failed track hold the whole library behind it. The record owns the
- * answer; a terminal answer (`failed`, not retryable) is simply not offered
- * again, and a `nextRetryAt` that has not elapsed is not due yet.
+ * `done` or a closed failure for a "settled" one. It deliberately does not
+ * filter on `Track.analysisStatus` / `Track.scanStatus`: the record owns the
+ * answer, and selecting on a column lets one failed track hold the whole
+ * library behind it. A terminal answer (`failed`, not retryable) is simply
+ * not offered again, and a `nextRetryAt` that has not elapsed is not due yet.
  */
 export async function getNextWork(
     limit: number,
@@ -211,8 +210,7 @@ export async function getNextWork(
 
         // A paused source is not handed out work: while the pause holds,
         // every attempt would burn its timeout against a source that is
-        // refusing us — the "1,047 attempt-3 failures" pattern this
-        // replaces. The record waits; the cycle moves on. The fingerprint
+        // refusing us. The record waits; the cycle moves on. The fingerprint
         // stage's source is 'fpcalc' — the LOCAL binary — so a paused
         // 'acoustid' (the network lookup) never stops the fingerprint
         // sweep, and 'fpcalc' itself has no pause key to hit unless fpcalc
@@ -401,18 +399,15 @@ async function resumeInfrastructure(): Promise<void> {
  */
 
 /**
- * One timeout per stage, sized to that stage's real work
- * (replaces the single duration-derived
- * `computeTrackEnrichmentTimeoutMs` that applied one budget to every
- * stage).
+ * One timeout per stage, sized to that stage's real work.
  *
  * The stage's work — not the track's length — decides the budget:
  *   - `recording` is identification: file tags, at most two MusicBrainz
  *     HTTP lookups, and an AcoustID question asked with the fingerprint
  *     stage's stored answer (no fpcalc runs in this stage). A network
  *     budget; track duration is irrelevant to it.
- *   - `analysis` decodes the first 90 seconds of the file
- *     and runs the Essentia chain; the analyzer's own
+ *   - `analysis` decodes the first 90 seconds of the file and runs the
+ *     Essentia chain; the analyzer's own
  *     DECODE_TIMEOUT is 120s, so 300s covers the window with the design's
  *     "plus two minutes" headroom to spare.
  *   - `embedding` runs CLAP over that same 90s window — smaller than the
@@ -963,13 +958,11 @@ export async function startUnifiedEnrichmentWorker() {
     logger.debug(`   Interval: ${ENRICHMENT_INTERVAL_MS / 1000}s`);
     logger.debug("");
 
-     // No crash-recovery sweep here any more. This used to reset every
-     // `processing`/`queued` row back to `pending` on startup and flush
-     // `audio:analysis:queue` to match. That was a workaround for having no
-     // per-track record of the attempt: with `TrackStage` the attempt lives in
-     // the record, so a job that died mid-flight is a `working` record whose
-     // `nextRetryAt` comes round on its own, and a restart neither invents a
-     // second attempt nor throws away work still sitting in the list.
+     // A crashed job needs no startup sweep: the attempt lives in the
+     // TrackStage record, so a job that died mid-flight is a `working`
+     // record whose `nextRetryAt` comes round on its own. A restart neither
+     // invents a second attempt nor throws away work still sitting in the
+     // analysis list.
 
      // A restart must not undo an operator's pause: if the
      // stored state says `paused`, honour it — the timer stays armed and
@@ -1046,7 +1039,8 @@ export async function startUnifiedEnrichmentWorker() {
 
 /**
  * Schedule the next enrichment cycle after the current one completes.
- * Replaces setInterval to prevent pile-up when cycles exceed ENRICHMENT_INTERVAL_MS.
+ * Self-rescheduling rather than setInterval: a cycle that overruns the
+ * interval must not pile up a queue of pending ticks.
  */
 function scheduleNextEnrichmentCycle(delayMs: number = ENRICHMENT_INTERVAL_MS) {
     enrichmentInterval = setTimeout(async () => {
@@ -1062,25 +1056,12 @@ function scheduleNextEnrichmentCycle(delayMs: number = ENRICHMENT_INTERVAL_MS) {
         // scheduling call in the finally block, because scheduling from more than one
         // place spawns parallel timer chains -- see the note there.
         let nextDelayMs: number | null = null;
-        // The reschedule MUST be in a finally. Without it, a single rejection
-        // from runEnrichmentCycle (a Redis reconnect, a DB failover) skips the
-        // next-schedule call and the enrichment chain is dead for the lifetime
-        // of the process, silently -- the only trace is one unhandledRejection
-        // log line.
         try {
             const result = await runEnrichmentCycle(false);
 
-            // A cycle that declined to run has learned nothing about whether there is
-            // work, so backing off for a minute on the strength of it is wrong. Come back
-            // as soon as the floor allows.
-            //
-            // This is not hypothetical. The busy interval is 5s and the floor is 10s, so
-            // EVERY productive cycle armed a 5s timer whose tick was then refused for
-            // being early, reported "nothing happened", and re-armed at 60s. The real
-            // cadence with work outstanding was 65 seconds. Measured cost while embedding
-            // 59 tracks: 50 seconds of actual work spread over ten minutes, with the
-            // embedder sitting idle through gaps of 216s and 350s -- long enough that it
-            // also unloaded its model and paid to load it again.
+            // A cycle that declined to run has learned nothing about whether
+            // there is work, so backing off for a minute on the strength of it
+            // is wrong. Come back as soon as the floor allows.
             if (result.declined) {
                 const waitedFor = Date.now() - lastRunTime;
                 const untilAllowed = Math.max(0, MIN_INTERVAL_MS - waitedFor);
@@ -1088,9 +1069,7 @@ function scheduleNextEnrichmentCycle(delayMs: number = ENRICHMENT_INTERVAL_MS) {
                 return;
             }
 
-            // Every phase that queued something counts. Scan and vibe were left out, so a
-            // cycle whose only achievement was handing the embedder a hundred tracks
-            // reported itself as idle and slept for a minute.
+            // Every phase that queued something counts as work.
             didWork =
                 result.artists > 0 ||
                 result.tracks > 0 ||
@@ -1106,25 +1085,19 @@ function scheduleNextEnrichmentCycle(delayMs: number = ENRICHMENT_INTERVAL_MS) {
                 error instanceof Error ? error.message : String(error)
             );
         } finally {
-            // EXACTLY ONE scheduling call, and it lives here.
+            // EXACTLY ONE scheduling call, and it lives here. A `return`
+            // inside the try still runs this block, so scheduling from two
+            // places does not replace the timer -- it starts a second chain,
+            // and declined cycles would double the chains until the process
+            // fills with timers. The call must also stay in a finally: a
+            // single rejection from runEnrichmentCycle (a Redis reconnect, a
+            // DB failover) would otherwise skip it and leave the chain dead
+            // for the lifetime of the process, silently.
             //
-            // A `return` inside the try above still runs this block, so scheduling from
-            // both places does not replace the timer -- it starts a second chain. Each
-            // declined cycle would then double the number of chains, and since a declined
-            // cycle is the common case while work is outstanding, the process fills with
-            // timers until it dies. That is not theoretical: it took the test server from
-            // 181MB to 886MB in about a minute and then out of memory entirely.
-            //
-            // The reschedule must also stay in a finally. Without it, a single rejection
-            // from runEnrichmentCycle (a Redis reconnect, a DB failover) skips the
-            // next-schedule call and the enrichment chain is dead for the lifetime of the
-            // process, silently -- the only trace is one unhandledRejection log line.
-            //
-            // stopUnifiedEnrichmentWorker() nulls this out; don't resurrect the chain
-            // after an explicit stop.
-            // The handle was nulled at the top of this callback, so it can no longer stand
-            // in for "the worker is still running". stopUnifiedEnrichmentWorker sets
-            // workerStopped, which is what actually means "do not resurrect the chain".
+            // The handle was nulled at the top of this callback, so it cannot
+            // stand in for "the worker is still running"; the latch below is
+            // what stopUnifiedEnrichmentWorker sets to mean "do not resurrect
+            // the chain".
             if (!enrichmentStopped) {
                 scheduleNextEnrichmentCycle(
                     nextDelayMs ??
@@ -1244,12 +1217,9 @@ const STAGE_PRODUCERS: Record<StageName, (item: StageWork) => Promise<void>> = {
  * Answer one claimed fingerprint question: run fpcalc on the file — LOCAL,
  * no network, so no source pause can apply — and persist the fingerprint
  * via `persistAcoustidFingerprint` whether or not any AcoustID lookup will
- * ever match (the sweep covers every track;
- * the dedupe column wants the fingerprint regardless of identity outcome).
- *
- * This is the stage that finally covers the ~7,264 ISRC tracks the old
- * `enrichSingleTrack` path skipped: fingerprinting here is unconditional,
- * identity is the recording stage's business.
+ * ever match: the sweep covers every track, and the dedupe column wants the
+ * fingerprint regardless of identity outcome. Fingerprinting here is
+ * unconditional; identity is the recording stage's business.
  *
  * Failure handling is the same contract the recording job uses:
  * `recordStageFailure` classifies the error onto the record — an ordinary
@@ -1459,10 +1429,6 @@ async function reopenRecordingsThatNeverAskedAcoustid(): Promise<number> {
  * the fingerprint → recording gate keeps it unoffered while the fingerprint
  * question is open — and once the retry lands it is due again, this time
  * with a fingerprint to ask with.
- *
- * This replaces `runFullEnrichment`, which wiped every embedding and cleared
- * every track's `enrichmentTags` to force a re-ask of questions most tracks
- * had already answered correctly.
  */
 export async function retryFailedAndBlocked(
     limit = TRACK_BATCH_SIZE,
@@ -1492,8 +1458,7 @@ export async function retryFailedAndBlocked(
  * rediscover something already in the column.
  *
  * Only the queue's own state moves. No answer is deleted — `track_embeddings`
- * rows and `enrichmentTags` stay exactly as they are, which is the whole
- * difference between this and the `resetAllEnrichmentData` it replaces.
+ * rows and `enrichmentTags` stay exactly as they are.
  */
 export async function redecideEverything(): Promise<{ reopened: number }> {
     let reopened = 0;
@@ -1549,25 +1514,12 @@ export async function redecideEverything(): Promise<{ reopened: number }> {
     // Do NOT dispatch here. The re-opened questions are pending, and the
     // next scheduled cycle's getNextWork hands them out -- dispatching
     // straight away would claim every record to `working` before the
-    // operator could even see the reopened state, and a claim whose job
-    // nobody consumed is exactly the parked-record pattern this replaces.
+    // operator could even see the reopened state, and an unconsumed claim
+    // parks its record until the lease expires.
 
     return { reopened };
 }
 
-/**
- * Main enrichment cycle
- *
- * Flow:
- * 1. Artist metadata (MusicBrainz/Wikidata/ListenBrainz) - blocking, required for track enrichment
- * 2. Track tags (MusicBrainz genres) - blocking, quick API calls
- * 3. Audio analysis (Essentia) - NON-BLOCKING, queued to Redis for background processing
- *
- * Steps 1 & 2 must complete before enrichment is "done".
- * Step 3 runs entirely in background via the audio-analyzer Docker container.
- *
- * @param fullMode - If true, processes everything. If false, only pending items.
- */
 /**
  * Announce a finished run to every user. One alert per user, never two
  * (invariant 8): failures present, the error alert alone names them; a
@@ -1620,8 +1572,8 @@ async function runEnrichmentCycle(fullMode: boolean): Promise<{
      *
      * The two look identical from the outside and must not be treated the same: a cycle
      * that found nothing should back off, while a cycle that was merely too early should
-     * come back promptly. Conflating them is what left the embedder idle for minutes at a
-     * time -- see the scheduling note in scheduleNextEnrichmentCycle.
+     * come back promptly; conflating them makes early cycles back off for a full minute
+     * -- see the scheduling note in scheduleNextEnrichmentCycle.
      */
     declined?: "already-running" | "too-soon";
 }> {
@@ -1631,11 +1583,9 @@ async function runEnrichmentCycle(fullMode: boolean): Promise<{
     // This must run first because stop sets both isStopping AND isPaused.
     // If we checked isPaused first, we'd return early and never clear isStopping.
     if (isStopping) {
-        // No "stop cleanup" reset. It flipped every `processing` row back to
-        // `pending` and zeroed the retry count, which is the same
-        // crash-recovery sweep in a different place: it re-asked questions the
-        // stage records have already answered and hid the true state. The
-        // record owns the attempt; stopping does not edit answers.
+        // No stop-cleanup reset: stopping does not edit answers. The record
+        // owns the attempt, and flipping `processing` rows back to `pending`
+        // here would re-ask questions the stage records have already answered.
         await enrichmentStateService.updateState({ status: "idle", currentPhase: null });
         isStopping = false;
         isPaused = false;
@@ -1782,9 +1732,7 @@ async function runEnrichmentCycle(fullMode: boolean): Promise<{
         }
 
         const features = await featureDetection.getFeatures();
-        // Computed ONCE per cycle. This used to be called here and again
-        // unconditionally below, so a tick that did work paid for the whole
-        // progress query set twice.
+        // Computed ONCE per cycle; everything below reads this copy.
         const progress = await getEnrichmentProgress();
         const didWork =
             artistsProcessed > 0 ||
@@ -1944,13 +1892,11 @@ async function runEnrichmentCycle(fullMode: boolean): Promise<{
         logger.error("[Enrichment] Cycle error:", error);
 
         // Record the SYSTEM-level failure. This is not a track-stage
-        // failure — per-track stage failures live only in TrackStage
-        // the EnrichmentFailure ledger remains for entities
-        // that have no stage record, and "the enrichment system" is one.
-        // The old counter-based circuit breaker that gated this write is
-        // gone: a source that fails is held by its
-        // `SourceAttempt` pause, and a suppressed error ledger is a
-        // third copy of a fact the pause and the record already own.
+        // failure — per-track stage failures live only in TrackStage; the
+        // EnrichmentFailure ledger is for entities that have no stage
+        // record, and "the enrichment system" is one. A failing source is
+        // held by its `SourceAttempt` pause, not by a counter that
+        // gates this write.
         await enrichmentFailureService
             .recordFailure({
                 entityType: "artist", // Generic type for system errors
@@ -2174,8 +2120,8 @@ export async function enrichSingleTrack(
     // here unidentified: one that carries no identifier, and one whose
     // ISRC MusicBrainz answers "unknown" (an unknown code is not an
     // answer to "which recording is this?", and the absent close must
-    // not claim AcoustID was asked when it never ran — the exact
-    // defect class). Mutates the ladder state declared above.
+    // name only the steps that actually ran). Mutates the ladder state
+    // declared above.
     const runPerTrackFallback = async (
         tags: IdentityTags | null,
     ): Promise<void> => {
@@ -3017,10 +2963,10 @@ async function dispatchStageWork(
 /**
  * Phase 2 — the `recording` question (mood tags + ISRC).
  *
- * Replaces the record-driven re-queue, which re-selected every track whose
- * `enrichmentTags` was empty and re-added `track-<id>`. That re-asked an
- * already-answered question every tick, and the held `track-<id>` jobId let
- * one failed job park the track until restart.
+ * The offered set comes from the records, never from `enrichmentTags` being
+ * empty: selecting on the column re-asked already-answered questions every
+ * tick, and a held `track-<id>` jobId let one failed job park a track until
+ * restart.
  */
 export async function executeMoodTagsPhase(): Promise<number> {
     // The stage filter: every phase gets its own share
@@ -3042,18 +2988,11 @@ export async function executeMoodTagsPhase(): Promise<number> {
 /**
  * Phase 3 — the `analysis` question (Essentia decode + measure).
  *
- * Deletes two workarounds this replaces:
- *   - the LIVE dead-analyzer reset, which flushed `audio:analysis:queue` and
- *     flipped every `queued` row back to `pending` on a stale heartbeat;
- *   - the purgatory drain, which condemned past-cap tracks to
- *     `permanently_failed` (or "recovered" them to `completed`) by rewriting
- *     the column, so the answer in the record and the flag on the row could
- *     contradict each other.
- *
- * Both existed because nothing owned "this track, this question". The record
- * does now: a terminal answer is not offered again, a not-yet-due retry is not
- * offered yet, and a track whose file is missing keeps its flag and its true
- * state instead of being deleted or silently re-queued.
+ * The record owns "this track, this question": a terminal answer is not
+ * offered again, a not-yet-due retry is not offered yet, and a track whose
+ * file is missing keeps its flag and its true state. Nothing here flushes
+ * the analysis list or rewrites columns to force an answer — those are how
+ * a queued job and its record end up contradicting each other.
  */
 export async function executeAudioPhase(): Promise<number> {
     // Own window: the analyzers work every cycle, overlapping the
@@ -3080,8 +3019,7 @@ const VIBE_SWEEP_BATCH_SIZE = 100;
 const CENTROID_REBUILD_BATCH = 50;
 
 /**
- * Catch-up pass for artist centroids (replaces the dead Last.fm similarity
- * source's data path). Tracks that gained a CLAP embedding since their
+ * Catch-up pass for artist centroids. Tracks that gained a CLAP embedding since their
  * artist's last centroid computation — per-track embed completion between
  * cycles, or re-embedded rows after a rebuild-all — have a newer
  * analyzed_at than their artist's computedAt (or no centroid row at all),
