@@ -438,6 +438,29 @@ export function getStageTimeoutMs(stage: StageName): number {
 }
 
 /**
+ * How many answers a stage may have in flight at once (
+ * no work may be dispatched deeper than the record's own patience — a
+ * claim whose job waits in the queue longer than the stage timeout is
+ * re-offered while its job still sits in the queue, and the queue then
+ * runs the work twice). Each figure is the stage's measured drain rate
+ * times its patience, sized from a full-library run:
+ *   - recording: MusicBrainz courtesy allows ~1 ask/s and the record's
+ *     patience is 30 s + a 60 s park; 30 jobs keeps the queue wait inside it.
+ *   - analysis: eight analyzer workers at ~26 s/track; 200 jobs is ten
+ *     minutes of runway, so the analyzers never starve while
+ *     identification spends its network budget.
+ *   - embedding: four CLAP workers at ~32 s of compute; 16 jobs wait at
+ *     most ~96 s, inside the record's 120 s patience.
+ *   - fingerprint: uncapped — the fpcalc pool drains at machine
+ *     concurrency and the phase's own window bounds a cycle.
+ */
+export const STAGE_IN_FLIGHT_CAP: Partial<Record<StageName, number>> = {
+    recording: 30,
+    analysis: 200,
+    embedding: 16,
+};
+
+/**
  * Dispatches allowed before a stage's record closes as terminal: one
  * initial ask plus three retries. The queue's own
  * `DEFAULT_JOB_OPTIONS.attempts` counts retries inside one job; this
@@ -1446,12 +1469,13 @@ export async function retryFailedAndBlocked(
 ): Promise<StageWork[]> {
     await reopenRecordingsThatNeverAskedAcoustid();
 
-    const work = await getNextWork(limit);
-
-    // dispatchStageWork filters to the stage it is given, so passing the
-    // whole list to each producer hands out exactly that stage's owed rows.
+    // Each stage gets its own window: one control press re-opens
+    // every owed question, not just the ones that fill a shared window.
+    const work: StageWork[] = [];
     for (const stage of STAGE_ORDER) {
-        await dispatchStageWork(stage, work, STAGE_PRODUCERS[stage]);
+        const stageWork = await getNextWork(limit, stage);
+        work.push(...stageWork);
+        await dispatchStageWork(stage, stageWork, STAGE_PRODUCERS[stage]);
     }
 
     return work;
@@ -2862,6 +2886,19 @@ async function dispatchStageWork(
         owed = owed.filter((w) => !missingIds.has(w.trackId));
         if (owed.length === 0) return 0;
     }
+
+    // In-flight cap: dispatch only as deep as this stage's executor
+    // can drain within the record's patience. The rest stays `pending` and
+    // is offered again the moment an answer lands.
+    const cap = STAGE_IN_FLIGHT_CAP[stage];
+    if (cap !== undefined) {
+        const working = await prisma.trackStage.count({
+            where: { stage, status: "working" },
+        });
+        if (working >= cap) return 0;
+        if (owed.length > cap - working) owed = owed.slice(0, cap - working);
+    }
+
     for (const item of owed) {
         try {
             // Claim the record before queueing: `working` keeps the next cycle
@@ -2986,7 +3023,10 @@ async function dispatchStageWork(
  * one failed job park the track until restart.
  */
 export async function executeMoodTagsPhase(): Promise<number> {
-    const work = await getNextWork(TRACK_BATCH_SIZE);
+    // The stage filter: every phase gets its own share
+    // of the offer, so a hot recording backlog can never spend the window
+    // that analysis and embedding need.
+    const work = await getNextWork(TRACK_BATCH_SIZE, "recording");
 
     return dispatchStageWork("recording", work, async (item) => {
         await trackQueue.add(
@@ -3016,7 +3056,9 @@ export async function executeMoodTagsPhase(): Promise<number> {
  * state instead of being deleted or silently re-queued.
  */
 export async function executeAudioPhase(): Promise<number> {
-    const work = await getNextWork(TRACK_BATCH_SIZE);
+    // Own window: the analyzers work every cycle, overlapping the
+    // network-bound identification instead of queueing behind it.
+    const work = await getNextWork(TRACK_BATCH_SIZE, "analysis");
 
     return dispatchStageWork("analysis", work, async (item) => {
         const redis = getRedis();
@@ -3109,7 +3151,9 @@ export async function executeVibePhase(): Promise<number> {
     // paused it and the resume timer may have deferred (found audio still active)
     await vibeQueue.resume().catch(() => {});
 
-    return dispatchStageWork("embedding", await getNextWork(VIBE_SWEEP_BATCH_SIZE), async (item) => {
+    // Own window, sized by the in-flight cap to the CLAP workers.
+    const work = await getNextWork(VIBE_SWEEP_BATCH_SIZE, "embedding");
+    return dispatchStageWork("embedding", work, async (item) => {
         await vibeQueue.add(
             "embed",
             { trackId: item.trackId, filePath: item.filePath, duration: item.duration },

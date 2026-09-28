@@ -52,6 +52,7 @@ async function notifications(userId: string): Promise<Array<{ type: string; titl
 async function wipe(): Promise<void> {
     await prisma.notification.deleteMany({ where: { userId: { startsWith: PREFIX } } });
     await prisma.user.deleteMany({ where: { id: { startsWith: PREFIX } } });
+    await prisma.enrichmentFailure.deleteMany({ where: { entityId: { startsWith: PREFIX } } });
 }
 
 beforeEach(async () => {
