@@ -546,4 +546,69 @@ describe("enrichSingleTrack: the 2026-09-24 identification order", () => {
             }),
         );
     });
+
+    it("runs the fallback ladder when MusicBrainz knows no recording carrying the ISRC", async () => {
+        seedTrack({ isrc: "FR10S1700001" });
+        // The ISRC question is answered "no recording carries this code"
+        // (mockLookupByIsrc defaults to `absent` in beforeEach).
+        mockIdentifyTrackByAcoustid.mockResolvedValue({
+            kind: "absent",
+            evidence: { fingerprint: FINGERPRINT },
+        });
+
+        const result = await enrichSingleTrack(TRACK_ID);
+
+        // An unknown code is not an answer to "which recording is this?":
+        // the title-checked search ran, then AcoustID. The defect was
+        // closing `absent` on paths:["isrc"] alone.
+        expect(mockSearchRecording).toHaveBeenCalledWith(
+            "Cheerleader Effect",
+            "Carpenter Brut",
+        );
+        expect(mockIdentifyTrackByAcoustid).toHaveBeenCalled();
+        expect(result).toBe("no_match");
+        // The stored fingerprint survives the no-match.
+        expect(mockPersistAcoustidFingerprint).toHaveBeenCalledWith(
+            TRACK_ID,
+            FINGERPRINT,
+        );
+        // The absent record is written by the LAST source asked, and its
+        // evidence names the whole ladder that ran.
+        expect(stageWrittenDone("acoustid")).toBe(true);
+        const doneCall = mockExecuteRawUnsafe.mock.calls.find(
+            (call) =>
+                String(call[0]).includes(`INSERT INTO "TrackStage"`) &&
+                String(call[0]).includes("'done'"),
+        );
+        expect(doneCall).toBeDefined();
+        const evidence = JSON.parse(String(doneCall!.at(-1)));
+        expect(evidence).toMatchObject({
+            reason: "sources have no recording for this track",
+            asked: ["isrc", "mb-search", "acoustid"],
+        });
+        // The code that matched nothing is no longer trusted: the ISRC is
+        // re-asked from whatever recording answers.
+        expect(mockGetRecordingIsrc).not.toHaveBeenCalled(); // nothing answered here
+        expect(mockTrackUpdate).not.toHaveBeenCalled();
+    });
+
+    it("lands the fallback's answer on a track whose ISRC was unknown", async () => {
+        seedTrack({ isrc: "FR10S1700001" });
+        mockSearchRecording.mockResolvedValue(
+            answeredWith({ trackMbid: RECORDING }),
+        );
+
+        const result = await enrichSingleTrack(TRACK_ID);
+
+        expect(result).toBe("identified");
+        expect(mockIdentifyTrackByAcoustid).not.toHaveBeenCalled(); // search answered first
+        expect(mockTrackUpdate).toHaveBeenCalledWith(
+            expect.objectContaining({
+                data: expect.objectContaining({ recordingMbid: RECORDING }),
+            }),
+        );
+        // needsIsrc: the stored code is not on the found recording, so a
+        // fresh one is asked from it.
+        expect(mockGetRecordingIsrc).toHaveBeenCalledWith(RECORDING);
+    });
 });

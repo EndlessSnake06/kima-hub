@@ -47,6 +47,7 @@ import {
     identifyTrackByAcoustid,
     persistAcoustidFingerprint,
     readIdentityTags,
+    type IdentityTags,
 } from "../services/acoustidIdentification";
 import { fpcalcService } from "../services/fpcalc";
 import { resolveTrackFilePath } from "../routes/library/trackPath";
@@ -2088,8 +2089,10 @@ export async function enrichSingleTrack(
     // per-track title-checked name search; and (d) AcoustID runs only for
     // the remainder — and its computed or tagged fingerprint is stored
     // either way, since the dedupe column wants the fingerprint whether or
-    // not the lookup matched. Tracks that already carry an ISRC identify
-    // their recording from it directly, so no AcoustID work is needed.
+    // not the lookup matched. A track that carries an ISRC asks that code
+    // first; MusicBrainz answering "no recording carries it" is not an
+    // answer to the question, so such a track falls through the same
+    // (c)/(d) fallback as one with no identifier at all.
     //
     // Genres go to the genre tables only: the top five
     // tags — the recording's own when it has them, else the album's —
@@ -2120,15 +2123,107 @@ export async function enrichSingleTrack(
     // per track.
     let catalogueAnswer: CatalogueAnswer | null = null;
 
+    const trackRef = {
+        id: track.id,
+        title: track.title,
+        filePath: track.filePath,
+        duration: track.duration,
+    };
+
+    // The per-track fallback — (c) the title-checked name search, then
+    // (d) AcoustID for the remainder. Shared by both ways a track gets
+    // here unidentified: one that carries no identifier, and one whose
+    // ISRC MusicBrainz answers "unknown" (an unknown code is not an
+    // answer to "which recording is this?", and the absent close must
+    // not claim AcoustID was asked when it never ran — the exact
+    // defect class). Mutates the ladder state declared above.
+    const runPerTrackFallback = async (
+        tags: IdentityTags | null,
+    ): Promise<void> => {
+        const search = await askWithinBudget(
+            () =>
+                musicBrainzService.searchRecording(track.title, artistName),
+            timeoutMs,
+            `Timeout searching MB recording: ${track.title}`,
+        );
+        if (search.kind === "answered") {
+            recordingMbid = search.value.trackMbid;
+        } else if (search.kind !== "absent") {
+            failedAsk = { source: "musicbrainz", outcome: search };
+        }
+
+        // AcoustID for the remainder — only when neither the tags
+        // nor the album chain nor the name search answered.
+        //
+        // The gate (PREREQUISITE_STAGE: fingerprint → recording,
+        // "settled") guarantees the fingerprint QUESTION has been
+        // answered before this stage ever runs. Either a
+        // fingerprint is stored — the AcoustID step consumes it —
+        // or the fingerprint stage closed as a permanent failure
+        // and no fingerprint will ever arrive: then the step is
+        // skipped here and the skip is written into this stage's
+        // evidence, so the no-match (if it comes to that) is honest
+        // about which identity steps ran. The source pause still
+        // applies to the asking itself: an AcoustID rate limit must
+        // stop the asking, not the sweep. features.fpcalc gates the
+        // FINGERPRINT phase, never this step — this step never runs
+        // fpcalc.
+        if (!recordingMbid) {
+            if (
+                !track.acoustidFingerprint &&
+                (await fingerprintStageSettledFailed(track.id))
+            ) {
+                acoustidSkipped = true;
+                logger.debug(
+                    `[Track Enrichment] ${track.title}: AcoustID skipped — fingerprint stage closed as a permanent failure`,
+                );
+            } else if (
+                !(await sourcePauseController.isPaused("acoustid"))
+            ) {
+                const identified = await askWithinBudget(
+                    () =>
+                        identifyTrackByAcoustid(
+                            trackRef,
+                            tags,
+                            // Reuse the fingerprint the fingerprint
+                            // stage already stored on the track —
+                            // never spend a second fpcalc run
+                            // recomputing what is on disk.
+                            track.acoustidFingerprint
+                                ? { fingerprint: track.acoustidFingerprint }
+                                : null,
+                        ),
+                    timeoutMs,
+                    `Timeout asking AcoustID: ${track.title}`,
+                );
+                if (identified.kind === "answered") {
+                    recordingMbid = identified.value.recordingMbid;
+                    answerSource = identified.value.source;
+                    fingerprintToStore =
+                        identified.value.fingerprint ?? null;
+                    logger.debug(
+                        `[Track Enrichment] ${track.title}: AcoustID identified via ${identified.value.source} (recording ${identified.value.recordingMbid})`,
+                    );
+                } else if (identified.kind === "absent") {
+                    // Asked and nothing matched — an answer, not a
+                    // failure. The dedupe column still wants the
+                    // fingerprint (it is in the evidence).
+                    const fp = identified.evidence["fingerprint"];
+                    if (typeof fp === "string") fingerprintToStore = fp;
+                } else if (!failedAsk) {
+                    failedAsk = { source: "acoustid", outcome: identified };
+                }
+            } else {
+                acoustidSkipped = true;
+                logger.debug(
+                    `[Track Enrichment] ${track.title}: AcoustID skipped — source paused`,
+                );
+            }
+        }
+    };
+
     if (!track.isrc) {
         needsIsrc = true;
-        const trackRef = {
-            id: track.id,
-            title: track.title,
-            filePath: track.filePath,
-            duration: track.duration,
-        };
-
         // (a) File tags first — read once, no network.
         const tags = await readIdentityTags(trackRef);
         if (tags?.recordingMbid) {
@@ -2171,109 +2266,17 @@ export async function enrichSingleTrack(
                 }
             }
 
-            // (c) The per-track name search, then (d) AcoustID — only for
-            // tracks the chain did not answer (placeholder album, or a
-            // file that is not on the release's tracklist). When the chain
-            // call itself failed there is nothing to fall through to: the
-            // search and AcoustID would just re-ask a host that is already
-            // failing, so the record defers on the chain's real cause.
+            // (c) name search, then (d) AcoustID — only for tracks the
+            // chain did not answer (placeholder album, or a file that is
+            // not on the release's tracklist). When the chain call itself
+            // failed there is nothing to fall through to: the search and
+            // AcoustID would just re-ask a host that is already failing,
+            // so the record defers on the chain's real cause.
             if (!catalogueAnswer && !failedAsk) {
-                const search = await askWithinBudget(
-                    () =>
-                        musicBrainzService.searchRecording(track.title, artistName),
-                    timeoutMs,
-                    `Timeout searching MB recording: ${track.title}`,
-                );
-                if (search.kind === "answered") {
-                    recordingMbid = search.value.trackMbid;
-                } else if (search.kind !== "absent") {
-                    failedAsk = { source: "musicbrainz", outcome: search };
-                }
-
-                // AcoustID for the remainder — only when neither the tags
-                // nor the album chain nor the name search answered.
-                //
-                // The gate (PREREQUISITE_STAGE: fingerprint → recording,
-                // "settled") guarantees the fingerprint QUESTION has been
-                // answered before this stage ever runs. Either a
-                // fingerprint is stored — the AcoustID step consumes it —
-                // or the fingerprint stage closed as a permanent failure
-                // and no fingerprint will ever arrive: then the step is
-                // skipped here and the skip is written into this stage's
-                // evidence, so the no-match (if it comes to that) is honest
-                // about which identity steps ran. The source pause still
-                // applies to the asking itself: an AcoustID rate limit must
-                // stop the asking, not the sweep. features.fpcalc gates the
-                // FINGERPRINT phase, never this step — this step never runs
-                // fpcalc.
-                if (!recordingMbid) {
-                    if (
-                        !track.acoustidFingerprint &&
-                        (await fingerprintStageSettledFailed(track.id))
-                    ) {
-                        acoustidSkipped = true;
-                        logger.debug(
-                            `[Track Enrichment] ${track.title}: AcoustID skipped — fingerprint stage closed as a permanent failure`,
-                        );
-                    } else if (
-                        !(await sourcePauseController.isPaused("acoustid"))
-                    ) {
-                        const identified = await askWithinBudget(
-                            () =>
-                                identifyTrackByAcoustid(
-                                    trackRef,
-                                    tags,
-                                    // Reuse the fingerprint the fingerprint
-                                    // stage already stored on the track —
-                                    // never spend a second fpcalc run
-                                    // recomputing what is on disk.
-                                    track.acoustidFingerprint
-                                        ? { fingerprint: track.acoustidFingerprint }
-                                        : null,
-                                ),
-                            timeoutMs,
-                            `Timeout asking AcoustID: ${track.title}`,
-                        );
-                        if (identified.kind === "answered") {
-                            recordingMbid = identified.value.recordingMbid;
-                            answerSource = identified.value.source;
-                            fingerprintToStore =
-                                identified.value.fingerprint ?? null;
-                            logger.debug(
-                                `[Track Enrichment] ${track.title}: AcoustID identified via ${identified.value.source} (recording ${identified.value.recordingMbid})`,
-                            );
-                        } else if (identified.kind === "absent") {
-                            // Asked and nothing matched — an answer, not a
-                            // failure. The dedupe column still wants the
-                            // fingerprint (it is in the evidence).
-                            const fp = identified.evidence["fingerprint"];
-                            if (typeof fp === "string") fingerprintToStore = fp;
-                        } else if (!failedAsk) {
-                            failedAsk = { source: "acoustid", outcome: identified };
-                        }
-                    } else {
-                        acoustidSkipped = true;
-                        logger.debug(
-                            `[Track Enrichment] ${track.title}: AcoustID skipped — source paused`,
-                        );
-                    }
-                }
+                await runPerTrackFallback(tags);
             }
         }
 
-        if (fingerprintToStore) {
-            try {
-                await persistAcoustidFingerprint(track.id, fingerprintToStore);
-            } catch (err) {
-                // A failed fingerprint write is a real failure, not an
-                // empty warning: the record keeps the actual error and the
-                // question stays open with its own retry schedule.
-                await recordStageFailure(track.id, "recording", "acoustid", err, {
-                    stage: "persisting the fingerprint on Track",
-                });
-                return "deferred";
-            }
-        }
     } else {
         // Track already has an ISRC: find the recording from the known
         // identifier instead of re-identifying it.
@@ -2287,6 +2290,27 @@ export async function enrichSingleTrack(
             answerSource = "isrc";
         } else if (rec.kind !== "absent") {
             failedAsk = { source: "musicbrainz", outcome: rec };
+        } else {
+            // No recording carries this ISRC in MusicBrainz — not an
+            // answer to the question. The per-track fallback runs, and
+            // whatever recording answers it owes a fresh ISRC: the
+            // stored code is not on it.
+            needsIsrc = true;
+            await runPerTrackFallback(null);
+        }
+    }
+
+    if (fingerprintToStore) {
+        try {
+            await persistAcoustidFingerprint(track.id, fingerprintToStore);
+        } catch (err) {
+            // A failed fingerprint write is a real failure, not an
+            // empty warning: the record keeps the actual error and the
+            // question stays open with its own retry schedule.
+            await recordStageFailure(track.id, "recording", "acoustid", err, {
+                stage: "persisting the fingerprint on Track",
+            });
+            return "deferred";
         }
     }
 
@@ -2330,12 +2354,12 @@ export async function enrichSingleTrack(
             await recordStageAbsent(
                 track.id,
                 "recording",
-                track.isrc ? "musicbrainz" : "acoustid",
+                "acoustid",
                 {
                     reason:
                         "sources have no recording for this track",
                     asked: track.isrc
-                        ? ["isrc", "acoustid"]
+                        ? ["isrc", "mb-search", "acoustid"]
                         : ["mb-search", "acoustid"],
                 },
             );
@@ -2369,6 +2393,11 @@ export async function enrichSingleTrack(
         // a source actually answers.
         return "no_match";
     }
+
+    // Every null path above returned; TypeScript will not narrow the
+    // mutable let inside the fetch callbacks below, so the answered id
+    // continues as a const.
+    const mbid = recordingMbid;
 
     // The answer lands on Track: "which recording is this?" needs an
     // answer to KEEP, not just one to use for this run.
@@ -2426,7 +2455,7 @@ export async function enrichSingleTrack(
     try {
         if (needsIsrc) {
             const isrc = await askWithinBudget(
-                () => musicBrainzService.getRecordingIsrc(recordingMbid),
+                () => musicBrainzService.getRecordingIsrc(mbid),
                 timeoutMs,
                 `Timeout fetching MB ISRC: ${track.title}`,
             );
@@ -2441,7 +2470,7 @@ export async function enrichSingleTrack(
             // answer: there is nothing to store, and the question is done.
         }
         const genres = await askWithinBudget(
-            () => musicBrainzService.getRecordingGenres(recordingMbid),
+            () => musicBrainzService.getRecordingGenres(mbid),
             timeoutMs,
             `Timeout fetching MB genres: ${track.title}`,
         );
