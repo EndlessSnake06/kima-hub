@@ -313,42 +313,63 @@ test.describe("Dogfood: stats, filters, audit, queue", () => {
         session.setJourney("5. Player play count");
 
         await session.step("the count in the bar is the count the API gives", async () => {
-            const trackId = await page.evaluate(() => {
-                try {
-                    return JSON.parse(localStorage.getItem("kima_current_track") || "null")?.id ?? null;
-                } catch {
-                    return null;
-                }
-            });
-            test.skip(!trackId, "nothing is playing to count");
+            // Name the track from the bar's own audio element. The
+            // persisted current-track key lags the player state by seconds,
+            // and this journey runs right after one that starts playback —
+            // reading storage here once grabbed the PREVIOUS track and
+            // chased an ordinal the bar could never show.
+            const idFromPlayer = () =>
+                page
+                    .$eval(PLAYER, (el) =>
+                        (el as HTMLAudioElement).src.match(/\/tracks\/([^/?#]+)\/stream/)?.[1] ?? "",
+                    )
+                    .catch(() => "");
 
-            const res = await page.request.get(`/api/stats/track/${trackId}/plays`, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
-            expect(res.status()).toBe(200);
-            const { plays } = await res.json();
-            expect(typeof plays).toBe("number");
+            const ordinalOf = (n: number) => {
+                const suffix =
+                    n % 10 === 1 && n % 100 !== 11
+                        ? "st"
+                        : n % 10 === 2 && n % 100 !== 12
+                          ? "nd"
+                          : n % 10 === 3 && n % 100 !== 13
+                            ? "rd"
+                            : "th";
+                return new RegExp(`\\b${n}(${suffix}) play\\b`);
+            };
 
-            // The bar says the ordinal of the play in progress, which is one
-            // past the completed count. Silent on a first listen.
-            if (plays >= 1) {
-                const n = plays + 1;
-                const suffix = n % 10 === 1 && n % 100 !== 11 ? "st"
-                    : n % 10 === 2 && n % 100 !== 12 ? "nd"
-                    : n % 10 === 3 && n % 100 !== 13 ? "rd"
-                    : "th";
-                const ordinal = new RegExp(`\\b${n}(${suffix}) play\\b`);
-                await expect
-                    .poll(async () => (await page.locator("body").innerText()).replace(/\s+/g, " "), {
-                        timeout: 20_000,
-                        message: `the player bar should state the ${n}${suffix} play`,
-                    })
-                    .toMatch(ordinal);
+            test.skip(!(await idFromPlayer()), "nothing is playing to count");
 
-                // And it must link to the page the number came from.
-                const link = page.getByRole("link", { name: ordinal });
-                await expect(link).toHaveAttribute("href", "/stats");
-            }
+            // The play in progress is one past the last recorded listen, and
+            // the listen itself gets recorded mid-window — so a single read
+            // pairs with whatever the bar showed at its own fetch: the bar
+            // states plays+1, or plays once this one is on the books. A
+            // first listen is silent by design.
+            await expect
+                .poll(
+                    async () => {
+                        const id = await idFromPlayer();
+                        if (!id) return "the player lost its stream";
+                        const res = await page.request.get(`/api/stats/track/${id}/plays`, {
+                            headers: { Authorization: `Bearer ${token}` },
+                        });
+                        expect(res.status()).toBe(200);
+                        const { plays } = await res.json();
+                        expect(typeof plays).toBe("number");
+                        if (plays < 1) return "consistent";
+                        const body = (await page.locator("body").innerText()).replace(/\s+/g, " ");
+                        for (const n of [plays + 1, plays]) {
+                            const ordinal = ordinalOf(n);
+                            if (ordinal.test(body)) {
+                                const link = page.getByRole("link", { name: ordinal });
+                                await expect(link).toHaveAttribute("href", "/stats");
+                                return "consistent";
+                            }
+                        }
+                        return `bar shows no play ordinal for a track with ${plays} listens`;
+                    },
+                    { timeout: 20_000, message: "the bar's count must be the API's count" },
+                )
+                .toBe("consistent");
         });
 
         await session.step("an unknown track counts zero rather than erroring", async () => {
