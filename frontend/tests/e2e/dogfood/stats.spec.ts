@@ -711,7 +711,11 @@ test.describe("Dogfood: stats, filters, audit, queue", () => {
                 .filter({ hasNot: page.locator("[disabled]") })
                 .last();
             await input.fill("2500");
-            await input.blur(); // the box commits on blur; there is no Save button for it
+            await input.blur(); // the blur lifts the number into the page's state
+            // The page-level "Save Changes" button is the only door to the
+            // server: it POSTs the whole settings state. A locator that
+            // matches any Save hits the API-keys "Save token" button first.
+            await page.getByRole("button", { name: /save changes/i }).click();
 
             await expect
                 .poll(
