@@ -185,7 +185,7 @@ async function putStage(
     trackId: string,
     stage: string,
     status: string,
-    opts: { retryable?: boolean } = {},
+    opts: { retryable?: boolean; failureClass?: string } = {},
 ): Promise<void> {
     await prisma.$executeRawUnsafe(
         `INSERT INTO "TrackStage"
@@ -206,7 +206,7 @@ async function putStage(
         "analyzer", 0,
         status === "done" ? null : "TEST_SEED",
         status === "done" ? null : "seeded by test",
-        status === "done" ? null : "INCONCLUSIVE",
+        status === "done" ? null : opts.failureClass ?? "INCONCLUSIVE",
         opts.retryable ?? true, null,
         JSON.stringify({ probe: "ffmpeg -i", rc: 1 }),
     );
@@ -343,20 +343,25 @@ describe("getEnrichmentProgress", () => {
     it("holds a flagged-missing file's questions as waitingMissing, not as owed work", async () => {
         const before = await getEnrichmentProgress();
 
-        // The scan found this file gone and flagged it. The offer gate
-        // never hands its questions out, so they must leave `pending` — or
-        // completion is hostage to a file that may never come back — and
-        // show as a counted resting state instead.
+        // The scan found this file gone, flagged it, and CLOSED
+        // its open question as FILE_MISSING. The count reads the closure:
+        // owed work loses the row, `waitingMissing` gains it, and the
+        // stage's `failed` figures do not inflate — a missing file is a
+        // counted resting state, not a failure for a human to triage.
         await seedTrack(
             id("vanished"),
-            { recording: "done", analysis: "done", embedding: "pending" },
+            { recording: "done", analysis: "done", embedding: "failed" },
             { missing: true },
         );
+        await putStage(id("vanished"), "embedding", "failed", {
+            retryable: false, failureClass: "FILE_MISSING",
+        });
 
         invalidateEnrichmentProgress();
         const after = await getEnrichmentProgress();
 
         expect(after.clapEmbeddings.pending).toBe(before.clapEmbeddings.pending);
+        expect(after.clapEmbeddings.failed).toBe(before.clapEmbeddings.failed);
         expect(after.clapEmbeddings.waitingMissing - before.clapEmbeddings.waitingMissing).toBe(1);
         // Answered stages gain nothing, missing or not.
         expect(after.trackTags.waitingMissing).toBe(before.trackTags.waitingMissing);
@@ -365,13 +370,16 @@ describe("getEnrichmentProgress", () => {
 
     it("lets the library reach fully-complete when the only open questions are missing files", async () => {
         // The shape that used to hang the run forever: every answerable
-        // question is answered and the only open ones belong to files the
-        // scan flagged missing.
+        // question is answered and the only ones left belong to files the
+        // scan flagged missing — those are closed, so nothing is owed.
         await seedTrack(
             id("ghostonly"),
-            { recording: "done", analysis: "done", embedding: "pending" },
+            { recording: "done", analysis: "done", embedding: "failed" },
             { missing: true },
         );
+        await putStage(id("ghostonly"), "embedding", "failed", {
+            retryable: false, failureClass: "FILE_MISSING",
+        });
         await putStage(id("ghostonly"), "fingerprint", "done");
         await prisma.artist.update({
             where: { id: id("art") },

@@ -241,3 +241,158 @@ describe("scan with a vanished file", () => {
         expect(third.tracksMissing).toBe(0);
     });
 });
+
+/**
+ * A missing file takes its open questions with it, and a returned
+ * file takes them back. The offer gate already refused to hand these
+ * records out; the bug was that they stayed `pending`, so every consumer
+ * of the progress count had to remember the exception.
+ */
+describe("stage records follow the file", () => {
+    async function putStage(
+        trackId: string,
+        stage: string,
+        status: string,
+        opts: {
+            retryable?: boolean;
+            failureClass?: string;
+            attempt?: number;
+            decided?: boolean;
+        } = {},
+    ): Promise<void> {
+        await prisma.$executeRawUnsafe(
+            `INSERT INTO "TrackStage"
+                (id, "trackId", stage, status, attempt, retryable,
+                 "failureClass", "decidedAt", "decidedBy", evidence)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)
+             ON CONFLICT ("trackId", stage) DO UPDATE
+                SET status = EXCLUDED.status,
+                    attempt = EXCLUDED.attempt,
+                    retryable = EXCLUDED.retryable,
+                    "failureClass" = EXCLUDED."failureClass",
+                    "decidedAt" = EXCLUDED."decidedAt",
+                    "decidedBy" = EXCLUDED."decidedBy"`,
+            `${trackId}__${stage}`, trackId, stage, status,
+            opts.attempt ?? 0, opts.retryable ?? true,
+            opts.failureClass ?? null,
+            opts.decided ? new Date() : null,
+            opts.decided ? "test_human" : null,
+            JSON.stringify({}),
+        );
+    }
+
+    function stageRow(trackId: string, stage: string) {
+        return prisma.trackStage.findUnique({
+            where: { id: `${trackId}__${stage}` },
+        });
+    }
+
+    it("a vanished file closes its open questions as FILE_MISSING and leaves settled and in-flight records alone", async () => {
+        const scanner = new MusicScannerService();
+        await scanner.scanLibrary(musicDir);
+        const trackId = (await findTrack())!.id;
+
+        await putStage(trackId, "recording", "pending");
+        await putStage(trackId, "analysis", "failed", { retryable: true });
+        await putStage(trackId, "embedding", "done");
+        await putStage(trackId, "fingerprint", "working");
+
+        fs.unlinkSync(trackFile);
+        await scanner.scanLibrary(musicDir);
+
+        const rec = await stageRow(trackId, "recording");
+        expect(rec?.status).toBe("failed");
+        expect(rec?.retryable).toBe(false);
+        expect(rec?.failureClass).toBe("FILE_MISSING");
+        expect(rec?.lastErrorCode).toBe("FILE_MISSING");
+        expect(rec?.finishedAt).not.toBeNull();
+
+        // A retryable failure is an open question too.
+        const ana = await stageRow(trackId, "analysis");
+        expect(ana?.status).toBe("failed");
+        expect(ana?.retryable).toBe(false);
+        expect(ana?.failureClass).toBe("FILE_MISSING");
+
+        // Settled and in-flight records are not this rule's to touch.
+        expect((await stageRow(trackId, "embedding"))?.status).toBe("done");
+        expect((await stageRow(trackId, "fingerprint"))?.status).toBe(
+            "working"
+        );
+    });
+
+    it("the scan that finds the file back re-opens only what the closure closed", async () => {
+        const scanner = new MusicScannerService();
+        await scanner.scanLibrary(musicDir);
+        const trackId = (await findTrack())!.id;
+
+        await putStage(trackId, "recording", "pending", { attempt: 2 });
+        await putStage(trackId, "embedding", "pending");
+        await putStage(trackId, "fingerprint", "failed", {
+            retryable: false, failureClass: "RETRY_EXHAUSTED",
+        });
+
+        const originalMtime = fs.statSync(trackFile).mtime;
+        fs.unlinkSync(trackFile);
+        await scanner.scanLibrary(musicDir);
+        expect(
+            (await stageRow(trackId, "recording"))?.failureClass
+        ).toBe("FILE_MISSING");
+
+        // A human re-decided one closed record; the file returning must
+        // not steamroll that verdict (invariant 11).
+        await prisma.trackStage.update({
+            where: { id: `${trackId}__embedding` },
+            data: { decidedAt: new Date(), decidedBy: "test_human" },
+        });
+
+        // Back on the same path with an OLDER mtime than the row records —
+        // the mount came back as it was, so the walk's "file unchanged"
+        // skip must hold and only the flag/reopen path may fire.
+        writeFile();
+        const older = new Date(originalMtime.getTime() - 1000);
+        fs.utimesSync(trackFile, older, older);
+        await scanner.scanLibrary(musicDir);
+
+        const rec = await stageRow(trackId, "recording");
+        expect(rec?.status).toBe("pending");
+        expect(rec?.attempt).toBe(0);
+        expect(rec?.failureClass).toBeNull();
+        expect(rec?.finishedAt).toBeNull();
+
+        const emb = await stageRow(trackId, "embedding");
+        expect(emb?.status).toBe("failed");
+        expect(emb?.decidedBy).toBe("test_human");
+
+        const fp = await stageRow(trackId, "fingerprint");
+        expect(fp?.status).toBe("failed");
+        expect(fp?.failureClass).toBe("RETRY_EXHAUSTED");
+    });
+
+    it("a track flagged missing before the closure rule existed gets closed by the next scan", async () => {
+        // The live shape this was cut for: rows flagged missing on an
+        // older scan with their questions still `pending`. No flag flip is
+        // involved — the close runs over every flagged track each scan.
+        const scanner = new MusicScannerService();
+        await scanner.scanLibrary(musicDir);
+        const trackId = (await findTrack())!.id;
+        await putStage(trackId, "recording", "pending");
+
+        fs.unlinkSync(trackFile);
+        await scanner.scanLibrary(musicDir);
+        // Back to the pre-fix state the old code would have left.
+        await prisma.trackStage.update({
+            where: { id: `${trackId}__recording` },
+            data: {
+                status: "pending", retryable: true, failureClass: null,
+                lastErrorCode: null, finishedAt: null,
+            },
+        });
+
+        await scanner.scanLibrary(musicDir);
+
+        const rec = await stageRow(trackId, "recording");
+        expect(rec?.status).toBe("failed");
+        expect(rec?.retryable).toBe(false);
+        expect(rec?.failureClass).toBe("FILE_MISSING");
+    });
+});

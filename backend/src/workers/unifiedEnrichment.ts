@@ -3225,6 +3225,7 @@ async function computeEnrichmentProgress() {
                     working: bigint;
                     retryable_failed: bigint;
                     terminal_failed: bigint;
+                    file_missing: bigint;
                 }[]
             >`
                 SELECT
@@ -3236,7 +3237,12 @@ async function computeEnrichmentProgress() {
                     )                                                           AS retryable_failed,
                     count(*) FILTER (
                         WHERE ts.status = 'failed' AND NOT ts.retryable
-                    )                                                           AS terminal_failed
+                          AND ts."failureClass" IS DISTINCT FROM 'FILE_MISSING'
+                    )                                                           AS terminal_failed,
+                    count(*) FILTER (
+                        WHERE ts.status = 'failed' AND NOT ts.retryable
+                          AND ts."failureClass" = 'FILE_MISSING'
+                    )                                                           AS file_missing
                 FROM "Track" t
                 LEFT JOIN "TrackStage" ts
                          ON ts."trackId" = t.id AND ts.stage = ${stage}
@@ -3247,6 +3253,7 @@ async function computeEnrichmentProgress() {
                 working: Number(row?.working ?? 0),
                 retryableFailed: Number(row?.retryable_failed ?? 0),
                 terminalFailed: Number(row?.terminal_failed ?? 0),
+                fileMissing: Number(row?.file_missing ?? 0),
             };
         }),
     );
@@ -3268,11 +3275,9 @@ async function computeEnrichmentProgress() {
     // settled condition the gate enforces — done, or closed as a permanent
     // failure — is what unblocks a row; everything else it could be is
     // waiting. Reported separately in trackTags: an open question, just not
-    // an actionable one. A missing file is a deeper kind of not-actionable
-    // than a gate (the gate clears when the sibling answers; this clears
-    // only when the file comes back), so those rows are pulled out of this
-    // count and reported per stage as `waitingMissing` by the query below —
-    // the two buckets stay disjoint and pending stays substractable.
+    // an actionable one. A missing file never reaches here: its record is
+    // already closed as FILE_MISSING by the scan, counted per stage
+    // below as `waitingMissing`.
     const [recordingWaitingRow] = await prisma.$queryRaw<{ waiting: bigint }[]>`
         SELECT count(*) AS waiting
           FROM "TrackStage" ts
@@ -3294,29 +3299,11 @@ async function computeEnrichmentProgress() {
     `;
     const recordingWaiting = Number(recordingWaitingRow?.waiting ?? 0);
 
-    // a due question about a file the scan flagged
-    // missing is a counted resting state, not owed work. The offer gate
-    // (getNextWork's `missingSince IS NULL` filter) will never hand these
-    // out, so counting them as pending would hold completion hostage to
-    // files that may never come back and leave the state service reporting
-    // a hang forever. The flag clearing on the scan that finds the file
-    // makes them due again — no other action, and no stored status leaves
-    // the invariant-1 enumeration (this is a derived count, same pattern
-    // as waiting-on-pause).
-    const missingHeldRows = await prisma.$queryRaw<Array<{ stage: string; held: bigint }>>`
-        SELECT ts.stage AS stage, count(*) AS held
-          FROM "TrackStage" ts
-          JOIN "Track" t ON t.id = ts."trackId"
-         WHERE t."missingSince" IS NOT NULL
-           AND (ts.status = 'pending'
-                OR (ts.status = 'failed' AND ts.retryable
-                    AND (ts."nextRetryAt" IS NULL
-                         OR ts."nextRetryAt" <= now())))
-         GROUP BY ts.stage
-    `;
-    const heldMissing: Record<string, number> = {};
-    for (const row of missingHeldRows) heldMissing[row.stage] = Number(row.held);
-    const heldOf = (stage: string) => heldMissing[stage] ?? 0;
+    // a question about a flagged-missing file has been
+    // closed by the scan itself as FILE_MISSING — the `file_missing`
+    // bucket in the per-stage counts above. It is neither owed work nor a
+    // silent disappearance: every stage reports it as `waitingMissing`, and
+    // a scan that finds the file back re-opens it to pending.
 
     // Core enrichment is complete when artists and track tags are done
     // Audio analysis is separate - it runs in background and doesn't block
@@ -3326,28 +3313,28 @@ async function computeEnrichmentProgress() {
         recording.terminalFailed -
         recording.retryableFailed -
         recording.working -
-        heldOf("recording");
+        recording.fileMissing;
     const analysisPending =
         analysis.total -
         analysis.completed -
         analysis.terminalFailed -
         analysis.retryableFailed -
         analysis.working -
-        heldOf("analysis");
+        analysis.fileMissing;
     const embeddingPending =
         embedding.total -
         embedding.completed -
         embedding.terminalFailed -
         embedding.retryableFailed -
         embedding.working -
-        heldOf("embedding");
+        embedding.fileMissing;
     const fingerprintPending =
         fingerprint.total -
         fingerprint.completed -
         fingerprint.terminalFailed -
         fingerprint.retryableFailed -
         fingerprint.working -
-        heldOf("fingerprint");
+        fingerprint.fileMissing;
     const coreComplete =
         artistPending === 0 &&
         recordingPending === 0 &&
@@ -3381,9 +3368,9 @@ async function computeEnrichmentProgress() {
             // Open but blocked behind the fingerprint gate — the sweep
             // cannot act on them until the fingerprint question settles.
             waiting: recordingWaiting,
-            // Due, but the file is flagged missing: due again the
-            // moment a scan finds it, not work the sweep can do.
-            waitingMissing: heldOf("recording"),
+            // Closed as FILE_MISSING: owed again the moment a
+            // scan finds the file back, never work the sweep can do.
+            waitingMissing: recording.fileMissing,
             progress:
                 recording.total > 0 ?
                     Math.round(
@@ -3401,7 +3388,7 @@ async function computeEnrichmentProgress() {
             processing: analysis.working,
             failed: analysis.retryableFailed,
             permanentlyFailed: analysis.terminalFailed,
-            waitingMissing: heldOf("analysis"),
+            waitingMissing: analysis.fileMissing,
             progress:
                 analysis.total > 0 ?
                     Math.round((analysis.completed / analysis.total) * 100)
@@ -3416,7 +3403,7 @@ async function computeEnrichmentProgress() {
             pending: embeddingPending,
             processing: embedding.working,
             failed: embedding.retryableFailed + embedding.terminalFailed,
-            waitingMissing: heldOf("embedding"),
+            waitingMissing: embedding.fileMissing,
             progress:
                 embedding.total > 0 ?
                     Math.round((embedding.completed / embedding.total) * 100)
@@ -3433,7 +3420,7 @@ async function computeEnrichmentProgress() {
             pending: fingerprintPending,
             processing: fingerprint.working,
             failed: fingerprint.retryableFailed + fingerprint.terminalFailed,
-            waitingMissing: heldOf("fingerprint"),
+            waitingMissing: fingerprint.fileMissing,
             progress:
                 fingerprint.total > 0 ?
                     Math.round((fingerprint.completed / fingerprint.total) * 100)

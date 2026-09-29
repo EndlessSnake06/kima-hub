@@ -2,6 +2,7 @@ import * as fs from "fs";
 import { logger } from "../utils/logger";
 import * as path from "path";
 import { parseFile } from "music-metadata";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../utils/db";
 import PQueue from "p-queue";
 import { CoverArtExtractor } from "./coverArtExtractor";
@@ -104,6 +105,82 @@ async function reopenStagesForChangedFile(trackId: string): Promise<void> {
     if (reopened > 0) {
         logger.debug(
             `[Scanner] Re-opened ${reopened} stage record(s) for ${trackId}: file changed`
+        );
+    }
+}
+
+/**
+ * A file that left the library takes its open questions with it.
+ *
+ * The offer gate never hands a missing track's records out, so every one
+ * still open is work the sweep can never act on: progress would report it
+ * owed forever and the hang watchdog would fire on a library whose files
+ * are simply gone. Closing them with a named code — the
+ * closeOrphanedDependents shape, invariant 1's terminal `closed` — makes
+ * `pending` mean pending everywhere. This runs over EVERY flagged track,
+ * not just this scan's new flags: rows flagged before the rule existed are
+ * closed by the next scan, and so is a record whose answer lands as a
+ * retryable failure while the flag is held.
+ */
+async function closeStagesForMissingTracks(
+    client: Pick<Prisma.TransactionClient, "$executeRaw">
+): Promise<number> {
+    return client.$executeRaw`
+        UPDATE "TrackStage" ts
+           SET status = 'failed',
+               retryable = false,
+               "nextRetryAt" = NULL,
+               "startedAt" = COALESCE(ts."startedAt", now()),
+               "finishedAt" = COALESCE(ts."finishedAt", now()),
+               "failureClass" = 'FILE_MISSING',
+               "lastErrorCode" = 'FILE_MISSING',
+               "lastErrorMessage" = 'file missing from the library; a scan that finds it again re-opens this record',
+               evidence = jsonb_build_object('reason', 'file missing', 'closure', 'file-missing')
+          WHERE (ts.status = 'pending'
+                 OR (ts.status = 'failed' AND ts.retryable
+                     AND (ts."nextRetryAt" IS NULL
+                          OR ts."nextRetryAt" <= now())))
+            AND ts."trackId" IN (
+                SELECT id FROM "Track" WHERE "missingSince" IS NOT NULL
+            )`;
+}
+
+/**
+ * A file that came back takes its open questions back.
+ *
+ * Only records the closure above made — FILE_MISSING, with no human
+ * decision on them (invariant 11) — return to pending at attempt 0, the
+ * same re-open shape `reopenStagesForChangedFile` uses. Records closed for
+ * any other reason waited on a different fact and stay closed; if a human
+ * re-decided a FILE_MISSING row, that verdict is the answer they chose and
+ * the file returning does not overwrite it.
+ */
+async function reopenStagesForReturnedTracks(
+    client: Pick<Prisma.TransactionClient, "$executeRaw">,
+    trackIds: string[]
+): Promise<void> {
+    if (trackIds.length === 0) return;
+    const reopened = await client.$executeRaw`
+        UPDATE "TrackStage"
+           SET status = 'pending',
+               attempt = 0,
+               redelivered = 0,
+               "nextRetryAt" = NULL,
+               "startedAt" = NULL,
+               "finishedAt" = NULL,
+               "lastErrorCode" = NULL,
+               "lastErrorMessage" = NULL,
+               "failureClass" = NULL,
+               retryable = true,
+               evidence = jsonb_build_object('reason', 'file returned')
+         WHERE "trackId" = ANY(${trackIds}::text[])
+           AND status = 'failed'
+           AND NOT retryable
+           AND "failureClass" = 'FILE_MISSING'
+           AND "decidedAt" IS NULL`;
+    if (reopened > 0) {
+        logger.debug(
+            `[Scanner] Re-opened ${reopened} stage record(s): files returned`
         );
     }
 }
@@ -292,9 +369,13 @@ export class MusicScannerService {
             (t) => t.missingSince !== null && scannedPaths.has(t.filePath)
         );
         if (returned.length > 0) {
-            await prisma.track.updateMany({
-                where: { id: { in: returned.map((t) => t.id) } },
-                data: { missingSince: null },
+            const returnedIds = returned.map((t) => t.id);
+            await prisma.$transaction(async (tx) => {
+                await tx.track.updateMany({
+                    where: { id: { in: returnedIds } },
+                    data: { missingSince: null },
+                });
+                await reopenStagesForReturnedTracks(tx, returnedIds);
             });
             logger.debug(
                 `Cleared the missing flag on ${returned.length} track(s) whose files are back`
@@ -329,22 +410,32 @@ export class MusicScannerService {
                 );
             }
 
-            if (vanished.length > 0) {
-                // Only rows not already flagged change: the timestamp is when
-                // THIS scan found the file gone, not a later one re-stamping
-                // an old fact.
-                const marked = await prisma.track.updateMany({
-                    where: {
-                        id: { in: vanished.map((t) => t.id) },
-                        missingSince: null,
-                    },
-                    data: { missingSince: new Date() },
-                });
-                result.tracksMissing = marked.count;
-                logger.debug(
-                    `Flagged ${marked.count} track(s) missing (files not found on disk)`
-                );
-            }
+            // Flag and stage records change together: a reader never sees
+            // a flagged track whose open questions are still owed work.
+            await prisma.$transaction(async (tx) => {
+                if (vanished.length > 0) {
+                    // Only rows not already flagged change: the timestamp is when
+                    // THIS scan found the file gone, not a later one re-stamping
+                    // an old fact.
+                    const marked = await tx.track.updateMany({
+                        where: {
+                            id: { in: vanished.map((t) => t.id) },
+                            missingSince: null,
+                        },
+                        data: { missingSince: new Date() },
+                    });
+                    result.tracksMissing = marked.count;
+                    logger.debug(
+                        `Flagged ${marked.count} track(s) missing (files not found on disk)`
+                    );
+                }
+                const closed = await closeStagesForMissingTracks(tx);
+                if (closed > 0) {
+                    logger.debug(
+                        `[Scanner] Closed ${closed} stage record(s) for files not in the library`
+                    );
+                }
+            });
         }
 
         // Step 5: Clean up orphaned albums (albums with no tracks)
