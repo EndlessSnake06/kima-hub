@@ -681,6 +681,7 @@ model SystemSettings {
   acoustidApiKey              String?
   soulseekConcurrentDownloads Int      @default(4)
   clapWorkers                 Int      @default(2)
+  gpuOnnxEnabled              Boolean  @default(false)
   soulseekEnabled             Boolean?
   soulseekDownloadPath        String?
   // ListenBrainz user token (encrypted). Replaces the Last.fm scrobble

@@ -3,7 +3,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { SettingsSection, SettingsRow, SettingsToggle } from "../ui";
 import { SystemSettings } from "../../types";
-import { api, type EnrichmentFailure } from "@/lib/api";
+import {
+    api,
+    type EnrichmentFailure,
+    type GpuRuntimeStatus,
+} from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useFeatures } from "@/lib/features-context";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -208,6 +212,34 @@ const confirmMeta: Record<
     },
 };
 
+function gpuStatusText(g: GpuRuntimeStatus): string {
+    if (g.installing) return "Downloading GPU runtime (~1.8 GB)…";
+    if (g.status === "failed") {
+        switch (g.reason) {
+            case "no_gpu":
+                return "Failed: Kima's containers cannot see an NVIDIA GPU.";
+            case "no_network":
+                return "Failed: could not reach the package index.";
+            case "driver_too_old":
+                return "Failed: the NVIDIA driver is too old for this CUDA runtime.";
+            case "unsupported_platform":
+                return "Failed: GPU runtime is supported on Linux x86_64 only.";
+            case "checksum_mismatch":
+                return "Failed: a downloaded file did not match its pinned checksum.";
+            default:
+                return `Failed: ${g.reason || "install error"}.`;
+        }
+    }
+    if (!g.enabled)
+        return g.installed
+            ? "Runtime installed; GPU is off."
+            : "Off — embeddings use the CPU.";
+    if (g.effective) return "Active — embeddings are running on the GPU.";
+    if (g.installed)
+        return "Installed — will be used after the analyzer restarts.";
+    return "Enabled — the analyzer will download it.";
+}
+
 export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
     const { musicCNN, vibeEmbeddings, loading: featuresLoading } = useFeatures();
     const { user: currentUser } = useAuth();
@@ -353,6 +385,21 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
         queryKey: ["clap-workers"],
         queryFn: () => api.getClapWorkers(),
         staleTime: 0,
+    });
+
+    const { data: gpuStatus } = useQuery({
+        queryKey: ["gpu-runtime-status"],
+        queryFn: () => api.getGpuStatus(),
+        refetchInterval: (query) =>
+            query.state.data?.installing ? 5000 : false,
+    });
+
+    const setGpuMutation = useMutation({
+        mutationFn: (enabled: boolean) => api.setGpuEnabled(enabled),
+        onSuccess: () =>
+            queryClient.invalidateQueries({
+                queryKey: ["gpu-runtime-status"],
+            }),
     });
 
     const setClapWorkersMutation = useMutation({
@@ -1095,6 +1142,41 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                         </div>
                     </SettingsRow>
                 )}
+
+                {/* NVIDIA GPU acceleration — row shows only measured state. */}
+                {settings.autoEnrichMetadata &&
+                    !featuresLoading &&
+                    vibeEmbeddings && (
+                        <SettingsRow
+                            label="NVIDIA GPU acceleration"
+                            description="Run vibe embeddings on an NVIDIA GPU. Downloads a pinned runtime (~1.8 GB) into the data directory; takes effect the next time the analyzer starts."
+                            htmlFor="gpu-onnx-toggle"
+                        >
+                            <div className="flex flex-col items-end gap-1">
+                                <SettingsToggle
+                                    id="gpu-onnx-toggle"
+                                    checked={gpuStatus?.enabled ?? false}
+                                    disabled={setGpuMutation.isPending}
+                                    onChange={(checked) =>
+                                        setGpuMutation.mutate(checked)
+                                    }
+                                />
+                                {gpuStatus && (
+                                    <span
+                                        className={`text-xs text-right ${
+                                            gpuStatus.status === "failed"
+                                                ? "text-amber-400"
+                                                : gpuStatus.effective
+                                                  ? "text-emerald-400"
+                                                  : "text-[var(--text-muted)]"
+                                        }`}
+                                    >
+                                        {gpuStatusText(gpuStatus)}
+                                    </span>
+                                )}
+                            </div>
+                        </SettingsRow>
+                    )}
 
                 {/* Maintenance Operations -- grouped destructive actions */}
                 <div className="mt-6 rounded-lg border border-white/10 overflow-hidden">

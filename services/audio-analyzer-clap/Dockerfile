@@ -80,7 +80,9 @@ RUN pip install --no-cache-dir -r requirements.txt 'transformers==4.57.6'
 # Application code -- ALL of the runtime modules. analyzer.py imports
 # onnx_backend at module load, which imports clap_mel. verify_runtime.py and
 # the fixtures ride along for the build-time parity gate below.
-COPY analyzer.py onnx_backend.py clap_mel.py verify_runtime.py ./
+COPY analyzer.py onnx_backend.py clap_mel.py verify_runtime.py gpu_runtime.py ./
+COPY gpu_env.sh /app/gpu_env.sh
+RUN chmod +x /app/gpu_env.sh
 COPY test_fixtures/ ./test_fixtures/
 
 # ============================================================
@@ -139,4 +141,5 @@ USER analyzer
 HEALTHCHECK --interval=30s --timeout=30s --start-period=60s --retries=3 \
     CMD python -c "import onnx_backend; print('OK')" || exit 1
 
+ENTRYPOINT ["/app/gpu_env.sh"]
 CMD ["python", "analyzer.py"]

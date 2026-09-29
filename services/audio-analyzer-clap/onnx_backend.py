@@ -76,8 +76,24 @@ class OnnxCLAPBackend:
         if self._sess is not None:
             return
         import onnxruntime as ort
-        self._sess = ort.InferenceSession(
-            self.model_path, providers=['CPUExecutionProvider'])
+        import gpu_runtime
+        providers = ['CPUExecutionProvider']
+        want_cuda = (gpu_runtime.request_gpu()
+                     and 'CUDAExecutionProvider' in ort.get_available_providers())
+        if want_cuda:
+            providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+        self._sess = ort.InferenceSession(self.model_path, providers=providers)
+        if want_cuda:
+            active = self._sess.get_providers()
+            if active and active[0] == 'CUDAExecutionProvider':
+                gpu_runtime.record_provider(True)
+                logger.info(f'ONNX CLAP audio session active on CUDA '
+                            f'(providers={active})')
+            else:
+                gpu_runtime.record_provider(False, f'session providers: {active}')
+                logger.warning(
+                    f'gpu-onnx: CUDA requested but session did not go active '
+                    f'(providers={active}) — embeddings still correct, CPU speed')
         self._in_name = self._sess.get_inputs()[0].name
         self._out_name = self._sess.get_outputs()[0].name
         # Torch-free mel front-end (vendored; bit-for-bit parity with HF's

@@ -30,6 +30,9 @@ services:
             # Don't use ${MUSIC_PATH} here as it contains the host path, not container path
             MUSIC_PATH: /music
             TRANSCODE_CACHE_PATH: /app/cache/transcodes
+            # gpuRuntime.ts writes enabled.json under DATA_DIR/gpu-onnx; the
+            # app dir is writable by the unprivileged backend user, /data is not.
+            DATA_DIR: /app
             TRANSCODE_CACHE_MAX_GB: ${TRANSCODE_CACHE_MAX_GB:-10}
 
             # CORS
@@ -47,6 +50,7 @@ services:
             - ${MUSIC_PATH:-./music}:/music
             - backend_cache:/app/cache
             - backend_logs:/app/logs
+            - gpu_runtime_data:/app/gpu-onnx
         ports:
             - "${BACKEND_PORT:-3006}:3006"
         depends_on:
@@ -300,9 +304,11 @@ services:
             # space. This image is torch-free; CLAP_BACKEND=torch here makes
             # the analyzer refuse to embed rather than fall back.
             CLAP_BACKEND: ${CLAP_BACKEND:-onnx}
+            DATA_DIR: /
             INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:-kima-internal-secret-change-me}
         volumes:
             - ${MUSIC_PATH:-./music}:/music:ro
+            - gpu_runtime_data:/gpu-onnx
         depends_on:
             postgres:
                 condition: service_healthy
@@ -328,6 +334,7 @@ volumes:
     postgres_data:
     backend_cache:
     backend_logs:
+    gpu_runtime_data:
     # External services
     lidarr_config:
     prowlarr_config:

@@ -1263,6 +1263,11 @@ class ControlHandler:
                     previous = self.worker.desired_concurrency
                     applied = self.worker.set_concurrency(requested)
                     logger.info(f"Worker concurrency {previous} -> {applied} (applied live)")
+            elif command == 'install_gpu' or command == 'remove_gpu':
+                import gpu_runtime
+                action = 'install' if command == 'install_gpu' else 'remove'
+                result = gpu_runtime.dispatch(action)
+                logger.info(f"gpu-runtime {action} dispatched: {result}")
             elif command == 'stop':
                 logger.info("Received stop command — signalling worker threads to stop")
                 self.stop_event.set()
@@ -1329,6 +1334,13 @@ def main():
     control_thread.start()
     threads.append(control_thread)
     logger.info("Started control handler thread")
+
+    # GPU-onnx: pick up an install that was requested while this process was
+    # down. Runs in its own thread.
+    if os.path.exists(os.path.join(os.getenv('DATA_DIR', '/data'),
+                                   'gpu-onnx', 'enabled.json')):
+        import gpu_runtime
+        logger.info(f"gpu-runtime startup reconcile: {gpu_runtime.reconcile()}")
 
     # Main loop: monitor idle state and unload model when not needed
     try:

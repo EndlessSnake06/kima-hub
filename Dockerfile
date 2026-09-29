@@ -186,6 +186,9 @@ COPY services/audio-analyzer-clap/analyzer.py /app/audio-analyzer-clap/
 COPY services/audio-analyzer-clap/onnx_backend.py /app/audio-analyzer-clap/
 COPY services/audio-analyzer-clap/clap_mel.py /app/audio-analyzer-clap/
 COPY services/audio-analyzer-clap/verify_runtime.py /app/audio-analyzer-clap/
+COPY services/audio-analyzer-clap/gpu_runtime.py /app/audio-analyzer-clap/
+COPY services/audio-analyzer-clap/gpu_env.sh /app/audio-analyzer-clap/
+RUN chmod +x /app/audio-analyzer-clap/gpu_env.sh
 COPY services/audio-analyzer-clap/test_fixtures/ /app/audio-analyzer-clap/test_fixtures/
 
 # Prove the analyzer is importable in the image, so a missing file fails the
@@ -440,7 +443,7 @@ environment=DATABASE_URL="postgresql://kima:kima@localhost:5432/kima",REDIS_URL=
 priority=50
 
 [program:audio-analyzer-clap]
-command=/bin/bash -c "/app/wait-for-db.sh 120 && cd /app/audio-analyzer-clap && python3 analyzer.py"
+command=/bin/bash -c "/app/wait-for-db.sh 120 && cd /app/audio-analyzer-clap && ./gpu_env.sh python3 analyzer.py"
 autostart=true
 autorestart=true
 startretries=3

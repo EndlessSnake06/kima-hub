@@ -187,6 +187,20 @@ export interface AnalysisWorkersConfig {
     delivered?: number;
 }
 
+export interface GpuRuntimeStatus {
+    enabled: boolean;
+    installed: boolean;
+    installing: boolean;
+    effective: boolean;
+    status: string;
+    reason: string | null;
+    detail: string | null;
+    bytesDownloaded: number | null;
+    pinned: string[];
+    providerActive: boolean;
+    updatedAt: string | null;
+}
+
 class ApiClient {
     private token: string | null = null;
     private tokenInitialized: boolean = false;
@@ -1791,6 +1805,17 @@ class ApiClient {
         return this.request<AnalysisWorkersConfig>("/analysis/clap-workers", {
             method: "PUT",
             body: JSON.stringify({ workers }),
+        });
+    }
+
+    async getGpuStatus() {
+        return this.get<GpuRuntimeStatus>("/system-settings/gpu");
+    }
+
+    async setGpuEnabled(enabled: boolean) {
+        return this.request<GpuRuntimeStatus>("/system-settings/gpu", {
+            method: "POST",
+            body: JSON.stringify({ enabled }),
         });
     }
 

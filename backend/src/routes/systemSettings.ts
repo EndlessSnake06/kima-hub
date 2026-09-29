@@ -10,6 +10,10 @@ import {
     encryptSettings,
     resolveEncryptedSettings,
 } from "../utils/encryptedFields";
+import {
+    getGpuStatus,
+    setGpuEnabled,
+} from "../services/gpuRuntime";
 import { queueCleaner } from "../jobs/queueCleaner";
 import { safeError } from "../utils/errors";
 
@@ -843,6 +847,30 @@ router.post("/clear-caches", async (req, res) => {
     }
   } catch (error) {
     safeError(res, "Clear caches", error);
+  }
+});
+
+const gpuToggleSchema = z.object({ enabled: z.boolean() });
+
+// GET /system-settings/gpu — measured install state
+router.get("/gpu", async (_req, res) => {
+  try {
+    res.json(await getGpuStatus());
+  } catch (error) {
+    safeError(res, "Get GPU status", error);
+  }
+});
+
+// POST /system-settings/gpu — the only writer of the toggle
+router.post("/gpu", async (req, res) => {
+  try {
+    const { enabled } = gpuToggleSchema.parse(req.body);
+    res.json(await setGpuEnabled(enabled));
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: "enabled (boolean) is required" });
+    }
+    safeError(res, "Set GPU toggle", error);
   }
 });
 

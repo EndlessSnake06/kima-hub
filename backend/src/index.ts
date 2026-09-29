@@ -472,6 +472,11 @@ async function main() {
     const { initializeMusicConfig } = await import("./config");
     await initializeMusicConfig();
 
+    // Rewrite the GPU-onnx toggle projection so the file can never disagree
+    // with the DB after a restart.
+    const { initGpuRuntimeProjection } = await import("./services/gpuRuntime");
+    await initGpuRuntimeProjection();
+
     // Verify that an audio embedding can actually be stored, and say so plainly
     // in the log either way. This is the check whose absence let a rebuilt
     // database store nothing for three weeks while db, redis and every worker
