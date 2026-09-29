@@ -151,12 +151,9 @@ def record_provider(active, detail=None):
 
 def _dir_bytes(path):
     total = 0
-    for _, _, files in os.walk(path):
+    for dirpath, _, files in os.walk(path):
         for name in files:
-            try:
-                total += os.path.getsize(os.path.join(path, name))
-            except OSError:
-                pass
+            total += os.path.getsize(os.path.join(dirpath, name))
     return total
 
 
