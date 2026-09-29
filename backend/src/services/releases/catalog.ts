@@ -84,6 +84,8 @@ export type ReleaseItem =
           benefit?: string;
           /** What actually leaves the machine. Say it exactly. */
           discloses?: string;
+          /** Only shown to admins when "admin" — the setting it writes is system-wide. */
+          requires?: "admin";
       };
 
 export interface Release {
@@ -95,6 +97,12 @@ export interface Release {
     date: string;
     items: ReleaseItem[];
 }
+
+/**
+ * The GPU choice's key. The release window only records the decision;
+ * the route applies it through the same service the Settings toggle uses.
+ */
+export const GPU_CHOICE_KEY = "gpu.accelerate";
 
 export const RELEASES: Release[] = [
     {
@@ -129,18 +137,6 @@ export const RELEASES: Release[] = [
                 title: "The vibe analyzer is lighter now",
                 body:
                     "Swapped the audio analyzer to ONNX — lighter and more stable across devices, including Apple silicon. Existing fingerprints are outdated.",
-            },
-            {
-                kind: "action",
-                key: "plays.repair",
-                title: "Fix your old play counts",
-                body:
-                    "Plays recorded under the old rule (a play was logged the moment a track started loading, skip or not) are still in your history. " +
-                    "There's a tool on the Stats page that finds them: it looks for a play followed seconds later by a different track — the signature of a skip — " +
-                    "shows you exactly what it found, and only removes what it can prove. Your music files are never touched.\n\n" +
-                    "You can run it from here once, or from the Stats page whenever you like.",
-                cta: "Take me to it",
-                settingsPath: "/stats#false-starts",
             },
             {
                 kind: "action",
@@ -183,6 +179,21 @@ export const RELEASES: Release[] = [
                     "This wipes all vibe embeddings and re-embeds every track with the new analyzer. It runs in the background on your server; a large library can take hours. Your music files are untouched.",
                 confirmLabel: "Rebuild embeddings",
             },
+            {
+                kind: "choice",
+                key: GPU_CHOICE_KEY,
+                title: "Run embedding rebuilds on an NVIDIA GPU",
+                body:
+                    "Rebuilding embeddings is the heaviest job your server runs. If Kima's container can see an NVIDIA graphics card, that job can run on the card " +
+                    "instead of the processor — measured about 1.5× faster on the embedding step itself — and your CPU is free for the rest of Kima while the rebuild runs.\n\n" +
+                    "Switching it on part-way through a rebuild is safe: tracks that are already embedded stay embedded, and the rest run faster as soon as the analyzer " +
+                    "restarts. Turning it off removes the download. You can also change this later in Settings, under Library Enrichment.",
+                discloses:
+                    "Kima downloads twelve pinned packages (about 2 GB) from PyPI, checks every file against a fixed fingerprint, and installs them into your data " +
+                    "directory, where they take about 3.4 GB. Nothing about your library leaves your server.",
+                defaultValue: false,
+                requires: "admin",
+            },
         ],
     },
     {
@@ -213,29 +224,6 @@ export const RELEASES: Release[] = [
                 cta: "Take me to it",
                 settingsPath: "/stats#false-starts",
             },
-            {
-                kind: "note",
-                key: "clap.onnx",
-                label: "Changed",
-                title: "The vibe analyzer is lighter now",
-                body:
-                    "Swapped the audio analyzer to ONNX — lighter and more stable across devices, including Apple silicon. Existing fingerprints are outdated.",
-            },
-            {
-                kind: "action",
-                key: "clap.reembed",
-                title: "Rebuild your embeddings",
-                body:
-                    "The old fingerprints were made with the previous analyzer, so they no longer line up with the new one. Rebuilding them makes similarity search and the vibe features accurate again.\n\n" +
-                    "It re-embeds every track, which is CPU-intensive and can take a long time on a large library. Your music and everything else about it is untouched.",
-                cta: "Rebuild your embeddings",
-                settingsPath: "/settings#cache",
-                runsFromWindow: true,
-                confirmTitle: "Rebuild your embeddings?",
-                confirmMessage:
-                    "This wipes all vibe embeddings and re-embeds every track with the new analyzer. It runs in the background on your server; a large library can take hours. Your music files are untouched.",
-                confirmLabel: "Rebuild embeddings",
-            },
         ],
     },
 ];
@@ -246,8 +234,10 @@ export function findRelease(version: string): Release | undefined {
 }
 
 /** Every choice a release asks, flattened — used to resolve a dismissal. */
-export function choicesIn(release: Release): Array<{ key: string; defaultValue: boolean }> {
+export function choicesIn(
+    release: Release,
+): Array<{ key: string; defaultValue: boolean; requires?: "admin" }> {
     return release.items
         .filter((i): i is Extract<ReleaseItem, { kind: "choice" }> => i.kind === "choice")
-        .map((i) => ({ key: i.key, defaultValue: i.defaultValue }));
+        .map((i) => ({ key: i.key, defaultValue: i.defaultValue, requires: i.requires }));
 }

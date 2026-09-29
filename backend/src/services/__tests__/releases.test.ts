@@ -1,14 +1,15 @@
 /**
  * What closing the window means.
  *
- * 1.10.1 asks nothing, so none of this is exercised by the shipped catalog yet.
- * It is the contract v2's social and commons opt-ins will run on, and the whole
- * point is that silence is recorded as a decline rather than left absent for
- * later code to interpret — so it is pinned before anything depends on it.
+ * The shipped catalog asks exactly one question (the 1.11 GPU choice); the rest
+ * of this contract — silence recorded as a decline rather than an absence later
+ * code reads as a yes — is pinned here against a two-question test release,
+ * because v2's social and commons opt-ins will run on it.
  */
 
 import { ChoiceDecidedBy } from "@prisma/client";
 import { UnknownChoiceError, dismissRelease, hasOptedIn, pendingReleases, setChoice } from "../releases";
+import { GPU_CHOICE_KEY } from "../releases/catalog";
 import * as catalog from "../releases/catalog";
 
 jest.mock("../../utils/db", () => {
@@ -20,6 +21,9 @@ jest.mock("../../utils/db", () => {
         prisma: {
             releaseAcknowledgement: { findMany: jest.fn(), upsert: tx.releaseAcknowledgement.upsert },
             releaseChoice: { findUnique: jest.fn(), upsert: jest.fn() },
+            // pendingReleases reads the role only for items that require an
+            // admin; the shipped catalog has one, so these tests answer as one.
+            user: { findUnique: jest.fn().mockResolvedValue({ role: "admin" }) },
             $transaction: jest.fn(async (fn: (t: unknown) => unknown) => fn(tx)),
             __tx: tx,
         },
@@ -259,23 +263,55 @@ describe("catalog", () => {
         ).toBe(false);
     });
 
-    it("has a 1.10.1 entry with the ONNX note and re-embed action", () => {
-        const release = catalog.RELEASES.find((r) => r.version === "1.10.1");
+    it("puts the ONNX note and re-embed action in 1.11.0 only", () => {
+        // ONNX shipped after 1.10.1 (commit 4c8827b1, 2026-08-31; the 1.10.1
+        // changelog date is 2026-08-25). Duplicated in both windows, a user
+        // dismissing the first watched the same body "pop back up" as the
+        // second — the queue advancing looked like the close failing.
+        const keysOf = (v: string) =>
+            catalog.RELEASES.find((r) => r.version === v)!.items.map((i) => i.key);
+        expect(keysOf("1.10.1")).not.toContain("clap.onnx");
+        expect(keysOf("1.10.1")).not.toContain("clap.reembed");
+
+        const release = catalog.RELEASES.find((r) => r.version === "1.11.0");
         expect(release).toBeDefined();
-
-        const keys = release!.items.map((i) => i.key);
-        expect(keys).toContain("clap.onnx");
-        expect(keys).toContain("clap.reembed");
-
-        const note = release!.items.find(
-            (i): i is Extract<catalog.ReleaseItem, { kind: "note" }> => i.kind === "note" && i.key === "clap.onnx",
-        );
-        expect(note?.body).toContain("Swapped the audio analyzer to ONNX");
+        expect(keysOf("1.11.0")).toContain("clap.reembed");
 
         const action = release!.items.find(
             (i): i is Extract<catalog.ReleaseItem, { kind: "action" }> => i.kind === "action" && i.key === "clap.reembed",
         );
         expect(action?.cta).toBe("Rebuild your embeddings");
         expect(action?.settingsPath).toBe("/settings#cache");
+    });
+
+    it("asks about play repair in 1.10.1 only — the window oldest-first already reaches it", () => {
+        const keysOf = (v: string) =>
+            catalog.RELEASES.find((r) => r.version === v)!.items.map((i) => i.key);
+        expect(keysOf("1.10.1")).toContain("plays.repair");
+        expect(keysOf("1.11.0")).not.toContain("plays.repair");
+    });
+
+    it("asks the GPU question in 1.11.0, off by default, admins only", () => {
+        const gpu = catalog.RELEASES.find((r) => r.version === "1.11.0")!.items.find(
+            (i) => i.key === GPU_CHOICE_KEY,
+        );
+        expect(gpu).toMatchObject({
+            kind: "choice",
+            defaultValue: false,
+            requires: "admin",
+        });
+    });
+
+    it("shows the GPU question to admins and hides it from everyone else", async () => {
+        jest.restoreAllMocks();
+        prisma.releaseAcknowledgement.findMany.mockResolvedValue([{ version: "1.10.1" }]);
+        prisma.user.findUnique.mockResolvedValue({ role: "admin" });
+        moodMixState.mockResolvedValue({ mix: null, decision: null, playlist: null });
+        const adminKeys = (await pendingReleases("u1")).find((r) => r.version === "1.11.0")!.items.map((i) => i.key);
+        expect(adminKeys).toContain(GPU_CHOICE_KEY);
+
+        prisma.user.findUnique.mockResolvedValue({ role: "user" });
+        const userKeys = (await pendingReleases("u1")).find((r) => r.version === "1.11.0")!.items.map((i) => i.key);
+        expect(userKeys).not.toContain(GPU_CHOICE_KEY);
     });
 });

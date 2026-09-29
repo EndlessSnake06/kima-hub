@@ -213,7 +213,7 @@ const confirmMeta: Record<
 };
 
 function gpuStatusText(g: GpuRuntimeStatus): string {
-    if (g.installing) return "Downloading GPU runtime (~1.8 GB)…";
+    if (g.installing) return "Downloading GPU runtime (~2 GB)…";
     if (g.status === "failed") {
         switch (g.reason) {
             case "no_gpu":
@@ -1149,7 +1149,7 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                     vibeEmbeddings && (
                         <SettingsRow
                             label="NVIDIA GPU acceleration"
-                            description="Run vibe embeddings on an NVIDIA GPU. Downloads a pinned runtime (~1.8 GB) into the data directory; takes effect the next time the analyzer starts."
+                            description="Run vibe embeddings on an NVIDIA GPU. Downloads about 2 GB of pinned packages into the data directory (they take about 3.4 GB); takes effect the next time the analyzer starts."
                             htmlFor="gpu-onnx-toggle"
                         >
                             <div className="flex flex-col items-end gap-1">

@@ -54,6 +54,7 @@ type ReleaseItem =
           defaultValue: false;
           benefit?: string;
           discloses?: string;
+          requires?: "admin";
       };
 
 interface Release {

@@ -14,7 +14,8 @@ import { Router } from "express";
 import { z } from "zod";
 import { requireAuth } from "../middleware/auth";
 import { logger } from "../utils/logger";
-import { UnknownChoiceError, dismissRelease, findRelease, pendingReleases, setChoice } from "../services/releases";
+import { UnknownChoiceError, dismissRelease, findRelease, GPU_CHOICE_KEY, pendingReleases, setChoice } from "../services/releases";
+import { setGpuEnabled } from "../services/gpuRuntime";
 import {
     MoodMixCannotKeepError,
     MoodMixNotFoundError,
@@ -103,6 +104,18 @@ router.post("/:version/choice", async (req, res) => {
         if (!findRelease(version)) return res.status(404).json({ error: "Unknown release" });
 
         const { key, enabled } = choiceSchema.parse(req.body);
+        // The GPU choice writes a system setting, so it is applied through the
+        // same service the Settings toggle uses — and only for an admin. The
+        // window hides the question from everyone else; this route must not let
+        // a forged POST smuggle a system change through a per-user endpoint.
+        // The apply happens before the record: if the apply fails, nothing is
+        // on the books that did not happen, and the client can retry cleanly.
+        if (key === GPU_CHOICE_KEY) {
+            if (req.user!.role !== "admin") {
+                return res.status(403).json({ error: "Only admins can change GPU acceleration" });
+            }
+            await setGpuEnabled(enabled);
+        }
         await setChoice({ userId: req.user!.id, version, key, enabled });
         res.json({ key, enabled, decidedBy: "EXPLICIT" });
     } catch (error) {

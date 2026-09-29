@@ -11,8 +11,13 @@ import { logger } from "../../utils/logger";
 import { RELEASES, choicesIn, findRelease, type Release, type ReleaseItem } from "./catalog";
 import { MOOD_MIX_RELEASE, moodMixState, type MoodMixState } from "./moodMixes";
 
-export { RELEASES, findRelease } from "./catalog";
+export { RELEASES, findRelease, GPU_CHOICE_KEY } from "./catalog";
 export type { Release, ReleaseItem } from "./catalog";
+
+async function isAdminUser(userId: string): Promise<boolean> {
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    return user?.role === "admin";
+}
 
 /**
  * Releases this user has not yet closed, oldest first.
@@ -36,12 +41,17 @@ export async function pendingReleases(userId: string): Promise<Release[]> {
     );
 
     // Items that only apply to some users are dropped for the rest: asking
-    // someone with no mood mix to rebuild it would be noise. The mood-mix
-    // state is only read when something depends on it.
+    // someone with no mood mix to rebuild it would be noise, and asking a
+    // non-admin to switch a system-wide setting they cannot change would be
+    // worse. The user's role is only read when an item needs it.
     let state: MoodMixState | undefined;
     const mixState = async () => (state ??= await moodMixState(userId));
+    let roleChecked: boolean | undefined;
+    const isAdmin = async () => (roleChecked ??= await isAdminUser(userId));
     const applies = async (item: ReleaseItem): Promise<boolean> => {
-        if (item.kind !== "action" || !item.requires) return true;
+        if (!("requires" in item) || !item.requires) return true;
+        if (item.requires === "admin") return isAdmin();
+        if (item.kind !== "action") return true;
         const { mix } = await mixState();
         return item.requires === "retiredMoodMix" ? mix?.retired === true : mix?.retired === false;
     };
@@ -122,7 +132,14 @@ export async function dismissRelease(userId: string, version: string): Promise<{
     const release = findRelease(version);
     if (!release) return { recordedDefaults: [] };
 
-    const asked = choicesIn(release);
+    // Only the choices this user was actually shown get settled: recording a
+    // decline for a question a non-admin was never asked would put a decision
+    // on the books that was never theirs to make.
+    const asked: Array<{ key: string; defaultValue: boolean }> = [];
+    for (const c of choicesIn(release)) {
+        if (c.requires === "admin" && !(await isAdminUser(userId))) continue;
+        asked.push({ key: c.key, defaultValue: c.defaultValue });
+    }
     const recordedDefaults: string[] = [];
 
     await prisma.$transaction(async (tx) => {
