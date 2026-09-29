@@ -367,7 +367,7 @@ router.get("/tracks/shuffle", async (req, res) => {
       // where-object cannot be used here -- this draws random ids in SQL.
       const randomIds = await prisma.$queryRaw<{ id: string }[]>`
                 SELECT id FROM "Track"
-                WHERE EXISTS (SELECT 1 FROM "Album" a WHERE a.id = "Track"."albumId" AND a.location = ${LIBRARY_LOCATION})
+                WHERE EXISTS (SELECT 1 FROM "Album" a WHERE a.id = "Track"."albumId" AND a.location = 'LIBRARY')
                 ORDER BY RANDOM()
                 LIMIT ${limit}
             `;
@@ -658,7 +658,7 @@ router.get("/genres", async (_req, res) => {
             JOIN "Album" a ON a."artistId" = ar.id
             JOIN "Track" t ON t."albumId" = a.id
             WHERE ar.genres IS NOT NULL
-              AND a.location = ${LIBRARY_LOCATION}
+              AND a.location = 'LIBRARY'
             GROUP BY LOWER(g.genre)
             HAVING COUNT(DISTINCT t.id) >= ${minTracks}
             ORDER BY track_count DESC
