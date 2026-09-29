@@ -543,13 +543,41 @@ The CLAP analyzer runs automatically alongside the main audio analyzer. The vibe
 
 ## GPU Acceleration
 
-GPU acceleration speeds up audio analysis (mood detection, BPM extraction, vibe embeddings). It is **optional** -- everything works on CPU, just slower.
+If Kima's container can see an NVIDIA GPU, embedding rebuilds (the vibe map's
+CLAP analyzer) can run on it instead of the CPU. It is **optional** --
+everything works on CPU, and nothing about the GPU path touches your machine
+until you say so. Other analysis (BPM, mood, key -- the MusiCNN/Essentia
+analyzer) runs on CPU by design.
+
+Measured on a 4060 Ti: about **1.5x faster on the embedding step itself**
+(0.71 s to 0.45 s per track median), with embeddings identical to the CPU
+ones (cosine 1.0 to display precision). Full-rebuild wall time is limited by
+job dispatch more than compute, so expect the biggest real win to be your CPU
+coming free while a rebuild runs.
+
+### How it works
+
+1. Turn on **Settings -> Library Enrichment -> NVIDIA GPU acceleration**
+   (off by default; the 1.11 welcome window asks the same question).
+2. The analyzer downloads twelve pinned packages (about 2 GB) from PyPI,
+   verifies every file against a fixed fingerprint, and installs them into
+   Kima's own data directory, where they take about 3.4 GB. Nothing is baked
+   into the Docker image -- if you never flip the toggle, you never download
+   anything, and the code path is byte-identical to the CPU one.
+3. The GPU takes over when the analyzer next starts (CUDA fixes its
+   libraries at process start). The settings row tells you the truth while
+   you wait: "Installed -- will be used after the analyzer restarts", then
+   "Active -- embeddings are running on the GPU."
+4. Turning the toggle off removes the download.
+
+Failures are named, not silent: if the container cannot see an NVIDIA
+device the row says why, and your embeddings simply keep using the CPU.
 
 ### Requirements
 
 -   NVIDIA GPU with CUDA support
 -   NVIDIA drivers installed on the host (`nvidia-smi` should work)
--   [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) -- bridges Docker to your GPU
+-   [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) -- bridges Docker to your GPU, so the container can see the card
 
 ### Install NVIDIA Container Toolkit
 
@@ -577,6 +605,10 @@ nvidia-container-runtime --version
 
 ### Enable GPU
 
+Running the container with GPU access only lets the container *see* the
+card; the embedding analyzer still waits for the toggle in
+**Settings -> Library Enrichment**.
+
 **All-in-One container:**
 ```bash
 docker run -d --gpus all -p 3030:3030 -v /path/to/music:/music -v kima_data:/data chevron7locked/kima:latest
@@ -599,17 +631,26 @@ Then restart: `docker compose up -d`
 
 ### Verify GPU Detection
 
-```bash
-# MusiCNN analyzer
-docker logs kima_audio_analyzer 2>&1 | grep -i gpu
+Flip the settings toggle and watch the row's status line, or ask the API:
 
-# CLAP analyzer
-docker logs kima_audio_analyzer_clap 2>&1 | grep -i gpu
+```bash
+curl -H "Authorization: Bearer <token>" http://localhost:3030/api/system-settings/gpu
 ```
 
-Expected: `TensorFlow GPU detected: ...` or `CUDA available: True`
+Expected once the analyzer has restarted and taken a job:
+`"status": "installed", "effective": true`. If the container cannot see the
+card, `"reason": "no_gpu"` and the toggle stays honest -- embeddings keep
+running on the CPU.
 
-If you see `TensorFlow running on CPU`, GPU passthrough is not active.
+Host-side sanity checks:
+
+```bash
+# Check NVIDIA driver
+nvidia-smi
+
+# Check the container can see it too
+docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
+```
 
 ---
 
