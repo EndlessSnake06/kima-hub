@@ -1109,6 +1109,7 @@ test.describe("Dogfood walkthrough", () => {
             let completed = 0;
             let lastSeen = 0;
             let quietSince = Date.now();
+            let owed = facts.tracks;
 
             while (Date.now() - startedAt < BUDGET_MS) {
                 const res = await page.request.get("/api/enrichment/progress", {
@@ -1117,12 +1118,18 @@ test.describe("Dogfood walkthrough", () => {
                 if (res.ok()) {
                     const body = await res.json();
                     completed = body?.clapEmbeddings?.completed ?? 0;
+                    // A file the scan flagged missing has an embedding question
+                    // at rest, not owed: the offer gate will never hand it out
+                    // and the endpoint already excludes it from `pending`. It
+                    // must not be in the target either, or the rebuild is
+                    // racing a number it can never reach.
+                    owed = facts.tracks - (body?.clapEmbeddings?.waitingMissing ?? 0);
                     if (completed > lastSeen) {
                         lastSeen = completed;
                         quietSince = Date.now();
                     }
                 }
-                if (completed >= facts.tracks) break;
+                if (completed >= owed) break;
 
                 // Nothing finishing for two minutes means the pipeline has stalled rather
                 // than merely being slow, and there is no point burning the whole budget.
@@ -1130,7 +1137,7 @@ test.describe("Dogfood walkthrough", () => {
                 if (quietFor > 120_000) {
                     expect(
                         quietFor,
-                        `embedding stalled: ${completed}/${facts.tracks} done and nothing ` +
+                        `embedding stalled: ${completed}/${owed} answerable done and nothing ` +
                             `has finished for ${Math.round(quietFor / 1000)}s`,
                     ).toBeLessThan(120_000);
                 }
@@ -1140,9 +1147,9 @@ test.describe("Dogfood walkthrough", () => {
             rebuiltIn = Date.now() - startedAt;
             expect(
                 completed,
-                `only ${completed} of ${facts.tracks} tracks were embedded within ` +
+                `only ${completed} of ${owed} answerable tracks were embedded within ` +
                     `${Math.round(BUDGET_MS / 60000)} minutes`,
-            ).toBeGreaterThanOrEqual(facts.tracks);
+            ).toBeGreaterThanOrEqual(owed);
 
             return {
                 tracks: facts.tracks,
