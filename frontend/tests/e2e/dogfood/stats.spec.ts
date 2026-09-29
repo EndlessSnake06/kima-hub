@@ -711,10 +711,7 @@ test.describe("Dogfood: stats, filters, audit, queue", () => {
                 .filter({ hasNot: page.locator("[disabled]") })
                 .last();
             await input.fill("2500");
-            await input.blur();
-
-            const save = page.getByRole("button", { name: /save|apply/i }).first();
-            if (await save.isVisible().catch(() => false)) await save.click();
+            await input.blur(); // the box commits on blur; there is no Save button for it
 
             await expect
                 .poll(
