@@ -218,6 +218,7 @@ async function seedTrack(
         recording: string; analysis: string; embedding: string;
         analysisStatus: string; enrichmentTags: string[];
     }> = {},
+    opts: { missing?: boolean } = {},
 ): Promise<void> {
     await prisma.track.create({
         data: {
@@ -232,6 +233,7 @@ async function seedTrack(
             enrichmentTags: (data.enrichmentTags ?? []) as unknown as string[],
             analysisStatus: (data.analysisStatus ?? "pending") as never,
             analysisRetryCount: 0,
+            missingSince: opts.missing ? new Date() : null,
         } as never,
     });
     await putStage(trackId, "recording", data.recording ?? "pending");
@@ -336,5 +338,51 @@ describe("getEnrichmentProgress", () => {
         invalidateEnrichmentProgress();
         const progress = await getEnrichmentProgress();
         expect(progress.source).toBe("TrackStage");
+    });
+
+    it("holds a flagged-missing file's questions as waitingMissing, not as owed work", async () => {
+        const before = await getEnrichmentProgress();
+
+        // The scan found this file gone and flagged it. The offer gate
+        // never hands its questions out, so they must leave `pending` — or
+        // completion is hostage to a file that may never come back — and
+        // show as a counted resting state instead.
+        await seedTrack(
+            id("vanished"),
+            { recording: "done", analysis: "done", embedding: "pending" },
+            { missing: true },
+        );
+
+        invalidateEnrichmentProgress();
+        const after = await getEnrichmentProgress();
+
+        expect(after.clapEmbeddings.pending).toBe(before.clapEmbeddings.pending);
+        expect(after.clapEmbeddings.waitingMissing - before.clapEmbeddings.waitingMissing).toBe(1);
+        // Answered stages gain nothing, missing or not.
+        expect(after.trackTags.waitingMissing).toBe(before.trackTags.waitingMissing);
+        expect(after.audioAnalysis.waitingMissing).toBe(before.audioAnalysis.waitingMissing);
+    });
+
+    it("lets the library reach fully-complete when the only open questions are missing files", async () => {
+        // The shape that used to hang the run forever: every answerable
+        // question is answered and the only open ones belong to files the
+        // scan flagged missing.
+        await seedTrack(
+            id("ghostonly"),
+            { recording: "done", analysis: "done", embedding: "pending" },
+            { missing: true },
+        );
+        await putStage(id("ghostonly"), "fingerprint", "done");
+        await prisma.artist.update({
+            where: { id: id("art") },
+            data: { enrichmentStatus: "completed" as never },
+        });
+
+        invalidateEnrichmentProgress();
+        const progress = await getEnrichmentProgress();
+
+        expect(progress.clapEmbeddings.pending).toBe(0);
+        expect(progress.clapEmbeddings.waitingMissing).toBe(1);
+        expect(progress.isFullyComplete).toBe(true);
     });
 });
