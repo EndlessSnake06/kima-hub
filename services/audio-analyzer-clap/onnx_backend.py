@@ -58,6 +58,16 @@ REF_MODEL_PATH = os.getenv(
 )
 
 
+def plan_providers(gpu_wanted: bool, available) -> list:
+    """CUDA is requested only when the toggle
+    AND the install say so, and only if this onnxruntime can actually offer it.
+    Every other path is exactly ['CPUExecutionProvider'] — the promise that
+    nobody who leaves the toggle off pays anything (Test 5)."""
+    if gpu_wanted and 'CUDAExecutionProvider' in available:
+        return ['CUDAExecutionProvider', 'CPUExecutionProvider']
+    return ['CPUExecutionProvider']
+
+
 class OnnxCLAPBackend:
     """Thin wrapper over onnxruntime's clap audio encoder."""
 
@@ -77,11 +87,9 @@ class OnnxCLAPBackend:
             return
         import onnxruntime as ort
         import gpu_runtime
-        providers = ['CPUExecutionProvider']
-        want_cuda = (gpu_runtime.request_gpu()
-                     and 'CUDAExecutionProvider' in ort.get_available_providers())
-        if want_cuda:
-            providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+        providers = plan_providers(gpu_runtime.request_gpu(),
+                                   ort.get_available_providers())
+        want_cuda = providers[0] == 'CUDAExecutionProvider'
         self._sess = ort.InferenceSession(self.model_path, providers=providers)
         if want_cuda:
             active = self._sess.get_providers()
