@@ -46,13 +46,16 @@ export type ScanRequestResult =
 const LIVE_STATES = new Set(["waiting", "delayed", "active", "paused", "prioritized", "created"]);
 
 export function scanDedupeKey(req: ScanRequest): string {
+    // BullMQ forbids ':' in custom job ids (it owns that character for
+    // Redis key layout), so the namespace separator is '-'. Scope ids are
+    // cuids/mbids, never containing '-', so scopes stay prefix-free.
     const scopeId =
         req.downloadId ??
         req.albumMbid ??
         req.artistMbid ??
         req.spotifyImportJobId ??
         req.discoveryBatchId;
-    return scopeId ? `scan:${scopeId}` : "scan:full";
+    return scopeId ? `scan-${scopeId}` : "scan-full";
 }
 
 /**

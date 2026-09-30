@@ -6,7 +6,7 @@
  * external tools) is picked up without a manual scan. Download-completion
  * webhooks already trigger scans; this is the fallback for everything else.
  *
- * Scans go through requestScan, which dedupes on the shared "scan:full"
+ * Scans go through requestScan, which dedupes on the shared "scan-full"
  * key -- a tick while one is queued or running is a no-op.
  */
 
