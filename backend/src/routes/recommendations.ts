@@ -411,12 +411,8 @@ router.get("/tracks", async (req, res) => {
             return res.status(404).json({ error: "Track not found" });
         }
 
-        // Local hybrid similarity (CLAP embeddings + audio features) —
-        // replaces the Last.fm track.getSimilar call, which only ever
-        // returned data for whatever the shared key allowed and matched
-        // against the library by title anyway. Same response shape; the
-        // "not in library" entries are gone because local similarity can
-        // only return tracks that exist here.
+        // Local hybrid similarity (CLAP embeddings + audio features), so every
+        // result is a track in the library.
         const similarTracks = await findSimilarTracks(seedTrackId as string, 20);
 
         // Same contract as /vibe/similar: no similar rows means the seed has

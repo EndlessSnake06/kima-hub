@@ -89,12 +89,3 @@ lyricsRouter.all("/getLyricsBySongId.view", wrap(async (req, res) => {
     });
 }));
 // getLyrics.view lives in playback.ts.
-//
-// It was registered here too, but playbackRouter mounts first so this copy was
-// dead. playback.ts is also the correct one: Subsonic returns
-// <lyrics artist=".." title="..">text</lyrics>, i.e. ATTRIBUTES plus text
-// content, which is what its @_artist / @_title / #text shape produces. This
-// version emitted artist/title/value as child ELEMENTS, which an XML client
-// would not read as the spec describes.
-//
-// getLyricsBySongId.view above is unique to this file and stays.

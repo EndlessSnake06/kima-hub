@@ -1,15 +1,8 @@
 /**
- * Public vibe surface router, mounted at /api/public/vibe.
- *
- * Five read-only, unauthenticated routes over auth-walled internals. There is
- * no request-side identity at all: the public user's id is read once, from
- * SystemSettings, in the `withPublic` guard, then threaded into every handler.
- * A caller cannot name that user; a disabled feature yields 404, not 403.
- *
- * Each handler faithfully ports the matching authed /vibe handler — the same
- * text search, the same similarity, the same live/joined-playback payload —
- * with two public-only changes on top: native covers are proxied instead of
- * handed out, and the whole surface is gated on the enable flag.
+ * The public vibe routes at /api/public/vibe: read-only and unauthenticated.
+ * The `withPublic` guard reads the public user's id from SystemSettings; no
+ * caller can name a user, and a disabled feature answers 404. Handlers match
+ * the authed /vibe ones, except that native covers are proxied.
  */
 import {
     Router,

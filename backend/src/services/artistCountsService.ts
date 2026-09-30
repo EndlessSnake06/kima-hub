@@ -1,13 +1,6 @@
 /**
- * Artist Counts Service
- *
- * Maintains denormalized counts on the Artist model for fast filtering.
- * These counts enable O(1) library filtering instead of expensive JOINs.
- *
- * Counts maintained:
- * - libraryAlbumCount: Albums with location=LIBRARY that have tracks
- * - discoveryAlbumCount: Albums with location=DISCOVER that have tracks
- * - totalTrackCount: Total tracks across all albums
+ * Denormalised Artist counts for filtering without joins: libraryAlbumCount
+ * and discoveryAlbumCount (albums with tracks), and totalTrackCount.
  */
 
 import { prisma } from "../utils/db";

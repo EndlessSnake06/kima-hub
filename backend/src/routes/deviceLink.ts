@@ -94,10 +94,8 @@ router.post("/verify", async (req, res) => {
             return res.status(400).json({ error: "Code expired" });
         }
 
-        // Claim the code atomically (check-then-write let
-        // two concurrent /verify requests both mint a key). Only the request
-        // whose update lands may mint the key; the code is consumed even if
-        // minting later fails -- codes are single-use by design.
+        // Claim the code atomically so two concurrent /verify requests cannot both
+        // mint a key. Codes are single-use: consumed even if minting then fails.
         const claimed = await prisma.deviceLinkCode.updateMany({
             where: { id: linkCode.id, usedAt: null },
             data: {

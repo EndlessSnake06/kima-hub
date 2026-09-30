@@ -1,13 +1,7 @@
 /**
- * Audiobooks and podcasts, where the listening time is real.
- *
- * Both progress tables store an actual position and an actual duration, so
- * none of this is estimated the way music time is. That asymmetry is worth
- * showing rather than hiding — spoken word gets a plain number, music gets an
- * "about".
- *
- * "Set aside" means started, not finished, and untouched for three months. It
- * is deliberately not called "abandoned"; people come back to books.
+ * Audiobook and podcast listening. Both store real positions and durations, so
+ * these figures are exact, unlike music's estimates. "Set aside" means started,
+ * unfinished and untouched for three months.
  */
 
 import { prisma } from "../../utils/db";

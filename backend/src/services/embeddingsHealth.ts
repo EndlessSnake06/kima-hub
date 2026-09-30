@@ -2,28 +2,10 @@ import { prisma } from "../utils/db";
 import { logger } from "../utils/logger";
 
 /**
- * Can the vibe engine actually store an embedding?
- *
- * This exists because it couldn't, for three weeks, and nothing said so. A
- * database rebuilt outside `prisma migrate deploy` kept every column of
- * track_embeddings and lost its primary key, foreign key and indexes. The
- * analyzer's upsert then failed with
- *
- *   42P10: there is no unique or exclusion constraint matching the
- *          ON CONFLICT specification
- *
- * on every single track, and stored nothing. Every existing check passed:
- * Postgres answered, Redis answered, the enrichment worker reported itself
- * running, and the table accepted plain reads and writes. Nothing asked the
- * only question that mattered -- "can an embedding be written?" -- so it took
- * three weeks and a human noticing the vibe map was frozen.
- *
- * So this probe asks exactly that, by attempting the analyzer's own statement.
- *
- * HOW IT STAYS SAFE: the probe runs inside a transaction that is always rolled
- * back, and it targets a track id that cannot exist. It never writes a row, it
- * never touches a real embedding, and the only thing it can leave behind is a
- * log line.
+ * Can an embedding be written? Runs the analyzer's own upsert on a track id
+ * that cannot exist, in a transaction that is always rolled back. A table
+ * missing its keys (rebuilt outside `prisma migrate deploy`) fails with 42P10
+ * on every track while every other health check passes.
  */
 
 export interface EmbeddingWriteCheck {

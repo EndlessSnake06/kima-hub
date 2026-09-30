@@ -371,11 +371,7 @@ searchRouter.all(["/getSimilarSongs2.view", "/getSimilarSongs.view"], wrap(async
 
     const count = clamp(parseIntParam(req.query.count as string | undefined, 50), 1, 500);
 
-    // Subsonic's `id` here is "the artist, album or song ID", and clients send a
-    // SONG id in the common case (similar-to-what-is-playing). This looked the
-    // value up directly as fromArtistId, so a song id matched no SimilarArtist
-    // row and the endpoint returned an empty list for exactly the request it
-    // exists to serve.
+    // `id` may be an artist, album or song; clients usually send a song id.
     let artistId: string | null = null;
     const track = await prisma.track.findUnique({
         where: { id },

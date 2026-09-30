@@ -13,12 +13,8 @@ import pLimit from "p-limit";
 import { toAudioFeaturesDTO } from "../../utils/audioFeatures";
 import { LIBRARY_LOCATION } from "../../services/libraryFilters";
 
-// Alphabetical ordering reads `sortName`, not `title`: the article-stripped,
-// unaccented, lowercased value written wherever an album's title or
-// displayTitle is written (albumIdentity.ts, routes/enrichment.ts), mirroring
-// the same fix already applied to Artist. Unlike routes/library/artists.ts,
-// there is no raw-SQL branch here to bypass this map -- checked; sortBy=name
-// and name-desc both go straight through `orderBy` below.
+// Alphabetical sorts use `sortName` (article-stripped, unaccented,
+// lowercased), written wherever a title or displayTitle is written.
 const ALBUM_SORT_MAP: Record<string, any> = {
   name: { sortName: "asc" as const },
   "name-desc": { sortName: "desc" as const },

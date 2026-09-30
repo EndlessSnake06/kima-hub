@@ -1,18 +1,7 @@
 /**
- * Soulseek client facade — conditionally routes to the slskd HTTP adapter
- * or the vendored P2P client based on the SLSKD_URL environment variable.
- *
- * When SLSKD_URL is set, all Soulseek operations are routed through slskd's
- * REST API (the SlskdClient class). Otherwise, the original P2P client is
- * used for direct Soulseek network connections.
- *
- * Both backends must satisfy ISlskClient — the explicit public surface that
- * SoulseekService depends on. The `_p2p`/`_slskd` assignments below are a
- * compile-time proof of that contract: if either backend drifts from the
- * interface (an upstream change to the P2P client, or a missed method on the
- * adapter), the build fails HERE rather than breaking silently at runtime.
- * This replaces the previous `as unknown as typeof P2PClient` cast, which
- * bypassed type checking entirely.
+ * Soulseek client selection: the slskd REST adapter or the built-in P2P client.
+ * The `_p2p`/`_slskd` assignments make the build fail if either drifts from
+ * ISlskClient.
  */
 
 import type { EventEmitter } from 'events'

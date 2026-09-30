@@ -11,10 +11,8 @@ router.use(requireAuth);
 
 const playSchema = z.object({
     trackId: z.string(),
-    // How many seconds of the track were actually heard. Older clients that
-    // predate this field send nothing; they get 0 and record no play, which is
-    // the correct answer rather than a regression -- a client that cannot say
-    // how much was played cannot know whether it counts.
+    // Seconds actually heard. Clients that do not send it record no play, since
+    // they cannot know whether it counts.
     secondsListened: z.number().min(0).max(24 * 60 * 60).default(0),
 });
 

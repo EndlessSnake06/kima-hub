@@ -115,9 +115,8 @@ class FeatureDetectionService {
     }
 
     /**
-     * fpcalc (chromaprint) presence gates the AcoustID fingerprint path.
-     * Env override: ACOUSTID_DISABLED=true forces the
-     * feature off even when the binary exists. Probed once per process.
+     * fpcalc gates the AcoustID fingerprint path; ACOUSTID_DISABLED=true turns it
+     * off even when the binary exists. Probed once per process.
      */
     private checkFpcalc(): boolean {
         if (process.env.ACOUSTID_DISABLED === "true") {

@@ -8,12 +8,8 @@ import { validateUrlForFetch } from "../utils/ssrf";
 import { upstreamHeaderNumber } from "../utils/upstreamHeaders";
 
 /**
- * PodcastDownloadService - Background download and caching of podcast episodes
- * 
- * Features:
- * - Non-blocking background downloads when episodes are played
- * - 30-day cache expiry with automatic cleanup
- * - Proper range request support for cached files
+ * Background download and caching of podcast episodes when played, with range
+ * support for cached files and 30-day expiry.
  */
 
 // Track in-progress downloads to avoid duplicates

@@ -6,13 +6,8 @@ import { USER_AGENT } from "../config";
 import { rateLimiter } from "./rateLimiter";
 
 /**
- * Fanart.tv API Service
- *
- * Provides high-quality artist images, album covers, and backgrounds
- * API Docs: https://fanart.tv/api-docs/music-api/
- *
- * Free tier: 2 requests/second
- * API key: Get one at https://fanart.tv/get-an-api-key/
+ * Fanart.tv artist images, album covers and backgrounds
+ * (https://fanart.tv/api-docs/music-api/). Free tier: 2 requests/second.
  */
 class FanartService {
     private client: AxiosInstance;

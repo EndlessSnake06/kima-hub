@@ -86,11 +86,8 @@ router.get("/tracks/:id/stream", async (req, res) => {
       return res.status(404).json({ error: "Track not available" });
     }
 
-    // Requesting bytes is not listening. A play is recorded by whoever knows
-    // how much was actually heard -- the web player through POST /plays, a
-    // Subsonic client through scrobble.view -- and judged against the Last.fm
-    // rule in services/playRecording.ts. Logging here turned skipping through
-    // an album into an album's worth of plays.
+    // Streaming bytes is not listening: plays are recorded through POST /plays and
+    // Subsonic's scrobble.view, judged in services/playRecording.ts.
 
     // Default to original (no transcode) to match the schema default and avoid a
     // pointless first-play transcode for users with no settings row.

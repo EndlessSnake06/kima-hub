@@ -5,23 +5,10 @@ import path from "path";
 import { config } from "../../config";
 
 /**
- * Resolve path segments to an absolute path under the music directory, or null
- * if the result would escape it.
- *
- * Use this for ANY filesystem path built from database values, and especially
- * before deleting one. Two different kinds of value end up here and both can
- * carry traversal:
- *
- *   - `Track.filePath`, written by the scanner from a real path on disk.
- *   - `Artist.name` and `Album.title`, which come from the file's OWN TAGS.
- *     Those are attacker-controlled in the only sense that matters here: adding
- *     a file to the watched folder is the normal way to use Kima, and an album
- *     tagged "../../../../tmp/x" is a path the delete routines would otherwise
- *     hand straight to `fs.rmSync(..., { recursive: true, force: true })`.
- *
- * Returns null for the music root itself, not just for paths outside it --
- * every caller wants something INSIDE the library, and "delete the music
- * directory" is never the intended answer.
+ * Join path segments under the music directory, or null if the result escapes
+ * it or is the root itself. Use it for every path built from database values,
+ * above all before deleting: artist and album names come from file tags, and a
+ * tag like "../../tmp/x" would otherwise reach `fs.rmSync`.
  */
 export function resolveWithinMusicRoot(...segments: string[]): string | null {
   // Backslashes are normalised because a Windows-scanned library stores them,

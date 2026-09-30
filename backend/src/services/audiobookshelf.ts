@@ -315,13 +315,9 @@ class AudiobookshelfService {
     }
 
     /**
-     * Sync audiobooks from Audiobookshelf to local database cache.
-     * This populates the Audiobook table for full-text search.
-     *
-     * For items whose tracksJson is NULL or whose numTracks changed, fetches
-     * the expanded item (GET /api/items/:id?expanded=1) with bounded concurrency
-     * (limit 4) to persist the track map. Only changed/missing rows pay the
-     * extra fetch.
+     * Sync Audiobookshelf items into the Audiobook table for search. Items with no
+     * tracksJson or a changed numTracks are fetched expanded (4 at a time) to store
+     * their track map.
      */
     async syncAudiobooksToCache() {
         await this.ensureInitialized();

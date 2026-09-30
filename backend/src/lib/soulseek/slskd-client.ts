@@ -1,13 +1,6 @@
 /**
- * slskd HTTP adapter — drop-in replacement for the vendored soulseek-ts SlskClient.
- *
- * Routes all Soulseek operations through slskd's REST API instead of opening
- * a direct P2P connection. Keeps slskd as the network-facing Soulseek citizen
- * (file sharing, uploads, port forwarding) while Kima drives search + download
- * via HTTP.
- *
- * Activated when the SLSKD_URL environment variable is set. The main client
- * module (client.ts) conditionally re-exports from this file.
+ * slskd REST adapter implementing ISlskClient: Kima drives search and download
+ * over HTTP while slskd handles the Soulseek network. Selected by client.ts.
  */
 
 import { EventEmitter } from 'events'

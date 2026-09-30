@@ -1,11 +1,6 @@
 /**
- * Webhook Event Store
- *
- * Event sourcing service for storing and processing webhook events.
- * Ensures all webhooks are persisted before processing, enabling:
- * - Replay of missed events
- * - Audit trail of all webhooks
- * - Resilience to server restarts
+ * Lidarr webhook events, stored before processing so they survive restarts and
+ * can be replayed.
  */
 
 import { prisma } from "../utils/db";

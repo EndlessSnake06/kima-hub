@@ -1,17 +1,6 @@
 /**
- * The state of the server, as one read.
- *
- * Everything here already existed, scattered: the health check answers whether
- * the database is up, the analysis routes know the queue depth, the settings
- * page knows about corrupt files. Gathering them costs one round trip and
- * means a person can see the whole machine without opening five panels.
- *
- * Reads only. The actions the interface offers — clearing caches, clearing
- * finished jobs, retrying failures — go to the endpoints that already own
- * them, so there is exactly one implementation of each.
- *
- * Nothing here is per-user; it is the same for everyone who can see it, and
- * only admins can.
+ * The server's state in one read-only call, for admins: database, queues,
+ * corrupt files and so on. The actions it offers go to the endpoints that own them.
  */
 
 import { prisma } from "../../utils/db";

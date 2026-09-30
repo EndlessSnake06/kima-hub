@@ -98,11 +98,8 @@ export const config = {
         process.env.ALLOWED_ORIGINS?.split(",").map((o) => o.trim()) ||
         (process.env.NODE_ENV === "development" ? true : []),
 
-    // TCP keepalive idle delay for incoming connections. Dead/half-open peers
-    // (a mobile client whose network vanished without FIN/RST) are reaped by the
-    // OS once keepalive probes start failing, WITHOUT cutting a paused-but-alive
-    // audio stream -- unlike a blunt socket-inactivity timeout, which fires on a
-    // paused stream (no bytes flow) and forces a reconnect on resume.
+    // TCP keepalive idle delay. The OS reaps dead peers through failed probes
+    // without cutting a paused audio stream, which an inactivity timeout would.
     socketKeepAliveDelayMs: parseInt(
         process.env.SOCKET_KEEPALIVE_DELAY_MS || "30000",
         10

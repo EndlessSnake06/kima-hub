@@ -98,17 +98,10 @@ export async function setGpuEnabled(enabled: boolean) {
     return getGpuStatus();
 }
 
-// --- Embedding deferral while the GPU runtime installs ---------------------
-//
-// "Yes, use the GPU" in the release window has to arrive BEFORE enrichment
-// starts, or the first pass embeds the library on CPU anyway and the answer
-// was worthless. So while the install is in flight, the engine holds embedding
-// offers only — every other stage (analysis, fingerprint, metadata) keeps
-// running. The hold is deliberately narrow and hard-bounded: a failed or hung
-// download must never freeze the pipeline.
-//
-// The decision is a pure function so its whole truth table is testable;
-// `embeddingsDeferredForGpu` is the thin IO shim around it.
+// While the GPU runtime installs, embedding offers are held so the first pass
+// does not run on CPU; every other stage keeps running. The hold is bounded so
+// a failed or hung download cannot freeze the pipeline. The decision is a pure
+// function; `embeddingsDeferredForGpu` wraps its IO.
 
 export const GPU_INSTALL_HOLD_MS = 10 * 60 * 1000;
 

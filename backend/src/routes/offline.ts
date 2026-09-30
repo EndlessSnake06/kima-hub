@@ -115,12 +115,8 @@ router.post("/albums/:id/download", async (req, res) => {
 });
 
 // POST /offline/tracks/:id/complete (called by mobile after download)
-//
-// The client reports how big the file it stored is; trusting that number
-// would let one request inflate the quota accounting (and the cache-stats
-// figure derived from it) without bound. The size must be finite, positive,
-// and plausible for the track's duration at the claimed quality tier, and
-// the cache quota is re-checked against the real totals before the write.
+// The reported size feeds quota accounting, so it must be finite, positive and
+// plausible for the track's duration and quality; the quota is re-checked first.
 const completeDownloadSchema = z.object({
     localPath: z.string().min(1),
     quality: z.enum(["original", "high", "medium", "low"]),

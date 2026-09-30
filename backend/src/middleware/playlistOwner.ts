@@ -1,11 +1,4 @@
-/**
- * Playlist ownership guards.
- *
- * This exact three-statement block -- findUnique, 404 if missing, 403 if not
- * yours -- was copy-pasted eight times in routes/playlists.ts and four more in
- * routes/subsonic/playlists.ts. Twelve copies of an authorisation check is
- * twelve chances for one of them to drift.
- */
+/** Playlist ownership guards: 404 when missing, 403 when not the caller's. */
 
 import { NextFunction, Request, Response } from "express";
 import { prisma } from "../utils/db";

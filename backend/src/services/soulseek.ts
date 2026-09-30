@@ -1104,14 +1104,9 @@ private async recordUserFailure(username: string): Promise<void> {
             const normalizedFilename = filename.replace(/[^a-z0-9]/g, "");
             const shortFilename = filename.split(/[/\\]/).pop() || filename;
 
-            // Scoring system:
-            // - Has upload slots: +40 (file is available now)
-            // - Fast connection: +15 (quick download)
-            // - Artist match: +50 (exact) or +35 (partial)
-            // - Title match: +50 (exact) or +40 (all words) or +25 (some words)
-            // - FLAC quality: +30, MP3 320: +20, MP3 256: +10
-            // - Size in range: +10-15
-            // Minimum score 5 = any partial match
+            // Score: free upload slot +40, fast connection +15; artist exact +50 or
+            // partial +35; title exact +50, all words +40, some words +25; FLAC +30,
+            // MP3 320 +20, MP3 256 +10; size in range +10-15. 5 is the minimum.
             let score = 0;
 
             if (file.slots) score += 40;

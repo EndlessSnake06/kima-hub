@@ -681,10 +681,8 @@ export async function generateRoadTripMix(
 
     const taggedTracks = await prisma.track.findMany({
         where: {
-            // Moods come from audio analysis only;
-            // "road trip"-style tags that no analysis produces are not a
-            // source. If nothing sits in the energetic/upbeat mood tags,
-            // the genre and audio fallbacks below answer instead.
+            // Moods come from audio analysis only. With nothing in the energetic or
+            // upbeat moods, the genre and audio fallbacks below answer.
             OR: [
                 { moodTags: { hasSome: ["energetic", "upbeat", "happy"] } },
             ],

@@ -81,13 +81,9 @@ starredRouter.all("/star.view", wrap(async (req, res) => {
     const userId = req.user!.id;
     const ids = parseRepeatedQueryParam(req.query.id);
 
-    // Best-effort: attempt every id, skip ones whose track doesn't exist
-    // (P2003), and log genuine failures rather than swallowing them. Don't
-    // early-return mid-loop -- that would leave some tracks starred while
-    // telling the client it failed. Only report an error if a real failure
-    // occurred and nothing got starred (e.g. the DB is down); a partial
-    // failure is logged and reported ok so the client keeps its successes
-    // (the upsert is idempotent, so a retry is safe).
+    // Star every id, skipping tracks that do not exist (P2003) and logging real
+    // failures. Error only when a real failure left nothing starred; a partial
+    // success answers ok, and the upsert makes a retry safe.
     let anySucceeded = false;
     let realFailure = false;
     for (const trackId of ids) {

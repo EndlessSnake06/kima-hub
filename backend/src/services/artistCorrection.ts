@@ -1,15 +1,8 @@
 /**
- * Artist name correction via MusicBrainz — replaces the retired Last.fm service
- * .getArtistCorrection (the API that fed Lidarr/Soulseek acquisition).
- *
- * Same response shape as the Last.fm correction so the acquisition path
- * swaps with shape parity: { corrected, canonicalName, mbid } | null.
- *
- * Why the shape parity tests exist before the swap: acquisition correction is
- * production-critical (deluxe-edition / remaster regressions taught this
- * the hard way). "of mice" must still resolve to "Of Mice & Men";
- * "blink" to "blink-182"; suffixed names ("X (feat. Y)", "X [Live]")
- * must be cleaned before searching, or MB returns nothing.
+ * Artist name correction via MusicBrainz for Lidarr and Soulseek acquisition:
+ * { corrected, canonicalName, mbid } | null. "of mice" must resolve to "Of Mice
+ * & Men" and "blink" to "blink-182"; suffixes such as "(feat. Y)" or "[Live]"
+ * are removed before searching.
  */
 
 import * as fuzz from "fuzzball";

@@ -35,15 +35,7 @@ export interface UpdateOptions {
 const DEFAULT_MAX_RETRIES = 10;
 const DEFAULT_RETRY_DELAY_MS = 50;
 
-/**
- * Update a discovery batch with optimistic locking
- *
- * @param batchId - The ID of the batch to update
- * @param data - The fields to update
- * @param options - Retry configuration
- * @param tx - Optional Prisma transaction client
- * @returns Result object with success status and retry count
- */
+/** Update a discovery batch with optimistic locking, retrying on conflict. */
 export async function updateBatchStatus(
     batchId: string,
     data: BatchUpdateData,

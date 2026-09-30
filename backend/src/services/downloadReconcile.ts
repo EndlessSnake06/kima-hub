@@ -1,14 +1,6 @@
 /**
- * Download-job startup reconciliation.
- *
- * The old DownloadQueueManager tracked in-flight downloads in memory and
- * kept a 10-minute timeout sweep, but nothing in this codebase ever called
- * addDownload: real downloads run through simpleDownloadManager, and
- * running jobs are reconciled against the Lidarr queue by
- * workers/index.ts's runReconciliationCycle every two minutes. The one
- * behaviour worth keeping is this startup repair — a job that was
- * `processing` when the server died would otherwise sit `processing`
- * forever once its in-memory timer was lost.
+ * On startup, repairs download jobs left `processing` by a crash. Running jobs
+ * are reconciled against Lidarr by workers/index.ts's runReconciliationCycle.
  */
 
 import { prisma } from "../utils/db";

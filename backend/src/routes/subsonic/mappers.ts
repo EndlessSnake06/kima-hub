@@ -1,8 +1,5 @@
-// backend/src/routes/subsonic/mappers.ts
-// Shared mapper functions used across all Subsonic route files.
-// These convert Kima's Prisma models to Subsonic API response shapes.
-// The @_ prefix convention is used by fast-xml-parser for XML attributes.
-// subsonicResponse.ts strips these prefixes for JSON output automatically.
+// Mappers from Prisma models to Subsonic response shapes. `@_` marks XML
+// attributes for fast-xml-parser; subsonicResponse.ts strips it for JSON.
 import { Request, Response } from "express";
 import { subsonicError, SubsonicError } from "../../utils/subsonicResponse";
 

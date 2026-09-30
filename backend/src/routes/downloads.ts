@@ -17,13 +17,8 @@ const router = Router();
 router.use(requireAuthOrToken);
 
 /**
- * Verify and potentially correct artist name before download
- * Uses multiple sources for canonical name resolution:
- * 1. MusicBrainz (if MBID provided) - most authoritative
- * 2. MusicBrainz correction - handles aliases and misspellings
- * 3. Original name - fallback
- *
- * @returns Object with verified name and whether correction was applied
+ * The canonical artist name before a download: MusicBrainz by MBID if given,
+ * then MusicBrainz correction, else the original name.
  */
 async function verifyArtistName(
     artistName: string,

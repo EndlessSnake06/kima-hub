@@ -222,13 +222,8 @@ class SpotifyService {
     }
 
     /**
-     * Scrape the full Spotify playlist page HTML to extract album data
-     * This is used as a fallback when the API returns "Unknown Album"
-     *
-     * Tries multiple extraction methods in order of reliability:
-     * 1. __NEXT_DATA__ JSON with multiple path fallbacks
-     * 2. Apollo/GraphQL cache
-     * 3. HTML regex parsing
+     * Album data scraped from the playlist page, for when the API says "Unknown
+     * Album". Tries __NEXT_DATA__ JSON, then the Apollo cache, then HTML regexes.
      */
     private async scrapePlaylistPageForAlbums(playlistId: string): Promise<Map<string, { album: string; albumId: string }>> {
         const albumMap = new Map<string, { album: string; albumId: string }>();
