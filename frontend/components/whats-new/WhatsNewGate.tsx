@@ -27,6 +27,30 @@ interface Release {
     items: Parameters<typeof WhatsNewWindow>[0]["release"]["items"];
 }
 
+// One pending-fetch per app session, shared across remounts. The gate lives in
+// AuthenticatedLayout's returned tree, so a route change remounts it — without
+// this cache every navigation paid a /whats-new/pending round trip (which does
+// per-item DB work server-side) and raced a fresh queue against the one the
+// user is reading. A failed fetch is NOT cached: the next mount retries.
+let pendingFetch: Promise<Release[]> | null = null;
+let pendingFetchKey: string | null = null;
+function fetchPending(): Promise<Release[]> {
+    // Keyed to the session token: sign out and in as someone else without a
+    // reload, and the new user must not inherit the old user's queue.
+    const key = typeof window === "undefined" ? "ssr" : localStorage.getItem("auth_token") ?? "";
+    if (!pendingFetch || pendingFetchKey !== key) {
+        pendingFetchKey = key;
+        pendingFetch = api
+            .get<{ releases: Release[] }>("/whats-new/pending")
+            .then((r) => r.releases)
+            .catch((e) => {
+                pendingFetch = null;
+                throw e;
+            });
+    }
+    return pendingFetch;
+}
+
 export function WhatsNewGate() {
     const [queue, setQueue] = useState<Release[]>([]);
     // A CTA click ("Take me to it") sets a session-scoped defer flag: the user
@@ -48,7 +72,7 @@ export function WhatsNewGate() {
         let cancelled = false;
         (async () => {
             try {
-                const { releases } = await api.get<{ releases: Release[] }>("/whats-new/pending");
+                const releases = await fetchPending();
                 if (!cancelled) setQueue(releases);
             } catch {
                 // Never block the app on this. Someone who came to listen to
