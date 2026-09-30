@@ -300,19 +300,11 @@ class SpotifyImportService {
   private activeImportControllers = new Map<string, AbortController>();
 
   /**
-   * Match a Spotify track to the local library
-   *
-   * Matching strategies (in order):
-   * 1. Exact match: artist + album + title (case-insensitive)
-   * 2. Normalized album match: artist + normalized album + title
-   * 3. Artist + title only: for "Unknown Album" or when album match fails
-   * 4. Fuzzy match: similarity-based matching across all tracks by artist
+   * Match a Spotify track to the library. Candidates come from ISRC, the exact
+   * artist's tracks, then first-word prefix sweeps; the shared ladder in
+   * services/trackMatching picks the verdict.
    */
   private async matchTrack(spotifyTrack: SpotifyTrack): Promise<MatchedTrack> {
-    // Candidate SOURCING stays per-record (ISRC hit, exact-artist tracks,
-    // then the first-word prefix sweeps this matcher has always run). The
-    // VERDICT comes from the shared ladder in services/trackMatching —
-    // previously each path carried its own ladder and they had drifted.
     const candidates = new Map<string, MatchCandidate>();
     const add = (rows: MatchCandidate[]) => {
       for (const c of rows) {
@@ -522,12 +514,8 @@ class SpotifyImportService {
   }
 
   /**
-   * Enrich tracks with "Unknown Album" by looking up each track in MusicBrainz
-   * This happens BEFORE album grouping so tracks get grouped by their actual albums
-   *
-   * @param tracks - Array of SpotifyTrack objects (mutated in place)
-   * @param logPrefix - Prefix for log messages
-   * @returns Stats about resolution success
+   * Look up "Unknown Album" tracks in MusicBrainz before album grouping, so they
+   * group under their real albums. Mutates `tracks`; returns resolution stats.
    */
   private async enrichUnknownAlbumsViaMusicBrainz(
     tracks: SpotifyTrack[],
@@ -1561,11 +1549,9 @@ class SpotifyImportService {
             `Initial acquisition phase finished for ${albumMbidsToDownload.length} album(s). Checking completion state...`,
           );
 
-          // Poll checkImportCompletion until the job reaches a terminal state.
-          // In-process Soulseek downloads complete inline, but Lidarr downloads
-          // finish asynchronously via webhook. Poll every 15s, timeout at 30min.
-          // BullMQ auto-renews the lock every lockDuration/2 (5 min) as long as
-          // the event loop is responsive. The 15s sleep between polls ensures this.
+          // Poll until the job is terminal: Soulseek downloads finish inline, Lidarr's via
+          // webhook. Every 15 s for up to 30 min; the short sleeps keep the event loop
+          // free for BullMQ's lock renewal.
           const POLL_INTERVAL_MS = 15_000;
           const MAX_WAIT_MS = 30 * 60 * 1000;
           const TERMINAL_STATES = ["completed", "failed", "cancelled", "scanning", "creating_playlist"];
@@ -2451,15 +2437,9 @@ class SpotifyImportService {
       }
     }
 
-    // Batch insert all new playlist items.
-    //
-    // Ranks come from the shared allocator rather than rankForPosition: this
-    // appends to a playlist that may already hold natively-added tracks, and
-    // position-derived keys are a different WIDTH from the ones addTracks
-    // emits ("000" < "C"), so the whole batch used to land ahead of everything
-    // already in the list. The old code also read `rank` from the
-    // POST-incremented counter, so rank and sort were off by one from each
-    // other.
+    // Ranks come from allocateAppendRanks, not rankForPosition: this appends to a
+    // playlist that may already hold native tracks, and position keys have a
+    // different width ("000" < "C") that would land the batch ahead of them.
     if (newPlaylistItems.length > 0) {
       const ranks = await allocateAppendRanks(
         prisma,
@@ -2626,11 +2606,7 @@ class SpotifyImportService {
     };
   }
 
-  /**
-   * Reconcile pending tracks for ALL playlists after a library scan
-   * This checks if any previously unmatched tracks now have matches in the library
-   * and automatically adds them to their playlists
-   */
+  /** After a scan, add any pending tracks of every playlist that now match the library. */
   async reconcilePendingTracks(): Promise<{
     playlistsUpdated: number;
     tracksAdded: number;
@@ -2979,12 +2955,8 @@ class SpotifyImportService {
   }
 
   /**
-   * Import a playlist from an M3U file.
-   * Matches entries against the local library using a 4-tier strategy:
-   *   1. Exact file path match (DB filePath is relative, strip common prefixes)
-   *   2. Filename match (basename without extension)
-   *   3. Exact metadata match (artist + title from EXTINF, case-insensitive)
-   *   4. Fuzzy metadata match (fuzzball token_set_ratio >= 80)
+   * Import an M3U playlist, matching entries by file path, then filename, then
+   * exact EXTINF artist and title, then fuzzy metadata (token_set_ratio >= 80).
    */
   async importFromM3U(
     userId: string,

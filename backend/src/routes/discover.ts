@@ -609,13 +609,9 @@ router.post("/like", async (req, res) => {
                 .json({ error: "Album not in active discovery" });
         }
 
-        // Mark as liked (entire album will be kept). Conditional claim gated on
-        // status="ACTIVE" so a concurrent cleanup that already flipped the row to
-        // DELETED cannot be resurrected to LIKED -- if count===0 the cleanup won
-        // the row and we return 409. This guards the DB row only; the file-level
-        // race (cleanup deleting files for a row the user is liking) is closed on
-        // the cleanup side by deleteRejectedAlbum's status pre-check before its
-        // Lidarr/FS delete, not here.
+        // Claim only an ACTIVE row, so a cleanup that already marked it DELETED is not
+        // resurrected; count 0 means cleanup won (409). The file-level race is guarded
+        // by deleteRejectedAlbum's own status check.
         const claimed = await prisma.discoveryAlbum.updateMany({
             where: { id: discoveryAlbum.id, status: "ACTIVE" },
             data: {
@@ -1064,16 +1060,9 @@ router.post("/retry-unavailable", async (req, res) => {
                 }).catch(() => {});
             }
 
-            // Hand off to the shared completion flow. checkBatchCompletion owns
-            // the Lidarr import wait, queues the "discover-weekly-completion"
-            // scan, runs buildFinalPlaylist + reconcile, and performs the final
-            // status transition. Do NOT force-complete here -- doing so skipped
-            // playlist creation and raced async Lidarr imports.
-            // Known residual (same as the generation path): if acquireAlbum left a
-            // job pending, checkBatchCompletion returns at its pending-jobs guard
-            // and the batch waits for the webhook/scan path or the 30-min stuck
-            // sweep. The IIFE .catch does not cover that quiet wait -- it is the
-            // proven generation behavior, not a regression.
+            // checkBatchCompletion owns the rest: the Lidarr import wait, the completion
+            // scan, buildFinalPlaylist, reconcile and the final status. If a job is still
+            // pending, the batch waits for the webhook, scan or the 30-min stuck sweep.
             const { discoverWeeklyService } = await import("../services/discoverWeekly");
             await prisma.discoveryBatch.update({
                 where: { id: batch.id },
@@ -1401,13 +1390,8 @@ router.delete("/clear", async (req, res) => {
 
             for (const album of activeAlbums) {
                 try {
-                    // Claim the row before any destructive action. A user can
-                    // /like an album mid-clear (the activeAlbums snapshot was taken
-                    // above); the conditional claim gated on status="ACTIVE" means
-                    // if the like landed first (count===0) we skip the Lidarr/FS
-                    // delete AND the DB delete, so a just-liked album never loses
-                    // its files or gets clobbered back to DELETED. Symmetric with
-                    // deleteRejectedAlbum's claim guard.
+                    // Claim the row before deleting anything: if the user liked it since the
+                    // snapshot (count 0), skip both the Lidarr/file delete and the row delete.
                     const claimed = await prisma.discoveryAlbum.updateMany({
                         where: { id: album.id, status: "ACTIVE" },
                         data: { status: "DELETED" },
@@ -1539,17 +1523,9 @@ router.delete("/clear", async (req, res) => {
                     // FALLBACK: Direct filesystem deletion (in case Lidarr's deleteFiles didn't work)
                     // Try to delete files directly from the discovery folder
                     try {
-                        // artistName and albumTitle are NOT paths the scanner
-                        // produced. They come from Spotify-imported playlist and
-                        // track names and from file tags, so a name of "../.."
-                        // is something a caller can arrange. path.join silently
-                        // normalises those segments away, and the result is
-                        // handed to rmSync(recursive, force) below.
-                        //
-                        // Containment is checked against the DISCOVERY folder,
-                        // not merely the music root: a name of "../Radiohead"
-                        // resolves to a path that IS inside the music root and
-                        // is still entirely the wrong directory to delete.
+                        // artistName and albumTitle come from tags and imports, so "../.." is
+                        // possible, and the result goes to rmSync(recursive). Contain it within the
+                        // discovery folder, not just the music root.
                         const discoveryRoot = resolveWithinMusicRoot("discovery");
                         const withinDiscovery = (p: string | null): p is string =>
                             !!p &&
@@ -1586,11 +1562,8 @@ router.delete("/clear", async (req, res) => {
                         );
                     }
 
-                    // Wrap the DB row deletes in a transaction so a crash mid-delete
-                    // cannot leave a torn state (tracks gone but rows orphaned).
-                    // The DiscoveryAlbum status was already flipped to DELETED by
-                    // the conditional claim above. Lidarr HTTP and the filesystem
-                    // delete above are not DB writes -- they stay out.
+                    // One transaction for the row deletes, so a crash cannot leave orphans. The
+                    // Lidarr and filesystem deletes above stay outside it.
                     await prisma.$transaction(async (tx) => {
                         // Delete DiscoveryTrack records first (foreign key to Track)
                         await tx.discoveryTrack.deleteMany({
@@ -2267,18 +2240,10 @@ router.delete("/exclusions/:id", async (req, res) => {
     }
 });
 
-// POST /discover/cleanup-lidarr - Remove discovery-only artists from Lidarr
-// This cleans up artists that were added for discovery but shouldn't remain
-// Garbage-collects artists that discovery added to Lidarr purely to fetch
-// candidate albums, and which nothing now references. DESTRUCTIVE: removing an
-// artist also removes its files from disk.
-//
-// Dry-run is the DEFAULT. Pass ?dryRun=false to actually delete.
-//
-// The protection sets below are deliberately GLOBAL, not per-user: Lidarr is one
-// shared instance for the whole install, so an artist must survive if *any* user
-// owns or liked their work. Scoping these by the calling user would let one user
-// delete artists another user cares about.
+// POST /discover/cleanup-lidarr - Remove artists discovery added to Lidarr that
+// nothing references any more. DESTRUCTIVE: removes their files too. Dry run
+// unless ?dryRun=false. Protection is global, because Lidarr is shared: an
+// artist survives if any user owns or liked their work.
 router.post("/cleanup-lidarr", requireAdmin, async (req, res) => {
     try {
         const dryRun = req.query.dryRun !== "false";
@@ -2416,11 +2381,9 @@ router.post("/cleanup-lidarr", requireAdmin, async (req, res) => {
     }
 });
 
-// POST /discover/fix-tagging - Fix albums incorrectly tagged as LIBRARY that should be DISCOVER
-// This repairs existing bad data caused by scanner timing issues
-// IMPORTANT: Does NOT touch albums that user has LIKED (discovery_liked) or native library
-// DESTRUCTIVE: re-tags albums LIBRARY -> DISCOVER and deletes OwnedAlbum rows.
-// Dry-run is the DEFAULT; pass ?dryRun=false to actually write.
+// POST /discover/fix-tagging - Re-tag albums wrongly marked LIBRARY as DISCOVER
+// and delete their OwnedAlbum rows; liked and native library albums are left
+// alone. DESTRUCTIVE. Dry run unless ?dryRun=false.
 router.post("/fix-tagging", requireAdmin, async (req, res) => {
     try {
         const dryRun = req.query.dryRun !== "false";

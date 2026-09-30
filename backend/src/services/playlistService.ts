@@ -1,19 +1,7 @@
 /**
- * Playlist mutations.
- *
- * Every write in here is transactional and bulk-shaped. The route handlers used
- * to do it inline, one track at a time:
- *
- *   - Adding a track was four sequential round trips with no transaction, so two
- *     concurrent adds both read the same max(sort) and wrote the same position.
- *   - There was no bulk endpoint at all, so "add this album to a playlist" was N
- *     HTTP requests from the browser at four queries each -- 48 queries for a
- *     12-track album.
- *   - Reordering issued one UPDATE per row inside a single transaction, holding
- *     locks across the whole playlist, and renumbered every position.
- *
- * Ordering uses fractional ranks (see utils/lexoRank), so a move writes exactly
- * one row and positions cannot collide.
+ * Playlist mutations, each transactional and bulk-shaped. Ordering uses
+ * fractional ranks (utils/lexoRank), so a move writes one row and positions
+ * cannot collide.
  */
 
 import { prisma } from "../utils/db";
@@ -45,14 +33,8 @@ async function lockPlaylist(
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${playlistId}))`;
 }
 
-/**
- * Highest rank in the playlist across BOTH tables.
- *
- * Items and pending tracks share one key space, so a max taken from items alone
- * will happily collide with a pending track's rank -- and the unique index is
- * per-table, so the database cannot catch that. Every rank allocation has to
- * consider both.
- */
+/** Highest rank across items and pending tracks, which share one key space
+ * that no per-table unique index can see across. */
 async function maxRank(
     tx: Pick<typeof prisma, "playlistItem" | "playlistPendingTrack">,
     playlistId: string
@@ -108,27 +90,9 @@ async function nextRankAfter(
 }
 
 /**
- * Append tracks to a playlist, in the order given.
- *
- * Tracks that are already present are reported as duplicates rather than
- * failing the request -- adding an album that partially overlaps the playlist is
- * a normal thing to do. Tracks that are not streamable library tracks are
- * rejected: a DISCOVER-location track has no file and would 404 on play, and
- * nothing stopped that before.
- */
-/**
- * `count` ranks that append to the end of a playlist, in order.
- *
- * The ONLY way to allocate an appending rank. It spans BOTH tables, because
- * items and pending tracks share one ordering space and no per-table index can
- * see across them.
- *
- * It also has to chain from the existing last rank rather than derive keys from
- * a position. `rankForPosition` emits fixed 3-character keys while
- * `rankSequence` emits 1-character ones, and "000" < "C" -- so a position-derived
- * append into a natively-seeded playlist landed the whole batch AHEAD of
- * everything already there. Chaining preserves whatever width the list already
- * uses and always lands after the true last entry.
+ * `count` ranks that append to a playlist, the only way to allocate them. Spans
+ * items and pending tracks, and chains from the true last rank so the new keys
+ * keep the list's existing width ("000" < "C").
  */
 export async function allocateAppendRanks(
     tx: Pick<typeof prisma, "playlistItem" | "playlistPendingTrack">,
@@ -151,6 +115,10 @@ export async function allocateAppendRanks(
     return ranks;
 }
 
+/**
+ * Append tracks in the given order. Tracks already present are reported as
+ * duplicates, not errors; tracks that are not streamable library tracks are rejected.
+ */
 export async function addTracks(
     playlistId: string,
     trackIds: string[]
@@ -194,10 +162,8 @@ export async function addTracks(
 
         const ranks = await allocateAppendRanks(tx, playlistId, fresh.length);
 
-        // `sort` is legacy -- rank is authoritative -- but it must stay
-        // monotonic while anything still reads it. Writing `sort: i` restarted
-        // at 0 on every call, so max(sort) no longer described the end of the
-        // list and any consumer deriving a position from it got a stale one.
+        // `sort` is legacy (rank is authoritative) but must stay monotonic while
+        // anything still reads it.
         const maxSort = await tx.playlistItem.aggregate({
             where: { playlistId },
             _max: { sort: true },
@@ -227,14 +193,8 @@ export async function addTracks(
     });
 }
 
-/**
- * Remove tracks from a playlist.
- *
- * Returns the number actually removed so the caller can distinguish "nothing
- * matched" from "removed". The old single-track handler called `delete`, which
- * throws P2025 when the row is gone, and the generic catch turned that into a
- * 500 -- so double-clicking remove surfaced a server error.
- */
+/** Remove tracks from a playlist; returns how many were actually removed, so
+ * removing something already gone is not an error. */
 export async function removeTracks(
     playlistId: string,
     trackIds: string[]
@@ -306,11 +266,7 @@ export async function moveItem(
 
         const next = await nextRankAfter(tx, playlistId, before, itemId);
 
-        // When nextRankAfter returns empty (no item after the anchor), the moved
-        // item is being placed at the end of the playlist. rankAfter(before)
-        // generates a key that sorts directly after the anchor — the correct
-        // destination for a move-to-end. Using rankBetween(before, "") would
-        // also work but rankAfter is the idiomatic call for this case.
+        // No item after the anchor: the move is to the end, so rank directly after it.
         const rank = next ? rankBetween(before, next) : rankAfter(before);
         await tx.playlistItem.update({ where: { id: itemId }, data: { rank } });
         await tx.playlist.update({

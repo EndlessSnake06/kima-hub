@@ -1,23 +1,14 @@
 /**
- * Enrichment Failure Service
- *
- * Tracks and manages failures during artist/track/audio enrichment.
- * Provides visibility into what failed and allows selective retry.
- *
- * ONE RECORD PER FACT: per-track stage failures live in
- * TrackStage — the record the engine decides from — and the reads below
- * serve them from there, mapped onto the EnrichmentFailure response shape
- * the frontend already consumes. The EnrichmentFailure table remains only
- * for entities that have no TrackStage (artist, podcast), and holds history
- * for superseded track-kind rows (migration 20260926150000): rows are
- * resolved, never deleted.
+ * Enrichment failures for the settings screen, with selective retry. Per-track
+ * stage failures are read from TrackStage and mapped onto the EnrichmentFailure
+ * shape; the EnrichmentFailure table holds only entities without stage records
+ * (artists, podcasts). Rows are resolved, never deleted.
  */
 
 import { logger } from "../utils/logger";
 import { prisma } from "../utils/db";
 
-/** STAGE_RETRY_CAP — mirrored here for the mapped maxRetries field
- * (initial dispatch plus 3 retries); both count whole dispatches. */
+/** The engine's retry cap (one dispatch plus three retries), for the mapped maxRetries field. */
 const STAGE_RETRY_CAP = 4;
 
 /**
@@ -198,15 +189,9 @@ class EnrichmentFailureService {
     }
 
     /**
-     * Get failures with filtering and pagination.
-     *
-     * Track-stage failures (track/audio/vibe/scan) are read from TrackStage —
-     * the record the engine decides from — and mapped onto the
-     * EnrichmentFailure shape; artist/podcast failures come from the
-     * EnrichmentFailure ledger. An unfiltered call unions both sources. A
-     * caller asking for one type reads only its source. `includeResolved`
-     * only affects the ledger reads: an answered stage record is an answer,
-     * not a failure, and is never listed.
+     * Failures with filtering and pagination. Track-stage types read TrackStage,
+     * artist and podcast read the ledger, an unfiltered call unions both.
+     * `includeResolved` affects only the ledger; an answered stage record is never a failure.
      */
     async getFailures(options: GetFailuresOptions = {}): Promise<{
         failures: EnrichmentFailure[];
@@ -380,14 +365,9 @@ class EnrichmentFailureService {
     }
 
     /**
-     * Mark failures as resolved (manually fixed).
-     *
-     * Ledger rows follow migration 20260925150000 semantics: only UNRESOLVED
-     * rows are touched, so an already-resolved record's resolvedAt is never
-     * rewritten. A stage record cannot be "resolved" — its answer is either
-     * there or not — so acknowledging the failure parks it `blocked` (the
-     * human-decided state): it stops surfacing as a failure and the queue
-     * never re-asks it behind the operator's back.
+     * Mark failures resolved. Ledger rows: only unresolved ones, so resolvedAt is
+     * never rewritten. Stage records are parked `blocked`, a human decision, so
+     * they stop surfacing and are never re-asked behind the operator's back.
      */
     async resolveFailures(ids: string[]): Promise<number> {
         const { stageIds, ledgerIds } = await this.splitIds(ids);
@@ -455,11 +435,8 @@ class EnrichmentFailureService {
     }
 
     /**
-     * Retry TrackStage-backed failures: reopen the stage QUESTION (pending,
-     * fresh attempt, error cleared) so the queue re-asks it next cycle. The
-     * record is what the engine decides from — no Track-column resets.
-     * Ledger ids among `ids` are ignored (the /retry route resets artist
-     * rows itself; artists have no stage record).
+     * Reopen TrackStage-backed failures (pending, fresh attempt, error cleared) so
+     * the next cycle asks again. Ledger ids are ignored; the /retry route resets artists.
      */
     async retryStageFailures(ids: string[]): Promise<number> {
         const { stageIds } = await this.splitIds(ids);
@@ -484,14 +461,9 @@ class EnrichmentFailureService {
     }
 
     /**
-     * Resolve all unresolved failures (optionally filtered by type).
-     *
-     * The old control hard-deleted the rows (never delete a
-     * failure record to "fix" it — deleting erases the history the ledger
-     * keeps). Track-stage failures are parked `blocked` like resolveFailures;
-     * artist/podcast ledger rows follow migration 20260925150000: unresolved
-     * rows only, skipped records keep their human disposition, resolvedAt is
-     * never rewritten.
+     * Resolve all unresolved failures, optionally by type, without deleting any:
+     * stage records are parked `blocked`, ledger rows are resolved once and keep
+     * any human disposition.
      */
     async resolveAllFailures(entityType?: "artist" | "track" | "audio" | "vibe" | "podcast" | "scan"): Promise<number> {
         let total = 0;
@@ -562,10 +534,7 @@ class EnrichmentFailureService {
         );
         return result.count;
     }
-    /**
-     * Clean up failures for entities that no longer exist in the database.
-     * This resolves orphaned failure records where the track/artist was deleted.
-     */
+    /** Resolve failure records whose track or artist no longer exists. */
     async cleanupOrphanedFailures(): Promise<{
         cleaned: number;
         checked: number;
