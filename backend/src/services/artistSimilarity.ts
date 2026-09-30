@@ -1,45 +1,9 @@
 /**
- * Artist similarity — replaces the retired Last.fm service's getSimilarArtists.
- *
- * Three sources, in order of trust ("lets try
- * listenbrainz with deezer fallback" — music discovery is the point, so
- * global taste data comes first and local audio analysis only backstops):
- *
- * 1. LISTENBRAINZ DATASET (global taste). listenBrainzService
- *    .getSimilarArtists answers from the open artist–artist dataset via the
- *    lb-radio endpoint. Keyed by MBID; skipped when there is no MBID.
- *
- * 2. DEEZER RELATED ARTISTS. deezerService.getRelatedArtists answers from
- *    Deezer's per-artist related list, keyed by name. Runs concurrently
- *    with Tier 1 and fills the request when ListenBrainz is empty or short;
- *    when ListenBrainz already returns >= limit, Deezer's results are
- *    discarded (LB-first ordering).
- *
- * 3. LOCAL CENTROID. Each artist gets a centroid vector (mean of its
- *    tracks' CLAP embeddings, 512-d) stored in `artist_embeddings`. Similar
- *    artists = cosine nearest-neighbours over those centroids. Only used
- *    when both remote tiers came back empty — local-only answers
- *    "circlejerk the library" instead of surfacing new music. Centroids are
- *    rebuilt inside the existing "rebuild embeddings" flow
- *    (rebuildStaleArtistCentroids in unifiedEnrichment.ts — untouched).
- *
- * Before returning, results are RE-RANKED against the library: artists
- * whose rows exist here get `inLibrary: true`, and when both the seed and
- * the result have stored centroids the match score is nudged by the local
- * centroid distance — at most ±0.1 (RERANK_MAX_DELTA) — so taste leans
- * ours without hiding non-owned artists.
- *
- * The return shape is the old Last.fm service's getSimilarArtists shape plus
- * the optional `inLibrary` flag, so the eight call sites compile unchanged.
- * The first argument is the MBID ("" when unknown), exactly like the old
- * signature.
- *
- * `match` semantics differ from Last.fm's by necessity: LB results carry a
- * log-scaled proxy of connection strength (0.5–0.95); Deezer results carry
- * a rank-position score (0.5–0.9); local results carry true cosine
- * similarity. All bands overlap the 0.5–0.7 range the discover-weekly tier
- * thresholds were calibrated to, so tier assignment keeps working without
- * re-calibration.
+ * Similar artists, discovery first: ListenBrainz's global dataset (by MBID),
+ * with Deezer's related artists (by name) filling in when it is short. The
+ * library never answers on its own; it only marks `inLibrary` and nudges scores
+ * by CLAP centroid distance. Match scores from every source overlap the 0.5-0.7
+ * band the discover-weekly tiers use.
  */
 
 import { prisma } from "../utils/db";
@@ -133,14 +97,9 @@ export async function rebuildArtistCentroid(
 }
 
 /**
- * Similar artists for one artist, keyed by MBID ("" when unknown) — same
- * signature as the old Last.fm service's getSimilarArtists.
- *
- * Tier 1 (ListenBrainz, needs the MBID) and Tier 2 (Deezer, keyed by name)
- * run concurrently; ListenBrainz wins outright when it fills the request.
- * When both come back empty the answer is empty — the local library only
- * re-ranks candidates, it never substitutes its own.
- * Never throws.
+ * Similar artists for an MBID ("" when unknown). ListenBrainz and Deezer run
+ * concurrently and ListenBrainz wins when it fills the request; both empty
+ * means an empty answer. Never throws.
  */
 export async function getSimilarArtists(
     artistMbid: string,
@@ -193,11 +152,7 @@ export async function getSimilarArtists(
         // same artist from both sources appears once (LB entries win).
         results = dedupeByName([...lb, ...dz]).slice(0, limit);
     } else {
-        // Neither remote source has anything to say about this artist.
-        // Local centroids only re-rank candidates; they never answer
-        // ("never the sole source"). An empty answer
-        // is honest — the caller shows no similar artists rather than
-        // artists picked from our own shelves.
+        // Neither remote source knows this artist; the library does not substitute its own.
         return [];
     }
 
@@ -214,13 +169,9 @@ export async function getSimilarArtists(
 }
 
 /**
- * Set `inLibrary` on every result (MBID-then-name lookup against the Artist
- * table) and nudge match scores of in-library artists by their centroid
- * distance to the seed's centroid, bounded to ±RERANK_MAX_DELTA. Results
- * are then sorted by the adjusted score, so artists we own float up
- * slightly without hiding anything we don't. On any DB failure the input
- * passes through with inLibrary: false — discovery must not depend on the
- * local library.
+ * Mark `inLibrary` (by MBID, then name) and nudge owned artists' scores by
+ * centroid distance to the seed, at most RERANK_MAX_DELTA, then re-sort. On a DB
+ * failure the input passes through with inLibrary false.
  */
 async function rerankWithLibrary(
     results: SimilarArtist[],
@@ -374,11 +325,8 @@ function dedupeByName(list: SimilarArtist[]): SimilarArtist[] {
 }
 
 /**
- * Build search-result entries from a SimilarArtist list — same shape as
- * the retired Last.fm service's enrichSimilarArtists so the search route swaps import only.
- * The first three get the full treatment (bio via Wikidata/Wikipedia,
- * artwork via the cascade, genres from the stored/MB data); the rest are
- * served from the similarity entry alone plus artwork.
+ * Search-result entries for similar artists. The first three get a bio,
+ * artwork and genres; the rest get artwork only.
  */
 export async function enrichSimilarArtists(
     similar: SimilarArtist[],

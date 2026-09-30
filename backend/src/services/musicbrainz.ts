@@ -14,15 +14,9 @@ import {
 import { USER_AGENT } from "../config";
 
 /**
- * MusicBrainz Web Service v2 client. Every method answers with an
- * `Outcome`: a refused, failed, or rate-limited call reaches the caller as
- * a typed kind with the real cause — never as a null/[] that a caller
- * could mistake for "the source has nothing".
- *
- * Caching: `answered` is cached 30 days, `absent` 7 days (keyed by the
- * exact question); `transient`/`permanent`/`rateLimited` are never
- * cached. Cache entries written by the pre-Outcome code (raw values with
- * no envelope) are treated as misses and dropped.
+ * MusicBrainz Web Service v2 client. Every method returns an `Outcome`, so a
+ * failed or rate-limited call is never mistaken for "the source has nothing".
+ * `answered` is cached 30 days and `absent` 7; failures are never cached.
  */
 
 const ANSWERED_TTL = 30 * 24 * 3600;
@@ -62,12 +56,9 @@ class MusicBrainzService {
     }
 
     /**
-     * Classify an error from a source call. A rate limit extends the
-     * "musicbrainz" pause and surfaces as `rateLimited` with the pause
-     * deadline as the retry time; a 404 on a resource lookup is a real
-     * "the source has nothing"; any other 4xx (except timeouts, which
-     * may pass on a retry) is `permanent` — the answer will not change
-     * on re-asking; 5xx and transport errors are `transient`.
+     * Classify a source error: a rate limit extends the MusicBrainz pause
+     * (`rateLimited`), a 404 on a lookup is `absent`, other 4xx except timeouts
+     * are `permanent`, and 5xx or transport errors are `transient`.
      */
     private async classifyError(
         err: any,
@@ -396,17 +387,9 @@ class MusicBrainzService {
     }
 
     /**
-     * The whole catalogue for one album from ONE fetch chain: the release
-     * group with its releases (request 1), then the earliest release with
-     * its full tracklist — recordings, ISRCs, per-recording tags — and its
-     * label-info (request 2). Every track on the album gets its answer
-     * from this chain instead of 2–5 requests of its own, so an album
-     * costs 2 requests at 1 req/s, and the 30-day answer cache means even
-     * that is paid once per album rather than once per cycle (Engine Spec
-     *
-     * `recordings` lists the chosen release's tracks in disc order;
-     * matching a file to one of them (title plus duration) is the
-     * caller's job — see enrichSingleTrack in the enrichment worker.
+     * One album's whole catalogue in two requests: the release group with its
+     * releases, then the earliest release's tracklist (recordings, ISRCs, tags) and
+     * label. Cached 30 days. Matching files to `recordings` is the caller's job.
      */
     async getAlbumCatalogue(
         rgMbid: string
@@ -526,12 +509,8 @@ class MusicBrainzService {
     }
 
     /**
-     * The album title with edition markers taken off, for MATCHING only.
-     * MB models "Delta Machine (Deluxe Edition)" as a RELEASE inside the
-     * "Delta Machine" release GROUP, so comparison against group titles
-     * must drop the marker. Never applied to a STORED title — locally
-     * "Playing the Angel (Deluxe)" and "Playing the Angel" are different
-     * albums (see the scope note in albumIdentity.ts).
+     * The title without edition markers, for matching against release-group
+     * titles only; stored titles keep their markers.
      */
     normalizeForSearch(str: string): string {
         return (
@@ -561,11 +540,9 @@ class MusicBrainzService {
     }
 
     /**
-     * Search for an album (release group) by title + artist. Three
-     * strategies, tried in order; the first one that returns candidates
-     * decides the answer. An errored strategy does not count as "no
-     * results" — if every strategy either failed or found nothing, and any
-     * of them failed, the answer is `transient`, not `absent`.
+     * Search for a release group by title and artist, trying three strategies in
+     * order. If none found anything and any of them errored, the answer is
+     * `transient`, not `absent`.
      */
     async searchAlbum(
         albumTitle: string,

@@ -392,11 +392,8 @@ router.get("/preview/:itunesId", requireAuth, async (req, res) => {
             return await previewDeezerPodcast(req, res, itunesId.slice(7));
         }
 
-        // iTunes ids are numeric. Anything else cannot identify a podcast there, and
-        // forwarding it produced a 500: iTunes rejects the lookup, axios throws, and the
-        // handler's catch turns someone else's "that is not an id" into "this server
-        // broke". Our own podcast page hits this when it falls back to preview using the
-        // internal record id, so it is a live path, not a hypothetical bad request.
+        // iTunes ids are numeric; anything else (such as our own record id, which the
+        // podcast page falls back to) is a 404, not an upstream error.
         if (!/^\d+$/.test(itunesId)) {
             return res.status(404).json({ error: "Podcast not found" });
         }
@@ -616,16 +613,7 @@ router.post("/refresh-all", requireAuth, async (req, res) => {
  * Get a specific podcast with full details and episodes
  * Requires user to be subscribed
  */
-/**
- * Episodes returned with a podcast, and per page of the episode endpoint.
- *
- * The detail response used to carry the show's ENTIRE back catalogue: this
- * query had an orderBy and no take, while the subscription list beside it was
- * already bounded. Measured upstream against a real feed -- The Daily returned
- * 2,944 episodes and 6.27 MB in one response, every time the screen opened.
- * The payload grew with the show's AGE rather than with what anyone reads, and
- * a daily show adds ~365 a year forever.
- */
+/** Episodes per page, and with a podcast's detail, so the response does not grow with the show's age. */
 const EPISODE_PAGE_SIZE = 50;
 const EPISODE_PAGE_MAX = 200;
 
@@ -748,17 +736,9 @@ router.get("/:id", requireAuth, async (req, res) => {
 
 /**
  * GET /podcasts/:id/episodes
- * A page of one podcast's episodes, newest first.
- *
- * Split from the detail response because the two halves have different
- * lifetimes: a show's title and artwork barely change, its episode list changes
- * constantly and grows without bound, so bundling them meant the stable part
- * could never be cached.
- *
- * Offset-based rather than cursor-based, to match the other paged lists here.
- * The tradeoff is worth stating: episodes are appended at the HEAD, so an
- * episode arriving between two page fetches shifts everything down by one and
- * the reader sees a duplicate. For a daily show that is a once-a-day window.
+ * A page of one podcast's episodes, newest first, kept apart from the detail
+ * so the stable part can be cached. Offset-based: an episode arriving between
+ * page fetches shows one duplicate.
  */
 router.get("/:id/episodes", requireAuth, async (req, res) => {
     try {
@@ -936,13 +916,7 @@ router.post("/subscribe", requireAuth, async (req, res) => {
 
         // Create podcast in database
         logger.debug(`    Saving podcast to database...`);
-        // Coerce to a string: the column is String? but iTunes ids arrive as numbers.
-        //
-        // This endpoint's own sibling hands them over that way -- /podcasts/discover/top
-        // stringifies `id` and leaves `itunesId` as the raw numeric collectionId -- so
-        // taking a podcast from discovery and subscribing to it, which is the obvious
-        // pairing, crashed the create with a type error and answered 500. The caller had
-        // done nothing wrong; two of our own endpoints simply did not compose.
+        // The column is a string, but iTunes ids arrive as numbers (e.g. from /discover/top).
         const rawItunesId = itunesId ?? podcastData.itunesId;
         const finalItunesId =
             rawItunesId === null || rawItunesId === undefined || rawItunesId === ""
@@ -1947,11 +1921,8 @@ export async function refreshPodcastFeed(podcastId: string): Promise<{ newEpisod
     for (const ep of result.episodes) {
         if (existingGuids.has(ep.guid)) continue;
 
-        // upsert, not create: the manual refresh route and the auto-refresh job
-        // can run concurrently, and find-then-create is a TOCTOU race -- both
-        // would see "not existing" and the second create would throw on the
-        // (podcastId, guid) unique constraint. The update branch is a no-op so
-        // an episode that already exists is left untouched.
+        // upsert, not find-then-create: manual and automatic refreshes can race on the
+        // (podcastId, guid) unique key. An existing episode is left untouched.
         await prisma.podcastEpisode.upsert({
             where: { podcastId_guid: { podcastId, guid: ep.guid } },
             create: {

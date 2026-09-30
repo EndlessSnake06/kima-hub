@@ -1,52 +1,18 @@
 /**
- * Mood Bucket Service
- *
- * The one place that decides a track's mood. Five moods, each read from one
- * independent Essentia classifier head (analyzer.py, HEAD_CLASSES):
- *
- *   id (API / bucket key)   column           shown as
- *   happy                   moodHappy        Upbeat
- *   sad                     moodSad          Melancholic
- *   chill                   moodRelaxed      Calm
- *   aggressive              moodAggressive   Intense
- *   party                   moodParty        Energetic
- *
- * (moodAcoustic / moodElectronic are kept as columns but are not moods: they
- * are one acoustic-vs-electronic dial, and CLAP's `acousticness` covers it.)
- *
- * Why ranks, not raw scores: the heads are separate binary classifiers, not
- * calibrated against each other. Re-analysing a 600-track random sample of the
- * full-library testbed with the fixed heads, the median P(mood)
- * was 0.16 Upbeat, 0.31 Melancholic, 0.54 Calm, 0.18 Intense, 0.21 Energetic,
- * so "biggest raw score wins" gave Calm 43% of tracks and Upbeat 10% purely
- * because the relaxed head runs hotter. Each mood is instead
- * ranked within this library: rank = the share of analysed tracks scoring
- * lower on that same head (mid-rank for ties), which is uniform 0..1 for every
- * mood by construction and so comparable across moods.
- *
- * A track HAS a mood when both hold:
- *   - its head says yes (P(mood) >= 0.5: the classifier's own decision
- *     boundary, the argmax of its two-class softmax), and
- *   - it is in the library's top STANDOUT_SHARE for that mood.
- * Its dominant mood is the one of those with the highest rank; with none it
- * has "no single mood" (NEUTRAL). A track missing any mood value has not been
- * analysed yet (UNANALYZED) -- never a made-up 0.5.
- *
- * Buckets (for mood mixes) hold every mood a track has, scored by rank, and
- * are rebuilt from scratch whenever the analysed library changes, because a
- * new track shifts every other track's rank.
+ * The one place a track's mood is decided, from five Essentia heads: happy
+ * (Upbeat), sad (Melancholic), chill/moodRelaxed (Calm), aggressive (Intense),
+ * party (Energetic). The heads are not calibrated against each other, so each
+ * mood is a rank within the library (share of tracks scoring lower on that
+ * head), and buckets are rebuilt whenever the analysed library changes.
  */
 
 import { logger } from "../utils/logger";
 import { prisma } from "../utils/db";
 import { shuffleArray } from "../utils/shuffle";
 
-// A track must sit in the top fifth of the library on a mood to carry it:
-// one equal share per mood with five moods. On the 600-track sample above
-// this gives each mood 13-16% of tracks as their dominant mood and leaves
-// 30.5% (+-3.7 points, 95%) with no single mood. Measured alternatives: 0.10
-// leaves 60% with no mood; 0.33 leaves 11% but puts a third of the library in
-// every bucket, so most tracks carry two or more moods.
+// A track carries a mood when its head says yes (P >= 0.5) and it sits in the
+// library's top fifth for that mood. With five moods this leaves about 30% of
+// tracks with no single mood.
 const STANDOUT_SHARE = 0.2;
 // The heads' own yes/no boundary (two-class softmax argmax), not a tuned value.
 // It never binds at 0.2 on the sample (every head says yes for >= 20.5% of
@@ -274,11 +240,9 @@ export function moodOutput(view: MoodView | undefined): {
 
 class MoodBucketService {
     /**
-     * Rebuild every mood bucket from the given snapshot: a track gets one row
-     * per mood it has, scored by its library rank. Only tracks with BOTH
-     * audio analysis (mood values) and CLAP analysis complete are bucketed.
-     * Delete + insert in one transaction so readers never see a half-built
-     * table.
+     * Rebuild every bucket from the snapshot: one row per mood a track has, scored
+     * by rank, for tracks with both mood values and CLAP complete. One transaction,
+     * so readers never see a half-built table.
      */
     async rebuildBuckets(snap: MoodSnapshot): Promise<{ tracks: number; assignments: number }> {
         const rows: { trackId: string; mood: MoodType; score: number }[] = [];
@@ -353,11 +317,7 @@ class MoodBucketService {
 
         const config = MOOD_BY_ID[mood];
 
-        // Draw uniformly from the WHOLE bucket. The old take:100 ordered by
-        // score sampled only the standout head, and the head of e.g. Calm is
-        // a single 1,339-row score tie, where that cutoff was arbitrary row
-        // order. Scores never enter the draw, so tied rows surface as often
-        // as any other.
+        // Draw uniformly from the whole bucket; scores never enter the draw.
         const moodBuckets = await prisma.moodBucket.findMany({
             where: { mood },
             select: { trackId: true, score: true },
@@ -417,11 +377,8 @@ class MoodBucketService {
     }
 
     /**
-     * Save a mood mix as the user's active mood mix.
-     * If trackIds is provided, persist those that resolve to real tracks — order
-     * preserved, unknown ids silently dropped (coverUrls derived from the resolved set).
-     * Otherwise, regenerate a fresh mix via getMoodMix.
-     * Returns the saved mix for immediate UI update
+     * Save the user's active mood mix: the given trackIds that resolve (order kept,
+     * unknown ids dropped), or a fresh mix when none are given. Returns the mix.
      */
     async saveUserMoodMix(
         userId: string,

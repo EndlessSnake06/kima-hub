@@ -215,11 +215,8 @@ async function healthHandler(_req: express.Request, res: express.Response) {
         checks.redis = "error";
     }
 
-    // The embedding write path is reported but deliberately NOT part of the
-    // container health verdict: a broken vibe engine must not put the whole
-    // server into a 503 restart loop. It is here because its failure used to be
-    // invisible everywhere -- the analyzer's upsert can fail on every track
-    // while db, redis and the workers all report ok.
+    // Reported but not part of the health verdict: a broken vibe engine must not
+    // put the server into a 503 restart loop.
     const embeddingCheck = await checkEmbeddingWritePath();
 
     const allOk = Object.values(checks).every((v) => v === "ok");
@@ -285,17 +282,7 @@ async function checkPostgresConnection() {
  */
 const REDIS_READY_TIMEOUT_MS = 10_000;
 
-/**
- * Wait for the client to reach "ready", rather than asking once and giving up.
- *
- * ioredis connects asynchronously. This used to read `redisClient.status` a
- * single time the instant the process booted and exit(1) if it was anything
- * but "ready" -- which is a race the backend loses whenever it starts at the
- * same moment as Redis, exactly what happens on `docker compose up` and on any
- * restart where Redis has not finished accepting connections yet. The symptom
- * is a backend that refuses to start against a Redis that is perfectly
- * healthy and answering PING from the same host.
- */
+/** Wait for Redis to reach "ready": it may still be starting alongside us. */
 async function waitForRedisReady(): Promise<void> {
     if (redisClient.status === "ready") return;
 
@@ -370,11 +357,7 @@ async function checkPasswordReset() {
         where: { id: adminUser.id },
         data: {
             passwordHash: hashedPassword,
-            // Bump tokenVersion, exactly as POST /auth/change-password does.
-            // Without it a reset changed the password but left every JWT issued
-            // BEFORE the reset valid until it expired -- so the one path you
-            // reach for when you have lost control of the account was the one
-            // that did not revoke the sessions you are trying to lock out.
+            // Revoke every session issued before the reset, as change-password does.
             tokenVersion: { increment: 1 },
         },
     });
@@ -448,13 +431,8 @@ async function main() {
     );
     server.keepAliveTimeout = 65_000;  // > common LB idle of 60s
     server.headersTimeout = 70_000;    // must exceed keepAliveTimeout
-    // Do NOT set server.timeout: it fires on socket INACTIVITY, and a paused
-    // audio stream is inactive (no bytes flow while backpressured), so it would
-    // destroy the stream's connection after the timeout and force a reconnect on
-    // resume -- a regression seen on both web and iOS after a multi-minute pause.
-    // Reap genuinely dead/half-open peers (mobile network gone without FIN/RST)
-    // via TCP keepalive instead: the OS drops the socket once probes fail, while
-    // a paused-but-alive stream keeps answering probes and stays connected.
+    // No server.timeout: a paused audio stream is idle and would be cut. Dead
+    // peers are reaped by TCP keepalive instead, which a live paused stream answers.
     server.timeout = 0;
     server.on("connection", (socket) => {
         socket.setKeepAlive(true, config.socketKeepAliveDelayMs);
@@ -483,10 +461,8 @@ async function main() {
     // reported healthy.
     await reportEmbeddingWritePathAtStartup();
 
-    // AcoustID feature detection: the fingerprint path is
-    // ON only when the fpcalc binary is present. Missing binary = feature
-    // flag OFF — identification falls through to the MusicBrainz path — but
-    // the operator must hear about it, so log loudly either way.
+    // AcoustID fingerprinting is on only when the fpcalc binary exists; log
+    // either way. Without it identification uses MusicBrainz alone.
     {
         const { execFile } = await import("child_process");
         const { promisify } = await import("util");
