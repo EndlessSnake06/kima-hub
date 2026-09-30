@@ -77,6 +77,7 @@ jest.mock('../../../utils/errors', () => ({
 import express from 'express';
 import request from 'supertest';
 import artistRoutes from '../artists';
+import { prisma } from '../../../utils/db';
 
 function makeApp() {
     const app = express();
@@ -168,5 +169,16 @@ describe('GET /artists alphabetical ordering', () => {
         // sort in the system.
         expect(sql).not.toContain('REGEXP_REPLACE');
         expect(sql.toLowerCase()).not.toContain("'^the");
+    });
+
+    it('appends a unique id tiebreaker to non-name sorts', async () => {
+        (prisma.artist.findMany as jest.Mock).mockResolvedValue([]);
+        (prisma.artist.count as jest.Mock).mockResolvedValue(0);
+
+        await request(makeApp()).get('/artists?sortBy=tracks').expect(200);
+
+        expect(prisma.artist.findMany).toHaveBeenCalledWith(
+            expect.objectContaining({ orderBy: [{ totalTrackCount: 'desc' }, { id: 'asc' }] }),
+        );
     });
 });

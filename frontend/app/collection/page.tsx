@@ -281,7 +281,7 @@ export default function LibraryPage() {
     // Change tab function
     const changeTab = useCallback(
         (tab: Tab) => {
-            router.push(`/collection?tab=${tab}`, { scroll: false });
+            router.push(libraryUrl(tab, 1), { scroll: false });
         },
         [router],
     );

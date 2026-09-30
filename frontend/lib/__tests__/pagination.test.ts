@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { QueryClient, QueryObserver } from "@tanstack/query-core";
+import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import { latchTotal, parsePageParam } from "../pagination";
 
 describe("parsePageParam", () => {
