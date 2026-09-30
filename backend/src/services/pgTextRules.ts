@@ -1,20 +1,9 @@
 /**
  * GENERATED -- do not hand-edit. Regenerate with `npm run gen:pg-text-rules`.
  *
- * Postgres text semantics that the identity keys depend on, swept codepoint by
- * codepoint from the shipped image across the whole Basic Multilingual Plane:
- * `unaccent()`, the `[:alnum:]` class, `lower()`, and `\s`.
- *
- * Why these are generated rather than written: identity keys are computed in
- * TWO places -- in the application at scan time, and in SQL by the migration
- * backfills. If the two disagree by even one character the backfilled key is
- * unreachable from the runtime, and the next scan re-creates the duplicate the
- * whole identity mechanism exists to prevent. A hand-maintained fold table had
- * 20 entries and diverged from unaccent() on 857 of 2624 sampled codepoints
- * (Hangul 100%, fullwidth forms 99%, presentation forms 51%). It could only
- * ever cover what someone thought to list.
- *
- * Deriving them from the authority makes the two sides agree by construction.
+ * Postgres text semantics the identity keys depend on, swept from the shipped
+ * image: `unaccent()`, `[:alnum:]`, `lower()` and `\s`. Keys are computed both
+ * here and in SQL backfills, so the two must agree character for character.
  */
 
 /** codepoint(hex) SP replacement, one per line. 1613 entries. */
@@ -1641,13 +1630,9 @@ for (const line of UNACCENT_DATA.split("\n")) {
 }
 
 /**
- * Apply Postgres `unaccent()` semantics to a string.
- *
- * A plain per-character substitution, NOT Unicode normalisation -- `unaccent()`
- * strips a bare combining mark (U+0301 -> "") but leaves composed kana alone
- * (U+304C stays U+304C), so an NFD-then-strip-marks implementation cannot
- * reproduce it. Iterates by code point so astral characters pass through whole
- * rather than as surrogate halves; `unaccent()` ignores those, and so does this.
+ * Postgres `unaccent()`: a per-character substitution, not Unicode
+ * normalisation (it strips a bare combining mark but keeps composed kana).
+ * Iterates by code point so astral characters pass through whole.
  */
 export function unaccent(value: string): string {
     let out = "";
@@ -1656,14 +1641,9 @@ export function unaccent(value: string): string {
 }
 
 /**
- * Codepoint ranges Postgres `[:alnum:]` accepts. 433 ranges.
- *
- * The identity keys strip "everything not alphanumeric", which the SQL spells
- * `[^[:alnum:]]`. That class is locale-defined and is NOT JavaScript's
- * \p{L}\p{N}: it accepts 846 codepoints the Unicode classes reject (Hebrew and
- * Arabic combining points among them) and rejects 300 they accept (superscripts
- * and fractions). Using \p{L}\p{N} made the same string key two different ways
- * depending on which side computed it.
+ * Codepoint ranges Postgres `[:alnum:]` accepts (433 ranges). It is not
+ * JavaScript's \p{L}\p433: it accepts Hebrew and Arabic combining points and
+ * rejects superscripts and fractions.
  */
 const ALNUM_RANGES = "00AA,00B5,00BA,00C0-00D6,00D8-00F6,00F8-02C1,02C6-02D1,02E0-02E4,02EC,02EE,0345,0370-0374,0376-0377,037A-037D,037F,0386,0388-038A,038C,038E-03A1,03A3-03F5,03F7-0481,048A-052F,0531-0556,0559,0560-0588,05B0-05BD,05BF,05C1-05C2,05C4-05C5,05C7,05D0-05EA,05EF-05F2,0610-061A,0620-0657,0659-0669,066E-06D3,06D5-06DC,06E1-06E8,06ED-06FC,06FF,0710-073F,074D-07B1,07C0-07EA,07F4-07F5,07FA,0800-0817,081A-082C,0840-0858,0860-086A,0870-0887,0889-088E,08A0-08C9,08D4-08DF,08E3-08E9,08F0-093B,093D-094C,094E-0950,0955-0963,0966-096F,0971-0983,0985-098C,098F-0990,0993-09A8,09AA-09B0,09B2,09B6-09B9,09BD-09C4,09C7-09C8,09CB-09CC,09CE,09D7,09DC-09DD,09DF-09E3,09E6-09F1,09FC,0A01-0A03,0A05-0A0A,0A0F-0A10,0A13-0A28,0A2A-0A30,0A32-0A33,0A35-0A36,0A38-0A39,0A3E-0A42,0A47-0A48,0A4B-0A4C,0A51,0A59-0A5C,0A5E,0A66-0A75,0A81-0A83,0A85-0A8D,0A8F-0A91,0A93-0AA8,0AAA-0AB0,0AB2-0AB3,0AB5-0AB9,0ABD-0AC5,0AC7-0AC9,0ACB-0ACC,0AD0,0AE0-0AE3,0AE6-0AEF,0AF9-0AFC,0B01-0B03,0B05-0B0C,0B0F-0B10,0B13-0B28,0B2A-0B30,0B32-0B33,0B35-0B39,0B3D-0B44,0B47-0B48,0B4B-0B4C,0B56-0B57,0B5C-0B5D,0B5F-0B63,0B66-0B6F,0B71,0B82-0B83,0B85-0B8A,0B8E-0B90,0B92-0B95,0B99-0B9A,0B9C,0B9E-0B9F,0BA3-0BA4,0BA8-0BAA,0BAE-0BB9,0BBE-0BC2,0BC6-0BC8,0BCA-0BCC,0BD0,0BD7,0BE6-0BEF,0C00-0C03,0C05-0C0C,0C0E-0C10,0C12-0C28,0C2A-0C39,0C3D-0C44,0C46-0C48,0C4A-0C4C,0C55-0C56,0C58-0C5A,0C5D,0C60-0C63,0C66-0C6F,0C80-0C83,0C85-0C8C,0C8E-0C90,0C92-0CA8,0CAA-0CB3,0CB5-0CB9,0CBD-0CC4,0CC6-0CC8,0CCA-0CCC,0CD5-0CD6,0CDD-0CDE,0CE0-0CE3,0CE6-0CEF,0CF1-0CF2,0D00-0D0C,0D0E-0D10,0D12-0D3A,0D3D-0D44,0D46-0D48,0D4A-0D4C,0D4E,0D54-0D57,0D5F-0D63,0D66-0D6F,0D7A-0D7F,0D81-0D83,0D85-0D96,0D9A-0DB1,0DB3-0DBB,0DBD,0DC0-0DC6,0DCF-0DD4,0DD6,0DD8-0DDF,0DE6-0DEF,0DF2-0DF3,0E01-0E3A,0E40-0E46,0E4D,0E50-0E59,0E81-0E82,0E84,0E86-0E8A,0E8C-0EA3,0EA5,0EA7-0EB9,0EBB-0EBD,0EC0-0EC4,0EC6,0ECD,0ED0-0ED9,0EDC-0EDF,0F00,0F20-0F29,0F40-0F47,0F49-0F6C,0F71-0F81,0F88-0F97,0F99-0FBC,1000-1036,1038,103B-1049,1050-109D,10A0-10C5,10C7,10CD,10D0-10FA,10FC-1248,124A-124D,1250-1256,1258,125A-125D,1260-1288,128A-128D,1290-12B0,12B2-12B5,12B8-12BE,12C0,12C2-12C5,12C8-12D6,12D8-1310,1312-1315,1318-135A,1380-138F,13A0-13F5,13F8-13FD,1401-166C,166F-167F,1681-169A,16A0-16EA,16EE-16F8,1700-1713,171F-1733,1740-1753,1760-176C,176E-1770,1772-1773,1780-17B3,17B6-17C8,17D7,17DC,17E0-17E9,1810-1819,1820-1878,1880-18AA,18B0-18F5,1900-191E,1920-192B,1930-1938,1946-196D,1970-1974,1980-19AB,19B0-19C9,19D0-19D9,1A00-1A1B,1A20-1A5E,1A61-1A74,1A80-1A89,1A90-1A99,1AA7,1ABF-1AC0,1ACC-1ACE,1B00-1B33,1B35-1B43,1B45-1B4C,1B50-1B59,1B80-1BA9,1BAC-1BE5,1BE7-1BF1,1C00-1C36,1C40-1C49,1C4D-1C7D,1C80-1C88,1C90-1CBA,1CBD-1CBF,1CE9-1CEC,1CEE-1CF3,1CF5-1CF6,1CFA,1D00-1DBF,1DE7-1DF4,1E00-1F15,1F18-1F1D,1F20-1F45,1F48-1F4D,1F50-1F57,1F59,1F5B,1F5D,1F5F-1F7D,1F80-1FB4,1FB6-1FBC,1FBE,1FC2-1FC4,1FC6-1FCC,1FD0-1FD3,1FD6-1FDB,1FE0-1FEC,1FF2-1FF4,1FF6-1FFC,2071,207F,2090-209C,2102,2107,210A-2113,2115,2119-211D,2124,2126,2128,212A-212D,212F-2139,213C-213F,2145-2149,214E,2160-2188,24B6-24E9,2C00-2CE4,2CEB-2CEE,2CF2-2CF3,2D00-2D25,2D27,2D2D,2D30-2D67,2D6F,2D80-2D96,2DA0-2DA6,2DA8-2DAE,2DB0-2DB6,2DB8-2DBE,2DC0-2DC6,2DC8-2DCE,2DD0-2DD6,2DD8-2DDE,2DE0-2DFF,2E2F,3005-3007,3021-3029,3031-3035,3038-303C,3041-3096,309D-309F,30A1-30FA,30FC-30FF,3105-312F,3131-318E,31A0-31BF,31F0-31FF,3400-4DBF,4E00-A48C,A4D0-A4FD,A500-A60C,A610-A62B,A640-A66E,A674-A67B,A67F-A6EF,A717-A71F,A722-A788,A78B-A7CA,A7D0-A7D1,A7D3,A7D5-A7D9,A7F2-A805,A807-A827,A840-A873,A880-A8C3,A8C5,A8D0-A8D9,A8F2-A8F7,A8FB,A8FD-A92A,A930-A952,A960-A97C,A980-A9B2,A9B4-A9BF,A9CF-A9D9,A9E0-A9FE,AA00-AA36,AA40-AA4D,AA50-AA59,AA60-AA76,AA7A-AABE,AAC0,AAC2,AADB-AADD,AAE0-AAEF,AAF2-AAF5,AB01-AB06,AB09-AB0E,AB11-AB16,AB20-AB26,AB28-AB2E,AB30-AB5A,AB5C-AB69,AB70-ABEA,ABF0-ABF9,AC00-D7A3,D7B0-D7C6,D7CB-D7FB,F900-FA6D,FA70-FAD9,FB00-FB06,FB13-FB17,FB1D-FB28,FB2A-FB36,FB38-FB3C,FB3E,FB40-FB41,FB43-FB44,FB46-FBB1,FBD3-FD3D,FD50-FD8F,FD92-FDC7,FDF0-FDFB,FE70-FE74,FE76-FEFC,FF10-FF19,FF21-FF3A,FF41-FF5A,FF66-FFBE,FFC2-FFC7,FFCA-FFCF,FFD2-FFD7,FFDA-FFDC";
 
@@ -1702,15 +1682,9 @@ export function stripNonAlnum(value: string): string {
 }
 
 /**
- * Codepoints where Postgres `lower()` disagrees with JavaScript
- * `toLowerCase()`. 9 of them.
- *
- * The identity pipeline is lower(unaccent(x)) on both sides, so a lowercase
- * disagreement is an identity-key disagreement. The shipped image's libc
- * predates the Unicode 14/15 additions at U+A7Cx-U+A7Dx and leaves them
- * uppercase where V8 folds them -- and it folds the Turkish capital dotted I
- * (U+0130) to plain "i" where JavaScript produces "i" plus a combining dot,
- * which survives the alphanumeric strip.
+ * Codepoints where Postgres `lower()` disagrees with `toLowerCase()` (9):
+ * the image's libc predates the Unicode 14/15 mappings at U+A7Cx-U+A7Dx, and
+ * folds U+0130 to plain "i" where JavaScript adds a combining dot.
  */
 const LOWER_DELTA_DATA = `\
 0130 i
@@ -1738,16 +1712,9 @@ export function pgLower(value: string): string {
 }
 
 /**
- * The whitespace set Postgres `\s` matches.
- *
- * JavaScript additionally matches U+00A0, U+2007, U+202F and U+FEFF. A name
- * containing any of them collapsed to a plain space in the runtime and kept the
- * original character in the backfill, so the two sides stored different
- * normalizedName and sortName for the same artist.
- *
- * `trim()` is worse: SQL `trim(x)` is `btrim(x, ' ')`, which strips ASCII spaces
- * ONLY -- a leading tab survives it where JS .trim() removes it. The migrations
- * regex-trim on this same class so the two definitions are one definition.
+ * The whitespace set Postgres `\s` matches. JavaScript also matches U+00A0,
+ * U+2007, U+202F and U+FEFF, and SQL `trim()` strips ASCII spaces only, so the
+ * migrations regex-trim on this class too.
  */
 const PG_SPACE = "\\t\\n\\v\\f\\r \\u1680\\u2000-\\u2006\\u2008-\\u200A\\u2028-\\u2029\\u205F\\u3000";
 
@@ -1765,33 +1732,10 @@ export function pgCollapseSpace(value: string): string {
 }
 
 /**
- * The leading articles stripped from sort values, lowercase.
- *
- * This array is the SINGLE definition. `PG_LEADING_ARTICLE` below is built
- * from it, the `kima_sort_name` SQL function mirrors it, and the Subsonic
- * `ignoredArticles` advertisement is rendered from it. It used to exist only
- * inside the regex, which let a second English-only copy grow in the Subsonic
- * router and a third as a hardcoded advertisement string -- three definitions
- * of one concept, none agreeing.
- *
- * A FOURTH copy lives in SQL, inside `kima_sort_name` -- unavoidable, since a
- * Postgres function cannot import a TypeScript constant. `pgIdentityParity.test.ts`
- * guards it by comparing this side against a golden fixture generated from the
- * real functions in the shipped Postgres image.
- *
- * That guard is PARTIAL, and knowing where it stops matters more than knowing
- * it exists. The fixture exercises five of the eleven articles below -- "the",
- * "a", "an", "los", "die" ("The The", "A Perfect Circle", "An Horse", "Los
- * Campesinos!", "Die Antwoord"). Nothing covers "le", "la", "les", "las",
- * "der" or "das", so removing one of those six from this array would NOT fail
- * the parity test; it would quietly change every affected sort value on the
- * next backfill. Add a fixture row before trusting a change to those.
- *
- * So changing this list means all three of: this array, a new migration doing
- * `CREATE OR REPLACE FUNCTION kima_sort_name` plus
- * `UPDATE "Artist" SET "sortName" = kima_sort_name(name)` to re-derive stored
- * values, and `npm run gen:pg-text-rules` to regenerate the fixture -- in that
- * order, and only then.
+ * Leading articles stripped from sort values; Subsonic's `ignoredArticles` is
+ * built from it and SQL `kima_sort_name` mirrors it. A change needs a migration
+ * replacing that function and re-deriving sortName, then a regenerate. The
+ * parity fixture covers only the, a, an, los and die.
  */
 export const LEADING_ARTICLES = [
     "the", "a", "an",
