@@ -1,21 +1,12 @@
 /**
- * API keys: minting, listing, and revoking the rows behind them.
- *
- * Two routes reach these: routes/apiKeys.ts (the settings screen, where a key
- * is a "key") and routes/deviceLink.ts (the TV/mobile pairing flow, where the
- * same row is a "device"). They were generating keys with two copies of the
- * same `randomBytes(32).toString("hex")` line; the entropy of a credential is
- * not something to keep in two places and hope they stay equal.
- *
- * The two surfaces still list and revoke differently, and those differences
- * are preserved rather than unified -- each is on the wire, and they are
- * commented where they are.
+ * API keys: minting, listing, revoking and resolving them. The settings screen
+ * (routes/apiKeys.ts) calls a row a key; the TV/mobile pairing flow
+ * (routes/deviceLink.ts) calls the same row a device.
  */
 
 import crypto from "crypto";
 
 import { prisma } from "../../utils/db";
-import { UserFacingError } from "../../utils/errors";
 
 /** Fields safe to hand back for an existing key -- never `key` itself. */
 const PUBLIC_FIELDS = {
@@ -31,27 +22,15 @@ function generateApiKeyValue(): string {
 }
 
 /**
- * The one hash every consumer of `ApiKey.keyHash` has to agree on --
- * `createApiKey` below, every auth lookup (`middleware/auth.ts`'s X-API-Key
- * header, `middleware/subsonicAuth.ts`'s and `routes/subsonic/index.ts`'s
- * OpenSubsonic `apiKey=` param), and the migration that re-keyed every
- * existing row (`prisma/migrations/20260812120000_apikey_hash_at_rest`,
- * via Postgres's `pgcrypto` `digest()` -- same algorithm, same input
- * encoding, see that file's own comment for why the two never disagree).
- * SHA-256, not bcrypt: see that migration's comment for the full reasoning
- * -- the short version is that a 256-bit server-generated token has no
- * dictionary to defend against and needs an indexable lookup on every
- * request, both of which point at a deterministic hash instead of a salted
- * one.
+ * SHA-256, deterministic and unsalted: a 256-bit server-generated token has no
+ * dictionary to defend against, and every request needs an indexed lookup.
+ * Must match the pgcrypto digest() used by the apikey_hash_at_rest migration.
  */
 export function hashApiKey(key: string): string {
     return crypto.createHash("sha256").update(key).digest("hex");
 }
 
-/** A newly minted key: the stored row's public fields, plus the plaintext
- *  value -- which exists ONLY here, in memory, for the one response that
- *  hands it to the client. Nothing this shape holds is ever written back to
- *  the database; `keyHash` is what persists. */
+/** A newly minted key; `key` is the plaintext, returned once and never stored. */
 export interface CreatedApiKey {
     id: string;
     userId: string;
@@ -61,18 +40,7 @@ export interface CreatedApiKey {
     key: string;
 }
 
-/**
- * Mint a key for a user.
- *
- * The plaintext is generated here, hashed for storage, and returned
- * alongside the row's own fields under the same `.key` name the row used to
- * carry directly -- both callers (`routes/apiKeys.ts`, `deviceLinkService`'s
- * redeem flow) already read `createApiKey(...).key` and hand it to the
- * client as "save this now, you won't see it again"; neither needed to
- * change, because the shape they read didn't. What changed is that the
- * database itself never holds this value -- there is no column left to read
- * it back from, which is the entire point.
- */
+/** Mint a key for a user; only its hash is stored. */
 export async function createApiKey(userId: string, name: string): Promise<CreatedApiKey> {
     const key = generateApiKeyValue();
     const row = await prisma.apiKey.create({
@@ -85,64 +53,43 @@ export async function createApiKey(userId: string, name: string): Promise<Create
     return { id: row.id, userId: row.userId, name: row.name, lastUsed: row.lastUsed, createdAt: row.createdAt, key };
 }
 
-/** A user's keys for the settings screen, newest first. */
-export function listApiKeys(userId: string) {
+/** A user's keys without the secret: newest first for the settings screen, most recently used first for linked devices. */
+export function listApiKeys(userId: string, orderBy: "createdAt" | "lastUsed" = "createdAt") {
     return prisma.apiKey.findMany({
         where: { userId },
         select: PUBLIC_FIELDS,
-        orderBy: { createdAt: "desc" },
+        orderBy: { [orderBy]: "desc" },
     });
 }
 
-/**
- * The same rows for the linked-devices screen, ordered by last use instead --
- * a device list answers "what is talking to my server", where a key list
- * answers "what did I create".
- */
-export function listLinkedDevices(userId: string) {
-    return prisma.apiKey.findMany({
-        where: { userId },
-        orderBy: { lastUsed: "desc" },
-        select: PUBLIC_FIELDS,
-    });
+/** Deletes the key only if the caller owns it; false when there was nothing of theirs to delete. */
+export async function revokeApiKey(userId: string, keyId: string): Promise<boolean> {
+    const deleted = await prisma.apiKey.deleteMany({ where: { id: keyId, userId } });
+    return deleted.count > 0;
 }
 
-/**
- * Revoke a key the caller owns.
- *
- * The delete is scoped by userId as well as id, so a request for someone
- * else's key deletes nothing and is answered the same way as one for a key
- * that never existed -- there is no probe here that distinguishes them.
- */
-export async function revokeApiKey(userId: string, keyId: string): Promise<void> {
-    const deleted = await prisma.apiKey.deleteMany({
-        where: {
-            id: keyId,
-            userId,
-        },
-    });
+const TOUCH_INTERVAL_MS = 60_000;
+const touchedAt = new Map<string, number>();
 
-    if (deleted.count === 0) {
-        throw new UserFacingError("API key not found or already deleted", 404);
-    }
+/** Last-used is shown on a settings screen, so minute granularity is enough and keeps a write off every request. */
+function touchApiKey(apiKeyId: string): void {
+    const last = touchedAt.get(apiKeyId) ?? 0;
+    if (Date.now() - last < TOUCH_INTERVAL_MS) return;
+    touchedAt.set(apiKeyId, Date.now());
+    prisma.apiKey
+        .update({ where: { id: apiKeyId }, data: { lastUsed: new Date() } })
+        .catch(() => {});
 }
 
-/**
- * Revoke a key from the devices screen.
- *
- * Separate from `revokeApiKey` only because its 404 says "Device not found" --
- * same ownership scoping, different word for the same row.
- */
-export async function revokeLinkedDevice(userId: string, keyId: string): Promise<void> {
-    const apiKey = await prisma.apiKey.findFirst({
-        where: { id: keyId, userId },
+/** The user a plaintext key belongs to, or null; a hit records the key as used. */
+export async function findApiKeyUser(
+    key: string,
+): Promise<{ id: string; username: string; role: string } | null> {
+    const row = await prisma.apiKey.findUnique({
+        where: { keyHash: hashApiKey(key) },
+        select: { id: true, user: { select: { id: true, username: true, role: true } } },
     });
-
-    if (!apiKey) {
-        throw new UserFacingError("Device not found", 404);
-    }
-
-    await prisma.apiKey.delete({
-        where: { id: keyId },
-    });
+    if (!row) return null;
+    touchApiKey(row.id);
+    return row.user;
 }

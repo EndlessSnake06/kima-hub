@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import bcrypt from "bcrypt";
 import { prisma } from "../utils/db";
 import { subsonicError, SubsonicError } from "../utils/subsonicResponse";
-import { hashApiKey } from "../services/users/apiKeyStore";
+import { findApiKeyUser } from "../services/users/apiKeyStore";
 
 declare global {
     // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -93,24 +93,13 @@ export async function subsonicAuth(
 
         // OpenSubsonic API key auth (preferred)
         if (apiKey) {
-            const keyRecord = await prisma.apiKey.findUnique({
-                where: { keyHash: hashApiKey(apiKey) },
-                include: {
-                    user: { select: { id: true, username: true, role: true } },
-                },
-            });
-
-            if (!keyRecord || keyRecord.user.username !== username) {
+            const keyUser = await findApiKeyUser(apiKey);
+            if (!keyUser || keyUser.username !== username) {
                 subsonicError(req, res, SubsonicError.WRONG_CREDENTIALS, "Wrong username or password");
                 return;
             }
 
-            // Update lastUsed non-blocking
-            prisma.apiKey
-                .update({ where: { id: keyRecord.id }, data: { lastUsed: new Date() } })
-                .catch(() => {});
-
-            req.user = keyRecord.user;
+            req.user = keyUser;
             // A provisioned app credential, not the account password -- see
             // the 2FA note on the password branch below for why this
             // distinction has to survive past this middleware, not just gate
@@ -160,18 +149,9 @@ export async function subsonicAuth(
             // key the user minted from an already-2FA-verified web session
             // is not that secret, and must not be blocked by a check that
             // was never about keys.
-            const keyRecord = await prisma.apiKey.findUnique({
-                where: { keyHash: hashApiKey(plainPassword) },
-                include: {
-                    user: { select: { id: true, username: true, role: true } },
-                },
-            });
-            if (keyRecord && keyRecord.user.username === username) {
-                prisma.apiKey
-                    .update({ where: { id: keyRecord.id }, data: { lastUsed: new Date() } })
-                    .catch(() => {});
-
-                req.user = keyRecord.user;
+            const keyUser = await findApiKeyUser(plainPassword);
+            if (keyUser && keyUser.username === username) {
+                req.user = keyUser;
                 req.subsonicAuthMethod = "apiKey";
                 next();
                 return;

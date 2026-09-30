@@ -2,12 +2,11 @@ import { Router, Request, Response } from "express";
 import rateLimit from "express-rate-limit";
 import { subsonicAuth } from "../../middleware/subsonicAuth";
 import { subsonicOk, subsonicError, SubsonicError } from "../../utils/subsonicResponse";
-import { prisma } from "../../utils/db";
 import { scanQueue } from "../../workers/queues";
 import { requestScan } from "../../workers/scanRequest";
 import { config } from "../../config";
 import { requireSubsonicAdmin } from "./userHelpers";
-import { hashApiKey } from "../../services/users/apiKeyStore";
+import { findApiKeyUser } from "../../services/users/apiKeyStore";
 // Every async handler here goes through wrap(): in Express 4 a rejected handler
 // promise produces NO response, so an unwrapped await that throws leaves the
 // client waiting until it times out. getScanStatus and startScan both talk to
@@ -82,27 +81,12 @@ subsonicRouter.all("/tokenInfo.view", wrap(async (req: Request, res: Response) =
         return subsonicError(req, res, SubsonicError.MISSING_PARAM, "Required parameter is missing: apiKey");
     }
 
-    const keyRecord = await prisma.apiKey.findUnique({
-        where: { keyHash: hashApiKey(apiKey) },
-        select: {
-            id: true,
-            user: { select: { username: true } },
-        },
-    });
-
-    if (!keyRecord) {
+    const keyUser = await findApiKeyUser(apiKey);
+    if (!keyUser) {
         return subsonicError(req, res, SubsonicError.INVALID_API_KEY, "Invalid API key");
     }
 
-    prisma.apiKey
-        .update({ where: { id: keyRecord.id }, data: { lastUsed: new Date() } })
-        .catch(() => {});
-
-    return subsonicOk(req, res, {
-        tokenInfo: {
-            username: keyRecord.user.username,
-        },
-    });
+    return subsonicOk(req, res, { tokenInfo: { username: keyUser.username } });
 }));
 
 // All routes require Subsonic auth (applied after rate limit)

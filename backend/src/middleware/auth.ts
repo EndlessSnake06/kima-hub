@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { logger } from "../utils/logger";
 import { prisma } from "../utils/db";
 import jwt from "jsonwebtoken";
-import { hashApiKey } from "../services/users/apiKeyStore";
+import { findApiKeyUser } from "../services/users/apiKeyStore";
 
 // JWT_SECRET is required - SESSION_SECRET is used as fallback since docker-entrypoint.sh generates it
 const JWT_SECRET = process.env.JWT_SECRET || process.env.SESSION_SECRET;
@@ -154,25 +154,6 @@ async function loadUser(userId: string): Promise<CachedUser | null> {
     return user;
 }
 
-/**
- * Record that an API key was used, at most once a minute per key.
- *
- * This was a fire-and-forget UPDATE on EVERY request authenticated by API key.
- * "Last used" is a human-facing timestamp on a settings screen; minute
- * granularity is indistinguishable there and removes a write from the hot path.
- */
-const API_KEY_TOUCH_INTERVAL_MS = 60_000;
-const apiKeyTouchedAt = new Map<string, number>();
-
-function touchApiKey(apiKeyId: string): void {
-    const last = apiKeyTouchedAt.get(apiKeyId) ?? 0;
-    if (Date.now() - last < API_KEY_TOUCH_INTERVAL_MS) return;
-    apiKeyTouchedAt.set(apiKeyId, Date.now());
-    prisma.apiKey
-        .update({ where: { id: apiKeyId }, data: { lastUsed: new Date() } })
-        .catch(() => {});
-}
-
 async function authenticateRequest(
     req: Request,
     checkQueryToken: boolean = false
@@ -197,17 +178,8 @@ async function authenticateRequest(
     const apiKey = req.headers["x-api-key"] as string;
     if (apiKey) {
         try {
-            const apiKeyRecord = await prisma.apiKey.findUnique({
-                where: { keyHash: hashApiKey(apiKey) },
-                include: {
-                    user: { select: { id: true, username: true, role: true } },
-                },
-            });
-
-            if (apiKeyRecord && apiKeyRecord.user) {
-                touchApiKey(apiKeyRecord.id);
-                return apiKeyRecord.user;
-            }
+            const keyUser = await findApiKeyUser(apiKey);
+            if (keyUser) return keyUser;
         } catch (error) {
             logger.error("API key auth error:", error);
         }

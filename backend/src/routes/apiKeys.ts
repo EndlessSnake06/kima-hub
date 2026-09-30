@@ -1,8 +1,7 @@
 import { Router } from "express";
 import { logger } from "../utils/logger";
 import { requireAuth } from "../middleware/auth";
-import { prisma } from "../utils/db";
-import { createApiKey } from "../services/users/apiKeyStore";
+import { createApiKey, listApiKeys, revokeApiKey } from "../services/users/apiKeyStore";
 
 const router = Router();
 
@@ -51,19 +50,7 @@ router.get("/", async (req, res) => {
             return res.status(401).json({ error: "Not authenticated" });
         }
 
-        const keys = await prisma.apiKey.findMany({
-            where: { userId },
-            select: {
-                id: true,
-                name: true,
-                lastUsed: true,
-                createdAt: true,
-                // Don't return the actual key for security!
-            },
-            orderBy: { createdAt: "desc" },
-        });
-
-        res.json({ apiKeys: keys });
+        res.json({ apiKeys: await listApiKeys(userId) });
     } catch (error) {
         logger.error("List API keys error:", error);
         res.status(500).json({ error: "Failed to list API keys" });
@@ -79,15 +66,7 @@ router.delete("/:id", async (req, res) => {
         }
         const keyId = req.params.id;
 
-        // Only allow users to delete their own keys
-        const deleted = await prisma.apiKey.deleteMany({
-            where: {
-                id: keyId,
-                userId,
-            },
-        });
-
-        if (deleted.count === 0) {
+        if (!(await revokeApiKey(userId, keyId))) {
             return res
                 .status(404)
                 .json({ error: "API key not found or already deleted" });

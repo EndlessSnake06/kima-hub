@@ -3,7 +3,7 @@ import { logger } from "../utils/logger";
 import { requireAuthOrToken } from "../middleware/auth";
 import { prisma } from "../utils/db";
 import crypto from "crypto";
-import { createApiKey } from "../services/users/apiKeyStore";
+import { createApiKey, listApiKeys, revokeApiKey } from "../services/users/apiKeyStore";
 
 const router = Router();
 
@@ -178,18 +178,7 @@ router.get("/devices", requireAuthOrToken, async (req, res) => {
     try {
         const userId = req.user!.id;
 
-        const apiKeys = await prisma.apiKey.findMany({
-            where: { userId },
-            orderBy: { lastUsed: "desc" },
-            select: {
-                id: true,
-                name: true,
-                lastUsed: true,
-                createdAt: true,
-            },
-        });
-
-        res.json(apiKeys);
+        res.json(await listApiKeys(userId, "lastUsed"));
     } catch (error) {
         logger.error("Get devices error:", error);
         res.status(500).json({ error: "Failed to get devices" });
@@ -202,17 +191,9 @@ router.delete("/devices/:id", requireAuthOrToken, async (req, res) => {
         const userId = req.user!.id;
         const { id } = req.params;
 
-        const apiKey = await prisma.apiKey.findFirst({
-            where: { id, userId },
-        });
-
-        if (!apiKey) {
+        if (!(await revokeApiKey(userId, id))) {
             return res.status(404).json({ error: "Device not found" });
         }
-
-        await prisma.apiKey.delete({
-            where: { id },
-        });
 
         res.json({ success: true });
     } catch (error) {
