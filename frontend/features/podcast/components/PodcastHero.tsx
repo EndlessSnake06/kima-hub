@@ -5,6 +5,7 @@ import Image from "next/image";
 import { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { ColorPalette } from "@/hooks/useImageColor";
+import { HeroBackdrop } from "@/components/ui/HeroBackdrop";
 
 interface PodcastHeroProps {
     title: string;
@@ -39,40 +40,13 @@ export function PodcastHero({
 
     return (
         <div className="relative">
-            {/* Background with VibrantJS gradient */}
-            {heroImage ? (
-                <div className="absolute inset-0 overflow-hidden">
-                    <div className="absolute inset-0 scale-110 blur-md opacity-40">
-                        <Image
-                            src={heroImage}
-                            alt={title}
-                            fill
-                            sizes="100vw"
-                            className="object-cover"
-                            priority
-                            unoptimized
-                        />
-                    </div>
-                    <div
-                        className="absolute inset-0"
-                        style={{
-                            background: colors
-                                ? `linear-gradient(to bottom, ${colors.vibrant}20 0%, ${colors.darkVibrant}50 40%, #0a0a0a 100%)`
-                                : "linear-gradient(to bottom, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.7) 40%, #0a0a0a 100%)",
-                        }}
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-transparent to-transparent" />
-                </div>
-            ) : (
-                <div
-                    className="absolute inset-0"
-                    style={{
-                        background: colors
-                            ? `linear-gradient(to bottom, ${colors.vibrant}30 0%, ${colors.darkVibrant}60 50%, #0a0a0a 100%)`
-                            : "linear-gradient(to bottom, #0f1a2e 0%, #0a0f1a 50%, #0a0a0a 100%)",
-                    }}
-                />
-            )}
+            <HeroBackdrop
+                image={heroImage}
+                alt={title}
+                colors={colors}
+                tint="spoken"
+                fallback={["#0f1a2e", "#0a0f1a"]}
+            />
 
             {/* Hero Content */}
             <div className="relative px-4 md:px-8 pt-8 pb-6">

@@ -6,6 +6,7 @@ import { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { Audiobook } from "../types";
 import type { ColorPalette } from "@/hooks/useImageColor";
+import { HeroBackdrop } from "@/components/ui/HeroBackdrop";
 
 interface AudiobookHeroProps {
     audiobook: Audiobook;
@@ -41,40 +42,13 @@ export function AudiobookHero({
 
     return (
         <div className="relative">
-            {/* Background with VibrantJS gradient */}
-            {heroImage ? (
-                <div className="absolute inset-0 overflow-hidden">
-                    <div className="absolute inset-0 scale-110 blur-md opacity-40">
-                        <Image
-                            src={heroImage}
-                            alt={audiobook.title}
-                            fill
-                            sizes="100vw"
-                            className="object-cover"
-                            priority
-                            unoptimized
-                        />
-                    </div>
-                    <div
-                        className="absolute inset-0"
-                        style={{
-                            background: colors
-                                ? `linear-gradient(to bottom, ${colors.vibrant}20 0%, ${colors.darkVibrant}50 40%, #0a0a0a 100%)`
-                                : "linear-gradient(to bottom, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.7) 40%, #0a0a0a 100%)",
-                        }}
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-transparent to-transparent" />
-                </div>
-            ) : (
-                <div
-                    className="absolute inset-0"
-                    style={{
-                        background: colors
-                            ? `linear-gradient(to bottom, ${colors.vibrant}30 0%, ${colors.darkVibrant}60 50%, #0a0a0a 100%)`
-                            : "linear-gradient(to bottom, #2a1e0a 0%, #1a140a 50%, #0a0a0a 100%)",
-                    }}
-                />
-            )}
+            <HeroBackdrop
+                image={heroImage}
+                alt={audiobook.title}
+                colors={colors}
+                tint="spoken"
+                fallback={["#2a1e0a", "#1a140a"]}
+            />
 
             {/* Hero Content */}
             <div className="relative px-4 md:px-8 pt-8 pb-6">

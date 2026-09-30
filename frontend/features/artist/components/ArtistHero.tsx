@@ -6,6 +6,7 @@ import { Artist, ArtistSource, Album } from "../types";
 import { ReactNode, lazy, Suspense } from "react";
 import { useArtistDisplayData } from "@/hooks/useMetadataDisplay";
 import type { ColorPalette } from "@/hooks/useImageColor";
+import { HeroBackdrop } from "@/components/ui/HeroBackdrop";
 
 // Lazy load MetadataEditor - modal component opened on user action
 const MetadataEditor = lazy(() => import("@/components/MetadataEditor").then(mod => ({ default: mod.MetadataEditor })));
@@ -39,41 +40,13 @@ export function ArtistHero({
 
     return (
         <div className="relative animate-rise">
-            {/* Background Image with VibrantJS gradient */}
-            {bgImage ? (
-                <div className="absolute inset-0 overflow-hidden">
-                    <div className="absolute inset-0 scale-110 blur-md opacity-50">
-                        <Image
-                            src={bgImage}
-                            alt={displayData.name}
-                            fill
-                            sizes="100vw"
-                            className="object-cover"
-                            priority
-                            unoptimized
-                        />
-                    </div>
-                    {/* Dynamic VibrantJS gradient overlays */}
-                    <div
-                        className="absolute inset-0"
-                        style={{
-                            background: colors
-                                ? `linear-gradient(to bottom, ${colors.vibrant}30 0%, ${colors.darkVibrant}60 40%, ${colors.darkMuted}90 70%, #0a0a0a 100%)`
-                                : "linear-gradient(to bottom, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.7) 40%, #0a0a0a 100%)",
-                        }}
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-transparent to-transparent" />
-                </div>
-            ) : (
-                <div
-                    className="absolute inset-0"
-                    style={{
-                        background: colors
-                            ? `linear-gradient(to bottom, ${colors.vibrant}40 0%, ${colors.darkVibrant}80 50%, #0a0a0a 100%)`
-                            : "linear-gradient(to bottom, #3d2a1e 0%, #1a1a1a 50%, #0a0a0a 100%)",
-                    }}
-                />
-            )}
+            <HeroBackdrop
+                image={bgImage}
+                alt={displayData.name}
+                colors={colors}
+                tint="music"
+                fallback={["#3d2a1e", "#1a1a1a"]}
+            />
 
             {/* Compact Hero Content - Full Width */}
             <div className="relative px-4 md:px-8 pt-16 pb-6">
