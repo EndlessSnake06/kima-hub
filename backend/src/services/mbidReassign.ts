@@ -117,6 +117,56 @@ export async function reassignAlbumRgMbid(
             }
             throw err;
         }
+
+        // Step 4: move DiscoveryAlbum rows off the old string.
+        // Discovery rows are per user+week and carry download state. Rows
+        // whose (userId, weekStartDate, newRgMbid) slot is already taken
+        // would violate the unique index, and a unique violation aborts the
+        // whole transaction — so collisions are identified BEFORE the write
+        // and left in place with a named log line; merging two real
+        // discovery entries is above this helper's pay grade. A race that
+        // inserts a colliding row between the check and the write lets
+        // P2002 abort this transaction: the re-identification retries later.
+        const staleRows = await tx.discoveryAlbum.findMany({
+            where: { rgMbid: oldRgMbid },
+            select: { id: true, userId: true, weekStartDate: true },
+        });
+        if (staleRows.length > 0) {
+            const takenSlots = await tx.discoveryAlbum.findMany({
+                where: {
+                    rgMbid: newRgMbid,
+                    OR: staleRows.map((r) => ({
+                        userId: r.userId,
+                        weekStartDate: r.weekStartDate,
+                    })),
+                },
+                select: { userId: true, weekStartDate: true },
+            });
+            const taken = new Set(
+                takenSlots.map(
+                    (t) => `${t.userId}|${t.weekStartDate.toISOString()}`
+                )
+            );
+            const movableIds = staleRows
+                .filter(
+                    (r) => !taken.has(`${r.userId}|${r.weekStartDate.toISOString()}`)
+                )
+                .map((r) => r.id);
+            for (const row of staleRows) {
+                if (taken.has(`${row.userId}|${row.weekStartDate.toISOString()}`)) {
+                    logger.warn(
+                        `[rgMbid-reassign] DiscoveryAlbum ${row.id} kept on stale ${oldRgMbid}: ` +
+                            `user ${row.userId} already has a discovery row for ${newRgMbid} in the same week`
+                    );
+                }
+            }
+            if (movableIds.length > 0) {
+                await tx.discoveryAlbum.updateMany({
+                    where: { id: { in: movableIds } },
+                    data: { rgMbid: newRgMbid },
+                });
+            }
+        }
     });
 }
 
