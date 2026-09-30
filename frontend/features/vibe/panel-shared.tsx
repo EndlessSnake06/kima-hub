@@ -2,7 +2,7 @@
 
 import { NowPlayingTab } from "./tabs/NowPlayingTab";
 import { QueueTab } from "./tabs/QueueTab";
-import { LyricsTab } from "./tabs/LyricsTab";
+import { LyricsView } from "@/components/lyrics/LyricsView";
 import { NotificationsTab } from "@/components/activity/NotificationsTab";
 import { ActiveDownloadsTab } from "@/components/activity/ActiveDownloadsTab";
 import { ImportsTab } from "@/components/activity/ImportsTab";
@@ -89,7 +89,7 @@ export function TabContent({ activeTab }: { activeTab: VibeTab }) {
         <div className="flex-1 flex flex-col overflow-hidden">
             {activeTab === "now-playing" && <NowPlayingTab />}
             {activeTab === "queue" && <QueueTab />}
-            {activeTab === "lyrics" && <LyricsTab />}
+            {activeTab === "lyrics" && <LyricsView variant="panel" />}
         </div>
     );
 }

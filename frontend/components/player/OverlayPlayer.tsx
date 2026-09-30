@@ -31,7 +31,7 @@ import { useIsMobile, useIsTablet } from "@/hooks/useMediaQuery";
 import { SeekSlider } from "./SeekSlider";
 import { SleepTimer } from "./SleepTimer";
 import { useFeatures } from "@/lib/features-context";
-import { MobileLyricsView } from "@/components/lyrics/MobileLyricsView";
+import { LyricsView } from "@/components/lyrics/LyricsView";
 import { useLyricsToggle } from "@/hooks/useLyricsToggle";
 
 export function OverlayPlayer() {
@@ -144,7 +144,7 @@ export function OverlayPlayer() {
                 {/* Artwork / Lyrics swap */}
                 {isLyricsActive && isMobileOrTablet ? (
                     <div className="w-full max-w-[280px] landscape:flex-1 aspect-square flex-shrink-0 relative mb-6 landscape:mb-0 rounded-2xl bg-[var(--bg-primary)]/90 border border-white/[0.06]">
-                        <MobileLyricsView />
+                        <LyricsView variant="compact" />
                     </div>
                 ) : (
                     <div
