@@ -5,9 +5,23 @@ import { shuffleArray } from "@/utils/shuffle";
 import { useToast } from "@/lib/toast-context";
 import { Album, Track } from "../types";
 
+const toQueueTrack = (track: Track, album: Album) => ({
+    id: track.id,
+    title: track.title,
+    duration: track.duration,
+    artist: {
+        name: track.artist?.name || album.artist?.name || "",
+        id: track.artist?.id || album.artist?.id || "",
+    },
+    album: {
+        title: album.title,
+        id: album.id,
+        coverArt: album.coverArt || album.coverUrl,
+    },
+});
+
 export function useAlbumActions() {
     const { toast } = useToast();
-    // Use controls-only hook to avoid re-renders from playback state changes
     const {
         playTracks,
         playTrack: playTrackAudio,
@@ -15,110 +29,29 @@ export function useAlbumActions() {
     } = useAudioControls();
     const { addPendingDownload, isPendingByMbid } = useDownloadContext();
 
+    const requireAlbum = (album: Album | null): album is Album => {
+        if (!album) toast.error("Album data not available");
+        return !!album;
+    };
+
     const playAlbum = (album: Album | null, startIndex: number = 0) => {
-        if (!album) {
-            toast.error("Album data not available");
-            return;
-        }
-
-        const formattedTracks =
-            album.tracks &&
-            album.tracks.map((track) => ({
-                id: track.id,
-                title: track.title,
-                duration: track.duration,
-                artist: {
-                    name: track.artist?.name || album.artist?.name || "",
-                    id: track.artist?.id || album.artist?.id || "",
-                },
-                album: {
-                    title: album.title,
-                    id: album.id,
-                    coverArt: album.coverArt || album.coverUrl,
-                },
-            }));
-
-        if (formattedTracks) {
-            playTracks(formattedTracks, startIndex);
-        }
+        if (!requireAlbum(album) || !album.tracks) return;
+        playTracks(album.tracks.map((t) => toQueueTrack(t, album)), startIndex);
     };
 
     const shufflePlay = (album: Album | null) => {
-        if (!album) {
-            toast.error("Album data not available");
-            return;
-        }
-
-        const formattedTracks =
-            album.tracks &&
-            album.tracks.map((track) => ({
-                id: track.id,
-                title: track.title,
-                duration: track.duration,
-                artist: {
-                    name: track.artist?.name || album.artist?.name || "",
-                    id: track.artist?.id || album.artist?.id || "",
-                },
-                album: {
-                    title: album.title,
-                    id: album.id,
-                    coverArt: album.coverArt || album.coverUrl,
-                },
-            }));
-
-        if (formattedTracks) {
-            // Shuffle the tracks array
-            const shuffled = shuffleArray(formattedTracks);
-            playTracks(shuffled, 0);
-        }
+        if (!requireAlbum(album) || !album.tracks) return;
+        playTracks(shuffleArray(album.tracks.map((t) => toQueueTrack(t, album))), 0);
     };
 
     const playTrack = (track: Track, album: Album | null) => {
-        if (!album) {
-            toast.error("Album data not available");
-            return;
-        }
-
-        const formattedTrack = {
-            id: track.id,
-            title: track.title,
-            duration: track.duration,
-            artist: {
-                name: track.artist?.name || album.artist?.name || "",
-                id: track.artist?.id || album.artist?.id || "",
-            },
-            album: {
-                title: album.title,
-                id: album.id,
-                coverArt: album.coverArt || album.coverUrl,
-            },
-        };
-
-        playTrackAudio(formattedTrack);
+        if (!requireAlbum(album)) return;
+        playTrackAudio(toQueueTrack(track, album));
     };
 
     const addToQueue = (track: Track, album: Album | null) => {
-        if (!album) {
-            toast.error("Album data not available");
-            return;
-        }
-
-        const formattedTrack = {
-            id: track.id,
-            title: track.title,
-            duration: track.duration,
-            artist: {
-                name: track.artist?.name || album.artist?.name || "",
-                id: track.artist?.id || album.artist?.id || "",
-            },
-            album: {
-                title: album.title,
-                id: album.id,
-                coverArt: album.coverArt || album.coverUrl,
-            },
-        };
-
-        addToQueueAudio(formattedTrack);
+        if (!requireAlbum(album)) return;
+        addToQueueAudio(toQueueTrack(track, album));
         toast.success(`Added "${track.title}" to queue`);
     };
 
@@ -127,10 +60,7 @@ export function useAlbumActions() {
             e.stopPropagation();
         }
 
-        if (!album) {
-            toast.error("Album data not available");
-            return;
-        }
+        if (!requireAlbum(album)) return;
 
         const mbid = album.rgMbid || album.mbid || album.id;
         if (!mbid) {
