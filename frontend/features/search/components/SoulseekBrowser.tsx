@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
+import { CASCADE_WINDOW_MS } from "@/lib/motion";
 import { Download, CheckCircle, Music, ChevronDown, ChevronRight, List, Users } from "lucide-react";
 import { cn } from "@/utils/cn";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
@@ -376,7 +377,7 @@ function FlatView({
                     isDownloading={downloadingFiles.has(getResultKey(result))}
                     onToggleSelect={onToggleSelect}
                     onDownload={onDownload}
-                    animationDelay={index < 20 ? index * 15 : 0}
+                    animationDelay={index * Math.round(CASCADE_WINDOW_MS / Math.max(results.length, 1))}
                 />
             ))}
         </div>

@@ -296,7 +296,7 @@ router.get("/tracks", async (req, res) => {
         where,
         skip: offset,
         take: limit,
-        orderBy,
+        orderBy: [orderBy, { id: "asc" }],
         include: {
           album: {
             include: {

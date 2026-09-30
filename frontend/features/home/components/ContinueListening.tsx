@@ -5,6 +5,7 @@ import Image from "next/image";
 import { Music, Disc, BookOpen } from "lucide-react";
 import { api } from "@/lib/api";
 import { HorizontalCarousel, CarouselItem } from "@/components/ui/HorizontalCarousel";
+import { cascadeStyle } from "@/lib/motion";
 import { memo, type CSSProperties } from "react";
 import { cn } from "@/utils/cn";
 import { ListenedItem } from "../types";
@@ -73,7 +74,6 @@ const ContinueListeningCard = memo(function ContinueListeningCard({
         item.progress &&
         item.progress > 0;
     const colors = TYPE_COLORS[item.type] || TYPE_COLORS.artist;
-    const cappedIndex = Math.min(index, 8);
 
     return (
         <CarouselItem>
@@ -84,9 +84,9 @@ const ContinueListeningCard = memo(function ContinueListeningCard({
                 tabIndex={0}
                 className={cn(
                     "group block",
-                    "animate-rise [animation-delay:calc(var(--i)*45ms)]",
+                    "animate-rise [animation-delay:calc(var(--i)*var(--stagger))]",
                 )}
-                style={{ "--i": cappedIndex } as CSSProperties}
+                style={{ "--i": index } as CSSProperties}
             >
                 <div className={`relative bg-[var(--bg-primary)] border border-white/10 rounded-lg overflow-hidden ${colors.border} transition-[border-color] duration-150 mx-1`}>
                     <div className="relative aspect-square overflow-hidden">
@@ -137,7 +137,7 @@ const ContinueListeningCard = memo(function ContinueListeningCard({
 
 const ContinueListening = memo(function ContinueListening({ items }: ContinueListeningProps) {
     return (
-        <HorizontalCarousel>
+        <HorizontalCarousel style={cascadeStyle(items.length)}>
             {items.map((item, index) => (
                 <ContinueListeningCard
                     key={`${item.type}-${item.id}`}

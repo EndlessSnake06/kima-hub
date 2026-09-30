@@ -34,9 +34,7 @@ import { LIBRARY_LOCATION } from "../../services/libraryFilters";
 //
 // NOTE: `name`/`name-desc` do not reach this map -- they take the raw-SQL
 // branch below, which orders on the same `sortName` column. This map covers
-// the remaining keys and the fallback. Both paths must keep agreeing; they did
-// not before, and the raw-SQL side stripped only "the" while the rest of the
-// system stripped eleven articles across four languages.
+// the remaining keys and the fallback. Both paths must keep agreeing.
 const ARTIST_SORT_MAP: Record<string, any> = {
   name: { sortName: "asc" as const },
   "name-desc": { sortName: "desc" as const },
@@ -44,6 +42,19 @@ const ARTIST_SORT_MAP: Record<string, any> = {
 };
 
 const MAX_LIMIT = 10000;
+
+// The shape both artist-list branches return: the raw-SQL name-sort query
+// and the Prisma `select` below produce it independently.
+type ArtistListRow = {
+  id: string;
+  mbid: string | null;
+  name: string;
+  heroUrl: string | null;
+  userHeroUrl: string | null;
+  libraryAlbumCount: number;
+  discoveryAlbumCount: number;
+  totalTrackCount: number;
+};
 
 const router = Router();
 
@@ -114,83 +125,69 @@ router.get("/artists", async (req, res) => {
       where.name = { contains: query as string, mode: "insensitive" };
     }
 
-    const [artists, total] = await prisma.$transaction(
-      async (tx) => {
-        if (sortBy === "name" || sortBy === "name-desc") {
-          const whereSql = buildArtistListWhereSql(filter as string, query as string);
-          const direction = sortBy === "name-desc"
-            ? Prisma.sql`DESC`
-            : Prisma.sql`ASC`;
+    let artists: ArtistListRow[];
+    let total: number;
 
-          const artistsByName = await tx.$queryRaw<
-            {
-              id: string;
-              mbid: string | null;
-              name: string;
-              heroUrl: string | null;
-              userHeroUrl: string | null;
-              libraryAlbumCount: number;
-              discoveryAlbumCount: number;
-              totalTrackCount: number;
-            }[]
-          >`
-            SELECT
-              a.id,
-              a.mbid,
-              a.name,
-              a."heroUrl",
-              a."userHeroUrl",
-              a."libraryAlbumCount",
-              a."discoveryAlbumCount",
-              a."totalTrackCount"
-            FROM "Artist" a
-            ${whereSql}
-            ORDER BY
-              a."sortName" ${direction},
-              a.id ASC
-            LIMIT ${limit}
-            OFFSET ${offset}
-          `;
+    if (sortBy === "name" || sortBy === "name-desc") {
+      const whereSql = buildArtistListWhereSql(filter as string, query as string);
+      const direction = sortBy === "name-desc"
+        ? Prisma.sql`DESC`
+        : Prisma.sql`ASC`;
 
-          const countRows = await tx.$queryRaw<{ total: bigint }[]>`
-            SELECT COUNT(*)::bigint AS total
-            FROM "Artist" a
-            ${whereSql}
-          `;
+      artists = await prisma.$queryRaw<ArtistListRow[]>`
+        SELECT
+          a.id,
+          a.mbid,
+          a.name,
+          a."heroUrl",
+          a."userHeroUrl",
+          a."libraryAlbumCount",
+          a."discoveryAlbumCount",
+          a."totalTrackCount"
+        FROM "Artist" a
+        ${whereSql}
+        ORDER BY
+          a."sortName" ${direction},
+          a.id ASC
+        LIMIT ${limit}
+        OFFSET ${offset}
+      `;
 
-          return [artistsByName, Number(countRows[0]?.total ?? 0)] as const;
-        }
+      const countRows = await prisma.$queryRaw<{ total: bigint }[]>`
+        SELECT COUNT(*)::bigint AS total
+        FROM "Artist" a
+        ${whereSql}
+      `;
+      total = Number(countRows[0]?.total ?? 0);
+    } else {
+      const findManyArgs: Parameters<typeof prisma.artist.findMany>[0] = {
+        where,
+        take: limit,
+        orderBy: [orderBy, { id: "asc" }],
+        select: {
+          id: true,
+          mbid: true,
+          name: true,
+          heroUrl: true,
+          userHeroUrl: true,
+          libraryAlbumCount: true,
+          discoveryAlbumCount: true,
+          totalTrackCount: true,
+        },
+      };
 
-        const findManyArgs: Parameters<typeof tx.artist.findMany>[0] = {
-          where,
-          take: limit,
-          orderBy,
-          select: {
-            id: true,
-            mbid: true,
-            name: true,
-            heroUrl: true,
-            userHeroUrl: true,
-            libraryAlbumCount: true,
-            discoveryAlbumCount: true,
-            totalTrackCount: true,
-          },
-        };
+      if (cursor) {
+        findManyArgs.cursor = { id: cursor as string };
+        findManyArgs.skip = 1;
+      } else {
+        findManyArgs.skip = offset;
+      }
 
-        if (cursor) {
-          findManyArgs.cursor = { id: cursor as string };
-          findManyArgs.skip = 1;
-        } else {
-          findManyArgs.skip = offset;
-        }
-
-        return Promise.all([
-          tx.artist.findMany(findManyArgs),
-          tx.artist.count({ where }),
-        ]);
-      },
-      { timeout: 30000 },
-    );
+      [artists, total] = await Promise.all([
+        prisma.artist.findMany(findManyArgs),
+        prisma.artist.count({ where }),
+      ]);
+    }
 
     const imageMap = await dataCacheService.getArtistImagesBatch(
       artists.map((a) => ({

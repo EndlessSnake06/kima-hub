@@ -14,6 +14,7 @@ import {
     Github,
 } from "lucide-react";
 import { formatTime, formatDuration } from "@/utils/formatTime";
+import { cascadeStyle } from "@/lib/motion";
 
 interface ShareTrack {
     id: string;
@@ -433,7 +434,7 @@ export default function SharePageClient() {
 
                     {/* Track list */}
                     {tracks.length > 1 && (
-                        <div className="border-t border-white/[0.04] pt-4">
+                        <div className="border-t border-white/[0.04] pt-4" style={cascadeStyle(tracks.length)}>
                             {tracks.map((track, index) => {
                                 const isActive = index === currentTrackIndex;
                                 const trackCoverId = track.album?.coverUrl || coverArtId;
@@ -452,13 +453,13 @@ export default function SharePageClient() {
                                         key={track.id}
                                         onClick={() => playTrack(index)}
                                         className={`w-full flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${
-                                            "animate-rise [animation-delay:calc(var(--i)*45ms)]"
+                                            "animate-rise [animation-delay:calc(var(--i)*var(--stagger))]"
                                         } group ${
                                             isActive
                                                 ? "bg-white/[0.04]"
                                                 : "hover:bg-white/[0.02]"
                                         }`}
-                                        style={{ "--i": Math.min(index, 8) } as CSSProperties}
+                                        style={{ "--i": index } as CSSProperties}
                                     >
                                         <div className="w-8 text-center flex-shrink-0">
                                             {isActive && isPlaying ? (

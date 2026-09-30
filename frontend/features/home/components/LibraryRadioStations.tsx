@@ -4,6 +4,7 @@ import { useState, useRef, useMemo, useCallback, useEffect, type CSSProperties }
 import { Radio, Play, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/utils/cn";
 import { useIsMobile, useIsTablet } from "@/hooks/useMediaQuery";
+import { cascadeStyle } from "@/lib/motion";
 import { useLibraryGenresQuery, useLibraryDecadesQuery } from "@/hooks/useQueries";
 import {
     RadioStation,
@@ -85,8 +86,7 @@ export function LibraryRadioStations() {
         });
     };
 
-    const renderCard = (station: RadioStation, compact: boolean, globalIdx: number) => {
-        const staggered = globalIdx < 8;
+    const renderCard = (station: RadioStation, compact: boolean, globalIdx: number, delayIdx = globalIdx) => {
         return (
             <button
                 key={station.id}
@@ -103,12 +103,12 @@ export function LibraryRadioStations() {
                     "",
                     "",
                     "disabled:opacity-50 disabled:cursor-not-allowed",
-                    staggered && "animate-rise [animation-delay:calc(var(--i)*45ms)]",
+                    "animate-rise [animation-delay:calc(var(--i)*var(--stagger))]",
                     compact
                         ? "flex-shrink-0 snap-start w-[180px] h-[80px]"
                         : "w-full aspect-[5/3]"
                 )}
-                style={staggered ? { "--i": globalIdx } as CSSProperties : undefined}
+                style={{ "--i": delayIdx } as CSSProperties}
 >
             {/* Subtle gradient tint */}
             <div className={cn("absolute inset-0 bg-gradient-to-br", station.color)} />
@@ -174,6 +174,7 @@ export function LibraryRadioStations() {
                 <div
                     ref={scrollRef}
                     className="flex overflow-x-auto scrollbar-hide scroll-smooth snap-x snap-mandatory gap-3 px-1"
+                    style={cascadeStyle(allStations.length)}
                 >
                     {allStations.map((station, i) => renderCard(station, true, i))}
                     {isLoading &&
@@ -206,8 +207,9 @@ export function LibraryRadioStations() {
                     <div
                         key={pageIndex}
                         className="flex-shrink-0 snap-start w-full grid grid-cols-2 grid-rows-3 sm:grid-cols-3 sm:grid-rows-2 gap-2"
+                        style={cascadeStyle(page.length)}
                     >
-                        {page.map((station, i) => renderCard(station, false, pageIndex * 6 + i))}
+                        {page.map((station, i) => renderCard(station, false, pageIndex * 6 + i, i))}
                         {page.length < 6 &&
                             Array.from({ length: 6 - page.length }).map((_, i) => (
                                 <div key={`empty-${i}`} className="aspect-[5/3]" />

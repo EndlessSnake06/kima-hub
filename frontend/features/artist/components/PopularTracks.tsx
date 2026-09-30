@@ -8,6 +8,7 @@ import type { ColorPalette } from "@/hooks/useImageColor";
 import { formatTime } from "@/utils/formatTime";
 import { formatNumber } from "@/utils/formatNumber";
 import { SectionHeader } from "@/features/home/components/SectionHeader";
+import { cascadeStyle } from "@/lib/motion";
 
 interface PopularTracksProps {
     tracks: Track[];
@@ -35,7 +36,7 @@ export const PopularTracks: React.FC<PopularTracksProps> = ({
     return (
         <section>
             <SectionHeader color="tracks" title="Popular" />
-            <div data-tv-section="tracks">
+            <div data-tv-section="tracks" style={cascadeStyle(Math.min(tracks.length, 10))}>
                 {tracks.slice(0, 10).map((track, index) => {
                     const isPlaying = currentTrackId === track.id;
                     const isPreviewPlaying =
@@ -59,9 +60,9 @@ export const PopularTracks: React.FC<PopularTracksProps> = ({
                             className={cn(
                                 "grid grid-cols-[40px_1fr_auto] md:grid-cols-[40px_minmax(200px,4fr)_minmax(80px,1fr)_80px] gap-4 py-2 rounded-md hover:bg-white/5 transition-colors group cursor-pointer touch-manipulation",
                                 isPlaying && "bg-white/10",
-                                "animate-rise [animation-delay:calc(var(--i)*45ms)]",
+                                "animate-rise [animation-delay:calc(var(--i)*var(--stagger))]",
                             )}
-                            style={{ "--i": Math.min(index, 8), animationDelay: "calc(var(--i)*45ms)" } as unknown as React.CSSProperties}
+                            style={{ "--i": index } as unknown as React.CSSProperties}
                             onDoubleClick={(e) => {
                                 if (isUnowned) {
                                     onPreview(track, e);

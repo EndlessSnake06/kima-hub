@@ -7,6 +7,7 @@ import { CachedImage } from "@/components/ui/CachedImage";
 import { Disc3, Play, Trash2 } from "lucide-react";
 import { cn } from "@/utils/cn";
 import { api } from "@/lib/api";
+import { cascadeStyle } from "@/lib/motion";
 
 interface AlbumsGridProps {
     albums: Album[];
@@ -59,10 +60,10 @@ const AlbumCardItem = memo(
                 data-tv-card
                 data-tv-card-index={index}
                 tabIndex={0}
-                style={{ "--i": Math.min(index, 8) } as CSSProperties}
+                style={{ "--i": index } as CSSProperties}
                 className={cn(
                     "group block",
-                    "animate-rise [animation-delay:calc(var(--i)*45ms)]",
+                    "animate-rise [animation-delay:calc(var(--i)*var(--stagger))]",
                 )}
             >
                 <div className="relative bg-[var(--bg-primary)] border-2 border-white/10 rounded-lg overflow-hidden hover:border-[#22c55e]/50 transition-all duration-200" style={{ transform: "translateZ(0)" }}>
@@ -153,6 +154,7 @@ const AlbumsGrid = memo(function AlbumsGrid({
             key={gridKey}
             data-tv-section="library-albums"
             className="grid-media"
+            style={cascadeStyle(albums.length)}
         >
             {albums.map((album, index) => (
                 <AlbumCardItem

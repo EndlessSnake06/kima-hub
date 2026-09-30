@@ -7,6 +7,7 @@ import { Podcast } from "../types";
 import { memo, type CSSProperties } from "react";
 import { api } from "@/lib/api";
 import { HorizontalCarousel, CarouselItem } from "@/components/ui/HorizontalCarousel";
+import { cascadeStyle } from "@/lib/motion";
 import { cn } from "@/utils/cn";
 
 interface PodcastsGridProps {
@@ -27,7 +28,6 @@ const getProxiedImageUrl = (podcast: Podcast): string | null => {
 const PodcastCard = memo(
     function PodcastCard({ podcast, index }: PodcastCardProps) {
         const imageUrl = getProxiedImageUrl(podcast);
-        const cappedIndex = Math.min(index, 8);
 
         return (
             <CarouselItem>
@@ -38,9 +38,9 @@ const PodcastCard = memo(
                     tabIndex={0}
                     className={cn(
                         "group block",
-                        "animate-rise [animation-delay:calc(var(--i)*45ms)]",
+                        "animate-rise [animation-delay:calc(var(--i)*var(--stagger))]",
                     )}
-                    style={{ "--i": cappedIndex } as CSSProperties}
+                    style={{ "--i": index } as CSSProperties}
                 >
                     <div className="relative bg-[var(--bg-primary)] border border-white/10 rounded-lg overflow-hidden hover:border-[#3b82f6]/40 transition-[border-color] duration-150 mx-1">
                         <div className="relative aspect-square">
@@ -82,7 +82,7 @@ const PodcastsGrid = memo(function PodcastsGrid({
     podcasts,
 }: PodcastsGridProps) {
     return (
-        <HorizontalCarousel>
+        <HorizontalCarousel style={cascadeStyle(podcasts.length)}>
             {podcasts.map((podcast, index) => (
                 <PodcastCard key={podcast.id} podcast={podcast} index={index} />
             ))}

@@ -6,6 +6,7 @@ import type { ColorPalette } from "@/hooks/useImageColor";
 import { formatTime } from "@/utils/formatTime";
 import { formatNumber } from "@/utils/formatNumber";
 import { useDoubleTap } from "@/hooks/useDoubleTap";
+import { cascadeStyle } from "@/lib/motion";
 
 // The track table's column track, shared by the header and every row so the two
 // cannot drift apart.
@@ -125,12 +126,12 @@ const TrackRow = memo(
                     "group grid grid-cols-[40px_minmax(0,2fr)_96px_136px_100px] md:grid-cols-[40px_minmax(0,2fr)_96px_136px_100px] gap-2 md:gap-4 px-4 py-2 rounded-lg hover:bg-[var(--bg-tertiary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2 transition-colors cursor-pointer touch-manipulation",
                     isPlaying && "bg-[var(--bg-hover)] border-l-2",
                     isPreviewOnly && "opacity-70 hover:opacity-90",
-                    "animate-rise [animation-delay:calc(var(--i)*45ms)]"
+                    "animate-rise [animation-delay:calc(var(--i)*var(--stagger))]"
                 )}
                 style={
                     ((isPlaying
-                        ? { "--i": Math.min(index, 8), animationDelay: `calc(var(--i)*45ms)`, borderLeftColor: colors?.vibrant || "#a855f7" }
-                        : { "--i": Math.min(index, 8), animationDelay: `calc(var(--i)*45ms)` }) as unknown) as React.CSSProperties
+                        ? { "--i": index, borderLeftColor: colors?.vibrant || "#a855f7" }
+                        : { "--i": index }) as unknown) as React.CSSProperties
                 }
                 {...doubleTapProps}
                 onKeyDown={(e) => {
@@ -299,6 +300,7 @@ export const TrackList = memo(function TrackList({
             <div
                 data-tv-section="tracks"
                 className="divide-y divide-[#1c1c1c]"
+                style={cascadeStyle(tracks.length)}
             >
                 {tracks.map((track, index) => {
                     const isPlaying = currentTrackId === track.id;

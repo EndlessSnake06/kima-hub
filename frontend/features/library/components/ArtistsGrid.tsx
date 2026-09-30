@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { CachedImage } from "@/components/ui/CachedImage";
 import { cn } from "@/utils/cn";
+import { cascadeStyle } from "@/lib/motion";
 
 interface ArtistsGridProps {
     artists: Artist[];
@@ -63,10 +64,10 @@ const ArtistCardItem = memo(
                 prefetch={true}
                 data-tv-card
                 data-tv-card-index={index}
-                style={{ "--i": Math.min(index, 8) } as React.CSSProperties}
+                style={{ "--i": index } as React.CSSProperties}
                 className={cn(
                     "group block",
-                    "animate-rise [animation-delay:calc(var(--i)*45ms)]",
+                    "animate-rise [animation-delay:calc(var(--i)*var(--stagger))]",
                 )}
             >
                 <div className="relative bg-[var(--bg-primary)] border-2 border-white/10 rounded-lg overflow-hidden hover:border-[#fca200]/50 transition-all duration-200" style={{ transform: "translateZ(0)" }}>
@@ -157,6 +158,7 @@ const ArtistsGrid = memo(function ArtistsGrid({
             key={gridKey}
             data-tv-section="library-artists"
             className="grid-media"
+            style={cascadeStyle(artists.length)}
         >
             {artists.map((artist, index) => (
                 <ArtistCardItem

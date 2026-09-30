@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useEffect, ReactNode } from "react";
+import { useRef, useState, useEffect, type CSSProperties, ReactNode } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/utils/cn";
 import { useIsMobile, useIsTablet } from "@/hooks/useMediaQuery";
@@ -11,6 +11,7 @@ interface HorizontalCarouselProps {
     itemClassName?: string;
     showArrows?: boolean;
     gap?: "sm" | "md" | "lg";
+    style?: CSSProperties;
 }
 
 export function HorizontalCarousel({
@@ -19,6 +20,7 @@ export function HorizontalCarousel({
     itemClassName: _itemClassName,
     showArrows = true,
     gap = "md",
+    style,
 }: HorizontalCarouselProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
     const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -92,6 +94,7 @@ export function HorizontalCarousel({
             {/* Scrollable container */}
             <div
                 ref={scrollRef}
+                style={style}
                 className={cn(
                     "flex overflow-x-auto scrollbar-hide scroll-smooth",
                     "snap-x snap-mandatory",

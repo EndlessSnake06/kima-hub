@@ -12,6 +12,7 @@ import { formatTime } from "@/utils/formatTime";
 import { api } from "@/lib/api";
 import { useAudioState } from "@/lib/audio-state-context";
 import { useDoubleTap } from "@/hooks/useDoubleTap";
+import { cascadeStyle } from "@/lib/motion";
 
 interface TracksListProps {
     tracks: Track[];
@@ -62,13 +63,13 @@ const TrackRow = memo(
                 data-tv-card
                 data-tv-card-index={index}
                 tabIndex={0}
-                style={{ "--i": Math.min(index, 8) } as React.CSSProperties}
+                style={{ "--i": index } as React.CSSProperties}
                 className={cn(
                     "grid grid-cols-[auto_1fr_auto] md:grid-cols-[auto_1fr_1fr_auto] items-center gap-3 px-4 py-3 rounded-lg border-2 transition-all duration-200 group cursor-pointer touch-manipulation",
                     isCurrentlyPlaying
                         ? "bg-[#a855f7]/10 border-[#a855f7]/30 "
                         : "bg-[var(--bg-primary)] border-white/5 hover:border-[#a855f7]/30 hover:bg-[#a855f7]/5",
-                    "animate-rise [animation-delay:calc(var(--i)*45ms)]",
+                    "animate-rise [animation-delay:calc(var(--i)*var(--stagger))]",
                 )}
             >
                 {/* Track number / Play button */}
@@ -238,7 +239,7 @@ export function TracksList({
                 <div className="w-[140px] text-right pr-2 text-xs font-semibold text-[#a855f7]">Duration</div>
             </div>
 
-            <div key={gridKey} data-tv-section="library-tracks" className="space-y-1">
+            <div key={gridKey} data-tv-section="library-tracks" className="space-y-1" style={cascadeStyle(tracks.length)}>
                 {tracks.map((track, index) => {
                     const isCurrentlyPlaying = currentTrackId === track.id;
                     return (

@@ -6,6 +6,7 @@ import { BookOpen } from "lucide-react";
 import { api } from "@/lib/api";
 import { Audiobook } from "../types";
 import { HorizontalCarousel, CarouselItem } from "@/components/ui/HorizontalCarousel";
+import { cascadeStyle } from "@/lib/motion";
 import { memo, type CSSProperties } from "react";
 import { cn } from "@/utils/cn";
 
@@ -22,7 +23,6 @@ const AudiobookCard = memo(function AudiobookCard({
     audiobook,
     index,
 }: AudiobookCardProps) {
-    const cappedIndex = Math.min(index, 8);
 
     return (
         <CarouselItem>
@@ -33,9 +33,9 @@ const AudiobookCard = memo(function AudiobookCard({
                 tabIndex={0}
                 className={cn(
                     "group block",
-                    "animate-rise [animation-delay:calc(var(--i)*45ms)]",
+                    "animate-rise [animation-delay:calc(var(--i)*var(--stagger))]",
                 )}
-                style={{ "--i": cappedIndex } as CSSProperties}
+                style={{ "--i": index } as CSSProperties}
             >
                 <div className="relative bg-[var(--bg-primary)] border border-white/10 rounded-lg overflow-hidden hover:border-[#f59e0b]/40 transition-[border-color] duration-150 mx-1">
                     <div className="relative aspect-square">
@@ -71,7 +71,7 @@ const AudiobookCard = memo(function AudiobookCard({
 
 const AudiobooksGrid = memo(function AudiobooksGrid({ audiobooks }: AudiobooksGridProps) {
     return (
-        <HorizontalCarousel>
+        <HorizontalCarousel style={cascadeStyle(audiobooks.length)}>
             {audiobooks.map((audiobook, index) => (
                 <AudiobookCard
                     key={audiobook.id}

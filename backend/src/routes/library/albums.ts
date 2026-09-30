@@ -79,29 +79,24 @@ router.get("/albums", async (req, res) => {
       }
     }
 
-    // Defect #5: Guard the album query with { timeout: 30000 } like library/artists.ts
-    const [albumsData, total] = await prisma.$transaction(
-      () =>
-        Promise.all([
-          prisma.album.findMany({
-            where,
-            skip: offset,
-            take: limit,
-            orderBy,
-            include: {
-              artist: {
-                select: {
-                  id: true,
-                  mbid: true,
-                  name: true,
-                },
-              },
+    const [albumsData, total] = await Promise.all([
+      prisma.album.findMany({
+        where,
+        skip: offset,
+        take: limit,
+        orderBy: [orderBy, { id: "asc" }],
+        include: {
+          artist: {
+            select: {
+              id: true,
+              mbid: true,
+              name: true,
             },
-          }),
-          prisma.album.count({ where }),
-        ]),
-      { timeout: 30000 },
-    );
+          },
+        },
+      }),
+      prisma.album.count({ where }),
+    ]);
 
     const albums = albumsData.map((album) => ({
       ...album,

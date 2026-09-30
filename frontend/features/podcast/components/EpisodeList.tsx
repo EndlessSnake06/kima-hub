@@ -8,6 +8,7 @@ import { Podcast, Episode } from "../types";
 import { formatDuration } from "@/utils/formatTime";
 import { formatDate } from "../utils";
 import { SectionHeader } from "@/features/home/components/SectionHeader";
+import { cascadeStyle } from "@/lib/motion";
 
 interface EpisodeListProps {
     podcast: Podcast;
@@ -53,9 +54,9 @@ function EpisodeRow({
                 isCurrentEpisode
                     ? "bg-white/5"
                     : "border border-transparent hover:bg-white/[0.03] hover:border-white/5",
-                "animate-rise",
+                "animate-rise [animation-delay:calc(var(--i)*var(--stagger))]",
             )}
-            style={{ "--i": Math.min(index, 8), animationDelay: `${Math.min(index, 8) * 45}ms` } as unknown as React.CSSProperties}
+            style={{ "--i": index } as unknown as React.CSSProperties}
         >
             {/* Progress bar */}
             {episode.progress && episode.progress.progress > 0 && (
@@ -282,7 +283,7 @@ export function EpisodeList({
                 <span className="w-8" />
             </div>
 
-            <div className="space-y-0.5">
+            <div className="space-y-0.5" style={cascadeStyle(episodes.length)}>
                 {episodes.map((episode, index) => (
                     <EpisodeRow
                         key={episode.id}

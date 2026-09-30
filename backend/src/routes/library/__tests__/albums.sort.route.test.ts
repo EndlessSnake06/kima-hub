@@ -65,7 +65,7 @@ describe('GET /albums alphabetical ordering', () => {
         await request(makeApp()).get('/albums').expect(200);
 
         expect(prisma.album.findMany).toHaveBeenCalledWith(
-            expect.objectContaining({ orderBy: { sortName: 'asc' } }),
+            expect.objectContaining({ orderBy: [{ sortName: 'asc' }, { id: 'asc' }] }),
         );
     });
 
@@ -73,7 +73,7 @@ describe('GET /albums alphabetical ordering', () => {
         await request(makeApp()).get('/albums?sortBy=name-desc').expect(200);
 
         expect(prisma.album.findMany).toHaveBeenCalledWith(
-            expect.objectContaining({ orderBy: { sortName: 'desc' } }),
+            expect.objectContaining({ orderBy: [{ sortName: 'desc' }, { id: 'asc' }] }),
         );
     });
 
@@ -81,7 +81,7 @@ describe('GET /albums alphabetical ordering', () => {
         await request(makeApp()).get('/albums?sortBy=nonsense').expect(200);
 
         expect(prisma.album.findMany).toHaveBeenCalledWith(
-            expect.objectContaining({ orderBy: { sortName: 'asc' } }),
+            expect.objectContaining({ orderBy: [{ sortName: 'asc' }, { id: 'asc' }] }),
         );
     });
 
@@ -89,7 +89,7 @@ describe('GET /albums alphabetical ordering', () => {
         await request(makeApp()).get('/albums?sortBy=recent').expect(200);
 
         expect(prisma.album.findMany).toHaveBeenCalledWith(
-            expect.objectContaining({ orderBy: { year: 'desc' } }),
+            expect.objectContaining({ orderBy: [{ year: 'desc' }, { id: 'asc' }] }),
         );
     });
 });

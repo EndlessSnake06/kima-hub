@@ -3,6 +3,7 @@
 import { Music2, Play } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { HorizontalCarousel, CarouselItem } from "@/components/ui/HorizontalCarousel";
+import { cascadeStyle } from "@/lib/motion";
 import { memo, useCallback, type CSSProperties } from "react";
 import Image from "next/image";
 import { PlaylistPreview } from "../types";
@@ -29,7 +30,6 @@ const PlaylistCard = memo(function PlaylistCard({
     index,
     onClick,
 }: PlaylistCardProps) {
-    const cappedIndex = Math.min(index, 8);
 
     return (
         <CarouselItem>
@@ -40,9 +40,9 @@ const PlaylistCard = memo(function PlaylistCard({
                 tabIndex={0}
                 className={cn(
                     "group block cursor-pointer",
-                    "animate-rise [animation-delay:calc(var(--i)*45ms)]",
+                    "animate-rise [animation-delay:calc(var(--i)*var(--stagger))]",
                 )}
-                style={{ "--i": cappedIndex } as CSSProperties}
+                style={{ "--i": index } as CSSProperties}
             >
                 <div className="relative bg-[var(--bg-primary)] border border-white/10 rounded-lg overflow-hidden hover:border-[#a855f7]/40 transition-[border-color] duration-150 mx-1">
                     <div className="relative aspect-square">
@@ -118,7 +118,7 @@ export const FeaturedPlaylistsGrid = memo(function FeaturedPlaylistsGrid({
     }
 
     return (
-        <HorizontalCarousel>
+        <HorizontalCarousel style={cascadeStyle(Math.min(playlists.length, 20))}>
             {playlists.slice(0, 20).map((playlist, index) => (
                 <PlaylistCard
                     key={`home-playlist-${playlist.id}-${index}`}

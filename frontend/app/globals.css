@@ -55,8 +55,10 @@
      * Shared keyframes for the sitewide motion pass. Consume them as
      * utilities -- animate-rise, animate-fade-soft, animate-pop,
      * animate-panel-up, animate-panel-down -- and stagger with a per-item
-     * [animation-delay:calc(var(--i)*45ms)] capped so the ninth child and
-     * beyond arrive with no delay. Easing is the house quart curve; reduced
+     * [animation-delay:calc(var(--i)*var(--stagger))] on the leaf plus a
+     * cascadeStyle(count) on the container, so the cascade rate is derived
+     * from the item count and the whole list lands inside one window no
+     * matter how long it is. Easing is the house quart curve; reduced
      * motion is zeroed globally (durations and delays), so these need no
      * per-site guard. Exits run at roughly three quarters of their entrance.
      * ─────────────────────────────────────────────────────────────────── */

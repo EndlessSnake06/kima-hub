@@ -22,6 +22,14 @@ import { ArtistsGrid } from "@/features/library/components/ArtistsGrid";
 import { AlbumsGrid } from "@/features/library/components/AlbumsGrid";
 import { TracksList } from "@/features/library/components/TracksList";
 import { Pagination } from "@/components/ui/Pagination";
+import { latchTotal, parsePageParam } from "@/lib/pagination";
+
+function libraryUrl(tab: Tab, page?: number): string {
+    const params = new URLSearchParams();
+    params.set("tab", tab);
+    if (page && page > 1) params.set("page", String(page));
+    return `/collection?${params.toString()}`;
+}
 
 export default function LibraryPage() {
     const router = useRouter();
@@ -33,8 +41,10 @@ export default function LibraryPage() {
     const tabParam = searchParams.get("tab");
     const activeTab: Tab = validTabs.includes(tabParam as Tab) ? (tabParam as Tab) : "artists";
 
-    // Read page from URL params
-    const urlPage = parseInt(searchParams.get("page") || "1", 10);
+    // Page lives in the URL and nowhere else. Reading it through
+    // parsePageParam means a garbage ?page= never reaches the API, and the
+    // pager math never sees NaN.
+    const currentPage = parsePageParam(searchParams.get("page"));
 
     // Filter state (owned = your library, discovery = discovery weekly artists)
     const [filter, setFilter] = useState<LibraryFilter>("owned");
@@ -42,15 +52,14 @@ export default function LibraryPage() {
     // Sort and pagination state
     const [sortBy, setSortBy] = useState<SortOption>("name");
     const [itemsPerPage, setItemsPerPage] = useState<number>(40);
-    const [currentPage, setCurrentPage] = useState(urlPage);
 
     // Track previous page to detect pagination changes
     const prevPageRef = useRef(currentPage);
 
-    // Sync currentPage with URL changes (browser back/forward)
-    useEffect(() => {
-        setCurrentPage(urlPage);
-    }, [urlPage]);
+    // Last total seen per tab. A query that fails on its first load has no
+    // data; the latch keeps the pager standing on the last real count instead
+    // of recomputing the list down to zero pages.
+    const latchedTotalsRef = useRef<Partial<Record<Tab, number>>>({});
 
     const queryClient = useQueryClient();
 
@@ -127,20 +136,32 @@ export default function LibraryPage() {
         }
     }, [currentPage]);
 
-    // Pagination from active query
+    // Pagination from active query. `fresh` is undefined whenever the query
+    // has no data — loading, or failed on its first load (query-core drops
+    // placeholderData on first-load errors; pinned by
+    // lib/__tests__/pagination.test.ts). The latch keeps the last real total,
+    // and totalPages is floored at 1 so the pager degrades to "one page",
+    // never to nothing.
+    const activeQuery =
+        activeTab === "artists" ? artistsQuery
+        : activeTab === "albums" ? albumsQuery
+        : tracksQuery;
+
     const pagination = useMemo(
         () => {
-            // Get the total from the query data
-            const total =
-                activeTab === "artists" ? (artistsQuery.data?.total ?? 0)
-                : activeTab === "albums" ? (albumsQuery.data?.total ?? 0)
-                : (tracksQuery.data?.total ?? 0);
+            const fresh =
+                activeTab === "artists" ? artistsQuery.data?.total
+                : activeTab === "albums" ? albumsQuery.data?.total
+                : tracksQuery.data?.total;
+
+            const total = latchTotal(latchedTotalsRef.current[activeTab] ?? 0, fresh);
+            latchedTotalsRef.current[activeTab] = total;
 
             return {
                 total,
                 offset: 0,
                 limit: itemsPerPage,
-                totalPages: Math.ceil(total / itemsPerPage),
+                totalPages: Math.max(1, Math.ceil(total / itemsPerPage)),
                 currentPage,
                 itemsPerPage,
             };
@@ -193,20 +214,57 @@ export default function LibraryPage() {
     // future refactor could turn into a real ReferenceError.
     const [gridKey, setGridKey] = useState(0);
 
-    // Reset page and filter when tab changes
+    // Reset page and filter when tab changes. The URL is the page's source of
+    // truth, so switching tabs (which pushes a page-less URL) already lands on
+    // page 1; this effect only handles the tracks-tab filter reset and the
+    // grid remount that replays the entrance cascade.
     useEffect(() => {
-        setCurrentPage(1);
-        // Reset filter to 'owned' when switching to tracks tab (which doesn't support filter)
         if (activeTab === "tracks") {
             setFilter("owned");
         }
         setGridKey((k) => k + 1);
     }, [activeTab]);
 
-    useEffect(() => {
-        setCurrentPage(1);
+    // Changing filter/sort/page-size invalidates the current page number, so
+    // the URL loses it and the grid remounts. Done in the handlers, not an
+    // effect on the state, so the URL rewrite only happens on user action.
+    const resetView = useCallback(() => {
         setGridKey((k) => k + 1);
-    }, [filter, sortBy, itemsPerPage]);
+        if (currentPage !== 1) {
+            router.replace(libraryUrl(activeTab, 1), { scroll: false });
+        }
+    }, [activeTab, currentPage, router]);
+
+    const changeFilter = useCallback((next: LibraryFilter) => {
+        setFilter(next);
+        resetView();
+    }, [resetView]);
+
+    const changeSort = useCallback((next: SortOption) => {
+        setSortBy(next);
+        resetView();
+    }, [resetView]);
+
+    const changeItemsPerPage = useCallback((next: number) => {
+        setItemsPerPage(next);
+        resetView();
+    }, [resetView]);
+
+    // A ?page= beyond the end of the list (stale bookmark, hand-edited URL)
+    // would show an empty grid with a live pager and a Prev button that walks
+    // through nothing. Once a real response has landed, put the URL back on
+    // the last page that exists. One frame of empty grid before the replace
+    // lands is deliberate: the URL stays the single source of truth.
+    const outOfRange =
+        !isLoading &&
+        !activeQuery.isError &&
+        activeQuery.data !== undefined &&
+        currentPage > pagination.totalPages;
+    useEffect(() => {
+        if (outOfRange) {
+            router.replace(libraryUrl(activeTab, pagination.totalPages), { scroll: false });
+        }
+    }, [outOfRange, activeTab, pagination.totalPages, router]);
 
     // Get total items and pages from pagination
     const totalItems = pagination.total;
@@ -228,13 +286,10 @@ export default function LibraryPage() {
         [router],
     );
 
-    // Update page with URL state - scroll handled by useEffect on currentPage change
+    // Update page with URL state — the URL is the page's only storage.
     const updatePage = useCallback(
         (page: number) => {
-            const params = new URLSearchParams();
-            params.set("tab", activeTab);
-            params.set("page", String(page));
-            router.push(`/collection?${params.toString()}`, { scroll: false });
+            router.push(libraryUrl(activeTab, page), { scroll: false });
         },
         [activeTab, router],
     );
@@ -359,9 +414,9 @@ export default function LibraryPage() {
                         filter={filter}
                         sortBy={sortBy}
                         itemsPerPage={itemsPerPage}
-                        onFilterChange={setFilter}
-                        onSortChange={setSortBy}
-                        onItemsPerPageChange={setItemsPerPage}
+                        onFilterChange={changeFilter}
+                        onSortChange={changeSort}
+                        onItemsPerPageChange={changeItemsPerPage}
                         onShuffleLibrary={handleShuffleLibrary}
                     />
                 </div>
@@ -399,6 +454,26 @@ export default function LibraryPage() {
                         onDelete={handleDeleteTrack}
                         gridKey={gridKey}
                     />
+                )}
+
+                {activeQuery.isError && !isLoading && (
+                    <div
+                        role="status"
+                        className="flex items-center justify-between gap-4 rounded-lg border border-white/10 bg-white/[0.04] px-4 py-3 mb-6 -mt-6"
+                    >
+                        <p className="text-sm text-[var(--text-secondary)]">
+                            Couldn&apos;t load this page. The pager shows the last known count —
+                            nothing was deleted.
+                        </p>
+                        <button
+                            type="button"
+                            onClick={() => void activeQuery.refetch()}
+                            disabled={activeQuery.isFetching}
+                            className="text-sm font-medium text-white underline underline-offset-4 hover:text-[var(--text-secondary)] disabled:opacity-50 whitespace-nowrap"
+                        >
+                            {activeQuery.isFetching ? "Retrying…" : "Retry"}
+                        </button>
+                    </div>
                 )}
 
                 <Pagination

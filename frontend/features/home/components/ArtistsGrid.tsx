@@ -6,6 +6,7 @@ import { Music } from "lucide-react";
 import { api } from "@/lib/api";
 import { memo, type CSSProperties } from "react";
 import { HorizontalCarousel, CarouselItem } from "@/components/ui/HorizontalCarousel";
+import { cascadeStyle } from "@/lib/motion";
 import { cn } from "@/utils/cn";
 import { Artist } from "../types";
 
@@ -21,7 +22,6 @@ interface ArtistCardProps {
 const ArtistCard = memo(
     function ArtistCard({ artist, index }: ArtistCardProps) {
         const imageSrc = artist.coverArt ? api.getCoverArtUrl(artist.coverArt, 300) : null;
-        const cappedIndex = Math.min(index, 8);
 
         return (
             <CarouselItem>
@@ -32,9 +32,9 @@ const ArtistCard = memo(
                     tabIndex={0}
                     className={cn(
                         "group block",
-                        "animate-rise [animation-delay:calc(var(--i)*45ms)]",
+                        "animate-rise [animation-delay:calc(var(--i)*var(--stagger))]",
                     )}
-                    style={{ "--i": cappedIndex } as CSSProperties}
+                    style={{ "--i": index } as CSSProperties}
                 >
                     <div className="relative bg-[var(--bg-primary)] border border-white/10 rounded-lg overflow-hidden hover:border-[#fca200]/40 transition-[border-color] duration-150 mx-1">
                         <div className="relative aspect-square">
@@ -75,7 +75,7 @@ const ArtistCard = memo(
 
 const ArtistsGrid = memo(function ArtistsGrid({ artists }: ArtistsGridProps) {
     return (
-        <HorizontalCarousel>
+        <HorizontalCarousel style={cascadeStyle(artists.length)}>
             {artists.map((artist, index) => (
                 <ArtistCard key={artist.id} artist={artist} index={index} />
             ))}
