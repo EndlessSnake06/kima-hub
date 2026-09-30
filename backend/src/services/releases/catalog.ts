@@ -106,6 +106,56 @@ export const GPU_CHOICE_KEY = "gpu.accelerate";
 
 export const RELEASES: Release[] = [
     {
+        version: "1.12.0",
+        title: "The engine rebuild",
+        summary:
+            "Kima's analysis engine was rebuilt from an audit of the whole thing up. What your library's numbers mean didn't change — how they're earned did. Your library is re-analysing itself, and there's nothing for you to do.",
+        date: "2026-09-30",
+        items: [
+            {
+                kind: "note",
+                key: "engine.identification",
+                label: "New",
+                title: "Identification starts with the name",
+                body:
+                    "Every track's question now opens with the cheap, honest one: the tags and filename it already carries are searched against the recording they name, " +
+                    "and the match is checked against the music you actually own before it's believed. Fingerprinting — the slow, rate-limited route — is saved for what " +
+                    "that can't settle. Measured on the tracks that had always gone unidentified, four in five came home on the first pass.",
+            },
+            {
+                kind: "note",
+                key: "engine.honest",
+                label: "Fixed",
+                title: "Numbers only where there's a measurement",
+                body:
+                    "The analyzers now report only what they actually measured. A value that couldn't be determined stays empty instead of being filled with a guess, " +
+                    "and two of the five mood heads that had been read backwards are fixed and re-checked against your whole library, not a sample. " +
+                    "A track whose file has gone missing is closed honestly and reopens the day the file returns.",
+            },
+            {
+                kind: "note",
+                key: "engine.energy",
+                label: "Fixed",
+                title: "Energy spread out again",
+                body:
+                    "The energy and mood score comes from a pair of regression models now, and the old pileup near the top of the scale is gone: " +
+                    "the third of your library that used to read as maximum-energy can be Calm again. The mood categories on the map and in mood mixes come out of " +
+                    "five independent heads, ranked against your own library, so one loud classifier can't stamp half the collection.",
+            },
+            {
+                kind: "note",
+                key: "engine.redo",
+                label: "Heads up",
+                title: "Your library is re-analysing itself",
+                body:
+                    "The new engine writes a new analysis version, so every track is quietly re-queued: audio analysis first, then embeddings, then the vibe map. " +
+                    "It runs in the background and will take a while on a large library; everything keeps working with last-known values while it catches up. " +
+                    "Progress lives in Settings, under Library Enrichment. If you said yes to GPU acceleration in the previous window, the download goes first " +
+                    "and the embedding pass runs on the card.",
+            },
+        ],
+    },
+    {
         version: "1.11.0",
         title: "A page that knows your habits",
         summary:

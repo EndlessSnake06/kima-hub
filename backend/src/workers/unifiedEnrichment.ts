@@ -70,6 +70,7 @@ type FailureOutcome = Extract<
 >;
 import { sourcePauseController } from "../services/sourcePauseController";
 import { distributedLock } from "../utils/distributedLock";
+import { embeddingsDeferredForGpu } from "../services/gpuRuntime";
 
 // ── Per-track stage queue ────────────────────────────────────────────────
 
@@ -226,6 +227,17 @@ export async function getNextWork(
         if (await sourcePauseController.isPaused(source, now)) {
             logger.debug(
                 `[Enrichment] '${stage}' skipped: source '${source}' is paused`,
+            );
+            continue;
+        }
+
+        // A just-enabled GPU runtime gets a head start on the embedding stage
+        // only: a "yes" in the release window must reach the pipeline before
+        // the library is embedded on CPU. Bounded by a hard timeout inside
+        // the check, so a stuck download defers nothing forever.
+        if (stage === "embedding" && (await embeddingsDeferredForGpu(now))) {
+            logger.debug(
+                "[Enrichment] 'embedding' deferred: GPU runtime installing",
             );
             continue;
         }

@@ -97,3 +97,75 @@ export async function setGpuEnabled(enabled: boolean) {
     );
     return getGpuStatus();
 }
+
+// --- Embedding deferral while the GPU runtime installs ---------------------
+//
+// "Yes, use the GPU" in the release window has to arrive BEFORE enrichment
+// starts, or the first pass embeds the library on CPU anyway and the answer
+// was worthless. So while the install is in flight, the engine holds embedding
+// offers only — every other stage (analysis, fingerprint, metadata) keeps
+// running. The hold is deliberately narrow and hard-bounded: a failed or hung
+// download must never freeze the pipeline.
+//
+// The decision is a pure function so its whole truth table is testable;
+// `embeddingsDeferredForGpu` is the thin IO shim around it.
+
+export const GPU_INSTALL_HOLD_MS = 10 * 60 * 1000;
+
+export function gpuDeferDecision(params: {
+    enabled: boolean;
+    status: string | null | undefined;
+    enabledAtMs: number | null;
+    nowMs: number;
+    holdMs?: number;
+}): boolean {
+    if (!params.enabled) return false;
+    const hold = params.holdMs ?? GPU_INSTALL_HOLD_MS;
+    if (params.status === "installing") {
+        // Installing is only worth waiting for inside the window; a download
+        // still "installing" long after the toggle is a stuck one — CPU wins.
+        return params.enabledAtMs !== null && params.nowMs - params.enabledAtMs <= hold;
+    }
+    // Between the toggle landing and the analyzer picking it up there is a gap
+    // with no install state yet. Bridge it, but only inside the window.
+    if (!params.status) {
+        return params.enabledAtMs !== null && params.nowMs - params.enabledAtMs <= hold;
+    }
+    // installed / failed / any terminal status: no hold, never.
+    return false;
+}
+
+let deferCache: { atMs: number; deferred: boolean } | null = null;
+const DEFER_CACHE_MS = 5_000;
+
+export async function embeddingsDeferredForGpu(now = new Date()): Promise<boolean> {
+    if (deferCache && now.getTime() - deferCache.atMs < DEFER_CACHE_MS) return deferCache.deferred;
+    let deferred = false;
+    try {
+        const settings = await prisma.systemSettings.findUnique({
+            where: { id: "default" },
+            select: { gpuOnnxEnabled: true },
+        });
+        if (settings?.gpuOnnxEnabled) {
+            const state = readJsonSafe<GpuState>(STATE_PATH) || {};
+            const enabledAt = readJsonSafe<{ updatedAt?: string }>(ENABLED_PATH)?.updatedAt;
+            deferred = gpuDeferDecision({
+                enabled: true,
+                status: state.status,
+                enabledAtMs: enabledAt ? new Date(enabledAt).getTime() : null,
+                nowMs: now.getTime(),
+            });
+        }
+    } catch (error) {
+        // A failed lookup must not stop enrichment; CPU proceeds.
+        logger.warn(`[GPU-onnx] deferral check failed, not deferring: ${String(error)}`);
+        deferred = false;
+    }
+    deferCache = { atMs: now.getTime(), deferred };
+    return deferred;
+}
+
+/** Test seam: drop the 5s cache between cases. */
+export function __resetGpuDeferCache(): void {
+    deferCache = null;
+}
