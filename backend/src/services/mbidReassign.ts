@@ -1,13 +1,7 @@
 /**
- * Shared MBID reassignment helper
- *
- * Provides canonical MBID/rgMbid reassignment with:
- * - Prisma P2002 -> DuplicateMbidError translation (HTTP 409 for routes)
- * - OwnedAlbum row migration (delete old, upsert new) when Album.rgMbid changes
- * - No-op when the new value equals the current value
- * - No-op when the entity doesn't exist
- *
- * Used by BOTH the editor routes AND the enrichment service.
+ * MBID reassignment shared by the editor routes and enrichment. Unique
+ * violations become DuplicateMbidError (409); an unchanged value or a missing
+ * row is a no-op.
  */
 
 import { prisma } from "../utils/db";
@@ -30,14 +24,8 @@ export class DuplicateMbidError extends Error {
 }
 
 /**
- * Reassign an album's rgMbid and migrate the associated OwnedAlbum row.
- *
- * Steps inside a single transaction:
- * 1. Read current Album.rgMbid — no-op if album gone or rgMbid unchanged.
- * 2. Update Album.rgMbid to the new value.
- * 3. If rgMbid changed: delete the old OwnedAlbum row (artistId, oldRgMbid),
- *    then upsert the new OwnedAlbum row (artistId, newRgMbid).
- * 4. If P2002 is raised on the upsert, translate to DuplicateMbidError.
+ * Change an album's rgMbid in one transaction and move the rows keyed on the
+ * old string (OwnedAlbum, DiscoveryAlbum) to the new one.
  */
 export async function reassignAlbumRgMbid(
     albumId: string,
@@ -118,15 +106,10 @@ export async function reassignAlbumRgMbid(
             throw err;
         }
 
-        // Step 4: move DiscoveryAlbum rows off the old string.
-        // Discovery rows are per user+week and carry download state. Rows
-        // whose (userId, weekStartDate, newRgMbid) slot is already taken
-        // would violate the unique index, and a unique violation aborts the
-        // whole transaction — so collisions are identified BEFORE the write
-        // and left in place with a named log line; merging two real
-        // discovery entries is above this helper's pay grade. A race that
-        // inserts a colliding row between the check and the write lets
-        // P2002 abort this transaction: the re-identification retries later.
+        // Move DiscoveryAlbum rows to the new rgMbid. Rows whose (userId,
+        // weekStartDate, newRgMbid) slot is taken are left and logged, since a unique
+        // violation would abort the transaction; a racing insert still can, and
+        // identification retries later.
         const staleRows = await tx.discoveryAlbum.findMany({
             where: { rgMbid: oldRgMbid },
             select: { id: true, userId: true, weekStartDate: true },

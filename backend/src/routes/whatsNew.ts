@@ -1,13 +1,7 @@
 /**
- * The release window's endpoints.
- *
- * Mounted at /api/whats-new rather than /api/releases — that path already
- * belongs to the Release Radar, which is about music coming out, not about this
- * application changing.
- *
- * The server decides what is pending and what a dismissal means. A client can
- * report a decision and can close a window; it cannot assert that a release was
- * already seen, because that would be a way to suppress a consent prompt.
+ * The release window's endpoints, at /api/whats-new (/api/releases is the
+ * Release Radar). The server decides what is pending; a client cannot claim a
+ * release was seen, since that would suppress a consent prompt.
  */
 
 import { Router } from "express";
@@ -104,12 +98,9 @@ router.post("/:version/choice", async (req, res) => {
         if (!findRelease(version)) return res.status(404).json({ error: "Unknown release" });
 
         const { key, enabled } = choiceSchema.parse(req.body);
-        // The GPU choice writes a system setting, so it is applied through the
-        // same service the Settings toggle uses — and only for an admin. The
-        // window hides the question from everyone else; this route must not let
-        // a forged POST smuggle a system change through a per-user endpoint.
-        // The apply happens before the record: if the apply fails, nothing is
-        // on the books that did not happen, and the client can retry cleanly.
+        // The GPU choice changes a system setting, so only an admin may apply it,
+        // through the Settings toggle's service. Apply before recording, so a failed
+        // apply leaves nothing on record and the client can retry.
         if (key === GPU_CHOICE_KEY) {
             if (req.user!.role !== "admin") {
                 return res.status(403).json({ error: "Only admins can change GPU acceleration" });
@@ -149,10 +140,5 @@ router.post("/:version/dismiss", async (req, res) => {
         res.status(500).json({ error: "Failed to dismiss release" });
     }
 });
-
-// Release `action` items do not run anything from here. The one that exists —
-// the play-history audit — lives on the stats page and owns its own endpoints,
-// because a maintenance tool people will want again should not be reachable
-// only through a dialogue that appears once.
 
 export default router;

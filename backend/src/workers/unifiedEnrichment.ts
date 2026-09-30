@@ -2771,8 +2771,8 @@ export async function executePodcastRefreshPhase(): Promise<number> {
     return queued;
 }
 
-/** Memo for the progress readout, polled by the scheduler and by every open
- * settings tab. No longer than a cycle interval, so the scheduler loses nothing. */
+/** Memo for the progress readout, polled by the scheduler and every open
+ * settings tab; it lives no longer than a cycle interval. */
 let progressMemo: { at: number; value: EnrichmentProgress } | null = null;
 const PROGRESS_MEMO_MS = 5 * 1000;
 

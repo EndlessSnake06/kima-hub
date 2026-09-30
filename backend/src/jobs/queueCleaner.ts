@@ -96,16 +96,7 @@ class QueueCleanerService {
                 this.emptyQueueChecks = 0; // Reset counter
             }
 
-            // PART 0.25/0.26 (reconcileWithLidarr / syncWithLidarrQueue) removed: both
-            // early-return as no-ops without a Lidarr reconciliation snapshot, and building
-            // one here would mean re-fetching every artist's full album list from Lidarr on
-            // every 30s tick of this loop (the artist list has a 30s cache, but album fetches
-            // don't) - too expensive for this cadence. workers/index.ts's runReconciliationCycle
-            // already builds that snapshot and calls both of these every 2 minutes against the
-            // same DownloadJob rows, so it's covered there instead of duplicated here.
-
-            // PART 0.3: Reconcile processing jobs with local library (critical fix for #31)
-            // Check if albums already exist in Kima's database even if Lidarr webhooks were missed
+            // Complete jobs whose album is already in the library, for missed Lidarr webhooks.
             const localReconcileResult = await this.reconcileWithLocalLibrary();
             if (localReconcileResult.reconciled > 0) {
                 logger.debug(
@@ -425,20 +416,9 @@ class QueueCleanerService {
     }
 
     /**
-     * Reconcile processing jobs with local library (Phase 1 & 3 fix for #31)
-     * Checks if albums already exist in Kima's database and marks matching jobs as complete
-     * This handles cases where:
-     * - Lidarr webhooks were missed
-     * - MBID mismatches between MusicBrainz and Lidarr
-     * - Album/artist name differences prevent webhook matching
-     *
-     * Phase 3 enhancement: Uses fuzzy matching to catch more name variations
-     *
-     * PUBLIC: Called by periodic reconciliation in workers/index.ts
-     */
-    /**
-     * Reconcile processing jobs with local library using batch snapshot approach.
-     * Fetches all local albums once, then checks jobs against in-memory data.
+     * Mark pending and processing jobs complete when their album is already in
+     * the library, matching names fuzzily: covers missed Lidarr webhooks and
+     * MBID or name mismatches. Loads the library once. Also run by workers/index.ts.
      */
     async reconcileWithLocalLibrary(): Promise<{ reconciled: number }> {
         const processingJobs = await prisma.downloadJob.findMany({

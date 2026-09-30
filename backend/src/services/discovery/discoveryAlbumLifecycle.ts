@@ -1,10 +1,6 @@
 /**
- * Discovery Album Lifecycle Module
- *
- * Handles lifecycle management for discovery albums:
- * - Moving liked albums to permanent library
- * - Deleting rejected/active albums from DB and Lidarr
- * - Processing albums before new discovery generation
+ * Discovery album lifecycle: move liked albums into the library and delete
+ * rejected or expired ones from the database and Lidarr.
  */
 
 import axios from 'axios';
@@ -80,15 +76,9 @@ export class DiscoveryAlbumLifecycle {
         album: DiscoveryAlbumInfo,
         settings: LidarrSettings
     ): Promise<void> {
-        // Cheap read-only pre-check before any destructive action. If the user
-        // liked this album after the cleanup snapshot was taken, its status is no
-        // longer ACTIVE -- skip the Lidarr file delete and the DB deletes entirely.
-        // This guards the FILES: the in-transaction claim below only guards DB
-        // rows, and the Lidarr HTTP delete must stay outside the transaction (so a
-        // Lidarr timeout cannot roll back the claim). Without this pre-check a
-        // like landing during the Lidarr round-trip would lose its files while the
-        // claim left the row LIKED. The window is now one DB read, not an HTTP
-        // round-trip; the in-tx claim closes the residual race on the row itself.
+        // Re-read the status before deleting files: a like since the snapshot skips
+        // everything. The Lidarr delete stays outside the transaction so a timeout
+        // cannot roll back the claim, and the claim below closes the remaining race.
         const current = await prisma.discoveryAlbum.findUnique({
             where: { id: album.id },
             select: { status: true },
@@ -137,17 +127,9 @@ export class DiscoveryAlbumLifecycle {
                 );
                 return;
             }
-            // Read the owned Album inside the tx (after the claim) so the read and
-            // the deletes share one snapshot and only DISCOVER albums are touched
-            // -- a same-rgMbid LIBRARY album must never be deleted here.
-            // AlbumLocation is a non-null enum of exactly {LIBRARY, DISCOVER}
-            // (schema.prisma:882, default LIBRARY), so this filter cannot skip a
-            // null-location row -- none exist. The only intentionally-skipped case
-            // is a discovery album mislabeled LIBRARY; protecting genuine LIBRARY
-            // albums from deletion outweighs leaving that benign Album row behind
-            // (its DiscoveryAlbum/DiscoveryTrack rows are still cleaned). rgMbid
-            // alone cannot distinguish the two, so we err toward never destroying
-            // library data.
+            // Read inside the transaction, after the claim, and only DISCOVER albums: a
+            // LIBRARY album with the same rgMbid must never be deleted here, even if that
+            // leaves a mislabelled discovery album behind.
             const dbAlbum = await tx.album.findFirst({
                 where: { rgMbid: album.rgMbid, location: 'DISCOVER' },
             });

@@ -21,13 +21,8 @@ export async function startTrackEnrichmentWorker(): Promise<Worker> {
         async (job: Job<TrackJobData>) => {
             const { trackId, trackTitle } = job.data;
             logger.debug(`[TrackWorker] Processing ${trackId} (${trackTitle})`);
-            // `enrichSingleTrack` answers the question AND settles the
-            // stage record itself: identified → done, "sources have
-            // nothing" → absent (done), a source failure → recorded with
-            // its real cause, a paused source → left pending. Settling
-            // again here from `enrichmentTags` was a second writer with
-            // different semantics; the record would flip to a fresh
-            // retryable failure instead of keeping the truthful answer.
+            // enrichSingleTrack settles the stage record itself (done, absent, failed
+            // with its cause, or left pending for a paused source); don't settle it again.
             const outcome = await enrichSingleTrack(trackId);
             logger.debug(`[TrackWorker] ${trackId}: recording question settled (${outcome})`);
         },
@@ -53,14 +48,8 @@ export async function startTrackEnrichmentWorker(): Promise<Worker> {
 
         const isFinalAttempt = job.attemptsMade >= (job.opts.attempts ?? 3);
         if (isFinalAttempt) {
-            // The stage record owns the attempt: the record's ladder (one
-            // rung per dispatch, closed at the cap) decides when this
-            // question stops being re-asked — a hardcoded `retryable:
-            // true` would re-offer a dead question forever. This is also
-            // the ONLY record of this failure: the failures API reads
-            // TrackStage for track stages (two ledgers for one fact
-            // drifted apart until one was superseded — migration
-            // 20260926150000).
+            // The stage record owns the attempt: its retry ladder decides when to stop
+            // asking, and it is the only record of this failure the failures API reads.
             await recordStageFailure(
                 trackId,
                 "recording",

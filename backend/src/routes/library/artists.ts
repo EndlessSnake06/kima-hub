@@ -26,15 +26,9 @@ import { resolveWithinMusicRoot } from "./trackPath";
 import { findArtistArtwork } from "../../services/artwork";
 import { LIBRARY_LOCATION } from "../../services/libraryFilters";
 
-// Alphabetical ordering reads `sortName`, not `name`: the article-stripped,
-// unaccented, lowercased value written by `artistSortName` and backfilled by
-// the artist_identity migration. Sorting on the raw name files "The Beatles"
-// under T and orders "Bjork" away from "Björk". The column is indexed, so this
-// is not a cost.
-//
-// NOTE: `name`/`name-desc` do not reach this map -- they take the raw-SQL
-// branch below, which orders on the same `sortName` column. This map covers
-// the remaining keys and the fallback. Both paths must keep agreeing.
+// Alphabetical sorts use `sortName` (article-stripped, unaccented,
+// lowercased; indexed). `name`/`name-desc` take the raw-SQL branch below,
+// which orders on the same column, and must keep agreeing with this map.
 const ARTIST_SORT_MAP: Record<string, any> = {
   name: { sortName: "asc" as const },
   "name-desc": { sortName: "desc" as const },
@@ -566,11 +560,8 @@ router.get("/artists/:id", async (req, res) => {
       userPlays.map((p) => [p.trackId, p._count.id]),
     );
 
-    // Top tracks: local listens are the truth (spec D). The old path asked
-    // Last.fm for global play counts that said nothing about THIS library
-    // and, with the dead shared key, were 100% sentinel data anyway.
-    // "Your most played by this artist" first; cold start (no plays) falls
-    // back to the artist's tracks ordered by MusicBrainz first-release date.
+    // Top tracks: the user's most played by this artist; with no plays, the
+    // artist's tracks by MusicBrainz first-release date.
     {
       const played = await prisma.$queryRaw<
         Array<{
@@ -697,11 +688,8 @@ router.get("/artists/:id", async (req, res) => {
         `[Artist] Using ${enrichedSimilar.length} similar artists from enriched JSON`,
       );
 
-      // normalizeArtistName, not toLowerCase: it is what WRITES normalizedName,
-      // and it also folds accents and ampersands. A lowercase-only key misses
-      // every artist whose name carries one -- "Sigur Rós" is stored
-      // "sigur ros", "Hall & Oates" as "hall and oates" -- so those artists
-      // were silently absent from the in-library similar list.
+      // normalizeArtistName writes normalizedName and folds accents and
+      // ampersands, so lowercasing alone would miss "Sigur Rós" or "Hall & Oates".
       const similarNames = enrichedSimilar
         .slice(0, 10)
         .map((s) => normalizeArtistName(s.name));

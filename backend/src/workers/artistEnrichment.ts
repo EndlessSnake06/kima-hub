@@ -128,12 +128,7 @@ export async function enrichSimilarArtist(artist: Artist): Promise<void> {
             logger.debug(`${logPrefix} Wikidata: Skipped (temp MBID)`);
         }
 
-        // (Last.fm fallback block removed 2026-09-19 — shared key dead.
-        // Wikidata above plus MusicBrainz genres below cover the same data.)
-
-        // Image lookup runs whether or not Last.fm had anything. This was
-        // Fanart-then-Deezer spelled out here; the ordering, the Last.fm
-        // fallback it was missing, and the caching all live in one place now.
+        // findArtistArtwork owns the source order and caching.
         if (!heroUrl) {
             const found = await findArtistArtwork({
                 name: artist.name,
@@ -381,9 +376,7 @@ async function enrichAlbumCovers(
 
             await Promise.all(
                 batch.map(async (album) => {
-                    // A placeholder id only rules out the id-keyed sources.
-                    // Deezer searches by artist and title, and this used to
-                    // skip the album entirely rather than let it try.
+                    // A placeholder id only rules out the id-keyed sources; Deezer searches by name.
                     if (!album.rgMbid && !album.title) return;
 
                     try {

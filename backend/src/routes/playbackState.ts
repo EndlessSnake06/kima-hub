@@ -13,18 +13,7 @@ const QUEUE_LIMIT_MAX = 100000;
 /** Cached for a minute: this is read on every queue write. */
 let cachedLimit: { value: number; at: number } | null = null;
 
-/**
- * How many tracks a queue may hold, as the operator has it set.
- *
- * This used to be a literal 2000 here and another literal 2000 in the browser,
- * kept in step by a comment. The queue is a list of track references, so the
- * number was never about storage — it was a guess, duplicated. Now the server
- * owns it, the client asks, and an operator can move it.
- *
- * Clamped on read as well as on write, so a value edited straight into the
- * database still cannot ask the process to slice an array by a negative number
- * or hold a million rows in memory.
- */
+/** The operator's queue length limit, clamped on read in case the stored value was edited by hand. */
 async function queueLimit(): Promise<number> {
     if (cachedLimit && Date.now() - cachedLimit.at < 60_000) return cachedLimit.value;
     let value = QUEUE_LIMIT_DEFAULT;
@@ -153,13 +142,7 @@ router.post("/", requireAuth, async (req, res) => {
             where: { userId },
             update: {
                 playbackType,
-                // Omitted fields must be LEFT ALONE, the same as `queue` and
-                // `isShuffle` below. Writing `trackId || null` wiped the field
-                // on any partial update -- a track change carrying only
-                // `trackId` cleared audiobookId/podcastId, and a partial write
-                // without one cleared trackId. The web client always sends
-                // every field so it cannot trigger this; the native iOS client
-                // does genuine partial updates.
+                // Omitted fields are left alone: native clients send partial updates.
                 ...(trackId !== undefined ? { trackId: trackId || null } : {}),
                 ...(audiobookId !== undefined ? { audiobookId: audiobookId || null } : {}),
                 ...(podcastId !== undefined ? { podcastId: podcastId || null } : {}),
@@ -201,12 +184,8 @@ router.delete("/", requireAuth, async (req, res) => {
     try {
         const userId = req.user!.id;
 
-        // deleteMany, not delete: delete() throws when there is no row, and that surfaced
-        // as a 500 for a request that had already got what it asked for. It matters more
-        // than it looks, because this endpoint IS the recovery path -- the client calls it
-        // when the server hands back playback state pointing at something that no longer
-        // exists. A 500 here meant the stale state could never be cleared, so every
-        // sign-in restored it, failed on it, and failed to clean it up again.
+        // deleteMany, so clearing state that is already gone succeeds; clients call
+        // this to recover from state pointing at something deleted.
         const removed = await prisma.playbackState.deleteMany({
             where: { userId },
         });

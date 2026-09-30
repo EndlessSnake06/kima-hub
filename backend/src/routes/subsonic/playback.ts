@@ -231,8 +231,8 @@ playbackRouter.all("/getCoverArt.view", wrap(async (req, res) => {
 
     let coverUrl: string | null = null;
 
-    // Try album first (most common); ar- prefix skips album lookup since that ID is an artist ID.
-    // Falls through to artist/track as a cascade — clients may use any prefix for any entity.
+    // Clients send any prefix for any entity, so try album, artist and track in
+    // turn; `ar-` skips the album lookup.
     if (!rawId.startsWith("ar-")) {
         const album = await prisma.album.findUnique({
             where: { id },
@@ -316,15 +316,8 @@ playbackRouter.all("/scrobble.view", wrap(async (req, res) => {
     const submission = req.query.submission !== "false";
 
     if (submission) {
-        // The Subsonic contract lets the client decide when a track has been
-        // played, and clients differ. We honour that -- a scrobble here is taken
-        // as a genuine report -- but the floor is ours: a track at or under 30
-        // seconds is never scrobbleable under the Last.fm rule, whatever a client
-        // claims, and services/playRecording.ts owns that judgement.
-        //
-        // A client reporting a scrobble has, by the contract, already decided the
-        // track was played, so the play is passed as client-attested rather than
-        // re-measured; the duration floor and the duplicate window still apply.
+        // A client's scrobble counts as played (client-attested); the 30-second
+        // floor and the duplicate window in playRecording.ts still apply.
         const timeMs = req.query.time ? parseInt(req.query.time as string, 10) : Date.now();
         const playedAt = isNaN(timeMs) ? new Date() : new Date(timeMs);
         await recordPlay({
@@ -339,16 +332,6 @@ playbackRouter.all("/scrobble.view", wrap(async (req, res) => {
     return subsonicOk(req, res);
 }));
 // savePlayQueue.view / getPlayQueue.view live in queue.ts.
-//
-// They were registered here too and playbackRouter mounts first, so these won
-// -- and they used a DIFFERENT store: the SubsonicPlayQueue table, while
-// queue.ts's by-index variants (getPlayQueueByIndex / savePlayQueueByIndex,
-// unique paths, so always live) use PlaybackState.queue. getOpenSubsonicExtensions
-// advertises indexBasedQueue, so a client uses both: it saved by index into one
-// table and read by id out of the other, getting back a different queue.
-//
-// One store now: PlaybackState.queue, which the web player and getNowPlaying
-// already read. The SubsonicPlayQueue model is left unreferenced by this change.
 
 
 // ===================== BOOKMARKS =====================

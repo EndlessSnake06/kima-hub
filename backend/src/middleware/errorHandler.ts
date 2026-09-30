@@ -10,16 +10,9 @@ export function errorHandler(
     res: Response,
     next: NextFunction
 ) {
-    // Once a byte is on the wire there is no status left to set. This is not a
-    // hypothetical: an audio stream that dies mid-transfer -- client hangs up,
-    // ffmpeg exits, the cache file is evicted -- rejects long after the headers
-    // and the 200 went out. Trying to answer anyway throws ERR_HTTP_HEADERS_SENT
-    // from inside the error handler, which is a worse failure than the original.
-    //
-    // Express's own default handler is the right thing here: given an error with
-    // the response already started, it closes the connection, which is the only
-    // honest signal left. Delegating to it requires passing the error on rather
-    // than handling it.
+    // Once the response has started no status can be sent; an audio stream can
+    // fail long after its headers went out. Express's default handler closes the
+    // connection, which is the only signal left.
     if (res.headersSent) {
         logger.error(`Error after response started (${req.method} ${req.path}):`, err.message);
         return next(err);
@@ -51,25 +44,9 @@ export function errorHandler(
         });
     }
 
-    // A UserFacingError names its own status and says something the client is
-    // meant to read. Both matter: `AppError`'s three categories only reach 400,
-    // 503 and 500, so before this branch existed there was no way to THROW a
-    // 404 -- it fell through to the generic case below and became a 500 whose
-    // message was replaced with "Internal server error". Measured against this
-    // file before the branch was added:
-    //
-    //     throw new UserFacingError("Album not found", 404)
-    //       -> HTTP 500 {"error":"Internal server error"}
-    //
-    // That is why the route files answer with `res.status(404)` by hand 95
-    // times: throwing could not express it. This branch is what makes those
-    // rewritable.
-    //
-    // The message is returned in production as well as development, which is
-    // the entire distinction the class draws -- "user-facing" means the text
-    // was written for the client. Anything whose text is NOT safe to show has
-    // no business being a UserFacingError, and stays a plain Error, which the
-    // generic branch below keeps hiding in production.
+    // A UserFacingError carries its own status and a message written for the
+    // client, returned in production too. Text not safe to show stays a plain
+    // Error, hidden below.
     if (err instanceof UserFacingError) {
         // A 4xx is the client's problem, not a server fault. Logging 95 "album
         // not found"s a day at error level buries the ones that matter.
@@ -82,23 +59,7 @@ export function errorHandler(
         });
     }
 
-    // A failed `schema.parse()` is the client sending the wrong thing, which is
-    // a 400 -- but ZodError is not an AppError, so without this branch it fell
-    // through to the generic case and became a 500. That is why every route
-    // using Zod hand-catches it:
-    //
-    //     if (error instanceof z.ZodError) {
-    //         return res.status(400).json({ error: "Invalid request", details: error.errors });
-    //     }
-    //
-    // repeated in plays, settings, systemSettings, offline and
-    // playlistImport. The sweep's instruction to "validate input with Zod" is
-    // only safe once this exists; validating and letting it throw would have
-    // answered 500 to a bad query string.
-    //
-    // This is deliberately ADDITIVE. The existing hand-catches still run first
-    // and keep their own wording ("Invalid settings"), so no current response
-    // changes. They become deletable as each route is rewritten, not before.
+    // A failed Zod parse is a bad request: 400 with the issues.
     if (err instanceof ZodError) {
         logger.warn(`[ZodError] ${req.method} ${req.path}: ${err.errors.length} issue(s)`);
 

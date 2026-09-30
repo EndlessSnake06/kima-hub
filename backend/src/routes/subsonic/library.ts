@@ -8,16 +8,8 @@ import { LIBRARY_LOCATION } from "../../services/libraryFilters";
 
 export const libraryRouter = Router();
 
-// Rendered from the ONE canonical article list, which is also what
-// `artistSortName` -- and its `kima_sort_name` SQL twin -- strip when writing
-// `Artist.sortName`. This file used to carry a private English-only stripper
-// AND a separately hardcoded "The A An" advertisement, so the server stripped
-// eleven articles across four languages while telling clients it stripped
-// three. Clients use this list to sort and render locally, so a client that
-// disagrees with the server files the same artist in two different places.
-//
-// Space-separated and capitalized is what the protocol's own reference
-// implementations advertise (Navidrome ships "The El La Los Las Le Les ...").
+// Advertised from the same article list `artistSortName` strips, so clients
+// sort and group artists as the server does.
 const IGNORED_ARTICLES = LEADING_ARTICLES
     .map((a) => a.charAt(0).toUpperCase() + a.slice(1))
     .join(" ");
@@ -28,11 +20,7 @@ const IGNORED_ARTICLES = LEADING_ARTICLES
 libraryRouter.all(["/getArtists.view", "/getIndexes.view"], wrap(async (req, res) => {
     const artists = await prisma.artist.findMany({
         where: { libraryAlbumCount: { gt: 0 } },
-        // Ordered by the same stored value the buckets below are keyed on.
-        // These used to disagree -- ordering read the raw `name` while
-        // bucketing stripped articles -- so "The Beatles" filed correctly
-        // under B and then sorted to the BOTTOM of it, behind every genuine
-        // B artist, on every client.
+        // Ordered by the same sortName the buckets are keyed on.
         orderBy: { sortName: "asc" },
         select: {
             id: true,
@@ -549,13 +537,4 @@ libraryRouter.all("/getGenres.view", wrap(async (req, res) => {
     subsonicOk(req, res, { genres: { genre: sorted } });
 }));
 // getTopSongs / getSimilarSongs / getSimilarSongs2 live in search.ts.
-//
-// They were also registered here, and libraryRouter mounts first, so these
-// copies won and search.ts's were dead. Both of these were the worse
-// implementation: getTopSongs derived from play.groupBy, so a library with no
-// Play rows returned an empty list forever, while search.ts LEFT JOINs Play so
-// unplayed tracks still come back. getSimilarSongs took an UNORDERED slice and
-// Fisher-Yates shuffled it -- Postgres returns rows in physical order without
-// an ORDER BY, so it served the same rows on every call, merely permuted;
-// search.ts uses ORDER BY RANDOM().
 

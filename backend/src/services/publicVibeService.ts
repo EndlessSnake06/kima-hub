@@ -1,20 +1,8 @@
 /**
- * Public vibe surface — the read-and-join logic in front of features that are
- * otherwise auth-walled. This is not a new similarity or mapping feature:
- *
- *  - the 2D map already exists, cached in Redis and refreshed by the analysis
- *    path (umapProjection.computeMapProjection)
- *  - similar / search already exist (hybridSimilarity / textEmbeddingBridge)
- *  - playback, the queue, the context are already persisted in PlaybackState
- *
- * The one genuinely new piece here is the join: playback knows a list of
- * track-ids and the map knows each track's x,y, and nowhere in the app joins
- * them. Every other function below is assembly over those three sources plus a
- * tiny cache and a small decimation.
- *
- * Nothing here reads a user id from the request. The public user's id is read
- * once, from SystemSettings, by the route; callers below receive it as a plain
- * argument and cannot see anything else.
+ * The public vibe page: joins playback's track ids to the map's x,y and
+ * assembles the existing map, similarity and search features for it. No user id
+ * comes from the request; the route reads the public user's id from
+ * SystemSettings and passes it in.
  */
 import { prisma } from "../utils/db";
 import { logger } from "../utils/logger";
@@ -60,11 +48,8 @@ const MAX_MAP_POINTS = 2000;
 // plain track queue and "now playing" is null for these.
 const PLAYABLE_TYPE = "track";
 
-// The map carries each track's coverUrl. For many of those it is a
-// `native:<albumId>.jpg` reference — a pointer to a file on the server, which
-// is the single thing this surface must never hand to a client. Those become a
-// public proxy URL; any other coverUrl (a remote http URL the map already held)
-// is passed through untouched. The proxied route resolves and serves the bytes.
+// A `native:<albumId>.jpg` cover points at a server file and must never reach
+// a client, so it becomes a public proxy URL; remote http URLs pass through.
 function toPublicCoverUrl(mapUrl: string | null, trackId: string): string | null {
     if (mapUrl && mapUrl.startsWith("native:")) {
         return `/api/public/vibe/cover/${encodeURIComponent(trackId)}`;
@@ -79,11 +64,9 @@ function toPublicCover(trackId: string, track: MapPoint): MapPoint {
 
 // Swap every coverUrl across a point list. (Handled in-place by asMapPoints.)
 
-// The private map is laid out in 3-D; the public page draws 2-D. Dropping the
-// third axis would stack clusters that sit apart only in depth, so points are
-// projected onto the cloud's two widest directions (its top principal axes)
-// and stretched to fill 0..1. Maps without a third axis pass through as-is.
-// Cached per projection version: the projection changes rarely, requests don't.
+// The map is 3-D, the public page 2-D: project onto the cloud's two widest
+// principal axes so clusters apart only in depth stay apart, then scale to
+// 0..1. Cached per projection version.
 let flatMemo: { key: string; points: Map<string, { x: number; y: number }> } | null = null;
 
 function flatten(tracks: Array<{ id: string; x: number; y: number; z?: number }>): Map<string, { x: number; y: number }> {

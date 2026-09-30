@@ -182,16 +182,8 @@ router.post("/", async (req, res) => {
 
     invalidateSystemSettingsCache();
 
-    // (The old Last.fm key refresh was removed 2026-09-19 — Kima no longer
-    // calls that service; similarity/correction/dates come from
-    // ListenBrainz, MusicBrainz and local centroid embeddings instead.)
-
-    // Reconnect Soulseek only if connection-relevant settings actually changed
-    // (not just present in payload). This covers P2P credentials AND the slskd
-    // backend selection — switching soulseekMode or editing slskdUrl/slskdApiKey
-    // now reconnects the chosen backend immediately (connect() re-reads settings
-    // and re-runs configureSlskd/resolveSlskClient), instead of the toggle
-    // appearing to do nothing until an unrelated reconnect.
+    // Reconnect Soulseek only when a connection setting actually changed: the P2P
+    // credentials or the slskd backend (mode, URL, API key).
     if (
       data.soulseekUsername !== undefined ||
       data.soulseekPassword !== undefined ||
@@ -764,16 +756,9 @@ router.post("/queue-cleaner/stop", (req, res) => {
   });
 });
 
-// Operational Redis namespaces that "Clear Caches" must NEVER delete: BullMQ
-// queues, sessions, the enrichment/analysis control plane, distributed locks,
-// and short-lived SSE auth tickets. Everything else is a rebuildable cache
-// (external-API responses, cover art, derived data). This is a DENYLIST, not an
-// allowlist, on purpose -- the codebase has 20+ cache prefixes and adds more
-// over time, so an allowlist would silently leave new caches uncleared. Sparing
-// only this small, well-defined operational set keeps the clear complete while
-// never touching live state. (The prior version both used the wrong scan API
-// for our ioredis client -- so it threw every call -- and, had it run, would
-// have wiped queue state.)
+// Redis prefixes "Clear Caches" must never delete: queues, sessions, the
+// enrichment control plane, locks and SSE tickets. A denylist, so caches added
+// later are cleared without being listed.
 const PROTECTED_KEY_PREFIXES = [
   "bull:",
   "sess:",

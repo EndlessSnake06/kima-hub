@@ -1,28 +1,8 @@
 /**
- * Track identification helpers
- * (supersedes the earlier "AcoustID first" order).
- *
- * The identification order the worker must follow:
- *
- *   1. The file's own identity tags — `readIdentityTags` returns a
- *      `musicbrainz_recordingid` tag with no network call, and the
- *      `acoustid_fingerprint` tag for step 3 if one is present.
- *   2. The title-checked MusicBrainz name search — the caller runs it when
- *      the tags did not answer, and takes its answer before AcoustID.
- *   3. AcoustID for the remainder — `identifyTrackByAcoustid` runs only
- *      when steps 1 and 2 both failed: the tag's fingerprint or the stored
- *      `Track.acoustidFingerprint` (the fingerprint stage's answer) goes
- *      through the AcoustID lookup. This module NEVER runs fpcalc — one
- *      fingerprinter per fact; when no fingerprint exists the step is owed,
- *      not recomputed.
- *
- * An `acoustid_id` tag is NOT a recording id. It names AcoustID's own
- * fingerprint cluster (one cluster can map to several recordings), so it is
- * never returned as `recordingMbid`; a file carrying only that tag goes
- * through the fingerprint path like any other.
- *
- * Every terminal outcome is counted in kima_acoustid_track_identity_total
- * (labels path/outcome) so the resolution mix is observable per run.
+ * Track identification order: the file's `musicbrainz_recordingid` tag, then
+ * the caller's title-checked MusicBrainz name search, then AcoustID with the
+ * tagged or stored fingerprint. fpcalc never runs here. An `acoustid_id` tag
+ * names a fingerprint cluster, not a recording, so it is never a recordingMbid.
  */
 
 import { parseFile } from "music-metadata";
@@ -126,26 +106,10 @@ export async function readIdentityTags(
 }
 
 /**
- * Ask AcoustID the recording question for a track the tags and the name
- * search could not answer. Pass the tags from
- * `readIdentityTags` when they are already known; they are re-read
- * otherwise. Pass `stored` — `{ fingerprint }` from `Track.acoustidFingerprint`
- * — to reuse the fingerprint the fingerprint stage already measured instead
- * of recomputing it with fpcalc. This function NEVER runs fpcalc: one
- * fingerprinter per fact, the fingerprint stage.
- *
- * The kinds, straight through from the lookup:
- *  - `answered` — a recording matched; the identification carries it plus
- *    the fingerprint (the caller stores the dedupe column either way).
- *  - `absent` — the question was asked and nothing matched; the
- *    fingerprint sits in the evidence so the caller still stores it.
- *  - `permanent` — nothing to ask with (no fingerprint anywhere) or no
- *    client key; the caller must not fake an answer. The recording stage
- *    is gated on the fingerprint question being SETTLED
- *    (PREREQUISITE_STAGE), so "no fingerprint anywhere" here means the
- *    gate leaked — it is the gate's job to keep the question open.
- *  - `transient`/`rateLimited` — a real call failure with its cause; the
- *    stage stays open until the retry ladder or the source pause resolves.
+ * AcoustID for a track the tags and name search could not identify, using the
+ * tagged or stored (`Track.acoustidFingerprint`) fingerprint. `permanent` means
+ * no fingerprint or no client key; the stage gate normally keeps the question
+ * open until a fingerprint exists.
  */
 export async function identifyTrackByAcoustid(
     track: IdentifiableTrack,
@@ -217,11 +181,8 @@ export async function identifyTrackByAcoustid(
 }
 
 /**
- * One AcoustID lookup with a fingerprint already in hand — tagged, or the
- * fingerprint stage's stored answer. `path` is where the fingerprint came
- * from and labels the identity metric; `source` (what the recording record
- * records) keeps the distinction: a fingerprint read from the file's own
- * tags identifies as `file_tag`, the stored stage answer as `stored`.
+ * One lookup with a fingerprint in hand. `path` labels the metric; `source`
+ * records `file_tag` for a tagged fingerprint, `stored` for the stage's answer.
  */
 async function askAcoustid(
     track: IdentifiableTrack,

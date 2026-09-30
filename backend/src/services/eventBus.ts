@@ -27,30 +27,14 @@ export interface SSEEvent {
 }
 
 /**
- * One connected SSE client.
- *
- * `send` returns false when the connection can no longer accept data, and the
- * bus drops the subscriber -- so a dead client is reaped by the next event
- * rather than lingering until its heartbeat happens to fail.
+ * One connected SSE client. `send` returns false once the connection cannot
+ * take data, and the bus drops the subscriber on the spot.
  */
 export interface SSESubscriber {
     send(event: SSEEvent): boolean;
 }
 
-/**
- * Routes events to the clients that want them.
- *
- * This was an EventEmitter that broadcast every event to every listener, each
- * of which then compared `event.userId` to its own and discarded the mismatches
- * -- O(total connections) of work per event, for a payload almost always
- * destined for exactly one of them. It also carried setMaxListeners(100), so a
- * hundred concurrent (or leaked) connections started printing warnings, and the
- * route layer separately maintained a Map of connections that was written to,
- * deleted from, and never read.
- *
- * Keying the registry by user makes delivery a single map lookup, removes the
- * listener ceiling entirely, and gives that map an actual job.
- */
+/** Routes each event to its user's clients through a per-user registry. */
 class EventBus {
     private byUser = new Map<string, Set<SSESubscriber>>();
 
@@ -70,15 +54,7 @@ class EventBus {
         };
     }
 
-    /**
-     * Remove a subscriber and reap the user's Set if it is now empty.
-     *
-     * The unsubscribe closure already did this; emit's failure path deleted the
-     * subscriber but left the empty Set behind, so `byUser` grew one dead entry
-     * per user whose last connection died on a failed send rather than on a
-     * clean disconnect. Bounded by user count, so a slow leak rather than a bug
-     * -- but two reap paths in one class should not disagree.
-     */
+    /** Remove a subscriber, and the user's entry once it has none left. */
     private drop(set: Set<SSESubscriber>, subscriber: SSESubscriber): void {
         set.delete(subscriber);
         if (set.size > 0) return;

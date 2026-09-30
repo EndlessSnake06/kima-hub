@@ -6,24 +6,10 @@ import { USER_AGENT, config } from "../config";
 import { Outcome, answered, absent, rateLimited, transient, permanent } from "../utils/outcome";
 
 /**
- * AcoustID lookup client (https://api.acoustid.org/v2/lookup).
- *
- * Wire format verified live against api.acoustid.org on 2026-09-10 with a
- * real Chromaprint fingerprint (Carpentor Brut, score 0.9986):
- *  - POST body must be application/x-www-form-urlencoded. AcoustID's server
- *    does not apply form '+'-means-space decoding, so "meta" is sent
- *    space-separated and %20-encoded: "recordings%20releasegroups". That is
- *    the unambiguous form; a literal '+' happens to be tolerated by the
- *    server today but must not be relied on.
- *  - The duration parameter is named "duration" (not "track").
- *  - The response is {status: "ok", results: [...]} — each result carries
- *    {id: <recording MBID>, score, recordings: [{id, title, artists,
- *    releasegroups}]}. Results without a "recordings" array exist (bare
- *    fingerprint match) and must be skipped.
- *
- * The lookup answers with an `Outcome`: a refused or failed call is
- * `transient`/`permanent`/`rateLimited` with the real cause, never a null
- * that a caller could mistake for "the source has nothing".
+ * AcoustID lookup client. The POST body is form-encoded with `meta` as
+ * "recordings%20releasegroups" (the server does not decode '+'), and the length
+ * goes in `duration`. Results without a `recordings` array are skipped.
+ * Failures come back as `Outcome` kinds, never as a null that means "nothing".
  */
 interface AcoustIDRecording {
     id: string;
@@ -73,12 +59,8 @@ class AcoustIDService {
     }
 
     /**
-     * Key precedence (mirrors the retired Last.fm service's getSettings): an explicitly passed
-     * key wins, then the operator's encrypted SystemSettings value, then the
-     * baked config default. A settings read that fails or returns nothing
-     * degrades to the config key — this must never throw into the lookup
-     * path. getSystemSettings is lazily imported to avoid an import cycle
-     * through the settings/encryption utils.
+     * An explicit key, else the encrypted SystemSettings key, else the config
+     * default. Never throws; getSystemSettings is imported lazily to avoid a cycle.
      */
     private async resolveApiKey(explicit?: string): Promise<string | undefined> {
         if (explicit) return explicit;
@@ -106,12 +88,9 @@ class AcoustIDService {
     }
 
     /**
-     * Ask AcoustID which recording this fingerprint is. Never throws:
-     * every failure reaches the caller as a typed `Outcome` kind.
-     *
-     * @param duration Track length in seconds (AcoustID scores against it).
-     * @param fingerprint Chromaprint fingerprint as produced by `fpcalc`.
-     * @param clientKey Optional client key when the caller already holds one.
+     * Ask AcoustID which recording a fingerprint is; never throws.
+     * @param duration Track length in seconds.
+     * @param fingerprint Chromaprint fingerprint from `fpcalc`.
      */
     async lookup(
         duration: number,
