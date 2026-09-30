@@ -53,8 +53,7 @@ const TIER_DISTRIBUTION = {
     wildcard: 0.1, // 10% from deep cuts (variety)
 };
 
-// Tier thresholds carried over from the old similarity source's score
-// distribution (typically 0.5-0.7 range)
+// Tier thresholds over similarity scores, which mostly fall between 0.5 and 0.7.
 const TIER_THRESHOLDS = {
     high: 0.65,       // >=65% match
     medium: 0.50,     // 50-65% match
@@ -2277,10 +2276,7 @@ class DiscoverWeeklyService {
         let skippedDuplicate = 0;
 
         try {
-            // Albums straight from MusicBrainz release-groups (replaces
-            // artist.getTopAlbums). No MBID → nothing to ask about; the
-            // mbid-keyed browse is exact, so the old searchAlbum-by-name
-            // round-trip below collapses to a direct {id, title}.
+            // Albums from MusicBrainz release groups, browsed by MBID; no MBID, no albums.
             let topAlbums: Array<{ name: string; mbid: string }> = [];
             if (artist.mbid) {
                 const rgs = await musicBrainzService.getReleaseGroups(

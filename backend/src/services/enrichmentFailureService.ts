@@ -78,8 +78,7 @@ function mapStageFailure(row: StageFailureRow): EnrichmentFailure {
         maxRetries: STAGE_RETRY_CAP,
         firstFailedAt: row.startedAt ?? lastFailedAt,
         lastFailedAt,
-        // "skipped" in the old ledger — a human parked the question — maps
-        // to the stage record's blocked state.
+        // "skipped" (a human parked the question) is the stage record's blocked state.
         skipped: blocked,
         skippedAt: blocked ? row.decidedAt ?? null : null,
         // A failed stage record is, by definition, unresolved; answered

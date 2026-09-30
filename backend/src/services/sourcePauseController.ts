@@ -148,9 +148,5 @@ class SourcePauseController {
     }
 }
 
-/**
- * The shared controller, consulted by the stage dequeuer and every service
- * that calls a rate-limited source. Its window matches
- * `rateLimiter.sourceCircuitIsOpen`.
- */
+/** The shared controller, consulted by the stage dequeuer and every service that calls a rate-limited source. */
 export const sourcePauseController = new SourcePauseController();

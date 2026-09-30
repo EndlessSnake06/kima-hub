@@ -201,7 +201,7 @@ class ListenBrainzService {
                     mbid: a.artist_mbid,
                 }));
             if (results.length > 0) {
-                // Charts move slowly; cache 6h like the old chart path.
+                // Charts move slowly; cache 6h.
                 await redisClient.setex(cacheKey, 21600, JSON.stringify(results));
             }
             return results;

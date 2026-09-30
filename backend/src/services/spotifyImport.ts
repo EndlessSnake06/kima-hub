@@ -1327,8 +1327,7 @@ class SpotifyImportService {
   }
 
   /**
-   * Process the import (download albums, create playlist)
-   * Now uses AcquisitionService for unified download handling
+   * Process the import: download albums through AcquisitionService, then create the playlist.
    */
   private async processImport(
     job: ImportJob,
@@ -2679,9 +2678,7 @@ class SpotifyImportService {
         const dbArtist = normalizeArtistName(pendingTrack.spotifyArtist);
         const artistFirstWord = dbArtist.split(" ")[0];
 
-        // Candidate pools are per-path data access; the matching ladder is
-        // the shared one in services/trackMatching (this replaced four
-        // inline strategies that had drifted from buildPlaylist's).
+        // Candidate pools are per path; the matching ladder is services/trackMatching.
         const artistCandidateRows = await prisma.track.findMany({
           where: {
             album: {

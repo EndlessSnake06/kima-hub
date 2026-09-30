@@ -76,7 +76,7 @@ export const config = {
         return musicConfig;
     },
 
-    // Lidarr - now reads from database via lidarrService.ensureInitialized()
+    // Lidarr from the environment; lidarrService.ensureInitialized() reads the database settings.
     lidarr:
         process.env.LIDARR_ENABLED === "true"
             ? {

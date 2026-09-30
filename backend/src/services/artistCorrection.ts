@@ -18,7 +18,7 @@ export interface ArtistCorrection {
     mbid?: string;
 }
 
-/** 30 days — corrections are near-permanent, same as the old path. */
+/** 30 days: corrections rarely change. */
 const CORRECTION_TTL = 2592000;
 
 /**

@@ -28,9 +28,8 @@ import { artistSortName } from "../services/artistIdentity";
 
 const router = Router();
 
-// Authentication is per-route (see the requireAuth guards below): a path that
-// matches no route must 404, not 401 -- the old reset/rerun/full endpoints
-// are gone, and the settings UI must see "no such control", not "log in".
+// Authentication is per-route: a path that matches no route must 404, not 401,
+// so the settings UI sees "no such control", not "log in".
 
 /**
  * GET /enrichment/progress

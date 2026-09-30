@@ -2608,10 +2608,7 @@ class LidarrService {
     }
 
     /**
-     * Fetch all data needed for reconciliation in minimal API calls.
-     * Returns indexed Maps for O(1) lookups against job data.
-     *
-     * This replaces multiple per-job API calls with a single snapshot fetch.
+     * Everything reconciliation needs in one snapshot fetch, as Maps for lookups by job data.
      */
     async getReconciliationSnapshot(): Promise<ReconciliationSnapshot> {
         await this.ensureInitialized();
