@@ -1122,8 +1122,16 @@ test.describe("Dogfood walkthrough", () => {
                     // at rest, not owed: the offer gate will never hand it out
                     // and the endpoint already excludes it from `pending`. It
                     // must not be in the target either, or the rebuild is
-                    // racing a number it can never reach.
-                    owed = facts.tracks - (body?.clapEmbeddings?.waitingMissing ?? 0);
+                    // racing a number it can never reach. Same for permanently
+                    // failed rows (a closed dependency, an upstream rejection):
+                    // the engine's own pending definition is
+                    // total − completed − failed − fileMissing, and a rebuild
+                    // that reaches pending == 0 IS done — waiting past it means
+                    // chasing questions that no longer exist.
+                    owed =
+                        facts.tracks -
+                        (body?.clapEmbeddings?.waitingMissing ?? 0) -
+                        (body?.clapEmbeddings?.failed ?? 0);
                     if (completed > lastSeen) {
                         lastSeen = completed;
                         quietSince = Date.now();
