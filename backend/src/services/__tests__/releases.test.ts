@@ -68,6 +68,7 @@ beforeEach(() => {
     jest.spyOn(catalog, "findRelease").mockReturnValue(ASKING);
     tx.releaseChoice.findUnique.mockResolvedValue(null);
     prisma.releaseAcknowledgement.findMany.mockResolvedValue([]);
+    moodMixState.mockResolvedValue({ mix: null, decision: null, playlist: null });
 });
 
 describe("dismissRelease", () => {
@@ -222,7 +223,9 @@ describe("pendingReleases — the 1.11 mood-mix items", () => {
 
     describe("after 1.11 was closed", () => {
         beforeEach(() => {
-            prisma.releaseAcknowledgement.findMany.mockResolvedValue([{ version: "1.10.1" }, { version: "1.11.0" }]);
+            prisma.releaseAcknowledgement.findMany.mockResolvedValue(
+                ["1.10.1", "1.11.0", "1.12.0"].map((version) => ({ version })),
+            );
         });
 
         it("asks again about an unanswered retired mix, and only that", async () => {
