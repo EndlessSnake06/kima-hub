@@ -108,12 +108,8 @@ class AudiobookCacheService {
                 result.errors.forEach((err) => logger.debug(`  - ${err}`));
             }
 
-            // Prune: books that ABS no longer returns must not live forever.
-            // Guard the DESTRUCTIVE case: an empty live set almost certainly
-            // means the ABS fetch failed or the server is down mid-sync --
-            // pruning then would wipe the library. A legitimate bulk removal
-            // looks like a collapse, so a percentage gate would block the
-            // real 4050->240 case; empty-set refusal is the honest line.
+            // Remove books ABS no longer returns, but never on an empty list: that means
+            // the fetch failed, and pruning would wipe the library.
             if (audiobooks.length === 0) {
                 logger.warn(
                     "[AUDIOBOOK] ABS returned an empty library; skipping prune " +
@@ -151,11 +147,8 @@ class AudiobookCacheService {
             return false;
         }
 
-        // Books whose source files are missing on disk (ABS marks them
-        // isMissing) are dead in ABS: DELETE the row instead of skipping it,
-        // so removing a book's files clears it from Kima rather than leaving
-        // a stale row forever. Listening progress survives:
-        // AudiobookProgress.audiobookshelfId is a plain String, no FK.
+        // ABS marks books whose files are gone as isMissing; delete their rows.
+        // Listening progress survives (audiobookshelfId is not a foreign key).
         if (book.isMissing) {
             const deleted = await prisma.audiobook.deleteMany({
                 where: { id: book.id },
@@ -171,9 +164,7 @@ class AudiobookCacheService {
         const author = metadata.authorName || metadata.author || null;
         const narrator = metadata.narratorName || metadata.narrator || null;
         const description = metadata.description || null;
-        // Year strings may be bracketed by taggers ("(2008)") -- parseInt
-        // returns NaN on a leading paren and the year is silently lost.
-        // Extract the first 4-digit run instead.
+        // Taggers may bracket the year ("(2008)"), so take the first 4-digit run.
         const yearMatch = metadata.publishedYear
             ? String(metadata.publishedYear).match(/\d{4}/)
             : null;
@@ -305,11 +296,7 @@ class AudiobookCacheService {
             create: {
                 id: book.id,
                 title,
-                // Recomputed on every sync, same as `title` itself already is
-                // (both branches set it unconditionally, not just on create) --
-                // a sort key derived from a field that keeps refreshing has to
-                // refresh with it, or it silently goes stale the first time
-                // this book's title changes upstream.
+                // Recomputed on every sync so it follows title changes.
                 sortName: artistSortName(title),
                 author,
                 narrator: resolvedNarrator,
@@ -493,9 +480,7 @@ class AudiobookCacheService {
         return audiobook;
     }
 
-    /**
-     * Clean up old cached covers that are no longer in database
-     */
+    /** Delete cached covers that belong to no audiobook. */
     async cleanupOrphanedCovers(): Promise<number> {
         // Ensure cache directory is available
         const available = await this.ensureCoverCacheDir();
@@ -508,12 +493,8 @@ class AudiobookCacheService {
             select: { id: true, localCoverPath: true },
         });
 
-        // Keep-list must cover rows with NULL localCoverPath too: the cover
-        // endpoint serves files found on disk even when the column is unset
-        // (routes/audiobooks.ts falls back to a directory probe), so a NULL
-        // row can still have a live cover file. Keep every cache file whose
-        // id-prefixed name matches a live row; only delete files that
-        // correspond to no live audiobook id at all.
+        // Keep any file named for a live audiobook, even one whose localCoverPath is
+        // NULL: the cover route also finds files on disk.
         const validCoverPaths = new Set(
             audiobooks
                 .filter((a) => a.localCoverPath)

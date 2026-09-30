@@ -1,14 +1,6 @@
 /**
- * Turning a figure on the stats page into something you can put on.
- *
- * A page of numbers about music that cannot play any of it is a report. The
- * difference between a report and a tool is whether the interesting thing you
- * just noticed can be acted on without leaving the page — "seven thousand
- * tracks you have never played" should be one press away from playing some of
- * them, not a fact to feel bad about.
- *
- * Every slice below corresponds to something the page states. Nothing here
- * invents a new query the reader has not already been shown the answer to.
+ * Stats-page figures as playable track lists, so a number on the page is one
+ * press from playing it. Every slice matches something the page already states.
  */
 
 import { Prisma } from "@prisma/client";
@@ -24,25 +16,12 @@ export interface PlayableTrack {
     album: { id: string; title: string; coverArt: string | null };
 }
 
-// "region" was in this union and in the route's allow-list, but `playableSlice`
-// has no case for it, so /stats/tracks?of=region answered 200 with an empty
-// list. Nothing asked for it — the taste plot's region readout uses
-// /stats/region, which is a different endpoint and does work. Removed rather
-// than left advertised; playing a corner of the plot would be a good feature,
-// and it should be written before it is offered.
 export type Slice = "top" | "never" | "core" | "key" | "decade";
 
 const MAX_TRACKS = 100;
 
-/**
- * The two ways the analyser may spell one pitch.
- *
- * Essentia writes whichever spelling its key detector settles on, so the same
- * pitch appears as both "C#" and "Db" across a library. Anything that counts by
- * pitch has to fold them, and anything that then queries by pitch has to accept
- * both — the wheel folded and the query did not, which is how a wedge could
- * show hundreds of listens and hand back nothing.
- */
+/** Essentia writes either spelling of a pitch ("C#" or "Db"), so anything
+ * that counts or queries by pitch must accept both. */
 const ENHARMONIC: Record<string, [string, string]> = {
     "F#": ["F#", "Gb"], "Gb": ["F#", "Gb"],
     "Db": ["Db", "C#"], "C#": ["Db", "C#"],
@@ -96,22 +75,13 @@ export async function playableSlice(params: {
     decade?: number;
     limit?: number;
     /**
-     * The window the page was showing when the button was pressed.
-     *
-     * "Play those 64" has to hand back the 64 the reader just read about. If
-     * the page says 64 songs are half of the last 30 days and this returns the
-     * all-time 64, the button quietly plays a different set than the sentence
-     * beside it names. The slices that read the shelf rather than the listening
-     * — "never" and "decade" — ignore it, because they are not about a period.
+     * The period the page was showing, so "play those 64" returns the 64 it named.
+     * "never" and "decade" ignore it: they describe the shelf, not a period.
      */
     period?: Period;
 }): Promise<PlayableTrack[]> {
     const { userId, slice, key, decade, period = "all" } = params;
-    // Defended here as well as at the route, because NaN survives every guard
-    // that looks like one: it is not nullish so `?? 40` keeps it, and
-    // `Math.min`/`Math.max` both return it. Measured: a NaN limit reaching this
-    // function returned 628 tracks — the whole set, straight past MAX_TRACKS —
-    // rather than erroring, which is the worse of the two failures.
+    // NaN passes `??` and survives Math.min/max, so validate here as well as in the route.
     const asked = Number(params.limit);
     const limit = Math.min(MAX_TRACKS, Math.max(1, Number.isFinite(asked) ? Math.floor(asked) : 40));
 
@@ -145,12 +115,7 @@ export async function playableSlice(params: {
         case "key": {
             const [pitch, scale] = (key ?? "").split(" ");
             if (!pitch || (scale !== "major" && scale !== "minor")) return [];
-            // Both spellings, because the analyser writes either and the wheel
-            // draws one wedge for the pair. Matching the wedge's own label
-            // exactly made a press do nothing at all: on the library this was
-            // found against there are 379 tracks written "C#" and none written
-            // "Db", yet the wheel counts them into a wedge labelled Db — so it
-            // showed a large number and returned an empty queue, silently.
+            // The wheel draws one wedge for both spellings, so match both.
             const pitches = spellingsOf(pitch);
             const rows = await prisma.$queryRaw<Row[]>(Prisma.sql`
                 ${listenRows(userId, period)}

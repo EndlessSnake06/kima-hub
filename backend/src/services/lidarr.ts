@@ -21,10 +21,7 @@ import type {
     LidarrHistoryResponse,
 } from "../types/lidarr";
 
-/**
- * Error types for music acquisition failures
- * Used to determine fallback strategies
- */
+/** Why an acquisition failed, which decides the fallback. */
 export enum AcquisitionErrorType {
     ALBUM_NOT_FOUND = "ALBUM_NOT_FOUND",
     NO_RELEASES_AVAILABLE = "NO_RELEASES_AVAILABLE",
@@ -58,7 +55,6 @@ export class AcquisitionError extends Error {
     }
 }
 
-// Discovery tag label - used to identify discovery artists in Lidarr
 const DISCOVERY_TAG_LABEL = "lidify-discovery";
 
 // Simple interface for MusicBrainz artist data (from external service)
@@ -908,13 +904,7 @@ class LidarrService {
         }
     }
 
-    /**
-     * Wait for a Lidarr command to complete
-     * @param commandId The command ID to poll
-     * @param timeoutMs Maximum time to wait (default: 30s)
-     * @param pollIntervalMs Time between polls (default: 2s)
-     * @returns The completed command status
-     */
+    /** Poll a Lidarr command until it completes, every 2 s for up to 30 s by default. */
     private async waitForCommand(
         commandId: number,
         timeoutMs: number = this.COMMAND_POLL_TIMEOUT_DEFAULT,
@@ -2431,11 +2421,9 @@ class LidarrService {
     }
 
     /**
-     * Delete an already-located queue item and blocklist its release.
-     * The only implementation of the queue-delete HTTP call
-     * (one implementation wins, the copies are deleted).
-     * An already-gone item (404) counts as success.
-     * `skipRedownload: false` lets Lidarr search for an alternative.
+     * Delete a located queue item and blocklist its release; the only queue-delete
+     * call. A 404 counts as success; `skipRedownload: false` lets Lidarr search for
+     * an alternative.
      */
     async removeItemAndBlocklist(
         item: { id: number; title?: string },
@@ -2767,27 +2755,10 @@ class LidarrService {
                 return true;
             }
 
-            // Strategy 3: edition differences — "Dangerous Days" against a
-            // held "Dangerous Days (Deluxe Edition)".
-            //
-            // This deliberately does NOT reuse albumIdentityKey() on its own.
-            // That key answers a DIFFERENT question — "are these one row in the
-            // library?" — and as of 2026-08-23 it answers NO for editions, so a
-            // remaster and its original stay separate albums on the shelf.
-            // Acquisition needs the opposite answer: already holding the deluxe
-            // edition is reason enough not to fetch the plain one again. The two
-            // questions shared one key until the library rule changed, which
-            // silently flipped this check; acquisition now derives its own key —
-            // strip the edition marker FIRST, then apply the same
-            // casefold/unaccent/alphanumeric rules the library key uses.
-            //
-            // What must never come back: raw substring containment tested in
-            // both directions. Any held album whose title merely appeared inside
-            // the requested one counted as a match — asking for "Trust In
-            // Trance" while owning "Trance" said yes. That marks a download
-            // complete for an album we do not have, which then reads as ACQUIRED
-            // and leaves retention deleting something that was never there.
-            // Comparing whole stripped keys for equality keeps that shut.
+            // Edition differences: holding the deluxe is enough not to fetch the plain
+            // one. albumIdentityKey keeps editions apart for the library, so strip the
+            // edition marker first. Compare whole keys, never substrings: owning "Trance"
+            // must not satisfy "Trust In Trance".
             const acquisitionKey = (title: string) => albumIdentityKey(stripAlbumEdition(title));
 
             const normalizedArtist = artistName.toLowerCase().trim();
@@ -3004,10 +2975,7 @@ export async function cleanStuckDownloads(
     }
 }
 
-/**
- * Get recently completed downloads from Lidarr history
- * Used to find orphaned completions (webhooks that never arrived)
- */
+/** Recently completed Lidarr downloads, used to find completions whose webhook never arrived. */
 export async function getRecentCompletedDownloads(
     lidarrUrl: string,
     apiKey: string,

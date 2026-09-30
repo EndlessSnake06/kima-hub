@@ -540,11 +540,8 @@ class SimpleDownloadManager {
                 // No match - check for duplicates before creating tracking job
                 logger.debug(`   No match found, checking for duplicates...`);
 
-                // ═══════════════════════════════════════════════════════════════
-                // DUPLICATE DETECTION: Prevent creating duplicate tracking jobs
-                // This prevents the "Beatles Abbey Road" issue where the same
-                // album is downloaded twice by SABnzbd, causing file deletions.
-                // ═══════════════════════════════════════════════════════════════
+                // Skip creating a tracking job for an album already being fetched, so it is
+                // not downloaded twice.
 
                 // Normalize for duplicate detection
                 const normalizedArtistForDup = artistName?.toLowerCase().trim() || "";
@@ -593,15 +590,7 @@ class SimpleDownloadManager {
 
                 logger.debug(`   No duplicates found, creating tracking job`);
 
-                // Find user from recent artist download
-                // Attribute this to whoever most recently asked for something.
-                //
-                // This looked for the most recent `type: "artist"` job, and
-                // NOTHING in the codebase creates one — the artist route calls
-                // processArtistDownload, which writes album rows only. So the
-                // lookup was always null and this branch returned matched:false
-                // every time, meaning an unmatched Lidarr download was never
-                // tracked at all.
+                // Attribute the download to whoever most recently asked for this artist.
                 const recentJob = await tx.downloadJob.findFirst({
                     where: {
                         status: { in: ["pending", "processing", "completed"] },
@@ -901,13 +890,9 @@ class SimpleDownloadManager {
     }
 
     /**
-     * Handle import failure - LET LIDARR HANDLE RELEASE ITERATION
-     *
-     * Strategy:
-     * 1. Blocklist the failed release with skipRedownload=false (Lidarr searches for alternatives)
-     * 2. Track the failure but DON'T limit retries - let Lidarr exhaust all releases
-     * 3. Only intervene when Lidarr has NO more releases (detected via stale job timeout)
-     * 4. At that point, try a different album from the same artist
+     * Blocklist the failed release with skipRedownload=false so Lidarr tries
+     * alternatives, without capping retries. Only when Lidarr runs out (seen as a
+     * stale job) does the manager step in and try another album by the artist.
      */
     async onImportFailed(
         downloadId: string,
@@ -1024,14 +1009,9 @@ class SimpleDownloadManager {
     }
 
     /**
-     * Try the next album from the same artist when current album is exhausted
-     * This is called when all releases for an album have been tried
-     *
-     * IMPORTANT:
-     * - For Discovery Weekly jobs, we DON'T do same-artist fallback.
-     *   Discovery should find NEW artists, not more albums from the same artist.
-     * - For Spotify Import jobs, we DON'T do same-artist fallback.
-     *   User wants EXACT playlist, not substitutes.
+     * Try another album by the same artist once every release of this one failed.
+     * Not for Discover Weekly (it wants new artists) or Spotify imports (they want
+     * the exact playlist).
      */
     private async tryNextAlbumFromArtist(
         job: any,
@@ -1349,11 +1329,9 @@ class SimpleDownloadManager {
     }
 
     /**
-     * Mark stale jobs as failed (called by cleanup job)
-     * - Pending jobs (never started) timeout after 3 minutes = "download never started"
-     * - Processing jobs with no lidarrRef (never grabbed) timeout after 2 minutes = "no sources found"
-     * - Processing jobs with lidarrRef (grabbed but not imported) timeout after 5 minutes = "import failed"
-     * Optionally accepts a pre-fetched snapshot to avoid duplicate API calls.
+     * Fail stale jobs: pending over 3 min (never started), processing without a
+     * Lidarr ref over 2 min (no sources), with one over 5 min (import failed).
+     * Accepts a prefetched snapshot to avoid repeat API calls.
      */
     async markStaleJobsAsFailed(
         existingSnapshot?: ReconciliationSnapshot
@@ -1997,15 +1975,9 @@ class SimpleDownloadManager {
     }
 
     /**
-     * Sync with Lidarr's queue to detect cancelled/orphaned downloads.
-     * Uses snapshot approach for efficient batch checking.
-     *
-     * IMPORTANT: Implements grace period to prevent false cancellations when Lidarr
-     * auto-retries with a different release (new downloadId). Missing downloads are
-     * only marked as cancelled after 3 sync checks (90 seconds), and replacement
-     * detection handles downloadId changes.
-     *
-     * Optionally accepts a pre-fetched snapshot to avoid duplicate API calls.
+     * Sync with Lidarr's queue to catch cancelled or orphaned downloads. A missing
+     * download is cancelled only after 3 checks (90 s), and a changed downloadId is
+     * treated as a replacement, since Lidarr retries with new releases.
      */
     async syncWithLidarrQueue(
         existingSnapshot?: ReconciliationSnapshot

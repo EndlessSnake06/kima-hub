@@ -44,32 +44,16 @@ export const FEATURES_ONLY_WEIGHTS = {
 };
 
 /**
- * Diversification caps (S3). Ranking on the sound fingerprint alone let one
- * album or one artist flood the list: over 20 fixed seeds at limit 20 the
- * returned lists were 20.3% the seed's own album and 49.2% the seed's own
- * artist (fixplan-work/S3.md). Two per album and four per artist — with the
- * SEED counted against its own album and artist, so a list carries at most
- * one further track from the seed's album and three more from its artist —
- * bring that to 6.8% / 16-18% while still filling every list that can be
- * filled.
+ * At most two tracks per album and four per artist, with the seed counted
+ * against its own, so one album or artist cannot flood the list.
  */
 export const MAX_PER_ALBUM = 2;
 export const MAX_PER_ARTIST = 4;
 
 /**
- * "Similar tracks" ranks on the CLAP sound fingerprint alone whenever
- * embeddings exist. Hand-built audio features are not blended in:
- *  - on 446 human odd-one-out judgements (kima-hub-unified,
- *    that engine's own DSP features) the
- *    fingerprint alone agreed with people 67.0% of the time; adding feature
- *    distance at weight 0.5 dropped that to 61.9%, at 1.0 to 55.4%;
- *  - the old 0.55 fingerprint / 0.45 feature blend was re-ranked mostly by the
- *    features: over 300 seeds the feature term's
- *    spread across the 100 candidates was 3.7x the fingerprint term's, and
- *    59.5% of the returned top 20 came from fingerprint ranks 21-100;
- *  - instrumentalness, acousticness and part of valence/arousal are themselves
- *    read off the same CLAP vector, so blending them double-counts it.
- * The features-only path remains for installs with MusiCNN but no CLAP.
+ * Similar tracks, ranked on the CLAP embedding alone when one exists. Blending
+ * in audio features measured worse against human judgements, and several of
+ * them are read off the same embedding. Installs without CLAP rank on features.
  */
 export async function findSimilarTracks(
     trackId: string,
@@ -95,21 +79,10 @@ async function findSimilarClapOnly(
     trackId: string,
     limit: number
 ): Promise<SimilarTrack[]> {
-    // S1: the HNSW index walks hnsw.ef_search candidates (default 40), so a
-    // large `limit` would silently come back short. Size the width from the
-    // request (the seed is the one excluded id) and run the query inside the
-    // transaction that raised it -- on `tx`, not the pool.
-    //
-    // S3 note: `candidates` ranks the WHOLE library, so that ranking is a
-    // top-N sort over a full scan (309 ms at 8.9k tracks, measured) rather
-    // than an index walk -- and it has to be: the index only ever offers
-    // ef_search candidates, and a fixed over-fetch underfills (real seeds
-    // needed rank 548 for 50 tracks and 908 for 100, past any width we can
-    // afford; pgvector caps ef_search at 1000). The widened transaction is
-    // still used, so this stays correct if the planner ever picks the index.
-    // The LIMIT over-fetches by MAX_PER_ARTIST because the SQL caps each
-    // group over the whole ranking while thinByGroup additionally charges the
-    // seed against its own album/artist -- up to 4 rows can be dropped there.
+    // Ranks the whole library (the HNSW index only offers ef_search candidates,
+    // too few once groups are thinned), inside the transaction that raised
+    // ef_search. The LIMIT over-fetches by MAX_PER_ARTIST because thinByGroup also
+    // charges the seed against its album and artist.
     const rows = await withEfSearch(efFor(limit, 1), (tx) =>
         tx.$queryRaw<SimilarTrack[]>(
             Prisma.sql`
@@ -182,11 +155,7 @@ async function findSimilarClapOnly(
         ),
     );
 
-    // The SQL caps are per group over the ranking; the seed still has to
-    // consume its own album's and artist's budget, so its ids seed the
-    // counters (an unknown seed id has no rows to count anyway). The extra
-    // +1 in the LIMIT covers exactly that seed, so the thinned list still
-    // reaches `limit` whenever the library can supply it.
+    // The seed consumes its own album's and artist's budget.
     const seed = await prisma.track.findUnique({
         where: { id: trackId },
         select: { album: { select: { artistId: true } }, albumId: true },
@@ -198,11 +167,8 @@ async function findSimilarClapOnly(
 }
 
 /**
- * Keep only the first MAX_PER_ALBUM rows of any album and the first
- * MAX_PER_ARTIST of any artist, walking the already-ranked list in order,
- * and stop at `limit` accepted rows. `seed` supplies the two groups the seed
- * track itself belongs to, which start at 1 so the seed counts against its
- * own album and artist.
+ * Walk the ranked rows keeping at most MAX_PER_ALBUM per album and
+ * MAX_PER_ARTIST per artist, up to `limit`. The seed's groups start at 1.
  */
 export function thinByGroup(
     ranked: SimilarTrack[],
@@ -236,20 +202,10 @@ export function thinByGroup(
 }
 
 /**
- * Fallback path (DB-9): used by findSimilarTracks only when MusicCNN features
- * are available but CLAP embeddings are not (see the mode selection above).
- * This is a full CROSS JOIN scan over every Track, computing the weighted
- * feature-similarity expression per row before ORDER BY/LIMIT;
- * cost scales with total track count, which is fine for typical self-hosted
- * library sizes. A cheap bpm/key prefilter was considered to prune candidates
- * before that computation, but bpm_similarity() normalizes BPM into a 70-140
- * band via repeated doubling/halving to catch half-/double-time matches
- * (e.g. 70 vs 140 BPM scores as near-identical) -- a naive `ABS(t.bpm - s.bpm)`
- * prefilter in the WHERE clause would incorrectly exclude those without
- * reimplementing the same normalization, so it was left out rather than risk
- * silently dropping valid matches for a low-traffic fallback.
+ * Feature-only ranking for installs with MusiCNN features but no CLAP: a full
+ * scan scoring every track. No BPM prefilter, because bpm_similarity folds
+ * half and double time together and a plain BPM range would drop those.
  */
-
 async function findSimilarFeaturesOnly(
     trackId: string,
     limit: number
