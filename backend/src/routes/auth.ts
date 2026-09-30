@@ -366,11 +366,8 @@ router.delete("/users/:id", requireAuth, requireAdmin, async (req, res) => {
             where: { id },
         });
 
-        // The auth layer caches the user row for 30s and `loadUser` does not
-        // re-check existence, so without this a deleted user's token keeps
-        // authenticating until the TTL expires -- measured at 28+ seconds of
-        // access after the row was gone. The Subsonic delete path already does
-        // this (routes/subsonic/userManagement.ts); this one was missed.
+        // The auth layer caches user rows for 30 s, so drop this one now or the
+        // deleted user's tokens keep working until it expires.
         invalidateUserCache(id);
 
         res.json({ message: "User deleted successfully" });
@@ -564,7 +561,7 @@ router.post("/stream-ticket", requireAuth, async (req, res) => {
     }
 });
 
-// DELETE /auth/account - Delete the current user's own account (App Store §5.1.1)
+// DELETE /auth/account - Delete the current user's own account
 router.delete("/account", requireAuth, async (req, res) => {
     try {
         await prisma.$transaction(
@@ -587,27 +584,14 @@ router.delete("/account", requireAuth, async (req, res) => {
                 await tx.userMoodMix.deleteMany({ where: { userId: req.user!.id } });
                 await tx.discoveryBatch.deleteMany({ where: { userId: req.user!.id } });
 
-                // Every other User relation declares onDelete: Cascade; deleting the User
-                // row propagates automatically to ApiKey, Playlist, Play, LikedTrack,
-                // PlaybackState, Notification, AudiobookProgress,
-                // PodcastProgress, PodcastSubscription, PodcastDownload, CachedTrack,
-                // DeviceLinkCode, DownloadJob, DiscoveryAlbum, DiscoverExclusion,
-                // DislikedEntity, HiddenPlaylist, SpotifyImportJob, UnavailableAlbum,
-                // UserDiscoverConfig, UserSettings, ShareLink, SubsonicBookmark,
-                // SubsonicPlayQueue.
+                // Every other User relation cascades on delete.
                 await tx.user.delete({ where: { id: req.user!.id } });
             },
             { isolationLevel: "Serializable" }
         );
 
-        // Same reason as the admin delete route above, which carries the
-        // measurement: the auth layer caches the user row for 30s and
-        // `loadUser` never re-checks existence, so without this the token of
-        // the account just deleted keeps authenticating until the TTL expires.
-        // Deliberately after the transaction commits, not inside it -- an
-        // invalidation issued inside a transaction that then rolls back would
-        // evict a row that still exists, which is harmless, but it would also
-        // NOT run on the path that matters if the commit is what fails.
+        // Drop the cached user row so the deleted account's tokens stop working now.
+        // After the commit, so it runs only once the delete is real.
         invalidateUserCache(req.user!.id);
 
         return res.json({ deleted: true });

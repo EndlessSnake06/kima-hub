@@ -258,10 +258,7 @@ router.get("/:id", requirePlaylistReader, async (req, res) => {
         const mergedItems = [
             ...formattedItems,
             ...formattedPending,
-            // Both tables draw from ONE rank space, so a string compare is a
-            // real ordering. Previously this compared two independent integer
-            // counters against each other, which is why a reorder scrambled
-            // every imported playlist.
+            // Items and pending tracks share one rank space, so a string compare orders them.
         ].sort((a, b) => (a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : 0));
 
         res.json({
@@ -376,12 +373,7 @@ router.delete("/:id", requirePlaylistOwner, async (req, res) => {
 });
 
 // POST /playlists/:id/items
-// POST /playlists/:id/items
-//
-// Accepts a single { trackId } or a bulk { trackIds: [...] }. The single form is
-// kept because existing clients use it, but "add this album" should send one
-// bulk request -- the browser was issuing one HTTP call per track at four
-// queries each.
+// Takes { trackId } or { trackIds: [...] }; adding an album should send one bulk request.
 router.post("/:id/items", requirePlaylistOwner, async (req, res) => {
     try {
         const parsed = addTracksSchema.safeParse(req.body);
@@ -482,21 +474,9 @@ router.post("/:id/items/batch", async (req, res) => {
             return res.status(403).json({ error: "Access denied" });
         }
 
-        // Insert through the shared allocator rather than here. Every write to
-        // PlaylistItem must assign `rank`: the column is UNIQUE per playlist
-        // with an empty-string default, so an insert that omits it takes the
-        // single '' slot and createMany({ skipDuplicates: true }) silently
-        // drops every row after the first. This endpoint used to set only
-        // `sort`, which meant a 50-track request answered `added: 1` while
-        // storing one track, and every later batch into that playlist stored
-        // nothing at all. addTracks holds the advisory lock and chains ranks
-        // off the current maximum -- the one place that logic lives.
-        //
-        // This also scopes the add to LIBRARY tracks, matching the
-        // DISCOVER-location filter the other write paths already enforce: a
-        // track sitting in the discovery pile is not something a playlist
-        // should be able to reference. Such ids now come back under
-        // skippedInvalid instead of being added.
+        // addTracks assigns ranks under its advisory lock (rank is unique per
+        // playlist, so an insert without one would drop the batch) and accepts only
+        // LIBRARY tracks; others come back as skippedInvalid.
         const result = await playlistService.addTracks(req.params.id, trackIds);
 
         const items = await prisma.playlistItem.findMany({
@@ -528,10 +508,7 @@ router.post("/:id/items/batch", async (req, res) => {
 });
 
 // DELETE /playlists/:id/items/:trackId
-//
-// 404 when the row is already gone. This used to call prisma.delete, which
-// throws P2025 on a missing row, and the generic catch turned that into a 500 --
-// so double-clicking remove surfaced a server error.
+// 404 when the item is already gone.
 router.delete("/:id/items/:trackId", requirePlaylistOwner, async (req, res) => {
     try {
         const removed = await playlistService.removeTracks(req.params.id, [

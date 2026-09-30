@@ -1,35 +1,9 @@
 /**
- * Album identity — the sibling of artistIdentity, for albums.
- *
- * SCOPE NOTE: this fixes duplicate albums. It deliberately does NOT retire the
- * `temp-<ts>-<random>` sentinel on `rgMbid`, even though that is the same
- * defect retired on Artist.mbid. `OwnedAlbum` and `DiscoveryAlbum` reference
- * albums by the rgMbid STRING VALUE rather than by a foreign key, so nulling
- * the sentinel would silently dangle every ownership row -- which drives the
- * "owned" artist filter and the artist-protection check in cleanup-lidarr.
- * Those two tables must move to an albumId FK first; the sentinel goes with
- * that change, not this one.
- *
- * `Album` models a MusicBrainz RELEASE GROUP (`rgMbid`), not an individual
- * release. That distinction decides the rules below: only true duplicates merge.
- * "Il Pozzo D'Amor" = "Il Pozzo d'Amor" (merge); "Playing the Angel (Deluxe)"
- * ≠ "Playing the Angel" (separate); "Random Access Memories" ≠ "Random Access
- * Memories (Drum & Bass Remix)" (separate).
- *
- * The defects this replaces:
- *
- *   - Lookup matched `title` raw and un-normalised, so "Abbey Road",
- *     "abbey road" and "Abbey Road (2019 Remaster)" became three rows under one
- *     artist. The identity key now preserves edition markers, so "Abbey Road" and
- *     "Abbey Road (2019 Remaster)" are distinct albums.
- *   - `rgMbid` was the only UNIQUE column and was NOT NULL, so the scanner
- *     invented `temp-<ts>-<random>` when MusicBrainz gave nothing -- a
- *     guaranteed-unique value on the only unique column, which meant the
- *     database could never reject a duplicate. Same shape as the artist bug.
- *   - A cross-artist fallback matched on `title + year` across EVERY artist to
- *     keep compilations together. Its only guards were the literal strings
- *     "Unknown Album"/"Unknown" and a non-null year, so one artist's 1995
- *     "Greatest Hits" would absorb a different artist's 1995 "Greatest Hits".
+ * Album identity, the sibling of artistIdentity. An Album is a MusicBrainz
+ * release group, and only true duplicates merge: "Il Pozzo D'Amor" and "Il
+ * Pozzo d'Amor" merge; "Playing the Angel (Deluxe)" stays separate. The
+ * `temp-` rgMbid placeholder stays until OwnedAlbum and DiscoveryAlbum reference
+ * albums by id, since they key on the rgMbid string today.
  */
 
 import { Prisma } from "@prisma/client";
@@ -62,15 +36,9 @@ const GENERIC_TITLES = new Set([
 ]);
 
 /**
- * The dedupe key for an album title, scoped to its artist.
- *
- * Only case/punctuation/accent/unicode-variant duplicates merge. Edition
- * markers (remaster, deluxe, anniversary, remix, live, etc.) are NOT stripped:
- * an album whose title differs by any such marker stays its own row.
- *
- *   "Il Pozzo D'Amor" | "il pozzo d'amor"        -> "ilpozzodamor"
- *   "Playing the Angel (Deluxe)"                  -> "playingtheangel(deluxe)"
- *   "( )"                                          -> "" (see below)
+ * The album's dedupe key within its artist: case, punctuation, accents and
+ * unicode variants fold; edition markers stay. "Il Pozzo D'Amor" -> "ilpozzodamor",
+ * "Playing the Angel (Deluxe)" -> "playingtheangel(deluxe)".
  */
 export function albumIdentityKey(title: string | null | undefined): string {
     if (title == null) return "";
@@ -166,10 +134,8 @@ export async function resolveAlbum(
         return existing;
     }
 
-    // Cross-artist reuse, for compilations ONLY. This keeps a VA release
-    // together when albumartist tags disagree between its files. It previously
-    // ran for EVERY album with a known year, which is how unrelated albums
-    // sharing a title got merged.
+    // Cross-artist reuse for compilations only, keeping a VA release together
+    // when its files' albumartist tags disagree.
     if (
         input.isCompilation &&
         input.year != null &&
@@ -193,13 +159,7 @@ export async function resolveAlbum(
                 artistId: input.artistId,
                 title,
                 identityKey,
-                // No displayTitle exists yet at creation time -- this is the
-                // canonical title only, same as identityKey above. A later
-                // override keeps sortName in sync itself (routes/enrichment.ts).
-                // artistSortName is text-generic (fold/lower/collapse/strip
-                // leading article), not artist-specific despite the name --
-                // reused here rather than duplicated, same as kima_sort_name
-                // is shared on the SQL side.
+                // The canonical title; a later display override updates sortName itself.
                 sortName: artistSortName(title),
                 rgMbid,
                 year: input.year ?? null,

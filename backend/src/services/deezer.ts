@@ -14,12 +14,9 @@ import type { SimilarArtist } from "./listenBrainz";
 
 const DEEZER_API = "https://api.deezer.com";
 
-// Does this search hit name the thing we searched for? Deezer ranks by
-// popularity, not exactness, so the first hit is routinely a different
-// record or artist. Nothing in this service accepts an unverified first
-// hit: a lookup answers only when the returned name agrees with the query
-// (identical text, or identical after normalization; an all-punctuation
-// name must match exactly, or every such name would "agree").
+// Deezer ranks search hits by popularity, so a hit counts only when its name
+// matches the query, exactly or after normalisation (all-punctuation names
+// must match exactly).
 function namesAgree(found: string | undefined, wanted: string): boolean {
     if (found === undefined) return false;
     const a = normalizeString(found);
@@ -111,11 +108,8 @@ class DeezerService {
     }
 
     /**
-     * Cache-then-fetch helper: checks Redis first, and on a miss runs `requestFn`
-     * (which must issue its Deezer calls via `deezerGet`) and caches the result.
-     * Negative results are cached too, under the "null" sentinel, since getCached/
-     * setCache already round-trip through CacheWrapper's own JSON encoding.
-     * Mirrors MusicBrainzService.cachedRequest.
+     * Redis first; on a miss run `requestFn` (which must call `deezerGet`) and
+     * cache the result, including a null answer.
      */
     private async cachedRequest<T>(cacheKey: string, requestFn: () => Promise<T>): Promise<T> {
         const cached = await this.getCached(cacheKey);
@@ -169,18 +163,10 @@ class DeezerService {
     }
 
     /**
-     * Related artists for a seed artist (replaces the old Last.fm service's
-     * artist.getSimilar). Searches Deezer by name to resolve the artist id,
-     * then reads Deezer's public `artist/{id}/related` list.
-     *
-     * `match` is rank-position based: Deezer orders related artists by
-     * relevance and publishes no similarity score, so the first entry gets
-     * 0.9 and the last 0.5, decreasing linearly with position. `nb_fan` is
-     * deliberately NOT used for scoring — fan counts are popularity, not
-     * similarity, and would flatten the band.
-     *
-     * Returns [] (never throws) when the seed cannot be resolved or the
-     * related list is empty — callers fall through to their next tier.
+     * Deezer's related artists for a name, resolved to an id by search. Deezer
+     * publishes no similarity score, so `match` falls linearly by position from
+     * 0.9 to 0.5 (fan counts measure popularity, not similarity). [] when
+     * unresolved; never throws.
      */
     async getRelatedArtists(artistName: string, limit = 30): Promise<SimilarArtist[]> {
         const cacheKey = `related:${artistName.toLowerCase()}:${limit}`;
@@ -795,8 +781,7 @@ class DeezerService {
         }
     }
 
-    // Not cached: user queries are high-cardinality and Deezer's search is fast (<300ms).
-    // Only the popular-podcasts feed is cached since it's a shared response.
+    // Not cached: queries vary too much and the search is fast. Only the shared popular feed is cached.
     async searchPodcasts(query: string, limit: number = 20): Promise<DeezerPodcast[]> {
         try {
             const body = await this.deezerGet<any>("/search/podcast", {

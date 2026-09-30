@@ -1,14 +1,4 @@
-/**
- * DataCacheService - Unified data access with consistent caching pattern
- * 
- * Pattern: DB first -> Redis fallback -> API fetch -> save to both
- * 
- * This ensures:
- * - DB is the source of truth
- * - Redis provides fast reads
- * - API calls only happen when data doesn't exist
- * - All fetched data is persisted for future use
- */
+/** Cached data access: database first, then Redis, then the API, saving to both. */
 
 import { logger } from "../utils/logger";
 import { prisma } from "../utils/db";
@@ -85,18 +75,10 @@ class DataCacheService {
         albumId: string,
         rgMbid: string
     ): Promise<string | null> {
-        // A placeholder id used to end this call right here, on the reasoning
-        // that the Cover Art Archive can do nothing without a real MusicBrainz
-        // id. True of the archive, but Deezer searches by artist and title --
-        // and 46% of a real library carries a placeholder id, so this returned
-        // "no cover" for nearly half the albums without asking anyone.
-        // findAlbumArtwork skips the id-keyed sources on its own now.
 
         const cacheKey = `album-cover:${albumId}`;
 
-        // 1. Check DB first. Title and artist come back too: the artwork
-        //    sources need them to ask Deezer, which is the source most likely
-        //    to have the record and the one this path never used to try.
+        // 1. Database first. Title and artist come back too, for sources that search by name.
         let artistName = "";
         let albumTitle = "";
         try {
@@ -130,9 +112,7 @@ class DataCacheService {
             // Redis errors are non-critical
         }
 
-        // 3. Ask every source, not just the Cover Art Archive. This asked the
-        //    archive alone, which is the reason so many album cards here fell
-        //    back to a placeholder when Deezer had the record all along.
+        // 3. Ask every artwork source, not just the Cover Art Archive.
         if (!artistName && !isRealMbid(rgMbid)) {
             // Nothing to search on at all: no title, no artist, no real id.
             return null;

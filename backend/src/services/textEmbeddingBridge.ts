@@ -20,12 +20,9 @@ const emitter = new EventEmitter();
 // than pick an arbitrary ceiling that would mask a genuine leak.
 emitter.setMaxListeners(0);
 
-// The shared redisClient is enableOfflineQueue:false + maxRetriesPerRequest:0
-// (fail-fast for request/session work). Text-embed pub/sub must instead ride out a
-// cold or reconnecting Redis rather than throwing "Stream isn't writeable" (#197).
-// BOTH ends need the soft options: the first fix only hardened the subscriber, so
-// publish() on the strict client still threw the same error under load. A
-// subscriber-mode connection also cannot publish, so the publisher is separate.
+// The shared redisClient fails fast; text-embed pub/sub must ride out a cold
+// or reconnecting Redis, so both ends use soft duplicates. A subscribing
+// connection cannot publish, so the publisher is separate.
 function softDuplicate(): RedisConn {
     return redisClient.duplicate({ enableOfflineQueue: true, maxRetriesPerRequest: null });
 }
@@ -53,12 +50,9 @@ function getPublisher(): RedisConn {
 }
 
 async function ensureSubscriber(): Promise<RedisConn> {
-    // Transient drops self-heal: ioredis reconnects (retryStrategy) and re-issues
-    // the psubscribe (autoResubscribe), so the cached subscriber recovers on its
-    // own. Only a terminal "end" -- reached here via the explicit disconnect()
-    // below when setup fails -- must not be reused: the cached promise would
-    // otherwise let every later request publish and then wait the full timeout for
-    // a response that can never arrive.
+    // ioredis reconnects and resubscribes on its own; only an ended subscriber
+    // (after a failed setup) must be replaced, or requests would wait out the
+    // timeout for replies that never come.
     if (subscriber && subscriber.status === "end") {
         subscriber = null;
         subscriberPromise = null;
@@ -173,25 +167,10 @@ export interface TextSearchRow {
 }
 
 /**
- * Text search over the library's CLAP embeddings: the `limit` tracks nearest to
- * the query's text embedding, best first. Shared by /api/vibe/search and the
- * public copy so the two cannot drift.
- *
- * Ranks only; there is deliberately no similarity cut-off. A text-to-audio
- * cosine is comparable only within one query (CLIP-style models turn it into a
- * probability with a softmax at a learned temperature, never against a global
- * constant). Measured on the 8,913-track full library with the
- * padding-fixed text encoder:
- *  - the old fixed 0.40 floor passed 4,789 tracks for "country music with
- *    banjo" (no country in the library) and returned 41 of 745 synth-pop
- *    tracks for "synth pop" (0 before the text encoder's padding fix);
- *  - per-query rules fared no better: tracks 3+ standard deviations above the
- *    query's library mean numbered 0 for "solo piano" (1,258 piano tracks,
- *    top-20 precision 0.90) yet 57 for "jazz saxophone" (no jazz), and the
- *    best score for absent genres (0.52-0.66) overlaps the best score for
- *    present ones (0.48-0.70).
- * No score threshold separates "nothing matches" from "many things match", so
- * the honest contract is a ranked list.
+ * Text search over CLAP embeddings: the `limit` nearest tracks, best first,
+ * shared by /api/vibe/search and the public copy. No similarity cut-off:
+ * text-to-audio cosine is comparable only within one query, and no threshold
+ * measured on the full library separated "nothing matches" from "many match".
  */
 export async function searchTracksByText(
     query: string,

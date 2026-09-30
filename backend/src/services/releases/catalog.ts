@@ -1,30 +1,9 @@
 /**
- * What each release tells the user, and what it asks them.
- *
- * This is the file to edit when cutting a release. Everything else about the
- * release window — when it shows, what "closed it" means, how a decision is
- * stored — is machinery that does not change per release.
- *
- * ## Three kinds of item, one mechanism
- *
- * - `note` says something happened. It asks for nothing.
- * - `action` offers something the user can run, once, from the window or later
- *   from settings. It never runs on its own.
- * - `choice` asks permission. It carries an explicit default, and that default
- *   is always `false`.
- *
- * ## Why closing the window is a real answer
- *
- * When the window is dismissed, every `choice` the user did not touch is
- * recorded at its default with `decidedBy: DISMISSED`. Closing and declining
- * land in the same table, in the same shape.
- *
- * That is deliberate. The alternative — leaving unanswered choices absent and
- * inferring later — creates a third state, and a third state eventually gets
- * read optimistically by something that just wants a boolean. Recording the
- * decline outright means no future code can mistake silence for consent, and it
- * means "how many people opted in" has an honest denominator rather than a
- * flattering one.
+ * What each release tells the user and asks them; the file to edit when
+ * cutting a release. A `note` informs, an `action` offers something to run,
+ * a `choice` asks permission and defaults to false. Dismissing the window
+ * records every untouched choice at its default (`decidedBy: DISMISSED`), so
+ * silence is never read as consent.
  */
 
 export type ReleaseItem =
@@ -62,10 +41,9 @@ export type ReleaseItem =
            */
           ifClosed?: string;
           /**
-           * Only show this item to users it applies to. The server drops it
-           * for everyone else (see `pendingReleases`). "savedMoodMix": a mood
-           * mix under one of the current moods; "retiredMoodMix": a mix under
-           * a mood 1.11 removed, which the app can no longer show.
+           * Show only to users it applies to (the server filters in `pendingReleases`):
+           * "savedMoodMix" is a mix under a current mood, "retiredMoodMix" one under a
+           * mood that no longer exists.
            */
           requires?: "savedMoodMix" | "retiredMoodMix";
       }

@@ -97,24 +97,9 @@ export function generateRefreshToken(user: {
  * @returns User object if authenticated, null otherwise
  */
 /**
- * Short-lived cache of the user row that every authenticated request needs.
- *
- * Auth hit Postgres on EVERY request, on all four paths -- session, API key,
- * query token and JWT -- and requireAdmin re-ran the whole thing from scratch,
- * so `requireAuth, requireAdmin` cost two full passes and two round trips for
- * one request. For a PWA firing cover-art, playback-state and polling requests
- * continuously this was the highest-frequency query in the system, sharing the
- * 20-connection pool with every worker.
- *
- * In-process rather than Redis on purpose: swapping a Postgres round trip for a
- * Redis round trip is not obviously a win, and this data is tiny.
- *
- * SECURITY: `tokenVersion` is what revokes issued tokens when a password
- * changes, and it is read from this cache -- so a stale entry would keep a
- * revoked token working. Every site that bumps tokenVersion calls
- * `invalidateUserCache`, making revocation immediate rather than
- * eventually-consistent. The TTL is the backstop for anything that changes the
- * row without going through those paths.
+ * In-process 30 s cache of the user row every authenticated request needs.
+ * SECURITY: `tokenVersion` (which revokes tokens) is read from here, so every
+ * site that bumps it calls `invalidateUserCache`; the TTL backstops the rest.
  */
 const USER_CACHE_TTL_MS = 30_000;
 
@@ -198,11 +183,8 @@ async function authenticateRequest(
                 if (decoded.type === "refresh") {
                     return null;
                 }
-                // Stream-scoped tickets are only valid on /stream paths.
-                // Unscoped tokens (web client cover-art / legacy usage) are accepted everywhere.
-                // endsWith (not includes) so "/stream" must be the FINAL path segment: all stream
-                // routes end in /stream (/tracks/:id/stream, /audiobooks/:id/stream, …). Substring
-                // matching would wrongly accept e.g. /tracks/stream_abc (a track id starting "stream").
+                // Stream-scoped tickets are valid only when /stream is the final path
+                // segment; unscoped tokens are valid everywhere.
                 const isStreamScoped = decoded.scope === "stream";
                 const isStreamPath = req.path.endsWith("/stream");
                 if (!isStreamScoped || isStreamPath) {
@@ -236,18 +218,9 @@ async function authenticateRequest(
     if (token) {
         try {
             const decoded = jwt.verify(token, JWT_SECRET_VALIDATED) as unknown as JWTPayload;
-            // A refresh token is not a credential. It is signed with the same
-            // secret and carries the same `userId`/`tokenVersion`, so it
-            // verifies here and passes every check below -- it simply has no
-            // `scope`, which made `isStreamScoped` false and waved it through.
-            // `POST /auth/refresh` already enforces the opposite direction
-            // (`decoded.type !== "refresh"` is rejected there); this is the
-            // missing half. Without it the 30-day token meant only to be
-            // exchanged for a 24-hour one authenticated everywhere the short
-            // one does, including admin routes, and -- because it is a JWT --
-            // it satisfied `requireSessionAuth` on the device-bound DM routes
-            // too, which is the one gate that exists to keep the
-            // end-to-end-encrypted surface on a real signed-in session.
+            // A refresh token verifies with the same secret and claims, so reject it
+            // here: it must only be exchanged at POST /auth/refresh, never used as a
+            // credential (including on requireSessionAuth routes).
             if (decoded.type === "refresh") {
                 return null;
             }
@@ -293,8 +266,7 @@ export async function requireAdmin(
     res: Response,
     next: NextFunction
 ) {
-    // Reuse the result when requireAuth already ran on this request. Chained as
-    // `requireAuth, requireAdmin` this used to authenticate twice from scratch.
+    // Reuse the user when requireAuth already ran on this request.
     const user = req.user ?? (await authenticateRequest(req, false));
     if (!user) {
         return res.status(401).json({ error: "Not authenticated" });

@@ -171,15 +171,8 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
             }
         }
 
-        // If we have MBID but no name, get it from MusicBrainz.
-        //
-        // A well-formed id MusicBrainz does not recognise is not a server
-        // fault: the ids reach us from the similarity engine's
-        // similar-artist data, which is full of MBIDs for artists that have
-        // since been merged or deleted, and the "Fans Also Like" tiles
-        // navigate straight back into this handler. `absent` answers the
-        // 404 below; a failed call logs with its real cause and also
-        // lands there rather than 500-ing an ordinary click.
+        // With an MBID but no name, ask MusicBrainz. Similar-artist tiles link MBIDs
+        // of merged or deleted artists, so `absent` (and a failed call) answer 404.
         if (mbid && !artistName) {
             const mbArtist = await musicBrainzService.getArtist(mbid);
             if (mbArtist.kind === "answered") {
@@ -196,12 +189,6 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
         if (!artistName) {
             return res.status(404).json({ error: "Artist not found" });
         }
-
-        // ── Parallelize independent external calls ──
-        // bio (Wikidata→Wikipedia), similar artists (local centroid /
-        // ListenBrainz dataset), artwork, and getReleaseGroups are all
-        // independent of each other. Run them in parallel so a dead
-        // upstream cannot block the entire response.
 
         let albums: any[] = [];
 
@@ -416,15 +403,8 @@ router.get("/album/:mbid", async (req, res) => {
     try {
         const { mbid } = req.params;
 
-        // This identifier goes to MusicBrainz, which only ever issues UUIDs. Anything
-        // else -- a stale link, a typo, a library id pasted into a discovery URL -- is a
-        // request for an album that cannot exist, so answer that directly.
-        //
-        // Without this the id was forwarded upstream anyway, MusicBrainz rejected it with
-        // a 400, the handler below only knew how to recover from a 404, and the rethrow
-        // came out of the bottom of the route as "500 Internal server error" -- telling
-        // the caller that the server broke when in fact the id was simply wrong. It also
-        // spent a rate-limited upstream request to learn nothing.
+        // MusicBrainz ids are UUIDs; anything else cannot exist, so answer 404
+        // without spending a rate-limited request.
         const MBID_PATTERN =
             /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         if (!MBID_PATTERN.test(mbid)) {
@@ -513,12 +493,7 @@ router.get("/album/:mbid", async (req, res) => {
         const artistMbid = artistCredit?.[0]?.artist?.id;
         const albumTitle = releaseGroup?.title || release?.title;
 
-        // Get album info from MusicBrainz. MB is the source of the
-        // release-group itself; the
-        // annotation carries the wiki-style summary when one exists, and
-        // tags come from the release-group record. The cover cascade
-        // (Deezer / CAA / fanart) is unchanged below.
-        // Get tracks - if we have release, use it directly; otherwise get first release from group
+        // Tracks come from the release if we have one, else the group's first release.
         let tracks: any[] = [];
         if (release) {
             tracks = release.media?.[0]?.tracks || [];

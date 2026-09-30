@@ -1,20 +1,8 @@
 /**
- * Data Integrity Worker
- *
- * Periodic cleanup to maintain database health. Only rows that carry no
- * user decision get deleted: expired exclusions, orphaned
- * DiscoveryTrack rows, temp artists, stale download jobs — all things a
- * scan or re-discovery recreates. Albums and OwnedAlbum keeps are reported
- * for a human, never deleted in the background.
- * 1. Remove expired DiscoverExclusion records
- * 2. Clean up orphaned DiscoveryTrack records
- * 3. Report orphaned Album records (DISCOVER location with no DiscoveryAlbum)
- * 4. Consolidate duplicate artists (temp MBID vs real MBID)
- * 5. Report ghost albums (no tracks)
- * 6. Report orphaned OwnedAlbum records (no matching Album)
- * 7. Consolidate temp artists into real artists of the same name
- * 8. Delete artists with no albums
- * 9. Delete old completed/failed DownloadJob records
+ * Periodic database cleanup. It deletes only rows that carry no user decision
+ * and that a scan or rediscovery recreates (expired exclusions, orphaned
+ * discovery tracks, temp and album-less artists, old download jobs). Albums and
+ * OwnedAlbum keeps are reported for a human, never deleted.
  */
 
 import { logger } from "../utils/logger";
@@ -83,7 +71,7 @@ export async function runDataIntegrityCheck(): Promise<IntegrityReport> {
         );
     }
 
-    // 3. Clean up orphaned DISCOVER albums (no active DiscoveryAlbum record AND no OwnedAlbum)
+    // 3. Report orphaned DISCOVER albums (no active DiscoveryAlbum and no OwnedAlbum)
     const discoverAlbums = await prisma.album.findMany({
         where: { location: "DISCOVER" },
         include: { artist: true },
@@ -137,12 +125,9 @@ export async function runDataIntegrityCheck(): Promise<IntegrityReport> {
         }
     }
 
-    // 4. Fix mislocated LIBRARY albums that should be DISCOVER
-    // This happens when:
-    // - Discovery tracks have featured artists that don't match the download job
-    // - Lidarr downloads a different album than requested (e.g., "Broods" album vs "Evergreen" album)
-    // - Album title metadata differs from the requested album
-    // - Scanner ran before DiscoveryAlbum records were created
+    // 4. Move LIBRARY albums that belong to a discovery download to DISCOVER:
+    // featured-artist or album mismatches with the job, or a scan that ran before
+    // the DiscoveryAlbum row existed.
     
     const discoveryJobs = await prisma.downloadJob.findMany({
         where: {
@@ -262,8 +247,7 @@ export async function runDataIntegrityCheck(): Promise<IntegrityReport> {
         logger.debug(`     Fixed ${mislocatedAlbumsFixed} mislocated albums`);
     }
 
-    // 5. Clean up albums with NO tracks (files were deleted from filesystem)
-    // These are "ghost" albums that still appear in the database but have no actual content
+    // 5. Report albums with no tracks (their files are gone)
     const emptyAlbums = await prisma.album.findMany({
         where: {
             tracks: { none: {} },

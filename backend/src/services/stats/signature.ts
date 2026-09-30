@@ -1,22 +1,6 @@
 /**
- * The metrics no streaming service can give you.
- *
- * Everything here needs two things in the same database at once, and no
- * streaming service has both: the audio analysis of every file, and the fact
- * that you own the files rather than renting them.
- *
- * - Spotify knows what you played but not what you own, so it can never tell
- *   you that you buy calmer music than you reach for.
- * - Last.fm knows what you played but has never listened to it, so it can never
- *   tell you that four fifths of your listening is in a minor key.
- * - A plain Subsonic server knows the files but not what they sound like.
- *
- * Each of these was checked against a real library before it was built. Three
- * candidates were cut for being uninteresting once measured: audio features
- * barely predict whether somebody bails on a track, mood scores are flat across
- * the day, and the loudness figure has no unit anyone can interpret. A metric
- * that reads as noise is worse than no metric, because it teaches people the
- * page is decorative.
+ * Metrics that need both the audio analysis of every file and the fact that
+ * the user owns the files, which no streaming service has together.
  */
 
 import { Prisma } from "@prisma/client";
@@ -58,13 +42,6 @@ export async function signature(
 ): Promise<Signature> {
     const tz = /^[A-Za-z0-9_+\-/]{1,64}$/.test(timezone) ? timezone : "UTC";
 
-    // `curve` (listens by track position) and `parts` (energy by quarter of the
-    // day) were removed 2026-08-25: both were computed on every page load, both
-    // were shipped over the wire, and nothing rendered either. The curve's one
-    // fact -- that two thirds of moves are to the next track -- is a number and
-    // lives in the opening ledger. The dayparts were superseded by `hourly`,
-    // which is the same measure at 24 points instead of 4 and is what the
-    // energy curve actually draws.
     const [conc, habit, era, keys, owned, played, hourly] = await Promise.all([
         prisma.$queryRaw<Array<{ for_half: number; for_eighty: number; distinct: number }>>(Prisma.sql`
             ${listenRows(userId, period)},
@@ -175,12 +152,8 @@ export async function signature(
                 plays: k.plays,
             })),
         } : null,
-        // Every value has to be a real number, not just the rows present.
-        // Both queries are bare aggregates with no GROUP BY, so Postgres hands
-        // back exactly one row even over an empty set — with every avg() NULL.
-        // `lib && mine` is therefore always true, and on a window with no
-        // analysed plays the page rendered "0 energy, 0 valence, 0 bpm" as
-        // though that were a measurement.
+        // Aggregates with no GROUP BY return one row even when empty, with every
+        // avg() NULL, so check the values, not the rows.
         ownedVsPlayed: [lib?.energy, lib?.valence, lib?.inst, lib?.bpm,
                         mine?.energy, mine?.valence, mine?.inst, mine?.bpm]
             .every((v) => typeof v === "number" && Number.isFinite(v)) ? [
