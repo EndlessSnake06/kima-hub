@@ -1,13 +1,7 @@
 /**
- * Library Auto-Sync Cron
- *
- * When the "Auto sync library" setting is enabled, periodically enqueues a full
- * library scan so music added outside the download pipeline (manual file drops,
- * external tools) is picked up without a manual scan. Download-completion
- * webhooks already trigger scans; this is the fallback for everything else.
- *
- * Scans go through requestScan, which dedupes on the shared "scan-full"
- * key -- a tick while one is queued or running is a no-op.
+ * With "Auto sync library" on, periodically requests a full scan so files added
+ * outside the download pipeline are picked up. requestScan dedupes, so a tick
+ * while a scan is queued or running does nothing.
  */
 
 import { logger } from "../utils/logger";

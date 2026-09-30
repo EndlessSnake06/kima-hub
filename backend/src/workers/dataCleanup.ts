@@ -1,14 +1,6 @@
 /**
- * Data Cleanup Cron Scheduler
- *
- * Periodically removes old completed download jobs, webhook events, and discovery batches
- * to prevent database bloat and maintain optimal performance.
- *
- * Schedule: Daily at 2 AM
- * Retention:
- *   - Download jobs (completed/failed): 30 days
- *   - Webhook events (processed): 30 days
- *   - Discovery batches (completed): 60 days
+ * Daily at 2 AM: delete completed or failed download jobs and processed webhook
+ * events after 30 days, completed discovery batches after 60.
  */
 
 import { logger } from "../utils/logger";

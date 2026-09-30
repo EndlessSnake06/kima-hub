@@ -1,13 +1,7 @@
 /**
- * Webhook Reconciliation Job
- *
- * Self-reschedules every 5 minutes (next run is queued only after the
- * current one finishes, so a slow cycle can't overlap itself) to process
- * unprocessed webhook events (failed/missed webhooks) and retry them.
- *
- * This ensures failed webhook processing gets retried and no events are
- * permanently lost. Periodic Lidarr-snapshot reconciliation of DownloadJob
- * statuses is handled separately by workers/index.ts's runReconciliationCycle.
+ * Retries unprocessed Lidarr webhook events every 5 minutes, rescheduling after
+ * each run so cycles never overlap. DownloadJob reconciliation against Lidarr
+ * is workers/index.ts's runReconciliationCycle.
  */
 
 import { logger } from "../utils/logger";
@@ -103,13 +97,6 @@ class WebhookReconciliationService {
                 }
             }
 
-            // Lidarr reconciliation (matching "processing" DownloadJob rows against a Lidarr
-            // snapshot) is NOT done here: reconcileWithLidarr() needs a snapshot from
-            // lidarrService.getReconciliationSnapshot() - a full artist + album fetch that
-            // isn't cached - to do anything; calling it with no snapshot was a permanent
-            // no-op. workers/index.ts's runReconciliationCycle already builds that snapshot
-            // and reconciles the same rows every 2 minutes, so it's covered there rather
-            // than duplicating the Lidarr fetch on this 5-minute loop too.
             const duration = Date.now() - startTime;
             logger.debug(
                 `[WEBHOOK-RECONCILE] Cycle complete in ${duration}ms: ` +

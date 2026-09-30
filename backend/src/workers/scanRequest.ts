@@ -1,19 +1,9 @@
 /**
- * Scan Request — the single producer for the library-scan queue.
- *
- * "one producer per queue": every code
- * path that wants the library scanned calls requestScan() instead of
- * touching scanQueue itself. Dedup: the dedupe key is the scan's scope
- * (download/album/import id, or "full" for unscoped requests), so a second
- * request for the same scope while one is still waiting, delayed, or
- * active is a no-op — the pending scan already covers it. A stale
- * completed/failed marker is replaced so a genuinely new request always
- * gets a run; nothing can be swallowed by a leftover jobId.
- *
- * Every scope is a full walk of the music path. The per-album fields only
- * carry download-accounting ids (the processor closes those jobs after the
- * walk); no code maps an album to a folder, so there is no narrower scan
- * to request.
+ * The only producer for the library-scan queue: every caller uses requestScan().
+ * A request is deduped by scope (download/album/import id, or "full") while one
+ * is waiting or running; a leftover completed or failed marker is replaced so a
+ * new request always runs. Every scope walks the whole music path; the ids only
+ * let the processor close download jobs.
  */
 
 import type { Job } from "bullmq";

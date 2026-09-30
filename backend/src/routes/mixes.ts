@@ -571,15 +571,8 @@ router.post("/:id/save", async (req, res) => {
             },
         });
 
-        // Add all tracks to the playlist.
-        //
-        // `rank` is the authoritative order and is UNIQUE per playlist with an
-        // empty-string default, so writing only `sort` left every row at "" and
-        // the unique index rejected all but the first -- silently, because
-        // createMany's default skipDuplicates behaviour swallows it. A saved mix
-        // would report its full track count while storing one track. The
-        // playlist is created empty immediately above, so positional ranks are
-        // correct here without consulting an existing maximum.
+        // `rank` is unique per playlist, so every item needs its own; the playlist
+        // was just created empty, so positional ranks are correct.
         const playlistItems = mix.trackIds.map(
             (trackId: string, index: number) => ({
                 playlistId: playlist.id,

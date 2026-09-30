@@ -4,13 +4,9 @@ import { startOfWeek, endOfWeek, addWeeks, isSameDay, isBefore } from "date-fns"
 export type WeekStartsOn = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
 /**
- * The week a generation run belongs to. Generation produces "the playlist
- * waiting for the user" at the start of their week. When the run fires on the
- * LAST calendar day of the current week, date-fns' startOfWeek returns the week
- * that is ending; we roll forward so records are tagged with the week the user
- * is about to enter -- the week GET /current looks for next morning.
- *
- * Deterministic only under TZ=UTC (Task 1).
+ * The week a generation run belongs to: the one the user is about to enter.
+ * A run on the last day of a week rolls forward to the next, the week
+ * GET /current looks for next morning. Deterministic only under TZ=UTC.
  */
 export function resolveGenerationWeekStart(now: Date, weekStartsOn: WeekStartsOn = 1): Date {
   const currentWeekStart = startOfWeek(now, { weekStartsOn });
@@ -28,13 +24,9 @@ export interface ViewWeek {
 }
 
 /**
- * The week GET /current should display. Serves the latest completed batch
- * UNCONDITIONALLY -- Task 10's cleanup never deletes the latest completed week,
- * so its albums always still exist, and hiding it (rev-2's 1-week cliff) would
- * blank out a still-valid playlist. `stale` is true only when that batch is
- * older than the current calendar week, so the UI can label it "last week's
- * picks." A future-dated batch (generated early for the upcoming week) is shown
- * as fresh (not stale).
+ * The week GET /current shows: always the latest completed batch, whose albums
+ * cleanup never deletes. `stale` when it is older than the current calendar
+ * week; a batch generated early for next week counts as fresh.
  */
 export function resolveViewWeek(
   calendarWeekStart: Date,

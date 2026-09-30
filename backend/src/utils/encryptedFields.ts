@@ -1,20 +1,8 @@
 /**
- * The single source of truth for which `SystemSettings` values are stored
- * encrypted, plus the two operations over that list: decrypt-on-read
- * (`resolveEncryptedSettings`) and encrypt-on-write (`encryptSettings`).
- *
- * Before this existed the list was hand-copied in three places — the
- * settings route's GET handler, its POST handler, and `getSystemSettings`
- * — and the copies disagreed: the route encrypted `fanartApiKey`,
- * `slskdApiKey` and `spotifyClientSecret` while the getter decrypted only
- * the other seven, so those three integrations were handed ciphertext
- * where they expected a key.
- *
- * A stored value that no longer decrypts (key rotated, value written
- * without the key, double-encrypted by an old path) is re-seeded to
- * `null` — "unset, needs re-entry" — and admins are notified. Failing
- * closed here is the point: an unreadable credential must never be read
- * back as if it were the credential, and must never stay silently broken.
+ * The one list of SystemSettings fields stored encrypted, with decrypt-on-read
+ * (`resolveEncryptedSettings`) and encrypt-on-write (`encryptSettings`). A value
+ * that no longer decrypts is reset to null and admins are notified: an
+ * unreadable credential is never used as if it were one.
  */
 import { decrypt, encrypt, isEncryptedFormat } from "./encryption";
 import { prisma } from "./db";

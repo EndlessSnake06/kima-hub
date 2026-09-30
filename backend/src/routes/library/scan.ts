@@ -104,11 +104,9 @@ router.get("/corrupt-tracks", requireAdmin, async (_req, res) => {
 
 router.get("/missing-tracks", requireAdmin, async (_req, res) => {
   try {
-    // The scan never deletes a track whose file is gone; it flags it with
-    // the time it was found missing. This is the true-state listing that
-    // decision promises: what is missing, and since when. The flag clears
-    // itself on the scan that finds the file again, so there is no clear
-    // control here -- clearing it by hand would claim a file is back.
+    // Tracks whose file is gone, and since when. The scan flags them rather than
+    // deleting them and clears the flag when the file returns, so there is no
+    // manual clear.
     const tracks = await prisma.track.findMany({
       where: { missingSince: { not: null } },
       include: { album: { include: { artist: { select: { name: true } } } } },
@@ -133,13 +131,8 @@ router.get("/missing-tracks", requireAdmin, async (_req, res) => {
 
 router.delete("/corrupt-tracks", requireAdmin, async (_req, res) => {
   try {
-    // The old handler ran `deleteMany({ where: { corrupt: true } })`, which
-    // deleted real state: the file still exists, the next scan would only
-    // re-create the row, and every stage answer recorded against it was
-    // lost with it. The operator pressing this means "I know -- re-check
-    // it", so we clear the flag and stop. The Track row, its stage
-    // records, and any answers already given are kept; the next scan
-    // re-answers the file-readable question from the flag.
+    // Clear the corrupt flag only, keeping the track and its stage records; the
+    // next scan re-checks the file.
     const result = await prisma.track.updateMany({
       where: { corrupt: true },
       data: { corrupt: false },

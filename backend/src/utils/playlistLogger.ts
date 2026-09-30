@@ -3,17 +3,9 @@ import { logger } from "./logger";
 import * as path from 'path';
 
 /**
- * Dedicated logger for Spotify Import and Playlist operations.
- *
- * In Docker, the backend runs under /app and typically mounts /app/logs.
- * This logger defaults to writing under ./logs/playlists (relative to process.cwd()).
- *
- * Override with PLAYLIST_LOG_DIR if you want a different location.
- *
- * Log files:
- * - import_<jobId>_<timestamp>.log - Per-job detailed log
- * - session.log - Current session unified log (cleared on restart)
- * - events.log - Persistent event log
+ * Log files for Spotify import and playlist work, under ./logs/playlists or
+ * PLAYLIST_LOG_DIR: import_<jobId>_<timestamp>.log per job, and session.log,
+ * cleared on each start.
  */
 
 const LOGS_DIR = process.env.PLAYLIST_LOG_DIR

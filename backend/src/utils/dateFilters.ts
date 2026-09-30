@@ -1,10 +1,6 @@
 /**
- * Date filtering utilities for consistent year handling across the codebase.
- *
- * Year Priority Resolution:
- * 1. displayYear - User override (highest priority)
- * 2. originalYear - MusicBrainz first-release-date (authoritative)
- * 3. year - File metadata (may be remaster date)
+ * Year filters. Precedence: displayYear (user override), then originalYear
+ * (MusicBrainz first release), then year (file tags, may be a remaster).
  */
 
 /**

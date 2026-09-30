@@ -1,16 +1,8 @@
 /**
- * Mood Bucket Worker
- *
- * Keeps the MoodBucket table in step with the library. Every cycle it checks
- * the library's mood signature (analysed-track count, CLAP-complete count,
- * latest analysis time); when that changed, it re-ranks the whole library and
- * rebuilds every bucket (moodBucketService). A whole rebuild, not a per-track
- * update, because moods are ranked within the library: one new track shifts
- * every other track's rank.
- *
- * On the first cycle after a deploy the signature is always "changed", so
- * every existing track is re-sorted without any manual backfill. Tracks enter
- * buckets only once BOTH audio analysis and CLAP analysis are complete.
+ * Keeps MoodBucket in step with the library. When the mood signature
+ * (analysed count, CLAP-complete count, latest analysis) changes, every bucket
+ * is rebuilt: moods are ranked within the library, so one track shifts all the
+ * others. Tracks enter buckets once both analyses are complete.
  */
 
 import { logger } from "../utils/logger";

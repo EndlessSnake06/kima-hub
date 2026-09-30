@@ -42,11 +42,7 @@ interface WaveformPayload {
     count: number;
 }
 
-// ---------------------------------------------------------------------------
-// In-flight dedup map
-// ---------------------------------------------------------------------------
-// Concurrent requests for the same (trackId, mtime) pair share a single
-// ffmpeg spawn so we never compute the same waveform twice in parallel.
+// Concurrent requests for the same (trackId, mtime) share one ffmpeg run.
 
 const inFlight = new Map<string, Promise<WaveformPayload>>();
 
@@ -244,14 +240,8 @@ async function getOrComputeWaveform(
 const router = Router();
 
 /**
- * GET /api/library/tracks/:id/waveform
- *
- * Returns precomputed amplitude peaks for the track's audio file.
- * Auth is applied upstream by requireAuthOrToken in the library index.
- *
- * Response: { peaks: number[], count: number }
- *   peaks  — PEAK_COUNT (400) normalised amplitude values, 0.0–1.0, start→end
- *   count  — peaks.length (always 400 for a valid track)
+ * GET /api/library/tracks/:id/waveform -> { peaks, count }: PEAK_COUNT (400)
+ * amplitudes from 0 to 1, start to end. Auth is applied by the library index.
  */
 router.get("/tracks/:id/waveform", async (req, res) => {
     try {

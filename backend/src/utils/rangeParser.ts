@@ -4,13 +4,10 @@ export type RangeParseResult =
     | { ok: false; status: 200; reason: "multi" };
 
 /**
- * Parse an HTTP Range header value into start/end byte offsets.
- * Handles standard ranges, open-ended ranges, and suffix ranges (bytes=-N).
- * Clamps end to file boundary per RFC 7233 Section 2.1.
- *
- * Multi-range requests (bytes=0-99,200-299) are reported as reason "multi":
- * RFC 9110 Section 14.2 permits ignoring the Range header, so callers serve
- * the full file as 200 rather than a multipart/byteranges response.
+ * Parse a Range header into byte offsets: standard, open-ended and suffix
+ * (bytes=-N) ranges, with the end clamped to the file (RFC 7233 §2.1).
+ * Multi-range requests return reason "multi" and callers serve the whole file
+ * as 200, which RFC 9110 §14.2 permits.
  */
 export function parseRangeHeader(
     rangeHeader: string,

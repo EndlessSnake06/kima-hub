@@ -1,14 +1,6 @@
 /**
- * Lidarr webhook handlers — the ONE implementation of what a Grab,
- * Download, or ImportFailure event does (the "one
- * implementation wins").
- *
- * Before this module, routes/webhooks.ts and jobs/webhookReconciliation.ts
- * each kept a copy of these handlers, and the reconciliation copy dropped
- * two side effects (the queueCleaner kick on a matched Grab and the library
- * scan after a Download), so a replayed event silently produced a
- * different end state than a live one. Both paths now call
- * dispatchWebhookEvent; each keeps only its own event-store bookkeeping.
+ * What a Lidarr Grab, Download or ImportFailure event does, shared by the live
+ * webhook route and the reconciliation replay so both end in the same state.
  */
 
 import { simpleDownloadManager } from "./simpleDownloadManager";

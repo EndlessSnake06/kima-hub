@@ -1,9 +1,6 @@
 /**
- * One timeout contract for the whole backend: reject with a labeled
- * Error when the promise outlives the budget. Callers that want to
- * swallow a timeout catch it explicitly — silently resolving to
- * `undefined` (the old second contract) let callers keep going on a
- * value that never arrived.
+ * Reject with a labelled Error when the promise outlives the budget. Callers
+ * that tolerate a timeout catch it explicitly.
  */
 export async function withTimeout<T>(
     promise: Promise<T>,
