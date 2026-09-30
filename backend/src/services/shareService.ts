@@ -14,14 +14,14 @@ import { prisma } from "../utils/db";
 
 export type ShareEntityType = "playlist" | "track" | "album";
 
-export const SHARE_ENTITY_TYPES: ShareEntityType[] = [
+const SHARE_ENTITY_TYPES: ShareEntityType[] = [
     "playlist",
     "track",
     "album",
 ];
 
 /** Per-user cap on live share links. */
-export const MAX_SHARE_LINKS_PER_USER = 500;
+const MAX_SHARE_LINKS_PER_USER = 500;
 
 export class ShareError extends Error {
     constructor(

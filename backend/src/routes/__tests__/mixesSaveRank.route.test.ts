@@ -30,7 +30,7 @@ jest.mock('../../utils/redis', () => ({
     redisClient: { get: jest.fn(), setex: jest.fn().mockResolvedValue('OK') },
 }));
 
-jest.mock('../../services/programmaticPlaylists', () => ({
+jest.mock('../../services/mixes', () => ({
     programmaticPlaylistService: { generateAllMixes: jest.fn().mockResolvedValue([]) },
 }));
 

@@ -36,7 +36,7 @@ import { moodBucketService, VALID_MOODS, type MoodType } from "../moodBucketServ
 import { addTracks } from "../playlistService";
 
 /** The ReleaseChoice key the answer is stored under (the catalog items are "moods.mixes*"). */
-export const MOOD_MIX_DECISION_KEY = "moods.mixes.rebuild";
+const MOOD_MIX_DECISION_KEY = "moods.mixes.rebuild";
 /** The release that asks. */
 export const MOOD_MIX_RELEASE = "1.11.0";
 

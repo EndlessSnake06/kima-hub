@@ -12,7 +12,8 @@ import {
 } from "../../utils/dateFilters";
 import { shuffleArray } from "../../utils/shuffle";
 import { LIBRARY_TRACK_WHERE, LIBRARY_LOCATION } from "../../services/libraryFilters";
-import { toAudioFeaturesDTO } from "../../utils/audioFeatures";
+import { toAudioFeaturesDTO, AUDIO_FEATURE_SELECT } from "../../utils/audioFeatures";
+import { cosineSimilarity } from "../../utils/vector";
 import { config } from "../../config";
 import { resolveWithinMusicRoot } from "./trackPath";
 import path from "path";
@@ -532,21 +533,7 @@ router.get("/tracks/:id/lyrics", async (req, res) => {
             id: true,
             title: true,
             duration: true,
-            bpm: true,
-            energy: true,
-            valence: true,
-            arousal: true,
-            danceability: true,
-            keyScale: true,
-            instrumentalness: true,
-            analysisMode: true,
-            moodHappy: true,
-            moodSad: true,
-            moodRelaxed: true,
-            moodAggressive: true,
-            moodParty: true,
-            moodAcoustic: true,
-            moodElectronic: true,
+            ...AUDIO_FEATURE_SELECT,
             album: {
               include: {
                 artist: {
@@ -1415,19 +1402,6 @@ router.get("/radio", async (req, res) => {
                 1 - octaveAwareBPMDistance(track.bpm ?? 120, 120),
                 enhancedValence,
               ];
-            };
-
-            const cosineSimilarity = (a: number[], b: number[]): number => {
-              let dot = 0,
-                magA = 0,
-                magB = 0;
-              for (let i = 0; i < a.length; i++) {
-                dot += a[i] * b[i];
-                magA += a[i] * a[i];
-                magB += b[i] * b[i];
-              }
-              if (magA === 0 || magB === 0) return 0;
-              return dot / (Math.sqrt(magA) * Math.sqrt(magB));
             };
 
             const computeTagBonus = (

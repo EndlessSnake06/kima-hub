@@ -256,16 +256,3 @@ export function createPlaylistLogger(jobId: string): PlaylistLogger {
     return new PlaylistLogger(jobId);
 }
 
-// Quick console+file log for one-off messages
-export function logPlaylistEvent(message: string): void {
-    ensureLogsDir();
-    const line = formatLogLine('INFO', message);
-    const eventsFile = path.join(LOGS_DIR, 'events.log');
-    
-    logger.debug(`[Playlist] ${message}`);
-    
-    fs.promises.appendFile(eventsFile, line).catch((error) => {
-        logger.error(`Failed to write to events log:`, error);
-    });
-}
-

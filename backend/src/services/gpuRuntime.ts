@@ -164,8 +164,3 @@ export async function embeddingsDeferredForGpu(now = new Date()): Promise<boolea
     deferCache = { atMs: now.getTime(), deferred };
     return deferred;
 }
-
-/** Test seam: drop the 5s cache between cases. */
-export function __resetGpuDeferCache(): void {
-    deferCache = null;
-}

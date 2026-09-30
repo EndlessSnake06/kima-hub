@@ -47,10 +47,7 @@ import {
     generateRandomDiscoveryMix,
 } from "./discoveryMixes";
 
-export type { ProgrammaticMix } from "./helpers";
-export { generateMoodOnDemand } from "./moodMixes";
-
-export class ProgrammaticPlaylistService {
+class ProgrammaticPlaylistService {
     private readonly DAILY_MIX_COUNT = 5;
 
     async generateAllMixes(

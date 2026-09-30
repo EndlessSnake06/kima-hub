@@ -111,7 +111,7 @@ async function ensureSubscriber(): Promise<RedisConn> {
  * subscriber-mode connection cannot publish) configured to ride out a cold or
  * reconnecting Redis.
  */
-export async function getTextEmbedding(text: string): Promise<number[]> {
+async function getTextEmbedding(text: string): Promise<number[]> {
     await ensureSubscriber();
 
     const requestId = randomUUID();

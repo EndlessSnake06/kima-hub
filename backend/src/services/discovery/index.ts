@@ -1,8 +1,3 @@
-export { DiscoveryBatchLogger, discoveryBatchLogger, BatchLogEntry } from './discoveryBatchLogger';
-export {
-    DiscoveryAlbumLifecycle,
-    discoveryAlbumLifecycle,
-    DiscoveryAlbumInfo,
-    LidarrSettings,
-} from './discoveryAlbumLifecycle';
-export { DiscoverySeeding, discoverySeeding, SeedArtist } from './discoverySeeding';
+export { discoveryBatchLogger } from './discoveryBatchLogger';
+export { discoveryAlbumLifecycle } from './discoveryAlbumLifecycle';
+export { discoverySeeding } from './discoverySeeding';

@@ -2,7 +2,7 @@ import { Router } from "express";
 import { asyncHandler } from "../middleware/asyncHandler";
 import { logger } from "../utils/logger";
 import { requireAuthOrToken, requireAdmin } from "../middleware/auth";
-import { programmaticPlaylistService } from "../services/programmaticPlaylists";
+import { programmaticPlaylistService } from "../services/mixes";
 import {
     moodBucketService,
     VALID_MOODS,
