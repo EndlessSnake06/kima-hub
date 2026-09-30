@@ -1,23 +1,7 @@
 /**
- * Track matching — ONE implementation, used by the import preview
- * (`matchTrack`), the build path (`buildPlaylist`), and the reconcile sweep
- * (`reconcilePendingTracks`).
- *
- * Before this module each path carried its own copy of the matching ladder
- * with its own thresholds, and they had drifted: the same pending track
- * could match to different local tracks depending on which path ran. The
- * ladder below is `buildPlaylist`'s (the other two claimed parity with it),
- * and the thresholds live only here.
- *
- * The function is PURE: callers supply the candidate pool (a preloaded
- * per-artist-word bucket, a per-record DB query, or a title-contains sweep)
- * and get back a verdict. Candidate sourcing is genuinely per-caller — that
- * is a data-access decision, not a matching decision — but the decision of
- * "does candidate C match source S, and with what confidence" exists once.
- *
- * ISRC identity is deliberately NOT handled here: it is an exact lookup, not
- * a fuzzy decision, and each caller already holds an ISRC-keyed map built
- * from its own query. Same semantics, cache not ladder.
+ * The one track-matching ladder, used by the import preview, playlist build and
+ * the reconcile sweep. It is pure: each caller supplies its own candidate pool.
+ * ISRC matches are exact lookups the callers do themselves.
  */
 
 import {
@@ -56,17 +40,11 @@ export interface MatchResult {
 }
 
 /**
- * One source track against one candidate pool. First strategy that hits
- * wins; the ladder order is the contract.
- *
- * `requireArtistMatch` (default true) gates the strict strategies (exact
- * title, containment, prefix): candidates from a different artist are
- * ignored for them. With it false, a same-title candidate from ANY artist
- * can match — that is the title-only fallback, and its floor is an exact
- * title or ≥85 similarity. The scoring strategies (the 60/40 and 70/30
- * title/artist blends) always scan the whole pool, because historically the
- * candidate queries keyed on the artist's FIRST WORD and deliberately
- * admitted artists sharing that first word.
+ * Match one source track against a candidate pool; the first strategy that
+ * hits wins. `requireArtistMatch` (default true) limits the exact, containment
+ * and prefix strategies to the same artist; with it false, the title-only floor
+ * is an exact title or similarity >= 85. The 60/40 and 70/30 title/artist
+ * blends scan the whole pool.
  */
 export function matchTrackToLibrary(
   source: SourceTrack,

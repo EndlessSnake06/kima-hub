@@ -42,17 +42,10 @@ async function sendMapJson(req: Request, res: Response, mapData: { computedAt?: 
 }
 
 /**
- * GET /api/vibe/map
- * Returns UMAP 2D projections for all tracks with embeddings.
- * Cached in Redis, invalidated when embedding count changes.
- *
- * DESIGN-INFRA MOCK: when MOCK_VIBE_MAP is set to a JSON file (a snapshot
- * of a real instance's /api/vibe/map response), serve it verbatim instead
- * of computing. This exists so the galaxy scene can be designed against the
- * REAL embedded data on the testbed without touching any real
- * database. Off by default — unset env = original behaviour. Never point it
- * at committed data: the snapshot lives outside the repo and must not be
- * committed (it is the operator's private library).
+ * GET /api/vibe/map: the UMAP projection of every embedded track, cached in
+ * Redis until the embedding count changes. MOCK_VIBE_MAP names a JSON snapshot
+ * of a real response to serve instead, for design work; the snapshot is a
+ * private library and must stay out of the repo.
  */
 router.get("/map", requireAuth, async (req, res) => {
     try {
@@ -198,11 +191,7 @@ router.post("/alchemy", requireAuth, async (req, res) => {
             for (let i = 0; i < dim; i++) result[i] /= norm;
         }
 
-        // Query for nearest tracks, excluding inputs. S1: the HNSW index walks
-        // hnsw.ef_search candidates (default 40) and the input exclusions are
-        // applied AFTER the walk, so each input also eats one of those 40
-        // candidates -- size the width from the limit plus the input count and
-        // run the query on the transaction's own connection.
+        // Nearest tracks, excluding the inputs, which eat HNSW candidates too.
         const tracks = await withEfSearch(efFor(limit, allInputIds.length), (tx) =>
             tx.$queryRaw<Array<{
                 id: string;

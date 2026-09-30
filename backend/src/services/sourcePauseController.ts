@@ -1,19 +1,8 @@
 /**
- * Per-source pause, backed by the `SourceAttempt` table: while a source is
- * refusing us, no work is dequeued for it, so a full library of tracks
- * waiting on it cannot burn their attempts against a closed door.
- *
- * This is the record the dequeuer actually consults: a paused source is
- * ONE row (`source` is unique, so 2,787 tracks waiting on MusicBrainz do
- * not become 2,787 rows), it survives restarts, and the release is
- * deadline-based — `nextRetryAt` is the moment the source may be tried
- * again, so no timer chain exists to pile up or leak.
- *
- * Semantics:
- *   - A rate limit pauses ONLY that source; other sources keep working.
- *   - A pause is not a failure: it does not consume an attempt and does
- *     not mark anything `failed`. Work simply is not handed out for the
- *     paused source until the deadline passes.
+ * Per-source pause, one `SourceAttempt` row per source. While a source is
+ * refusing us no work is dequeued for it; the pause lifts at `nextRetryAt`.
+ * A pause is not a failure: it uses no attempt and marks nothing failed, and
+ * other sources keep working.
  */
 
 import { prisma } from "../utils/db";
@@ -160,9 +149,8 @@ class SourcePauseController {
 }
 
 /**
- * Single shared controller, consulted by the stage dequeuer and by every
- * service that talks to a rate-limited source. Mirrors
- * `rateLimiter.sourceCircuitIsOpen`'s window so the pipeline pauses for as
- * long as the transport keeps refusing us — no longer.
+ * The shared controller, consulted by the stage dequeuer and every service
+ * that calls a rate-limited source. Its window matches
+ * `rateLimiter.sourceCircuitIsOpen`.
  */
 export const sourcePauseController = new SourcePauseController();

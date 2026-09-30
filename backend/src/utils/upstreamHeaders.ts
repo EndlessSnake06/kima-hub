@@ -1,31 +1,15 @@
 /**
- * Narrowing helpers for headers read off an axios response and handed to Express.
- *
- * Several routes here proxy an upstream audio stream: they fetch it with axios,
- * then copy `content-length`, `content-type` and `accept-ranges` onto their own
- * response. The two libraries disagree about what a header value can be.
- *
- *   axios  `response.headers[x]`  ->  string | number | boolean | string[] | AxiosHeaders
- *   node   `res.setHeader(k, v)`  ->  string | number | readonly string[]
- *
- * axios 1.14 tightened its side of that (a valueless header is now `true`, and a
- * nested header set surfaces as an `AxiosHeaders` instance), which turned every
- * one of those copies into a type error. Rather than casting at eleven call
- * sites -- a cast silently passes `true` straight through to Node, which throws
- * `ERR_INVALID_HTTP_TOKEN` at runtime -- the conversion lives here once and is
- * total: every input shape maps to something Node accepts, or to `undefined`.
+ * Converts header values read off an axios response (which can be `true`, an
+ * array or an AxiosHeaders) into what Node's `res.setHeader` accepts, for the
+ * routes that proxy upstream audio. Passing `true` through makes Node throw.
  */
 
 /** An axios response-header value, before narrowing. */
 type UpstreamHeaderValue = string | number | boolean | string[] | object | null | undefined;
 
 /**
- * Convert an upstream header value into one Node's http layer will accept.
- *
- * Returns `undefined` when the header was absent, so callers can keep using the
- * `if (value)` / spread-when-present shape they already had. A valueless header
- * (`true`) becomes an empty string rather than being dropped: the upstream did
- * send the header, and an empty value is what Node uses to represent that.
+ * An upstream header value in a form Node accepts; `undefined` when absent.
+ * A valueless header (`true`) becomes an empty string.
  */
 export function upstreamHeader(value: UpstreamHeaderValue): string | number | string[] | undefined {
     if (value === null || value === undefined) return undefined;

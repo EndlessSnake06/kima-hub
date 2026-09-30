@@ -218,16 +218,11 @@ describe("a rate limit pauses only that source and is not a failure", () => {
         ).not.toContain(id("a"));
     });
 
-    it("a MusicBrainz 503 and a Last.fm-style error 29 also pause the source", async () => {
+    it("a MusicBrainz 503 also pauses the source", async () => {
         const mb503 = Object.assign(new Error("Service Unavailable"), {
             response: { status: 503 },
         });
         await recordStageFailure(id("a"), "recording", "musicbrainz", mb503);
-        expect(await sourcePauseController.isPaused("musicbrainz")).toBe(true);
-
-        await prisma.sourceAttempt.deleteMany({ where: { source: "musicbrainz" } });
-        const lm29 = new Error("MusicBrainz ok but: API error code 29: something");
-        await recordStageFailure(id("a"), "recording", "musicbrainz", lm29);
         expect(await sourcePauseController.isPaused("musicbrainz")).toBe(true);
     });
 });

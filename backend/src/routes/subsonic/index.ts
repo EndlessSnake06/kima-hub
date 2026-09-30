@@ -14,18 +14,8 @@ import { findApiKeyUser } from "../../services/users/apiKeyStore";
 import { wrap } from "./mappers";
 
 /**
- * Bound a queue call so an unreachable Redis answers instead of hanging.
- *
- * wrap() above is not enough on its own, and that distinction cost a real
- * measurement: when Redis is down, ioredis does NOT reject: it queues the
- * command and retries the connection, so `getJobCounts` stays PENDING forever.
- * wrap() can only answer for a promise that settles. Measured against this
- * server with Redis stopped, the request produced no response at all and the
- * client gave up after 25 seconds.
- *
- * A deadline turns "never settles" into a rejection, which wrap() then turns
- * into a Subsonic error. Five seconds is far longer than a healthy local queue
- * read (measured at ~6ms) and far shorter than any client's patience.
+ * Deadline for queue calls: with Redis down ioredis queues commands instead of
+ * rejecting, so without it the request never answers. A healthy read takes ~6 ms.
  */
 const QUEUE_DEADLINE_MS = 5_000;
 
@@ -142,12 +132,7 @@ subsonicRouter.all("/getScanStatus.view", wrap(async (req: Request, res: Respons
 }));
 
 subsonicRouter.all("/startScan.view", wrap(async (req: Request, res: Response) => {
-    // The REST equivalent (routes/library/scan.ts) is admin-gated via
-    // requireAdmin; this one had no check at all -- any authenticated
-    // Subsonic user, including a plain non-admin account, could trigger a
-    // full library scan. Uses the shared helper (userHelpers.ts) rather than
-    // a seventh inline copy of the check that produced that gap in the first
-    // place.
+    // Admin only, like the REST scan route.
     if (!requireSubsonicAdmin(req, res)) return;
     if (!config.music.musicPath) {
         return subsonicError(req, res, SubsonicError.GENERIC, "Music path not configured");

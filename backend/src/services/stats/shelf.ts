@@ -1,13 +1,7 @@
 /**
- * How much of the collection has actually been touched.
- *
- * These are the numbers that can climb toward 100 and stop, which is what makes
- * them worth showing: a percentage that can be finished reads as progress in a
- * way a running total never does.
- *
- * "The shelf" means albums the server holds — `AlbumLocation.LIBRARY`. Discover
- * albums are candidates, not possessions, and counting them would make every
- * coverage figure fall whenever the recommender ran.
+ * How much of the collection has been played: percentages that can reach 100.
+ * "The shelf" is LIBRARY albums only; counting DISCOVER candidates would make
+ * coverage drop whenever the recommender ran.
  */
 
 import { prisma } from "../../utils/db";
@@ -62,12 +56,8 @@ export async function shelfStats(userId: string): Promise<ShelfStats> {
     ]);
 
     const byStatus = Object.fromEntries(analysis.map((a) => [a.status, a.n]));
-    // The analyser writes exactly six values: pending, queued, processing,
-    // completed, failed, permanently_failed. This used to guess at three
-    // spellings for "done" and two for "failed", of which only one of each was
-    // real — and "permanently_failed" matched neither, so it fell through into
-    // `pending` via the subtraction below. A track that had given up for good
-    // was reported as still being worked on, forever.
+    // The analyser's statuses: pending, queued, processing, completed, failed,
+    // permanently_failed.
     const done = byStatus["completed"] ?? 0;
     const failed = (byStatus["failed"] ?? 0) + (byStatus["permanently_failed"] ?? 0);
     const total = analysis.reduce((sum, a) => sum + a.n, 0);

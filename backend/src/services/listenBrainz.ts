@@ -1,23 +1,8 @@
 /**
- * ListenBrainz service — the replacement for everything Kima previously asked
- * Last.fm for that MusicBrainz cannot answer: similar-artist data (the open
- * artist–artist similarity dataset, served through the LB radio endpoint),
- * sitewide top-artist charts, and listen submission (scrobbling).
- *
- * Sources, all verified live on 2026-09-19:
- * - GET /1/lb-radio/artist/<seed-mbid>  → per-seed similar artists drawn
- *   from the artist–artist similarity dataset. Requires pop_begin/pop_end
- *   params (400 without them). Returns recordings keyed by similar-artist
- *   MBID, each entry carrying similar_artist_name + total_listen_count.
- *   Measured on a 33-artist sample: 30 returned data (91%), 550–1550 ms.
- * - GET /1/stats/sitewide/artists?stat_type=top_artists → sitewide charts.
- *   Measured: works, returns {payload:{artists:[{artist_mbid,artist_name,
- *   listen_count}]}}.
- * - POST /1/submit-listens → token-based (user token from Settings), no
- *   app-key approval dance like Last.fm.
- *
- * Rate limiting: LB asks for ≤1 req/s; the 'listenbrainz' rateLimiter key
- * enforces 1 per 1.1s at concurrency 1.
+ * ListenBrainz: similar artists (the artist–artist similarity dataset via
+ * /1/lb-radio/artist/<mbid>, which requires pop_begin/pop_end), sitewide top
+ * artists, and listen submission with the user's token. LB asks for at most
+ * 1 request/s; the 'listenbrainz' rate limiter allows one per 1.1 s.
  */
 
 import axios from "axios";
@@ -101,18 +86,10 @@ class ListenBrainzService {
     }
 
     /**
-     * Similar artists for one artist, from LB's artist–artist similarity
-     * dataset (via the lb-radio endpoint). Same return shape as the old
-     * the old Last.fm service's getSimilarArtists so call sites swap import only.
-     *
-     * match is derived from total_listen_count of the connection (log-scaled
-     * against the strongest connection in the batch), NOT a real similarity
-     * score — the dataset publishes counts, not scores. It is monotone in
-     * connection strength and deliberately spans the 0.5–0.95 band that the
-     * discover-weekly tier thresholds expect.
-     *
-     * Returns [] (never throws) when the seed has no data — cold-start
-     * callers should fall through to their next tier.
+     * Similar artists from LB's similarity dataset. The dataset publishes listen
+     * counts, not scores, so `match` is the log-scaled count against the batch's
+     * strongest, spread over 0.5–0.95 for the discover-weekly tiers. [] when the
+     * seed has no data; never throws.
      */
     async getSimilarArtists(
         artistMbid: string,

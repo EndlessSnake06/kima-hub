@@ -29,15 +29,9 @@ interface PathResult {
 }
 
 /**
- * Generate a smooth musical journey between two tracks using CLAP embedding interpolation.
- *
- * Algorithm:
- * 1. Get start/end CLAP embeddings (512-dim)
- * 2. Calculate cosine distance between them
- * 3. Determine number of waypoints based on distance
- * 4. For each waypoint, interpolate between start/end embeddings
- * 5. Query pgvector for nearest unvisited track to each interpolated point
- * 6. Apply artist diversity filter
+ * A path between two tracks: waypoints interpolated between their CLAP
+ * embeddings (more for distant pairs), each filled by the nearest unvisited
+ * track, with an artist diversity filter.
  */
 export async function generateSongPath(
     startTrackId: string,
@@ -153,13 +147,8 @@ async function fetchBatchCandidates(
 ): Promise<CandidateTrack[]> {
     const excluded = Array.from(excludeIds);
 
-    // S1: the HNSW index walks hnsw.ef_search candidates (default 40) and the
-    // visited-set exclusions are applied AFTER the walk, so every excluded id
-    // eats one of the same 40 candidates -- later waypoints near already walked
-    // stretches would come up short. One transaction per batch (<= 10
-    // waypoints) raises the width once from the per-waypoint limit plus the
-    // exclusion count; the queries run serially on that transaction's own
-    // connection, the only place the setting is in effect.
+    // Exclusions eat HNSW candidates, so one transaction per batch (<= 10
+    // waypoints) sizes ef_search from the per-waypoint limit plus the visited count.
     return withEfSearch(
         efFor(candidatesPerWaypoint, excluded.length),
         async (tx) => {

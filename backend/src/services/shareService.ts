@@ -1,13 +1,4 @@
-/**
- * Share links.
- *
- * Extracted from the POST /api/share handler so the Subsonic surface can create
- * a REAL share instead of fabricating one. `createShare.view` used to return a
- * synthetic id and a URL pointing at `/share/unsupported` -- a path that does
- * not exist -- so a client handed the user a link that was dead on arrival,
- * which is worse than refusing. The machinery was already here; only the web
- * route could reach it.
- */
+/** Share links, created by the web route and Subsonic's createShare.view. */
 
 import { randomBytes } from "crypto";
 import { prisma } from "../utils/db";
@@ -46,12 +37,9 @@ export interface ShareLinkResult {
 }
 
 /**
- * Create (or reuse) a share link for an entity the caller is allowed to share.
- *
- * Reuses a caller's existing live link for the same entity rather than minting
- * duplicates. The unique-ish check and the insert run in one Serializable
- * transaction with a single retry, because `ShareLink` has no unique constraint
- * on (entityType, entityId, createdBy) to lean on.
+ * Create a share link, or reuse the caller's live link for the same entity.
+ * ShareLink has no unique constraint for that, so the check and insert run in
+ * one Serializable transaction with a single retry.
  */
 export async function createShareLink(
     userId: string,

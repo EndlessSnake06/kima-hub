@@ -37,15 +37,8 @@ function mapQueueEntry(item: QueueTrack) {
 }
 
 /**
- * Turn a list of track ids into the queue-item shape the rest of the app stores.
- *
- * PlaybackState.queue is shared with the web player, which writes full
- * {id,title,duration,artist,album} objects and renders straight from them. This
- * used to persist `ids.map(id => ({ id }))`, so a Subsonic client saving its
- * queue blanked the web player's queue to a list of "Unknown" titles. Hydrate
- * once on write instead, keeping the stored shape identical for both writers.
- *
- * Order follows the ids argument, and unknown ids are dropped.
+ * Track ids as the full queue items the web player stores and renders, in the
+ * given order; unknown ids are dropped.
  */
 async function hydrateQueue(ids: string[]): Promise<QueueTrack[]> {
     if (ids.length === 0) return [];
@@ -91,14 +84,7 @@ async function hydrateQueue(ids: string[]): Promise<QueueTrack[]> {
         }));
 }
 
-/**
- * The client that is WRITING the queue.
- *
- * `changedBy` exists so a device can tell that ANOTHER device changed the
- * queue. Echoing `req.query.c` back on read reported the reading client, so
- * every queue looked self-authored and the field was useless -- it has to be
- * captured at write time and stored.
- */
+/** The client writing the queue, stored so other devices see who changed it. */
 function clientName(req: Request): string {
     const c = req.query.c as string | undefined;
     return c && c.trim() ? c.trim().slice(0, 64) : "Kima";

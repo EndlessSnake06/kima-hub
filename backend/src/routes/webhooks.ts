@@ -1,15 +1,6 @@
 /**
- * Lidarr Webhook Handler (Event Sourcing)
- *
- * Handles Lidarr webhooks using event sourcing pattern:
- * 1. Store webhook event in database (with deduplication)
- * 2. Respond immediately with 200 OK
- * 3. Process event asynchronously
- *
- * This ensures:
- * - No webhook events are lost
- * - Can replay missed events
- * - Survives server restarts
+ * Lidarr webhooks: each event is stored (deduplicated), answered 200 at once
+ * and processed asynchronously, so events survive restarts and can be replayed.
  */
 
 import { Router } from "express";
@@ -54,11 +45,8 @@ router.post("/lidarr", async (req, res) => {
             });
         }
 
-        // Verify the webhook secret IF one is configured. When it's unset we accept
-        // the request (warn once) rather than reject: the secret is optional by
-        // design and Lidarr ships webhooks without one, so a hard 401 would break the
-        // default integration. Abuse of the unauthenticated path is bounded instead
-        // by the dedicated webhookLimiter applied at the mount (see index.ts).
+        // The secret is optional and Lidarr sends none by default, so without one the
+        // request is accepted (warned once); the webhook rate limiter bounds abuse.
         if (settings.lidarrWebhookSecret) {
             const providedSecret = req.headers["x-webhook-secret"] as string;
 

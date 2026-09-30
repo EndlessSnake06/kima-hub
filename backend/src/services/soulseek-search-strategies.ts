@@ -1,13 +1,7 @@
 /**
- * Multi-strategy search for Soulseek P2P network
- *
- * Strategies ordered from simple to complex based on real-world filename patterns.
- * Simpler queries match more actual filenames and should be tried first:
- * 1. Artist + Title (aggressive normalization) - most likely to match
- * 2. Artist + Title (moderate normalization) - balanced approach
- * 3. Title only (aggressive normalization) - fallback when artist name doesn't match
- * 4. Album + Title - fallback for compilation albums
- * 5. Artist + Album + Title - last resort for highly specific searches
+ * Soulseek search strategies, simplest first since simpler queries match more
+ * filenames: artist + title (aggressive, then moderate normalisation), title
+ * only, album + title, then artist + album + title.
  */
 
 import type { FileSearchResponse } from "../lib/soulseek/messages/from/peer";
@@ -34,8 +28,7 @@ function stripClassicalMetadata(title: string): string {
         .replace(/\b[IVX]+\.\s*/g, "")
         // Replace colons with spaces (used as separators in classical titles)
         .replace(/:\s*/g, " ")
-        // Remove opus/catalog numbers used to identify classical works
-        // Op. (Opus), K. (Köchel), BWV (Bach), RV (Vivaldi), Hob. (Haydn), D. (Schubert), WoO (Beethoven)
+        // Strip classical catalogue numbers: Op., K., BWV, RV, Hob., D., WoO.
         .replace(/\b(Op\.|K\.|BWV|RV|Hob\.|D\.|WoO)\s*\d+[a-z]?/gi, "")
         // Remove key signatures that appear in classical titles
         .replace(/\bin\s+[A-G]\s+(Major|Minor|sharp|flat)/gi, "")

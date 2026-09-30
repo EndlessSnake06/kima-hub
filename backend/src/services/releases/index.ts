@@ -83,13 +83,9 @@ export async function pendingReleases(userId: string): Promise<Release[]> {
 }
 
 /**
- * A `/choice` body naming a key the release never asked about.
- *
- * The choice endpoint records deliberate consent, so a made-up key must not
- * land in the table as one — and `moods.mixes.rebuild` must not arrive through
- * this door either: it is an `action`, and its answers belong to
- * `decideMoodMixes`, which refuses "keep" on a retired mix. Letting the choice
- * endpoint take the key would be a way around that refusal.
+ * A `/choice` for a key the release never asked about. `moods.mixes.rebuild`
+ * is refused too: it is an action, answered through `decideMoodMixes`, which
+ * refuses "keep" on a retired mix.
  */
 export class UnknownChoiceError extends Error {}
 
@@ -119,12 +115,8 @@ export async function setChoice(params: {
 }
 
 /**
- * Close a release for this user, and settle everything it asked.
- *
- * Every choice the user did not answer is written at its default, marked
- * DISMISSED. Choices they *did* answer are left alone — closing the window is
- * not a retraction, and someone who opted in and then hit the X should stay
- * opted in.
+ * Close a release for this user: unanswered choices are recorded at their
+ * default as DISMISSED; answered ones stay as they are.
  */
 export async function dismissRelease(userId: string, version: string): Promise<{
     recordedDefaults: string[];

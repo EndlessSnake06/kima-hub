@@ -1,24 +1,11 @@
 /**
- * Canonical library-scope filters.
- *
- * Kima keeps a separate "DISCOVER"-location pile for suggested-but-not-owned
- * albums/tracks (see CLAUDE.md: "DISCOVER-location albums are excluded from
- * normal library views"). Any query that should only ever see content the
- * user actually owns must spread one of these into its `where` clause rather
- * than re-typing `location: "LIBRARY"` inline, so the invariant stays
- * enforced from a single place.
+ * Library-scope filters. DISCOVER albums are suggestions, not owned, so a query
+ * limited to owned content spreads one of these into its `where`.
  */
 
 import { Prisma } from "@prisma/client";
 
-/**
- * The `Album.location` value meaning "the user owns this".
- *
- * Exported separately because one query cannot use the where-clauses below:
- * `shuffleTracks` draws random ids in raw SQL, where a Prisma filter object is
- * not available. That query interpolates THIS constant rather than repeating
- * the string, so a change here reaches the raw-SQL path too.
- */
+/** `Album.location` for owned albums, for raw SQL such as `shuffleTracks`. */
 export const LIBRARY_LOCATION = "LIBRARY";
 
 /** Spread into an `Album` where-clause to scope it to owned-library albums. */

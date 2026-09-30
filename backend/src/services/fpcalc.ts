@@ -13,15 +13,6 @@ interface Fingerprint {
 }
 
 /**
- * Runner for `fpcalc`, the Chromaprint fingerprinter that feeds AcoustID.
- *
- * chromaprint is installed in the backend Docker image via apt; on dev boxes
- * it may be missing entirely, which must degrade to "AcoustID path disabled"
- * (the enrichment loop falls back to MusicBrainz) instead of crashing the
- * worker. isAvailable() latches after the first probe — the binary cannot
- * appear mid-process in production.
- */
-/**
  * A real fpcalc failure. With `-ignore-errors` set, a non-zero exit cannot be
  * explained by a single damaged frame — it is a genuine failure of the run —
  * so the error carries the exit code and fpcalc's stderr text verbatim:
@@ -42,6 +33,11 @@ export class FpcalcFailure extends Error {
     }
 }
 
+/**
+ * Runs `fpcalc` (Chromaprint) for AcoustID. The Docker image installs it; where
+ * it is missing the AcoustID path is disabled rather than crashing the worker.
+ * Availability is probed once.
+ */
 class FpcalcService {
     private available: boolean | null = null;
 
@@ -61,17 +57,10 @@ class FpcalcService {
     }
 
     /**
-     * Fingerprint an audio file. Throws on any failure (binary missing,
-     * non-zero exit, unparseable output) — callers record the failure.
-     *
-     * Always runs with `-ignore-errors`: fpcalc stops at the first frame it
-     * cannot decode, and without the flag a mid-file bad frame both fails the
-     * run AND truncates the fingerprint instead of skipping the frame. The
-     * analyzer's decode path tolerates damaged frames by design; with the
-     * flag the fingerprint path agrees with it about the same file. A
-     * non-zero exit WITH the flag is then a real failure, and stdout is never
-     * parsed after one — silently using whatever the failed run left in the
-     * buffer would make the answer disagree with its own exit code.
+     * Fingerprint an audio file; throws on any failure. Runs with `-ignore-errors`
+     * so a bad frame is skipped rather than ending the run and truncating the
+     * fingerprint, as the analyzer does. A non-zero exit is then a real failure,
+     * and its stdout is not parsed.
      */
     async fingerprintFile(filePath: string): Promise<Fingerprint> {
         if (!(await this.isAvailable())) {

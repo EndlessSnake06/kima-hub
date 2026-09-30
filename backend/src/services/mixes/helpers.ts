@@ -127,11 +127,8 @@ export function getSeededRandom(seed: string): number {
 
 
 /**
- * Deterministic Fisher-Yates shuffle driven by the same LCG progression used
- * to derive `seed` from getSeededRandom(). Unlike `array.sort(() => random - 0.5)`,
- * this always makes exactly array.length - 1 swaps regardless of how many times
- * a sort implementation calls the comparator, so the result is uniformly
- * shuffled instead of biased.
+ * Deterministic Fisher-Yates shuffle using getSeededRandom's LCG; unbiased,
+ * unlike sorting with a random comparator.
  */
 export function seededShuffle<T>(array: T[], seed: number): T[] {
     const result = [...array];
@@ -159,11 +156,8 @@ export type TrackWithAlbumCover = {
 };
 
 /**
- * Helper to find tracks matching genre patterns.
- * Queries the genre tables first (Genre/TrackGenre — the single genre
- * source), then falls back to filtering album.genres
- * (JSON array) and user genres in memory, so tracks whose genres never
- * reached the tables can still fill a mix.
+ * Tracks matching genre patterns: the Genre/TrackGenre tables first, then
+ * album.genres and user genres in memory for tracks the tables lack.
  */
 export async function findTracksByGenrePatterns(
     genrePatterns: string[],
