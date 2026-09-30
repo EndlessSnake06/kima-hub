@@ -18,7 +18,7 @@ import { redisClient } from "../utils/redis";
 import PQueue from "p-queue";
 import { acquisitionService } from "./acquisitionService";
 import { sourcePauseController } from "./sourcePauseController";
-import { normalizeArtistName } from "../utils/artistNormalization";
+import { normalizeArtistName } from "./artistIdentity";
 import { parseCredit } from "./artistIdentity";
 import { rankAfter, rankForPosition } from "../utils/lexoRank";
 import { allocateAppendRanks } from "./playlistService";

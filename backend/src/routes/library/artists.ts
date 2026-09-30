@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { normalizeArtistName } from "../../utils/artistNormalization";
+import { normalizeArtistName } from "../../services/artistIdentity";
 import { requireAdmin } from "../../middleware/auth";
 import { prisma, Prisma } from "../../utils/db";
 import { redisClient } from "../../utils/redis";

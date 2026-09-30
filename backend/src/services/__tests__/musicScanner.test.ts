@@ -73,8 +73,8 @@ jest.mock('music-metadata', () => ({ parseFile: jest.fn() }), { virtual: true })
 // p-queue is mapped to a CJS mock in jest.config.js -- no extra mock needed
 
 import { MusicScannerService } from '../musicScanner';
+import { normalizeArtistName } from '../artistIdentity';
 import {
-    normalizeArtistName,
     canonicalizeVariousArtists,
     sanitizeTagString,
     parseArtistFromPath,
@@ -169,7 +169,7 @@ describe('MusicScannerService.normalizeForMatching', () => {
 });
 
 // ---------------------------------------------------------------------------
-// normalizeArtistName (exported from artistNormalization, used by scanner)
+// normalizeArtistName
 // ---------------------------------------------------------------------------
 
 describe('normalizeArtistName', () => {

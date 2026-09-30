@@ -1,6 +1,6 @@
 import { prisma } from "../../utils/db";
 import { logger } from "../../utils/logger";
-import { normalizeArtistName } from "../../utils/artistNormalization";
+import { normalizeArtistName } from "../artistIdentity";
 import { getSimilarArtists } from "../artistSimilarity";
 import { LIBRARY_LOCATION } from "../libraryFilters";
 import {

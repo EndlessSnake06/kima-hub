@@ -8,7 +8,7 @@ import { subsonicOk, subsonicError, SubsonicError } from "../../utils/subsonicRe
 import { getAudioStreamingService } from "../../services/audioStreaming";
 import { config } from "../../config";
 import { bitrateToQuality, firstArtistGenre, mapSong, wrap } from "./mappers";
-import { normalizeArtistName } from "../../utils/artistNormalization";
+import { normalizeArtistName } from "../../services/artistIdentity";
 import { resolveTrackFilePath } from "../library/trackPath";
 import { recordPlay } from "../../services/playRecording";
 

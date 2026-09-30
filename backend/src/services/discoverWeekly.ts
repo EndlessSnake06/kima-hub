@@ -4,7 +4,7 @@
  */
 
 import { logger } from "../utils/logger";
-import { normalizeArtistName } from "../utils/artistNormalization";
+import { normalizeArtistName } from "./artistIdentity";
 import { hasRealMbid } from "./artistIdentity";
 import type { SeedArtist } from "./discovery/discoverySeeding";
 import { Prisma } from "@prisma/client";

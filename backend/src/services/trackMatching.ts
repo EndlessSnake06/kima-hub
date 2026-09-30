@@ -11,7 +11,7 @@ import {
   normalizeAlbumForMatching,
   stringSimilarity,
 } from "../utils/normalization";
-import { normalizeArtistName } from "../utils/artistNormalization";
+import { normalizeArtistName } from "./artistIdentity";
 import { parseCredit } from "./artistIdentity";
 
 /** The record being searched for (a Spotify track, or its stored pending row). */

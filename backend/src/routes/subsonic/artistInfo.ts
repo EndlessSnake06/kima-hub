@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { normalizeArtistName } from "../../utils/artistNormalization";
+import { normalizeArtistName } from "../../services/artistIdentity";
 import { prisma } from "../../utils/db";
 import { subsonicOk, subsonicError, SubsonicError } from "../../utils/subsonicResponse";
 import { wrap, parseIntParam } from "./mappers";

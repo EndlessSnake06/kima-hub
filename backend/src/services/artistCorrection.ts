@@ -10,7 +10,7 @@ import { logger } from "../utils/logger";
 import { redisClient } from "../utils/redis";
 import { musicBrainzService } from "./musicbrainz";
 import { failureCause } from "../utils/outcome";
-import { normalizeArtistName } from "../utils/artistNormalization";
+import { normalizeArtistName } from "./artistIdentity";
 
 export interface ArtistCorrection {
     corrected: boolean;

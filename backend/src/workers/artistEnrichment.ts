@@ -4,7 +4,7 @@ import { prisma } from "../utils/db";
 import { wikidataService } from "../services/wikidata";
 import { getSimilarArtists } from "../services/artistSimilarity";
 import { musicBrainzService } from "../services/musicbrainz";
-import { normalizeArtistName } from "../utils/artistNormalization";
+import { normalizeArtistName } from "../services/artistIdentity";
 import { hasRealMbid } from "../services/artistIdentity";
 import { findAlbumArtwork, findArtistArtwork } from "../services/artwork";
 import { redisClient } from "../utils/redis";
