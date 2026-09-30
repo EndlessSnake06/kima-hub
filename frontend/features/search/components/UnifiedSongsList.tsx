@@ -1,15 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
-import { Play, Pause, Download, CheckCircle, Music } from "lucide-react";
-import Image from "next/image";
-import Link from "next/link";
-import { useAudioState } from "@/lib/audio-state-context";
-import { useAudioPlayback } from "@/lib/audio-playback-context";
-import { useAudioControls } from "@/lib/audio-controls-context";
-import { api } from "@/lib/api";
-import { cn } from "@/utils/cn";
-import { formatTime } from "@/utils/formatTime";
+import { Download, CheckCircle, Music } from "lucide-react";
+import { LibraryTracksList } from "./LibraryTracksList";
 import { getQualityBadge, parseFilename } from "./soulseekHelpers";
 import type { LibraryTrack, SoulseekResult } from "../types";
 
@@ -36,10 +29,6 @@ export function UnifiedSongsList({
     maxTotal = 6,
     maxLibrary = 4,
 }: UnifiedSongsListProps) {
-    const { currentTrack } = useAudioState();
-    const { isPlaying } = useAudioPlayback();
-    const { playTracks, pause, resumeWithGesture } = useAudioControls();
-
     const librarySlice = tracks.slice(0, maxLibrary);
     const soulseekSlots = maxTotal - librarySlice.length;
     const soulseekSlice = useMemo(
@@ -51,123 +40,10 @@ export function UnifiedSongsList({
         return null;
     }
 
-    const handlePlayTrack = (track: LibraryTrack, index: number) => {
-        const formattedTracks = tracks.map((t) => ({
-            id: t.id,
-            title: t.title,
-            displayTitle: t.displayTitle,
-            duration: t.duration,
-            artist: {
-                id: t.album.artist.id,
-                name: t.album.artist.name,
-            },
-            album: {
-                id: t.album.id,
-                title: t.album.title,
-                coverArt: t.album.coverUrl ?? undefined,
-            },
-        }));
-
-        if (currentTrack?.id === track.id) {
-            if (isPlaying) {
-                pause();
-            } else {
-                resumeWithGesture();
-            }
-        } else {
-            playTracks(formattedTracks, index);
-        }
-    };
-
     return (
         <div className="space-y-1">
-            {/* Library tracks */}
-            {librarySlice.map((track, index) => {
-                const isCurrentTrack = currentTrack?.id === track.id;
-                const isPlayingThis = isCurrentTrack && isPlaying;
-                const coverUrl = track.album.coverUrl
-                    ? api.getCoverArtUrl(track.album.coverUrl, 48)
-                    : null;
+            <LibraryTracksList tracks={tracks} limit={maxLibrary} />
 
-                return (
-                    <div
-                        key={track.id}
-                        className={cn(
-                            "flex items-center gap-3 p-2 rounded-md group transition-colors",
-                            isCurrentTrack ? "bg-white/10" : "hover:bg-white/5",
-                        )}
-                    >
-                        <button
-                            onClick={() => handlePlayTrack(track, index)}
-                            className="w-10 h-10 flex items-center justify-center flex-shrink-0"
-                        >
-                            {isPlayingThis ? (
-                                <Pause className="w-4 h-4 text-brand" />
-                            ) : isCurrentTrack ? (
-                                <Play className="w-4 h-4 text-brand ml-0.5" />
-                            ) : (
-                                <>
-                                    <span className="text-sm text-[var(--text-secondary)] group-hover:hidden">
-                                        {index + 1}
-                                    </span>
-                                    <Play className="w-4 h-4 text-white hidden group-hover:block ml-0.5" />
-                                </>
-                            )}
-                        </button>
-
-                        <div className="w-10 h-10 bg-[#181818] rounded overflow-hidden flex-shrink-0">
-                            {coverUrl ? (
-                                <Image
-                                    src={coverUrl}
-                                    alt={track.album.title}
-                                    width={40}
-                                    height={40}
-                                    className="object-cover w-full h-full"
-                                    unoptimized
-                                />
-                            ) : (
-                                <div className="w-full h-full flex items-center justify-center">
-                                    <span className="text-[var(--text-muted)] text-xs">&#9834;</span>
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="flex-1 min-w-0">
-                            <p
-                                className={cn(
-                                    "text-sm font-medium truncate",
-                                    isCurrentTrack ? "text-brand" : "text-white",
-                                )}
-                            >
-                                {track.title}
-                            </p>
-                            <p className="text-xs text-[var(--text-secondary)] truncate">
-                                <Link
-                                    href={`/artist/${track.album.artist.id}`}
-                                    className="hover:underline hover:text-white"
-                                    onClick={(e) => e.stopPropagation()}
-                                >
-                                    {track.album.artist.name}
-                                </Link>
-                                <span className="mx-1">&bull;</span>
-                                <Link
-                                    href={`/album/${track.album.id}`}
-                                    className="hover:underline hover:text-white"
-                                    onClick={(e) => e.stopPropagation()}
-                                >
-                                    {track.album.title}
-                                </Link>
-                            </p>
-                        </div>
-
-                        <span className="text-sm text-[var(--text-secondary)] flex-shrink-0">
-                            {formatTime(track.duration)}
-                        </span>
-                    </div>
-                );
-            })}
-
-            {/* Soulseek results */}
             {soulseekSlice.map((result, index) => {
                 const parsed = result.parsedArtist
                     ? {
