@@ -1,28 +1,9 @@
 "use client";
 
 /**
- * The circle of fifths, lit by what you actually play.
- *
- * ## Why this shape and not another bar chart
- *
- * The rest of this page had settled into one form — a thin amber bar of varying
- * length — used six different times for six unrelated things. Different data
- * drawn identically reads as one texture, and a reader stops looking.
- *
- * The circle of fifths is the shape musicians already use for keys: neighbours
- * on the ring share all but one note, so adjacent segments lighting up together
- * means something real about the music rather than being an accident of
- * alphabetical order. Majors on the outside, their relative minors directly
- * inside them.
- *
- * It is also the one graphic here that could not be drawn about anything except
- * music, which is the point.
- *
- * ## Reading it
- *
- * Brightness is how often you play in that key. Nothing else is encoded — no
- * size, no colour shift — because a wheel with three variables on it is a
- * puzzle, not a chart.
+ * The circle of fifths, lit by how often you play in each key. Majors outside,
+ * relative minors directly inside; neighbours share all but one note.
+ * Brightness is the only encoding.
  */
 
 import { useMemo, useState } from "react";

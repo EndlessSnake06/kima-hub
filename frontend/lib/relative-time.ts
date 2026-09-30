@@ -1,8 +1,4 @@
-/**
- * "Just now" / "12m ago" / "3h ago", then the local date. One clock-
- * relative formatter for the activity surfaces; the tabs used to carry
- * private copies with slightly different wording for the same fact.
- */
+/** "Just now" / "12m ago" / "3h ago", then the local date. Shared by the activity surfaces. */
 export function timeAgo(dateStr: string): string {
     const date = new Date(dateStr);
     const diff = Date.now() - date.getTime();

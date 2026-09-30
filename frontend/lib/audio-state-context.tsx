@@ -210,20 +210,15 @@ export function AudioStateProvider({ children }: { children: ReactNode }) {
         "track" | "audiobook" | "podcast" | null
     >(() => {
         const stored = readStorage(STORAGE_KEYS.PLAYBACK_TYPE) as "track" | "audiobook" | "podcast" | null;
-        // Don't restore "track" type since we no longer restore currentTrack from localStorage.
+        // "track" type is not restored from localStorage.
         // Server state will re-set this if there was an active track.
         return stored === "track" ? null : stored;
     });
     const [queue, setQueue] = useState<Track[]>([]);
 
     /**
-     * The server's queue ceiling, fetched once.
-     *
-     * A ref rather than state on purpose: nothing renders from it, and putting
-     * it in state would re-run the save effect the moment it arrived, writing
-     * the queue again for no reason. The starting value is the same default the
-     * server falls back to, so a failed or slow fetch behaves like agreement
-     * rather than like a much smaller limit.
+     * The server's queue ceiling, fetched once. A ref so its arrival does not
+     * re-run the save effect; starts at the server's own default.
      */
     const queueLimitRef = useRef(10000);
 
@@ -363,13 +358,8 @@ export function AudioStateProvider({ children }: { children: ReactNode }) {
             } catch { /* ignore parse errors */ }
         }
 
-        // Wipe whatever the server told us to restore, when it turns out not to exist.
-        //
-        // These lookups are asynchronous and can land seconds after the page loads -- long
-        // enough for someone to have pressed play in the meantime. Clearing unconditionally
-        // then throws away the album they just started: measured as a queue of 13 tracks
-        // collapsing to 1. So this backs off entirely if anything is queued by the time it
-        // resolves, because a stale restore is worth less than live playback.
+        // Clear a server-restored item that turns out not to exist, unless
+        // something has been queued since: live playback beats a stale restore.
         const clearRestoredPlayback = () => {
             if (queueRef.current.length > 0) return;
             setCurrentTrack(null);
@@ -446,29 +436,16 @@ export function AudioStateProvider({ children }: { children: ReactNode }) {
                             }
                         })
                         .catch(() => {
-                            // Unsubscribed -- possibly on another device -- so the podcast
-                            // the server remembers no longer resolves. This rejection was
-                            // unhandled, which meant an error on every sign-in for as long
-                            // as the stale state survived, which was forever because
-                            // nothing cleared it.
+                            // Unsubscribed, possibly on another device, so the remembered
+                            // podcast no longer resolves. Clear the stale server state.
                             api.clearPlaybackState().catch(() => {});
                             clearRestoredPlayback();
                         });
                 }
 
-                // Restoring the previous session's queue must not overwrite one the
-                // listener has built in the meantime. This request is asynchronous and can
-                // land seconds after the page is usable, which is easily long enough to
-                // open an album and press play: measured as an eight-track album collapsing
-                // to a single track, because the old one-track queue arrived late and won.
-                //
-                // Shuffle is a preference rather than content, so it is restored either way.
-                // The guard has to read the real current queue, not a ref that trails it.
-                // queueRef is synced by an effect, so between "the listener pressed play"
-                // and "the ref catches up" there is a window where the ref still says empty
-                // and the stale queue wins anyway -- which showed up as this overwrite
-                // happening on some runs and not others. A functional update sees the
-                // actual value at the moment React applies it, with no window at all.
+                // A late restore must not overwrite a queue built since page load.
+                // A functional update reads the real current queue; the effect-synced
+                // queueRef can still be empty. Shuffle is restored either way.
                 if (serverState.queue) {
                     setQueue((prev) => (prev.length > 0 ? prev : serverState.queue));
                 }
@@ -522,17 +499,9 @@ export function AudioStateProvider({ children }: { children: ReactNode }) {
                 } else {
                     localStorage.removeItem(STORAGE_KEYS.PLAYBACK_TYPE);
                 }
-                // The queue is NOT written here, deliberately.
-                //
-                // It lives on the server (`PlaybackState.queue`), which is what
-                // every restore path above actually reads and what a Subsonic
-                // client shares. This wrote the whole queue to localStorage on
-                // every change and nothing ever read it back — measured at 2.2MB
-                // of stringify per skip on a ten thousand track queue, for a key
-                // with no consumer. Worse, it shares this try/catch with the
-                // current track and playback type, so once the queue was large
-                // enough to blow the 5MB origin quota it took those down with
-                // it, silently.
+                // The queue is not written here: it lives on the server
+                // (`PlaybackState.queue`), and a large queue in this try/catch would
+                // exceed the storage quota and take the other keys down with it.
                 localStorage.setItem(
                     STORAGE_KEYS.CURRENT_INDEX,
                     currentIndex.toString()
@@ -579,10 +548,7 @@ export function AudioStateProvider({ children }: { children: ReactNode }) {
 
         const saveToServer = async () => {
             try {
-                // Sliced to whatever the server says it will keep, asked for
-                // once and remembered. This was two hard-coded 2000s — one here
-                // and one in the route — kept in step by a comment, which is
-                // the arrangement that guarantees they eventually differ.
+                // Sliced to the server's queue limit, fetched once and remembered.
                 const limitedQueue = queue?.slice(0, queueLimitRef.current);
                 const adjustedIndex = Math.min(
                     currentIndex,
@@ -735,15 +701,9 @@ export function AudioStateProvider({ children }: { children: ReactNode }) {
                     }
 
                     if (!mounted) return;
-                    // Adopt the server's queue only when it is genuinely newer than the one
-                    // in front of the listener.
-                    //
-                    // "Different from mine" is not the same as "newer than mine". Saving
-                    // playback state is debounced, so for a few seconds after pressing play
-                    // the server still holds the PREVIOUS queue -- which differs, so this
-                    // adopted it and the album that had just started collapsed back to
-                    // yesterday's single track. Intermittent, because it only bites when a
-                    // poll lands inside that window.
+                    // Adopt the server's queue only when it is newer than the local one.
+                    // Saves are debounced, so right after play the server still holds
+                    // the previous queue, which differs but is older.
                     const serverIsNewer =
                         serverUpdatedAt.getTime() > localQueueChangedAtRef.current.getTime();
                     if (

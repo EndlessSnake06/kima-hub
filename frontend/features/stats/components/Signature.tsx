@@ -1,27 +1,8 @@
 "use client";
 
 /**
- * The two graphics no streaming service could draw for you.
- *
- * Both need two things in one database, and nobody renting you music has both:
- * the audio analysis of every file, and the fact that the files are yours.
- * Spotify knows what you played and not what you own. Last.fm has never
- * listened to any of it. A plain Subsonic server has the files but does not
- * know what they sound like.
- *
- * ## What was removed here on 2026-08-25
- *
- * There were four exports. `AlbumCurve` drew listens by track position as a
- * column chart, which was the third column chart on a page that also had a
- * grid, a wheel, a timeline and a scatter — and the one fact it carried ("you
- * play records in order two thirds of the time") is a number, so it is now a
- * line of the opening ledger and costs nothing. `Statement` and `Em` were
- * written, never called, and never noticed.
- *
- * The remaining collection view lost its era block for the same reason: "half
- * of what you play came out in 2023 or later" was rendered here *and* written
- * out again as the supporting paragraph of the section above it. It is one
- * number. It is now in the ledger, once.
+ * Graphics that need both the audio analysis of every file and the fact that
+ * the files are yours.
  */
 
 import { useReveal } from "../useReveal";
@@ -42,20 +23,12 @@ export function SignatureSound({ signature: s, period }: { signature: Sig; perio
 
 /* ── The collection against the listening ──────────────────────────────── */
 
-/**
- * Where your shelf sits, and where your listening sits, on one track each.
- *
- * Grey is the shelf, amber is the listening, and the distance between the two
- * marks is the entire point — which is why they share a track rather than
- * getting a bar apiece. Two bars would make this a comparison you perform;
- * one track makes it a gap you see.
- */
+/** Shelf (grey) and listening (amber) marked on one shared track, so the gap is seen. */
 export function OwnedAgainstPlayed({ signature: s }: { signature: Sig }) {
     const { ref, shown } = useReveal<HTMLDivElement>({ threshold: 0.2 });
     if (s.ownedVsPlayed.length === 0) return null;
 
-    // The one sentence worth keeping out of the paragraph that used to sit
-    // here: how much harder the listening runs than the shelf.
+    // How much harder the listening runs than the shelf.
     const hits = s.ownedVsPlayed.find((row) => row.unit !== "bpm");
     const harder = hits
         ? Math.round(((hits.played - hits.owned) / Math.max(0.01, hits.owned)) * 100)

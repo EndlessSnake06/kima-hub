@@ -20,15 +20,7 @@ export interface QueryEventDetail {
     [key: string]: unknown;
 }
 
-/**
- * Dispatch a typed query event
- * 
- * @param eventType - The type of event to dispatch
- * @param detail - Optional event payload data
- * 
- * @example
- * dispatchQueryEvent("audiobook-progress-updated", { audiobookId: "123" });
- */
+/** Dispatch a typed query event. */
 export function dispatchQueryEvent(
     eventType: QueryEventType,
     detail?: QueryEventDetail
@@ -38,19 +30,7 @@ export function dispatchQueryEvent(
     );
 }
 
-/**
- * Subscribe to a typed query event
- * 
- * @param eventType - The type of event to listen for
- * @param handler - Callback function to execute when event fires
- * @returns Cleanup function to remove the event listener
- * 
- * @example
- * const unsubscribe = subscribeQueryEvent("audiobook-progress-updated", () => {
- *     queryClient.refetchQueries({ queryKey: ["audiobook", id] });
- * });
- * // Later: unsubscribe();
- */
+/** Subscribe to a typed query event; returns the unsubscribe function. */
 export function subscribeQueryEvent(
     eventType: QueryEventType,
     handler: (event: CustomEvent<QueryEventDetail>) => void

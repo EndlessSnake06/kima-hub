@@ -1,10 +1,4 @@
-/**
- * The wire shape of GET /api/stats.
- *
- * Mirrors the four services behind it. `system` is absent — not blank — for
- * anyone who is not an admin, so the presence of the key is the permission
- * check on the client too.
- */
+/** The wire shape of GET /api/stats. `system` is absent for non-admins. */
 
 export interface ListeningStats {
     plays: number;
@@ -89,13 +83,7 @@ export interface Signature {
     hourly: Array<{ hour: number; plays: number; energy: number }>;
 }
 
-/**
- * The windows the page offers, rolling rather than calendar.
- *
- * "This month" on the 2nd is two days of data, and a calendar week leaves the
- * 168-cell week grid almost empty — the grid's whole premise is that it
- * accumulates. Rolling windows have no such cliff.
- */
+/** Rolling windows, so early in a month or week there is no near-empty cliff. */
 export type Period = "30d" | "12mo" | "all";
 
 export const PERIODS: Array<{ id: Period; label: string; sentence: string }> = [

@@ -27,15 +27,8 @@ const CONTROL =
     "focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-brand)]";
 
 /**
- * One pager for every paginated list.
- *
- * Collection, Podcasts and Audiobooks each carried a hand-rolled version of
- * this, and all three differed: Collection had text First/Prev/Next/Last in
- * bold tracked capitals inside a double-bordered box, Podcasts mixed text and
- * chevrons with a blue accent, Audiobooks offered only prev/next with no way
- * to jump to either end. None of the three named its buttons for a screen
- * reader, none announced the page change, and every control sat around 32px
- * against a 44px touch-target floor.
+ * The pager for every paginated list: labelled first/prev/next/last controls
+ * at the 44px touch floor, with the page change announced to screen readers.
  */
 export function Pagination({
     currentPage,

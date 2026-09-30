@@ -31,11 +31,8 @@ function detectEnabled(): boolean {
             /iPhone|iPad|iPod/.test(navigator.userAgent) ||
             (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
         const flagged = window.localStorage.getItem(FLAG_KEY) === "1";
-        // Auto-capture graduated out: the unconditional standalone enable was itself
-        // perturbing the system under observation. The kima_ios_debug localStorage flag
-        // (set via ?ios_debug=1) is the sole enable path. An in-app Settings toggle
-        // ("Capture playback diagnostics") will be added with the support-bundle feature
-        // (docs/plans/2026-06-04-diagnostics-support-bundle.md).
+        // Enabled only by the kima_ios_debug localStorage flag (set via ?ios_debug=1);
+        // always-on capture perturbed the playback it was observing.
         enabled = isIos && flagged;
         if (enabled) {
             const stored = window.sessionStorage.getItem(STORAGE_KEY);
@@ -50,14 +47,9 @@ function detectEnabled(): boolean {
     return enabled;
 }
 
-// Flush the in-memory ring buffer to sessionStorage. Called on visibility hide,
-// pagehide, and immediately before each debounced upload POST.
-//
-// Trade-off (R16, accepted): if iOS kills the PWA without firing visibilitychange
-// or pagehide, the unflushed tail is lost -- one of the crash classes diagnostics
-// exist for. Accepted because the per-event synchronous write was itself a
-// perturbation of the system under observation, and the 3s debounced upload bounds
-// the loss window in practice.
+// Flush the ring buffer to sessionStorage on visibility hide, pagehide, and before
+// each debounced upload. A kill with neither event loses the unflushed tail; the
+// 3s upload debounce bounds that loss, and per-event writes perturbed playback.
 function flushToStorage(): void {
     try {
         window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(buffer));

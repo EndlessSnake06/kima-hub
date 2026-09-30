@@ -1,27 +1,9 @@
 "use client";
 
 /**
- * The machine half of the page. Admins only — the server key is absent from
- * the response for everyone else, so this never renders for them.
- *
- * ## Why it looks colder than the rest
- *
- * Everything above this is about a person and is written in sentences. This is
- * about a process and is written in readings. The type system is the same and
- * the accent still only ever means data, but the rhythm is tighter and the
- * numbers sit in columns, because that is how you scan an instrument rather
- * than read a report.
- *
- * ## The actions
- *
- * Each one posts to the endpoint that already owns it. None of them are
- * reimplemented here — clearing caches, clearing finished jobs and retrying
- * failed analysis each have exactly one implementation, on the server, and
- * this is a third caller of it.
- *
- * The two that delete something ask first, in place. A second click on a
- * button that now says "Sure?" is a cheaper confirmation than a dialogue, and
- * a dialogue for a cache flush is theatre.
+ * The server half of the page, admins only (`system` is absent for everyone
+ * else). Readings in columns. Each action calls the endpoint that owns it; the
+ * two destructive ones confirm in place with a second click.
  */
 
 import { useState } from "react";
@@ -140,18 +122,7 @@ function Reading({
     );
 }
 
-/**
- * What each maintenance endpoint actually returns, taken from the route rather
- * than guessed at.
- *
- * This was `Record<string, number | undefined>`, under which every key name
- * typechecks — including the two that were wrong. `/clear-caches` returns
- * `clearedKeys` and was being read as `cleared ?? keysDeleted`;
- * `/analysis/retry-failed` returns `reset` and was being read as
- * `retried ?? count`. Both buttons did their work and then reported "0",
- * which on a maintenance panel is worse than reporting nothing: the number is
- * the only evidence the click did anything.
- */
+/** Response shapes of each maintenance endpoint, as its route returns them. */
 interface ClearCachesResult { clearedKeys?: number }
 interface CleanupJobsResult { totalCleaned?: number }
 interface RetryFailedResult { reset?: number; failed?: number; permanentlyFailed?: number }

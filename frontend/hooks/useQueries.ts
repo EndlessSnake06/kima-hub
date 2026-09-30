@@ -1,19 +1,7 @@
 /**
- * React Query Hooks for API Caching
- *
- * This file provides custom React Query hooks for the most frequently called APIs
- * in the music streaming app. These hooks implement smart caching strategies to:
- * - Reduce unnecessary API calls
- * - Improve perceived performance
- * - Provide automatic background refetching
- * - Handle loading and error states consistently
- *
- * Stale time configuration rationale:
- * - Artist data: 10 minutes (rarely changes)
- * - Album data: 10 minutes (rarely changes)
- * - Library/Home data: 2 minutes (may change as user adds music)
- * - Search results: 5 minutes (relatively static for same query)
- * - Playlists: 1 minute (user may be actively modifying)
+ * TanStack Query hooks for the most-used endpoints. Stale times follow how
+ * often the data changes: artists/albums 10m, search/mixes 5m, library and
+ * home 2m, playlists 1m.
  */
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -98,17 +86,6 @@ export const queryKeys = {
 
 
 
-/**
- * Hook to fetch recently listened items (Continue Listening)
- *
- * Cache time: 2 minutes (may change frequently)
- *
- * @param limit - Number of items to fetch (default: 10)
- * @returns Query result with recently listened items
- *
- * @example
- * const { data } = useRecentlyListenedQuery(10);
- */
 export function useRecentlyListenedQuery(limit: number = 10) {
     return useQuery({
         queryKey: queryKeys.recentlyListened(limit),
@@ -117,17 +94,6 @@ export function useRecentlyListenedQuery(limit: number = 10) {
     });
 }
 
-/**
- * Hook to fetch recently added artists
- *
- * Cache time: 2 minutes (may change as user adds music)
- *
- * @param limit - Number of items to fetch (default: 10)
- * @returns Query result with recently added artists
- *
- * @example
- * const { data } = useRecentlyAddedQuery(10);
- */
 export function useRecentlyAddedQuery(limit: number = 10) {
     return useQuery({
         queryKey: queryKeys.recentlyAdded(limit),
@@ -162,11 +128,6 @@ interface LibraryTracksParams {
     enabled?: boolean;
 }
 
-/**
- * Hook to fetch library artists with pagination and filtering
- *
- * Cache time: 2 minutes (may change as user adds music)
- */
 export function useLibraryArtistsQuery({
     filter = "owned",
     sortBy = "name",
@@ -193,11 +154,6 @@ export function useLibraryArtistsQuery({
     });
 }
 
-/**
- * Hook to fetch library albums with pagination and filtering
- *
- * Cache time: 2 minutes (may change as user adds music)
- */
 export function useLibraryAlbumsQuery({
     filter = "owned",
     sortBy = "name",
@@ -222,11 +178,6 @@ export function useLibraryAlbumsQuery({
     });
 }
 
-/**
- * Hook to fetch library tracks with pagination
- *
- * Cache time: 2 minutes (may change as user adds music)
- */
 export function useLibraryTracksQuery({
     sortBy = "name",
     limit = 40,
@@ -250,17 +201,6 @@ export function useLibraryTracksQuery({
     });
 }
 
-/**
- * Hook to fetch personalized recommendations
- *
- * Cache time: 5 minutes
- *
- * @param limit - Number of recommendations (default: 10)
- * @returns Query result with recommended artists
- *
- * @example
- * const { data } = useRecommendationsQuery(10);
- */
 export function useRecommendationsQuery(limit: number = 10) {
     return useQuery({
         queryKey: queryKeys.recommendations(limit),
@@ -271,19 +211,6 @@ export function useRecommendationsQuery(limit: number = 10) {
 
 
 
-/**
- * Hook to search library with debouncing
- *
- * Cache time: 5 minutes (search results are relatively static)
- *
- * @param query - Search query string
- * @param type - Type filter (all, artists, albums, tracks, audiobooks, podcasts)
- * @param limit - Number of results per type (default: 20)
- * @returns Query result with search results
- *
- * @example
- * const { data } = useSearchQuery("radiohead", "all", 20);
- */
 export function useSearchQuery(
     query: string,
     type:
@@ -303,17 +230,6 @@ export function useSearchQuery(
     });
 }
 
-/**
- * Hook to search discovery with debouncing
- *
- * @param query - Search query string
- * @param type - Type filter (music, podcasts, all)
- * @param limit - Number of results (default: 20)
- * @returns Query result with discovery search results
- *
- * @example
- * const { data } = useDiscoverSearchQuery("radiohead", "music", 20);
- */
 export function useDiscoverSearchQuery(
     query: string,
     type: "music" | "podcasts" | "all" = "music",
@@ -327,10 +243,6 @@ export function useDiscoverSearchQuery(
     });
 }
 
-/**
- * Hook to fetch musically similar artists for a given artist.
- * Fires only when artistName is non-empty (i.e. after discover results load).
- */
 export function useDiscoverSimilarArtistsQuery(artistName: string, mbid: string = "") {
     return useQuery({
         queryKey: queryKeys.discoverSimilar(artistName, mbid),
@@ -340,16 +252,6 @@ export function useDiscoverSimilarArtistsQuery(artistName: string, mbid: string 
     });
 }
 
-/**
- * Hook to fetch all playlists
- *
- * Cache time: 1 minute (playlists may be actively modified)
- *
- * @returns Query result with playlists array
- *
- * @example
- * const { data: playlists } = usePlaylistsQuery();
- */
 export function usePlaylistsQuery() {
     return useQuery({
         queryKey: queryKeys.playlists(),
@@ -358,15 +260,6 @@ export function usePlaylistsQuery() {
     });
 }
 
-/**
- * Hook to fetch a single playlist
- *
- * @param id - Playlist ID
- * @returns Query result with playlist data
- *
- * @example
- * const { data: playlist } = usePlaylistQuery("playlist-123");
- */
 export function usePlaylistQuery(id: string | undefined) {
     return useQuery({
         queryKey: queryKeys.playlist(id || ""),
@@ -379,16 +272,6 @@ export function usePlaylistQuery(id: string | undefined) {
     });
 }
 
-/**
- * Hook to fetch all mixes (Made For You)
- *
- * Cache time: 5 minutes
- *
- * @returns Query result with mixes array
- *
- * @example
- * const { data: mixes } = useMixesQuery();
- */
 export function useMixesQuery() {
     return useQuery({
         queryKey: queryKeys.mixes(),
@@ -397,12 +280,6 @@ export function useMixesQuery() {
     });
 }
 
-/**
- * Hook to fetch a single mix
- *
- * @param id - Mix ID
- * @returns Query result with mix data
- */
 export function useMixQuery(id: string | undefined) {
     return useQuery({
         queryKey: queryKeys.mix(id || ""),
@@ -415,17 +292,6 @@ export function useMixQuery(id: string | undefined) {
     });
 }
 
-/**
- * Hook to fetch popular artists (local similarity engine)
- *
- * Cache time: 10 minutes (popular charts don't change frequently)
- *
- * @param limit - Number of artists to fetch (default: 20)
- * @returns Query result with popular artists
- *
- * @example
- * const { data } = usePopularArtistsQuery(20);
- */
 export function usePopularArtistsQuery(limit: number = 20) {
     return useQuery({
         queryKey: queryKeys.popularArtists(limit),
@@ -434,11 +300,6 @@ export function usePopularArtistsQuery(limit: number = 20) {
     });
 }
 
-/**
- * Hook to fetch all audiobooks
- *
- * @returns Query result with audiobooks array
- */
 export function useAudiobooksQuery() {
     return useQuery({
         queryKey: queryKeys.audiobooks(),
@@ -447,12 +308,6 @@ export function useAudiobooksQuery() {
     });
 }
 
-/**
- * Hook to fetch a single audiobook
- *
- * @param id - Audiobook ID
- * @returns Query result with audiobook data
- */
 export function useAudiobookQuery(id: string | undefined) {
     return useQuery({
         queryKey: queryKeys.audiobook(id || ""),
@@ -465,11 +320,6 @@ export function useAudiobookQuery(id: string | undefined) {
     });
 }
 
-/**
- * Hook to fetch all subscribed podcasts
- *
- * @returns Query result with podcasts array
- */
 export function usePodcastsQuery() {
     return useQuery({
         queryKey: queryKeys.podcasts(),
@@ -478,14 +328,7 @@ export function usePodcastsQuery() {
     });
 }
 
-/**
- * Hook to fetch a single podcast
- *
- * Returns null if podcast is not found (404), allowing the page to handle preview mode.
- *
- * @param id - Podcast ID
- * @returns Query result with podcast data
- */
+/** Resolves to null when the podcast is not subscribed (404), so the page can show a preview. */
 export function usePodcastQuery(id: string | undefined) {
     // Numeric IDs are iTunes IDs, not database CUIDs - skip subscription lookup
     const isItunesId = !!id && /^\d+$/.test(id);
@@ -517,13 +360,6 @@ export function usePodcastQuery(id: string | undefined) {
     });
 }
 
-/**
- * Hook to fetch top podcasts
- *
- * @param limit - Number of podcasts (default: 20)
- * @param genreId - Optional genre ID filter
- * @returns Query result with top podcasts
- */
 export function useTopPodcastsQuery(limit: number = 20, genreId?: number) {
     return useQuery({
         queryKey: queryKeys.topPodcasts(limit, genreId),
@@ -532,15 +368,6 @@ export function useTopPodcastsQuery(limit: number = 20, genreId?: number) {
     });
 }
 
-/**
- * Hook to refresh mixes with cache invalidation
- *
- * @returns Mutation object with mutate function
- *
- * @example
- * const { mutate: refreshMixes, isPending } = useRefreshMixesMutation();
- * refreshMixes();
- */
 export function useRefreshMixesMutation() {
     const queryClient = useQueryClient();
 
@@ -553,22 +380,12 @@ export function useRefreshMixesMutation() {
     });
 }
 
-/**
- * Hook to add track to playlist with cache invalidation
- *
- * @returns Mutation object with mutate function
- *
- * @example
- * const { mutate: addToPlaylist } = useAddToPlaylistMutation();
- * addToPlaylist({ playlistId: "123", trackId: "456" });
- */
 export function useAddToPlaylistMutation() {
     const queryClient = useQueryClient();
 
     return useMutation({
-        // Accepts a single trackId or many. Callers building a playlist from a
-        // mix used to loop this hook once per track, which is one HTTP request
-        // each; pass trackIds instead and it is one request.
+        // Accepts a single trackId or many; pass trackIds to add a whole mix in
+        // one request.
         mutationFn: ({
             playlistId,
             trackId,
@@ -746,11 +563,6 @@ interface BrowseAllResponse {
     genres: Genre[];
 }
 
-/**
- * Hook to fetch all browse content (playlists, radios, genres) from Deezer
- *
- * @returns Query result with all browse content
- */
 export function useBrowseAllQuery() {
     return useQuery({
         queryKey: queryKeys.browseAll(),
@@ -761,9 +573,6 @@ export function useBrowseAllQuery() {
     });
 }
 
-/**
- * Hook to fetch library genre counts for radio stations
- */
 export function useLibraryGenresQuery() {
     return useQuery({
         queryKey: queryKeys.libraryGenres(),
@@ -774,9 +583,6 @@ export function useLibraryGenresQuery() {
     });
 }
 
-/**
- * Hook to fetch library decade counts for radio stations
- */
 export function useLibraryDecadesQuery() {
     return useQuery({
         queryKey: queryKeys.libraryDecades(),

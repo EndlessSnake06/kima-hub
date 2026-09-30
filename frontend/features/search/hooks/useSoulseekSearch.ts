@@ -180,10 +180,8 @@ export function useSoulseekSearch({
     }, [toast, queryClient]);
 
     const handleBulkDownload = useCallback(async (results: SoulseekResult[]) => {
-        // Four concurrent kickoffs instead of a serial await-per-result
-        // loop: an N-track selection used to pay N full round trips.
-        // handleDownload handles its own errors, so one failure does not
-        // stop the rest.
+        // Four concurrent kickoffs. handleDownload handles its own errors, so
+        // one failure does not stop the rest.
         const POOL_SIZE = 4;
         let next = 0;
         const worker = async () => {

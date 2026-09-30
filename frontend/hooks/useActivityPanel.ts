@@ -18,27 +18,10 @@ export function useActivityPanel() {
         }
     }, [isOpen]);
 
-    // The current value, readable without going through a state updater.
-    //
-    // These three actions announce themselves on the window, because TopBar and
-    // ActivityPanel both listen in order to keep their aria-expanded in step.
-    // That announcement used to happen INSIDE the setIsOpen updater, which is
-    // the bug: a state updater must be a pure function of its argument, and
-    // this one fired a synchronous window event. AuthenticatedLayout listens
-    // for that very event and calls open() or close() in response, so toggle()
-    // re-entered this hook while React was still mid-update.
-    //
-    // The observable symptom was that the panel could not be opened from its
-    // button at all, while dispatching "open-activity-panel" directly did work
-    // -- open() and close() ignore prev and return a constant, so re-entering
-    // them is harmless. That asymmetry is what identified the updater as the
-    // culprit. The precise interleaving that produced a net "stays closed" was
-    // not pinned down, and this comment does not guess at one.
-    //
-    // Reading the current value from a ref keeps the updater pure and moves the
-    // announcement outside it, where a side effect is allowed to live. The
-    // early return in open()/close() is load-bearing, not tidiness: it is what
-    // stops the listener feeding an event straight back into the hook.
+    // The actions announce themselves on the window so TopBar and ActivityPanel
+    // keep aria-expanded in step, and AuthenticatedLayout reacts to that event.
+    // The announcement must stay outside any state updater; reading the current
+    // value from this ref, plus the early return in open()/close(), prevents re-entry.
     const isOpenRef = useRef(isOpen);
     useEffect(() => {
         isOpenRef.current = isOpen;

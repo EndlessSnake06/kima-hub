@@ -1,55 +1,10 @@
 "use client";
 
 /**
- * Stats — one page about a person, ending in one panel about the machine.
- *
- * ## What was wrong with the version this replaces
- *
- * It was a report where a dashboard was wanted. Eight findings, each one a
- * claim set in light type, a two-or-three-sentence paragraph explaining the
- * claim, and a chart proving it. Measured, that came to nine and a half
- * screens and nine hundred words for about twenty-five facts — the length of a
- * magazine feature. And all eight of those sections rendered through the same
- * component, so scrolling produced the identical shape eight times over. The
- * comment that used to sit here promised "no two neighbouring sections share a
- * shape"; the code underneath it had never delivered that.
- *
- * It also said everything twice. "Nearly four in five things you play are in a
- * minor key" sat directly above a wheel whose own centre read 77% MINOR.
- * "You've heard 8% of what you own" sat above a figure reading 8%. Reading it
- * felt like being explained to.
- *
- * ## The shape now
- *
- * A dense opening screen; then only the findings that genuinely need a chart;
- * then a strip for the things that are readings rather than arguments.
- *
- *   1. the ledger — one sentence, four figures, the taste plot and the sharp
- *      facts beside it. The whole story before any scrolling happens.
- *   2. most played — two ranked lists and no prose at all
- *   3. the week — a grid, running the full measure
- *   4. the key — a wheel and a curve, side by side
- *   5. the shelf — four figures set large, and the decades as a timeline
- *   6. the strip — three readings in three columns
- *   7. the machine — colder, denser, in columns
- *
- * Seven blocks, seven shapes, no two neighbours alike. This time that is a
- * property of the code rather than of the comment.
- *
- * ## Three rules hold it together
- *
- * - **Amber is data.** Every accent-coloured pixel is a measurement. No amber
- *   headings, no amber rules, no amber for emphasis. It stays powerful because
- *   it is never spent on decoration.
- * - **Numbers carry the weight, words stay light.** Every figure is `.t-figure`
- *   at weight 600; every sentence around one is light and grey. Before this the
- *   figures were extra-light and the sentences were light, so nine hundred
- *   words arrived at one apparent weight and nothing was ever the loud thing.
- * - **Say it once.** A number stated in the ledger is not restated as a claim
- *   over the chart that produced it. If the graphic says it, the words don't.
- * - **Estimates say so.** Music time is derived from track length and is always
- *   introduced with "about". Audiobook and podcast time is read from a real
- *   playback position and never is.
+ * Stats: a person, then the machine. Seven blocks, no two neighbours alike:
+ * ledger, most played, the week, the key, the shelf, the strip, the machine.
+ * Amber is only ever data; numbers carry the weight and words stay light; a
+ * figure is stated once; music time is an estimate and says "about".
  */
 
 import { useEffect, useState } from "react";
@@ -77,11 +32,7 @@ export default function StatsPage() {
     const { isAuthenticated, isLoading: authLoading } = useAuth();
     const [data, setData] = useState<StatsResponse | null>(null);
     const [failed, setFailed] = useState(false);
-    // One window for the whole page. Per-section windows would let a reader
-    // compose a false picture without noticing — the value of these figures is
-    // that they are comparable to each other, and "64 songs are half of
-    // everything you play" means nothing beside a play count from a different
-    // period.
+    // One period for the whole page, so every figure is comparable to the others.
     const [period, setPeriod] = useState<Period>("all");
     const [reloading, setReloading] = useState(false);
 
@@ -102,18 +53,9 @@ export default function StatsPage() {
                 );
                 if (!cancelled) { setData(res); setFailed(false); }
             } catch {
-                // Only `failed` is set here, deliberately.
-                //
-                // This used to also snap `period` back to the loaded window so
-                // the control would not underline a period the page was not
-                // showing. But `period` is a dependency of this effect, so
-                // writing it fired a second request for the window already on
-                // screen — which succeeded, called `setFailed(false)`, and wiped
-                // the warning it had just set. The notice flashed for the length
-                // of a round trip instead of staying put.
-                //
-                // The control is reconciled at render instead, against the
-                // window the data actually came from, which costs no request.
+                // Only `failed` is set. Writing `period` here would refire this
+                // effect and the successful refetch would clear the warning; the
+                // control is reconciled at render against the loaded window.
                 if (!cancelled) setFailed(true);
             } finally {
                 if (!cancelled) setReloading(false);
@@ -127,11 +69,8 @@ export default function StatsPage() {
 
     if (authLoading || (!data && !failed)) return <Waiting />;
 
-    // Only when there is nothing to show. A period switch that fails while good
-    // figures are already on screen used to throw all of them away and render
-    // the error page instead, because this read `failed || !data` and a failed
-    // refetch sets `failed` without clearing `data`. Before the period control
-    // existed there was one fetch, on mount, and this could not happen.
+    // Error page only when there is nothing to show; a failed period switch
+    // keeps the figures already on screen.
     if (!data) {
         return (
             <Shell>
@@ -301,20 +240,8 @@ export default function StatsPage() {
 /* ── The opening screen ──────────────────────────────────────────────────── */
 
 /**
- * Everything worth knowing, before any scrolling.
- *
- * The version this replaces spent a screen and a half on one sentence set at
- * seventy-two pixels across three lines, and the reader reached the second
- * fact of the page somewhere around the fold. A ledger inverts that: the
- * sentence keeps the voice but takes one line, the supporting figures sit in a
- * row underneath at a rank of their own, and the sharp findings — the ones
- * that used to be eight separate sections each with a paragraph — are five
- * lines of value-and-gloss beside the taste plot.
- *
- * The value/gloss pairing is the form this page did not have. A figure with a
- * label under it is a tile, and tiles in a grid are what every dashboard looks
- * like. A figure with its meaning set beside it in light grey reads as a line
- * of a ledger, which is a thing you scan rather than a thing you parse.
+ * The opening screen: one sentence, a row of supporting figures, and value/gloss
+ * lines beside the taste plot, so the page is read before any scrolling.
  */
 function Ledger({
     listening,
@@ -448,17 +375,8 @@ function Ledger({
 }
 
 /**
- * The window every listening figure on the page is measured over.
- *
- * One control, not one per section. Letting each section carry its own window
- * is how a reader ends up comparing a month against a year without being told —
- * which is the same failure as the taste plot's caption silently describing one
- * month while claiming to describe everything.
- *
- * Text, not a segmented control in a box. Three short words that change one
- * page do not need a chrome-heavy widget, and the underline on the live one is
- * the same amber rule the coverage figures use, so "this is the measurement in
- * force" reads without a legend.
+ * The one period every listening figure is measured over. The live option is
+ * underlined in the same amber the coverage figures use.
  */
 function PeriodPicker({
     value,
@@ -514,17 +432,8 @@ function Reading({ value, label }: { value: string; label: string }) {
 /* ── Structure ───────────────────────────────────────────────────────────── */
 
 /**
- * A named block that is not a finding.
- *
- * Some of this page argues and some of it simply reports. A finding leads with
- * a sentence because it has something to assert; a band leads with a name
- * because it does not — the lists, the strip and the server panel are all
- * things you look up rather than things you are told.
- *
- * The rule sits on the heading's own baseline rather than above it, so its
- * length varies with the words and no two bands open with the same stamped-out
- * stripe. The far end of it carries one fact about what follows, which is what
- * stops the header being pure announcement.
+ * A named block that reports rather than argues. Its rule sits on the heading's
+ * baseline and ends in one fact about what follows.
  */
 function Band({
     id,
@@ -572,14 +481,7 @@ function Column({ label, children }: { label: string; children: React.ReactNode 
     );
 }
 
-/**
- * The change of subject from a person to a machine.
- *
- * This page is two things — what you listen to, and whether the server serving
- * it is healthy — and they are not the same kind of fact. A heading would put
- * them on the same footing. A full-width break says the subject changed, and
- * everything below it is about the box rather than about you.
- */
+/** Full-width break between listening figures and the server's health. */
 function Divide({ id, label }: { id: string; label: string }) {
     return (
         <div id={id} className="flex items-center gap-6 scroll-mt-24 pt-2">
@@ -593,13 +495,8 @@ function Divide({ id, label }: { id: string; label: string }) {
 function Shell({ children }: { children: React.ReactNode }) {
     return (
         <div className="relative px-5 sm:px-8 lg:px-12 pb-28 max-w-[1800px] mx-auto">
-            {/* How far down you are, drawn by the scroll position itself.
-             *
-             * Outside the gapped column on purpose. As a flex child it collected
-             * a full --stat-gap-section between itself and the first real
-             * content — seventy-two pixels of nothing beneath a one-pixel rule,
-             * which with the top padding put the page's first word 130px down a
-             * page that has no heading to fill the space. */}
+            {/* Scroll progress. Kept outside the gapped column so it adds no
+             * section gap above the first content. */}
             <div aria-hidden className="sticky top-0 z-(--z-raised) -mx-5 sm:-mx-8 lg:-mx-12 h-px bg-white/[0.04]">
                 <div className="stats-progress-rule h-full w-full bg-brand/50 origin-left scale-x-0" />
             </div>

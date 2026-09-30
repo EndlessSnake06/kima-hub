@@ -1,29 +1,9 @@
 "use client";
 
 /**
- * The week you actually listen to, drawn from play timestamps alone.
- *
- * Seven rows of twenty-four, run the full width of the page rather than sitting
- * inside the text measure. It is the one graphic here that genuinely wants
- * horizontal room — a week is a wide thing — and letting it break the measure is
- * what stops the page reading as one long column of same-sized blocks.
- *
- * Monday first, so the two weekend rows sit together at the bottom. A
- * Sunday-first week splits them across the top and bottom edges, which is
- * exactly where a pattern goes unnoticed. Bucketing happens on the server in the
- * viewer's own timezone; drawn in UTC this grid would be a picture of nobody's
- * evening.
- *
- * ## Three depths, and you choose how far to go
- *
- * A heat grid on its own is a poster: you read the bright part and you are
- * finished. It can also never answer the question it provokes, which is not
- * "when" but "what was I playing".
- *
- * So: the grid answers when. Moving a pointer over it rewrites the line
- * underneath — still cheap, still no request. Clicking asks the server what was
- * actually playing in that hour and opens it underneath. Each step costs more
- * and is therefore opt-in, and the first two work with no network at all.
+ * The listening week as a 7x24 grid, Monday first so the weekend rows sit
+ * together, bucketed server-side in the viewer's timezone. Hover rewrites the
+ * caption locally; click asks the server what was playing in that hour.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -357,18 +337,8 @@ function HourPanel({ detail, loading }: { detail: HourDetail | null; loading: bo
 }
 
 /**
- * Where the scale tops out.
- *
- * Not the loudest hour. Scaling against the maximum lets one outlier decide the
- * whole picture: a single evening three times heavier than any other drags every
- * other cell down to near-black, and the grid stops showing a week and starts
- * showing one Wednesday. The eighty-fifth percentile of the hours that have
- * anything in them tops out a little early, so the busiest few saturate and
- * everything below them keeps its separation.
- *
- * This replaced a fixed curve tuned against invented data. Real listening is
- * far spikier than anything synthetic, and the fixed version rendered a real
- * library as one bright square on a black field.
+ * Where the ink scale tops out: the 85th percentile of non-empty hours, so one
+ * heavy evening cannot push every other cell to black.
  */
 function fullInkAt(clock: number[][]): number {
     const lit = clock.flat().filter((n) => n > 0).sort((a, b) => a - b);
@@ -376,13 +346,7 @@ function fullInkAt(clock: number[][]): number {
     return Math.max(1, lit[Math.floor(lit.length * 0.85)] ?? lit[lit.length - 1]);
 }
 
-/**
- * How dark a cell is drawn.
- *
- * A gentle curve below one lifts the quiet hours clear of the background while
- * still leaving the busy ones obviously busier. An hour with a single listen
- * still gets ink: zero and one are different facts and the grid should say so.
- */
+/** Cell darkness on a gentle curve; one listen still gets visible ink. */
 function cellInk(n: number, full: number): string {
     // An hour with nothing in it still has to read as a cell. At 3% white on a
     // #0a0a0a ground the empty ones were invisible, so a week with four quiet

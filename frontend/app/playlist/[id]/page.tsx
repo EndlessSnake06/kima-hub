@@ -83,28 +83,10 @@ interface PendingTrack {
 }
 
 /**
- * The track table's column track, shared by the header and every row so the two
- * cannot drift apart.
- *
- * Four columns, and each row must render exactly four grid children:
- *
- *   1. the track number / play button, with the drag handle beside it
- *   2. cover art + title + artist
- *   3. album (hidden below `md`, where the mobile three-column track applies)
- *   4. the row actions and duration
- *
- * The play button and the drag handle share one cell deliberately. The handle
- * renders only for the playlist's owner, so giving it a column of its own would
- * leave every other viewer one child short of the track and shift the entire row
- * left — which is exactly what happened when drag-to-reorder first landed: the
- * title block was squeezed into a 24px column and disappeared, and the album
- * moved under the "Title" heading.
- */
-/*
- * Both spellings are written out in full on purpose. Tailwind generates only the
- * classes it can find as literal strings in the source, so building the variant
- * at runtime (`md:${TRACK_GRID}`) produces a class that is never compiled and a
- * grid that silently never applies. Keep them adjacent so drift is visible.
+ * Column track shared by header and rows; each row renders exactly four
+ * children: number/play with the owner-only drag handle, title, album (hidden
+ * below md), actions and duration. Both spellings are literal so Tailwind
+ * compiles them.
  */
 const TRACK_GRID = "grid-cols-[64px_minmax(0,2fr)_minmax(0,1fr)_56px_136px]";
 const TRACK_GRID_MD = "md:grid-cols-[64px_minmax(0,2fr)_minmax(0,1fr)_56px_136px]";

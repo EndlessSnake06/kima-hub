@@ -1,27 +1,9 @@
 "use client";
 
 /**
- * How many times you have heard the track that is playing.
- *
- * The player bar is the one surface you are always looking at, so it is the one
- * place a fact about the current track costs nothing to read. This supplies
- * that fact, and the link to the stats page is a side effect of stating it
- * rather than the reason for it.
- *
- * ## Why it counts before the current play, not after
- *
- * A play is recorded once you are half way through. Asking for the count at
- * that moment would return a number that changes underneath the sentence. So
- * the count is fetched when the track CHANGES, which makes it the number of
- * completed listens before this one — and therefore the one you are hearing is
- * the next. "45th play" is then true from the first second to the last.
- *
- * ## Why it is cached per track
- *
- * Skipping back and forth through a queue would otherwise refetch the same
- * count repeatedly. The cache lives for the session and is keyed by track id;
- * it is deliberately not invalidated when a play records, because the sentence
- * is about the listen in progress and must not renumber itself mid-song.
+ * Completed listens of the current track, fetched when the track changes so
+ * "45th play" stays true for the whole song. Cached per track for the session
+ * and not invalidated when a play records, so it never renumbers mid-song.
  */
 
 import { useEffect, useRef, useState } from "react";

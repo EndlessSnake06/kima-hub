@@ -21,19 +21,9 @@ import { useIsTV } from "@/lib/tv-utils";
 import { useActivityPanel } from "@/hooks/useActivityPanel";
 import { useImportToasts } from "@/hooks/useImportToasts";
 
-// Paths that render without the sidebar, top bar and player.
-//
-// "/setup" belongs here and was missing, which crashed the page outright.
-// ConditionalAudioProvider already treats /setup as public and skips the
-// audio providers, but this list did not, so the chrome still mounted --
-// and the sidebar calls useAudioState. First-run setup is the first screen
-// a new install shows, and it died with "useAudioState must be used within
-// AudioStateProvider".
-//
-// These three lists answer three different questions and are deliberately
-// not identical: this one is "no chrome", auth-context's is "no login
-// required", and ConditionalAudioProvider's is "no audio". /share, for
-// instance, needs audio but no chrome.
+// Paths that render without the sidebar, top bar and player. Not the same list
+// as auth-context's (no login) or ConditionalAudioProvider's (no audio): /share
+// needs audio but no chrome, and /setup must be here because the sidebar needs audio.
 const publicPaths = ["/login", "/register", "/onboarding", "/setup", "/sync", "/share"];
 
 export function AuthenticatedLayout({ children }: { children: ReactNode }) {

@@ -171,18 +171,8 @@ export function useActiveDownloads() {
         queryKey: ["active-downloads"],
         queryFn: fetchDownloads,
         enabled: isAuthenticated,
-        // Poll fast only while something is actually downloading.
-        //
-        // This was a flat 2000ms, which meant an idle tab asked the server for
-        // a list it knew was empty thirty times a minute -- about forty-three
-        // thousand requests a day, per open tab, forever. The comment above
-        // this hook already said updates are driven by SSE, and they are:
-        // useEventSource invalidates this exact query key in three places. The
-        // poll was doing the same job a second time.
-        //
-        // The idle tick stays at thirty seconds rather than stopping outright,
-        // so a missed SSE event costs one slow cycle instead of leaving the
-        // panel permanently stale.
+        // SSE drives updates; poll fast only while something is downloading.
+        // The 30s idle tick bounds the cost of a missed SSE event.
         refetchInterval: (query) =>
             (query.state.data?.length ?? 0) > 0 ? 2000 : 30000,
         refetchIntervalInBackground: false, // Stop polling when tab is hidden

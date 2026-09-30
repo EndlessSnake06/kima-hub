@@ -1,33 +1,10 @@
 "use client";
 
 /**
- * The play-history audit, kept rather than run once.
- *
- * Before 1.10.1 a play was recorded the moment a track started loading, so
- * clicking through an album logged one for every track skipped past. Those rows
- * are still in the history and still feeding the numbers above.
- *
- * ## What can and cannot be proven
- *
- * There is no record of how long anything was heard. The only signal is the gap
- * to the next play: if another play starts eight seconds later, the first one
- * ran for at most eight seconds. That bound is one-directional — a short gap
- * proves a skip, a long gap proves nothing at all — so the audit only ever
- * raises what it can demonstrate, and says out loud how much it is leaving
- * alone.
- *
- * ## Two answers, and only one of them deletes
- *
- * **Remove** deletes the provable false starts on a track and nothing else.
- * **Ignore** deletes nothing; it tells the audit to stop raising that track,
- * which keeps accumulating plays exactly as before. Ignore exists because "the
- * evidence is right and I don't care" is a real answer, and without somewhere
- * to put it the same rows come back every time and people stop opening the tool.
- *
- * ## Why it doesn't load with the page
- *
- * The audit reads the entire play history to compute gaps. Doing that on every
- * visit to a stats page would be rude, so nothing happens until asked.
+ * The play-history audit. Plays recorded before 1.10.1 include tracks skipped
+ * while loading. The only evidence is the gap to the next play, which proves a
+ * skip when short and nothing when long, so only provable false starts are
+ * raised. Remove deletes them; Ignore stops raising the track. Runs on demand.
  */
 
 import { useCallback, useState } from "react";
@@ -58,13 +35,7 @@ interface Audit {
     collapsibleRows: number;
     heard: number;
     skipped: number;
-    /**
-     * Listens of tracks too short to ever register a play.
-     *
-     * Reported apart from `skipped` since the audit stopped deleting them. Left
-     * out of this type, the three figures shown against "times you pressed
-     * play" silently stopped adding up for anyone with short tracks.
-     */
+    /** Listens of tracks too short to register a play, reported apart from `skipped`. */
     tooShort: number;
     unclear: number;
     earliest: string | null;
@@ -158,22 +129,10 @@ export function FalseStarts() {
     const FIRST_PAGE = 40;
     const listed = showAll ? audit.tracks : audit.tracks.slice(0, FIRST_PAGE);
 
-    /**
-     * The most track ids one request may name.
-     *
-     * `MAX_TRACKS_PER_ACTION` in `backend/src/routes/stats.ts`, which answers
-     * 400 above it. "Select all" took no notice, so a history flagging more
-     * than this built a request that was rejected whole and reported as "That
-     * didn't finish" — with nothing to say the selection was the reason, and no
-     * way to get under the limit except by unpicking rows by hand.
-     */
+    /** Mirrors `MAX_TRACKS_PER_ACTION` in backend/src/routes/stats.ts, which rejects larger requests. */
     const MAX_PER_ACTION = 2000;
     const all = audit.tracks.map((t) => t.trackId);
-    // Against what the button can actually select, not against everything
-    // flagged. Comparing to `all.length` meant that past the per-request cap
-    // "Select all" could never flip to "Select none" — it picked 2,000, the
-    // sizes never matched, and the only way to clear was unticking two thousand
-    // boxes by hand.
+    // Compare with what Select all can pick, so it flips to Select none past the cap.
     const selectable = Math.min(all.length, MAX_PER_ACTION);
     const allPicked = selectable > 0 && picked.size === selectable;
     const pickedStarts = audit.tracks

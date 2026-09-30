@@ -18,12 +18,7 @@ const tabs = [
 
 export function LibraryTabs({ activeTab, onTabChange }: LibraryTabsProps) {
   return (
-    // A segmented control: one quiet container, one filled segment. What was
-    // here before stacked five effects on a three-item filter -- a per-tab
-    // gradient, a permanent shimmer sweep, scale-105 on both active AND hover,
-    // and a backdrop-blur glass panel behind all of it. None of them carried
-    // information; together they made the smallest control on the page the
-    // loudest thing on it.
+    // A segmented control: one quiet container, one filled segment.
     <div data-tv-section="library-tabs" className="inline-flex items-center gap-1 rounded-xl bg-white/5 p-1">
       {tabs.map((tab, index) => {
         const isActive = activeTab === tab.id;

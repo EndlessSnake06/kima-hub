@@ -1,40 +1,9 @@
 "use client";
 
 /**
- * A claim about you, and the evidence for it.
- *
- * ## Why this exists at all
- *
- * The page was once organised by category — "How you listen", "The shelf",
- * "What it sounds like" — with a chart under each. A category names a drawer.
- * It tells the reader nothing and leaves the chart to do all the talking,
- * which is why nine of them in a row read as charts thrown together: there was
- * no argument running through the page, only filing.
- *
- * A finding states the thing in plain words and puts the graphic underneath as
- * proof. Read only the claims and you have the argument; read the evidence
- * when you doubt one.
- *
- * ## Why there are now three of these and not eight
- *
- * Because the form was applied to everything, including the six things that
- * were not arguments. A count of podcast subscriptions is a reading, not a
- * claim, and wrapping it in a sentence plus a supporting paragraph made the
- * page nine and a half screens long and gave every section the same silhouette.
- * Findings are for the three facts a reader would actually dispute; everything
- * else is a band or a column, and looks different because it is different.
- *
- * ## Why the claim and the note share a line
- *
- * They used to stack: a claim, then a paragraph of two or three sentences
- * under it, then a gap, then the chart. Three stacked blocks before any
- * evidence appeared. Setting the note at the far end of the claim's own line
- * puts both on one baseline and pulls the graphic up by roughly a hundred
- * pixels a section, and the rule beneath the pair is what marks where the
- * argument stops and the proof starts.
- *
- * The note is one sentence. If it needs two, the finding is doing more than
- * one job and should be split or dropped.
+ * A claim in plain words with its evidence underneath, for the few facts a
+ * reader might dispute. The one-sentence note shares the claim's line; the
+ * rule beneath the pair marks where the proof starts.
  */
 
 import { Loader2, Play } from "lucide-react";
@@ -55,14 +24,7 @@ export function Finding({
     /** The graphic that proves it. */
     evidence?: React.ReactNode;
     anchor?: string;
-    /**
-     * Set on findings the period control does not reach.
-     *
-     * The shelf sections are not made of listening events — how much of your
-     * collection you have never touched does not become a different fact over
-     * thirty days. Rather than let the control appear to apply and silently do
-     * nothing, the section says which period it is actually about.
-     */
+    /** Names the period a shelf section is about, for sections the period control does not reach. */
     scope?: string;
 }) {
     const { ref, shown } = useReveal<HTMLElement>({ threshold: 0.1 });
@@ -88,22 +50,7 @@ export function Finding({
     );
 }
 
-/**
- * Put the handful that make up half the listening on.
- *
- * An action belongs beside a figure when the figure names something you might
- * want to hear. "Sixty-four songs are half of everything you play" does; most
- * readings do not, and get no button.
- */
-/**
- * The most a slice will ever hand back.
- *
- * `MAX_TRACKS` in `backend/src/services/stats/playable.ts`. The button printed
- * `count` unchecked, so a library where three hundred tracks make up half the
- * listening offered "Play those 300" and quietly queued a hundred. Held in step
- * by `scripts/verify-stats.ts`, which fails if the server's cap moves away from
- * this number.
- */
+/** Mirrors `MAX_TRACKS` in backend/src/services/stats/playable.ts; scripts/verify-stats.ts fails if they drift. */
 const SLICE_CAP = 100;
 
 export function PlayCore({ count, period }: { count: number; period?: string }) {

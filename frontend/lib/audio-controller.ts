@@ -540,13 +540,9 @@ export class AudioController {
         }
     }
 
-    // In-page recovery for a genuinely wedged iOS audio session: rebuilds
-    // the <audio> element + AudioContext/analyser graph from scratch. Does
-    // NOT touch engine state and does NOT play -- the snapshot's src/
-    // currentTime stay intact, the trigger below moves status to "blocked",
-    // and the existing play-requested-from-blocked path (audio-engine-policy.ts)
-    // reloads snap.src, seeks to snap.currentTime, and plays on this fresh
-    // element in-gesture when the user taps retry.
+    // Recovers a wedged iOS audio session by rebuilding the <audio> element and
+    // AudioContext graph. Engine state is untouched and nothing plays: status
+    // moves to "blocked", and the retry tap reloads and seeks on the new element.
     private rebuildAudioContextBridge(): void {
         if (!this.isIosStandalone()) return;
 

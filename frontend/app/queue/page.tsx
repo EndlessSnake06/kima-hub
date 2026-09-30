@@ -300,7 +300,6 @@ export default function QueuePage() {
                     </section>
                 )}
 
-                {/* Previously Played */}
                 {previousTracks.length > 0 && (
                     <section className="bg-[#111] rounded-lg p-6">
                         <h2 className="text-xl font-semibold text-white mb-4">

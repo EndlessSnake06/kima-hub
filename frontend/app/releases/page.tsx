@@ -193,15 +193,9 @@ export default function ReleasesPage() {
 }
 
 /**
- * The sleeve for one release, and the placeholder when there isn't one.
- *
- * Two things guard the same failure. The server has already dropped any cover
- * address it could not load, so most missing art arrives here as a plain null.
- * What is left goes through this app's own image endpoint rather than straight
- * out to the Cover Art Archive, so a picture that disappears between the
- * server's check and this render fails on our own origin, where it is cached
- * as missing and swapped for the placeholder below instead of leaving a broken
- * box on the page.
+ * Cover art for one release, or a placeholder. Art loads through this app's
+ * image endpoint, so a cover that disappears fails on our origin and falls
+ * back to the placeholder instead of a broken box.
  */
 function ReleaseCover({ release }: { release: ReleaseItem }) {
     const [broken, setBroken] = useState(false);

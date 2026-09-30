@@ -1,28 +1,9 @@
 "use client";
 
 /**
- * How hard the music gets, hour by hour, as a curve.
- *
- * Four bars for four parts of the day was the same form as five other things on
- * this page and threw away twenty of the twenty-four numbers. A curve is a shape
- * the eye reads as one gesture — where it dips, where it climbs — which is the
- * actual question being asked, and it is a form used nowhere else here.
- *
- * The band underneath is how much you played in that hour, so a wild swing over
- * an hour with four listens is visibly built on nothing.
- *
- * ## Nothing here is written out in a sentence
- *
- * It used to carry a line reading "hardest 6am · softest 1am · the band is how
- * much you played", which is three problems in eleven words: "hardest" is a
- * different word for the thing the taste plot already calls "frantic", "band"
- * names a shape the reader has never been told about, and the peak it reported
- * is the same peak the claim above the chart states.
- *
- * All three go away by labelling the axis instead of describing it — frantic,
- * calm and plays down the left edge, in the same vocabulary the taste plot
- * uses. The claim above says where the peak is; the labels let you read the
- * rest off the picture; nothing is said twice.
+ * Energy hour by hour as a curve, with plays per hour as a band beneath it so a
+ * swing built on four listens is visibly thin. The axis is labelled in the
+ * taste plot's own words rather than explained in a sentence.
  */
 
 import { useMemo } from "react";
@@ -56,16 +37,8 @@ export function EnergyCurve({ hourly }: { hourly: Signature["hourly"] }) {
 
         const lo = Math.min(...withPlays.map((r) => r.energy));
         const hi = Math.max(...withPlays.map((r) => r.energy));
-        // A floor on the span so a day whose energy barely moves is not
-        // stretched into a dramatic one. That much was already right.
-        //
-        // What was wrong: with the span floored, `(e - lo) / span` is near zero
-        // for every hour, so the whole line was drawn along the bottom of the
-        // plot. A listener whose energy is simply steady got a chart that read
-        // "you never play anything energetic" rather than "this does not vary".
-        // Centring the real range inside the floored one puts a flat day
-        // through the middle. When the real range is wider than the floor this
-        // is exactly the mapping it was before.
+        // Floor the span so a steady day is not stretched into a dramatic one,
+        // and centre the real range inside it so a flat line sits mid-plot.
         const range = hi - lo;
         const span = Math.max(0.08, range);
         const base = lo - (span - range) / 2;
@@ -106,15 +79,7 @@ export function EnergyCurve({ hourly }: { hourly: Signature["hourly"] }) {
             ref={ref}
             className="m-0 grid grid-cols-[3.25rem_minmax(0,1fr)] gap-x-3 gap-y-2 max-w-[34rem] xl:max-w-[44rem]"
         >
-            {/* The axis, named down the left edge.
-             *
-             * This was explained in a sentence underneath instead -- "the band
-             * is how much you played" -- which asks the reader to carry a
-             * legend in their head while looking at the picture, and uses a
-             * word ("band") for a shape they have no name for. The taste plot
-             * higher up the page already labels this exact measure "frantic"
-             * and "calm" down its own left edge. The words existed; this chart
-             * just was not using them. */}
+            {/* The axis, named down the left edge in the taste plot's words. */}
             <div className="flex flex-col items-end t-label">
                 <div className="flex-[34] flex w-full flex-col items-end justify-between py-0.5">
                     <span>frantic</span>

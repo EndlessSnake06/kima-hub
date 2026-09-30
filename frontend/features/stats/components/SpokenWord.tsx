@@ -1,21 +1,8 @@
 "use client";
 
 /**
- * Audiobooks and podcasts, where the number is real.
- *
- * Both progress tables store an actual position in an actual file, so these
- * hours are measured rather than derived. Music time on this page is an
- * estimate and says so; this deliberately does not hedge, because hedging a
- * number that is exact teaches the reader to distrust the ones that aren't.
- *
- * ## Why it shrank on 2026-08-25
- *
- * This was a full section of the page: a claim ("43 hours of books and 30 of
- * podcasts, on top of the music"), a supporting paragraph about where the
- * figures come from, and two columns of sentences under it — about a screen
- * for four counts and two hours figures. None of that is an argument anybody
- * would dispute; it is a reading. It now lives in one column of the readings
- * strip, as two figures and two lines.
+ * Audiobook and podcast hours, measured from real playback positions, so
+ * unlike music time they are stated without "about".
  */
 
 import { hoursValue } from "../format";

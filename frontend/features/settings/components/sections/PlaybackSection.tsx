@@ -33,15 +33,9 @@ const SAMPLE_TRACK = {
 };
 
 /**
- * The queue-limit box.
- *
- * It used to clamp on every keystroke, so typing 5000 went 5 -> 100 (clamped
- * up), then 1000, 10000, 100000: the box ended on twenty times what was typed.
- * Now what is typed stays as typed while the box has focus, and the clamp
- * happens once, when the box loses focus (which clicking Save always causes).
- * Every whole number typed is still passed up as it is typed, unclamped, so a
- * save that somehow skipped the blur sends what the admin actually typed and
- * the server's validation -- the authority -- rejects it if it is out of range.
+ * The queue-limit box. Clamps on blur, not per keystroke, so typing is never
+ * rewritten mid-number. Values pass up unclamped as typed; the server's
+ * validation is the authority on range.
  */
 export function QueueLimitInput({
     value,

@@ -1127,9 +1127,6 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                                                 available
                                             </span>
                                         )}
-                                        {/* The control used to look identical
-                                            whether or not an analyzer existed
-                                            to obey it. */}
                                         {clapWorkersConfig &&
                                             clapWorkersConfig.analyzerOnline === false && (
                                                 <span className="text-xs text-amber-400 w-24 text-right">

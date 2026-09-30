@@ -1,18 +1,9 @@
 "use client";
 
 /**
- * The 1.11 mood-mix question, rendered inside the release window.
- *
- * Three answers: save the mix as a playlist, rebuild it, or keep it. Saving is
- * separate from the other two so "save it, then rebuild" works. Nothing is
- * cleared until Rebuild is pressed; closing the window keeps the mix.
- *
- * A "retired" mix (saved under a mood 1.11 removed) cannot be shown any more,
- * so it gets two answers only: save as playlist, or remove. No Keep.
- *
- * The server holds the truth (the mix, the recorded answer, an existing
- * playlist), so this loads it first rather than assuming a fresh start: a user
- * who answered on another device sees that answer here.
+ * The mood-mix item: save as playlist, rebuild, or keep. Nothing clears until
+ * Rebuild. A retired mix offers save or remove only. Loads the server's
+ * recorded answer first, so another device's answer shows here.
  */
 
 import { useEffect, useState } from "react";

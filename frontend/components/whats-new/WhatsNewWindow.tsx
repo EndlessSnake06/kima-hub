@@ -1,28 +1,9 @@
 "use client";
 
 /**
- * What changed, and what we're asking.
- *
- * This is the one surface in Kima that is allowed to block: it exists to be read
- * before the thing it describes can be used, which is the point when a release
- * introduces something that needs permission. Everything else should get out of
- * the way.
- *
- * ## Three kinds of item, one window
- *
- * A `note` says something happened. An `action` offers something runnable. A
- * `choice` asks permission and carries a default, and that default is always
- * off.
- *
- * ## Closing is an answer
- *
- * The X and the Escape key do the same thing as answering no to everything
- * untouched — the server records a real decision for each one. That is stated on
- * the window rather than buried, because a consent dialogue that quietly banks
- * silence as agreement is the thing this design exists not to be.
- *
- * When there is nothing to consent to, the window says so and the close button
- * is just a close button. Don't put a scary sentence on a changelog.
+ * The release window, the one surface allowed to block. Items are a `note`, an
+ * `action`, or a `choice` whose default is off. Closing answers no to every
+ * untouched choice, and the window says so when there is a choice to answer.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";

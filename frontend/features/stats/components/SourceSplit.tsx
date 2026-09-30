@@ -1,17 +1,9 @@
 "use client";
 
 /**
- * Where the plays came from, and whether the recommender earned its keep.
- *
- * Every play already records its origin — your own shelf, something Discover
- * put in front of you, a track you kept from Discover, or a phone running a
- * Subsonic client. Nothing else on this page turns that back on Kima itself,
- * and it should: a recommender that nobody keeps anything from is a recommender
- * that is not working, and the number for that is sitting right here.
- *
- * One bar, four segments, weighted by share. The two Discover segments sit
- * adjacent so the kept portion reads against the offered portion without
- * needing a second chart.
+ * Where plays came from: your shelf, Discover, kept-from-Discover, Subsonic
+ * clients. One bar, four segments; the Discover pair sit together so kept
+ * reads against offered.
  */
 
 import type { ListeningStats } from "../types";

@@ -130,10 +130,7 @@ export default function LoginPage() {
             <div className="absolute inset-0 bg-[#000]">
                 <div className="absolute inset-0 bg-gradient-to-br from-brand/5 via-transparent to-transparent" />
                 <div className="opacity-[0.08]">
-                    <GalaxyBackground
-                        primaryColor="#fca200"
-                        secondaryColor="#fca200"
-                    />
+                    <GalaxyBackground primaryColor="#fca200" />
                 </div>
             </div>
 

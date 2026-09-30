@@ -764,16 +764,9 @@ export function transition(
         }
 
         case "gapless-swapped": {
-            // The controller already swapped elements and is playing -- this is
-            // a pure bookkeeping transition only (no set-src-and-load/call-play).
-            //
-            // NOT ported from upstream 0c0d594d: making this intent-aware, so a
-            // pause tapped exactly at the boundary is not reverted. That change
-            // reads snap.intent here, and on this line intent is not reliably
-            // "play" during a genuine advance -- applying it paused every
-            // gapless swap, which the controller's own gapless test caught. It
-            // needs the controller half of that commit, which is not part of
-            // this release.
+            // The controller already swapped elements and is playing; bookkeeping
+            // only. Not intent-aware: snap.intent is not reliably "play" here, and
+            // reading it paused every gapless swap.
             return {
                 snapshot: {
                     ...snap,

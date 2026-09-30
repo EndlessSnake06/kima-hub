@@ -74,9 +74,6 @@ export function InlineStatus({
     );
 }
 
-/**
- * Hook for managing inline status state
- */
 export function useInlineStatus(initialStatus: StatusType = "idle") {
     const [status, setStatus] = useState<StatusType>(initialStatus);
     const [message, setMessage] = useState<string>("");

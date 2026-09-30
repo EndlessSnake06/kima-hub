@@ -1,16 +1,8 @@
 @import "tailwindcss";
 
 @theme {
-    /* Type scale.
-     *
-     * Tailwind's named scale stops at text-xs (12px), so everything smaller was
-     * written as an arbitrary value: 111 uses of text-[10px], plus strays at 8,
-     * 9 and 11px. They were all the same role -- the mono, uppercase,
-     * letter-spaced micro label used for eyebrows, counts and status chips --
-     * so it gets a name instead of four near-identical magic numbers.
-     *
-     * 10px is the floor. 8px and 9px were below comfortable reading size and
-     * folded up rather than preserved. */
+    /* The mono, uppercase micro label used for eyebrows, counts and status
+     * chips. Tailwind's named scale stops at 12px; 10px is the floor. */
     --text-micro: 0.625rem;      /* 10px */
     --text-micro--line-height: 1.4;
 
@@ -20,48 +12,16 @@
     --color-brand-dark: #d48c00;
 
     /* ── Motion ───────────────────────────────────────────────────────────
-     *
-     * The app had 540 transitions and seven uses of an easing curve. Every
-     * other one ran on the CSS default, `ease`, which is symmetric: it
-     * accelerates and decelerates by the same amount. Nothing in the physical
-     * world moves like that, which is why the interface felt mechanical
-     * rather than responsive -- each state change arrived on a ramp instead
-     * of settling.
-     *
-     * Setting the default here re-times every one of those transitions at
-     * once. ease-out-quart leaves fast and settles slowly, which is how a
-     * real object behaves when something stops pushing it.
-     *
-     * No bounce or elastic curve is offered. They overshoot, which draws
-     * attention to the animation rather than to the thing that changed.
-     *
-     * There is one curve and one default duration, and no private vocabulary
-     * beyond them. An earlier version added named easings (quint, expo) and
-     * named durations (feedback, state, layout, entrance); six months from now
-     * they would still have had no call sites, because `duration-150` already
-     * says what it means and every Tailwind user can read it. Dead vocabulary
-     * is worse than no vocabulary: it invites the next author to guess which
-     * of two systems is the live one.
-     *
-     * Durations therefore stay on Tailwind's numeric scale. What the app
-     * actually uses: 150ms for artwork zooming under a hover, 200ms as the
-     * default for a state change, 300ms for something structural opening or
-     * closing, 500ms for a section arriving.
-     * ─────────────────────────────────────────────────────────────────── */
+     * Every transition defaults to ease-out-quart: it leaves fast and settles.
+     * No bounce or elastic curves. Durations stay on Tailwind's numeric scale:
+     * 150 hover zoom, 200 state change, 300 open/close, 500 section arrival. */
     --default-transition-timing-function: cubic-bezier(0.25, 1, 0.5, 1);
     --default-transition-duration: 200ms;
 
     /* ── Animation primitives ─────────────────────────────────────────────
-     * Shared keyframes for the sitewide motion pass. Consume them as
-     * utilities -- animate-rise, animate-fade-soft, animate-pop,
-     * animate-panel-up, animate-panel-down -- and stagger with a per-item
-     * [animation-delay:calc(var(--i)*var(--stagger))] on the leaf plus a
-     * cascadeStyle(count) on the container, so the cascade rate is derived
-     * from the item count and the whole list lands inside one window no
-     * matter how long it is. Easing is the house quart curve; reduced
-     * motion is zeroed globally (durations and delays), so these need no
-     * per-site guard. Exits run at roughly three quarters of their entrance.
-     * ─────────────────────────────────────────────────────────────────── */
+     * Stagger with [animation-delay:calc(var(--i)*var(--stagger))] on each item
+     * and cascadeStyle(count) on the container, so any list lands in one window.
+     * Reduced motion is zeroed globally; exits run at ~3/4 of their entrance. */
     --animate-rise: rise 300ms cubic-bezier(0.25, 1, 0.5, 1) both;
     --animate-fade-soft: fade-soft 200ms cubic-bezier(0.25, 1, 0.5, 1) both;
     --animate-pop: pop 200ms cubic-bezier(0.25, 1, 0.5, 1) both;
@@ -106,14 +66,7 @@
     --border-interactive: #262626; /* Interactive elements */
     --border-focus: #333333; /* Focus, selected states */
 
-    /* Text Colors.
-     *
-     * Three tones, measured against the #0a0a0a ground. They replace nineteen
-     * near-identical greys -- text-white/15 through /90, text-gray-300 through
-     * -800 -- that were used interchangeably for the same job. Ten of those
-     * nineteen fell below the WCAG AA minimum of 4.5:1 for small text, so the
-     * quiet half of the interface was quiet to the point of unreadable: the
-     * search placeholder sat at 1.43:1 and "No releases found" at 1.80:1. */
+    /* Three text tones, contrast measured against the #0a0a0a ground. */
     --text-primary: #e5e5e5; /* 16.4:1 -- titles, values, emphasis */
     --text-secondary: #a3a3a3; /* 8.6:1  -- sentences, descriptions, help text */
     /* 5.4:1 on the page ground, and still 4.7:1 on the lightest card surface
@@ -123,10 +76,7 @@
 
 /* ── Stacking order ───────────────────────────────────────────────────
  *
- * One ladder, named by what sits on each rung. It replaces fifteen
- * hand-picked numbers that had drifted into an arms race -- z-[45],
- * z-[55], z-[70], z-[101], z-[200], z-[9999] -- where each new overlay
- * simply outbid whatever it landed on top of.
+ * One ladder, named by what sits on each rung.
  *
  *   10  --z-raised          overlay inside a component: hover play button, scrim
  *   20  --z-scene           overlays within the vibe canvas
@@ -165,29 +115,9 @@
 }
 
 /* ── Type roles ───────────────────────────────────────────────────────────
- *
- * Six roles cover every piece of text in the app.
- *
- * They replace a system where hierarchy was carried by stamping rather than
- * by scale: 246 elements set in capitals, 399 lines set in a monospace face
- * that appears nowhere else in the product, and bold on 246 of 320 weighted
- * elements -- nearly all of it at 10px or 12px. When everything small is
- * equally loud, nothing reads as more important than anything else, and the
- * whole interface reads as shouting.
- *
- * Here, size, weight and colour carry the hierarchy, and the two stamps are
- * rationed to the one job each actually does well:
- *
- *   - CAPITALS survive only on .t-eyebrow, the short status kicker above a
- *     page title. Capitals are a poor fit for a sentence -- they run about
- *     15% wider and lose the word-shape the eye reads by -- which is how
- *     "Lesser-played gems" was arriving on a phone as "LESSER-PLAY...".
- *
- *   - MONOSPACE survives only on real machine strings: pairing codes, API
- *     tokens, server URLs. Track numbers, durations and counts want their
- *     digits to line up, and that is what tabular figures are for; it does
- *     not require a second typeface.
- * ───────────────────────────────────────────────────────────────────────── */
+ * Six roles cover every piece of text; size, weight and colour carry the
+ * hierarchy. Capitals appear only on .t-eyebrow. Monospace is only for machine
+ * strings (codes, tokens, URLs); aligned digits use tabular figures instead. */
 @layer components {
     /* The short status kicker above a page title. The only capitals left. */
     .t-eyebrow {
@@ -237,19 +167,8 @@
         font-variant-numeric: tabular-nums;
     }
 
-    /* A measurement, anywhere a page is mostly measurements.
-     *
-     * The stats page had every figure set in extra-light at forty-odd pixels
-     * and every sentence around it set light as well, so nine hundred words of
-     * type arrived at one apparent weight and nothing on the page was ever the
-     * loud thing. Weight is the cheapest hierarchy there is and it was going
-     * unspent.
-     *
-     * The rule this settles: numbers carry the weight, words stay light. A
-     * figure is the answer; the sentence beside it is the caption. Size is set
-     * separately, because the same weight serves a 20px reading and a 56px
-     * headline -- what makes them different ranks is how big they are, not how
-     * heavy. */
+    /* A measurement. Numbers carry the weight and the words beside them stay
+     * light; size is set separately, so the same weight serves every rank. */
     .t-figure {
         font-variant-numeric: tabular-nums;
         font-weight: 600;
@@ -268,35 +187,14 @@ code {
 }
 
 /* ── The media grid ───────────────────────────────────────────────────────
- *
- * Every wall of album art, podcast covers, artists or playlists is this one
- * grid. There were thirty copies of it across five different breakpoint
- * ladders -- some stopped at lg, some ran to 2xl, one reached 3xl -- so the
- * same wall of cards changed shape depending on which page you were on.
- *
- * auto-fill rather than auto-fit: a library with three albums in it should
- * show three normal-sized cards, not three enormous ones stretched across the
- * viewport. auto-fit collapses the empty tracks and does exactly that.
- *
- * The gap grows with the viewport instead of stepping at breakpoints: 12px on
- * a phone, where width is the scarce thing, up to 20px on a desktop, where
- * room to breathe matters more than one extra column.
- * ─────────────────────────────────────────────────────────────────────── */
+ * Every wall of artwork cards uses this grid. auto-fill keeps a short library
+ * at normal card size instead of stretching it; the gap grows with the
+ * viewport from 12px on a phone to 20px on a desktop. */
 @layer components {
     .grid-media {
-        /* The card floor is itself fluid. Held at a fixed 152px it kept the cards
-         * phone-sized on a 27" display and simply added columns -- fifteen of them
-         * at 2560px. Growing the floor spends the extra width on bigger artwork
-         * instead, which is what the space is for. 152px is the hard minimum: it
-         * is what still fits two cards across a 388px phone.
-         *
-         * The 14vw coefficient was measured, not guessed. The grid does not get the
-         * whole viewport -- the sidebar and the activity rail take about 400px of
-         * it -- so at a 1261px window the cards live in an 849px column. At 12vw
-         * that gave five 154px cards and eighteen truncated titles in the first two
-         * rows; at 14vw it gives four 197px cards and thirteen. Podcast names are
-         * long enough that some clipping is unavoidable, but the card is the thing
-         * you read the title off, so it wins the width. */
+        /* Fluid card floor: extra width goes to bigger artwork, not more columns.
+         * 152px still fits two cards on a 388px phone; 14vw keeps titles
+         * readable in the column left beside the sidebar and activity rail. */
         --card-min: clamp(9.5rem, 14vw, 12rem);
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(var(--card-min), 1fr));
@@ -312,32 +210,12 @@ code {
 }
 
 /* ── Hover-revealed controls on a device that cannot hover ────────────────
- *
- * Twenty-one components reveal a control on hover, and none of them guarded
- * for touch. `opacity: 0` hides a control from the eye but not from the
- * finger: it stays visible to hit-testing, keeps `pointer-events: auto`, and
- * happily receives the tap.
- *
- * So the bottom-right corner of every album, artist and playlist tile held an
- * invisible 44px button. Tapping there to open the album started playing it
- * instead, with nothing on screen to explain why. Measured on the tablet:
- * opacity 0, pointer-events auto, and document.elementFromPoint at the
- * button's centre returning the button.
- * ─────────────────────────────────────────────────────────────────────── */
+ * opacity: 0 hides a control from the eye but not from a tap, so on touch
+ * screens hover-revealed controls are either shown or made non-interactive. */
 @media (hover: none) {
-    /* A hover-revealed BUTTON is a real action, and on a touch screen the only
-     * honest thing to do is show it. An earlier version of this rule set
-     * `pointer-events: none` on everything with the class, which fixed the
-     * mis-tap but silently removed eighteen files' worth of functionality:
-     * queue reordering, remove-from-playlist, add-to-queue, hide-playlist and
-     * play-from-grid all became invisible AND unreachable. Only the three
-     * grids carrying `.touch-reveal` kept working.
-     *
-     * Buttons are revealed; everything else with the class is a decorative
-     * scrim -- the full-tile `absolute inset-0` darkening on radio and mood
-     * tiles, where the tile itself is already the control -- and revealing
-     * those would permanently dim the artwork for no gain. They are made
-     * non-interactive instead, so the tap reaches the tile underneath. */
+    /* Hover-revealed buttons are real actions, so they are shown. Anything else
+     * with the class is a decorative scrim over a tile that is itself the
+     * control; it becomes non-interactive so the tap reaches the tile. */
     button.group-hover\:opacity-100,
     .group-hover\:opacity-100 button {
         opacity: 1;
@@ -349,18 +227,9 @@ code {
         pointer-events: none;
     }
 
-    /* Press feedback, because on a touch screen there is nothing else.
-     *
-     * The app has 888 hover states and 23 press states. A pointer gets told
-     * something happened 888 times; a finger gets told 23 times, because
-     * `hover:` never fires for touch. Every other control accepts the tap and
-     * shows nothing at all until the next screen arrives -- which, on a slow
-     * request, reads as "it didn't work" and invites a second tap.
-     *
-     * The dip is instant on the way down and eased on the way back up, which
-     * is how a physical button behaves: it gives immediately, then returns.
-     * Opacity rather than transform, so it never fights the scale and
-     * translate already on many of these controls. */
+    /* Press feedback for touch, where hover never fires. The dip is instant on
+     * the way down and eased back up; opacity, so it never fights the scale
+     * and translate already on many of these controls. */
     button:not(:disabled):active,
     a:not([aria-disabled="true"]):active,
     [role="button"]:not([aria-disabled="true"]):active {
@@ -368,29 +237,10 @@ code {
         transition-duration: 0ms;
     }
 
-    /* A 44px floor for anything a finger has to hit.
-     *
-     * There is a Button component with sensible sizing, and it is imported by
-     * two files out of a hundred and five. The app is built from 386 raw
-     * <button> elements and 57 raw <input>s, each sized by hand, so roughly a
-     * third of them landed under the touch-target minimum -- 38px form fields
-     * on the signup page, 32px icon buttons, 16px text links.
-     *
-     * Fixing that at the component level means migrating 386 call sites. This
-     * sets the floor from underneath instead, and only where it matters: a
-     * mouse can hit a 32px button, a fingertip is about 44px across.
-     *
-     * Measured on playlists, settings, podcasts and register before shipping:
-     * every undersized control reaches 44px, page height does not change on
-     * any of them, and no horizontal overflow is introduced.
-     *
-     * range, checkbox and radio are excluded, and the exclusion is not
-     * cosmetic. A range input IS its own track: the volume control is `h-1`,
-     * four pixels tall by design, and a 44px floor turned it into a solid bar.
-     * Checkboxes sit inside fixed grid columns -- the Soulseek results use
-     * `grid-cols-[32px_1fr...]` -- so forcing them to 44px overflows the
-     * column and drags the row with it. Both keep whatever size their own
-     * classes give them; their tap area comes from the label beside them. */
+    /* A 44px floor for anything a finger has to hit, set here rather than per
+     * component. Range, checkbox and radio are excluded: a range input is its
+     * own 4px track, and checkboxes sit in fixed grid columns they would
+     * overflow. Their tap area comes from the label beside them. */
     button,
     input:not([type="range"]):not([type="checkbox"]):not([type="radio"]),
     select,
@@ -398,17 +248,8 @@ code {
         min-height: 44px;
     }
 
-    /* Width matters as much as height for an icon button. The track rows on an
-     * artist page carried ten 32x44 play buttons and eight at 28x44 -- tall
-     * enough after the rule above, still half a fingertip wide.
-     *
-     * min-width is the riskier of the two, since a row of controls that grows
-     * sideways can push a layout past the viewport. Measured before shipping
-     * on the artist page, the tracks tab of the collection, podcasts and
-     * settings: every narrow control reaches 44px and none of the four gains
-     * any horizontal overflow. textarea is left out -- it is already
-     * full-width wherever it appears, and range, checkbox and radio are left
-     * out for the same reasons as above. */
+    /* The same 44px floor for width, so icon buttons are a full fingertip wide.
+     * textarea is already full-width; range, checkbox and radio as above. */
     button,
     input:not([type="range"]):not([type="checkbox"]):not([type="radio"]),
     select {
@@ -424,14 +265,8 @@ code {
     }
 }
 
-/* The vertical beat between the top-level sections of a page.
- *
- * Four pages each picked their own value -- 32px, 40px, 48px -- so the same
- * furniture breathed differently depending on where you had navigated to.
- *
- * It holds at 48px on a phone, where vertical space is the scarce thing and
- * scrolling is cheap, and opens to 72px on a desktop, where there is room for
- * the separation to actually do its job of saying "this is a different thing". */
+/* The vertical beat between top-level page sections: 48px on a phone,
+ * opening to 72px on a desktop. */
 @layer components {
     .section-stack > * + * {
         margin-top: clamp(3rem, 5vw, 4.5rem);
@@ -672,38 +507,14 @@ button:disabled {
     }
 }
 
-/* @keyframes shimmer and .animate-shimmer were removed 2026-08-18. Their only
- * two users were the library tabs and the search filters, where a light sweep
- * ran across a filter control forever. .impeccable.md lists shimmer as an
- * anti-reference; leaving the rule here only invites it back. */
-
 
 /* =====================================================
    Accessibility - Reduced Motion Support
    ===================================================== */
 
-/* Respect the reader's motion preference.
- *
- * The previous version zeroed duration but left DELAY alone, which is the
- * half that actually hurts. A staggered reveal sets `animation-delay:
- * ${i * 0.1}s` on each row; with the animation made instant but the delay
- * intact, someone who asked for less motion got a blank list that popped in
- * one row at a time on a timer. Strictly worse than either extreme.
- *
- * Smooth scrolling is motion too, and a scripted scroll-to-top is one of the
- * more nauseating kinds for a vestibular disorder, so it is turned off here
- * rather than left running.
- *
- * `--motion-ok` is the same preference expressed as a number, and
- * useReducedMotion is the same thing for JavaScript. Both are provided for
- * animation a media query cannot reach; neither has a consumer today.
- *
- * That is deliberate rather than unfinished. The three requestAnimationFrame
- * call sites in this app were checked and none is autonomous motion: two are
- * not animation at all (one defers a state flip by a frame so a CSS
- * transition can run, the other throttles a scroll handler) and the third
- * throttles pointer-locked mouse-look, which is direct input and would break
- * if it were suppressed. The vibe canvas already runs frameloop="demand". */
+/* Reduced motion zeroes both duration and delay, so staggered lists appear at
+ * once, and turns off smooth scrolling. --motion-ok and useReducedMotion expose
+ * the same preference for motion a media query cannot reach. */
 :root {
     --motion-ok: 1;
 }
@@ -1032,14 +843,8 @@ body.scanner-active .scanner-overlay {
     --titlebar-x: env(titlebar-area-x, 0px);
     --titlebar-y: env(titlebar-area-y, 0px);
 
-    /*
-     * Standalone-only safe area insets.
-     * Default to 0px in regular browser mode so components that use these
-     * vars don't apply insets when the browser chrome is already handling
-     * the notch/home-indicator clearance.
-     * Only set to the real env() values when running as an installed PWA
-     * (display-mode: standalone), where the app extends edge-to-edge.
-     */
+    /* Safe-area insets apply only in the installed PWA (display-mode:
+     * standalone); in a browser the chrome already clears the notch. */
     --standalone-safe-area-top: 0px;
     --standalone-safe-area-bottom: 0px;
 }
@@ -1162,21 +967,10 @@ body.scanner-active .scanner-overlay {
     text-overflow: ellipsis;
 }
 
-/* ── Scroll as the instrument (stats page) ─────────────────────────────────
- *
- * Tying motion to scroll position rather than to a timer means the page moves
- * exactly as far as you move it: stop halfway and it stops halfway. That is the
- * difference between an animation playing at you and one you are driving.
- *
- * Every rule here is additive and gated behind `@supports`. Firefox ships
- * scroll-driven animations behind a flag, so it — and anything older — simply
- * gets the page as it already was. Nothing here is load-bearing: no content
- * depends on these rules to be visible, sized or reachable.
- *
- * Reduced motion is handled globally further up (every animation duration is
- * zeroed), and a scroll-linked animation with no duration simply rests at its
- * start, which is the untransformed state.
- * ─────────────────────────────────────────────────────────────────────── */
+/* ── Scroll-driven motion (stats page) ─────────────────────────────────────
+ * Motion follows scroll position, not a timer. Additive and gated behind
+ * @supports; no content depends on it. With reduced motion, animations have
+ * no duration and rest at their untransformed start. */
 @supports (animation-timeline: scroll()) {
     @media (prefers-reduced-motion: no-preference) {
         /* The opening figure recedes as you leave it behind — it does not
@@ -1221,22 +1015,14 @@ body.scanner-active .scanner-overlay {
 }
 
 /* ── Chart ink ─────────────────────────────────────────────────────────────
- *
- * The furniture of an SVG chart cannot be reached by a Tailwind class, so every
- * chart wrote its own `rgba(255,255,255,…)` literals and the page ended up with
- * ten different whites: 0.02, 0.035, 0.05, 0.055, 0.09, 0.13, 0.3, 0.55, 0.75
- * and 0.9. Some of those differences were deliberate and some were whichever
- * number was typed that afternoon, and from the file you cannot tell which.
- *
- * Five rungs, named for the job rather than the opacity. A new chart picks a
- * rung; it does not invent an eleventh white.
- * ─────────────────────────────────────────────────────────────────────── */
+ * SVG chart furniture a Tailwind class cannot reach. Five rungs named for the
+ * job; a new chart picks a rung rather than inventing another white. */
 :root {
     /* Something that exists but holds nothing: an unplayed key, a hovered
      * ground. */
     --chart-ink-faint: rgba(255, 255, 255, 0.035);
-    /* An empty cell or an unfilled disc. Raised from 0.05 deliberately: at 3%
-     * an empty hour was invisible and a quiet week read as a broken grid. */
+    /* An empty cell or an unfilled disc, visible enough that a quiet week
+     * still reads as a grid. */
     --chart-ink-empty: rgba(255, 255, 255, 0.055);
     /* An axis, a baseline, the line a timeline sits on. */
     --chart-ink-rule: rgba(255, 255, 255, 0.09);
@@ -1248,13 +1034,8 @@ body.scanner-active .scanner-overlay {
 }
 
 /* ── Touch rows ────────────────────────────────────────────────────────────
- *
- * A ranked list row is content on a desktop and a target on a phone. At its
- * natural height it comes out 26px, against the 44px this project holds itself
- * to, so on a device without a pointer it grows and on one with a pointer it
- * stays dense. Keyed on `(hover: none)` for the same reason the press states
- * are: it is the honest test for a finger, and it does not guess from width.
- * ─────────────────────────────────────────────────────────────────────── */
+ * Ranked list rows grow to 44px on devices without hover and stay dense
+ * with a pointer. */
 @media (hover: none) {
     .t-touch-row {
         min-height: 44px;
@@ -1262,40 +1043,12 @@ body.scanner-active .scanner-overlay {
 }
 
 /* ── Stats display scale ───────────────────────────────────────────────────
- *
- * A page whose whole job is showing figures needs a few steps above the six
- * interface roles, and those steps were improvised into fourteen distinct
- * sizes with seven of the gaps between them under 1.2x. Sizes that close do
- * not read as a hierarchy; they read as one size applied carelessly.
- *
- * ## Why every step here got smaller on 2026-08-25
- *
- * The scale that replaced those fourteen sizes over-corrected. The opening
- * figure ran to seventy-two pixels across three lines, each of eight sections
- * was separated by a hundred and twelve, and the page came out at nine and a
- * half screens carrying nine hundred words -- the length of a magazine feature
- * for what is about twenty-five facts. Scale had been used to signal
- * importance and there was no importance left to signal, because everything
- * was important.
- *
- * Four steps, every gap at least 1.3x, and the top of the scale cut by about a
- * third:
- *
- *   --stat-hero    the figure the page opens on. Once per page, one line.
- *   --stat-figure  a headline measurement. The ledger row at the top.
- *   --stat-claim   a finding stated in words. Carries the argument.
- *   --stat-lead    a reading, or a sentence interpreting one.
- *   --stat-head    a section name. Deliberately the smallest of these -- on a
- *                  page of measurements the measurement is the content and the
- *                  heading is only a signpost.
- *
- * Presence comes from the space around a heading, not from its size. That is
- * what --stat-gap-* is for.
- * ─────────────────────────────────────────────────────────────────────── */
-/* Cut again 2026-08-25, after seeing it at 1920 for the first time. A 56px
- * opening line is a magazine masthead, and this is a page you read to find
- * something out. Every step comes down about a fifth; the ratios between them
- * are what carry the hierarchy, and they are unchanged. */
+ *   --stat-hero    the figure the page opens on, once, one line
+ *   --stat-figure  a headline measurement
+ *   --stat-claim   a finding stated in words
+ *   --stat-lead    a reading, or a sentence interpreting one
+ *   --stat-head    a section name, the smallest; presence comes from --stat-gap-*
+ * Every gap between steps is at least 1.3x. */
 :root {
     --stat-hero: clamp(2rem, 3.6vw, 2.75rem);      /* 32 - 44 */
     --stat-figure: clamp(1.5rem, 2.4vw, 1.875rem); /* 24 - 30 */

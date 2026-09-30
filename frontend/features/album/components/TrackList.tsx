@@ -8,19 +8,8 @@ import { formatNumber } from "@/utils/formatNumber";
 import { useDoubleTap } from "@/hooks/useDoubleTap";
 import { cascadeStyle } from "@/lib/motion";
 
-// The track table's column track, shared by the header and every row so the two
-// cannot drift apart.
-//
-// Five columns:
-//
-//   1. track number / play button (40px)
-//   2. title + artist (flex, minmax)
-//   3. play-count badge (hidden below md)
-//   4. row actions (136px — fixed, keeps layout stable)
-//   5. duration (100px — fixed, right-aligned)
-//
-// The play-count badge is hidden below md so mobile rows have the same two
-// columns and the title block doesn't collapse.
+// Shared by the header and every row: number/play 40px, title flex, play-count
+// badge (hidden below md), actions 136px, duration 100px.
 
 const _TRACK_GRID = "grid-cols-[40px_minmax(0,2fr)_96px_136px_100px]";
 const _TRACK_GRID_MD = "md:grid-cols-[40px_minmax(0,2fr)_96px_136px_100px]";

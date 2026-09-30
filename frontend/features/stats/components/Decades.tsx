@@ -1,16 +1,8 @@
 "use client";
 
 /**
- * The shelf along a timeline, not as another column chart.
- *
- * This was a row of columns sitting two sections away from the album-position
- * curve, which is also a row of columns. Two bar charts on one page about
- * unrelated things read as one texture and the second one stops being looked
- * at.
- *
- * A timeline is the shape decades already have. Each decade is a disc on the
- * line, sized by how many albums you own from it, filled by how many you have
- * opened. Two facts per mark, no axis needed, and a form used nowhere else here.
+ * The shelf as a timeline. Each decade is a disc sized by albums owned and
+ * filled by albums opened.
  */
 
 import type { ShelfStats } from "../types";
@@ -24,14 +16,8 @@ export function Decades({ decades }: { decades: ShelfStats["decades"] }) {
     if (max === 0) return null;
 
     const biggest = decades.reduce((a, b) => (b.albums > a.albums ? b : a));
-    // A decade with one or two albums is not evidence of neglect, so those are
-    // excluded from the running. They were not: `reduce` was seeded with
-    // `decades[0]`, which sits outside the filter and stays in the comparison
-    // regardless — so the oldest decade could be named "the one you've left
-    // alone" on the strength of a single unplayed record, which is exactly the
-    // claim the filter exists to prevent. Reducing over the filtered list with
-    // no seed keeps the filter meaningful, and an empty list yields nothing to
-    // say rather than a decade that was excluded.
+    // Decades with fewer than three albums are not evidence of neglect. Reduce
+    // over the filtered list without a seed so an excluded decade can never win.
     const judged = decades.filter((d) => d.albums >= 3);
     const coldest = judged.length
         ? judged.reduce((a, b) => (b.heard / b.albums < a.heard / a.albums ? b : a))
@@ -40,28 +26,14 @@ export function Decades({ decades }: { decades: ShelfStats["decades"] }) {
     const W = 100;
     const gaps = Math.max(1, decades.length - 1);
 
-    // The biggest disc must still fit its own slot. Sizing to the data alone
-    // let the busy decades swallow their neighbours and run off the edge —
-    // three discs merged into one blob and the last one covered the caption.
-    // Insetting the ends by a radius shrinks the spacing, so a cap based on the
-    // un-inset step is still too generous — the two busiest decades touched.
-    // Solving 2R <= (W - 2R) / gaps gives the largest radius that cannot
-    // collide, and a little is taken off for daylight between them.
+    // Largest radius that cannot collide: solving 2R <= (W - 2R) / gaps, less a
+    // little for daylight between neighbours.
     const maxR = Math.min(9.5, (W / (2 * (gaps + 1))) * 0.92);
     const minR = Math.min(2.6, maxR * 0.32);
 
-    // Area carries the count, because a disc twice as wide reads as four times
-    // as much and would make the busy decades lie.
-    //
-    // Getting that right means solving for the radius, not scaling one. The
-    // previous line was `minR + sqrt(a/max) * (maxR - minR)` — an affine
-    // function of sqrt(a), whose area expands to
-    // `pi*(minR^2 + 2*minR*d*sqrt(a/max) + d^2*a/max)`. The squared and cross
-    // terms mean area was never proportional to the count; a decade with a
-    // tenth of the maximum was drawn far larger than a tenth of the area.
-    // Interpolating between the two areas instead and taking the root gives a
-    // radius that still lands on minR at zero and maxR at the top, but where
-    // the difference in ink between two decades is the difference in albums.
+    // Area carries the count. Interpolate between the two areas and take the
+    // root, so the radius lands on minR at zero and maxR at the top while ink
+    // stays proportional to albums.
     const radius = (albums: number) =>
         Math.sqrt(minR * minR + (albums / max) * (maxR * maxR - minR * minR));
 
@@ -134,10 +106,6 @@ export function Decades({ decades }: { decades: ShelfStats["decades"] }) {
                 </div>
             </div>
 
-            {/* The legend used to be a full sentence set at body size, sitting
-                above a second full sentence. Two paragraphs to explain a chart
-                with two variables. It is a legend: it goes at meta size, on one
-                line, under the sentence that actually says something. */}
             <figcaption className="flex flex-col gap-2 max-w-[30ch]">
                 <p className="t-body">
                     Most of your shelf is the{" "}

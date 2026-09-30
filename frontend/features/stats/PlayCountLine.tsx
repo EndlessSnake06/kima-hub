@@ -1,17 +1,8 @@
 "use client";
 
 /**
- * "45th play" — one fact about the track in front of you, in every player.
- *
- * There are three players (docked, mini, overlay) and they all show the same
- * title-and-artist block, so this is one component rather than three copies of
- * the same six lines. The first version lived inline in `MiniPlayer` alone,
- * which meant the line simply did not exist on a desktop, where the docked
- * `FullPlayer` renders instead. An end-to-end journey caught that; three copies
- * would have let it drift again.
- *
- * Silent unless there is something to say: a track you have heard once gets no
- * line, because "1st play" tells nobody anything.
+ * "45th play" under the title in all three players. Renders nothing for a
+ * first listen.
  */
 
 import Link from "next/link";

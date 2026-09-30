@@ -20,7 +20,6 @@ const montserrat = localFont({
     weight: "300 800",
 });
 
-// Viewport configuration - separate export for Next.js 14+
 export const viewport: Viewport = {
     width: "device-width",
     initialScale: 1,

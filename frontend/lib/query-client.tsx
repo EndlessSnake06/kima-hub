@@ -3,37 +3,23 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 
-/**
- * Creates a new QueryClient instance with sensible defaults for the music streaming app
- *
- * Configuration rationale:
- * - staleTime: Time before data is considered stale and needs refetching
- * - cacheTime: Time to keep unused data in cache before garbage collection
- * - refetchOnWindowFocus: Disabled for music app - we don't want to interrupt playback
- * - retry: Number of times to retry failed requests
- */
 function makeQueryClient() {
     return new QueryClient({
         defaultOptions: {
             queries: {
-                // Data freshness configuration
-                staleTime: 5 * 60 * 1000, // 5 minutes - default for most data
-                gcTime: 10 * 60 * 1000, // 10 minutes - formerly called cacheTime
+                staleTime: 5 * 60 * 1000,
+                gcTime: 10 * 60 * 1000,
 
-                // Refetch behavior
-                refetchOnWindowFocus: false, // Don't refetch on window focus (music app)
-                refetchOnMount: true, // Refetch when component mounts if data is stale
-                refetchOnReconnect: true, // Refetch when internet reconnects
+                refetchOnWindowFocus: false, // a refetch on focus would interrupt playback
+                refetchOnMount: true,
+                refetchOnReconnect: true,
 
-                // Retry configuration
-                retry: 1, // Retry once on failure
+                retry: 1,
                 retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
 
-                // Error handling
-                throwOnError: false, // Don't throw errors, let components handle them
+                throwOnError: false,
             },
             mutations: {
-                // Mutations generally don't need retry for user actions
                 retry: false,
             },
         },

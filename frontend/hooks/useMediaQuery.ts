@@ -27,41 +27,17 @@ export function useMediaQuery(query: string): boolean {
     return matches;
 }
 
-/**
- * True when the reader has asked their system for reduced motion.
- *
- * The CSS block in globals.css cannot help animation driven from JavaScript:
- * a requestAnimationFrame loop moving something frame by frame is invisible
- * to `prefers-reduced-motion`, because no CSS animation or transition is
- * involved. Those callers have to ask, and this is how they ask.
- */
+/** Reduced-motion preference, for JavaScript-driven animation the CSS media query cannot reach. */
 export const useReducedMotion = () => useMediaQuery("(prefers-reduced-motion: reduce)");
 
 // Common breakpoints
 export const useIsMobile = () => useMediaQuery("(max-width: 768px)");
 
 /**
- * "Tablet" here means "give this the thumb-reachable chrome": the bottom
- * navigation bar rather than the sidebar.
- *
- * It is two conditions joined by a comma, which in a media query means OR.
- *
- *   1. 769-1024px on any input. This is the original rule and it is kept so a
- *      desktop window dragged narrow still collapses to the compact chrome.
- *
- *   2. 769-1366px on a device that cannot hover at all. This is the tablet
- *      itself, and the ceiling is set by the iPad Pro 12.9" in landscape.
- *
- * The second clause exists because the first one alone changed navigation
- * paradigm when you rotated. An iPad in portrait is 1024 wide and matched, so
- * it got the bottom bar; rotated to landscape it is 1366, missed, and got the
- * sidebar instead. Same device, same session, and the navigation moved from
- * the bottom of the screen to the top-left corner.
- *
- * `any-hover: none` rather than `hover: none` is deliberate. It is true only
- * when NO input mechanism available to the device can hover, so a laptop with
- * both a touchscreen and a trackpad still reports hover and keeps its sidebar
- * -- a touchscreen is not a reason to take the desktop layout away from it.
+ * "Tablet" means the bottom-nav chrome: 769-1024px on any input (a narrow
+ * desktop window), or 769-1366px when no input can hover, so an iPad keeps the
+ * same navigation in both orientations. `any-hover: none` keeps a touchscreen
+ * laptop with a trackpad on the sidebar.
  */
 export const useIsTablet = () =>
     useMediaQuery(

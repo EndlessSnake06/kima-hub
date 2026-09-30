@@ -51,20 +51,7 @@ export interface UseHomeDataReturn {
     handleRefreshMixes: () => Promise<void>;
 }
 
-/**
- * Custom hook to load all Home page data sections using React Query
- *
- * Loads the following sections with automatic caching:
- * 1. Recently listened (Continue Listening)
- * 2. Recently added artists
- * 3. Recommended for you
- * 4. Mixes (Made For You)
- * 5. Popular artists
- * 6. Recent podcasts
- * 7. Recent audiobooks
- *
- * @returns {UseHomeDataReturn} All home page data and loading states
- */
+/** Every Home section: continue listening, recently added, recommended, mixes, popular, podcasts, audiobooks. */
 export function useHomeData(): UseHomeDataReturn {
     const { toast } = useToast();
     const { isAuthenticated } = useAuth();

@@ -5,13 +5,8 @@ import { useAudioPlayback } from "./audio-playback-context";
 import { useAudioControls } from "./audio-controls-context";
 
 /**
- * Unified hook that combines all audio contexts.
- * Use this for backward compatibility with existing code.
- *
- * For optimal performance, prefer using the individual hooks:
- * - useAudioState() - for rarely changing data (currentTrack, queue, etc.)
- * - useAudioPlayback() - for frequently changing data (currentTime, isPlaying)
- * - useAudioControls() - for actions only (play, pause, next, etc.)
+ * All three audio contexts in one hook. Prefer useAudioState, useAudioPlayback
+ * or useAudioControls where only one is needed: playback re-renders often.
  */
 export function useAudio() {
     const state = useAudioState();

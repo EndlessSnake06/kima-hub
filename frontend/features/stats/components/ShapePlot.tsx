@@ -1,36 +1,10 @@
 "use client";
 
 /**
- * Your taste as a place, and the path you have walked through it.
- *
- * Two axes the analysis pass already measures for every track: how bright a
- * piece of music sounds across, and how hard it drives up. Every cell you have
- * played is a dot, sized and lit by how often. The result is a cloud that is
- * different for every person, which is the whole reason it sits at the top of
- * the page.
- *
- * The line through it is the same data cut by month. Drawn faint at the
- * beginning and bright at the end, so the direction reads without a legend.
- *
- * ## Why one graphic instead of two
- *
- * The cloud alone says what you like. The path alone says how you have changed.
- * Drawn apart they are two charts a person compares from memory; drawn together
- * the change is a shape you can see at a glance, sitting inside the thing it
- * changed relative to.
- *
- * ## The month strip
- *
- * Under the plot is one tick per month, its height the number of plays. It is a
- * volume chart and a control at once: point at a month and the ring walks back
- * to where you were standing then, and the reading rewrites itself. That turns
- * a picture you look at once into something you can ask questions of, which is
- * the difference between a poster and an instrument.
- *
- * ## Amber means data
- *
- * Every amber pixel on this page is a number. The grid, the axis rules and the
- * labels are all grey. That is what keeps the accent meaning something.
+ * Taste as a place: brightness across, energy up, one dot per played cell sized
+ * by plays. The line through it is the same data by month, faint to bright.
+ * The month strip below is volume and control: pointing at a month moves the
+ * ring and rewrites the caption.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -44,25 +18,10 @@ const BUCKETS = 24;
 /** The largest dot drawn, in viewBox units. */
 const MAX_DOT_RADIUS = 2.8;
 
-/**
- * The largest painted radius of anything in the plot.
- *
- * Not the largest dot: the ring marking the current month is r=3 with a 2-wide
- * stroke, so it paints four units out from its centre. Insetting by the dot
- * radius alone left the ring's outline hanging over the frame — eleven circles
- * escaping by up to three and a half pixels, which is invisible in a
- * downscaled screenshot and obvious on a real display.
- */
+/** Largest painted radius: the current-month ring (r=3 plus a 2-wide stroke). */
 const MAX_PAINTED_RADIUS = 4.2;
 
-/**
- * Bucket 1..24 to a point inside the frame.
- *
- * Inset by the largest radius at both ends. Mapping straight onto 0..100 puts
- * the centre of an edge cell on the border itself, so half of every extreme dot
- * hangs outside the rule meant to contain it — visible as a scatter of loose
- * circles along the top and left.
- */
+/** Bucket 1..24 to a point inside the frame, inset so edge dots stay inside the rule. */
 const PAD = MAX_PAINTED_RADIUS;
 const cellCentre = (bucket: number) =>
     PAD + (((bucket - 0.5) / BUCKETS) * (100 - PAD * 2));
@@ -89,15 +48,8 @@ export function ShapePlot({ listening, period }: { listening: ListeningStats; pe
     const [at, setAt] = useState<number | null>(null);
     const { ref, shown } = useReveal<HTMLElement>({ threshold: 0.25 });
 
-    /* Pointing at the cloud asks what is actually there.
-     *
-     * A scatter can say "this is your shape" and can never say what the shape
-     * is made of. The answer is one small query away and the question gets
-     * asked the moment anybody looks at it properly, so it is worth answering.
-     *
-     * Debounced, because sweeping across the plot would otherwise fire a
-     * request per pixel, and ticketed, so a slow answer for somewhere the
-     * pointer has already left never lands. */
+    /* Pointing at the cloud asks the server what is there. Debounced, and
+     * ticketed so an answer for a point already left never lands. */
     const [probe, setProbe] = useState<{ x: number; y: number } | null>(null);
     // The answer and the point it answers for, kept together. Storing the
     // region alone meant clearing it needed a state write from the effect, and
@@ -178,23 +130,8 @@ export function ShapePlot({ listening, period }: { listening: ListeningStats; pe
     const latest = path[path.length - 1];
 
     /**
-     * The centre of the whole cloud, for the sentence that speaks for all of it.
-     *
-     * The idle caption reads "Most of what you play is …" and used to take its
-     * adjectives from `here`, which with nothing hovered is the LAST MONTH. So a
-     * sentence claiming to describe every listen was computed from the newest
-     * one twelfth of them — and the newest month is usually still in progress.
-     *
-     * On the library this was found against, the two happened to agree, which
-     * is why it survived: August averaged 0.724 energy and all time averaged
-     * 0.662, and both land in "driving". They do not always agree. Loading the
-     * page in December would have read "Most of what you play is steady" off 63
-     * listens while all 4,107 said "driving", and in January it would have
-     * claimed "bright" for a year that is not.
-     *
-     * `shape` is the full histogram — every analysed listen, not one month — so
-     * the play-weighted centre of its cells is the figure the sentence is
-     * actually about. Bucket centres, so the resolution is one 24th of an axis.
+     * Play-weighted centre of the full histogram, for the idle caption that
+     * speaks for every listen (not the newest month).
      */
     const overall = useMemo(() => {
         let n = 0, valence = 0, energy = 0;
@@ -206,15 +143,7 @@ export function ShapePlot({ listening, period }: { listening: ListeningStats; pe
         return n > 0 ? { valence: valence / n, energy: energy / n } : null;
     }, [shape]);
 
-    /**
-     * The corner you never visit.
-     *
-     * A large empty region reads as a chart that failed to draw, not as a fact
-     * about the person looking at it. Naming it converts the hole into the most
-     * interesting thing on the plot: not "here is what you play" but "here is
-     * what you never reach for". Only said when the corner is genuinely bare —
-     * below one play in twenty — because "you rarely" is not worth a sentence.
-     */
+    /** The corner you never visit, named only when it holds under one play in twenty. */
     const barestCorner = useMemo(() => {
         const total = shape.reduce((n, c) => n + c.plays, 0);
         if (total === 0) return null;
@@ -500,11 +429,6 @@ export function ShapePlot({ listening, period }: { listening: ListeningStats; pe
                                       here.bpm ? `, averaging ${Math.round(here.bpm)} beats a minute` : ""
                                   }.`}
                         </p>
-                        {/* The bare corner used to get its own paragraph at body
-                            size — a fourth sentence about one graphic, before
-                            the reader had scrolled at all. The fact is worth
-                            keeping and a paragraph is not, so it joins the hint
-                            line at meta size. */}
                         <p className="t-meta mt-1">
                             {at == null && barestCorner && (
                                 <>

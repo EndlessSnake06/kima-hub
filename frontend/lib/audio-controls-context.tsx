@@ -657,19 +657,10 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
 
     const addToQueue = useCallback(
         (track: Track) => {
-            // Read the queue from the ref, not from `state` captured in this closure.
-            //
-            // This branch REPLACES the whole queue with the one track, so it must only run
-            // when the queue is genuinely empty. Judging that from a stale closure -- or
-            // from a playbackType that has not caught up yet -- turned "add to queue" into
-            // "throw away the queue": measured as an eight-track album collapsing to one
-            // the moment a track was added to it. Intermittent, because it depends on
-            // whether this callback had been rebuilt since the album started.
-            //
-            // playbackType is deliberately not part of the test any more. Adding a track
-            // while a podcast plays should start a track queue, which the branch below
-            // handles correctly once the queue is empty; it is not a reason to discard a
-            // queue that has tracks in it.
+            // This branch replaces the whole queue, so it runs only when the queue
+            // is really empty, read from the ref rather than a stale closure.
+            // playbackType is not part of the test: adding a track during a
+            // podcast starts a track queue below.
             if (queueRef.current.length === 0) {
                 state.setPlaybackType("track");
                 state.setQueue([track]);
@@ -1173,14 +1164,10 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
         if (!ctrl) return;
 
         const handleEnded = () => {
-            // Shortly after a manual/gapless advance, an 'ended' can still arrive
-            // from the OUTGOING track, which would double-advance past the just-
-            // loaded one. Distinguish it from a genuine end by POSITION rather
-            // than a blanket time window: a stale/transition 'ended' leaves the
-            // (now-current) media near its start, while a real end -- even of a
-            // sub-second track -- leaves it at its duration. Only suppress the
-            // stale case, so a short track that legitimately finishes within ~1s
-            // of the advance still advances (fixes the sub-second stall).
+            // Just after an advance, an 'ended' from the outgoing track would
+            // double-advance. Judge by position: a stale 'ended' leaves the new
+            // media near its start, a real end leaves it at its duration, so a
+            // sub-second track that really finished still advances.
             if (Date.now() - lastManualAdvanceAtRef.current <= 1000) {
                 const pos = ctrl.getCurrentTime();
                 const dur = ctrl.getDuration();
@@ -1385,20 +1372,10 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
             }
         });
 
-        // "error" event is terminal by construction (ladder exhausted). Every
-        // emission means the engine gave up on this src -- skip or give up uniformly.
-        //
-        // Before tearing down, we classify code-4 errors (src-not-supported) as a
-        // possible 401: the server may have returned a JSON error body to the audio
-        // element instead of audio bytes. A lightweight probe to GET /api/auth/me
-        // (5s bound) disambiguates. On 401 we refresh and reload at the saved
-        // position -- no teardown, no skip. Any other outcome falls through to the
-        // standard teardown below.
-        //
-        // On a hard refresh failure (rejected token), the engine surfaces
-        // "Session expired -- sign in again" and current playback ends naturally.
-        // No mid-session provider unmount; the normal auth flow takes over at the
-        // next navigation/mount.
+        // "error" is terminal: the engine gave up on this src. A code-4 error may
+        // be a 401 JSON body, so probe /api/auth/me (5s bound) first; on 401,
+        // refresh and reload at the saved position. Anything else tears down. A
+        // rejected refresh surfaces "Session expired" and playback ends.
         const doTeardown = () => {
             if (playbackTypeRef.current === "track") {
                 consecutiveErrorCountRef.current++;
@@ -1511,13 +1488,8 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
         };
     }, [controller, state, toast]);
 
-    // -- Periodic save on a real timer (every 15s while playing) --
-    // iOS throttles/suspends the "timeupdate" event when the PWA is backgrounded
-    // (screen off), so a timeupdate-driven save misses an entire screen-off
-    // listening session -- an update or crash then reverts to the moment the
-    // screen was locked. A wall-clock interval keeps checkpointing as reliably as
-    // iOS lets a background-audio app run. saveAudiobookProgress de-dupes an
-    // unchanged position, so a paused/stalled tick is a no-op.
+    // Save every 15s on a wall-clock timer while playing: iOS suspends
+    // timeupdate with the screen off. Unchanged positions are de-duped.
     useEffect(() => {
         const ctrl = controllerRef.current;
         if (!ctrl) return;

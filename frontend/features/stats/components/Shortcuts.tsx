@@ -1,21 +1,9 @@
 "use client";
 
 /**
- * Keyboard shortcuts for a page you scroll a long way down.
- *
- * The critique's power-user persona had a fair complaint: the arrow keys move
- * inside the week grid and nothing else exists. On a page eight screens tall
- * that means the only way to reach the server panel is to scroll to it.
- *
- * Digits jump to sections, in the order they appear. Question mark says so.
- * Deliberately small — a page with four shortcuts and a way to see them beats
- * one with twenty nobody finds.
- *
- * ## Why a corner panel and not a dialogue
- *
- * Help about the page should not cover the page. A dialogue would also steal
- * focus, which is exactly wrong for something a keyboard user opens mid-task:
- * they want to read it and carry on from where they were.
+ * Keyboard shortcuts: digits jump to sections in page order, ? shows them. A
+ * corner panel rather than a dialog, so it neither covers the page nor steals
+ * focus.
  */
 
 import { useCallback, useEffect, useState } from "react";

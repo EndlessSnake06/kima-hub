@@ -97,9 +97,7 @@ export class NetworkError extends Error {
     name = "NetworkError";
 }
 
-// Enrichment engine contract (mirrors backend/src/services/enrichmentState
-// and the TrackStage records). These lived in a second client module
-// (lib/enrichmentApi.ts) until they were folded back in here.
+// Enrichment engine contract (mirrors backend/src/services/enrichmentState).
 export interface EnrichmentState {
     status: "idle" | "running" | "paused" | "stopping" | "failed";
     startedAt?: string;
@@ -1448,7 +1446,7 @@ class ApiClient {
     }
 
     // Playback State (cross-device sync)
-    /** How many tracks the server will keep, as the operator has it set. */
+    /** How many tracks the server will keep, as an admin has it set. */
     async getQueueLimit() {
         return this.request<{ maxQueueLength: number }>("/playback-state/limit");
     }
@@ -1724,7 +1722,7 @@ class ApiClient {
         });
     }
 
-    // Enrichment control and failure management (formerly lib/enrichmentApi.ts)
+    // Enrichment control and failure management
 
     async getEnrichmentState() {
         return this.get<EnrichmentState | null>("/enrichment/status");

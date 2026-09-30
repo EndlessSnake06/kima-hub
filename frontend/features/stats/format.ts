@@ -1,13 +1,8 @@
 /**
- * Numbers as a person would say them.
- *
- * Two rules run through all of this. Time derived from track length is always
- * introduced with "about", because it is an estimate and the page should never
- * pretend otherwise. Time read from a real playback position never is.
- *
- * And nothing rounds to a lie: 0.4 hours is "24 minutes", not "0 hours".
+ * Numbers as a person would say them. Time derived from track length is
+ * introduced with "about"; time from a real playback position never is.
+ * Nothing rounds to a lie: 0.4 hours is "24 minutes", not "0 hours".
  */
-
 
 /** Just the figure, for when a label already says what it is. */
 export function hoursValue(seconds: number): string {
@@ -35,13 +30,7 @@ export function uptime(seconds: number): string {
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-/**
- * "1st", "2nd", "45th" — a position, said the way a person says it.
- *
- * The teens are the whole reason this is not `n + "th"`: 11, 12 and 13 take
- * "th" while 21, 22 and 23 take "st", "nd" and "rd", so the last two digits
- * decide before the last one does.
- */
+/** "1st", "2nd", "45th"; 11-13 take "th", so the last two digits decide first. */
 export function ordinal(n: number): string {
     const lastTwo = n % 100;
     if (lastTwo >= 11 && lastTwo <= 13) return `${n}th`;

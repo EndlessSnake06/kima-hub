@@ -88,15 +88,8 @@ export default function LibraryPage() {
         enabled: activeTab === "tracks",
     });
 
-    // Get data based on active tab.
-    //
-    // The server returns this list already ordered, by the article-stripped
-    // `Artist.sortName` it also indexes and buckets on. There used to be a
-    // client-side re-sort here with its own `^the\s+` stripper -- a fifth copy
-    // of that rule, and the weakest: it knew one English article where the
-    // server knows eleven across four languages, and it could only reorder the
-    // page in hand, since the list is paginated server-side. Re-sorting a
-    // correctly-ordered page by a worse rule can only make it wrong.
+    // The server returns this list already ordered by the article-stripped
+    // `Artist.sortName`, across all pages. Do not re-sort here.
     const artists = useMemo(() => {
         if (activeTab !== "artists") {
             return [];
@@ -136,12 +129,9 @@ export default function LibraryPage() {
         }
     }, [currentPage]);
 
-    // Pagination from active query. `fresh` is undefined whenever the query
-    // has no data — loading, or failed on its first load (query-core drops
-    // placeholderData on first-load errors; pinned by
-    // lib/__tests__/pagination.test.ts). The latch keeps the last real total,
-    // and totalPages is floored at 1 so the pager degrades to "one page",
-    // never to nothing.
+    // `fresh` is undefined while the query has no data (loading, or a failed
+    // first load). The latch keeps the last real total, and totalPages is
+    // floored at 1 so the pager never disappears.
     const activeQuery =
         activeTab === "artists" ? artistsQuery
         : activeTab === "albums" ? albumsQuery
@@ -203,15 +193,8 @@ export default function LibraryPage() {
         deleteTrack,
     } = useLibraryActions();
 
-    // Monotonic key that increments on tab/filter/sort change to remount grids
-    // and replay staggered entrance animations.
-    //
-    // Declared above the effects that call setGridKey, not below them. Both
-    // orders run correctly -- an effect body executes long after the whole
-    // component function has, so the binding is initialised by then -- but
-    // reading a `const` from a line above its declaration puts the reference in
-    // the temporal dead zone as written, which the React Compiler flags and a
-    // future refactor could turn into a real ReferenceError.
+    // Increments on tab/filter/sort change to remount grids and replay the
+    // entrance animation. Declared above the effects that set it.
     const [gridKey, setGridKey] = useState(0);
 
     // Reset page and filter when tab changes. The URL is the page's source of

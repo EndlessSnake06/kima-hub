@@ -1,16 +1,6 @@
 "use client";
 
-/**
- * Put on whatever the page just told you about.
- *
- * A page of numbers about music that cannot play any of it is a report. The
- * gap between a report and a tool is whether the interesting thing you just
- * noticed is one press from happening — "seven thousand tracks you have never
- * played" ought to be an invitation, not a fact to feel bad about.
- *
- * Every slice here matches a figure the page already states, so nothing plays
- * that the reader was not just looking at.
- */
+/** Plays the tracks behind a figure the page states. */
 
 import { useCallback, useState } from "react";
 import { api } from "@/lib/api";
@@ -39,15 +29,7 @@ export function usePlaySlice() {
                 limit?: number;
                 startIndex?: number;
                 token?: string;
-                /**
-                 * The window the page was showing when the button was pressed.
-                 *
-                 * "Play those 64" has to hand back the 64 the sentence beside it
-                 * names. Without this the button plays the all-time set while the
-                 * page is describing the last thirty days, and nothing on screen
-                 * says they differ. The shelf slices ("never", "decade") ignore
-                 * it server-side, because they are not about a period.
-                 */
+                /** The period on screen, so the button plays what the sentence names. Shelf slices ignore it. */
                 period?: string;
             } = {},
         ) => {

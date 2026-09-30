@@ -1,21 +1,13 @@
 "use client";
 
-/**
- * GalaxyBackground Component
- *
- * Creates a subtle cosmic background effect with gradient.
- * Particle animations disabled for performance - they caused scroll lag.
- */
+/** A fixed gradient behind the page, tinted by `primaryColor` when given. */
 
 interface GalaxyBackgroundProps {
-    /** Primary color extracted from Vibrant.js (e.g., "#8B4789") */
+    /** Background tint color. */
     primaryColor?: string;
-    /** Optional secondary color (unused, kept for API compatibility) */
-    secondaryColor?: string;
 }
 
 export function GalaxyBackground({ primaryColor }: GalaxyBackgroundProps = {}) {
-    // Convert hex color to RGB values for opacity control
     const hexToRgb = (hex: string) => {
         const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
         return result ? {
@@ -25,20 +17,16 @@ export function GalaxyBackground({ primaryColor }: GalaxyBackgroundProps = {}) {
         } : null;
     };
 
-    // Use provided colors or default purple theme
     const baseColor = primaryColor ? hexToRgb(primaryColor) : null;
 
     return (
         <div
             className="fixed inset-0 pointer-events-none z-0 overflow-hidden"
             style={{
-                // Use will-change for GPU acceleration during scroll
-                // Removed contain: strict as it can cause repaint flash issues on some browsers
                 willChange: 'auto',
-                transform: 'translateZ(0)', // Force GPU layer
+                transform: 'translateZ(0)',
             }}
         >
-            {/* Subtle gradient - fades from bottom to top */}
             {baseColor ? (
                 <>
                     <div
@@ -55,7 +43,6 @@ export function GalaxyBackground({ primaryColor }: GalaxyBackgroundProps = {}) {
                     <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-black/10 to-transparent" />
                 </>
             )}
-            {/* Particle animations removed for performance - they caused scroll lag */}
         </div>
     );
 }

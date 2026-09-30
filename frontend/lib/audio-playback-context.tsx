@@ -28,9 +28,6 @@ interface AudioPlaybackContextType {
     setDuration: (duration: number) => void;
     setCanSeek: (canSeek: boolean) => void;
     setDownloadProgress: (progress: number | null) => void;
-    // No-op stubs retained for backward compat with audio-hooks.tsx shim.
-    // Engine state is authoritative; callers that used to write these can be
-    // deleted as they are encountered -- the engine clears error on play().
 }
 
 const AudioPlaybackContext = createContext<AudioPlaybackContextType | undefined>(undefined);
@@ -85,9 +82,8 @@ export function AudioPlaybackProvider({ children }: { children: ReactNode }) {
 
     const controller = useAudioController();
 
-    // A play is reported by whoever knows how much was actually heard. The stream
-    // endpoint no longer logs one -- requesting bytes is not listening -- so if
-    // this stops firing, play history silently stops growing rather than erroring.
+    // The only source of plays: the stream endpoint does not log them, so if
+    // this stops firing, play history silently stops growing.
     usePlayReporting(
         controller as Parameters<typeof usePlayReporting>[0],
         state.currentTrack?.id ?? null,

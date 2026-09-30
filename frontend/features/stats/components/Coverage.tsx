@@ -1,18 +1,8 @@
 "use client";
 
 /**
- * The part of this page that can be finished.
- *
- * A running total only ever goes up, which makes it a number rather than a
- * goal. A percentage of something countable has an end, and an end is what
- * turns a statistic into progress. That is the whole of the game here — no
- * points, no badges, no streaks, just four honest fractions and the gap spelled
- * out underneath.
- *
- * Set large and in a row. Four medium blocks stacked read as a form; four big
- * numerals side by side read as a scoreboard, and the difference is entirely
- * scale. The rule under each is thin and flat rather than a rounded pill — a
- * pill reads as a loading indicator, a rule reads as a measurement.
+ * The part of the page that can be finished: four fractions of countable
+ * things, set large in a row, each with a thin rule and the gap spelled out.
  */
 
 import { percent } from "../format";

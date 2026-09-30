@@ -1,14 +1,8 @@
 "use client";
 
 /**
- * Reports a play once the listening earns it.
- *
- * The server used to write a Play row the moment the stream endpoint was hit, so
- * skipping through an album logged a play per track and nothing had been heard.
- * The server now judges instead — Last.fm's rule, longer than 30 seconds and
- * played for half its length or four minutes, whichever comes first — but it can
- * only judge what it is told, so somebody has to measure the listening. That is
- * this hook.
+ * Measures listening and reports it; the server decides whether it is a play
+ * (Last.fm's rule: over 30 seconds, and half its length or four minutes).
  *
  * ## Why deltas, and why capped
  *
@@ -134,17 +128,8 @@ export function usePlayReporting(
     const trackIdRef = useRef<string | null>(null);
 
     /**
-     * Start over when the song changes, and only then.
-     *
-     * An earlier version also reset whenever the duration changed, which sounds
-     * harmless and is not: a track's length often arrives a beat after playback
-     * starts, and resetting clears the "already reported" flag, so the same
-     * listen could be reported twice. The server's duplicate check was hiding
-     * that — and now that the check is only as long as the song itself, a short
-     * track would have started counting twice.
-     *
-     * A late duration is fed to the meter without disturbing what it has
-     * already counted or already sent.
+     * Reset only on a song change: a late-arriving duration must not clear the
+     * "already reported" flag, or one listen is counted twice.
      */
     useEffect(() => {
         if (trackIdRef.current === trackId) {
