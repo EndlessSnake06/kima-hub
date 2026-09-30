@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 
 interface SeekSliderProps {
     /** Current progress percentage (0-100) */

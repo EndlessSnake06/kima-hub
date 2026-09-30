@@ -3,11 +3,11 @@
 import { useAudioState } from "@/lib/audio-state-context";
 import { useAudioControls } from "@/lib/audio-controls-context";
 import { useAudioPlayback } from "@/lib/audio-playback-context";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 import { Play, Pause } from "lucide-react";
 import Image from "next/image";
 import { api } from "@/lib/api";
-import { formatTime } from "@/utils/formatTime";
+import { formatTime } from "@/lib/format";
 
 const OPERATION_STYLES: Record<string, { label: string; borderColor: string }> = {
     drift: { label: "Song Path", borderColor: "var(--color-brand)" },

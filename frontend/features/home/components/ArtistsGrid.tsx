@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 import { memo, type CSSProperties } from "react";
 import { HorizontalCarousel, CarouselItem } from "@/components/ui/HorizontalCarousel";
 import { cascadeStyle } from "@/lib/motion";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 import type { Artist, PopularArtist } from "../types";
 
 interface ArtistTile {

@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { Loader2 } from "lucide-react";
 import { useLyricsSync } from "@/hooks/useLyricsSync";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 
 export function MobileLyricsView() {
     const {

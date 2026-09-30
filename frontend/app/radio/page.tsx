@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Radio, Play, Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 import {
     GenreCount,
     DecadeCount,

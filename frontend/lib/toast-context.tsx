@@ -11,7 +11,7 @@ import {
     useEffect,
 } from "react";
 import { CheckCircle2, XCircle, AlertCircle, Info, X } from "lucide-react";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 
 type ToastType = "success" | "error" | "warning" | "info";
 

@@ -12,7 +12,7 @@ import {
     ExternalLink,
 } from "lucide-react";
 import { api } from "@/lib/api";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 import { GradientSpinner } from "../ui/GradientSpinner";
 import { useAuth } from "@/lib/auth-context";
 import { timeAgo } from "@/lib/relative-time";

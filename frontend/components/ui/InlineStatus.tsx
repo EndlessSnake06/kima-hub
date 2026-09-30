@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Check, X, Loader2 } from "lucide-react";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 
 export type StatusType = "idle" | "loading" | "success" | "error";
 

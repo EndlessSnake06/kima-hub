@@ -1,11 +1,10 @@
 import React from "react";
 import { Play, Pause, Volume2, Music } from "lucide-react";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 import Image from "next/image";
 import { api } from "@/lib/api";
 import type { Track, Artist } from "../types";
-import { formatTime } from "@/utils/formatTime";
-import { formatNumber } from "@/utils/formatNumber";
+import { formatNumber, formatTime } from "@/lib/format";
 import { SectionHeader } from "@/features/home/components/SectionHeader";
 import { cascadeStyle } from "@/lib/motion";
 import { useDoubleTapList } from "@/hooks/useDoubleTap";

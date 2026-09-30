@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { api } from '@/lib/api';
 import { useAudioControls } from '@/lib/audio-context';
 import { Artist, Album, Track } from '../types';
-import { shuffleArray } from '@/utils/shuffle';
+import { shuffleArray } from '@/lib/shuffle';
 
 interface FormattedTrack {
   id: string;

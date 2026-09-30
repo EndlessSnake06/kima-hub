@@ -1,7 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { Play, LucideIcon } from "lucide-react";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 
 interface MediaCardProps {
     href: string;

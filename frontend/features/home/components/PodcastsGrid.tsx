@@ -8,7 +8,7 @@ import { memo, type CSSProperties } from "react";
 import { api } from "@/lib/api";
 import { HorizontalCarousel, CarouselItem } from "@/components/ui/HorizontalCarousel";
 import { cascadeStyle } from "@/lib/motion";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 
 interface PodcastsGridProps {
     podcasts: Podcast[];

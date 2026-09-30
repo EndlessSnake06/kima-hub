@@ -13,7 +13,7 @@ import {
     VolumeX,
     Github,
 } from "lucide-react";
-import { formatTime, formatDuration } from "@/utils/formatTime";
+import { formatTime, formatDuration } from "@/lib/format";
 import { cascadeStyle } from "@/lib/motion";
 
 interface ShareTrack {

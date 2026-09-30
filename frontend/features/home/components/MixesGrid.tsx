@@ -3,7 +3,7 @@
 import { MixCard } from "@/components/MixCard";
 import { Mix } from "../types";
 import { memo, type CSSProperties } from "react";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 import { cascadeStyle } from "@/lib/motion";
 
 interface MixesGridProps {

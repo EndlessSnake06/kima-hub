@@ -1,5 +1,5 @@
 import { Play, Pause, Shuffle, Download, ListPlus } from "lucide-react";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 import type { Album } from "../types";
 import type { AlbumSource } from "../types";
 

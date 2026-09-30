@@ -2,7 +2,7 @@
 
 import { Play, Pause } from "lucide-react";
 import { Episode } from "../types";
-import { formatDuration } from "@/utils/formatTime";
+import { formatDuration } from "@/lib/format";
 import { formatDate } from "../utils";
 import { SectionHeader } from "@/features/home/components/SectionHeader";
 

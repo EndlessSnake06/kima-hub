@@ -8,7 +8,7 @@ import { useToast } from "@/lib/toast-context";
 import { QRCodeSVG } from "qrcode.react";
 import { Card } from "@/components/ui/Card";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
-import { formatTime } from "@/utils/formatTime";
+import { formatTime } from "@/lib/format";
 import {
     Smartphone,
     RefreshCw,
@@ -18,7 +18,7 @@ import {
     Trash2,
     AlertCircle
 } from "lucide-react";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 
 interface DeviceLinkCode {
     code: string;

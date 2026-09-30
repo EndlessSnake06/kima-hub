@@ -10,7 +10,7 @@ import {
     ExternalLink,
 } from "lucide-react";
 import { api } from "@/lib/api";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";

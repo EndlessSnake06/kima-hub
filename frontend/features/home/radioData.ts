@@ -1,7 +1,7 @@
 import { api } from "@/lib/api";
 import { useAudioControls } from "@/lib/audio-controls-context";
 import { Track } from "@/lib/audio-state-context";
-import { shuffleArray } from "@/utils/shuffle";
+import { shuffleArray } from "@/lib/shuffle";
 import { useToast } from "@/lib/toast-context";
 import { useState } from "react";
 

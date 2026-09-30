@@ -1,10 +1,9 @@
 import React, { memo, useCallback, useMemo } from "react";
 import { Play, Pause, Volume2, ListPlus, Plus } from "lucide-react";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 import type { Track, Album, AlbumSource } from "../types";
 import type { ColorPalette } from "@/hooks/useImageColor";
-import { formatTime } from "@/utils/formatTime";
-import { formatNumber } from "@/utils/formatNumber";
+import { formatNumber, formatTime } from "@/lib/format";
 import { useDoubleTap } from "@/hooks/useDoubleTap";
 import { cascadeStyle } from "@/lib/motion";
 

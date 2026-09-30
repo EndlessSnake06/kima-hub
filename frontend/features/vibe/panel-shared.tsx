@@ -8,7 +8,7 @@ import { ActiveDownloadsTab } from "@/components/activity/ActiveDownloadsTab";
 import { ImportsTab } from "@/components/activity/ImportsTab";
 import { HistoryTab } from "@/components/activity/HistoryTab";
 import type { ActivityType } from "./ActivityIconBar";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 import { X } from "lucide-react";
 
 export type VibeTab = "now-playing" | "queue" | "lyrics";

@@ -24,8 +24,8 @@ import {
     RefreshCw,
     MicVocal,
 } from "lucide-react";
-import { formatTime, formatTimeRemaining } from "@/utils/formatTime";
-import { cn } from "@/utils/cn";
+import { formatTime, formatTimeRemaining } from "@/lib/format";
+import { cn } from "@/lib/cn";
 import { usePlaybackProgress } from "@/hooks/usePlaybackProgress";
 import { useIsMobile, useIsTablet } from "@/hooks/useMediaQuery";
 import { SeekSlider } from "./SeekSlider";

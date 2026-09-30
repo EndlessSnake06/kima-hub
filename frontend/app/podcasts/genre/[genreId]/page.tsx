@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import { Mic2, ArrowLeft } from "lucide-react";
 import { api } from "@/lib/api";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
 
 interface Podcast {

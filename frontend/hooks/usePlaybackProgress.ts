@@ -1,6 +1,6 @@
 import { useAudioState } from "@/lib/audio-state-context";
 import { useAudioPlayback } from "@/lib/audio-playback-context";
-import { clampTime } from "@/utils/formatTime";
+import { clampTime } from "@/lib/format";
 
 /**
  * Shared hook for duration, displayTime, and progress calculations.

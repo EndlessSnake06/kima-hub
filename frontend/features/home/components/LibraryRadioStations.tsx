@@ -2,7 +2,7 @@
 
 import { useState, useRef, useMemo, useCallback, useEffect, type CSSProperties } from "react";
 import { Radio, Play, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 import { useIsMobile, useIsTablet } from "@/hooks/useMediaQuery";
 import { cascadeStyle } from "@/lib/motion";
 import { useLibraryGenresQuery, useLibraryDecadesQuery } from "@/hooks/useQueries";

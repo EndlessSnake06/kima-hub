@@ -1,7 +1,7 @@
 "use client";
 
 import { ExternalLink, Trash2, Plus, Loader2, Play, Pause, RefreshCw } from "lucide-react";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 import type { ColorPalette } from "@/hooks/useImageColor";
 
 interface PodcastActionBarProps {

@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { api } from "@/lib/api";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 
 type ActionPanel = "create" | "importUrl" | "importFile" | null;
 

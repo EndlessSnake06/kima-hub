@@ -7,7 +7,7 @@ import { Album, AlbumSource } from "../types";
 import { ReactNode, lazy, Suspense } from "react";
 import { useAlbumDisplayData } from "@/hooks/useMetadataDisplay";
 import type { ColorPalette } from "@/hooks/useImageColor";
-import { formatDuration } from "@/utils/formatTime";
+import { formatDuration } from "@/lib/format";
 import { HeroBackdrop } from "@/components/ui/HeroBackdrop";
 
 // Lazy load MetadataEditor - modal component opened on user action

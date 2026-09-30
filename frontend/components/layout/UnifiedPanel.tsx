@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 import { useNotifications, useActiveDownloads } from "@/hooks/useNotifications";
 import { useActivityPanelSettings } from "@/lib/activity-panel-settings-context";
 import { ActivityIconBar, type ActivityType } from "@/features/vibe/ActivityIconBar";

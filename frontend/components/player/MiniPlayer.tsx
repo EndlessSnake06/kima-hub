@@ -25,7 +25,7 @@ import {
     AlertTriangle,
     RefreshCw,
 } from "lucide-react";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 import { useState, useRef } from "react";
 import { useVibeToggle } from "@/hooks/useVibeToggle";
 import { KeyboardShortcutsTooltip } from "./KeyboardShortcutsTooltip";

@@ -1,5 +1,5 @@
 import { Tab } from "../types";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 import { Users, Disc3, ListMusic } from "lucide-react";
 
 interface LibraryTabsProps {

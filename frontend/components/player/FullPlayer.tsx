@@ -30,10 +30,10 @@ import {
 import { useMemo } from "react";
 import { useVibeToggle } from "@/hooks/useVibeToggle";
 import { KeyboardShortcutsTooltip } from "./KeyboardShortcutsTooltip";
-import { cn } from "@/utils/cn";
-import { computeVibeMatchScore } from "@/utils/vibeMatchScore";
+import { cn } from "@/lib/cn";
+import { computeVibeMatchScore } from "@/lib/vibeMatchScore";
 import { useFeatures } from "@/lib/features-context";
-import { formatTime, formatTimeRemaining } from "@/utils/formatTime";
+import { formatTime, formatTimeRemaining } from "@/lib/format";
 import { SeekSlider } from "./SeekSlider";
 import { SleepTimer } from "./SleepTimer";
 import { useLyricsToggle } from "@/hooks/useLyricsToggle";

@@ -7,8 +7,8 @@ import { useAudioState } from "@/lib/audio-state-context";
 import { useAudioPlayback } from "@/lib/audio-playback-context";
 import { useAudioControls } from "@/lib/audio-controls-context";
 import { api } from "@/lib/api";
-import { cn } from "@/utils/cn";
-import { formatTime } from "@/utils/formatTime";
+import { cn } from "@/lib/cn";
+import { formatTime } from "@/lib/format";
 import type { LibraryTrack } from "../types";
 
 interface LibraryTracksListProps {

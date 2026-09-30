@@ -18,7 +18,7 @@ import {
     ArrowUpDown,
     RefreshCw,
 } from "lucide-react";
-import { shuffleArray } from "@/utils/shuffle";
+import { shuffleArray } from "@/lib/shuffle";
 import { Pagination } from "@/components/ui/Pagination";
 
 interface Audiobook {

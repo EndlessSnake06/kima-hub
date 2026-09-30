@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { SlidersHorizontal, X } from "lucide-react";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 import { LibraryFilter, SortOption } from "@/hooks/useQueries";
 import { Tab } from "../types";
 

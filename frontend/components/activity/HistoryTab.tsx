@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { CheckCircle, XCircle, Trash2, RotateCcw, History, Disc, Music } from "lucide-react";
 import { api } from "@/lib/api";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 import { timeAgo } from "@/lib/relative-time";
 
 interface DownloadHistory {

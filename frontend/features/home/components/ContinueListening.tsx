@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 import { HorizontalCarousel, CarouselItem } from "@/components/ui/HorizontalCarousel";
 import { cascadeStyle } from "@/lib/motion";
 import { memo, type CSSProperties } from "react";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 import { ListenedItem } from "../types";
 
 interface ContinueListeningProps {

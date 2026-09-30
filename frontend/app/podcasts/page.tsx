@@ -11,7 +11,7 @@ import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { Pagination } from "@/components/ui/Pagination";
 import { usePodcastsQuery, useTopPodcastsQuery, queryKeys } from "@/hooks/useQueries";
 import Image from "next/image";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 
 const getProxiedImageUrl = (imageUrl: string | undefined): string | null => {
     if (!imageUrl) return null;

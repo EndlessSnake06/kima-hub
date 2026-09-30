@@ -4,7 +4,7 @@ import DOMPurify from "dompurify";
 import { Plus, Loader2 } from "lucide-react";
 import { PodcastPreview } from "../types";
 import type { ColorPalette } from "@/hooks/useImageColor";
-import { formatDuration } from "@/utils/formatTime";
+import { formatDuration } from "@/lib/format";
 import { formatDate } from "../utils";
 import { SectionHeader } from "@/features/home/components/SectionHeader";
 

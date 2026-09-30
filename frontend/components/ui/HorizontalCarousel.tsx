@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect, type CSSProperties, ReactNode } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 import { useIsMobile, useIsTablet } from "@/hooks/useMediaQuery";
 
 interface HorizontalCarouselProps {

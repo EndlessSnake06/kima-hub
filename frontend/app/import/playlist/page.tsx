@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, Suspense, type CSSProperties } from "react";
-import { formatTime } from "@/utils/formatTime";
+import { formatTime } from "@/lib/format";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";

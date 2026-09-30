@@ -4,7 +4,7 @@ import { ReactNode, memo, useMemo } from "react";
 import Link from "next/link";
 import { Play, Pause, Check, Download } from "lucide-react";
 import { Card, CardProps } from "./Card";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 import type { ColorPalette } from "@/hooks/useImageColor";
 import { CachedImage } from "./CachedImage";
 

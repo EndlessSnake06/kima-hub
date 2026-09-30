@@ -5,7 +5,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { CachedImage } from "@/components/ui/CachedImage";
 import { Disc3, Play, Trash2 } from "lucide-react";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 import { api } from "@/lib/api";
 import { cascadeStyle } from "@/lib/motion";
 

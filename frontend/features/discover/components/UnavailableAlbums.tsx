@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Play, Pause, Music, ChevronDown, ChevronUp, RefreshCw } from "lucide-react";
 import { Card } from "@/components/ui/Card";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 import { UnavailableAlbum } from "../types";
 import { tierColors, tierLabels } from "../constants";
 

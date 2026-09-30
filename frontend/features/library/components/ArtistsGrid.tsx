@@ -6,7 +6,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { api } from "@/lib/api";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { CachedImage } from "@/components/ui/CachedImage";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 import { cascadeStyle } from "@/lib/motion";
 
 interface ArtistsGridProps {

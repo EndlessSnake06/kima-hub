@@ -3,9 +3,9 @@
 import { useState, useRef } from "react";
 import { Play, Pause, Check, ArrowUpDown, CheckCircle, ChevronDown, ChevronUp } from "lucide-react";
 import DOMPurify from "dompurify";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 import { Episode } from "../types";
-import { formatDuration } from "@/utils/formatTime";
+import { formatDuration } from "@/lib/format";
 import { formatDate } from "../utils";
 import { SectionHeader } from "@/features/home/components/SectionHeader";
 import { cascadeStyle } from "@/lib/motion";

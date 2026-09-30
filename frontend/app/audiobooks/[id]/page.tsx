@@ -3,7 +3,7 @@
 import DOMPurify from "dompurify";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { useImageColor } from "@/hooks/useImageColor";
-import { formatTime } from "@/utils/formatTime";
+import { formatTime } from "@/lib/format";
 
 import { useAudiobookData } from "@/features/audiobook/hooks/useAudiobookData";
 import { useAudiobookActions } from "@/features/audiobook/hooks/useAudiobookActions";

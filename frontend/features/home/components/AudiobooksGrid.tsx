@@ -8,7 +8,7 @@ import { Audiobook } from "../types";
 import { HorizontalCarousel, CarouselItem } from "@/components/ui/HorizontalCarousel";
 import { cascadeStyle } from "@/lib/motion";
 import { memo, type CSSProperties } from "react";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 
 interface AudiobooksGridProps {
     audiobooks: Audiobook[];

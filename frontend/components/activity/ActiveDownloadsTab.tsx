@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Download, Loader2, Music, Disc, X } from "lucide-react";
 import { api } from "@/lib/api";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 import { GradientSpinner } from "../ui/GradientSpinner";
 import { useActiveDownloads } from "@/hooks/useNotifications";
 import { timeAgo } from "@/lib/relative-time";

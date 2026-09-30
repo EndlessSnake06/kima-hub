@@ -3,7 +3,7 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { CASCADE_WINDOW_MS } from "@/lib/motion";
 import { Download, CheckCircle, Music, ChevronDown, ChevronRight, List, Users } from "lucide-react";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { formatFileSize, getQualityBadge, parseFilename } from "./soulseekHelpers";
 import type {

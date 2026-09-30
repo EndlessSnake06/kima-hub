@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { api } from "@/lib/api";
-import { formatDuration } from "@/utils/formatTime";
+import { formatDuration } from "@/lib/format";
 import { useAuth } from "@/lib/auth-context";
 import { useAudioState, useAudioPlayback, useAudioControls } from "@/lib/audio-context";
 import { useToast } from "@/lib/toast-context";

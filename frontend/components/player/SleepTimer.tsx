@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Timer } from "lucide-react";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 import { useSleepTimer } from "@/hooks/useSleepTimer";
 
 const PRESETS = [15, 30, 45, 60, 90, 120] as const;

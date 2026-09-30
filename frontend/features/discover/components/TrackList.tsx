@@ -1,10 +1,10 @@
 import { useRef } from "react";
 import { Play, Heart, Music } from "lucide-react";
 import Image from "next/image";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 import { DiscoverTrack } from "../types";
 import { api } from "@/lib/api";
-import { formatTime } from "@/utils/formatTime";
+import { formatTime } from "@/lib/format";
 import { tierColors, tierLabels } from "../constants";
 
 interface TrackListProps {

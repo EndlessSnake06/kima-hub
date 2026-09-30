@@ -1,7 +1,7 @@
 import { api } from "@/lib/api";
 import { useAudioControls } from "@/lib/audio-context";
 import { useDownloadContext } from "@/lib/download-context";
-import { shuffleArray } from "@/utils/shuffle";
+import { shuffleArray } from "@/lib/shuffle";
 import { useToast } from "@/lib/toast-context";
 import { Album, Track } from "../types";
 

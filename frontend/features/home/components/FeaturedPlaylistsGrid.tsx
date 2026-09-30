@@ -7,7 +7,7 @@ import { cascadeStyle } from "@/lib/motion";
 import { memo, useCallback, type CSSProperties } from "react";
 import Image from "next/image";
 import { PlaylistPreview } from "../types";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 
 interface FeaturedPlaylistsGridProps {
     playlists: PlaylistPreview[];

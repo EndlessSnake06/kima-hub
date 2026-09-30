@@ -1,7 +1,7 @@
 "use client";
 
 import { Play, Pause, X } from "lucide-react";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 import type { DiscoverPlaylist } from "../types";
 
 interface DiscoverActionBarProps {

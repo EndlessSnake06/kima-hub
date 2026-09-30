@@ -13,7 +13,7 @@ import {
     Bell,
 } from "lucide-react";
 import { ActivityPanelToggle } from "./ActivityPanel";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 import { api } from "@/lib/api";
 import { useToast } from "@/lib/toast-context";
 import { useDownloadContext } from "@/lib/download-context";

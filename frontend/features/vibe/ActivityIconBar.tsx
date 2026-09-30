@@ -2,7 +2,7 @@
 
 import { Bell, Download, ListMusic, History } from "lucide-react";
 import { useNotifications, useActiveDownloads } from "@/hooks/useNotifications";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 
 export type ActivityType = "notifications" | "downloads" | "imports" | "history";
 

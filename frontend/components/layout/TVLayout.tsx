@@ -4,12 +4,12 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect, useRef, useCallback } from "react";
 import Image from "next/image";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 import { useAudio } from "@/lib/audio-context";
 import { api } from "@/lib/api";
 import { DPAD_KEYS } from "@/lib/tv-utils";
 import { useTVNavigation } from "@/hooks/useTVNavigation";
-import { formatTime, clampTime, formatTimeRemaining } from "@/utils/formatTime";
+import { formatTime, clampTime, formatTimeRemaining } from "@/lib/format";
 import { RefreshCw, SkipBack, SkipForward, Shuffle, Repeat } from "lucide-react";
 
 const tvNavigation = [

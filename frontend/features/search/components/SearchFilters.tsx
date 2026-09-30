@@ -1,5 +1,5 @@
 import { Download } from "lucide-react";
-import { cn } from "@/utils/cn";
+import { cn } from "@/lib/cn";
 import { FilterTab } from "../types";
 
 interface SearchFiltersProps {
