@@ -10,16 +10,9 @@ import { appendTrackToProjection } from "../services/umapProjection";
 import os from "os";
 
 /**
- * Is the analyzer that owns this control channel actually running?
- *
- * Both Python analyzers write a millisecond timestamp to a Redis key every
- * thirty seconds while they are alive; featureDetection already reads the same
- * keys to decide whether a feature is available. Reusing them here is what
- * lets the settings screen say "the analyzer is offline" instead of accepting
- * a worker count and reporting success to nobody.
- *
- * A stale key counts as offline. The window is generous -- ten heartbeats --
- * because a busy analyzer running CLAP inference can be slow to loop.
+ * Whether an analyzer is running, from the heartbeat timestamp it writes to
+ * Redis every 30 s (the same keys featureDetection reads). Ten missed beats
+ * count as offline, since CLAP inference can slow the loop.
  */
 const ANALYZER_HEARTBEAT_TTL_MS = 300_000; // 5 minutes
 
@@ -35,21 +28,7 @@ async function analyzerIsOnline(heartbeatKey: string): Promise<boolean> {
     }
 }
 
-/**
- * Send a worker-count change and report honestly what happened to it.
- *
- * Redis PUBLISH returns how many subscribers received the message. Every one
- * of these endpoints used to discard that number and answer 200 regardless, so
- * an admin moving the slider with no analyzer running was told it had worked.
- * The count is the only delivery evidence available, so it is passed on.
- */
-/**
- * The sentence the settings screen shows under the slider.
- *
- * It used to always read "Using N of M available CPU cores" whether or not any
- * analyzer existed, which is the whole reason the control looked functional
- * while doing nothing.
- */
+/** The line under the worker slider, stating whether the change reached an analyzer. */
 function describeWorkers(
     workers: number,
     cpuCores: number,
@@ -65,6 +44,8 @@ function describeWorkers(
     return `Saved, but no analyzer is running. It will use ${workers} of ${cpuCores} core(s) when it starts.`;
 }
 
+/** Publish a worker-count change and return how many analyzers received it,
+ * the only delivery evidence Redis gives. */
 async function dispatchWorkerCount(
     channel: string,
     heartbeatKey: string,
@@ -91,13 +72,9 @@ const router = Router();
  */
 router.post("/retry-failed", requireAuth, requireAdmin, async (req, res) => {
     try {
-        // Reopen the analysis questions on the record: failed+retryable
-        // records become immediately due, and records whose ladder is
-        // spent (retryable = false) are re-opened with a fresh budget —
-        // the operator explicitly re-decided them. The first UPDATE must
-        // skip the spent rows or the second one would never match
-        // anything, and spent records would restart with their budget
-        // already consumed.
+        // Reopen analysis records: retryable failures become due now, and spent ones
+        // (retryable = false) reopen with a fresh budget. The first UPDATE must skip
+        // spent rows, or the second would never match them.
         await prisma.$executeRawUnsafe(
             `UPDATE "TrackStage"
                 SET status = 'pending', "nextRetryAt" = NULL, retryable = true,
@@ -400,11 +377,8 @@ router.post("/vibe/failure", async (req, res) => {
         // EnrichmentFailure write happens here — two ledgers for one fact
         // drifted apart until one was superseded.
 
-        // Record the failure the CLAP worker reported on the stage
-        // record's own ladder: the error is classified, the attempt that
-        // was dispatched is consumed once, and the record closes when the
-        // ladder runs out — a reported failure that stays `retryable:
-        // true` forever re-asks a dead question every cycle.
+        // Record the CLAP worker's failure on the stage record's retry ladder, so it
+        // closes when the ladder runs out.
         await recordStageFailure(
             trackId,
             "embedding",
@@ -432,18 +406,9 @@ router.post("/vibe/start", requireAuth, requireAdmin, async (req, res) => {
         const { limit = 500, force = false } = req.body;
 
         if (force) {
-            // Force = "re-decide everything the vibe engine ever answered".
-            // Step 2's rule: re-asking must never delete the data first.
-            // The existing embeddings stay readable — the vibe map keeps
-            // working while the rebuild runs — and the embedding worker
-            // OVERWRITES each track's row as its new embedding lands. So
-            // the only thing force does is re-open every embedding
-            // question (the same reopen `redecideEverything` performs):
-            // the embedding rows are not removed, no failure clearing, no
-            // status nulling, no record deletion. A record saying `done`
-            // would keep the stage queue from ever re-asking; a `pending`
-            // one with the old answer still on disk asks again while
-            // nothing is lost.
+            // Force reopens every embedding question without deleting anything: the old
+            // embeddings stay readable for the vibe map, and each is overwritten as its
+            // new one lands.
             await prisma.$executeRawUnsafe(
                 `UPDATE "TrackStage"
                     SET status = 'pending',
@@ -463,11 +428,8 @@ router.post("/vibe/start", requireAuth, requireAdmin, async (req, res) => {
                 "Re-opened every vibe embedding question for re-generation (existing embeddings stay readable until each is overwritten)",
             );
         } else {
-            // Reopen the embedding questions for analysed tracks whose row is
-            // missing, so the stage queue (the only producer) offers them.
-            // Gating reads the analysis RECORD, not the status column.
-            // Reopen, not delete: "ask again" is a pending record, and the
-            // attempt history survives the ask.
+            // Reopen embedding questions for analysed tracks with no embedding row, so the
+            // stage queue offers them. Gating reads the analysis record, not the column.
             await prisma.$executeRawUnsafe(
                 `UPDATE "TrackStage" ts
                     SET status = 'pending',
@@ -496,11 +458,8 @@ router.post("/vibe/start", requireAuth, requireAdmin, async (req, res) => {
             );
         }
 
-        // Count what is now owed: an analysis-done track whose embedding
-        // question is open. After a force re-decide the answers still exist
-        // (they are being REPLACED, not deleted), so the NOT EXISTS filter
-        // that counts only missing answers must not apply — the reopened
-        // questions are owed precisely because they were re-opened.
+        // Owed work: analysed tracks whose embedding question is open. After a force,
+        // the old rows still exist, so the "row missing" filter does not apply.
         const owedRows = force
             ? await prisma.$queryRaw<Array<{ count: bigint }>>`
                   SELECT count(*) FROM "TrackStage" ts
@@ -562,11 +521,8 @@ router.post("/vibe/success", async (req, res) => {
             return res.status(400).json({ error: "trackId is required" });
         }
 
-        // No ledger resolve here: the embedding stage record IS the failure
-        // record, and the CLAP worker's success answers it —
-        // a failed embedding simply disappears from the TrackStage-backed
-        // failures list. Writing a second record was the drift this defect
-        // removes.
+        // The embedding stage record is the failure record, so answering it here also
+        // clears it from the failures list.
         await recordStageSuccess(trackId, "embedding", "clap", {
             outcome: "embedded",
         });

@@ -20,31 +20,10 @@ import { checkLocalArtistImage } from "./imageStorage";
 import { LIBRARY_LOCATION } from "./libraryFilters";
 
 /**
- * Identification happens in the stage ladder, not in the walk.
- *
- * The scan resolves a file's album identity from its own tags only: the
- * `musicbrainz_releasegroupid` tag, or nothing — resolveAlbum's
- * `temp-<ts>-<random>` placeholder stands (the scheme must NOT be retired;
- * OwnedAlbum/DiscoveryAlbum key on the rgMbid string value, see
- * albumIdentity.ts scope note). Running fpcalc here would be the
- * `fingerprint` stage's work done in the wrong place and thrown away;
- * The engine forbids it, and the `recording` stage asks AcoustID with
- * the stored fingerprint instead.
- */
-/**
- * Album identity for a scanned file comes only from the file's own tags.
- *
- * Engine rule ("no stage runs another stage's work"): the
- * scan must NOT run fpcalc to answer the fingerprint question and then throw
- * the fingerprint away — the `fingerprint` stage owns fpcalc, and the
- * `recording` stage consumes the stored fingerprint through the one identify
- * path. A file without usable tags therefore gets the `temp-<ts>-<random>`
- * placeholder from resolveAlbum, and identification re-asks it with the
- * ladder; an AcoustID ID tag alone cannot resolve anything without running
- * fpcalc, so it too waits for the stage.
- *
- * Every outcome is counted so the sweep report can show which path resolved
- * each track.
+ * Album identity for a scanned file comes only from its own tags: a release
+ * group id tag, or resolveAlbum's `temp-` placeholder. fpcalc belongs to the
+ * fingerprint stage, so identification of untagged files waits for the stages.
+ * Every outcome is counted for the sweep report.
  */
 type IdentificationPath = "mbid-tag" | "placeholder";
 
@@ -75,14 +54,9 @@ async function resolveAlbumIdentity(
 }
 
 /**
- * A replaced file voids every answer recorded against the old content:
- * all four stage records go back to `pending` with evidence "file
- * changed". Records a human closed (`blocked`) stay
- * closed — the machine never overrules a decision (S10). Records in
- * `working` stay too: an attempt is already in flight against the old
- * content, and flipping its row mid-lease would only make the next claim
- * race the still-pending write-back; when that attempt lands or its
- * lease expires, the record comes back through the ladder on its own.
+ * A replaced file reopens its stage records as `pending` with evidence "file
+ * changed". `blocked` records (a human decision) stay; `working` records finish
+ * or time out and come back through the ladder on their own.
  */
 async function reopenStagesForChangedFile(trackId: string): Promise<void> {
     const reopened = await prisma.$executeRaw`
@@ -110,17 +84,9 @@ async function reopenStagesForChangedFile(trackId: string): Promise<void> {
 }
 
 /**
- * A file that left the library takes its open questions with it.
- *
- * The offer gate never hands a missing track's records out, so every one
- * still open is work the sweep can never act on: progress would report it
- * owed forever and the hang watchdog would fire on a library whose files
- * are simply gone. Closing them with a named code — the
- * closeOrphanedDependents shape, invariant 1's terminal `closed` — makes
- * `pending` mean pending everywhere. This runs over EVERY flagged track,
- * not just this scan's new flags: rows flagged before the rule existed are
- * closed by the next scan, and so is a record whose answer lands as a
- * retryable failure while the flag is held.
+ * Close every open stage record of a flagged-missing track as FILE_MISSING, so
+ * `pending` always means work the sweep can do and the hang watchdog does not
+ * fire on files that are gone. Runs over every flagged track, not just new ones.
  */
 async function closeStagesForMissingTracks(
     client: Pick<Prisma.TransactionClient, "$executeRaw">
@@ -146,14 +112,8 @@ async function closeStagesForMissingTracks(
 }
 
 /**
- * A file that came back takes its open questions back.
- *
- * Only records the closure above made — FILE_MISSING, with no human
- * decision on them (invariant 11) — return to pending at attempt 0, the
- * same re-open shape `reopenStagesForChangedFile` uses. Records closed for
- * any other reason waited on a different fact and stay closed; if a human
- * re-decided a FILE_MISSING row, that verdict is the answer they chose and
- * the file returning does not overwrite it.
+ * Reopen the FILE_MISSING records of a returned file at attempt 0. Records
+ * closed for other reasons, or re-decided by a human, stay as they are.
  */
 async function reopenStagesForReturnedTracks(
     client: Pick<Prisma.TransactionClient, "$executeRaw">,
@@ -349,22 +309,15 @@ export class MusicScannerService {
 
         await this.scanQueue.onIdle();
 
-        // Step 4: True state for files whose fate the walk settled. A track
-        // whose file is missing is never deleted
-        // 2026-09-25): deleting the row cascaded away every Play, LikedTrack,
-        // TrackStage and embedding recorded against it, and the next scan
-        // re-created the row with none of that history. The flag is set with
-        // the time the file was found missing and cleared by the scan that
-        // finds the file again.
+        // Missing files are flagged, never deleted: deleting the row would cascade away
+        // its plays, likes, stage records and embedding. The flag is cleared by the
+        // scan that finds the file again.
         const scannedPaths = new Set(
             audioFiles.map((f) => path.relative(musicPath, f))
         );
 
-        // Found again: a row flagged missing on an earlier scan whose file is
-        // in this walk. Cleared here rather than in the per-file upsert
-        // because a restored mount can bring the file back with its OLD mtime
-        // -- the Step 3 "file hasn't changed" skip would then never re-process
-        // it, and the flag would stick to a track that is demonstrably back.
+        // Cleared here, not in the per-file upsert: a restored mount can bring a file
+        // back with its old mtime, and the unchanged-file skip would never reach it.
         const returned = existingTracks.filter(
             (t) => t.missingSince !== null && scannedPaths.has(t.filePath)
         );
@@ -410,8 +363,8 @@ export class MusicScannerService {
                 );
             }
 
-            // Flag and stage records change together: a reader never sees
-            // a flagged track whose open questions are still owed work.
+            // Flag and stage records change together, so no reader sees a flagged track
+            // whose questions are still owed.
             await prisma.$transaction(async (tx) => {
                 if (vanished.length > 0) {
                     // Only rows not already flagged change: the timestamp is when
@@ -733,18 +686,9 @@ export class MusicScannerService {
      */
 
     /**
-     * Make sure this album ends up with a cover, in the order that costs least.
-     *
-     * Art embedded in the audio file wins: it is already on disk, it is the
-     * right art for this exact release, and reading it costs nothing. Only when
-     * the file carries none do we go outside -- and then to every source rather
-     * than to Deezer alone, which is what this did before the artwork sources
-     * were unified. Measured on 39 real albums, Deezer alone finds 31 and
-     * asking everyone finds 34.
-     *
-     * Re-extracts when the stored native file has gone missing from the cache,
-     * which is the case that leaves an album pointing at a picture that is not
-     * there any more.
+     * Ensure the album has a cover: art embedded in the file first, since it is
+     * free and exact, then every artwork source. Re-extracts when the cached
+     * native file has gone missing.
      */
     private async ensureAlbumCover(
         album: { id: string; coverUrl: string | null; rgMbid: string | null },
@@ -874,13 +818,8 @@ export class MusicScannerService {
             || "Unknown Album";
         const year = metadata.common.year || null;
 
-        // Resolve the artist through the single identity path. This used to be
-        // ~170 lines of guessing: split the tag on " & "/" and "/" with "/",",
-        // look the fragment up, then a space-collapse pass, then a fuzzy pass at
-        // 95%, and only THEN consult the MusicBrainz id that was sitting in the
-        // tag the whole time. The split truncated real band names ("Dance With
-        // the Dead" -> "Dance") and the space-collapse pass could never fire
-        // because it filtered candidates on the un-collapsed name.
+        // Resolve the artist through the single identity path, which trusts a
+        // MusicBrainz id tag first and never splits band names on "&" or "and".
         const credit = parseCredit(
             rawArtistName,
             metadata.common.artists as string[] | undefined
@@ -924,16 +863,9 @@ export class MusicScannerService {
             }
         }
 
-        // Resolve the album through the single identity path. Lookup used to
-        // match `title` raw and un-normalised, so "Abbey Road", "abbey road" and
-        // "Abbey Road (2019 Remaster)" became three rows under one artist -- and
-        // Album models a release GROUP, so those are one album.
-        //
-        // This CALLS resolveAlbum rather than repeating it. The inline copy that
-        // lived here checked identityKey BEFORE rgMbid, so a track carrying an
-        // authoritative release-group id could attach to a same-titled album from
-        // a different release group -- the mirror of the defect the artist work
-        // removed -- and it had no unique-violation retry.
+        // Resolve the album through resolveAlbum, which checks rgMbid before the
+        // normalised title so a release-group id always wins, and retries on a unique
+        // violation.
         let isDiscoveryAlbum = false;
 
         // Album identity from the file's own MB tag only; anything else

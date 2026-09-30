@@ -16,14 +16,10 @@ import { artistSortName } from "../services/artistIdentity";
 import { upstreamHeader } from "../utils/upstreamHeaders";
 
 /**
- * Resolve the Access-Control-Allow-Origin value for a cover/stream response,
- * honoring the same allowlist as the global CORS middleware (src/index.ts)
- * instead of blindly reflecting the request's Origin header. A credentialed
- * response (Access-Control-Allow-Credentials: true) must never be paired with
- * a reflected origin unless that origin is actually allowed.
- * Returns `fallback` when no Origin header is present (non-browser request),
- * or null when the request's origin is explicitly disallowed - callers should
- * omit the ACAO/ACAC headers in that case. Shared with routes/podcasts.ts.
+ * Access-Control-Allow-Origin for a cover or stream response, using the same
+ * allowlist as the global CORS middleware instead of reflecting Origin.
+ * Returns `fallback` with no Origin header, null for a disallowed origin (omit
+ * the CORS headers then). Shared with routes/podcasts.ts.
  */
 export function resolveCorsOrigin(
     reqOrigin: string | undefined,
@@ -321,13 +317,9 @@ router.get("/", requireAuthOrToken, apiLimiter, async (req, res) => {
             return {
                 id: book.id,
                 title: book.title,
-                // The article-stripped title this list is already ordered by.
-                // Exposed because the client re-sorts in some modes -- the
-                // series view sorts by series, then sequence, then title --
-                // and it cannot derive this itself: the article rules live in
-                // Postgres (`kima_sort_name`) and in `artistSortName`, neither
-                // reachable from the browser. Without it a client-side title
-                // comparison silently puts "The Hobbit" back under T.
+                // The article-stripped title the list is ordered by. The client re-sorts some
+                // views and cannot derive this: the article rules live in Postgres and in
+                // artistSortName.
                 sortName: book.sortName,
                 author: book.author || "Unknown Author",
                 narrator: book.narrator,
@@ -340,12 +332,8 @@ router.get("/", requireAuthOrToken, apiLimiter, async (req, res) => {
                 series: book.series
                     ? {
                           name: book.series,
-                          // Article-stripped, for the same reason `sortName`
-                          // exists above: the series view sorts by series NAME
-                          // client-side, and a raw comparison files "The Lord
-                          // of the Rings" under T. Computed per response rather
-                          // than stored, because nothing orders by it in SQL --
-                          // only the browser does.
+                          // Article-stripped series name for client-side series sorting; computed per
+                          // response because nothing sorts by it in SQL.
                           sortName: artistSortName(book.series),
                           sequence: book.seriesSequence || "1",
                       }
@@ -438,12 +426,8 @@ router.get(
                     series: book.series
                         ? {
                               name: book.series,
-                              // Same shape as the list endpoint above. Nothing
-                              // sorts this response today -- it arrives in
-                              // seriesSequence order and is rendered as-is --
-                              // but one logical object returning two different
-                              // shapes from two routes is how a client ends up
-                              // reading a field that is only sometimes there.
+                              // Same shape as the list endpoint, so a client never reads a field that is
+                              // only sometimes there.
                               sortName: artistSortName(book.series),
                               sequence: book.seriesSequence || "1",
                           }
@@ -508,14 +492,9 @@ router.get("/:id/cover", async (req, res) => {
 
         // Fallback: check if cover exists on disk even if DB path is empty
         if (!coverPath) {
-            // `id` arrives from the URL, and Express decodes %2F in a route
-            // param AFTER matching -- so an id of "..%2F..%2F..%2Fetc%2Fx"
-            // becomes real traversal by the time it reaches here. This route
-            // carries no auth: auth in this file is applied per-route and this
-            // is not one of them, and nothing authenticates ahead of the
-            // /api/audiobooks mount in index.ts. An unresolved join is
-            // therefore an UNAUTHENTICATED read of any .jpg the process can
-            // reach, on software people expose to the internet.
+            // `id` comes from the URL, and Express decodes %2F after matching, so "..%2F"
+            // is real traversal here. This route is unauthenticated; without the resolve it
+            // would serve any .jpg the process can read.
             const fallbackPath = resolveWithinMusicRoot(
                 "cover-cache",
                 "audiobooks",
@@ -533,11 +512,8 @@ router.get("/:id/cover", async (req, res) => {
             }
         }
 
-        // If local cover exists, serve it. The stored localCoverPath is
-        // resolved too rather than trusted: it is a database value, and a row
-        // written before this guard existed can still hold a path outside the
-        // music root. Absolute paths survive the resolve unchanged when they
-        // are already inside it.
+        // The stored localCoverPath is resolved too: it is a database value and could
+        // point outside the music root.
         const resolvedCover = coverPath
             ? resolveWithinMusicRoot(coverPath)
             : null;
@@ -714,11 +690,8 @@ router.get("/:id/stream", requireAuthOrToken, async (req, res) => {
             `[Audiobook Stream] Got stream, status: ${status}, content-type: ${headers["content-type"]}`
         );
 
-        // Range past the end of the file (e.g. a seek using a stale/wrong size --
-        // see the bad-metadata audiobook records): upstream returns 416. Send a
-        // clean 416 to the player instead of piping the upstream error body
-        // through as if it were audio. Forward Content-Range so the client can
-        // correct its range; never the error body or its content-type.
+        // Upstream 416 (a seek past the end, e.g. a wrong stored size): send a clean
+        // 416 with Content-Range so the client can correct, never the error body as audio.
         if (status === 416) {
             stream.destroy();
             res.status(416);

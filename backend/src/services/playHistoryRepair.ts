@@ -1,33 +1,8 @@
 /**
- * Undoing eight months of "a stream request is a play".
- *
- * Until 1.10.1 a Play row was written when the stream endpoint was hit, so
- * skipping through an album recorded a play for every track. That history feeds
- * the vibe profile, recently-played and the decay model, and there is no record
- * anywhere of how long anything was actually heard — the Play table holds a user,
- * a track and a timestamp, nothing else.
- *
- * ## The one signal in the data
- *
- * Two plays by the same person, close together, bound the first one from above.
- * If a play is followed 8 seconds later by another play, that track ran for at
- * most 8 seconds — whatever else was going on, the person had moved to something
- * else by then.
- *
- * ## Why that only ever justifies deleting one side
- *
- * The bound is a ceiling, not a measurement, and the asymmetry is total:
- *
- * - A **short** gap proves the track cannot have met the threshold. It is a skip,
- *   provably, and safe to remove.
- * - A **long** gap proves nothing at all. Twelve minutes between plays is equally
- *   consistent with listening to the whole track and with walking away after four
- *   seconds. There is no evidence either way.
- *
- * So this only removes what it can prove, and leaves everything else exactly as
- * it is — including the last play of every session, which has no following row
- * and therefore no bound. A repair that guessed at the ambiguous cases would
- * delete real listening to make a nicer-looking number.
+ * Finds and removes play records that provably were skips. Two plays by one
+ * person bound the first from above: a short gap proves a skip, a long gap
+ * proves nothing. Only provable skips are offered for deletion, and the last
+ * play of a session, having no bound, is always kept.
  */
 
 import { prisma } from "../utils/db";
@@ -37,46 +12,12 @@ import { requiredListenSeconds } from "./playRecording";
 // what a listen is, and this file deletes rows based on its answer.
 import { MIN_LISTEN_WINDOW_SECONDS } from "./stats/listens";
 
-/* ────────────────────────────────────────────────────────────────────────────
- * The audit, rebuilt around listens instead of rows
- *
- * The row-level rule above was written believing each row was one attempt to
- * play something. It is not. Until 1.10.1 the streaming endpoint wrote a row
- * every time the browser asked for another chunk of a file, suppressed for only
- * thirty seconds at a time, so a long track wrote a row every half minute while
- * it played. Measured on a real library: 1.25 rows per listen under three
- * minutes, 5.06 over seven.
- *
- * That breaks the row-level rule at its foundation. Inside one of those runs the
- * gap to the "next play" is the gap to the next chunk — thirty-odd seconds — and
- * the rule reads that as proof the listener bailed. It scored the strongest
- * evidence of listening in the data as the strongest evidence against. On real
- * data it took a nine-minute track played nine times and left one play.
- *
- * ## Two passes
- *
- * 1. **Group.** Rows for the same track less than that track's own length apart
- *    are one listen. While the song could still be playing, another row for it
- *    describes the same listen; once it could have finished, it is a replay.
- *    Measured against a flat five-minute window: duration wrongly splits 10
- *    listens where five minutes wrongly merges 250.
- *
- * 2. **Judge.** A run of rows spanning six minutes is not a guess about six
- *    minutes of listening, it is close to a measurement — those requests
- *    happened while audio was playing. So the span is a floor on what was heard,
- *    and only what happened after the last row needs inferring.
- *
- * The three answers that come out:
- *
- * - **heard** — the span alone clears the threshold. Nothing is inferred.
- * - **unclear** — it might have finished after the last row; left alone.
- * - **skipped** — the span plus everything before the next play still falls
- *   short. Provable, and the only thing offered for deletion.
- *
- * A listen that wrote one row has a span of zero, and this collapses exactly to
- * the old rule. Nothing about the reasoning changed; it now runs on the right
- * unit.
- * ──────────────────────────────────────────────────────────────────────────── */
+/*
+ * Rows are grouped into listens first: rows for one track closer together than
+ * the track's length are one listen. A listen's span (first row to last) is a
+ * floor on what was heard, so it is "heard" if the span clears the threshold,
+ * "skipped" only if span plus the gap to the next play still falls short.
+ */
 
 
 
@@ -141,29 +82,17 @@ export async function listensOf(userId: string): Promise<Listen[]> {
     });
 
     const open = new Map<string, Listen>();
-    // Where the listen currently open on each track BEGAN — not the last row
-    // seen on it.
-    //
-    // This used to hold the last row, updated on every play. That made the
-    // window slide forward with each chunk-write, so a genuine replay starting
-    // soon after the previous listen's final chunk was folded into it. Since
-    // `collapseDuplicateRows` deletes every play id after the first in a group,
-    // that did not merely miscount the replay — it queued its row for
-    // permanent deletion. Measured on the live library: 18 real listens across
-    // 17 tracks, all of them on heavily replayed tracks, because those are the
-    // ones with long runs of rows. Same defect as the SQL had; see
-    // `stats/listens.ts` for the proof and the corrected rule.
+    // Where the open listen on each track began, not its latest row: measuring from
+    // the latest row would fold a genuine replay into the previous listen and queue
+    // its row for deletion. Same rule as `stats/listens.ts`.
     const listenStartedAt = new Map<string, number>();
     const out: Listen[] = [];
 
     plays.forEach((p, i) => {
         const window = Math.max(MIN_LISTEN_WINDOW_SECONDS, p.track.duration);
         const startedAt = listenStartedAt.get(p.trackId);
-        // `<`, so a row landing exactly one duration after its listen began
-        // opens a new one: at that instant the track has finished, which is the
-        // whole test. All three places that decide this now agree — the
-        // recording path treats the same instant as a genuine replay rather
-        // than a duplicate, and `stats/listens.ts` starts a new listen there.
+        // `<`: a row exactly one duration after the listen began starts a new listen,
+        // matching the recording path and `stats/listens.ts`.
         const sameListen =
             startedAt !== undefined && (p.playedAt.getTime() - startedAt) / 1000 < window;
 
@@ -211,11 +140,8 @@ export interface FalseStartTrack {
     skipped: number;
     /**
      * Listens of a track under 30 seconds, which can never register a play.
-     *
-     * Counted apart from `skipped` and never deleted. That the recording rule
-     * cannot credit a track is a fact about its length, not evidence about
-     * whether anybody stayed for it — an interlude heard end to end lands here
-     * exactly like one skipped past.
+     * Counted apart from `skipped` and never deleted: the length decides this, not
+     * whether anyone stayed.
      */
     tooShort: number;
     /** Listens the span alone proves were heard. Nothing inferred. */
@@ -237,14 +163,8 @@ export interface FalseStartAudit {
     /** Rows that are a second or later record of a listen already counted. */
     duplicateRows: number;
     /**
-     * Rows a merge would actually delete, which is fewer.
-     *
-     * A collapse keeps the first AND last row of each listen, because the
-     * distance between them is the span every verdict is measured from. So a
-     * listen of five rows loses three, not four, and a listen of two loses
-     * none. Reporting `duplicateRows` on the button promised a number the
-     * merge would not deliver — and once every listen is down to two rows it
-     * offered to merge records and removed nothing at all.
+     * Rows a merge would delete. A collapse keeps each listen's first and last
+     * rows, so a five-row listen loses three and a two-row listen loses none.
      */
     collapsibleRows: number;
     /** Listens the span alone proves were real. */
@@ -252,14 +172,8 @@ export interface FalseStartAudit {
     /** Listens that fall short even allowing for everything after the last row. */
     skipped: number;
     /**
-     * Listens of tracks under 30 seconds, which can never register a play.
-     *
-     * Reported apart from `skipped` and never deleted. These used to be added
-     * to the skipped total and removed along with it, under a heading reading
-     * "listens we can prove nobody stayed for" — which is not what this is. A
-     * short interlude heard end to end lands here identically to one skipped
-     * past, so the deletion had no proof behind it and the count overstated
-     * what the audit had actually established.
+     * Listens of tracks under 30 seconds, which can never register a play. Never
+     * deleted: a short interlude heard in full looks identical to one skipped past.
      */
     tooShort: number;
     /** Listens with no way to tell. Left alone. */
@@ -351,12 +265,8 @@ export async function auditFalseStarts(userId: string): Promise<FalseStartAudit>
 }
 
 /**
- * Collapse duplicate records, keeping the first row of every listen.
- *
- * Nothing is judged here and nothing is inferred. A row written while the track
- * was demonstrably still playing describes a listen already counted, and one
- * listen should be one row. Safe to run over the whole history, which is why it
- * takes no list of tracks.
+ * Collapse duplicate records of one listen. Nothing is judged, so it is safe
+ * over the whole history and takes no track list.
  */
 export async function collapseDuplicateRows(userId: string): Promise<{ removed: number }> {
     const listens = await listensOf(userId);
@@ -375,34 +285,18 @@ export async function collapseDuplicateRows(userId: string): Promise<{ removed: 
 }
 
 /**
- * The rows a collapse may delete: everything between the first and the last.
- *
- * First AND last, not first alone. A listen's span is the distance from its
- * first row to its last, and the "heard" verdict is `span >= required`. Keeping
- * only the first row set every span to zero, so every listen the audit had
- * proved was heard dropped to "can't tell" — and, measured on a real history,
- * one listen crossed the other way and became eligible for deletion that had
- * not been. The safe half of the tool was destroying the evidence the judging
- * half runs on.
- *
- * Two rows carry the span exactly, so every verdict survives a collapse
- * unchanged. On the library this was measured against it removes 799 rows
- * rather than 1,644 — 845 rows is what the evidence costs, out of 5,751.
- *
- * Pure, and separate from the delete, so it can be tested without a database.
- * Getting this wrong is expensive and silent.
+ * The rows a collapse may delete: everything between a listen's first and last
+ * rows. Keeping both preserves the span every verdict is measured from, so no
+ * verdict changes. Pure, so it can be tested without a database.
  */
 export function collapseCandidates(listens: Listen[]): string[] {
     return listens.flatMap((l) => (l.playIds.length > 2 ? l.playIds.slice(1, -1) : []));
 }
 
 /**
- * Delete the listens that can be proven skipped on the given tracks.
- *
- * Track ids come from the client; play ids never do. Verdicts are recomputed
- * here against current data, so a review screen left open cannot delete
- * something that has since stopped looking like a skip. An ignored track is
- * skipped even when named — the quieter answer wins.
+ * Delete the provable skips on the given tracks. Play ids never come from the
+ * client, and verdicts are recomputed against current data so a stale review
+ * screen cannot delete a play that no longer looks like a skip. Ignored tracks win.
  */
 export async function removeFalseStarts(
     userId: string,

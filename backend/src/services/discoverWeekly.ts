@@ -1,21 +1,11 @@
 /**
- * Discovery Weekly Service (Refactored)
- *
- * Generates weekly discovery playlists using Last.fm recommendations,
- * downloads via Lidarr, and only shows songs after successful import.
- *
- * Key improvements:
- * - Prisma transactions for atomic operations
- * - Pre-fetched and cached recommendations
- * - Structured logging with batch logs field
- * - No dynamic imports
+ * Weekly discovery playlists: similar-artist recommendations by tier, albums
+ * acquired through Lidarr or Soulseek, and tracks shown only once imported.
  */
 
 import { logger } from "../utils/logger";
 import { normalizeArtistName } from "../utils/artistNormalization";
 import { hasRealMbid } from "./artistIdentity";
-// Canonical definition lives with the seeding service; this file used to declare
-// a second, subtly different copy of it.
 import type { SeedArtist } from "./discovery/discoverySeeding";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../utils/db";
@@ -75,13 +65,8 @@ const TIER_THRESHOLDS = {
 };
 
 /**
- * Calculate tier from the similarity score
- * The similarity engine typically returns scores in 0.5-0.7 range for
- * similar artists; thresholds calibrated to that distribution:
- * - High Match: >=65% (0.65-1.0)
- * - Medium Match: 50-65% (0.50-0.64)
- * - Explore: 35-50% (0.35-0.49)
- * - Wild Card: <35% (0-0.34) or explicitly set
+ * Tier for a similarity score. Scores for similar artists cluster around
+ * 0.5-0.7: High >= 0.65, Medium >= 0.50, Explore >= 0.35, else Wild Card.
  */
 function getTierFromSimilarity(
     similarity: number
@@ -464,15 +449,9 @@ class DiscoverWeeklyService {
     ): Promise<Map<string, any[]>> {
         const cache = new Map<string, any[]>();
 
-        // Helper: fetch similar artists. artistSimilarity never throws —
-        // it returns [] when neither the local centroid nor the
-        // ListenBrainz dataset has data — so the old retry-on-429 loop is
-        // gone; there is nothing to retry, and a cold seed should fall
-        // through to the next strategy instead of stalling the run.
-        // While the ListenBrainz source is PAUSED (a rate limit was seen),
-        // even the local-first call is skipped: seeds answer from the
-        // local centroid / next strategy, and the dataset is tried again
-        // when the pause lifts.
+        // artistSimilarity never throws; it returns [] when it has nothing, and the
+        // seed falls through to the next strategy. While ListenBrainz is paused even
+        // the local-first call is skipped until the pause lifts.
         const fetchWithRetry = async (
             seed: SeedArtist
         ): Promise<SimilarArtist[]> => {
@@ -1256,11 +1235,9 @@ class DiscoverWeeklyService {
             );
         }
 
-        // Hoisted out of the transaction/loop below: userId is invariant for
-        // this whole playlist build, so there's no need to re-query it once
-        // per album inside the interactive $transaction. Doing so also
-        // stretches transaction duration towards Postgres's default 5s
-        // interactive-transaction timeout on large playlists (DISC-8).
+        // userId is fixed for the whole build, so read the config once outside the
+        // interactive transaction instead of per album, keeping the transaction well
+        // inside Postgres's 5 s default.
         const userConfig = await prisma.userDiscoverConfig.findUnique({
             where: { userId: batch.userId },
         });
@@ -1302,9 +1279,8 @@ class DiscoverWeeklyService {
 
                         const metadata = job?.metadata as any;
 
-                        // Use upsert to handle regeneration (records may already exist)
-                        // IMPORTANT: Use the tier from metadata directly, don't recalculate!
-                        // This preserves "wildcard" and other tiers that don't match their similarity
+                        // Keep the tier chosen at selection time; recomputing it from similarity would
+                        // turn wildcards back into whatever tier their score falls in.
                         const storedTier =
                             metadata?.tier ||
                             getTierFromSimilarity(metadata?.similarity || 0.5);
@@ -1479,13 +1455,9 @@ class DiscoverWeeklyService {
     }
 
     /**
-     * Reconcile Discovery Weekly tracks after library scans
-     * Backfills Discovery Weekly playlists with tracks from albums that downloaded after initial playlist creation
-     *
-     * Similar to Spotify Import's reconcilePendingTracks(), but for Discovery Weekly:
-     * - Finds completed batches from last 7 days
-     * - Checks if their downloaded albums are in the library
-     * - Creates DiscoveryAlbum + DiscoveryTrack records for missing albums
+     * Backfill the last 7 days' completed batches with albums that finished
+     * downloading after the playlist was built: creates the missing DiscoveryAlbum
+     * and DiscoveryTrack rows for albums now in the library.
      */
     async reconcileDiscoveryTracks(): Promise<{
         batchesChecked: number;
@@ -1641,15 +1613,9 @@ class DiscoverWeeklyService {
 
                 try {
                     await prisma.$transaction(async (tx) => {
-                        // Upsert DiscoveryAlbum -- the scan-completion and
-                        // reconciliation paths can both reach this for the same
-                        // album in the same week. A plain create then violates the
-                        // (userId, weekStartDate, rgMbid) unique constraint, throws,
-                        // and rolls back the whole transaction -- losing the
-                        // DiscoveryTrack records too. Upsert makes it idempotent;
-                        // an existing record is left as-is (don't reset the user's
-                        // status/downloadedAt) and the track loop below fills any
-                        // missing tracks.
+                        // Scan completion and reconciliation can both reach the same album in one week;
+                        // upsert keeps the unique constraint from rolling back the whole transaction.
+                        // An existing row keeps its status and downloadedAt; the loop below adds missing tracks.
                         const discoveryAlbum = await tx.discoveryAlbum.upsert({
                             where: {
                                 userId_weekStartDate_rgMbid: {
@@ -1722,10 +1688,7 @@ class DiscoverWeeklyService {
         };
     }
 
-    /**
-     * Cleanup orphaned Lidarr queue items that belong to this discovery batch
-     * but are no longer needed (download completed but album not in final playlist)
-     */
+    /** Remove this batch's Lidarr queue items whose albums did not make the final playlist. */
     private async cleanupOrphanedLidarrQueue(batchId: string): Promise<void> {
         logger.debug(`\n[CLEANUP] Checking for orphaned Lidarr queue items...`);
 
@@ -1817,13 +1780,8 @@ class DiscoverWeeklyService {
     }
 
     /**
-     * Cleanup artists from Lidarr that failed during discovery
-     * Only removes artists that:
-     * - Had ALL their downloads fail in this batch
-     * - Don't have any other music in the user's library
-     *
-     * NOTE: With tag-based tracking, we simply remove artists with the discovery tag
-     * who don't have successful downloads. The tag is the source of truth.
+     * Remove from Lidarr the discovery-tagged artists with no successful download
+     * in this batch and no other music in the library. The tag is the source of truth.
      */
     private async cleanupFailedArtists(batchId: string): Promise<void> {
         logger.debug(
@@ -2056,12 +2014,8 @@ class DiscoverWeeklyService {
     }
 
     /**
-     * Shared "is this a valid, not-owned, not-excluded album candidate" check,
-     * used by both findReplacementAlbum and findValidAlbumForArtist (DISC-11).
-     * The three lookups are independent reads with no shared state, so they run
-     * concurrently instead of serially awaiting each one (DISC-4). A thrown
-     * check is treated as "not a valid candidate", matching the previous
-     * per-check try/catch -> continue behavior in both callers.
+     * Whether an album is a valid, not-owned, not-excluded candidate. The three
+     * independent lookups run concurrently; a check that throws means "not valid".
      */
     private async isValidUnownedAlbum(
         albumMbid: string,
@@ -2831,14 +2785,8 @@ class DiscoverWeeklyService {
     }
 
     /**
-     * Main recommendation engine with tier-based selection
-     * Combines similar artists (by tier) + genre wildcards for variety
-     *
-     * Distribution:
-     * - 30% HIGH tier (>70% similar)
-     * - 40% MEDIUM tier (50-70% similar)
-     * - 20% EXPLORE tier (30-50% similar)
-     * - 10% WILDCARD (genre tags)
+     * Tier-based recommendations: 30% High, 40% Medium, 20% Explore from similar
+     * artists, and 10% wildcards from genre tags.
      */
     async findRecommendedAlbumsMultiStrategy(
         seeds: SeedArtist[],

@@ -1,25 +1,7 @@
 /**
- * The one place that goes looking for a picture.
- *
- * There used to be four. `imageProviderService` walked Deezer, the Cover Art
- * Archive and Fanart in order. `coverArtService` asked only the archive.
- * `deezerService` asked only Deezer. And two routes built an archive address by
- * hand -- `coverartarchive.org/release-group/<mbid>/front-500` -- and sent it
- * out without ever asking whether that picture existed.
- *
- * Fifteen call sites wanted artwork. Twelve of them used a door that asks one
- * provider and gives up. That is why so much of the app showed placeholders:
- * not because nobody had the artwork, but because nobody asked more than once.
- *
- * Measured on 39 real albums:
- *
- *     the guessed archive address loads      21 / 39
- *     Deezer has it                          31 / 39
- *     asking every source in turn            34 / 39
- *
- * So: one function per kind of thing, one ordered list of sources, one loop
- * through them, one cache in front. Adding a provider means adding a line to a
- * list. A placeholder now means every source was asked and none had it.
+ * The one place that looks for artwork: one ordered source list per kind of
+ * thing, asked in turn behind one cache. A placeholder means every source was
+ * asked and none had it.
  */
 
 import crypto from "crypto";
@@ -43,15 +25,9 @@ const NONE = "NONE";
 const USER_AGENT = "Kima/1.0 (+https://github.com/chevron7locked/kima)";
 
 /**
- * Is this a real MusicBrainz id, or one this app invented?
- *
- * The scanner mints a `temp-<timestamp>-<random>` id for any album it cannot
- * match to MusicBrainz, and 436 of the 949 albums in a real library carry one.
- * Sources keyed on the id -- the Cover Art Archive, Fanart -- can do nothing
- * with a placeholder, but Deezer searches by artist and title and never needed
- * an id at all. So a placeholder means "skip the id-keyed sources", NOT "give
- * up", which is what several callers used to do: they returned before asking
- * anyone, and 46% of the library could never get a cover from anywhere.
+ * Whether an id is a real MusicBrainz id or a scanner `temp-` placeholder. A
+ * placeholder only skips the id-keyed sources (Cover Art Archive, Fanart);
+ * Deezer searches by artist and title and is still asked.
  */
 export function isRealMbid(id: string | null | undefined): boolean {
     return Boolean(id) && !id!.startsWith("temp-");
@@ -88,11 +64,9 @@ interface Source<Q> {
 /* ── the sources ─────────────────────────────────────────────────────────── */
 
 /**
- * Ordered deliberately. Fanart has the best artist thumbnails but needs an
- * MBID and an API key, so it self-skips when either is missing. Deezer is the
- * most likely to have any given record and the fastest to answer. The Cover Art
- * Archive is authoritative but a slow public mirror with big gaps. Last.fm goes
- * last because most of what it returns is the grey star.
+ * Order: Fanart (best artist thumbnails, skips itself without an MBID or key),
+ * Deezer (most coverage, fastest), then the Cover Art Archive (authoritative but
+ * slow, with gaps).
  */
 const ALBUM_SOURCES: Source<AlbumArtworkQuery>[] = [
     {
@@ -101,9 +75,7 @@ const ALBUM_SOURCES: Source<AlbumArtworkQuery>[] = [
     },
     {
         name: "coverartarchive",
-        // Through coverArtService, which caches a hit for thirty days, a miss
-        // for seven, and puts the call through the rate limiter. This lookup
-        // used to be duplicated elsewhere with none of that.
+        // coverArtService caches hits for 30 days and misses for 7, and rate-limits.
         find: (q) =>
             isRealMbid(q.rgMbid) ? coverArtService.getCoverArt(q.rgMbid!) : Promise.resolve(null),
     },
@@ -124,8 +96,6 @@ const ARTIST_SOURCES: Source<ArtistArtworkQuery>[] = [
         name: "deezer",
         find: (q) => deezerService.getArtistImage(q.name),
     },
-    // Last.fm cascade entry removed 2026-09-19: the shared API key is
-    // dead and the endpoint only served the grey placeholder star anyway.
 ];
 
 /* ── the loop ────────────────────────────────────────────────────────────── */
@@ -151,11 +121,8 @@ async function firstAnswer<Q>(
                 return { found: { url, source: source.name }, everyoneAnswered: true };
             }
         } catch (error) {
-            // A source that throws has not told us the picture is missing; it
-            // has told us nothing. Carry on to the next one, but remember that
-            // this run is not a complete answer -- see the caller, which
-            // refuses to write "nobody has it" on the strength of a run where
-            // somebody failed to speak.
+            // A throw is not a "no". Carry on, but mark the run incomplete so the caller
+            // never records "nobody has it" on the strength of it.
             everyoneAnswered = false;
             logger.debug(
                 `[Artwork] ${label}: ${source.name} failed -- ${
@@ -227,18 +194,9 @@ async function remember(key: string, url: string | null): Promise<void> {
 }
 
 /**
- * One lookup per record at a time, however many people are asking.
- *
- * The cache stops the SECOND request for an album, never the first N that
- * arrive together. A page showing thirty covers, opened by five people at once,
- * was thirty lookups five times over -- 150 calls to three public APIs for
- * thirty pictures, all of which would land on the same answers. Callers that
- * arrive while a lookup is already running now wait on that one instead of
- * starting their own.
- *
- * Deliberately in-process, not in Redis: this collapses the burst that a single
- * page load creates, which is the whole problem, and it does so with no lock to
- * expire, no lock to leak, and nothing to clean up if the process dies.
+ * One lookup per record at a time: callers arriving while a lookup runs wait on
+ * it, so a page of thirty covers opened by five people makes thirty calls, not
+ * 150. In-process on purpose, so there is no lock to expire or leak.
  */
 const inFlight = new Map<string, Promise<ArtworkResult | null>>();
 
@@ -297,11 +255,7 @@ export async function findAlbumArtwork(
     });
 }
 
-/**
- * Find an image for an artist, from whichever source has one.
- *
- * Nine call sites used to ask Deezer alone and stop there.
- */
+/** Find an image for an artist, from whichever source has one. */
 export async function findArtistArtwork(
     query: ArtistArtworkQuery,
 ): Promise<ArtworkResult | null> {
@@ -342,16 +296,9 @@ const CONCURRENCY = 6;
 const DEFAULT_BUDGET_MS = 3000;
 
 /**
- * Put artwork on a list of albums, spending at most `budgetMs` of the caller's
- * time on the ones not already known.
- *
- * `read` says how to get the identifying details off one of the caller's items,
- * `write` says where to put the answer back. Generic because the callers carry
- * different shapes and none of them should have to reshape to use this.
- *
- * Anything still unanswered when the budget runs out keeps whatever the caller
- * already had and is finished in the background, so a slow provider delays
- * nobody and the next view is right.
+ * Put artwork on a list of albums, spending at most `budgetMs` on unknown ones.
+ * `read` and `write` adapt the caller's shape. Whatever is unanswered at the
+ * deadline is sent without art and finished in the background for the next view.
  */
 export async function withAlbumArtwork<T>(
     items: T[],
@@ -380,18 +327,9 @@ export async function withAlbumArtwork<T>(
         }),
     );
 
-    // Until we know better, send nothing.
-    //
-    // The obvious alternative -- keep whatever the caller already had -- is
-    // worse than it looks. The only caller that carries a candidate is the
-    // Release Radar, and its candidate is the unchecked Cover Art Archive
-    // address Lidarr ships, which is the exact thing this module exists to stop
-    // sending. So the one moment the budget fires would be the one moment the
-    // original bug came back: a browser 404 on a guessed address, invisible
-    // from this server.
-    //
-    // A page drawing its placeholder is honest and corrects itself on the next
-    // view, because the lookups that ran out of time finish in the background.
+    // Unanswered at the deadline: send nothing rather than the caller's candidate,
+    // which is an unchecked archive address that may 404 in the browser. The
+    // background lookups fix it on the next view.
     for (const [key] of unresolved) answers.set(key, null);
 
     const deadline = Date.now() + budgetMs;

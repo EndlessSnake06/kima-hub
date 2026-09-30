@@ -1,24 +1,8 @@
 /**
- * What counts as a play.
- *
- * Until now a `Play` row meant "the stream endpoint was hit" — the byte request
- * itself logged one, so skipping through an album wrote a play per track and
- * nobody had listened to any of them. Play history fed the vibe profile,
- * recently-played and the decay model, all of which were reading intent that was
- * never there.
- *
- * The rule here is Last.fm's, restated verbatim by ListenBrainz: a track counts
- * once it is longer than 30 seconds AND has been played for half its length or
- * four minutes, whichever comes first.
- *
- * Two edges are deliberate rather than incidental:
- *
- * - **An unknown duration gets the four-minute bound, not a pass.** `duration` is
- *   a non-null Int, so an unscanned track arrives as 0. Treating that as
- *   "eligible immediately" would make a missing scan the cheapest possible way to
- *   log a play, which is exactly backwards.
- * - **Half a length is not capped at the bottom.** A 40-second track needs 20
- *   seconds, not 30. The 30-second floor is about the track, not the listening.
+ * What counts as a play, by Last.fm's rule (also ListenBrainz's): the track is
+ * longer than 30 seconds and was heard for half its length or four minutes,
+ * whichever comes first. An unknown duration (0) gets the four-minute bound,
+ * not a pass; half a length has no 30-second floor.
  */
 
 import { ListenSource } from "@prisma/client";
@@ -39,22 +23,9 @@ export const MAX_REQUIRED_SECONDS = 240;
 const MIN_DEDUP_WINDOW_MS = 30 * 1000;
 
 /**
- * How long a repeat of the same track is treated as the same listen.
- *
- * The track's own length, not a fixed number of minutes. The reasoning is
- * simple: if the song could not have finished yet, a second report of it is the
- * same listen being described twice. Once it could have finished, a second
- * report is a second listen and suppressing it loses something real.
- *
- * The window is applied on **both sides** of the play being reported (see
- * `recordPlay`): a report that lands within one length BEFORE an existing row
- * is the same listen described late, exactly as one that lands within one
- * length AFTER it is the same listen described twice.
- *
- * A flat five minutes was the first attempt and it is measurably wrong. Against
- * eight months of a real library it wrongly merged 250 genuine replays of short
- * tracks, and using the duration instead wrongly split 10. Twenty five to one,
- * in favour of asking the track how long it is.
+ * How long a repeat of the same track is the same listen: the track's own
+ * length, applied on both sides of the reported play. While the song could
+ * still be playing, a second report describes the same listen.
  */
 export function dedupWindowMs(durationSeconds: number | null | undefined): number {
     if (durationSeconds == null || !Number.isFinite(durationSeconds) || durationSeconds <= 0) {
@@ -95,14 +66,9 @@ export function qualifiesAsPlay(
 }
 
 /**
- * Mirror a recorded play to ListenBrainz, fire-and-forget.
- *
- * Kima's play log is the record; ListenBrainz is a mirror the operator opts
- * into by saving a user token. The play is already committed by the time this
- * runs, so nothing here may change the outcome: the call is never awaited,
- * rejections are swallowed with a warn, and with no token configured
- * `submitListens` skips itself with a debug log. A ListenBrainz outage must
- * never fail a play.
+ * Mirror a committed play to ListenBrainz, fire-and-forget: never awaited,
+ * rejections logged as warnings, and a no-op without a user token. A
+ * ListenBrainz outage never fails a play.
  */
 function mirrorToListenBrainz(params: {
     userId: string;
@@ -135,49 +101,25 @@ function mirrorToListenBrainz(params: {
 }
 
 /**
- * What the caller knows about the listening.
- *
- * - `secondsListened`: the web player measured it. The half-or-four-minutes
- *   rule is applied to it here.
- * - `clientAttestedComplete`: a Subsonic scrobble with `submission=true`. The
- *   Subsonic contract leaves "was this played" to the client, which reports no
- *   seconds, only that it counted the play. The listening rule is taken as met;
- *   the 30-second track floor and the duplicate window still apply.
- *
- * Exactly one of the two, so a caller cannot pass a made-up number of seconds
- * to stand in for "the client said so".
+ * What the caller knows: `secondsListened` measured by the web player, or
+ * `clientAttestedComplete` from a Subsonic scrobble with submission=true, which
+ * meets the listening rule but still gets the 30-second floor and duplicate window.
  */
 export type PlayEvidence =
     | { secondsListened: number; clientAttestedComplete?: never }
     | { clientAttestedComplete: true; secondsListened?: never };
 
 /**
- * Key space for the play dedupe lock.
- *
- * `pg_advisory_xact_lock` has a two-integer form and a one-integer form, and
- * Postgres keeps them in **different** key spaces. `playlistService.ts` locks
- * with the one-integer form (`hashtext(playlistId)`); using the two-integer
- * form here with this namespace means a play can never wait on a playlist
- * lock, or a playlist on a play, however their ids hash.
+ * Namespace for the two-integer advisory lock. Postgres keeps one- and
+ * two-integer keys apart, so this never contends with playlistService's
+ * one-integer `hashtext(playlistId)` locks.
  */
 const PLAY_DEDUP_LOCK_NAMESPACE = 7001;
 
 /**
- * Serialise play reports for one (user, track) pair.
- *
- * The duplicate check and the insert have to be one decision. Two concurrent
- * reports of the same play — a Subsonic client retrying a scrobble, or the
- * same track started on two devices — otherwise both read "no earlier play"
- * from an empty window and both write, because nothing between the two
- * statements stops the second one. The lock is transaction-scoped, so it is
- * released when the transaction that took it commits or rolls back.
- *
- * It has to be taken **inside** the transaction, and the transaction must run
- * on the database's default READ COMMITTED. Do not add an `isolationLevel`:
- * under REPEATABLE READ each transaction reads from the snapshot taken when it
- * started, so the writer that waits on the lock still reads the pre-insert
- * snapshot, still sees no duplicate, and still writes a second row — silently,
- * with no error to notice it by.
+ * Serialise play reports for one (user, track) so the duplicate check and the
+ * insert are one decision. Must run inside the transaction under READ COMMITTED:
+ * under REPEATABLE READ the waiting writer reads its old snapshot and writes a duplicate.
  */
 async function lockPlayDedupe(
     tx: Pick<typeof prisma, "$executeRaw">,
@@ -192,17 +134,10 @@ async function lockPlayDedupe(
 }
 
 /**
- * Record a play if the listening earns it.
- *
- * The caller reports how many seconds were actually heard (or that a Subsonic
- * client attested the play); this decides. The track's own duration is read
- * here rather than trusted from the request, so a client cannot claim a
- * three-second track is an hour long and scrobble it on two seconds of audio.
- *
- * The duplicate check and the insert are one transaction behind a
- * per-(user, track) advisory lock, so two concurrent reports of one play —
- * and the two reports of one play that arrive hours apart when a device
- * back-fills — cannot both write.
+ * Record a play if the listening earns it. Duration is read from the database,
+ * never the request. Check and insert run in one transaction behind a
+ * per-(user, track) advisory lock, so concurrent or back-filled reports of one
+ * play cannot both write.
  */
 export async function recordPlay(
     params: {
@@ -241,22 +176,15 @@ export async function recordPlay(
     const anchor = playedAt?.getTime() ?? Date.now();
     const window = dedupWindowMs(track.duration);
 
-    // Check and insert inside one transaction, ordered by a per-(user, track)
-    // advisory lock — see `lockPlayDedupe`. No `isolationLevel` is passed on
-    // purpose: Prisma's default (READ COMMITTED) is what makes the lock work,
-    // and REPEATABLE READ would put the second writer back to a stale
-    // snapshot and restore the duplicate silently.
+    // No isolationLevel on purpose: READ COMMITTED is what makes the lock work
+    // (see lockPlayDedupe).
     const outcome = await prisma.$transaction(async (tx) => {
         await lockPlayDedupe(tx, userId, trackId);
 
         const recent = await tx.play.findFirst({
-            // Both bounds strict, and both required. `gt`, not `gte`: the
-            // rule is that a row is a duplicate while the song could not have
-            // finished — strictly inside the window. At exactly one duration
-            // before or after the reported play the song HAS finished, so a
-            // play that far out is a real replay. Subsonic clients scrobble
-            // with exact timestamps, which is precisely where two plays land
-            // one duration apart.
+            // Strict bounds on both sides: exactly one duration away, the song has
+            // finished, so that play is a genuine replay. Subsonic clients scrobble exact
+            // timestamps, which is where this edge happens.
             where: {
                 userId,
                 trackId,
