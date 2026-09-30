@@ -9,135 +9,19 @@ import {
     CheckCircle,
     ExternalLink,
 } from "lucide-react";
-import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import Link from "next/link";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useAuth } from "@/lib/auth-context";
+import { useNotifications, type Notification } from "@/hooks/useNotifications";
 import { timeAgo } from "@/lib/relative-time";
 
-interface Notification {
-    id: string;
-    type: string;
-    title: string;
-    message: string | null;
-    metadata: Record<string, unknown> | null;
-    read: boolean;
-    createdAt: string;
-}
-
 export function NotificationsTab() {
-    const queryClient = useQueryClient();
-    const { isAuthenticated } = useAuth();
-
     const {
-        data: notifications = [],
+        notifications,
         isLoading: loading,
-        error,
-    } = useQuery<Notification[]>({
-        queryKey: ["notifications"],
-        queryFn: async () => {
-            const result = await api.getNotifications();
-            return result;
-        },
-        enabled: isAuthenticated,
-    });
-
-    // Log error if any
-    if (error) {
-        console.error(
-            "[NotificationsTab] Error fetching notifications:",
-            error
-        );
-    }
-
-    // Mark as read - optimistic update
-    const markAsReadMutation = useMutation({
-        mutationFn: (id: string) => api.markNotificationAsRead(id),
-        onMutate: async (id: string) => {
-            await queryClient.cancelQueries({ queryKey: ["notifications"] });
-
-            const previousNotifications = queryClient.getQueryData<
-                Notification[]
-            >(["notifications"]);
-
-            // Optimistically update
-            queryClient.setQueryData<Notification[]>(
-                ["notifications"],
-                (old) =>
-                    old?.map((n) => (n.id === id ? { ...n, read: true } : n)) ||
-                    []
-            );
-
-            return { previousNotifications };
-        },
-        onError: (_err, _id, context) => {
-            // Rollback on error
-            if (context?.previousNotifications) {
-                queryClient.setQueryData(
-                    ["notifications"],
-                    context.previousNotifications
-                );
-            }
-        },
-    });
-
-    // Clear single notification - optimistic update
-    const clearMutation = useMutation({
-        mutationFn: (id: string) => api.clearNotification(id),
-        onMutate: async (id: string) => {
-            await queryClient.cancelQueries({ queryKey: ["notifications"] });
-
-            const previousNotifications = queryClient.getQueryData<
-                Notification[]
-            >(["notifications"]);
-
-            // Optimistically remove
-            queryClient.setQueryData<Notification[]>(
-                ["notifications"],
-                (old) => old?.filter((n) => n.id !== id) || []
-            );
-
-            return { previousNotifications };
-        },
-        onError: (_err, _id, context) => {
-            if (context?.previousNotifications) {
-                queryClient.setQueryData(
-                    ["notifications"],
-                    context.previousNotifications
-                );
-            }
-        },
-    });
-
-    // Clear all notifications - optimistic update
-    const clearAllMutation = useMutation({
-        mutationFn: () => api.clearAllNotifications(),
-        onMutate: async () => {
-            await queryClient.cancelQueries({ queryKey: ["notifications"] });
-
-            const previousNotifications = queryClient.getQueryData<
-                Notification[]
-            >(["notifications"]);
-
-            // Optimistically clear all
-            queryClient.setQueryData<Notification[]>(["notifications"], []);
-
-            return { previousNotifications };
-        },
-        onError: (_err, _vars, context) => {
-            if (context?.previousNotifications) {
-                queryClient.setQueryData(
-                    ["notifications"],
-                    context.previousNotifications
-                );
-            }
-        },
-    });
-
-    const handleMarkAsRead = (id: string) => markAsReadMutation.mutate(id);
-    const handleClear = (id: string) => clearMutation.mutate(id);
-    const handleClearAll = () => clearAllMutation.mutate();
+        markAsRead: handleMarkAsRead,
+        clearNotification: handleClear,
+        clearAll: handleClearAll,
+    } = useNotifications();
 
     const getIcon = (type: string) => {
         switch (type) {
@@ -190,7 +74,6 @@ export function NotificationsTab() {
 
     return (
         <div className="flex flex-col h-full">
-            {/* Header with clear all - monospace terminal style */}
             {notifications.length > 0 && (
                 <div className="flex items-center justify-between px-3 py-2 border-b-2 border-white/10">
                     <span className="text-xs tabular-nums font-semibold text-[var(--text-muted)]">
@@ -206,7 +89,6 @@ export function NotificationsTab() {
                 </div>
             )}
 
-            {/* Notification list - data stream style */}
             <div className="flex-1 overflow-y-auto">
                 {notifications.map((notification, index) => {
                     const link = getLink(notification);
@@ -221,19 +103,16 @@ export function NotificationsTab() {
                             )}
                         >
                             <div className="flex items-start gap-3">
-                                {/* Index number */}
                                 <div className="flex-shrink-0 w-6 mt-0.5">
                                     <span className="text-micro tabular-nums font-semibold text-[var(--text-muted)]">
                                         {String(index + 1).padStart(2, "0")}
                                     </span>
                                 </div>
 
-                                {/* Icon + status */}
                                 <div className="mt-0.5 flex-shrink-0">
                                     {getIcon(notification.type)}
                                 </div>
 
-                                {/* Content */}
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2 mb-1">
                                         <p
@@ -268,27 +147,22 @@ export function NotificationsTab() {
                                     </div>
                                 </div>
 
-                                {/* Actions - always visible on desktop for angular look */}
                                 <div className="flex items-center gap-1">
                                     {!notification.read && (
                                         <button
-                                            onClick={() =>
-                                                handleMarkAsRead(
-                                                    notification.id
-                                                )
-                                            }
+                                            onClick={() => handleMarkAsRead(notification.id)}
                                             className="p-1 hover:bg-white/10 transition-colors"
                                             title="Mark as read"
+                                            aria-label="Mark as read"
                                         >
                                             <Check className="w-3 h-3 text-[var(--text-muted)] hover:text-white" />
                                         </button>
                                     )}
                                     <button
-                                        onClick={() =>
-                                            handleClear(notification.id)
-                                        }
+                                        onClick={() => handleClear(notification.id)}
                                         className="p-1 hover:bg-white/10 transition-colors"
                                         title="Dismiss"
+                                        aria-label="Dismiss"
                                     >
                                         <Trash2 className="w-3 h-3 text-[var(--text-muted)] hover:text-red-400" />
                                     </button>

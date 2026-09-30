@@ -1938,10 +1938,6 @@ class ApiClient {
         return this.post(`/notifications/${id}/read`);
     }
 
-    async markAllNotificationsAsRead(): Promise<{ success: boolean }> {
-        return this.post("/notifications/read-all");
-    }
-
     async clearNotification(id: string): Promise<{ success: boolean }> {
         return this.post(`/notifications/${id}/clear`);
     }
