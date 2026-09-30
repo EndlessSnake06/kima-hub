@@ -1,33 +1,8 @@
 /**
- * What a person's listening actually looks like, in numbers.
- *
- * ## Why time is an estimate, and how honest an estimate it is
- *
- * A play row records who, what and when — not how long. So total listening
- * time is derived: every play is credited its track's full length.
- *
- * That is defensible only because of what a play now means. Since 1.10.1 a
- * play is recorded when somebody heard at least half the track (or four
- * minutes, whichever is less), so the multiplier is applied to real listening
- * rather than to clicks. The estimate still reads high — we charge you the
- * whole song when we know you heard at least half of it — but the error is
- * bounded and small for normal-length music.
- *
- * It is NOT bounded for long tracks. The rule caps its requirement at four
- * minutes, so a forty-five minute live set counts after four. Crediting the
- * full length there would be wrong by a factor, not a percentage, so no single
- * play is credited more than `PLAY_CREDIT_CAP_SECONDS`. That one clamp is the
- * difference between an estimate that is a little generous and one that a
- * single DJ mix can double.
- *
- * Every number derived this way is labelled "about" in the interface. Say
- * estimate, mean estimate.
- *
- * ## Local time
- *
- * `playedAt` is a naive timestamp holding UTC. An hour-of-day chart in UTC is
- * meaningless to a person, so the caller passes an IANA zone and the bucketing
- * happens in their wall clock.
+ * Listening in numbers. Time is estimated: each play credits its track's
+ * length, capped at PLAY_CREDIT_CAP_SECONDS so a long mix counted after a few
+ * minutes cannot dominate; the UI labels it "about". `playedAt` is UTC, bucketed
+ * into the caller's IANA zone.
  */
 
 import { Prisma } from "@prisma/client";
@@ -194,15 +169,7 @@ export async function listeningStats(
     };
 }
 
-/**
- * How many times this person has actually listened to one track.
- *
- * Read through the same collapsed view as everything else, deliberately. The
- * player bar states this number a few pixels from where the stats page states
- * its own, and a raw `Play` row count would say 47 where the page says 45 —
- * the pre-1.10.1 streaming rows again. One rule, one answer, wherever it is
- * printed.
- */
+/** Listens of one track, counted like the stats page so the player bar agrees with it. */
 export async function trackPlayCount(userId: string, trackId: string): Promise<number> {
     const rows = await prisma.$queryRaw<Array<{ n: number }>>(Prisma.sql`
         ${listenRows(userId, "all", trackId)}
@@ -220,17 +187,7 @@ export interface HourDetail {
     lastAt: string | null;
 }
 
-/**
- * What was actually playing in one cell of the week grid.
- *
- * The grid answers "when", and the obvious next question is "what" — which a
- * heat map can never answer, however long you stare at it. Loaded on demand
- * rather than shipped with the page: 168 cells of track lists is a payload
- * nobody would read, to answer a question most visits never ask.
- *
- * Reads through the same collapsed-listens view as everything else, so a cell
- * that says 109 in the grid says 109 here.
- */
+/** The tracks behind one cell of the week grid, loaded on demand, counted like the grid. */
 export async function hourDetail(
     userId: string,
     weekday: number,
@@ -296,17 +253,7 @@ export interface RegionDetail {
     bpm: number | null;
 }
 
-/**
- * What sits at one point of the taste plot.
- *
- * The plot answers "what shape am I", and the question it immediately provokes
- * is "yes, but what IS that". A cloud of dots can never answer that, however
- * long you look at it.
- *
- * Reads a small neighbourhood rather than the single cell under the pointer.
- * One cell of a 24 by 24 grid is often one track, which makes the answer feel
- * like a lookup rather than a description of a region.
- */
+/** What sits at one point of the taste plot: a small neighbourhood, not just the cell under the pointer. */
 export async function regionDetail(
     userId: string,
     x: number,

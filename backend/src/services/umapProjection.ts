@@ -70,11 +70,8 @@ interface MapResponse {
     moodSignature?: string;
 }
 
-// Positions are cached for a day; moods are not stable for that long. Moods
-// are decided per library (moodBucketService: each mood ranked against every
-// other analysed track) and move as analysis lands, so the builders leave
-// them unset and every read path fills them from the current mood snapshot,
-// once per snapshot version.
+// Positions are cached for a day but moods move as analysis lands, so every
+// read fills moods from the current snapshot.
 async function withCurrentMoods(data: MapResponse): Promise<MapResponse> {
     const snap = await currentMoodSnapshot();
     if (data.moodSignature === snap.signature) return data;
@@ -87,22 +84,9 @@ const UMAP_TIMEOUT_MS = 15 * 60 * 1000;
 const UMAP_WARN_MS = 5 * 60 * 1000;
 
 /**
- * Find the UMAP worker file, whichever form this process is running in.
- *
- * A built server runs from dist/ and the worker sits next to it as .js. A dev server runs
- * the TypeScript directly through tsx, where that .js does not exist and never will --
- * only umapWorker.ts is there. Asking for .js unconditionally meant every dev instance
- * threw ERR_MODULE_NOT_FOUND the moment anyone opened the vibe map, so the whole feature
- * was dead outside a production build while looking fine in one.
- *
- * A worker thread does NOT inherit the TypeScript loader from its parent. tsx registers it
- * per-thread, and passing --import through execArgv does not reach the new thread either
- * (measured: every variant still fails with ERR_UNKNOWN_FILE_EXTENSION). So when only the
- * .ts exists, the fallback runs the same computation from an inline source string instead.
- * umap-js is plain JavaScript, so that needs no loader at all.
- *
- * KEEP IN STEP with workers/umapWorker.ts -- same options, same message shape. That file is
- * what production runs; this string only ever runs from an unbuilt checkout.
+ * Worker source for unbuilt checkouts: a worker thread does not inherit tsx's
+ * loader, so dev runs this inline copy instead of umapWorker.ts. Keep it in
+ * step with that file (same options and messages); production runs the file.
  */
 const INLINE_UMAP_WORKER = `
 const { parentPort, workerData } = require("worker_threads");
@@ -244,11 +228,9 @@ export type MapProjectionState =
 const QUICK_COMPUTE_WAIT_MS = 2000;
 
 /**
- * The map if it can be served now; otherwise starts (or joins) the layout
- * computation in the background and reports that it is still computing.
- * A first layout of a large library takes minutes -- far longer than any
- * proxy in front of the API will hold a request open -- so the HTTP route
- * answers straight away and the client polls.
+ * The map if it can be served now; otherwise start or join the layout in the
+ * background and report that it is computing. A first layout takes minutes,
+ * so the route answers at once and the client polls.
  */
 export async function getMapProjectionState(): Promise<MapProjectionState> {
     const state = await getMapPositionsState();
@@ -609,17 +591,9 @@ async function doCompute(): Promise<MapResponse> {
     return result;
 }
 
-// Incremental appends buffer in memory and flush to Redis on a short debounce
-// instead of doing a JSON.parse(full cache) -> push 1 -> JSON.stringify -> SETEX
-// round-trip per track -- during an analysis burst that's O(map size) per call,
-// i.e. O(n^2) for n tracks finishing around the same time.
-//
-// Note: the flush is still a whole-key SETEX, not atomic with a concurrent full
-// recompute (doCompute/cacheResult). We guard against clobbering one by
-// re-checking the cache's `computedAt` immediately before writing; if a full
-// recompute landed mid-buffer we drop the flush and let that recompute stand.
-// Acceptable because precomputeProjection() runs at enrichment completion and
-// catches all tracks with a full UMAP regardless.
+// Appends buffer and flush on a debounce instead of rewriting the whole cache
+// per track. Before writing, the flush re-checks computedAt and drops itself if
+// a full recompute landed meanwhile.
 const APPEND_FLUSH_DEBOUNCE_MS = 2000;
 const APPEND_FLUSH_MAX_BATCH = 50;
 

@@ -46,17 +46,7 @@ export function sanitizeTagString(value: string | null | undefined): string {
     return value.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "").trim();
 }
 
-/**
- * Normalize an artist name for case-insensitive comparison.
- *
- * RE-EXPORTED, not re-implemented. Two functions with this exact name and
- * different behaviour sat on opposite sides of one database column:
- * artistIdentity's WRITES Artist.normalizedName; this module's was used to
- * QUERY it from ~20 call sites, and they disagreed on the ligature fold. "MO"
- * with a slash was stored as "mo" and looked up unfolded, making such artists
- * unfindable by Spotify import and Discover Weekly seeding. One definition
- * removes the failure mode instead of keeping two in step by hand.
- */
+/** Case-insensitive artist key; the same definition artistIdentity writes to Artist.normalizedName. */
 export { normalizeArtistName } from "../services/artistIdentity";
 
 
@@ -98,13 +88,9 @@ export function stripAlbumEdition(title: string): string {
 
 
 /**
- * Parse artist name from folder path patterns
- * Common patterns:
- *   "Artist - Album (Year) FLAC" -> "Artist"
- *   "Artist - Album" -> "Artist"
- *   "Artist.Name-Album.Name-24BIT-FLAC-2023-GROUP" -> "Artist Name"
- *
- * Returns null if no clear artist pattern is found
+ * Artist name from a folder name: "Artist - Album (Year) FLAC" -> "Artist",
+ * "Artist.Name-Album.Name-24BIT-FLAC-2023-GROUP" -> "Artist Name". Null when
+ * no pattern fits.
  */
 export function parseArtistFromPath(folderName: string): string | null {
     if (!folderName || folderName.trim() === '') {
@@ -143,13 +129,8 @@ export function parseArtistFromPath(folderName: string): string | null {
 }
 
 /**
- * Extract artist name from a relative file path by trying multiple strategies:
- * 1. parseArtistFromPath on the album folder name (catches "Artist - Album" patterns)
- * 2. Grandparent folder name (catches standard Artist/Album/Track.ext layout)
- * 3. Filename parsing (catches "Artist - Album - Track - Title.ext" naming)
- *
- * Note: Handles both Unix (/) and Windows (\) path separators.
- * Returns null if no artist can be determined.
+ * Artist from a relative path (either separator): the album folder name, then
+ * the grandparent folder, then "Artist - Album - Track - Title" filenames.
  */
 export function extractArtistFromRelativePath(relativePath: string): string | null {
     if (!relativePath) return null;
@@ -188,14 +169,7 @@ export function extractArtistFromRelativePath(relativePath: string): string | nu
     return null;
 }
 
-/**
- * Extract album title from a relative file path.
- * Uses the immediate parent folder name, which is typically the album folder
- * in standard Artist/Album/Track.ext layouts.
- *
- * Note: Handles both Unix (/) and Windows (\) path separators.
- * Returns null if the file is at the root level (no parent folder).
- */
+/** Album title from a relative path (either separator): the parent folder, or null at the root. */
 export function extractAlbumFromRelativePath(relativePath: string): string | null {
     if (!relativePath) return null;
 

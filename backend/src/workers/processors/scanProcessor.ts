@@ -7,12 +7,8 @@ import { stringSimilarity } from "../../utils/normalization";
 import * as path from "path";
 
 /**
- * Reconcile pending/processing download jobs with newly scanned albums
- * This is called after every scan to catch downloads that completed but webhooks failed
- * Part of Phase 2 & 3 fix for #31
- *
- * Phase 3 enhancement: Uses fuzzy matching to catch more name variations
- * Phase 4 optimization: Batched queries instead of N+1 pattern
+ * After a scan, complete pending download jobs whose albums arrived without a
+ * webhook, matching names fuzzily and in batched queries.
  */
 async function reconcileDownloadJobsWithScan(): Promise<number> {
     const { prisma } = await import("../../utils/db");
@@ -459,8 +455,7 @@ export async function processScan(
             }
         }
 
-        // Phase 2 Fix for #31: Reconcile download jobs with newly scanned albums
-        // This runs after EVERY scan to catch albums that were downloaded but webhooks failed
+        // Complete download jobs whose albums this scan found.
         if (result.tracksAdded > 0) {
             logger.debug(
                 `[ScanJob ${job.id}] Reconciling download jobs with ${result.tracksAdded} newly scanned tracks...`
@@ -499,9 +494,7 @@ export async function processScan(
             }
         }
 
-        // Reconcile pending tracks from Spotify playlist imports
-        // This checks if any previously unmatched tracks now have matches
-        // Run on: new/updated tracks, manual sync, or retry downloads
+        // Reconcile Spotify-import pending tracks against new or updated tracks, manual syncs and retried downloads.
         const shouldReconcile =
             result.tracksAdded > 0 ||
             result.tracksUpdated > 0 ||
@@ -575,12 +568,8 @@ export async function processScan(
             }
         }
 
-        // New files are owed every stage's answer from the moment they
-        // exist: selection reads Track LEFT JOIN TrackStage, so the next
-        // cycle creates and dispatches their records. Triggering it here
-        // keeps that off the 30 s wait; the old `enrichmentTags` count
-        // was the retired sentinel acting as a queue flag —
-        // the records own what is owed, not the tag list.
+        // New files are owed every stage's answer; trigger the next cycle now rather
+        // than after the 30 s wait.
         if (result.tracksAdded > 0) {
             try {
                 logger.debug(

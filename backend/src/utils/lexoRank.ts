@@ -1,21 +1,7 @@
 /**
- * Fractional lexicographic ranks for ordered lists.
- *
- * Playlist order used an integer `sort` column, which meant a reorder rewrote
- * every row (one UPDATE each, inside one transaction) and, because nothing
- * enforced uniqueness, concurrent writes produced duplicate positions that
- * Postgres then returned in arbitrary order. Worse, `PlaylistItem.sort` and
- * `PlaylistPendingTrack.sort` were two independent counters that the read path
- * merged by comparing them to each other -- so a single reorder renumbered
- * items to 0..n-1 and collided head-on with the pending tracks' original
- * Spotify positions, scrambling any imported playlist.
- *
- * A fractional rank fixes both: moving one row writes exactly one row, and both
- * tables can draw from ONE key space so merging them by rank is meaningful.
- *
- * Keys are base-62 strings over an ASCII-ordered alphabet, so a plain string
- * comparison (and a plain btree index) orders them correctly -- no numeric
- * decoding anywhere.
+ * Fractional ranks for ordered lists: a move writes one row, and playlist
+ * items and pending tracks share one key space. Keys are base-62 over an
+ * ASCII-ordered alphabet, so plain string comparison and a btree order them.
  */
 
 const ALPHABET =
@@ -48,11 +34,8 @@ export function rankBetween(before: string, after: string): string {
 
     let out = "";
     let i = 0;
-    // Once we commit a digit strictly below `after`'s digit at the same
-    // position, every longer key with this prefix is already below `after`, so
-    // the upper bound stops constraining us. Without this the walk breaks on
-    // pairs like ("AB", "B"), where `after` runs out of digits while `before`
-    // still has some.
+    // Once a digit is below `after`'s at the same position, the upper bound no
+    // longer constrains longer keys (e.g. ("AB", "B")).
     let upperOpen = after === "";
 
     for (;;) {
@@ -76,13 +59,8 @@ export function rankBetween(before: string, after: string): string {
 }
 
 /**
- * A key that sorts after everything currently in the list.
- *
- * Increments the final digit rather than subdividing the space above `last`.
- * Subdividing halves the remaining gap every time, so the key grew by a
- * character roughly every six appends and a few hundred appends blew the depth
- * limit -- and appending is the common operation (adding a track to the end).
- * Incrementing keeps the length fixed until the final digit tops out.
+ * A key after everything in the list. Increments the last digit rather than
+ * subdividing, so repeated appends keep the key length fixed.
  */
 export function rankAfter(last: string | null | undefined): string {
     if (!last) return rankBetween("", "");
@@ -144,17 +122,9 @@ export function rankSequence(count: number): string[] {
 }
 
 /**
- * A fixed-width rank for a known zero-based position.
- *
- * Mirrors the `kima_rank_from_position` function in the playlist-rank migration,
- * character for character, so ranks written by an import land on the SAME scale
- * as ranks backfilled by that migration. Three characters keep every key the
- * same length, which makes string ordering match numeric ordering without any
- * padding logic at read time, and cover 238k positions.
- *
- * Use this when the whole ordering is known up front (an import). Use
- * `rankSequence` when seeding a fresh list and `rankBetween`/`rankAfter` for
- * incremental changes.
+ * A fixed-width (3-character, ~238k positions) rank for a zero-based
+ * position, matching SQL `kima_rank_from_position`. For orderings known up
+ * front; use rankSequence to seed and rankBetween/rankAfter for edits.
  */
 export function rankForPosition(position: number): string {
     const v = Math.max(0, Math.floor(position)) + 1;

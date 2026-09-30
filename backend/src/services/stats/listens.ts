@@ -1,62 +1,9 @@
 /**
- * One row per actual listen, instead of one row per record. The only copy.
- *
- * ## What this corrects in the data
- *
- * Until 1.10.1 the streaming endpoint wrote a Play row every time the browser
- * asked for another chunk of a file, suppressed only for thirty seconds at a
- * time. So a long track wrote a row roughly every half minute while it played,
- * and a short one wrote two. Measured against a real library: 1.25 rows per
- * listen under three minutes, and 5.06 over seven. Counting rows therefore does
- * not measure listening, it measures file size — left uncorrected it put an
- * artist of nine-minute tracks fourth in a top ten they belong tenth in.
- *
- * That history is fixed and will not grow, because 1.10.1 stopped writing those
- * rows. It still has to be read correctly, because the eight months already
- * recorded do not repair themselves.
- *
- * ## The rule, and the bug it replaces (2026-08-25)
- *
- * A row belongs to the listen already in progress while the song could still be
- * playing; once the song could have finished, the row is a genuine replay.
- *
- * The previous implementation measured that from the PREVIOUS ROW rather than
- * from where the listen began — a `LAG` over the track's plays. Those two rules
- * are identical only when a listen produces one row, and diverge exactly when
- * it produces a run of them, which is the entire situation this exists for.
- * Each dropped chunk-write reset the clock, so a replay starting soon after the
- * last chunk of the previous listen was swallowed into it.
- *
- * Proven on the live library. "GUNGHO", 214 seconds long, has plays at +0, +44,
- * +126, +173 and +230 seconds. The middle three are chunk-writes and are
- * correctly dropped. The one at +230 is a real replay — the track ended at 214
- * — but it sits only 57 seconds after the row before it, so the old rule
- * counted the whole thing as one listen. Across the library that lost 18
- * listens of 4,107, and it lost them from the most-replayed tracks, because
- * those are the ones with long runs of rows.
- *
- * ## Why this needs a recursive walk, and why it is still cheap
- *
- * "Distance from the start of the current listen" cannot be written with a
- * window function, because where the current listen started depends on the
- * decisions already made about earlier rows. That is a gaps-and-islands problem
- * and it has to be walked in order.
- *
- * Walked naively — one recursion step per row-position within a track — it cost
- * 177ms against 9ms for the broken window-function version, a 20x regression on
- * a helper that twelve queries embed. The depth was the busiest track's total
- * row count, 142 on the measured library, and the cost is per iteration rather
- * than per row.
- *
- * Almost all of that depth is unnecessary. Two consecutive rows further apart
- * than the track is long ALWAYS start separate listens — no walking required,
- * a `LAG` settles it. Only a run of rows packed closer than that is ambiguous,
- * and those runs are short: they are one listen's worth of chunk-writes. So the
- * cheap rule partitions the plays into runs, and the walk happens inside a run,
- * where the depth is the longest single burst rather than the whole history.
- *
- * The relation this leaves behind is called `p`, and it carries every column any
- * caller needs — one join to `Track` here rather than one in each caller.
+ * One row per actual listen. Before 1.10.1 streaming wrote a Play row per
+ * chunk, so a long track wrote many. A row belongs to the listen in progress
+ * while the song could still be playing, measured from where that listen
+ * began. Rows further apart than the track's length always split, so the
+ * recursive walk only runs inside short bursts. Leaves relation `p`.
  */
 
 import { Prisma } from "@prisma/client";
@@ -73,14 +20,7 @@ function window(period: Period): Prisma.Sql {
     return Prisma.sql`AND "playedAt" >= now() - ${Prisma.raw(`interval '${WINDOW[period]}'`)}`;
 }
 
-/**
- * A row closer than this to its listen's start is the same listen, always.
- *
- * Exported because the play-history audit groups the same rows in TypeScript in
- * order to name the individual plays it would delete, and the two groupings
- * deciding differently is how a maintenance tool comes to remove a listen the
- * stats page is still counting.
- */
+/** A row closer than this to its listen's start is the same listen. The play-history audit uses it too, so both group alike. */
 export const MIN_LISTEN_WINDOW_SECONDS = 30;
 
 /** The windows the page offers. Rolling, so there is no start-of-month cliff. */
@@ -97,36 +37,11 @@ const WINDOW: Record<Exclude<Period, "all">, string> = {
     "12mo": "12 months",
 };
 
-
 /**
- * A `WITH RECURSIVE` chain ending in a relation `p`: one row per listen.
- *
- * Append the rest of the query to it. Callers needing further CTEs of their own
- * add them with a leading comma, as with any `WITH` list.
- *
- * ## Why the window is applied last, not first
- *
- * The obvious way to add a date filter is to put it in the `WHERE` beside the
- * user id, so the recursion only walks rows in range. That is wrong at the
- * boundary. A listen that began just before the window opens can have its
- * chunk-writes land inside it, and with the earlier rows filtered away the
- * first surviving chunk looks like the start of a listen — inventing a play
- * that never happened, at the edge of every window, every time.
- *
- * So the walk always sees the whole history and the window is applied to its
- * result. A row is in the window because the listen it opens is, which is the
- * only definition that makes "listens in the last 30 days" mean what it says.
- * It also costs nothing extra: the recursion was walking those rows anyway.
- */
-/**
- * @param onlyTrackId Restrict the walk to one track.
- *
- * Safe to push into the input, unlike the date window above, and for a reason
- * worth stating: the walk is partitioned by track, so a track's listens are
- * decided entirely by that track's own rows. Narrowing the input to one track
- * removes nothing the answer depended on. The date window is the opposite case
- * — it cuts across every partition midway — which is why one is applied before
- * the walk and the other after.
+ * A `WITH RECURSIVE` chain ending in `p`, one row per listen; append the rest
+ * of the query (extra CTEs with a leading comma). The date window applies after
+ * the walk, or a listen starting before it would look like one starting inside
+ * it. `onlyTrackId` can narrow the input because the walk is per track.
  */
 export function listenRows(
     userId: string,

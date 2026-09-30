@@ -61,12 +61,8 @@ interface EnrichmentState {
 }
 
 /**
- * A stable signature of the parts of state that represent ACTUAL WORK:
- * the progress counters and the status machine. Explicitly excludes
- * lastActivity itself, currentPhase (pure churn -- runPhase() rotates it
- * several times per cycle, so stamping on it would fake the heartbeat),
- * completionNotificationSent, and the cache-cleared flags -- those are
- * bookkeeping, not progress.
+ * Signature of the state that is actual work: progress counters and status.
+ * Excludes lastActivity, currentPhase (rotated every cycle) and bookkeeping flags.
  */
 export function progressSignature(state: EnrichmentState): string {
     return JSON.stringify({
@@ -78,11 +74,8 @@ export function progressSignature(state: EnrichmentState): string {
 }
 
 /**
- * Whether a state write should be treated as "real activity" for heartbeat
- * purposes. Only counter changes and status transitions count; pure phase /
- * bookkeeping churn (which runPhase() emits several times per cycle) must
- * NOT refresh lastActivity, or the hang detector is structurally blind to a
- * loop that rewrites status="running" while nothing actually moves.
+ * Whether a write counts as activity for the hang detector: only counter or
+ * status changes, never phase churn, or a stuck loop would look alive.
  */
 export function shouldRefreshLastActivity(
     previous: EnrichmentState,
@@ -139,12 +132,8 @@ class EnrichmentStateService {
     }
 
     /**
-     * Persist state. `lastActivity` is refreshed ONLY when the write is real
-     * work (counters or status changed). Pure phase churn -- which the
-     * enrichment cycle emits several times per 5-second tick -- must not
-     * refresh the heartbeat, or the hang detector keys on "last write"
-     * instead of "last progress" and a frozen loop looks alive forever.
-     * initializeState() bypasses this deliberately: a fresh run is activity.
+     * Persist state, refreshing `lastActivity` only on real work (see
+     * shouldRefreshLastActivity). initializeState() always stamps it.
      */
     async setState(state: EnrichmentState, opts?: { stampActivity?: boolean }): Promise<void> {
         if (opts?.stampActivity !== false) {
@@ -329,11 +318,8 @@ class EnrichmentStateService {
     }
 
     /**
-     * Close the synchronous analysis gate without touching the
-     * enrichment state record. Used at startup when a persisted pause
-     * must be honored: the gate may be absent (Redis flushed, or the
-     * key expired) and an ungated analyzer would drain queued work
-     * straight through the operator's instruction.
+     * Close the analysis gate without touching state. Used at startup to honour a
+     * persisted pause when the gate key is gone (Redis flushed or expired).
      */
     async holdGateClosed(): Promise<void> {
         await this.redis.set(AUDIO_ANALYSIS_GATE_KEY, "paused");

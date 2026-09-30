@@ -1,11 +1,4 @@
-/**
- * Discovery Seeding Module
- *
- * Handles seed artist selection for discovering new music based on:
- * - User's listening history (recent plays)
- * - Library contents (fallback when insufficient history)
- * - Album ownership checking across multiple sources
- */
+/** Seed artists for discovery (recent plays, else the library) and album ownership checks. */
 
 import { prisma } from '../../utils/db';
 import { logger } from '../../utils/logger';
@@ -20,11 +13,9 @@ export interface SeedArtist {
 }
 
 /**
- * In-memory snapshot of owned albums, built once per TTL window instead of
- * re-querying Postgres for every candidate album checked during a discovery
- * run (DISC-5). `albums` covers every Album row (any location) since
- * isAlbumOwnedByName's Album-table check is intentionally not location-scoped;
- * callers that need LIBRARY-only semantics filter on `location` themselves.
+ * Owned-album snapshot, rebuilt once per TTL instead of queried per candidate.
+ * `albums` holds every Album row regardless of location; callers that need
+ * LIBRARY only filter on it.
  */
 interface OwnedAlbumIndex {
     albums: Array<{ artistName: string; title: string; location: string; rgMbid: string }>;
@@ -182,13 +173,7 @@ export class DiscoverySeeding {
         return false;
     }
 
-    /**
-     * Loads (and caches for OWNED_INDEX_TTL_MS) a snapshot of owned-album data
-     * used by the per-candidate fuzzy/name matching in `isAlbumOwned` and
-     * `DiscoverWeeklyService.isAlbumOwnedByName`. Replaces what used to be a
-     * fresh `contains`/ILIKE query per candidate album with one bulk load that
-     * both checks then scan in-memory (DISC-5).
-     */
+    /** The owned-album snapshot, cached for OWNED_INDEX_TTL_MS. */
     async getOwnedAlbumIndex(): Promise<OwnedAlbumIndex> {
         const now = Date.now();
         if (this.ownedIndexCache && now - this.ownedIndexCache.builtAt < this.OWNED_INDEX_TTL_MS) {
@@ -235,15 +220,7 @@ export class DiscoverySeeding {
         return this.ownedIndexCache;
     }
 
-    /**
-     * Checks if an album is already owned through any source:
-     * - OwnedAlbum table
-     * - Album table
-     * - Previous discovery
-     * - Pending downloads
-     * - Lidarr
-     * - Fuzzy name matching (if artistName and albumTitle provided)
-     */
+    /** Whether an album is owned: OwnedAlbum, Album, past discovery, pending downloads, Lidarr, then fuzzy names. */
     async isAlbumOwned(
         albumMbid: string,
         userId: string,

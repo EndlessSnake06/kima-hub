@@ -1,31 +1,8 @@
 /**
- * The 1.11 mood-mix question: rebuild, keep, or save as a playlist.
- *
- * 1.11 fixed the mood heads (they were read backwards; see migration
- * 20260924120000_reset_inverted_mood_heads). A mood mix a user saved before
- * that was picked from the wrong values. The migration deliberately leaves
- * those mixes alone: nothing is wiped until the user says so, here.
- *
- * - Rebuild clears the saved mix. The mood mixes on the home page are built
- *   from the mood buckets, which rebuild themselves as tracks are re-analysed;
- *   the user's own mix comes back the next time they pick a mood.
- * - Keep records that they want it as it is, and changes nothing.
- * - Save as playlist copies the mix into an ordinary playlist first, so it
- *   survives a rebuild. It is separate from the other two on purpose: "save
- *   this one, then rebuild" is the combination people want.
- *
- * A mix saved under a mood 1.11 no longer has (energetic, focus, melancholy,
- * acoustic, or any other id outside the current five) is "retired": the app
- * cannot show it any more, but its row still holds real track ids. Those users
- * are asked too, with two answers only — save it as a playlist, or remove it.
- * There is no "keep": a mix that can never be shown again is not kept in any
- * sense the user would recognise. Closing the window deletes nothing, and a
- * retired mix nobody has saved or answered for is asked about again on the
- * next visit (see `pendingReleases`), so nobody loses one without being told.
- *
- * The decision is stored as a ReleaseChoice (`MOOD_MIX_DECISION_KEY`, enabled
- * = the mix was cleared), so it is asked once and can be counted. Every
- * endpoint is safe to repeat.
+ * The mood-mix question after the mood heads were fixed: rebuild (clear the
+ * saved mix), keep, or save it as a playlist first. A mix under a mood that no
+ * longer exists is "retired" and offers only save or remove; unanswered, it is
+ * asked again. Answers are ReleaseChoice rows; every endpoint is repeatable.
  */
 
 import { ChoiceDecidedBy } from "@prisma/client";
@@ -69,7 +46,7 @@ interface SavedMix {
     name: string;
     mood: string;
     trackIds: string[];
-    /** Saved under a mood 1.11 no longer has; the app cannot show it. */
+    /** Saved under a mood that no longer exists; the app cannot show it. */
     retired: boolean;
 }
 
@@ -135,13 +112,9 @@ export async function moodMixState(userId: string): Promise<MoodMixState> {
 export class MoodMixCannotKeepError extends Error {}
 
 /**
- * Record the answer and, for rebuild or remove, clear the saved mix.
- *
- * "keep" on a retired mix is MoodMixCannotKeepError: the app cannot show it,
- * so keeping it would record an answer that means nothing. Returns how many
- * mixes were removed: 0 on a repeat, or when the user had none. Changing a
- * "keep" into a "rebuild" later is allowed; the other way round only changes
- * the record, because a cleared mix cannot come back.
+ * Record the answer; rebuild and remove clear the saved mix. "keep" on a
+ * retired mix throws MoodMixCannotKeepError. Returns mixes removed (0 on a
+ * repeat). A cleared mix cannot come back.
  */
 export async function decideMoodMixes(
     userId: string,
@@ -174,18 +147,9 @@ export async function decideMoodMixes(
 export class MoodMixNotFoundError extends Error {}
 
 /**
- * Save the user's mood mix as an ordinary playlist. A retired mix is named
- * after its old mood ("Your Focus Mode Mix").
- *
- * `mixId` is the id the client was shown. It must be this user's current
- * mix, retired or not; anything else (someone else's, a mix already cleared, a
- * made-up id) is MoodMixNotFoundError.
- *
- * The playlist carries the mix's id in `mixId` — the same id the home page's
- * "save mix" uses — so saving twice, from here or from there, finds the same
- * playlist rather than making a second one. Tracks go in through the playlist
- * service, which ranks them with lexoRank and skips any already there, so a
- * repeat adds nothing and a save interrupted half-way is finished by the next.
+ * Save the user's current mood mix (`mixId`, else MoodMixNotFoundError) as a
+ * playlist keyed by that id, so repeat saves reuse it and skip tracks already
+ * there. A retired mix is named after its old mood.
  */
 export async function saveMoodMixAsPlaylist(
     userId: string,

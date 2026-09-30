@@ -1,10 +1,6 @@
 /**
- * Organization worker for Singles directory
- *
- * With direct soulseek-ts integration, downloads go straight to Singles/Artist/Album/
- * This file now only handles:
- * 1. One-time migration of existing Soulseek/ files to Singles/ structure
- * 2. Legacy slskd job cleanup (if any remain from before migration)
+ * Singles folder organisation: the one-time move of old Soulseek/ files into
+ * Singles/Artist/Album/, and cleanup of leftover slskd jobs.
  */
 
 import path from "path";
@@ -29,10 +25,8 @@ function isCrossDevice(err: unknown): boolean {
 }
 
 /**
- * Move one file with no gap between source and destination:
- * same-volume rename is atomic; across volumes, copy first, check the copy
- * matches the source's size, and only then delete the original — a short
- * copy must never remove the only good file.
+ * Move a file with no window where it exists in neither place: rename on one
+ * volume; across volumes copy, check the size, then delete the original.
  */
 async function moveFile(src: string, dest: string): Promise<void> {
     try {
@@ -202,12 +196,8 @@ async function migrateExistingSoulseekFiles(musicPath: string): Promise<void> {
         // Ignore cleanup errors
     }
 
-    // Mark migration as complete — but only when nothing failed. Writing
-    // the marker after a partial run would strand every file that
-    // failed: the marker's whole job is to stop re-running this
-    // migration, so with failures it must stay unwritten and the next
-    // organize retries what's left (already-moved files skip via the
-    // destination-exists check).
+    // Write the completion marker only when nothing failed, so the next run
+    // retries what is left (moved files skip on the destination check).
     if (failed === 0) {
         try {
             await writeFile(migrationMarker, new Date().toISOString());
@@ -268,10 +258,7 @@ async function cleanupLegacySlskdJobs(): Promise<void> {
 export async function organizeSingles(): Promise<void> {
     sessionLog('ORGANIZE', '=== STARTING SINGLES ORGANIZATION ===');
 
-    // One source for the music folder: the settings row, same
-    // as every download writer. No env / repo-root `.env` fallback — a path
-    // read from a file the operator may not have is how files moved to the
-    // wrong volume.
+    // The music folder comes from the settings row, like every download writer, never from env.
     const settings = await getSystemSettings();
     const musicPath = settings?.musicPath;
 
