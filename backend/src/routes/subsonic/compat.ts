@@ -25,16 +25,8 @@ function shareFailure(req: Request, res: Response, error: unknown) {
     throw error;
 }
 
-// Endpoints Kima does not implement.
-//
-// They answer with a real Subsonic error and a reason, NOT a hollow "ok".
-// Answering ok while discarding the request is worse than refusing: the client
-// believes the operation succeeded and shows the user state the server never
-// stored. That is exactly how the bookmark stubs made resume positions vanish
-// -- they mounted ahead of playback.ts, won the route match, and returned "ok"
-// for every createBookmark.
-//
-// Anything with a real backing model belongs above this line, wired to it.
+// Endpoints Kima does not implement answer with a real Subsonic error, never
+// a hollow "ok": a client told "ok" shows the user state the server never stored.
 
 /** Subsonic has no "unsupported operation" code; 0 with a reason is the convention. */
 function notSupported(req: Request, res: Response, what: string) {
@@ -110,15 +102,9 @@ compatRouter.all("/getShares.view", wrap(async (req: Request, res: Response) => 
     });
 }));
 
-// Creates a REAL share link through the same service the web route uses.
-//
-// This used to fabricate one: a synthetic `kima-<timestamp>` id and a URL
-// pointing at `/share/unsupported`, a path that does not exist. A client handed
-// the user a link that was dead on arrival, which is worse than refusing.
-// wrap() is load-bearing, not decoration: the three lookups below run OUTSIDE
-// the try, and in Express 4 a rejected handler promise produces no response at
-// all -- the client waits until it times out. Every sibling subsonic router
-// wraps for this reason; this file was left bare.
+// Creates a real share link through the web route's service. wrap() is
+// required: the lookups below run outside the try, and Express 4 sends no
+// response for a rejected handler promise.
 compatRouter.all("/createShare.view", wrap(async (req: Request, res: Response) => {
     const ids = parseRepeatedQueryParam(req.query.id);
     if (ids.length === 0) {
@@ -164,11 +150,8 @@ compatRouter.all("/createShare.view", wrap(async (req: Request, res: Response) =
                 : SubsonicError.GENERIC;
             return subsonicError(req, res, code, error.message);
         }
-        // Anything that is not a ShareError is ours, not the caller's. Answer
-        // with the protocol's generic code and a fixed string rather than
-        // rethrowing: a Prisma failure's message names tables and columns, and
-        // this text goes to the client. The detail goes to the log as a stack,
-        // which carries no `config` or query payload with it.
+        // Any other error is ours: answer with the generic code and a fixed string,
+        // since a Prisma message names tables and columns. The stack goes to the log.
         logger.error(
             `[Subsonic] createShare failed: ${
                 error instanceof Error ? error.stack : String(error)
@@ -178,8 +161,6 @@ compatRouter.all("/createShare.view", wrap(async (req: Request, res: Response) =
     }
 }));
 
-// Real. These used to validate `id`, answer ok and do nothing, so a client
-// could "revoke" a share that stayed live.
 compatRouter.all("/updateShare.view", wrap(async (req: Request, res: Response) => {
     const id = req.query.id as string | undefined;
     if (!id) {
@@ -218,8 +199,7 @@ compatRouter.all("/deleteShare.view", wrap(async (req: Request, res: Response) =
     }
 }));
 
-// No chat model. The empty list is honest; accepting a message and discarding
-// it is not -- the sender saw it "send" and nobody would ever receive it.
+// No chat model, so an empty list; accepting and discarding a message is not an option.
 compatRouter.all("/getChatMessages.view", (req: Request, res: Response) => {
     subsonicOk(req, res, { chatMessages: {} });
 });
@@ -252,9 +232,7 @@ compatRouter.all("/getCaptions.view", (req: Request, res: Response) => {
     return subsonicError(req, res, SubsonicError.NOT_FOUND, "No captions available");
 });
 
-// Jukebox mode is server-side playback: the SERVER drives audio hardware. Kima
-// has no such output, so every action -- start, stop, set, skip -- used to
-// return a hardcoded "not playing" status as though it had been carried out.
+// Jukebox mode plays on the server's own audio output, which Kima has none of.
 compatRouter.all("/jukeboxControl.view", (req: Request, res: Response) => {
     const action = (req.query.action as string | undefined)?.toLowerCase();
     if (!action) {

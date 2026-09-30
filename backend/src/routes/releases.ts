@@ -102,9 +102,7 @@ router.get("/radar", async (req, res) => {
         logger.debug(`[Releases] Found ${lidarrReleases.length} Lidarr releases`);
         logger.debug(`[Releases] Found ${unmonitoredSimilar.length} unmonitored similar artists`);
 
-        // 4. Check which of THESE releases the library already owns —
-        // bounded to the candidate MBIDs, not a scan of the whole Album
-        // table per request.
+        // 4. Check which of these releases the library owns, looking up only their MBIDs.
         const candidateRgMbids = [...new Set(lidarrReleases.map(r => r.albumMbid).filter(Boolean))];
         const ownedRows = await prisma.album.findMany({
             where: { rgMbid: { in: candidateRgMbids } },
@@ -133,11 +131,8 @@ router.get("/radar", async (req, res) => {
             };
         });
 
-        // Lidarr hands out one Cover Art Archive address per release and the
-        // archive has nothing for most albums nobody owns yet. Ask the same
-        // providers the library uses -- Deezer, the archive's real index,
-        // Fanart -- which find artwork for roughly 34 albums in 40 where the
-        // bare Lidarr address finds 21.
+        // Lidarr's Cover Art Archive address is empty for most unowned albums, so ask
+        // the library's artwork providers instead.
         const releases = await withAlbumArtwork(
             rawReleases,
             (r) => ({
@@ -230,8 +225,6 @@ router.get("/recent", async (req, res) => {
 
         const releases = await lidarrService.getCalendar(startDate, now);
         
-        // Check only these candidates against the library — no whole-table
-        // read per request.
         const candidateRgMbids = [...new Set(releases.map(r => r.albumMbid).filter(Boolean))];
         const ownedRows = await prisma.album.findMany({
             where: { rgMbid: { in: candidateRgMbids } },
@@ -305,13 +298,9 @@ router.post("/download/:albumMbid", async (req, res) => {
             `[Releases] Download requested: ${artistName} - ${albumTitle} (${albumMbid})`
         );
 
-        // Pre-create (or reuse an in-flight) DownloadJob so the download is trackable by
-        // id AND early config-error failures stay visible (acquireAlbum can exit BEFORE
-        // it would create its own job, otherwise leaving the client — already handed a
-        // success — with no trace). The dedup + create runs under the SAME distributed
-        // lock acquisitionService.createDownloadJob uses, so two concurrent taps for the
-        // same album can't both create a job / launch a download. Dynamic imports avoid
-        // circular deps.
+        // Pre-create (or reuse) the DownloadJob, so the download is trackable by id and
+        // early config errors stay visible. Dedup and create run under the lock
+        // createDownloadJob uses, so two taps cannot start two downloads.
         const { acquisitionService } = await import(
             "../services/acquisitionService"
         );
@@ -367,13 +356,9 @@ router.post("/download/:albumMbid", async (req, res) => {
                     })
                     .catch(() => {});
 
-            // Route through the shared acquisition service — the same path discover and
-            // import use — so it honours the user's configured download source
-            // (Soulseek/Lidarr). Fire in the background against the pre-created job and
-            // return immediately; the client tracks progress via /downloads keyed by
-            // jobId. Config errors THROW (caught by .catch); acquisition-level failures
-            // resolve as { success:false } (handled in .then) — both mark the job failed
-            // so it doesn't sit "pending" forever.
+            // Use the shared acquisition service, which honours the user's download source.
+            // Runs in the background against the job; config errors throw, acquisition
+            // failures resolve {success:false}, and both mark the job failed.
             void acquisitionService
                 .acquireAlbum(
                     { albumTitle, artistName, mbid: albumMbid },
@@ -408,11 +393,8 @@ router.post("/download/:albumMbid", async (req, res) => {
     } catch (error: any) {
         logger.error("[Releases] Download error:", error.message);
 
-        // On a fresh install with no Lidarr configured this is the DEFAULT
-        // outcome of clicking Download: acquireAlbum throws rather than
-        // returning {success:false}, so the 502 branch above never sees it and
-        // the actionable message was logged and then dropped behind a generic
-        // 500. Matches the sibling handler in routes/discover.ts.
+        // With no Lidarr configured, acquireAlbum throws this; answer with its
+        // actionable message, not a generic 500.
         if (error instanceof ConfigurationError) {
             return res.status(400).json({
                 error: error.message,

@@ -117,11 +117,8 @@ router.post("/stop", requireAuth, requireAdmin, async (req, res) => {
 
 /**
  * POST /enrichment/retry-failed-and-blocked
- * Re-queue everything still owed an answer -- one getNextWork over
- * TrackStage. Nothing is reset and nothing is wiped: done answers are not
- * re-asked, terminal answers stay closed until a human re-decides them,
- * and a track with no record for a stage is simply still owed that answer.
- * Admin only.
+ * Re-queue every stage question still owed an answer. Nothing is reset: done
+ * answers are not re-asked and terminal ones wait for a human. Admin only.
  */
 router.post("/retry-failed-and-blocked", requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -143,10 +140,8 @@ router.post("/retry-failed-and-blocked", requireAuth, requireAdmin, async (req, 
 
 /**
  * POST /enrichment/re-decide-everything
- * Operator override for "we know the answer was wrong": re-opens every
- * stage question, answered or not, so the sweep asks again. It never
- * re-runs AcoustID over a track that already has a recordingMbid, and it
- * deletes no answers -- only the queue's own state moves. Admin only.
+ * Re-open every stage question so the sweep asks again. Deletes no answers and
+ * never re-runs AcoustID on a track that has a recordingMbid. Admin only.
  */
 router.post("/re-decide-everything", requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -266,11 +261,8 @@ router.post("/album/:id", requireAuth, async (req, res) => {
 
 /**
  * GET /enrichment/failures
- * Get all enrichment failures with filtering.
- *
- * Track-stage failures (track/audio/vibe/scan) are read from TrackStage —
- * the record the engine decides from — mapped onto the EnrichmentFailure
- * response shape; artist/podcast failures come from the ledger.
+ * Enrichment failures with filtering: track stages from TrackStage, artists and
+ * podcasts from the ledger, in the EnrichmentFailure shape.
  */
 router.get("/failures", requireAuth, async (req, res) => {
   try {
@@ -458,13 +450,8 @@ router.put("/artists/:id/metadata", requireAuth, requireAdmin, async (req, res) 
         updateData.displayName = name;
         hasOverrides = true;
 
-        // sortName means "where this artist files alphabetically" -- an
-        // override changes that, so it has to move with displayName rather
-        // than staying derived from the canonical name alone. Clearing the
-        // override (empty/null) files it back under the canonical name,
-        // which this handler doesn't otherwise read, so fetch it only for
-        // that branch -- the common case (setting a real override) needs
-        // no extra query.
+        // sortName follows displayName. Clearing the override files the artist under
+        // its canonical name, fetched only in that case.
         const effectiveName =
           typeof name === "string" && name.trim() !== ""
             ? name
@@ -554,14 +541,8 @@ router.put("/albums/:id/metadata", requireAuth, requireAdmin, async (req, res) =
         updateData.displayTitle = title;
         hasOverrides = true;
 
-        // sortName means "where this album files alphabetically" -- same
-        // reasoning as the artist fix (23a2283): it has to move with
-        // displayTitle, not stay derived from the canonical title alone, or
-        // an override files under the title it was meant to replace.
-        // artistSortName is text-generic despite the name (fold/lower/
-        // collapse/strip-article only, nothing artist-specific), the same
-        // way kima_sort_name is on the SQL side -- reused here rather than
-        // duplicated.
+        // sortName follows displayTitle, like the artist override. artistSortName is
+        // text-generic, so it serves albums too.
         const effectiveTitle =
           typeof title === "string" && title.trim() !== ""
             ? title
@@ -574,11 +555,8 @@ router.put("/albums/:id/metadata", requireAuth, requireAdmin, async (req, res) =
         updateData.sortName = artistSortName(effectiveTitle);
       }
       if (year !== undefined) {
-        // Clearing the field in the editor sends null, not undefined: the input does
-        // parseInt("") -> NaN, and JSON.stringify turns NaN into null. That passed the
-        // !== undefined check and put NaN into an Int? column, which Prisma rejects and
-        // the catch below reported as 500 -- for the ordinary act of emptying a field.
-        // Null now means "remove the override", which is what the user asked for.
+        // An emptied field arrives as null (parseInt("") is NaN, which JSON sends as
+        // null) and removes the override.
         const parsedYear = year === null || year === "" ? null : parseInt(year, 10);
         if (parsedYear !== null && Number.isNaN(parsedYear)) {
           return res.status(400).json({ error: "year must be a number" });

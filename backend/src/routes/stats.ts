@@ -1,16 +1,7 @@
 /**
- * One read for the whole Stats page.
- *
- * The page is a single scroll, so it is a single request. Four independent
- * gathers run concurrently and the slowest one sets the latency; splitting them
- * into four endpoints would only mean four waterfalls and four spinners.
- *
- * The server half is omitted entirely for non-admins rather than blanked out.
- * An absent key is a clearer contract than a key full of zeroes, and it means
- * a regular user's response never carries numbers about the machine.
- *
- * Actions are not here. Clearing caches, clearing finished jobs and retrying
- * failures already have endpoints; this page calls those.
+ * One request for the whole Stats page; the gathers run concurrently. The
+ * server section is omitted, not zeroed, for non-admins. Actions (clearing
+ * caches and jobs, retrying failures) use their own endpoints.
  */
 
 import { Router } from "express";
@@ -49,13 +40,8 @@ router.get("/", async (req, res) => {
         const tz = typeof req.query.tz === "string" ? req.query.tz : undefined;
         const period = asPeriod(req.query.period);
 
-        // `shelf`, `spoken` and `system` take no window on purpose. They are not
-        // made of listening events: the shelf is what the server holds, spoken
-        // time is a stored position rather than a stream of plays, and the
-        // machine has no history at all. Narrowing them to thirty days would
-        // produce numbers that are true and useless — "you have heard 0.4% of
-        // your shelf this month" — so they stay all-time and the page labels
-        // them as such rather than quietly ignoring the control.
+        // Shelf, spoken and system are all-time: they are not made of plays, and a
+        // window would give true but useless numbers. The page labels them so.
         const [listening, shelf, spoken, sig, system] = await Promise.all([
             listeningStats(userId, tz, period),
             shelfStats(userId),
@@ -159,13 +145,8 @@ router.get("/region", async (req, res) => {
 });
 
 /* ── The play-history audit ──────────────────────────────────────────────────
- *
- * A permanent maintenance tool, not a one-off migration. It lives beside the
- * stats it corrects, because the reason to run it is having just looked at a
- * number and not believed it.
- *
- * Reading is separate from acting, and acting takes track ids only. Which plays
- * die is decided in the service, on current data — see the note there.
+ * A permanent maintenance tool beside the stats it corrects. Reading is
+ * separate from acting; acting takes track ids only.
  * ─────────────────────────────────────────────────────────────────────────── */
 
 /** At most this many tracks may be named in one action. */
@@ -187,11 +168,8 @@ router.get("/false-starts", async (req, res) => {
 
 /**
  * POST /stats/false-starts/collapse — merge duplicate records into one row each.
- *
- * Takes no track list because it needs no judgement: a row written while the
- * track was demonstrably still playing describes a listen already counted. This
- * is the safe half of the cleanup and it is offered separately from the half
- * that guesses.
+ * No track list: a row written while the track was still playing is a listen
+ * already counted, so this half needs no judgement.
  */
 router.post("/false-starts/collapse", async (req, res) => {
     try {

@@ -23,10 +23,7 @@ import {
   ConfigurationError,
 } from '../utils/errors';
 
-/**
- * Context for tracking acquisition origin
- * Used to link download jobs to their source (Discovery batch or Spotify import)
- */
+/** Where an acquisition came from (Discovery batch or Spotify import), for linking its download jobs. */
 interface AcquisitionContext {
     userId: string;
     discoveryBatchId?: string;
@@ -231,15 +228,7 @@ class AcquisitionService {
         logger.debug(`[Acquisition] Updated job ${jobId}: ${statusText}`);
     }
 
-    /**
-     * Acquire an album using the configured behavior matrix
-     * Routes to Soulseek or Lidarr based on settings, with fallback support
-     * Queued to enable parallel album acquisition
-     *
-     * @param request - Album to acquire
-     * @param context - Tracking context (userId, batchId, etc.)
-     * @returns Acquisition result
-     */
+    /** Acquire an album from Soulseek or Lidarr per the user's settings, with fallback; queued so albums run in parallel. */
     async acquireAlbum(
         request: AlbumAcquisitionRequest,
         context: AcquisitionContext
@@ -437,14 +426,7 @@ class AcquisitionService {
         return result;
     }
 
-    /**
-     * Acquire individual tracks via Soulseek (for Unknown Album case)
-     * Batch downloads tracks without album MBID
-     *
-     * @param requests - Tracks to acquire
-     * @param context - Tracking context
-     * @returns Array of acquisition results
-     */
+    /** Acquire individual tracks via Soulseek, for tracks with no album MBID. */
     async acquireTracks(
         requests: TrackAcquisitionRequest[],
         context: AcquisitionContext
@@ -534,13 +516,8 @@ class AcquisitionService {
     }
 
     /**
-     * Acquire album via Soulseek (track-by-track download)
-     * Gets track list from MusicBrainz, then batch downloads
-     * Marks job as completed immediately (no webhook needed)
-     *
-     * @param request - Album to acquire
-     * @param context - Tracking context
-     * @returns Acquisition result
+     * Acquire an album via Soulseek track by track, using MusicBrainz for the
+     * track list. The job completes inline, with no webhook.
      */
     private async acquireAlbumViaSoulseek(
         request: AlbumAcquisitionRequest,
@@ -714,14 +691,7 @@ class AcquisitionService {
         }
     }
 
-    /**
-     * Acquire album via Lidarr (full album download)
-     * Creates download job and waits for webhook completion
-     *
-     * @param request - Album to acquire
-     * @param context - Tracking context
-     * @returns Acquisition result
-     */
+    /** Acquire an album via Lidarr; the job completes when its webhook arrives. */
     private async acquireAlbumViaLidarr(
         request: AlbumAcquisitionRequest,
         context: AcquisitionContext
@@ -807,15 +777,7 @@ class AcquisitionService {
         }
     }
 
-    /**
-     * Create a DownloadJob for tracking acquisition
-     * Links to Discovery batch or Spotify import job as appropriate
-     * Implements deduplication to prevent duplicate download jobs
-     *
-     * @param request - Album request
-     * @param context - Tracking context
-     * @returns Created or existing download job
-     */
+    /** Create the DownloadJob for an acquisition, linked to its batch or import, reusing an existing job for the same album. */
     private async createDownloadJob(
         request: AlbumAcquisitionRequest,
         context: AcquisitionContext

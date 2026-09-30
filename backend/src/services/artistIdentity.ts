@@ -1,24 +1,8 @@
 /**
- * Artist identity — the single source of truth for deciding whether two artist
- * strings refer to the same artist.
- *
- * This replaces a heuristic that tried to guess where a band name ended by
- * splitting on " & ", " and ", " with " and ", ". It could not work: those
- * separators occur inside band names at least as often as they mark a
- * collaboration, and no length or word-count rule separates the two. Measured
- * against real names it truncated "Dance With the Dead" to "Dance", "Nick Cave
- * & The Bad Seeds" to "Nick Cave", and "Florence and the Machine" to
- * "Florence". The truncated name was then persisted and became the artist.
- *
- * The rules here are deliberately boring:
- *
- *   - Never split on an ambiguous separator. If the tags do not tell us there
- *     are multiple artists, there is one artist.
- *   - Do the collapsing BEFORE the value is used as a lookup key, so the
- *     database can enforce uniqueness instead of a candidate scan guessing at
- *     it afterwards. `identityKey` is what makes "deadmau5" and "dead mau5"
- *     the same row by construction rather than by a fuzzy score that happened
- *     to land above a threshold.
+ * Artist identity: whether two artist strings name the same artist. It never
+ * splits on ambiguous separators ("&", "and", "with", ","), which occur inside
+ * band names as often as between collaborators, and it collapses names into a
+ * key before lookup so Postgres enforces uniqueness.
  */
 
 import { Prisma } from "@prisma/client";
@@ -45,21 +29,9 @@ const FEATURED_MARKER =
 
 
 /**
- * Casefold-safe text normalisation shared by every identity key in the app.
- * Exported so album identity uses the SAME rules; a second copy would drift.
- *
- * This is `unaccent()` and nothing else, because the identity keys are computed
- * in two places -- here at scan time and in SQL by the migration backfills --
- * and any disagreement makes a backfilled key unreachable from the runtime, so
- * the next scan re-creates the duplicate the mechanism exists to prevent.
- *
- * It used to be NFD + strip-combining-marks + a 20-entry hand-written table of
- * "characters unaccent folds that carry no combining mark". That approach
- * cannot work: it diverged from `unaccent()` on 857 of 2624 sampled codepoints,
- * and the two are not the same KIND of operation. `unaccent()` strips a bare
- * combining mark but leaves composed kana intact, where NFD-then-strip turns
- * \u304C into \u304B. The table is now generated from the shipped Postgres
- * image (see unaccentFold.ts), so the two sides agree by construction.
+ * Text folding shared by every identity key: Postgres `unaccent()` exactly
+ * (from pgTextRules), because the same keys are also computed in SQL backfills
+ * and must agree character for character.
  */
 export function foldIdentityText(value: string): string {
     return unaccent(value);
@@ -84,15 +56,9 @@ export function normalizeArtistName(name: string | null | undefined): string {
 }
 
 /**
- * The dedupe key. Everything that does not change WHO the artist is gets
- * removed: case, accents, punctuation, and all whitespace.
- *
- *   "deadmau5" | "Dead Mau5" | "dead mau5"  -> "deadmau5"
- *   "Sigur Rós" | "Sigur Ros"               -> "sigurros"
- *   "AC/DC" | "AC-DC" | "ACDC"              -> "acdc"
- *
- * Used as a UNIQUE column, so a second row for the same artist is rejected by
- * Postgres rather than depending on the lookup code being clever.
+ * The dedupe key, stored in a UNIQUE column: case, accents, punctuation and
+ * whitespace removed. "Dead Mau5" -> "deadmau5", "Sigur Rós" -> "sigurros",
+ * "AC/DC" -> "acdc".
  */
 export function artistIdentityKey(name: string | null | undefined): string {
     return stripNonAlnum(normalizeArtistName(name));
@@ -109,14 +75,8 @@ export function artistSortName(name: string | null | undefined): string {
 }
 
 /**
- * Does this artist carry a usable MusicBrainz id?
- *
- * "Unknown" is now expressed as NULL. The `temp-<ts>-<rand>` prefix is still
- * accepted because a row written before the sentinel was retired may survive a
- * partially-applied migration -- it was never a real id, so it must not be sent
- * to MusicBrainz either way.
- *
- * Narrows the type, so callers get a plain `string` inside the guard.
+ * Whether the artist has a real MusicBrainz id. Unknown is NULL; the old
+ * `temp-` placeholder is still rejected in case a row survived a partial migration.
  */
 export function hasRealMbid(
     mbid: string | null | undefined
@@ -132,16 +92,9 @@ export interface ParsedCredit {
 }
 
 /**
- * Turn a raw artist tag into a primary artist plus featured credits.
- *
- * Prefers structured tag data when the caller has it: `music-metadata` exposes
- * multi-value artist frames, which already carry the split this used to try to
- * reverse-engineer out of a joined string.
- *
- * When only a joined string is available it splits ONLY on separators that are
- * unambiguous (the ID3v2.4 null separator and ";"), and treats feat./ft./
- * featuring as annotations that peel off the tail while leaving the primary
- * intact. It never splits on "&", "and", "with", "," or "x".
+ * Split an artist tag into a primary artist and featured credits. Prefers
+ * multi-value tag frames; a joined string splits only on unambiguous separators
+ * (ID3v2.4 null, ";"), with feat./ft./featuring peeled off the end.
  */
 export function parseCredit(
     raw: string | null | undefined,
@@ -195,17 +148,9 @@ export interface ResolveArtistInput {
 type ArtistClient = Pick<Prisma.TransactionClient, "artist">;
 
 /**
- * The ONLY place an artist row is looked up or created.
- *
- * Order matters: the MusicBrainz id is checked FIRST because it is the
- * authoritative identifier. The previous code consulted it last, after a fuzzy
- * name match, so a track carrying a correct MBID could be attached to a
- * 95%-similar wrong artist before its own id was ever read.
- *
- * There is no fuzzy matching here at all. Near-miss unification ("the weeknd"
- * vs "the weekend") is a maintenance concern, not a per-file one -- doing it
- * during a scan means every scanned track pays for an unbounded candidate
- * query and a wrong guess is written to disk permanently.
+ * The only place an artist row is looked up or created. The MusicBrainz id is
+ * checked first. No fuzzy matching: a wrong guess during a scan is permanent,
+ * so near-miss merging is a maintenance job.
  */
 export async function resolveArtist(
     db: ArtistClient,
