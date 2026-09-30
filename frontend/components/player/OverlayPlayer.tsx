@@ -6,7 +6,6 @@ import { PlayCountLine } from "@/features/stats/PlayCountLine";
 import Image from "next/image";
 import Link from "next/link";
 import { useRef, useState } from "react";
-import { useVibeToggle } from "@/hooks/useVibeToggle";
 import {
     Play,
     Pause,
@@ -17,7 +16,6 @@ import {
     Shuffle,
     Repeat,
     Repeat1,
-    AudioWaveform,
     Loader2,
     RotateCcw,
     RotateCw,
@@ -30,9 +28,9 @@ import { usePlaybackProgress } from "@/hooks/usePlaybackProgress";
 import { useIsMobile, useIsTablet } from "@/hooks/useMediaQuery";
 import { SeekSlider } from "./SeekSlider";
 import { SleepTimer } from "./SleepTimer";
-import { useFeatures } from "@/lib/features-context";
 import { LyricsView } from "@/components/lyrics/LyricsView";
 import { useLyricsToggle } from "@/hooks/useLyricsToggle";
+import { VibeToggleButton } from "./VibeToggleButton";
 
 export function OverlayPlayer() {
     const {
@@ -73,8 +71,6 @@ export function OverlayPlayer() {
     // Swipe state for track skipping
     const touchStartX = useRef<number | null>(null);
     const [swipeOffset, setSwipeOffset] = useState(0);
-    const { handleVibeToggle, isVibeLoading } = useVibeToggle();
-    const { vibeEmbeddings, loading: featuresLoading } = useFeatures();
     const { handleLyricsToggle, isLyricsActive } = useLyricsToggle({ isMobile: isMobileOrTablet });
     const { title, subtitle, coverUrl, artistLink, mediaLink, hasMedia } = useMediaInfo(500);
 
@@ -405,32 +401,13 @@ export function OverlayPlayer() {
                             )}
                         </button>
 
-                        {/* Vibe button - only when embeddings available */}
-                        {!featuresLoading && vibeEmbeddings && (
-                            <button
-                                onClick={handleVibeToggle}
-                                disabled={!canSkip || isVibeLoading}
-                                className={cn(
-                                    "transition-colors",
-                                    !canSkip
-                                        ? "text-[var(--text-muted)] cursor-not-allowed"
-                                        : activeOperation.type !== 'idle'
-                                        ? "text-brand"
-                                        : "text-[var(--text-muted)] hover:text-brand"
-                                )}
-                                title={
-                                    activeOperation.type !== 'idle'
-                                        ? "Turn off vibe mode"
-                                        : "Match this vibe"
-                                }
-                            >
-                                {isVibeLoading ? (
-                                    <Loader2 className="w-5 h-5 animate-spin" />
-                                ) : (
-                                    <AudioWaveform className="w-5 h-5" />
-                                )}
-                            </button>
-                        )}
+                        <VibeToggleButton
+                            unavailable={!canSkip}
+                            className="transition-colors"
+                            iconClassName="w-5 h-5"
+                            idleClassName="text-[var(--text-muted)] hover:text-brand"
+                            activeClassName="text-brand"
+                        />
 
                         {/* Lyrics Toggle */}
                         {playbackType === "track" && (

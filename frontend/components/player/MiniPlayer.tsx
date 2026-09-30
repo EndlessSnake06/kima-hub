@@ -20,19 +20,17 @@ import {
     RotateCcw,
     RotateCw,
     Loader2,
-    AudioWaveform,
     ChevronLeft,
     AlertTriangle,
     RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useState, useRef } from "react";
-import { useVibeToggle } from "@/hooks/useVibeToggle";
 import { KeyboardShortcutsTooltip } from "./KeyboardShortcutsTooltip";
 import { SeekSlider } from "./SeekSlider";
 import { SleepTimer } from "./SleepTimer";
-import { useFeatures } from "@/lib/features-context";
 import { usePlaybackProgress } from "@/hooks/usePlaybackProgress";
+import { VibeToggleButton } from "./VibeToggleButton";
 
 export function MiniPlayer() {
     const {
@@ -42,7 +40,6 @@ export function MiniPlayer() {
         playbackType,
         isShuffle,
         repeatMode,
-        activeOperation,
     } = useAudioState();
     const {
         isPlaying,
@@ -67,8 +64,6 @@ export function MiniPlayer() {
     const isMobile = useIsMobile();
     const isTablet = useIsTablet();
     const isMobileOrTablet = isMobile || isTablet;
-    const { vibeEmbeddings, loading: featuresLoading } = useFeatures();
-    const { handleVibeToggle, isVibeLoading } = useVibeToggle();
     const [isMinimized, setIsMinimized] = useState(false);
     const [isDismissed, setIsDismissed] = useState(false);
     const [swipeOffset, setSwipeOffset] = useState(0);
@@ -308,36 +303,14 @@ export function MiniPlayer() {
                                     role="group"
                                     aria-label="Playback controls"
                                 >
-                                    {/* Vibe button - only for music tracks when embeddings available */}
-                                    {!featuresLoading && vibeEmbeddings && canSkip && (
-                                        <button
-                                            onClick={handleVibeToggle}
-                                            disabled={isVibeLoading}
-                                            className={cn(
-                                                "w-10 h-10 flex items-center justify-center rounded-full transition-colors",
-                                                activeOperation.type !== 'idle'
-                                                    ? "text-brand"
-                                                    : "text-[var(--text-primary)] hover:text-brand"
-                                            )}
-                                            aria-label={
-                                                activeOperation.type !== 'idle'
-                                                    ? "Turn off vibe mode"
-                                                    : "Match this vibe"
-                                            }
-                                            aria-pressed={activeOperation.type !== 'idle'}
-                                            title={
-                                                activeOperation.type !== 'idle'
-                                                    ? "Turn off vibe mode"
-                                                    : "Match this vibe"
-                                            }
-                                        >
-                                            {isVibeLoading ? (
-                                                <Loader2 className="w-5 h-5 animate-spin" />
-                                            ) : (
-                                                <AudioWaveform className="w-5 h-5" />
-                                            )}
-                                        </button>
-                                    )}
+                                    <VibeToggleButton
+                                        unavailable={!canSkip}
+                                        hideWhenUnavailable
+                                        className="w-10 h-10 flex items-center justify-center rounded-full transition-colors"
+                                        iconClassName="w-5 h-5"
+                                        idleClassName="text-[var(--text-primary)] hover:text-brand"
+                                        activeClassName="text-brand"
+                                    />
 
                                     {/* Play/Pause or Retry */}
                                     <button
@@ -653,34 +626,13 @@ export function MiniPlayer() {
                             )}
                         </button>
 
-                        {/* Vibe Mode Toggle - only when embeddings available */}
-                        {!featuresLoading && vibeEmbeddings && (
-                            <button
-                                onClick={handleVibeToggle}
-                                disabled={!hasMedia || !canSkip || isVibeLoading}
-                                className={cn(
-                                    "rounded p-1.5 transition-colors",
-                                    !hasMedia || !canSkip
-                                        ? "text-[var(--text-muted)] cursor-not-allowed"
-                                        : activeOperation.type !== 'idle'
-                                        ? "text-brand hover:text-brand-hover"
-                                        : "text-[var(--text-secondary)] hover:text-brand"
-                                )}
-                                aria-label="Toggle vibe visualization"
-                                aria-pressed={activeOperation.type !== 'idle'}
-                                title={
-                                    activeOperation.type !== 'idle'
-                                        ? "Turn off vibe mode"
-                                        : "Match this vibe - find similar sounding tracks"
-                                }
-                            >
-                                {isVibeLoading ? (
-                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                ) : (
-                                    <AudioWaveform className="w-3.5 h-3.5" />
-                                )}
-                            </button>
-                        )}
+                        <VibeToggleButton
+                            unavailable={!hasMedia || !canSkip}
+                            className="rounded p-1.5 transition-colors"
+                            iconClassName="w-3.5 h-3.5"
+                            idleClassName="text-[var(--text-secondary)] hover:text-brand"
+                            activeClassName="text-brand hover:text-brand-hover"
+                        />
 
                         {/* Keyboard Shortcuts */}
                         <KeyboardShortcutsTooltip />

@@ -28,15 +28,14 @@ import {
     MicVocal,
 } from "lucide-react";
 import { useMemo } from "react";
-import { useVibeToggle } from "@/hooks/useVibeToggle";
 import { KeyboardShortcutsTooltip } from "./KeyboardShortcutsTooltip";
 import { cn } from "@/lib/cn";
 import { computeVibeMatchScore } from "@/lib/vibeMatchScore";
-import { useFeatures } from "@/lib/features-context";
 import { formatTime, formatTimeRemaining } from "@/lib/format";
 import { SeekSlider } from "./SeekSlider";
 import { SleepTimer } from "./SleepTimer";
 import { useLyricsToggle } from "@/hooks/useLyricsToggle";
+import { VibeToggleButton } from "./VibeToggleButton";
 
 
 export function FullPlayer() {
@@ -78,8 +77,6 @@ export function FullPlayer() {
         toggleRepeat,
     } = useAudioControls();
 
-    const { handleVibeToggle, isVibeLoading } = useVibeToggle();
-    const { vibeEmbeddings, loading: featuresLoading } = useFeatures();
     const { handleLyricsToggle, isLyricsActive } = useLyricsToggle({ isMobile: false });
 
     const currentTrackFeatures = queue[currentIndex]?.audioFeatures || null;
@@ -358,42 +355,13 @@ export function FullPlayer() {
                                 )}
                             </button>
 
-                            {/* Vibe Mode Toggle - only when embeddings available */}
-                            {!featuresLoading && vibeEmbeddings && (
-                                <button
-                                    onClick={handleVibeToggle}
-                                    className={cn(
-                                        "transition-all duration-200 hover:scale-110 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:scale-100",
-                                        !hasMedia || playbackType !== "track"
-                                            ? "text-[var(--text-muted)]"
-                                            : activeOperation.type !== 'idle'
-                                            ? "text-brand hover:text-brand-hover"
-                                            : "text-[var(--text-secondary)] hover:text-brand"
-                                    )}
-                                    disabled={
-                                        !hasMedia ||
-                                        playbackType !== "track" ||
-                                        isVibeLoading
-                                    }
-                                    aria-label={
-                                        activeOperation.type !== 'idle'
-                                            ? "Turn off vibe mode"
-                                            : "Match this vibe"
-                                    }
-                                    aria-pressed={activeOperation.type !== 'idle'}
-                                    title={
-                                        activeOperation.type !== 'idle'
-                                            ? "Turn off vibe mode"
-                                            : "Match this vibe - find similar sounding tracks"
-                                    }
-                                >
-                                    {isVibeLoading ? (
-                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                    ) : (
-                                        <AudioWaveform className="w-4 h-4" />
-                                    )}
-                                </button>
-                            )}
+                            <VibeToggleButton
+                                unavailable={!hasMedia || playbackType !== "track"}
+                                className="transition-all duration-200 hover:scale-110 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:scale-100"
+                                iconClassName="w-4 h-4"
+                                idleClassName="text-[var(--text-secondary)] hover:text-brand"
+                                activeClassName="text-brand hover:text-brand-hover"
+                            />
 
                             {/* Lyrics Toggle */}
                             {playbackType === "track" && (
