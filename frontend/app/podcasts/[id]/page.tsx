@@ -160,7 +160,6 @@ export default function PodcastDetailPage() {
                     {podcast && inProgressEpisodes.length > 0 && (
                         <div>
                             <ContinueListening
-                                podcast={podcast}
                                 inProgressEpisodes={inProgressEpisodes}
                                 sortedEpisodes={sortedEpisodes}
                                 isEpisodePlaying={isEpisodePlaying}
@@ -189,7 +188,6 @@ export default function PodcastDetailPage() {
                     {podcast && (
                         <div>
                             <EpisodeList
-                                podcast={podcast}
                                 episodes={sortedEpisodes}
                                 sortOrder={sortOrder}
                                 onSortOrderChange={setSortOrder}

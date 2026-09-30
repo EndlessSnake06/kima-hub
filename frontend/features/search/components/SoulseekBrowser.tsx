@@ -17,7 +17,6 @@ interface SoulseekBrowserProps {
     results: SoulseekResult[];
     isSearching: boolean;
     isPolling: boolean;
-    isComplete: boolean;
     uniqueUserCount: number;
     downloadingFiles: Set<string>;
     onDownload: (result: SoulseekResult) => void;
@@ -52,7 +51,6 @@ export function SoulseekBrowser({
     results,
     isSearching,
     isPolling,
-    isComplete: _isComplete,
     uniqueUserCount,
     downloadingFiles,
     onDownload,

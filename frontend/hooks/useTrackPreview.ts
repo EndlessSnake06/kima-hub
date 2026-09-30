@@ -54,13 +54,7 @@ export function useTrackPreview<T extends PreviewableTrack>() {
         audio.load();
     }, []);
 
-    const handlePreview = async (
-        track: T,
-        artistName: string,
-        e: React.MouseEvent
-    ) => {
-        e.stopPropagation();
-
+    const handlePreview = async (track: T, artistName: string) => {
         // If the same track is playing, pause it
         if (previewTrack === track.id && previewPlaying) {
             previewAudioRef.current?.pause();

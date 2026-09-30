@@ -1,37 +1,45 @@
-import React, { useRef } from "react";
+import React from "react";
 import { Play, Pause, Volume2, Music } from "lucide-react";
 import { cn } from "@/utils/cn";
 import Image from "next/image";
 import { api } from "@/lib/api";
 import type { Track, Artist } from "../types";
-import type { ColorPalette } from "@/hooks/useImageColor";
 import { formatTime } from "@/utils/formatTime";
 import { formatNumber } from "@/utils/formatNumber";
 import { SectionHeader } from "@/features/home/components/SectionHeader";
 import { cascadeStyle } from "@/lib/motion";
+import { useDoubleTapList } from "@/hooks/useDoubleTap";
+
+// A top track without a library album is not owned, so it can only be previewed.
+const isUnownedTrack = (track: Track) =>
+    !track.album?.id || !track.album?.title || track.album.title === "Unknown Album";
 
 interface PopularTracksProps {
     tracks: Track[];
     artist: Artist;
     currentTrackId: string | undefined;
-    colors: ColorPalette | null;
     onPlayTrack: (track: Track) => void;
     previewTrack: string | null;
     previewPlaying: boolean;
-    onPreview: (track: Track, e: React.MouseEvent) => void;
+    onPreview: (track: Track) => void;
 }
 
 export const PopularTracks: React.FC<PopularTracksProps> = ({
     tracks,
     artist,
     currentTrackId,
-    colors: _colors,
     onPlayTrack,
     previewTrack,
     previewPlaying,
     onPreview,
 }) => {
-    const lastTapRef = useRef<{ time: number; index: number }>({ time: 0, index: -1 });
+    const activate = (track: Track) => {
+        if (isUnownedTrack(track)) onPreview(track);
+        else onPlayTrack(track);
+    };
+    const onTouchEnd = useDoubleTapList((index) => {
+        if (tracks[index]) activate(tracks[index]);
+    });
 
     return (
         <section>
@@ -41,10 +49,7 @@ export const PopularTracks: React.FC<PopularTracksProps> = ({
                     const isPlaying = currentTrackId === track.id;
                     const isPreviewPlaying =
                         previewTrack === track.id && previewPlaying;
-                    const isUnowned =
-                        !track.album?.id ||
-                        !track.album?.title ||
-                        track.album.title === "Unknown Album";
+                    const isUnowned = isUnownedTrack(track);
                     const coverUrl = track.album?.coverArt
                         ? api.getCoverArtUrl(track.album.coverArt, 80)
                         : null;
@@ -63,41 +68,15 @@ export const PopularTracks: React.FC<PopularTracksProps> = ({
                                 "animate-rise [animation-delay:calc(var(--i)*var(--stagger))]",
                             )}
                             style={{ "--i": index } as unknown as React.CSSProperties}
-                            onDoubleClick={(e) => {
-                                if (isUnowned) {
-                                    onPreview(track, e);
-                                } else {
-                                    onPlayTrack(track);
-                                }
-                            }}
-                            onTouchEnd={(e) => {
-                                const idx = Number(e.currentTarget.dataset.trackIndex);
-                                if (isNaN(idx)) return;
-                                const now = Date.now();
-                                if (now - lastTapRef.current.time < 300 && lastTapRef.current.index === idx) {
-                                    const t = tracks[idx];
-                                    const unowned = !t?.album?.id || !t?.album?.title || t.album.title === "Unknown Album";
-                                    if (unowned) {
-                                        onPreview(t, e as unknown as React.MouseEvent);
-                                    } else {
-                                        onPlayTrack(t);
-                                    }
-                                    lastTapRef.current = { time: 0, index: -1 };
-                                } else {
-                                    lastTapRef.current = { time: now, index: idx };
-                                }
-                            }}
+                            onDoubleClick={() => activate(track)}
+                            onTouchEnd={onTouchEnd}
                         >
                             {/* Track Number / Play Button */}
                             <div className="flex items-center justify-center">
                                 <button
                                     onClick={(e) => {
                                         e.stopPropagation();
-                                        if (isUnowned) {
-                                            onPreview(track, e);
-                                        } else {
-                                            onPlayTrack(track);
-                                        }
+                                        activate(track);
                                     }}
                                     className="w-8 h-8 flex items-center justify-center"
                                     aria-label={isPlaying ? "Pause" : "Play"}
@@ -179,7 +158,7 @@ export const PopularTracks: React.FC<PopularTracksProps> = ({
                                     <button
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            onPreview(track, e);
+                                            onPreview(track);
                                         }}
                                         className="p-1.5 rounded-full opacity-0 group-hover:opacity-100 group-hover:translate-y-0 translate-y-1 transition-[opacity,transform] duration-150 hover:bg-white/10 text-[var(--text-secondary)] hover:text-white"
                                     >
@@ -191,7 +170,7 @@ export const PopularTracks: React.FC<PopularTracksProps> = ({
                                     </button>
                                 )}
                                 {track.duration && (
-                                    <span className="text-sm text-[var(--text-secondary)] w-10 text-right tabular-nums tabular-nums">
+                                    <span className="text-sm text-[var(--text-secondary)] w-10 text-right tabular-nums">
                                         {formatTime(track.duration)}
                                     </span>
                                 )}

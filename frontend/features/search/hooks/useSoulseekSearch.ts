@@ -13,7 +13,6 @@ interface UseSoulseekSearchReturn {
     soulseekResults: SoulseekResult[];
     isSoulseekSearching: boolean;
     isSoulseekPolling: boolean;
-    isSearchComplete: boolean;
     soulseekEnabled: boolean;
     downloadingFiles: Set<string>;
     handleDownload: (result: SoulseekResult) => Promise<void>;
@@ -207,7 +206,6 @@ export function useSoulseekSearch({
         soulseekResults,
         isSoulseekSearching,
         isSoulseekPolling: !isComplete && !isSoulseekSearching && hasActiveSearch && !!query.trim() && soulseekEnabled,
-        isSearchComplete: isComplete,
         soulseekEnabled,
         downloadingFiles,
         handleDownload,

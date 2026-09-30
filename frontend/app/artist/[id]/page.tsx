@@ -190,10 +190,8 @@ export default function ArtistPage() {
             >
                 {/* Action bar inside hero for visual continuity */}
                 <ArtistActionBar
-                    artist={artist}
                     albums={albums}
                     source={source}
-                    colors={colors}
                     onPlayAll={() => playAll(artist, albums)}
                     onShuffle={() => shufflePlay(artist, albums)}
                     onDownloadAll={() => downloadArtist(artist)}
@@ -234,12 +232,11 @@ export default function ArtistPage() {
                             tracks={artist.topTracks}
                             artist={artist}
                             currentTrackId={currentTrack?.id}
-                            colors={colors}
                             onPlayTrack={handlePlayTrack}
                             previewTrack={previewTrack}
                             previewPlaying={previewPlaying}
-                            onPreview={(track: Track, e: React.MouseEvent) =>
-                                handlePreview(track, artist.name, e)
+                            onPreview={(track: Track) =>
+                                handlePreview(track, artist.name)
                             }
                         />
                     )}
@@ -256,7 +253,6 @@ export default function ArtistPage() {
                     {/* Available Albums to Download */}
                     <AvailableAlbums
                         albums={availableAlbums}
-                        artistName={artist.name}
                         source={source}
                         colors={colors}
                         onDownloadAlbum={handleDownloadAlbum}

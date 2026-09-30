@@ -10,7 +10,6 @@ import { SectionHeader } from "@/features/home/components/SectionHeader";
 
 interface AvailableAlbumsProps {
     albums: Album[];
-    artistName: string;
     source: ArtistSource | null;
     colors: ColorPalette | null;
     onDownloadAlbum: (album: Album, e: React.MouseEvent) => void;
@@ -129,7 +128,6 @@ function AlbumGrid({
 
 export function AvailableAlbums({
     albums,
-    artistName: _artistName,
     source,
     colors,
     onDownloadAlbum,

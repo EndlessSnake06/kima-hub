@@ -39,7 +39,6 @@ export default function SearchPage() {
         soulseekResults,
         isSoulseekSearching,
         isSoulseekPolling,
-        isSearchComplete,
         soulseekEnabled,
         downloadingFiles,
         handleDownload,
@@ -167,7 +166,6 @@ export default function SearchPage() {
                             results={soulseekResults}
                             isSearching={isSoulseekSearching}
                             isPolling={isSoulseekPolling}
-                            isComplete={isSearchComplete}
                             uniqueUserCount={uniqueUserCount}
                             downloadingFiles={downloadingFiles}
                             onDownload={handleDownload}

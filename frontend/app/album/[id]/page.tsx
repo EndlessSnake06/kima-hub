@@ -207,7 +207,6 @@ export default function AlbumPage({ params }: AlbumPageProps) {
                 <AlbumActionBar
                     album={album}
                     source={source || "discovery"}
-                    colors={colors}
                     onPlayAll={() => playAlbum(album, 0)}
                     onShuffle={() => shufflePlay(album)}
                     onDownloadAlbum={() => downloadAlbum(album)}
@@ -251,12 +250,8 @@ export default function AlbumPage({ params }: AlbumPageProps) {
                             onAddToPlaylist={handleAddToPlaylist}
                             previewTrack={previewTrack}
                             previewPlaying={previewPlaying}
-                            onPreview={(track: AlbumTrack, e: React.MouseEvent) =>
-                                handlePreview(
-                                    track,
-                                    album.artist?.name || "",
-                                    e
-                                )
+                            onPreview={(track: AlbumTrack) =>
+                                handlePreview(track, album.artist?.name || "")
                             }
                         />
                     )}

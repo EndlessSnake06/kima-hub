@@ -2,12 +2,10 @@ import { Play, Pause, Shuffle, Download, ListPlus } from "lucide-react";
 import { cn } from "@/utils/cn";
 import type { Album } from "../types";
 import type { AlbumSource } from "../types";
-import type { ColorPalette } from "@/hooks/useImageColor";
 
 interface AlbumActionBarProps {
     album: Album;
     source: AlbumSource;
-    colors: ColorPalette | null;
     onPlayAll: () => void;
     onShuffle: () => void;
     onDownloadAlbum: () => void;
@@ -21,7 +19,6 @@ interface AlbumActionBarProps {
 export function AlbumActionBar({
     album,
     source,
-    colors: _colors,
     onPlayAll,
     onShuffle,
     onDownloadAlbum,

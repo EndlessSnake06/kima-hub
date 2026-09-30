@@ -1,13 +1,12 @@
 "use client";
 
 import { Play, Pause } from "lucide-react";
-import { Podcast, Episode } from "../types";
+import { Episode } from "../types";
 import { formatDuration } from "@/utils/formatTime";
 import { formatDate } from "../utils";
 import { SectionHeader } from "@/features/home/components/SectionHeader";
 
 interface ContinueListeningProps {
-    podcast: Podcast;
     inProgressEpisodes: Episode[];
     sortedEpisodes: Episode[];
     isEpisodePlaying: (episodeId: string) => boolean;
@@ -17,7 +16,6 @@ interface ContinueListeningProps {
 }
 
 export function ContinueListening({
-    podcast: _podcast,
     inProgressEpisodes,
     sortedEpisodes,
     isEpisodePlaying,

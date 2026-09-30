@@ -25,7 +25,7 @@ interface TrackListProps {
     onAddToPlaylist: (trackId: string) => void;
     previewTrack: string | null;
     previewPlaying: boolean;
-    onPreview: (track: Track, e: React.MouseEvent) => void;
+    onPreview: (track: Track) => void;
 }
 
 interface TrackRowProps {
@@ -39,7 +39,7 @@ interface TrackRowProps {
     onPlayTrack: (track: Track, index: number) => void;
     onAddToQueue: (track: Track) => void;
     onAddToPlaylist: (trackId: string) => void;
-    onPreview: (track: Track, e: React.MouseEvent) => void;
+    onPreview: (track: Track) => void;
 }
 
 
@@ -81,26 +81,16 @@ const TrackRow = memo(
 
         const handlePreview = useCallback(
             (e: React.MouseEvent) => {
-                onPreview(track, e);
+                e.stopPropagation();
+                onPreview(track);
             },
             [track, onPreview]
         );
 
-        const handlePlayTrack = useCallback(() => {
-            onPlayTrack(track, index);
-        }, [track, index, onPlayTrack]);
-
-        const handleRowClick = useCallback(
-            (e?: React.MouseEvent) => {
-                // For unowned tracks, play preview instead of local file
-                if (isPreviewOnly && e) {
-                    onPreview(track, e);
-                } else {
-                    onPlayTrack(track, index);
-                }
-            },
-            [isPreviewOnly, track, index, onPlayTrack, onPreview]
-        );
+        const handleRowClick = useCallback(() => {
+            if (isPreviewOnly) onPreview(track);
+            else onPlayTrack(track, index);
+        }, [isPreviewOnly, track, index, onPlayTrack, onPreview]);
 
         const doubleTapProps = useDoubleTap(handleRowClick);
 
@@ -126,11 +116,7 @@ const TrackRow = memo(
                 onKeyDown={(e) => {
                     if (e.key === "Enter") {
                         e.preventDefault();
-                        if (isPreviewOnly) {
-                            onPreview(track, e as unknown as React.MouseEvent);
-                        } else {
-                            handlePlayTrack();
-                        }
+                        handleRowClick();
                     }
                 }}
             >
@@ -139,7 +125,7 @@ const TrackRow = memo(
                     <button
                         onClick={(e) => {
                             e.stopPropagation();
-                            handleRowClick(e);
+                            handleRowClick();
                         }}
                         className="w-11 h-11 flex items-center justify-center rounded-lg hover:bg-white/5 transition-colors"
                         aria-label={isPlaying ? "Pause" : "Play"}

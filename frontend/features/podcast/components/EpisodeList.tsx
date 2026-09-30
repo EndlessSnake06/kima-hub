@@ -4,14 +4,13 @@ import { useState, useRef } from "react";
 import { Play, Pause, Check, ArrowUpDown, CheckCircle, ChevronDown, ChevronUp } from "lucide-react";
 import DOMPurify from "dompurify";
 import { cn } from "@/utils/cn";
-import { Podcast, Episode } from "../types";
+import { Episode } from "../types";
 import { formatDuration } from "@/utils/formatTime";
 import { formatDate } from "../utils";
 import { SectionHeader } from "@/features/home/components/SectionHeader";
 import { cascadeStyle } from "@/lib/motion";
 
 interface EpisodeListProps {
-    podcast: Podcast;
     episodes: Episode[];
     sortOrder: "newest" | "oldest";
     onSortOrderChange: (order: "newest" | "oldest") => void;
@@ -238,7 +237,6 @@ function EpisodeRow({
 }
 
 export function EpisodeList({
-    podcast: _podcast,
     episodes,
     sortOrder,
     onSortOrderChange,
