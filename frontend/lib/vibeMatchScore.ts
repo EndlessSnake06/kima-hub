@@ -11,8 +11,6 @@ const MATCH_FEATURES = [
     { key: "moodRelaxed", min: 0, max: 1 },
     { key: "moodAggressive", min: 0, max: 1 },
     { key: "moodParty", min: 0, max: 1 },
-    { key: "moodAcoustic", min: 0, max: 1 },
-    { key: "moodElectronic", min: 0, max: 1 },
 ] as const;
 
 function normalize(value: number | null | undefined, min: number, max: number): number {

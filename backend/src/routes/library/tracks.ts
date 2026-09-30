@@ -1408,8 +1408,6 @@ router.get("/radio", async (req, res) => {
                 getMoodValue(track.moodRelaxed, 0.5) * 1.3,
                 getMoodValue(track.moodAggressive, 0.5) * 1.3,
                 getMoodValue((track as any).moodParty, 0.5) * 1.3,
-                getMoodValue((track as any).moodAcoustic, 0.5) * 1.3,
-                getMoodValue((track as any).moodElectronic, 0.5) * 1.3,
                 track.energy ?? 0.5,
                 enhancedArousal,
                 track.danceabilityMl ?? track.danceability ?? 0.5,
