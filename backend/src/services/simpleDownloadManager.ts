@@ -1,5 +1,5 @@
 /**
- * Simple Download Manager (Refactored)
+ * Simple Download Manager
  *
  * Stateless download service that uses the database as the single source of truth.
  * Handles album downloads with automatic retry, blocklisting, and completion tracking.
@@ -1433,14 +1433,6 @@ class SimpleDownloadManager {
             const startedAt = metadata?.startedAt
                 ? new Date(metadata.startedAt)
                 : job.createdAt;
-
-            // Skip Soulseek jobs - they complete via their own pipeline
-            if (
-                metadata?.source === "soulseek_direct" ||
-                metadata?.source === "slskd"
-            ) {
-                continue;
-            }
 
             // Jobs without lidarrRef = Lidarr never grabbed = no sources found
             if (!job.lidarrRef) {

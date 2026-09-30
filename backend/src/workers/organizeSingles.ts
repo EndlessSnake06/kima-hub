@@ -1,12 +1,11 @@
 /**
  * Singles folder organisation: the one-time move of old Soulseek/ files into
- * Singles/Artist/Album/, and cleanup of leftover slskd jobs.
+ * Singles/Artist/Album/.
  */
 
 import path from "path";
 import { readdir, copyFile, unlink, mkdir, rmdir, writeFile, stat, rename } from "fs/promises";
 import { sessionLog } from "../utils/playlistLogger";
-import { prisma } from "../utils/db";
 import { getSystemSettings } from "../utils/systemSettings";
 
 /** Async existsSync equivalent -- avoids blocking the event loop on a stat check. */
@@ -215,45 +214,7 @@ async function migrateExistingSoulseekFiles(musicPath: string): Promise<void> {
 }
 
 /**
- * Clean up any legacy slskd download jobs that are stuck in processing
- * This handles the transition from slskd Docker sidecar to direct soulseek-ts
- */
-async function cleanupLegacySlskdJobs(): Promise<void> {
-    try {
-        // Find any old slskd jobs that are still processing
-        const legacyJobs = await prisma.downloadJob.findMany({
-            where: {
-                status: "processing",
-                metadata: {
-                    path: ["source"],
-                    equals: "slskd",
-                },
-            },
-        });
-
-        if (legacyJobs.length > 0) {
-            sessionLog('ORGANIZE', `Found ${legacyJobs.length} legacy slskd jobs to clean up`);
-
-            for (const job of legacyJobs) {
-                await prisma.downloadJob.update({
-                    where: { id: job.id },
-                    data: {
-                        status: "failed",
-                        error: "slskd integration replaced with direct soulseek-ts connection",
-                        completedAt: new Date(),
-                    },
-                });
-                sessionLog('ORGANIZE', `Marked legacy job ${job.id} (${job.subject}) as failed`);
-            }
-        }
-    } catch (err: any) {
-        sessionLog('ORGANIZE', `Failed to clean up legacy jobs: ${err.message}`, 'WARN');
-    }
-}
-
-/**
- * Main organization function
- * With direct soulseek-ts, this mainly handles migration and cleanup
+ * Move files from the old Soulseek/ folder into Singles/Artist/Album/.
  */
 export async function organizeSingles(): Promise<void> {
     sessionLog('ORGANIZE', '=== STARTING SINGLES ORGANIZATION ===');
@@ -272,9 +233,6 @@ export async function organizeSingles(): Promise<void> {
 
     // Run one-time migration of existing Soulseek files
     await migrateExistingSoulseekFiles(musicPath);
-
-    // Clean up any legacy slskd jobs
-    await cleanupLegacySlskdJobs();
 
     sessionLog('ORGANIZE', '=== ORGANIZATION COMPLETE ===');
 }
