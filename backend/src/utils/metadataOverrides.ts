@@ -10,7 +10,7 @@
  * User-added genres take precedence and are merged with canonical genres
  *
  * CRITICAL: This is used for mix generation, discovery, and genre filtering.
- * User preferences always take precedence over Last.fm-collected data.
+ * User genres always take precedence.
  */
 export function getMergedGenres(entity: {
     genres?: unknown;

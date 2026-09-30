@@ -64,8 +64,8 @@ function toIdentification(
 }
 
 /**
- * Read the file's identity tags — the first step, and the
- * only identification step that needs no network. Returns null when the
+ * Read the file's identity tags, the first identification step and the only
+ * one that needs no network. Returns null when the
  * stored path is unusable or the file cannot be parsed; the caller then
  * proceeds as if the file had no tags.
  */

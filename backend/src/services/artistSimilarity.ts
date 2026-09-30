@@ -31,7 +31,7 @@ export interface SimilarArtistWithLibrary extends SimilarArtist {
 /** Below this many embedded tracks a centroid is noise; don't trust it. */
 export const MIN_LOCAL_TRACKS = 3;
 
-/** 7 days — same TTL the Last.fm path used; similarity data churns slowly. */
+/** 7 days: similarity data changes slowly. */
 const CACHE_TTL = 604800;
 
 /**

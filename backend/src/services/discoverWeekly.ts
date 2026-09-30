@@ -945,10 +945,8 @@ class DiscoverWeeklyService {
                 const normalizedAlbum = normalizeStr(criteria.albumTitle);
                 const normalizedArtist = normalizeStr(criteria.artistName);
 
-                // Get all albums from this artist (by normalized name).
-                // Match on the full normalized name when it has more than one
-                // token; a bare first-word `contains` (e.g. "the", "dj") was
-                // over-broad enough to match most of the library (DISC-9).
+                // Albums by this artist, matched on the full normalised name when it
+                // has several words: a first word like "the" or "dj" matches too much.
                 const artistTokens = normalizedArtist.split(" ").filter(Boolean);
                 const artistSearchTerm =
                     artistTokens.length > 1 ? normalizedArtist : artistTokens[0];
@@ -1351,8 +1349,7 @@ class DiscoverWeeklyService {
                         discoveryAlbumId = discoveryAlbum.id;
                         createdAlbums.set(albumKey, discoveryAlbumId);
 
-                        // Add to exclusion list (if user has exclusions enabled).
-                        // exclusionMonths is hoisted above, outside the transaction (DISC-8).
+                        // Add to the exclusion list when the user has exclusions enabled.
                         if (exclusionMonths > 0) {
                             const expiresAt = new Date();
                             expiresAt.setMonth(
@@ -1950,8 +1947,7 @@ class DiscoverWeeklyService {
             .trim();
 
         // Scan the cached owned-album snapshot in-memory instead of a
-        // contains/ILIKE query per candidate (DISC-5, shared with
-        // discoverySeeding.isAlbumOwned via the same cache).
+        // contains/ILIKE query per candidate (the cache discoverySeeding shares).
         const { albums, ownedAlbumArtists, albumTitleByRgMbid } =
             await discoverySeeding.getOwnedAlbumIndex();
 
@@ -2092,9 +2088,8 @@ class DiscoverWeeklyService {
         );
         const seeds = await discoverySeeding.getSeedArtists(batch.userId);
 
-        // Cap total MusicBrainz lookups across ALL seeds (not per-seed) - this loop is
-        // fully serial (seeds x similarArtists[30] x albums[5]) and each iteration awaits
-        // a network call, so an unbounded search can take a very long time (DISC-4).
+        // Cap MusicBrainz lookups across all seeds: the loop is serial (seeds x 30
+        // similar artists x 5 albums), one network call per iteration.
         const MAX_MB_LOOKUPS = 40;
         let mbLookupsAttempted = 0;
 
@@ -2170,9 +2165,6 @@ class DiscoverWeeklyService {
                                 // Continue anyway - assume not in library if check fails
                             }
 
-                            // Ownership + exclusion checks are independent reads; run them
-                            // concurrently and share the logic with findValidAlbumForArtist
-                            // (DISC-4/DISC-11).
                             const candidate = await this.isValidUnownedAlbum(
                                 mbAlbum.id,
                                 batch.userId,
@@ -2376,9 +2368,6 @@ class DiscoverWeeklyService {
                     continue;
                 }
 
-                // Ownership + exclusion checks are independent reads; run them
-                // concurrently via the shared helper also used by
-                // findReplacementAlbum (DISC-4/DISC-11).
                 const candidate = await this.isValidUnownedAlbum(
                     mbAlbum.id,
                     userId,
@@ -2406,9 +2395,6 @@ class DiscoverWeeklyService {
                 if (releaseYear >= currentYear - RECENT_YEARS) {
                     score += 10;
                 }
-
-                // No global play-count source exists after Last.fm; the
-                // recency bonus above carries the score.
 
                 scoredAlbums.push({
                     albumName: album.name,
@@ -2649,11 +2635,6 @@ class DiscoverWeeklyService {
         logger.debug(`   Found ${recommendations.length} deep cut recommendations`);
         return recommendations;
     }
-
-    /**
-     * TAG EXPLORATION STRATEGY
-     * Find albums by the user's top genre tags via Last.fm
-     */
 
     /**
      * Calculate tier distribution dynamically based on available candidates.

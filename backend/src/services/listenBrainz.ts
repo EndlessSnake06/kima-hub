@@ -31,7 +31,7 @@ export interface ChartArtist {
 }
 
 const LB_BASE = process.env.LISTENBRAINZ_API_URL || "https://api.listenbrainz.org";
-/** 7 days — same TTL the Last.fm path used; similarity data churns slowly. */
+/** 7 days: similarity data changes slowly. */
 const SIMILAR_TTL = 604800;
 
 class ListenBrainzService {

@@ -112,10 +112,7 @@ export async function runDataIntegrityCheck(): Promise<IntegrityReport> {
         });
 
         if (orphanCandidates.length > 0) {
-            // Report-only: these albums have no active DiscoveryAlbum and
-            // no OwnedAlbum keeping them, but nothing in the background deletes
-            // rows a scan can bring back or a user chose to keep. They stay
-            // until a human re-decides.
+            // Reported, not deleted: a scan can bring them back.
             for (const album of orphanCandidates) {
                 report.orphanedAlbums++;
                 logger.warn(
@@ -237,8 +234,7 @@ export async function runDataIntegrityCheck(): Promise<IntegrityReport> {
             data: { location: "DISCOVER" },
         });
 
-        // The OwnedAlbum record stays: if it says a user kept this album,
-        // that keep stands (the check does not delete user decisions).
+        // The OwnedAlbum record stays: a user's keep is never undone here.
         mislocatedAlbumsFixed++;
     }
     
@@ -256,9 +252,6 @@ export async function runDataIntegrityCheck(): Promise<IntegrityReport> {
     });
 
     for (const album of emptyAlbums) {
-        // Report-only: a ghost album whose files are gone stays in the
-        // catalogue until a scan brings the files back or a user prunes it;
-        // the check itself never deletes.
         report.orphanedAlbums++;
         logger.warn(
             `     Empty album kept (no tracks, needs a decision): ${album.artist.name} - ${album.title}`
@@ -266,11 +259,7 @@ export async function runDataIntegrityCheck(): Promise<IntegrityReport> {
     }
 
     // 6. Report orphaned OwnedAlbum records (no matching Album record).
-    // Report-only: a keep whose Album row was removed out-of-band is a
-    // user decision with a missing row, not garbage — a rescan can recreate
-    // the Album, and silently deleting the keep would undo what the user
-    // chose (e.g. a discovery_liked record that would no longer protect the
-    // album when it comes back).
+    // A keep is a user decision, and a rescan can recreate the Album.
     const orphanedOwnedAlbums = await prisma.$queryRawUnsafe<
         { artistId: string; rgMbid: string | null; source: string }[]
     >(

@@ -166,9 +166,7 @@ router.get("/discover", async (req, res) => {
         const promiseMap: Record<string, Promise<any>> = {};
 
         if (type === "music" || type === "all") {
-            // Artist results: MusicBrainz search (replaces Last.fm artist
-            // search — the shared key is dead, and MB is the authority for
-            // names, aliases and MBIDs anyway).
+            // Artist results: MusicBrainz search.
             promiseMap.artists = (async () => {
                 const found = await musicBrainzService.searchArtist(searchQuery, searchLimit);
                 if (found.kind !== "answered") {
@@ -192,8 +190,7 @@ router.get("/discover", async (req, res) => {
                 }));
                 return enrichSimilarArtists(similar, searchLimit);
             })();
-            // Track results: local library search (replaces Last.fm track
-            // search — web results could never be played here anyway).
+            // Track results: local library search.
             promiseMap.tracks = (async () => {
                 const local = await searchService.searchTracks({ query: searchQuery, limit: searchLimit });
                 const albumIds = [...new Set(local.map((t) => t.albumId).filter(Boolean))];

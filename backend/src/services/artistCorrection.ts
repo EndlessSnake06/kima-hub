@@ -44,8 +44,7 @@ function stripArtistSuffixes(name: string): string {
 
 /**
  * Resolve a possibly-messy artist name to its canonical form.
- * Returns null when nothing confident was found (same contract as the
- * Last.fm correction: null means "keep the original name").
+ * Returns null, meaning "keep the original name", when nothing confident was found.
  */
 export async function getArtistCorrection(
     artistName: string

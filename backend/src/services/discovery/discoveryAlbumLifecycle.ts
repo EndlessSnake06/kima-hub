@@ -202,9 +202,7 @@ export class DiscoveryAlbumLifecycle {
             }
         }
 
-        // Each delete does an axios call to Lidarr with a 10s timeout; running
-        // them fully serially made cleanup of a large batch take minutes. Run
-        // in small bounded-concurrency chunks instead of one at a time (DISC-13).
+        // Each delete is a Lidarr call with a 10 s timeout, so run a few at a time.
         const DELETE_CONCURRENCY = 5;
         for (let i = 0; i < activeAlbums.length; i += DELETE_CONCURRENCY) {
             const chunk = activeAlbums.slice(i, i + DELETE_CONCURRENCY);

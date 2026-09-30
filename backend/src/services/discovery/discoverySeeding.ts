@@ -270,7 +270,7 @@ export class DiscoverySeeding {
             // Allow 2+ character names (handles U2, AC/DC, M83, etc.)
             if (artistFirstWord && artistFirstWord.length >= 2) {
                 // Scan the cached owned-album snapshot in-memory instead of a
-                // startsWith/contains query per candidate (DISC-5).
+                // startsWith/contains query per candidate.
                 const { albums } = await this.getOwnedAlbumIndex();
                 const candidates = albums.filter(
                     (a) =>

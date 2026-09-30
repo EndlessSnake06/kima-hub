@@ -188,10 +188,8 @@ export function thinByGroup(
         if (out.length >= limit) break;
         const albumCount = perAlbum.get(row.albumId) ?? 0;
         const artistCount = perArtist.get(row.artistId) ?? 0;
-        // S3: one pass over the ranking, accepting a track only while BOTH
-        // its album and its artist still have budget -- the same rule the
-        // SQL applies, and the reason a dominant album cannot eat the
-        // artist's slots (or the other way round).
+        // Accept a track only while both its album and its artist have budget,
+        // the same rule the SQL applies.
         if (albumCount < MAX_PER_ALBUM && artistCount < MAX_PER_ARTIST) {
             out.push(row);
             perAlbum.set(row.albumId, albumCount + 1);

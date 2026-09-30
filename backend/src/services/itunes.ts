@@ -209,8 +209,7 @@ class ItunesService {
     }
 
     /**
-     * Get similar podcasts based on keywords extracted from title/description
-     * This provides a "similar podcasts" feature similar to Last.fm for music
+     * Similar podcasts, by keywords from the title and description.
      */
     async getSimilarPodcasts(
         title: string,

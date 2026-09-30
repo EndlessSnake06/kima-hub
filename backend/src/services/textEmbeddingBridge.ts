@@ -187,9 +187,7 @@ export async function searchTracksByEmbedding(
     // pgvector's text form. Bound as a raw number[], an all-integer vector
     // arrives as bigint[], which has no cast to vector.
     const vector = `[${embedding.join(",")}]`;
-    // S1: the HNSW index walks hnsw.ef_search candidates (default 40), so any
-    // limit past 40 would come back short. No WHERE-clause exclusions here.
-    // The query must run on the transaction's own `tx` connection.
+    // Widen hnsw.ef_search, or any limit past 40 comes back short.
     return withEfSearch(efFor(limit, 0), (tx) =>
         tx.$queryRaw<TextSearchRow[]>`
             SELECT

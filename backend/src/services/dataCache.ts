@@ -243,9 +243,6 @@ class DataCacheService {
         artistName: string,
         mbid?: string | null
     ): Promise<string | null> {
-        // This was the fourth hand-rolled Fanart-then-Deezer-then-Last.fm
-        // chain, with its own copy of the Last.fm placeholder filter. The
-        // ordering, the filter and the caching all belong in one place now.
         const validMbid = mbid && !mbid.startsWith("temp-") ? mbid : undefined;
         const found = await findArtistArtwork({ name: artistName, mbid: validMbid });
         const externalUrl = found?.url ?? null;

@@ -206,10 +206,8 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
             : { summary: null, heroUrl: null };
         const bio = wdInfo?.summary || null;
 
-        // Top tracks: no global play-count source exists anymore (the
-        // Last.fm chart was 100% sentinel data with the dead shared key).
-        // Discovery artists have no local listens, so serve none; the
-        // artist page renders discography + similar artists instead.
+        // No global play-count source, and discovery artists have no local
+        // listens: no top tracks; the page shows discography and similar artists.
         const topTracksPromise = Promise.resolve([] as any[]);
 
         // Artist artwork (parallel)
@@ -313,10 +311,8 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
             albums = discAlbums;
         }
 
-        // Similar artists: local centroid NN with the ListenBrainz artist
-        // dataset as cold start (replaces artist.getSimilar). Then images
-        // via the standard artwork cascade (fanart → Deezer); the old
-        // Last.fm image tier is deleted, not kept as a fallback.
+        // Similar artists: local centroid neighbours, the ListenBrainz dataset
+        // as cold start; images through the artwork cascade (Fanart, Deezer).
         const similarList = await getSimilarArtists(
             mbid || "",
             artistName,
@@ -342,7 +338,7 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
             })
         );
 
-        // Genres: MusicBrainz artist record (replaces Last.fm tags).
+        // Genres from the MusicBrainz artist record.
         let tags: string[] = [];
         if (mbid) {
             const mbArtist = await musicBrainzService.getArtist(mbid, [
@@ -369,7 +365,7 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
             summary: bio, // Alias for consistency
             tags,
             genres: tags, // Alias for consistency
-            listeners: 0, // no listener-count source after Last.fm
+            listeners: 0,
             playcount: 0,
             url: mbid ? `https://musicbrainz.org/artist/${mbid}` : null,
             albums: albums.map((album: any) => ({ ...album, owned: false })), // Mark all as not owned

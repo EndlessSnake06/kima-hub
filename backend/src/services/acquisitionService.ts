@@ -572,8 +572,6 @@ class AcquisitionService {
                     logger.debug(
                         `[Acquisition/Soulseek] MusicBrainz has no tracks; no fallback source`
                     );
-                    // The retired Last.fm service was removed as a track-list
-                    // source (dead shared key); MusicBrainz is the only one now.
                     await this.updateJobStatus(
                         job.id,
                         "failed",
