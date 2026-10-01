@@ -10,6 +10,7 @@ import { encryptField } from "../utils/encryption";
 import { writeEnvFile } from "../utils/envWriter";
 import { generateToken, requireAuth, requireAdmin } from "../middleware/auth";
 import { defaultUserSettingsFor } from "../utils/userSettingsDefaults";
+import { createLidarrClient } from "../services/lidarrClient";
 
 const router = Router();
 
@@ -196,12 +197,8 @@ router.post("/lidarr", requireAuth, requireAdmin, async (req, res) => {
         let connectionTested = false;
         if (config.url && config.apiKey) {
             try {
-                const response = await axios.get(
-                    `${config.url}/api/v1/system/status`,
-                    {
-                        headers: { "X-Api-Key": config.apiKey },
-                        timeout: 5000,
-                    }
+                const response = await createLidarrClient(config.url, config.apiKey, 5000).get(
+                    "/api/v1/system/status"
                 );
 
                 if (response.status === 200) {

@@ -5,11 +5,12 @@
  * then sends its test event, and admins are told when it cannot reach Kima.
  */
 
-import axios, { AxiosInstance } from "axios";
+import { AxiosInstance } from "axios";
 import crypto from "crypto";
 import { prisma } from "../utils/db";
 import { logger } from "../utils/logger";
 import { encryptSettings } from "../utils/encryptedFields";
+import { createLidarrClient } from "./lidarrClient";
 import { getSystemSettings, invalidateSystemSettingsCache } from "../utils/systemSettings";
 import { notificationService } from "./notificationService";
 
@@ -40,11 +41,7 @@ const EVENTS = {
 };
 
 export async function configureLidarrWebhook(lidarrUrl: string, apiKey: string): Promise<void> {
-    const lidarr = axios.create({
-        baseURL: lidarrUrl,
-        headers: { "X-Api-Key": apiKey },
-        timeout: 10_000,
-    });
+    const lidarr = createLidarrClient(lidarrUrl, apiKey, 10_000);
     const callbackHost = process.env.KIMA_CALLBACK_URL || DEFAULT_CALLBACK_URL;
     const webhookUrl = `${callbackHost}/api/webhooks/lidarr`;
 

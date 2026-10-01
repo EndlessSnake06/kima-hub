@@ -5,11 +5,11 @@
  * the queue sweeps stand still. Admins get one alert, cleared on recovery.
  */
 
-import axios from "axios";
 import { logger } from "../utils/logger";
 import { getSystemSettings } from "../utils/systemSettings";
 import { sourcePauseController } from "./sourcePauseController";
 import { notificationService } from "./notificationService";
+import { createLidarrClient } from "./lidarrClient";
 
 export const LIDARR_UNHEALTHY = "LIDARR_UNHEALTHY";
 const ALERT_KEY = "lidarr-health";
@@ -90,7 +90,7 @@ class LidarrHealthMonitor {
 
     /** Why Lidarr is unhealthy, or null when it is fine. */
     private async probe(url: string, apiKey: string): Promise<string | null> {
-        const client = axios.create({ baseURL: url, headers: { "X-Api-Key": apiKey }, timeout: 10_000 });
+        const client = createLidarrClient(url, apiKey, 10_000);
         let records: LidarrLogRecord[];
         try {
             await client.get("/api/v1/system/status");

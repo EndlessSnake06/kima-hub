@@ -5,7 +5,7 @@ import { prisma } from "../utils/db";
 import { listenBrainzService } from "../services/listenBrainz";
 import { startOfWeek, endOfWeek } from "date-fns";
 import { resolveViewWeek, resolveGenerationWeekStart, weekStartKey } from "../lib/discoveryWeek";
-import axios from "axios";
+import { createLidarrClient } from "../services/lidarrClient";
 import fs from "fs";
 import path from "path";
 import { config } from "../config";
@@ -1308,29 +1308,10 @@ router.delete("/clear", async (req, res) => {
                             album.lidarrAlbumId
                         ) {
                             try {
-                                // Get album details from Lidarr
-                                const albumResponse = await axios.get(
-                                    `${settings.lidarrUrl}/api/v1/album/${album.lidarrAlbumId}`,
-                                    {
-                                        headers: {
-                                            "X-Api-Key": settings.lidarrApiKey,
-                                        },
-                                        timeout: 10000,
-                                    }
-                                );
-
+                                const lidarr = createLidarrClient(settings.lidarrUrl, settings.lidarrApiKey, 10_000);
+                                const albumResponse = await lidarr.get(`/api/v1/album/${album.lidarrAlbumId}`);
                                 const artistId = albumResponse.data.artistId;
-
-                                // Get artist details
-                                const artistResponse = await axios.get(
-                                    `${settings.lidarrUrl}/api/v1/artist/${artistId}`,
-                                    {
-                                        headers: {
-                                            "X-Api-Key": settings.lidarrApiKey,
-                                        },
-                                        timeout: 10000,
-                                    }
-                                );
+                                const artistResponse = await lidarr.get(`/api/v1/artist/${artistId}`);
 
                                 // Update artist's root folder path to main library if in discovery
                                 if (
@@ -1339,8 +1320,8 @@ router.delete("/clear", async (req, res) => {
                                     )
                                 ) {
                                     // Move artist to main library path
-                                    await axios.put(
-                                        `${settings.lidarrUrl}/api/v1/artist/${artistId}`,
+                                    await lidarr.put(
+                                        `/api/v1/artist/${artistId}`,
                                         {
                                             ...artistResponse.data,
                                             path: artistResponse.data.path.replace(
@@ -1349,13 +1330,7 @@ router.delete("/clear", async (req, res) => {
                                             ),
                                             moveFiles: true,
                                         },
-                                        {
-                                            headers: {
-                                                "X-Api-Key":
-                                                    settings.lidarrApiKey,
-                                            },
-                                            timeout: 30000,
-                                        }
+                                        { timeout: 30_000 }
                                     );
                                     logger.debug(
                                         `    Moved to library: ${album.artistName} - ${album.albumTitle}`

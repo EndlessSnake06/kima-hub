@@ -5,7 +5,7 @@
  */
 
 const lidarr = { get: jest.fn() };
-jest.mock("axios", () => ({ __esModule: true, default: { create: () => lidarr } }));
+jest.mock("../lidarrClient", () => ({ createLidarrClient: () => lidarr }));
 jest.mock("../../utils/systemSettings", () => ({
     getSystemSettings: jest.fn().mockResolvedValue({ lidarrEnabled: true, lidarrUrl: "http://lidarr", lidarrApiKey: "key" }),
 }));

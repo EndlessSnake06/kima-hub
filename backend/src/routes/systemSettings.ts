@@ -16,6 +16,7 @@ import {
 } from "../services/gpuRuntime";
 import { queueCleaner } from "../jobs/queueCleaner";
 import { configureLidarrWebhook } from "../services/lidarrWebhookSetup";
+import { createLidarrClient } from "../services/lidarrClient";
 import { safeError } from "../utils/errors";
 
 const router = Router();
@@ -330,14 +331,7 @@ router.post("/test-lidarr", async (req, res) => {
       return res.status(400).json({ error: "URL and API key are required" });
     }
 
-    // Normalize URL - remove trailing slash
-    const normalizedUrl = url.replace(/\/+$/, "");
-
-    const axios = require("axios");
-    const response = await axios.get(`${normalizedUrl}/api/v1/system/status`, {
-      headers: { "X-Api-Key": apiKey },
-      timeout: 10000,
-    });
+    const response = await createLidarrClient(url, apiKey, 10_000).get("/api/v1/system/status");
 
     logger.debug(
       "[Lidarr Test] Connection successful, version:",
@@ -362,15 +356,10 @@ router.post("/lidarr-profiles", async (req, res) => {
       return res.status(400).json({ error: "URL and API key are required" });
     }
 
-    const normalizedUrl = url.replace(/\/+$/, "");
-
-    const axios = require("axios");
-    const headers = { "X-Api-Key": apiKey };
-    const timeout = 10000;
-
+    const lidarr = createLidarrClient(url, apiKey, 10_000);
     const [qualityRes, metadataRes] = await Promise.all([
-      axios.get(`${normalizedUrl}/api/v1/qualityprofile`, { headers, timeout }),
-      axios.get(`${normalizedUrl}/api/v1/metadataprofile`, { headers, timeout }),
+      lidarr.get("/api/v1/qualityprofile"),
+      lidarr.get("/api/v1/metadataprofile"),
     ]);
 
     res.json({

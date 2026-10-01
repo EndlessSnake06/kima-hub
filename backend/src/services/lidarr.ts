@@ -1,11 +1,11 @@
-import axios, { AxiosInstance } from "axios";
+import { AxiosInstance } from "axios";
 import pLimit from "p-limit";
 import { logger } from "../utils/logger";
 import { albumIdentityKey, titlesAgree } from "./albumIdentity";
 import { config } from "../config";
 import { getSystemSettings } from "../utils/systemSettings";
 import { stripAlbumEdition } from "../utils/artistNormalization";
-import { lidarrApiCallsTotal, lidarrApiDuration } from "../utils/metrics";
+import { createLidarrClient } from "./lidarrClient";
 import { sourcePauseController } from "./sourcePauseController";
 import { lidarrHealthMonitor } from "./lidarrHealth";
 import { failureCause } from "../utils/outcome";
@@ -112,7 +112,7 @@ class LidarrService {
 
     /** An outage seen by any request triggers a health check at once. */
     private createClient(baseURL: string, apiKey: string): AxiosInstance {
-        const client = axios.create({ baseURL, timeout: this.API_TIMEOUT_DEFAULT, headers: { "X-Api-Key": apiKey } });
+        const client = createLidarrClient(baseURL, apiKey, this.API_TIMEOUT_DEFAULT);
         client.interceptors.response.use(undefined, (error) => {
             if (isTransient(error)) lidarrHealthMonitor.reportFailure();
             return Promise.reject(error);
@@ -169,49 +169,6 @@ class LidarrService {
     }
 
     /**
-     * Wrapper for API calls with metrics tracking
-     */
-    private async apiCall<T>(
-        endpoint: string,
-        method: 'get' | 'post' | 'put' | 'delete',
-        data?: unknown
-    ): Promise<T> {
-        const startTime = Date.now();
-        let status = 'success';
-
-        try {
-            if (!this.client) {
-                throw new Error('Lidarr client not initialized');
-            }
-
-            let response;
-            switch (method) {
-                case 'get':
-                    response = await this.client.get(endpoint);
-                    break;
-                case 'post':
-                    response = await this.client.post(endpoint, data);
-                    break;
-                case 'put':
-                    response = await this.client.put(endpoint, data);
-                    break;
-                case 'delete':
-                    response = await this.client.delete(endpoint);
-                    break;
-            }
-
-            return response.data;
-        } catch (error) {
-            status = 'failed';
-            throw error;
-        } finally {
-            const duration = (Date.now() - startTime) / 1000;
-            lidarrApiCallsTotal.inc({ endpoint, status });
-            lidarrApiDuration.observe({ endpoint }, duration);
-        }
-    }
-
-    /**
      * Get the full artist list with caching (30s TTL).
      * Turns N artist-list fetches per import into 1-3.
      */
@@ -241,7 +198,7 @@ class LidarrService {
 
         try {
             // Get all root folders from Lidarr
-            const rootFolders = await this.apiCall<LidarrRootFolder[]>("/api/v1/rootfolder", 'get');
+            const rootFolders: LidarrRootFolder[] = (await this.client.get("/api/v1/rootfolder")).data;
 
             if (rootFolders.length === 0) {
                 logger.warn("  No root folders configured in Lidarr!");
@@ -1917,10 +1874,8 @@ export async function getHistorySince(
     since: Date,
     eventType: number
 ): Promise<LidarrHistoryRecord[]> {
-    const { data } = await axios.get<LidarrHistoryRecord[]>(`${lidarrUrl}/api/v1/history/since`, {
+    const { data } = await createLidarrClient(lidarrUrl, apiKey).get<LidarrHistoryRecord[]>("/api/v1/history/since", {
         params: { date: since.toISOString(), eventType, includeAlbum: true, includeArtist: true },
-        headers: { "X-Api-Key": apiKey },
-        timeout: 30_000,
     });
     return data;
 }

@@ -5,7 +5,7 @@
  */
 
 const lidarr = { get: jest.fn(), put: jest.fn(), post: jest.fn() };
-jest.mock("axios", () => ({ __esModule: true, default: { create: () => lidarr } }));
+jest.mock("../lidarrClient", () => ({ createLidarrClient: () => lidarr }));
 jest.mock("../../utils/db", () => ({ prisma: { systemSettings: { update: jest.fn() } } }));
 jest.mock("../../utils/systemSettings", () => ({
     getSystemSettings: jest.fn(),
