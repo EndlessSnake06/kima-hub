@@ -301,6 +301,12 @@ code {
     }
 }
 
+/* A cover that fails to load leaves its placeholder background showing
+ * instead of printing the alt text over it. */
+img {
+    color: transparent;
+}
+
 body {
     background: var(--bg-primary);
     color: #e5e5e5;

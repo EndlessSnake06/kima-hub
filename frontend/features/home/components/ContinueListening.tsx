@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { Music, Disc, BookOpen } from "lucide-react";
 import { api } from "@/lib/api";
 import { HorizontalCarousel, CarouselItem } from "@/components/ui/HorizontalCarousel";
@@ -9,6 +8,7 @@ import { cascadeStyle } from "@/lib/motion";
 import { memo, type CSSProperties } from "react";
 import { cn } from "@/lib/cn";
 import { ListenedItem } from "../types";
+import { CachedImage } from "@/components/ui/CachedImage";
 
 interface ContinueListeningProps {
     items: ListenedItem[];
@@ -89,14 +89,13 @@ const ContinueListeningCard = memo(function ContinueListeningCard({
                     <div className="relative aspect-square overflow-hidden">
                         <div className="w-full h-full bg-[#181818] flex items-center justify-center">
                             {imageSrc ? (
-                                <Image
+                                <CachedImage
                                     src={imageSrc}
                                     alt={item.name}
                                     fill
                                     className="object-cover group-hover:scale-110 transition-transform duration-150"
                                     sizes="180px"
                                     priority={false}
-                                    unoptimized
                                 />
                             ) : isPodcast ? (
                                 <Disc className="w-10 h-10 text-[var(--text-muted)]" />

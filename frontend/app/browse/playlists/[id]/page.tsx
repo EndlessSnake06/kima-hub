@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { formatTime } from "@/lib/format";
 import { useParams, useRouter } from "next/navigation";
-import Image from "next/image";
 import {
     ArrowLeft,
     Play,
@@ -23,6 +22,7 @@ import { useAudioState } from "@/lib/audio-state-context";
 import { useAudioControls } from "@/lib/audio-controls-context";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { Button } from "@/components/ui/Button";
+import { CachedImage } from "@/components/ui/CachedImage";
 
 const DeezerIcon = ({ className }: { className?: string }) => (
     <svg viewBox="0 0 24 24" className={className} fill="currentColor">
@@ -249,13 +249,12 @@ export default function DeezerPlaylistDetailPage() {
                 {playlist.imageUrl && (
                     <div className="absolute inset-0 overflow-hidden">
                         <div className="absolute inset-0 scale-110 blur-md opacity-30">
-                            <Image
+                            <CachedImage
                                 src={playlist.imageUrl}
                                 alt={playlist.title}
                                 fill
                                 sizes="100vw"
                                 className="object-cover"
-                                unoptimized
                             />
                         </div>
                         <div className="absolute inset-0 bg-gradient-to-b from-type-track/10 via-[#0a0a0a]/90 to-[#0a0a0a]" />
@@ -285,13 +284,12 @@ export default function DeezerPlaylistDetailPage() {
                             {/* Cover Art */}
                             <div className="w-[140px] h-[140px] md:w-[192px] md:h-[192px] bg-[var(--bg-primary)] rounded-lg shrink-0 overflow-hidden relative border-2 border-white/10">
                                 {playlist.imageUrl ? (
-                                    <Image
+                                    <CachedImage
                                         src={playlist.imageUrl}
                                         alt={playlist.title}
                                         fill
                                         sizes="(max-width: 768px) 140px, 192px"
                                         className="object-cover"
-                                        unoptimized
                                     />
                                 ) : (
                                     <div className="w-full h-full flex items-center justify-center">
@@ -445,13 +443,12 @@ export default function DeezerPlaylistDetailPage() {
                                             <div className="flex items-center gap-3 min-w-0">
                                                 <div className="relative w-10 h-10 bg-[var(--bg-primary)] rounded border border-white/10 shrink-0 overflow-hidden">
                                                     {track.coverUrl ? (
-                                                        <Image
+                                                        <CachedImage
                                                             src={track.coverUrl}
                                                             alt={track.title}
                                                             fill
                                                             sizes="40px"
                                                             className="object-cover"
-                                                            unoptimized
                                                         />
                                                     ) : (
                                                         <div className="w-full h-full flex items-center justify-center">

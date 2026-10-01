@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import {
     Search,
     Loader2,
@@ -20,6 +19,7 @@ import { SectionHeader } from "@/components/ui/SectionHeader";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { useDialog } from "@/hooks/useDialog";
+import { CachedImage } from "@/components/ui/CachedImage";
 
 interface PlaylistPreview {
     id: string;
@@ -192,13 +192,12 @@ export default function BrowsePlaylistsPage() {
         >
             <div className="relative aspect-square mb-2.5 rounded-lg overflow-hidden bg-[var(--bg-primary)] border border-white/10 group-hover:border-type-track/40 transition-all duration-300">
                 {item.imageUrl ?
-                    <Image
+                    <CachedImage
                         src={item.imageUrl}
                         alt={item.title}
                         fill
                         sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, (max-width: 1280px) 20vw, (max-width: 1536px) 16vw, 14vw"
                         className="object-cover group-hover:scale-105 transition-transform duration-150"
-                        unoptimized
                     />
                 :   <div className="w-full h-full flex items-center justify-center">
                         <Music2 className="w-12 h-12 text-white/10" />
@@ -224,13 +223,12 @@ export default function BrowsePlaylistsPage() {
             className="group cursor-pointer relative aspect-square rounded-lg overflow-hidden border border-white/10 hover:border-type-track/40 transition-all duration-300"
         >
             {genre.imageUrl ?
-                <Image
+                <CachedImage
                     src={genre.imageUrl}
                     alt={genre.name}
                     fill
                     sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, (max-width: 1280px) 20vw, 16vw"
                     className="object-cover group-hover:scale-105 transition-transform duration-150"
-                    unoptimized
                 />
             :   <div className="w-full h-full bg-gradient-to-br from-type-track/30 to-type-track/10" />
             }

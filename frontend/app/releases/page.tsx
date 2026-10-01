@@ -6,8 +6,8 @@ import { cn } from "@/lib/cn";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { api } from "@/lib/api";
 import Link from "next/link";
-import Image from "next/image";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { CachedImage } from "@/components/ui/CachedImage";
 
 interface ReleaseItem {
     id: number | string;
@@ -206,13 +206,12 @@ function ReleaseCover({ release }: { release: ReleaseItem }) {
     }
 
     return (
-        <Image
+        <CachedImage
             src={src}
             alt={release.title}
             fill
             sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, (max-width: 1280px) 20vw, 16vw"
             className="object-cover group-hover:scale-105 transition-transform duration-150"
-            unoptimized
             onError={() => setBroken(true)}
         />
     );

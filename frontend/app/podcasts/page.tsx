@@ -10,11 +10,11 @@ import { Mic2, Search, Plus, RefreshCw, Rss, X, Loader2 } from "lucide-react";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { Pagination } from "@/components/ui/Pagination";
 import { usePodcastsQuery, useTopPodcastsQuery, queryKeys } from "@/hooks/useQueries";
-import Image from "next/image";
 import { cn } from "@/lib/cn";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
+import { CachedImage } from "@/components/ui/CachedImage";
 
 const getProxiedImageUrl = (imageUrl: string | undefined): string | null => {
     if (!imageUrl) return null;
@@ -54,13 +54,12 @@ function PodcastCard({
         >
             <div className="relative w-full aspect-square bg-[var(--bg-secondary)] overflow-hidden">
                 {imageUrl ? (
-                    <Image
+                    <CachedImage
                         src={imageUrl}
                         alt={podcast.title}
                         fill
                         sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, 20vw"
                         className="object-cover group-hover:scale-105 transition-transform duration-150"
-                        unoptimized
                     />
                 ) : (
                     <div className="w-full h-full flex items-center justify-center">
@@ -306,13 +305,12 @@ export default function PodcastsPage() {
                                             >
                                                 <div className="w-10 h-10 rounded-lg bg-[var(--bg-primary)] flex-shrink-0 overflow-hidden relative border border-white/10">
                                                     {imageUrl ? (
-                                                        <Image
+                                                        <CachedImage
                                                             src={imageUrl}
                                                             alt={result.name || "Podcast"}
                                                             fill
                                                             sizes="40px"
                                                             className="object-cover"
-                                                            unoptimized
                                                         />
                                                     ) : (
                                                         <div className="w-full h-full flex items-center justify-center">

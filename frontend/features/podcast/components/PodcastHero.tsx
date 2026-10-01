@@ -1,11 +1,11 @@
 "use client";
 
 import { Mic2, ArrowLeft } from "lucide-react";
-import Image from "next/image";
 import { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { ColorPalette } from "@/hooks/useImageColor";
 import { HeroBackdrop } from "@/components/ui/HeroBackdrop";
+import { CachedImage } from "@/components/ui/CachedImage";
 
 interface PodcastHeroProps {
     title: string;
@@ -72,14 +72,13 @@ export function PodcastHero({
                         {/* Cover Art - Square with border treatment */}
                         <div className="w-[140px] h-[140px] md:w-[192px] md:h-[192px] bg-[var(--bg-primary)] rounded-lg shrink-0 overflow-hidden relative border-2 border-white/10">
                             {heroImage ? (
-                                <Image
+                                <CachedImage
                                     src={heroImage}
                                     alt={title}
                                     fill
                                     sizes="(max-width: 768px) 140px, 192px"
                                     className="object-cover"
                                     priority
-                                    unoptimized
                                 />
                             ) : (
                                 <div className="w-full h-full flex items-center justify-center">

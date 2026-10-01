@@ -3,8 +3,8 @@
 import { useAudioState } from "@/lib/audio-state-context";
 import { useAudioPlayback } from "@/lib/audio-playback-context";
 import { Music } from "lucide-react";
-import Image from "next/image";
 import { api } from "@/lib/api";
+import { CachedImage } from "@/components/ui/CachedImage";
 
 export function NowPlayingTab() {
     const { currentTrack } = useAudioState();
@@ -31,13 +31,12 @@ export function NowPlayingTab() {
                 {/* Album art */}
                 <div className="relative aspect-square w-full max-w-[280px] mx-auto rounded-lg overflow-hidden bg-[#181818]">
                     {coverUrl ? (
-                        <Image
+                        <CachedImage
                             src={coverUrl}
                             alt={currentTrack.album?.title || "Album art"}
                             fill
                             sizes="280px"
                             className="object-cover"
-                            unoptimized
                         />
                     ) : (
                         <div className="w-full h-full flex items-center justify-center">

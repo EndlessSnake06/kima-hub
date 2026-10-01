@@ -6,7 +6,6 @@ import { useAudioControls } from "@/lib/audio-controls-context";
 import { useMediaInfo } from "@/hooks/useMediaInfo";
 import { PlayCountLine } from "@/features/stats/PlayCountLine";
 import { usePlaybackProgress } from "@/hooks/usePlaybackProgress";
-import Image from "next/image";
 import Link from "next/link";
 import {
     Play,
@@ -36,6 +35,7 @@ import { SeekSlider } from "./SeekSlider";
 import { SleepTimer } from "./SleepTimer";
 import { useLyricsToggle } from "@/hooks/useLyricsToggle";
 import { VibeToggleButton } from "./VibeToggleButton";
+import { CachedImage } from "@/components/ui/CachedImage";
 
 
 export function FullPlayer() {
@@ -110,7 +110,7 @@ export function FullPlayer() {
                             >
                                 <div className={cn("relative w-full h-full bg-gradient-to-br from-[#2a2a2a] to-[#1a1a1a] rounded-lg overflow-hidden flex items-center justify-center", "transition-transform duration-300", isPlaying && "scale-[1.03]")}>
                                     {coverUrl ? (
-                                        <Image
+                                        <CachedImage
                                             key={coverUrl}
                                             src={coverUrl}
                                             alt={title}
@@ -118,7 +118,6 @@ export function FullPlayer() {
                                             sizes="56px"
                                             className="object-cover"
                                             priority
-                                            unoptimized
                                         />
                                     ) : (
                                         <MusicIcon className="w-6 h-6 text-[var(--text-muted)]" />

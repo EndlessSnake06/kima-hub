@@ -117,21 +117,10 @@ export default function AlbumPage({ params }: AlbumPageProps) {
         return [...merged, ...unnumberedMissing];
     }, [album?.tracks, album?.missingTracks]);
 
-    // Get cover URL for display and color extraction
-    // Proxy through API to handle native: URLs and CORS
-    const rawCoverUrl =
-        album?.coverUrl || album?.coverArt || "/placeholder-album.png";
-    const coverUrl =
-        rawCoverUrl === "/placeholder-album.png"
-            ? rawCoverUrl
-            : api.getCoverArtUrl(rawCoverUrl, 1200);
-    // Separate URL with token for color extraction (CORS access for canvas)
-    const colorExtractionUrl =
-        rawCoverUrl === "/placeholder-album.png"
-            ? rawCoverUrl
-            : api.getCoverArtUrl(rawCoverUrl, 300, true);
+    const rawCoverUrl = album?.coverUrl || album?.coverArt || null;
+    const coverUrl = rawCoverUrl ? api.getCoverArtUrl(rawCoverUrl, 1200) : null;
+    const colorExtractionUrl = rawCoverUrl ? api.getCoverArtUrl(rawCoverUrl, 300, true) : null;
 
-    // Extract colors
     const { colors } = useImageColor(colorExtractionUrl);
 
     // Loading and error states

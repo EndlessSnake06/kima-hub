@@ -5,9 +5,9 @@ import { useAudioControls } from "@/lib/audio-controls-context";
 import { useAudioPlayback } from "@/lib/audio-playback-context";
 import { cn } from "@/lib/cn";
 import { Play, Pause } from "lucide-react";
-import Image from "next/image";
 import { api } from "@/lib/api";
 import { formatTime } from "@/lib/format";
+import { CachedImage } from "@/components/ui/CachedImage";
 
 const OPERATION_STYLES: Record<string, { label: string; borderColor: string }> = {
     drift: { label: "Song Path", borderColor: "var(--color-brand)" },
@@ -58,13 +58,12 @@ export function QueueTab() {
                 >
                     <div className="relative w-8 h-8 rounded overflow-hidden bg-[#181818] shrink-0">
                         {currentTrack.album?.coverArt ? (
-                            <Image
+                            <CachedImage
                                 src={api.getCoverArtUrl(currentTrack.album.coverArt, 64)}
                                 alt=""
                                 fill
                                 sizes="32px"
                                 className="object-cover"
-                                unoptimized
                             />
                         ) : (
                             <div className="w-full h-full flex items-center justify-center">
@@ -113,13 +112,12 @@ export function QueueTab() {
                         >
                             <div className="relative w-8 h-8 rounded overflow-hidden bg-[#181818] shrink-0">
                                 {coverUrl ? (
-                                    <Image
+                                    <CachedImage
                                         src={coverUrl}
                                         alt=""
                                         fill
                                         sizes="32px"
                                         className="object-cover"
-                                        unoptimized
                                     />
                                 ) : (
                                     <div className="w-full h-full flex items-center justify-center">

@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { Music } from "lucide-react";
 import { api } from "@/lib/api";
 import { memo } from "react";
+import { CachedImage } from "@/components/ui/CachedImage";
 
 interface MixCardProps {
     mix: {
@@ -36,13 +36,12 @@ const MixCard = memo(
                                         const proxiedUrl = api.getCoverArtUrl(url, 300);
                                         return (
                                             <div key={idx} className="relative bg-[#181818]">
-                                                <Image
+                                                <CachedImage
                                                     src={proxiedUrl}
                                                     alt=""
                                                     fill
                                                     className="object-cover group-hover:scale-105 transition-transform duration-150"
                                                     sizes="180px"
-                                                    unoptimized
                                                 />
                                             </div>
                                         );

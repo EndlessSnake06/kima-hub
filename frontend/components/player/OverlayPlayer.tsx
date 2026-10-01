@@ -3,7 +3,6 @@
 import { useAudioState, useAudioPlayback, useAudioControls } from "@/lib/audio-context";
 import { useMediaInfo } from "@/hooks/useMediaInfo";
 import { PlayCountLine } from "@/features/stats/PlayCountLine";
-import Image from "next/image";
 import Link from "next/link";
 import { useRef, useState } from "react";
 import {
@@ -31,6 +30,7 @@ import { SleepTimer } from "./SleepTimer";
 import { LyricsView } from "@/components/lyrics/LyricsView";
 import { useLyricsToggle } from "@/hooks/useLyricsToggle";
 import { VibeToggleButton } from "./VibeToggleButton";
+import { CachedImage } from "@/components/ui/CachedImage";
 
 export function OverlayPlayer() {
     const {
@@ -166,7 +166,7 @@ export function OverlayPlayer() {
                             isPlaying && "scale-[1.03]"
                         )}>
                         {coverUrl ? (
-                            <Image
+                            <CachedImage
                                 key={coverUrl}
                                 src={coverUrl}
                                 alt={title}
@@ -174,7 +174,6 @@ export function OverlayPlayer() {
                                 sizes="280px"
                                 className="object-cover"
                                 priority
-                                unoptimized
                             />
                         ) : (
                             <div className="w-full h-full flex items-center justify-center">

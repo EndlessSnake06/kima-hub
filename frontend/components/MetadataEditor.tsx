@@ -5,9 +5,9 @@ import { Edit, X, Save } from "lucide-react";
 import { api } from "@/lib/api";
 import { useToast } from "@/lib/toast-context";
 import { GradientSpinner } from "./ui/GradientSpinner";
-import Image from "next/image";
 import { Button } from "@/components/ui/Button";
 import { useDialog } from "@/hooks/useDialog";
+import { CachedImage } from "@/components/ui/CachedImage";
 
 interface MetadataEditorProps {
     type: "artist" | "album" | "track";
@@ -400,7 +400,7 @@ export function MetadataEditor({
                                 {/* Image Preview */}
                                 {(formData.heroUrl || formData.coverUrl) && (
                                     <div className="mt-2">
-                                        <Image
+                                        <CachedImage
                                             src={
                                                 (formData.heroUrl ||
                                                 formData.coverUrl)!
@@ -409,7 +409,6 @@ export function MetadataEditor({
                                             width={128}
                                             height={128}
                                             className="w-32 h-32 object-cover rounded"
-                                            unoptimized
                                         />
                                     </div>
                                 )}

@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -22,6 +21,7 @@ import {
     ChevronUp,
     ChevronDown,
 } from "lucide-react";
+import { CachedImage } from "@/components/ui/CachedImage";
 
 export default function QueuePage() {
     const router = useRouter();
@@ -125,7 +125,7 @@ export default function QueuePage() {
                                 <div className="flex items-center gap-4 p-4 bg-[var(--bg-hover)] border-l-2 border-brand">
                                     <div className="relative flex-shrink-0 w-16 h-16">
                                         {currentTrack.album?.coverArt ? (
-                                            <Image
+                                            <CachedImage
                                                 src={api.getCoverArtUrl(
                                                     currentTrack.album.coverArt,
                                                     100
@@ -134,7 +134,6 @@ export default function QueuePage() {
                                                 fill
                                                 sizes="64px"
                                                 className="object-cover rounded-sm"
-                                                unoptimized
                                             />
                                         ) : (
                                             <div className="w-16 h-16 bg-[var(--bg-primary)] rounded-sm flex items-center justify-center">
@@ -189,7 +188,7 @@ export default function QueuePage() {
                                                 {/* Album Art */}
                                                 <div className="relative flex-shrink-0 w-12 h-12">
                                                     {track.album?.coverArt ? (
-                                                        <Image
+                                                        <CachedImage
                                                             src={api.getCoverArtUrl(
                                                                 track.album
                                                                     .coverArt,
@@ -199,7 +198,6 @@ export default function QueuePage() {
                                                             fill
                                                             sizes="48px"
                                                             className="object-cover rounded-sm"
-                                                            unoptimized
                                                         />
                                                     ) : (
                                                         <div className="w-12 h-12 bg-[var(--bg-primary)] rounded-sm flex items-center justify-center">
@@ -306,7 +304,7 @@ export default function QueuePage() {
                                             {/* Album Art */}
                                             <div className="relative flex-shrink-0 w-12 h-12">
                                                 {track.album?.coverArt ? (
-                                                    <Image
+                                                    <CachedImage
                                                         src={api.getCoverArtUrl(
                                                             track.album.coverArt,
                                                             100
@@ -315,7 +313,6 @@ export default function QueuePage() {
                                                         fill
                                                         sizes="48px"
                                                         className="object-cover rounded-sm"
-                                                        unoptimized
                                                     />
                                                 ) : (
                                                     <div className="w-12 h-12 bg-[var(--bg-primary)] rounded-sm flex items-center justify-center">

@@ -1,7 +1,7 @@
 "use client";
 
 import Image, { ImageProps } from "next/image";
-import { memo } from "react";
+import { memo, useState } from "react";
 
 interface CachedImageProps extends Omit<ImageProps, "src"> {
     src: string | null | undefined;
@@ -14,16 +14,25 @@ const CachedImage = memo(function CachedImage({
     alt = "",
     ...props
 }: CachedImageProps) {
-    if (!src) {
+    const [failedSrc, setFailedSrc] = useState<string | null>(null);
+
+    if (!src || failedSrc === src) {
         return null;
     }
 
-    const imageProps = {
-        ...props,
-        loading: props.loading || 'lazy',
-    };
-
-    return <Image src={src} alt={alt} unoptimized {...imageProps} />;
+    return (
+        <Image
+            src={src}
+            alt={alt}
+            unoptimized
+            {...props}
+            loading={props.loading ?? (props.priority || props.preload ? undefined : "lazy")}
+            onError={(e) => {
+                setFailedSrc(src);
+                props.onError?.(e);
+            }}
+        />
+    );
 });
 
 export { CachedImage };

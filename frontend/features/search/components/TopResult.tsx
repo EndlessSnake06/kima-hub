@@ -1,8 +1,8 @@
 import Link from "next/link";
-import Image from "next/image";
 import { Music, ExternalLink } from "lucide-react";
 import { api } from "@/lib/api";
 import { Artist, DiscoverResult } from "../types";
+import { CachedImage } from "@/components/ui/CachedImage";
 
 interface TopResultProps {
     libraryArtist?: Artist;
@@ -34,14 +34,13 @@ export function TopResult({ libraryArtist, discoveryArtist }: TopResultProps) {
             {/* Background Image with Overlay */}
             <div className="absolute inset-0 opacity-20 group-hover:opacity-30 transition-opacity duration-200">
                 {imageUrl ? (
-                    <Image
+                    <CachedImage
                         src={api.getCoverArtUrl(imageUrl, 400)}
                         alt={name}
                         fill
                         sizes="400px"
                         className="object-cover"
                         loading="lazy"
-                        unoptimized
                     />
                 ) : null}
                 <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/90 to-transparent" />
@@ -53,14 +52,13 @@ export function TopResult({ libraryArtist, discoveryArtist }: TopResultProps) {
                     {/* Artist Image */}
                     <div className="relative w-32 h-32 rounded-2xl bg-[#181818] flex items-center justify-center overflow-hidden shrink-0 ring-2 ring-white/10 group-hover:ring-brand/50 transition-all duration-200">
                         {imageUrl ? (
-                            <Image
+                            <CachedImage
                                 src={api.getCoverArtUrl(imageUrl, 200)}
                                 alt={name}
                                 fill
                                 sizes="128px"
                                 className="object-cover group-hover:scale-110 transition-transform duration-150"
                                 loading="lazy"
-                                unoptimized
                             />
                         ) : (
                             <Music className="w-16 h-16 text-[var(--text-muted)]" />

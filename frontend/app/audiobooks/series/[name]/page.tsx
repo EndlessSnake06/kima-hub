@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import Image from "next/image";
 import { api } from "@/lib/api";
 import { formatDuration } from "@/lib/format";
 import { useAuth } from "@/lib/auth-context";
@@ -18,6 +17,7 @@ import {
     Pause,
     CheckCircle,
 } from "lucide-react";
+import { CachedImage } from "@/components/ui/CachedImage";
 
 interface Audiobook {
     id: string;
@@ -114,14 +114,13 @@ export default function SeriesDetailPage() {
                 {heroImage && (
                     <div className="absolute inset-0 overflow-hidden">
                         <div className="absolute inset-0 scale-110 blur-md opacity-30">
-                            <Image
+                            <CachedImage
                                 src={heroImage}
                                 alt={seriesName}
                                 fill
                                 sizes="100vw"
                                 className="object-cover"
                                 priority
-                                unoptimized
                             />
                         </div>
                         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#0a0a0a]/80 to-[#0a0a0a]" />
@@ -151,14 +150,13 @@ export default function SeriesDetailPage() {
                             {/* Cover Art */}
                             <div className="w-[140px] h-[140px] md:w-[192px] md:h-[192px] bg-[var(--bg-primary)] rounded-lg shrink-0 overflow-hidden relative border-2 border-white/10">
                                 {heroImage ? (
-                                    <Image
+                                    <CachedImage
                                         src={heroImage}
                                         alt={seriesName}
                                         fill
                                         sizes="(max-width: 768px) 140px, 192px"
                                         className="object-cover"
                                         priority
-                                        unoptimized
                                     />
                                 ) : (
                                     <div className="w-full h-full flex items-center justify-center">
@@ -277,13 +275,12 @@ export default function SeriesDetailPage() {
                                             <Link href={`/audiobooks/${book.id}`}>
                                                 <div className="relative w-10 h-10 rounded overflow-hidden bg-[var(--bg-primary)] border border-white/10 shrink-0 cursor-pointer">
                                                     {bookCover ? (
-                                                        <Image
+                                                        <CachedImage
                                                             src={bookCover}
                                                             alt={book.title}
                                                             fill
                                                             sizes="40px"
                                                             className="object-cover"
-                                                            unoptimized
                                                         />
                                                     ) : (
                                                         <div className="w-full h-full flex items-center justify-center">

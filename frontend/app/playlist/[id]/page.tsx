@@ -3,7 +3,6 @@
 import { useState, useMemo, useRef, useEffect, useLayoutEffect } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useParams, useRouter } from "next/navigation";
-import Image from "next/image";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { api } from "@/lib/api";
 import { useAudioState, useAudioPlayback, useAudioControls, Track as AudioTrack } from "@/lib/audio-context";
@@ -47,6 +46,7 @@ import { formatTrackDisplay } from "@/lib/track-format";
 import { useDoubleTapList } from "@/hooks/useDoubleTap";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { Button } from "@/components/ui/Button";
+import { CachedImage } from "@/components/ui/CachedImage";
 
 interface Track {
     id: string;
@@ -787,7 +787,7 @@ export default function PlaylistDetailPage() {
                     <div className="flex items-center gap-3 min-w-0">
                         <div className="relative w-10 h-10 bg-[var(--bg-primary)] rounded-lg shrink-0 overflow-hidden border border-white/10">
                             {playlistItem.track.album?.coverArt ? (
-                                <Image
+                                <CachedImage
                                     src={api.getCoverArtUrl(
                                         playlistItem.track.album.coverArt,
                                         100
@@ -796,7 +796,6 @@ export default function PlaylistDetailPage() {
                                     fill
                                     sizes="40px"
                                     className="object-cover"
-                                    unoptimized
                                 />
                             ) : (
                                 <div className="w-full h-full flex items-center justify-center">
@@ -924,14 +923,13 @@ export default function PlaylistDetailPage() {
                 {heroImage && (
                     <div className="absolute inset-0 overflow-hidden">
                         <div className="absolute inset-0 scale-110 blur-md opacity-20">
-                            <Image
+                            <CachedImage
                                 src={heroImage}
                                 alt=""
                                 fill
                                 sizes="100vw"
                                 className="object-cover"
                                 priority
-                                unoptimized
                             />
                         </div>
                         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#0a0a0a]/80 to-[#0a0a0a]" />
@@ -961,13 +959,12 @@ export default function PlaylistDetailPage() {
                             {/* Cover Art Mosaic */}
                             <div className="w-[140px] h-[140px] md:w-[192px] md:h-[192px] bg-[var(--bg-primary)] rounded-lg shrink-0 overflow-hidden relative border-2 border-white/10">
                                 {coverUrls && coverUrls.length === 1 ? (
-                                    <Image
+                                    <CachedImage
                                         src={api.getCoverArtUrl(coverUrls[0], 400)}
                                         alt=""
                                         fill
                                         className="object-cover"
                                         sizes="192px"
-                                        unoptimized
                                     />
                                 ) : coverUrls && coverUrls.length > 1 ? (
                                     <div className="grid grid-cols-2 gap-0 w-full h-full">
@@ -976,13 +973,12 @@ export default function PlaylistDetailPage() {
                                             const proxiedUrl = api.getCoverArtUrl(url, 200);
                                             return (
                                                 <div key={index} className="relative bg-[var(--bg-primary)]">
-                                                    <Image
+                                                    <CachedImage
                                                         src={proxiedUrl}
                                                         alt=""
                                                         fill
                                                         className="object-cover"
                                                         sizes="96px"
-                                                        unoptimized
                                                     />
                                                 </div>
                                             );

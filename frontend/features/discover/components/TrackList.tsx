@@ -1,11 +1,11 @@
 import { useRef } from "react";
 import { Play, Heart, Music } from "lucide-react";
-import Image from "next/image";
 import { cn } from "@/lib/cn";
 import { DiscoverTrack } from "../types";
 import { api } from "@/lib/api";
 import { formatTime } from "@/lib/format";
 import { tierColors, tierLabels } from "../constants";
+import { CachedImage } from "@/components/ui/CachedImage";
 
 interface TrackListProps {
     tracks: DiscoverTrack[];
@@ -108,7 +108,7 @@ export function TrackList({
                             <div className="flex items-center gap-3 min-w-0">
                                 <div className="w-10 h-10 bg-[#282828] rounded shrink-0 overflow-hidden">
                                     {track.coverUrl ? (
-                                        <Image
+                                        <CachedImage
                                             src={api.getCoverArtUrl(
                                                 track.coverUrl,
                                                 80
@@ -117,7 +117,6 @@ export function TrackList({
                                             width={40}
                                             height={40}
                                             className="object-cover"
-                                            unoptimized
                                         />
                                     ) : (
                                         <div className="w-full h-full flex items-center justify-center">

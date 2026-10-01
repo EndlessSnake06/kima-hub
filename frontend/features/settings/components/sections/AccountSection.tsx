@@ -7,8 +7,8 @@ import { api } from "@/lib/api";
 import { useTwoFactor } from "../../hooks/useTwoFactor";
 import { Modal } from "@/components/ui/Modal";
 import { InlineStatus, StatusType } from "@/components/ui/InlineStatus";
-import Image from "next/image";
 import { Button } from "@/components/ui/Button";
+import { CachedImage } from "@/components/ui/CachedImage";
 
 export function AccountSection() {
     const { user } = useAuth();
@@ -217,7 +217,7 @@ export function AccountSection() {
                         {twoFactorQR && (
                             <div className="flex justify-center">
                                 <div className="bg-white p-3 rounded-lg">
-                                    <Image src={twoFactorQR} alt="2FA QR Code" width={160} height={160} className="w-40 h-40" unoptimized />
+                                    <CachedImage src={twoFactorQR} alt="2FA QR Code" width={160} height={160} className="w-40 h-40" />
                                 </div>
                             </div>
                         )}

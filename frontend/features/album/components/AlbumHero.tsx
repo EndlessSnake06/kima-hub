@@ -2,13 +2,13 @@
 
 import { Disc3 } from "lucide-react";
 import Link from "next/link";
-import Image from "next/image";
 import { Album, AlbumSource } from "../types";
 import { ReactNode, lazy, Suspense } from "react";
 import { useAlbumDisplayData } from "@/hooks/useMetadataDisplay";
 import type { ColorPalette } from "@/hooks/useImageColor";
 import { formatDuration } from "@/lib/format";
 import { HeroBackdrop } from "@/components/ui/HeroBackdrop";
+import { CachedImage } from "@/components/ui/CachedImage";
 
 // Lazy load MetadataEditor - modal component opened on user action
 const MetadataEditor = lazy(() => import("@/components/MetadataEditor").then(mod => ({ default: mod.MetadataEditor })));
@@ -50,14 +50,13 @@ export function AlbumHero({
                     {/* Album Cover - Square */}
                     <div className="w-[140px] h-[140px] md:w-[192px] md:h-[192px] bg-[#282828] rounded shrink-0 overflow-hidden relative">
                         {coverUrl ? (
-                            <Image
+                            <CachedImage
                                 src={coverUrl}
                                 alt={album.title}
                                 fill
                                 sizes="(max-width: 768px) 140px, 192px"
                                 className="object-cover"
                                 priority
-                                unoptimized
                             />
                         ) : (
                             <div className="w-full h-full flex items-center justify-center">

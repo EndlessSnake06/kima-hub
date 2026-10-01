@@ -1,7 +1,6 @@
 "use client";
 
 import { Play, Pause } from "lucide-react";
-import Image from "next/image";
 import Link from "next/link";
 import { useAudioState } from "@/lib/audio-state-context";
 import { useAudioPlayback } from "@/lib/audio-playback-context";
@@ -10,6 +9,7 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { formatTime } from "@/lib/format";
 import type { LibraryTrack } from "../types";
+import { CachedImage } from "@/components/ui/CachedImage";
 
 interface LibraryTracksListProps {
     tracks: LibraryTrack[];
@@ -91,13 +91,12 @@ export function LibraryTracksList({ tracks, limit }: LibraryTracksListProps) {
 
                         <div className="w-10 h-10 bg-[#181818] rounded overflow-hidden flex-shrink-0">
                             {coverUrl ? (
-                                <Image
+                                <CachedImage
                                     src={coverUrl}
                                     alt={track.album.title}
                                     width={40}
                                     height={40}
                                     className="object-cover w-full h-full"
-                                    unoptimized
                                 />
                             ) : (
                                 <div className="w-full h-full flex items-center justify-center">

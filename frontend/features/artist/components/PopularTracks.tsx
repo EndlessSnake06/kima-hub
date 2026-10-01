@@ -1,13 +1,13 @@
 import React from "react";
 import { Play, Pause, Volume2, Music } from "lucide-react";
 import { cn } from "@/lib/cn";
-import Image from "next/image";
 import { api } from "@/lib/api";
 import type { Track, Artist } from "../types";
 import { formatNumber, formatTime } from "@/lib/format";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { cascadeStyle } from "@/lib/motion";
 import { useDoubleTapList } from "@/hooks/useDoubleTap";
+import { CachedImage } from "@/components/ui/CachedImage";
 
 // A top track without a library album is not owned, so it can only be previewed.
 const isUnownedTrack = (track: Track) =>
@@ -102,13 +102,12 @@ export const PopularTracks: React.FC<PopularTracksProps> = ({
                             <div className="flex items-center gap-3 min-w-0">
                                 <div className="w-10 h-10 bg-[#282828] rounded shrink-0 overflow-hidden">
                                     {coverUrl ? (
-                                        <Image
+                                        <CachedImage
                                             src={coverUrl}
                                             alt={track.title}
                                             width={40}
                                             height={40}
                                             className="object-cover"
-                                            unoptimized
                                         />
                                     ) : (
                                         <div className="w-full h-full flex items-center justify-center">

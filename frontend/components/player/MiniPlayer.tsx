@@ -4,7 +4,6 @@ import { useAudioState, useAudioPlayback, useAudioControls } from "@/lib/audio-c
 import { useMediaInfo } from "@/hooks/useMediaInfo";
 import { PlayCountLine } from "@/features/stats/PlayCountLine";
 import { useIsMobile, useIsTablet } from "@/hooks/useMediaQuery";
-import Image from "next/image";
 import Link from "next/link";
 import {
     Play,
@@ -31,6 +30,7 @@ import { SeekSlider } from "./SeekSlider";
 import { SleepTimer } from "./SleepTimer";
 import { usePlaybackProgress } from "@/hooks/usePlaybackProgress";
 import { VibeToggleButton } from "./VibeToggleButton";
+import { CachedImage } from "@/components/ui/CachedImage";
 
 export function MiniPlayer() {
     const {
@@ -173,13 +173,12 @@ export function MiniPlayer() {
                                     <ChevronLeft className="w-4 h-4 text-white flex-shrink-0" />
                                     {coverUrl ? (
                                         <div className="relative w-12 h-12 rounded-lg overflow-hidden">
-                                            <Image
+                                            <CachedImage
                                                 src={coverUrl}
                                                 alt={title}
                                                 fill
                                                 sizes="48px"
                                                 className="object-cover"
-                                                unoptimized
                                             />
                                         </div>
                                     ) : (
@@ -251,13 +250,12 @@ export function MiniPlayer() {
                                     }}
                                 >
                                     {coverUrl ? (
-                                        <Image
+                                        <CachedImage
                                             src={coverUrl}
                                             alt={title}
                                             fill
                                             sizes="48px"
                                             className="object-cover"
-                                            unoptimized
                                         />
                                     ) : (
                                         <div className="w-full h-full flex items-center justify-center">
@@ -398,7 +396,7 @@ export function MiniPlayer() {
                             >
                                 <div className={cn("relative w-full h-full bg-gradient-to-br from-[#2a2a2a] to-[#1a1a1a] rounded-lg overflow-hidden flex items-center justify-center", "transition-transform duration-300", isPlaying && "scale-[1.03]")}>
                                     {coverUrl ? (
-                                        <Image
+                                        <CachedImage
                                             key={coverUrl}
                                             src={coverUrl}
                                             alt={title}
@@ -406,7 +404,6 @@ export function MiniPlayer() {
                                             sizes="56px"
                                             className="object-cover"
                                             priority
-                                            unoptimized
                                         />
                                     ) : (
                                         <MusicIcon className="w-6 h-6 text-[var(--text-muted)]" />

@@ -2,11 +2,11 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import Image from "next/image";
 import { Mic2, ArrowLeft } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
+import { CachedImage } from "@/components/ui/CachedImage";
 
 interface Podcast {
     id: string;
@@ -153,13 +153,12 @@ export default function GenrePage() {
                             >
                                 <div className="relative w-full aspect-square bg-[var(--bg-secondary)] overflow-hidden">
                                     {podcast.coverUrl ? (
-                                        <Image
+                                        <CachedImage
                                             src={podcast.coverUrl}
                                             alt={podcast.title}
                                             fill
                                             sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, 16vw"
                                             className="object-cover group-hover:scale-105 transition-transform duration-150"
-                                            unoptimized
                                         />
                                     ) : (
                                         <div className="w-full h-full flex items-center justify-center">

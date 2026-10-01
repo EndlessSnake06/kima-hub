@@ -20,6 +20,7 @@ import { api } from "@/lib/api";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/lib/toast-context";
 import { Button } from "@/components/ui/Button";
+import { CachedImage } from "@/components/ui/CachedImage";
 
 // Types for Spotify Import
 interface SpotifyTrack {
@@ -559,13 +560,12 @@ function ImportPlaylistPageContent() {
                         <div className="flex items-start gap-4 p-4 bg-white/5 rounded-lg">
                             {preview.playlist.imageUrl ? (
                                 <div className="relative w-20 h-20">
-                                    <Image
+                                    <CachedImage
                                         src={preview.playlist.imageUrl}
                                         alt={preview.playlist.name}
                                         fill
                                         sizes="80px"
                                         className="rounded-md object-cover"
-                                        unoptimized
                                     />
                                 </div>
                             ) : (
@@ -796,13 +796,12 @@ function ImportPlaylistPageContent() {
                                                             />
                                                             {album.coverUrl && (
                                                                 <div className="relative w-10 h-10">
-                                                                    <Image
+                                                                    <CachedImage
                                                                         src={album.coverUrl}
                                                                         alt={album.albumName}
                                                                         fill
                                                                         sizes="40px"
                                                                         className="rounded object-cover"
-                                                                        unoptimized
                                                                     />
                                                                 </div>
                                                             )}

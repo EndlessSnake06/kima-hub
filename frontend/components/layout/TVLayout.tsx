@@ -11,6 +11,7 @@ import { DPAD_KEYS } from "@/lib/tv-utils";
 import { useTVNavigation } from "@/hooks/useTVNavigation";
 import { formatTime, clampTime, formatTimeRemaining } from "@/lib/format";
 import { RefreshCw, SkipBack, SkipForward, Shuffle, Repeat } from "lucide-react";
+import { CachedImage } from "@/components/ui/CachedImage";
 
 const tvNavigation = [
     { name: "Home", href: "/" },
@@ -258,7 +259,7 @@ export function TVLayout({ children }: { children: React.ReactNode }) {
             {hasMedia && (
                 <div className="tv-now-playing-bar">
                     {coverUrl && (
-                        <Image src={coverUrl} alt={title} width={48} height={48} className="tv-np-cover" unoptimized />
+                        <CachedImage src={coverUrl} alt={title} width={48} height={48} className="tv-np-cover" />
                     )}
                     <div className="tv-np-info">
                         <div className="tv-np-title">{title}</div>

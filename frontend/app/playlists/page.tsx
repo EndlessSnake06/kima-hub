@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import Link from "next/link";
 import { usePlaylistsQuery } from "@/hooks/useQueries";
 import { useQueryClient } from "@tanstack/react-query";
@@ -29,6 +28,7 @@ import { cn } from "@/lib/cn";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { Button } from "@/components/ui/Button";
+import { CachedImage } from "@/components/ui/CachedImage";
 
 type ActionPanel = "create" | "importUrl" | "importFile" | null;
 
@@ -103,13 +103,12 @@ function PlaylistMosaic({
 
     if (coverUrls.length === 1) {
         return (
-            <Image
+            <CachedImage
                 src={coverUrls[0]}
                 alt=""
                 fill
                 className={cn("object-cover", greyed && "opacity-50 grayscale")}
                 sizes="200px"
-                unoptimized
             />
         );
     }
@@ -123,13 +122,12 @@ function PlaylistMosaic({
         >
             {coverUrls.slice(0, 4).map((url, index) => (
                 <div key={index} className="relative">
-                    <Image
+                    <CachedImage
                         src={url}
                         alt=""
                         fill
                         className="object-cover"
                         sizes="100px"
-                        unoptimized
                     />
                 </div>
             ))}

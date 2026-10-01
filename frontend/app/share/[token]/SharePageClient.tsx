@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo, type CSSProperties } from "react";
 import { useParams } from "next/navigation";
-import Image from "next/image";
 import {
     Play,
     Pause,
@@ -15,6 +14,7 @@ import {
 } from "lucide-react";
 import { formatTime, formatDuration } from "@/lib/format";
 import { cascadeStyle } from "@/lib/motion";
+import { CachedImage } from "@/components/ui/CachedImage";
 
 interface ShareTrack {
     id: string;
@@ -308,11 +308,10 @@ export default function SharePageClient() {
                     {/* Cover art */}
                     <div className="animate-rise relative w-full aspect-square max-w-[280px] mx-auto mb-8 rounded-xl overflow-hidden bg-white/[0.03]" style={{ "--i": 0 } as CSSProperties}>
                         {coverArtUrl ? (
-                            <Image
+                            <CachedImage
                                 src={coverArtUrl}
                                 alt=""
                                 fill
-                                unoptimized
                                 className="object-cover"
                             />
                         ) : (
@@ -479,11 +478,10 @@ export default function SharePageClient() {
 
                                         {trackCoverUrl && (
                                             <div className="relative w-8 h-8 rounded bg-white/[0.03] flex-shrink-0 overflow-hidden">
-                                                <Image
+                                                <CachedImage
                                                     src={trackCoverUrl}
                                                     alt=""
                                                     fill
-                                                    unoptimized
                                                     className="object-cover"
                                                 />
                                             </div>

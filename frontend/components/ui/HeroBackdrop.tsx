@@ -1,5 +1,5 @@
-import Image from "next/image";
 import type { ColorPalette } from "@/hooks/useImageColor";
+import { CachedImage } from "@/components/ui/CachedImage";
 
 const TINTS = {
     music: {
@@ -47,14 +47,13 @@ export function HeroBackdrop({ image, alt, colors, tint, fallback }: HeroBackdro
     return (
         <div className="absolute inset-0 overflow-hidden">
             <div className={`absolute inset-0 scale-110 blur-md ${t.imageClass}`}>
-                <Image
+                <CachedImage
                     src={image}
                     alt={alt}
                     fill
                     sizes="100vw"
                     className="object-cover"
                     priority
-                    unoptimized
                 />
             </div>
             <div
