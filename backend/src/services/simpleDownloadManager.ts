@@ -25,6 +25,8 @@ import { isRateLimited } from "./enrichmentErrorCodeClassifier";
 import { failureCause } from "../utils/outcome";
 import { removeFailedDownload } from "./lidarrFailures";
 
+const LIDARR_RETRY_DELAYS_MS = [5_000, 20_000];
+
 // Type for transactional prisma client
 type TransactionClient = Omit<
     PrismaClient,
@@ -175,8 +177,7 @@ class SimpleDownloadManager {
                 );
             }
 
-            // Add album to Lidarr (with discovery tag if this is a discovery download)
-            const result = await lidarrService.addAlbum(
+            const result = await this.addAlbumToLidarr(
                 albumMbid,
                 artistName,
                 albumTitle,
@@ -184,12 +185,6 @@ class SimpleDownloadManager {
                 artistMbid,
                 isDiscovery
             );
-
-            if (!result) {
-                throw new Error(
-                    "Failed to add album to Lidarr - album not found"
-                );
-            }
 
             logger.debug(`   Album queued in Lidarr (ID: ${result.id})`);
 
@@ -244,20 +239,22 @@ class SimpleDownloadManager {
 
             return { success: true, correlationId };
         } catch (error: any) {
-            logger.error(`   Failed to start download:`, error.message);
-
-            // Extract error properties if this is an AcquisitionError
             const errorType = error instanceof AcquisitionError ? error.type : undefined;
             const isRecoverable = error instanceof AcquisitionError ? error.isRecoverable : undefined;
 
-            // Get the job to check if it's a discovery job
             const job = await prisma.downloadJob.findUnique({
                 where: { id: jobId },
             });
             const existingMetadata = (job?.metadata as any) || {};
 
-            // Handle "No releases available" error - immediate failure
-            if (error.message?.includes("No releases available")) {
+            if (job && errorType === AcquisitionErrorType.ALREADY_OWNED) {
+                await this.completeAlreadyOwned(job, error.message);
+                return { success: true };
+            }
+
+            logger.error(`   Failed to start download:`, error.message);
+
+            if (errorType === AcquisitionErrorType.NO_RELEASES_AVAILABLE) {
                 logger.debug(`   No sources found - handling immediate failure`);
 
                 // For discovery jobs, skip same-artist fallback
@@ -326,7 +323,7 @@ class SimpleDownloadManager {
 
             // If album wasn't found, try same-artist fallback ONLY for non-discovery jobs
             // Discovery jobs should find NEW artists via the discovery system instead
-            if (job && error.message?.includes("album not found")) {
+            if (job && errorType === AcquisitionErrorType.ALBUM_NOT_FOUND) {
                 if (job.discoveryBatchId) {
                     logger.debug(
                         `   Album not found - Discovery job, skipping same-artist fallback`
@@ -391,6 +388,133 @@ class SimpleDownloadManager {
             }
 
             return { success: false, error: error.message, errorType, isRecoverable };
+        }
+    }
+
+    /** Retries twice when Lidarr is down or locked; null from addAlbum means it did not take the album. */
+    private async addAlbumToLidarr(
+        ...args: Parameters<typeof lidarrService.addAlbum>
+    ): Promise<NonNullable<Awaited<ReturnType<typeof lidarrService.addAlbum>>>> {
+        for (let attempt = 0; ; attempt++) {
+            try {
+                const album = await lidarrService.addAlbum(...args);
+                if (!album) {
+                    throw new AcquisitionError(
+                        "Lidarr did not add the album",
+                        AcquisitionErrorType.ALBUM_NOT_FOUND
+                    );
+                }
+                return album;
+            } catch (error) {
+                const unavailable =
+                    error instanceof AcquisitionError &&
+                    error.type === AcquisitionErrorType.LIDARR_UNAVAILABLE;
+                if (!unavailable || attempt >= LIDARR_RETRY_DELAYS_MS.length) throw error;
+                const delayMs = LIDARR_RETRY_DELAYS_MS[attempt];
+                logger.warn(`   ${error.message}; retrying in ${delayMs / 1000}s`);
+                await new Promise((resolve) => setTimeout(resolve, delayMs));
+            }
+        }
+    }
+
+    /** Lidarr already has this album at or above the wanted quality: the job is done. */
+    private async completeAlreadyOwned(
+        job: { id: string; userId: string; subject: string; metadata: unknown; discoveryBatchId: string | null },
+        reason: string
+    ): Promise<void> {
+        const metadata = {
+            ...((job.metadata as any) ?? {}),
+            statusText: "Already in library",
+            alreadyOwnedReason: reason,
+            completedAt: new Date().toISOString(),
+        };
+        await prisma.downloadJob.update({
+            where: { id: job.id },
+            data: { status: "completed", completedAt: new Date(), metadata },
+        });
+        logger.debug(`   ${reason} - job ${job.id} complete`);
+        await this.announceCompletion({
+            jobId: job.id,
+            userId: job.userId,
+            subject: job.subject,
+            metadata,
+            batchId: job.discoveryBatchId ?? undefined,
+            spotifyImportJobId: metadata.spotifyImportJobId,
+        });
+    }
+
+    /** Tell the user and the batch that owns the job that it completed. */
+    private async announceCompletion(result: {
+        jobId: string;
+        userId: string;
+        subject: string;
+        metadata: any;
+        batchId?: string;
+        spotifyImportJobId?: string;
+    }): Promise<void> {
+        eventBus.emit({
+            type: "download:complete",
+            userId: result.userId,
+            payload: { jobId: result.jobId, subject: result.subject },
+        });
+
+        // Send notification
+        try {
+            const decision =
+                await notificationPolicyService.evaluateNotification(
+                    result.jobId,
+                    "complete"
+                );
+
+            if (decision.shouldNotify) {
+                logger.debug(
+                    `   Sending completion notification: ${decision.reason}`
+                );
+                await notificationService.notifyDownloadComplete(
+                    result.userId,
+                    result.subject,
+                    undefined,
+                    result.metadata?.artistId
+                );
+
+                await prisma.downloadJob.update({
+                    where: { id: result.jobId },
+                    data: {
+                        metadata: {
+                            ...result.metadata,
+                            notificationSent: true,
+                        },
+                    },
+                });
+            } else {
+                logger.debug(
+                    `   Suppressing completion notification: ${decision.reason}`
+                );
+            }
+        } catch (notifError) {
+            logger.error(
+                "Failed to evaluate/send download notification:",
+                notifError
+            );
+        }
+
+        // Check batch completion
+        if (result.batchId) {
+            const { discoverWeeklyService } = await import(
+                "./discoverWeekly"
+            );
+            await discoverWeeklyService.checkBatchCompletion(
+                result.batchId
+            );
+        }
+
+        if (result.spotifyImportJobId) {
+            const { spotifyImportService } = await import(
+                "./spotifyImport"
+            );
+            await spotifyImportService.checkImportCompletion(
+                result.spotifyImportJobId
+            );
         }
     }
 
@@ -813,72 +937,15 @@ class SimpleDownloadManager {
             { logPrefix: "[COMPLETE-TX]" }
         );
 
-        // Post-transaction operations (notifications, batch completion)
         if (result.jobId && result.userId) {
-            eventBus.emit({
-                type: "download:complete",
+            await this.announceCompletion({
+                jobId: result.jobId,
                 userId: result.userId,
-                payload: { jobId: result.jobId, subject: result.subject },
+                subject: result.subject,
+                metadata: result.metadata,
+                batchId: result.batchId,
+                spotifyImportJobId: result.spotifyImportJobId,
             });
-
-            // Send notification
-            try {
-                const decision =
-                    await notificationPolicyService.evaluateNotification(
-                        result.jobId,
-                        "complete"
-                    );
-
-                if (decision.shouldNotify) {
-                    logger.debug(
-                        `   Sending completion notification: ${decision.reason}`
-                    );
-                    await notificationService.notifyDownloadComplete(
-                        result.userId,
-                        result.subject,
-                        undefined,
-                        result.metadata?.artistId
-                    );
-
-                    await prisma.downloadJob.update({
-                        where: { id: result.jobId },
-                        data: {
-                            metadata: {
-                                ...result.metadata,
-                                notificationSent: true,
-                            },
-                        },
-                    });
-                } else {
-                    logger.debug(
-                        `   Suppressing completion notification: ${decision.reason}`
-                    );
-                }
-            } catch (notifError) {
-                logger.error(
-                    "Failed to evaluate/send download notification:",
-                    notifError
-                );
-            }
-
-            // Check batch completion
-            if (result.batchId) {
-                const { discoverWeeklyService } = await import(
-                    "./discoverWeekly"
-                );
-                await discoverWeeklyService.checkBatchCompletion(
-                    result.batchId
-                );
-            }
-
-            if (result.spotifyImportJobId) {
-                const { spotifyImportService } = await import(
-                    "./spotifyImport"
-                );
-                await spotifyImportService.checkImportCompletion(
-                    result.spotifyImportJobId
-                );
-            }
         }
 
         return {
@@ -1286,8 +1353,8 @@ class SimpleDownloadManager {
     }
 
     /**
-     * Fail stale jobs: pending over 3 min (never started), processing without a
-     * Lidarr ref over 2 min (no sources), with one over 5 min (import failed).
+     * Fail stale jobs: pending over 10 min (never started), processing without a
+     * Lidarr ref over 5 min (no sources), with one over 15 min and not downloading.
      * Accepts a prefetched snapshot to avoid repeat API calls.
      */
     async markStaleJobsAsFailed(

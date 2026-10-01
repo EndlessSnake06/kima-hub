@@ -25,6 +25,8 @@ import type {
 export enum AcquisitionErrorType {
     ALBUM_NOT_FOUND = "ALBUM_NOT_FOUND",
     NO_RELEASES_AVAILABLE = "NO_RELEASES_AVAILABLE",
+    ALREADY_OWNED = "ALREADY_OWNED",
+    LIDARR_UNAVAILABLE = "LIDARR_UNAVAILABLE",
 }
 
 /**
@@ -56,6 +58,18 @@ export class AcquisitionError extends Error {
 }
 
 const DISCOVERY_TAG_LABEL = "lidify-discovery";
+
+// Lidarr ends a search with "{n} reports downloaded"; n counts grabs, not results.
+const NOTHING_GRABBED = /\b0 reports downloaded/;
+// Lidarr's rejections for a release no better than the files it already has.
+const EXISTING_FILES = /^Existing files\b/i;
+const RELEASE_SEARCH_TIMEOUT_MS = 90_000;
+
+/** Connection failures, 5xx and Lidarr's SQLite lock clear on their own. */
+function isTransient(error: any): boolean {
+    if (error?.response) return error.response.status >= 500;
+    return error?.isAxiosError === true || /database is locked/i.test(error?.message ?? "");
+}
 
 // Simple interface for MusicBrainz artist data (from external service)
 interface MusicBrainzArtist {
@@ -1389,7 +1403,7 @@ class LidarrService {
                     searchResponse.data.id
                 );
 
-                if (result.message?.includes("0 reports")) {
+                if (NOTHING_GRABBED.test(result.message ?? "")) {
                     try {
                         const albumDetails = await this.client.get(
                             `/api/v1/album/${updatedAlbum.id}`
@@ -1472,7 +1486,7 @@ class LidarrService {
                             retryResponse.data.id
                         );
 
-                        if (retryResult.message?.includes("0 reports")) {
+                        if (NOTHING_GRABBED.test(retryResult.message ?? "")) {
                             const baseAlbumTitle = this.extractBaseTitle(albumTitle);
 
                             if (!isDiscovery && baseAlbumTitle !== albumTitle && baseAlbumTitle.length > 2) {
@@ -1532,22 +1546,17 @@ class LidarrService {
                                             baseSearchResponse.data.id
                                         );
 
-                                        if (baseResult.message?.includes("0 reports")) {
+                                        if (NOTHING_GRABBED.test(baseResult.message ?? "")) {
                                             logger.warn(
                                                 `   Base album "${baseMatch.title}" also has no releases`
                                             );
-                                            throw new Error(
-                                                `No releases available for "${albumTitle}" or base album "${baseMatch.title}" - ` +
-                                                    `check indexer configuration and album availability`
-                                            );
+                                            throw await this.nothingGrabbedError(baseMatch.id, baseMatch.title);
                                         }
 
                                         logger.debug(`   Base album download started: ${baseMatch.title}`);
                                         return baseMatch;
                                     } catch (baseError: any) {
-                                        if (baseError.message?.includes("No releases")) {
-                                            throw baseError;
-                                        }
+                                        if (baseError instanceof AcquisitionError) throw baseError;
                                         if (baseError.message?.includes("timed out")) {
                                             logger.warn(
                                                 `   Base album search timed out, may still be searching`
@@ -1563,26 +1572,17 @@ class LidarrService {
                                 }
                             }
 
-                            throw new AcquisitionError(
-                                `No releases available for "${albumTitle}" - indexers found no matching downloads. ` +
-                                    `Album may not be available on configured indexers, or MBID mismatch between Lidarr and indexers.`,
-                                AcquisitionErrorType.NO_RELEASES_AVAILABLE,
-                                true
-                            );
+                            throw await this.nothingGrabbedError(updatedAlbum.id, albumTitle);
                         }
                     } else {
-                        throw new Error(
-                            "No releases available - indexers found no matching downloads"
-                        );
+                        throw await this.nothingGrabbedError(updatedAlbum.id, albumTitle);
                     }
                 }
 
                 logger.debug(`   Album download started: ${updatedAlbum.title}`);
                 return updatedAlbum;
             } catch (error: any) {
-                if (error.message?.includes("No releases available")) {
-                    throw error; // Re-throw for startDownload to handle
-                }
+                if (error instanceof AcquisitionError) throw error;
                 if (error.message?.includes("timed out")) {
                     // Command timed out - album might still be searching
                     logger.warn(
@@ -1593,16 +1593,63 @@ class LidarrService {
                 throw error;
             }
         } catch (error: any) {
-            // Re-throw our own errors (like "No releases available")
-            if (error.message?.includes("No releases available")) {
-                throw error;
+            if (error instanceof AcquisitionError) throw error;
+            logger.error("Lidarr add album error:", error.response?.data || error.message);
+            if (isTransient(error)) {
+                throw new AcquisitionError(
+                    `Lidarr unavailable: ${error.message}`,
+                    AcquisitionErrorType.LIDARR_UNAVAILABLE,
+                    true,
+                    error
+                );
             }
-            logger.error(
-                "Lidarr add album error:",
-                error.response?.data || error.message
-            );
-            return null;
+            throw error;
         }
+    }
+
+    /**
+     * Why a search grabbed nothing, from Lidarr's own release list: every release
+     * rejected for existing files means the library already has the album.
+     */
+    private async nothingGrabbedError(albumId: number, albumTitle: string): Promise<AcquisitionError> {
+        let releases: { rejections?: string[] }[] = [];
+        try {
+            releases = (
+                await this.client!.get("/api/v1/release", {
+                    params: { albumId },
+                    timeout: RELEASE_SEARCH_TIMEOUT_MS,
+                })
+            ).data ?? [];
+        } catch (error: any) {
+            logger.warn(`   Release list for album ${albumId} unavailable: ${error.message}`);
+        }
+
+        const reasons = releases.flatMap((r) => r.rejections ?? []);
+        const owned =
+            releases.length > 0 &&
+            releases.every((r) => (r.rejections ?? []).length > 0 && r.rejections!.every((m) => EXISTING_FILES.test(m)));
+        if (owned) {
+            return new AcquisitionError(
+                `Already in Lidarr: ${reasons[0]}`,
+                AcquisitionErrorType.ALREADY_OWNED,
+                false
+            );
+        }
+
+        const counts = new Map<string, number>();
+        for (const reason of reasons) counts.set(reason, (counts.get(reason) ?? 0) + 1);
+        const top = [...counts.entries()]
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 3)
+            .map(([reason, n]) => `${reason} (${n})`);
+        const detail = releases.length === 0
+            ? "indexers found no releases"
+            : `${releases.length} found, none approved: ${top.join("; ")}`;
+        return new AcquisitionError(
+            `No releases available for "${albumTitle}" - ${detail}`,
+            AcquisitionErrorType.NO_RELEASES_AVAILABLE,
+            true
+        );
     }
 
     async rescanLibrary(): Promise<void> {
