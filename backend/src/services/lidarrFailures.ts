@@ -31,7 +31,9 @@ const FAILED_IMPORT_PATTERNS = [
 
 const ALREADY_OWNED_PATTERNS = ["not an upgrade for existing", "not a custom format upgrade"];
 const PARTIAL_IMPORT = "has missing tracks";
-const PARTIAL_GRACE_MS = 15 * 60 * 1000;
+// Lidarr retries this one every cycle, and an extractor such as unpackerr clears it.
+const AWAITING_EXTRACTION = "found archive file";
+const GRACE_MS = 15 * 60 * 1000;
 const SINGLE_TRACK_POST = /\[\s*\d+\s*(?:\/|of|\+)\s*\d+\s*\]/i;
 
 export type QueueVerdict = { action: "reject" | "owned" | "failed"; reason: string };
@@ -39,7 +41,8 @@ export type QueueVerdict = { action: "reject" | "owned" | "failed"; reason: stri
 /**
  * What to do with a queue item: reject a single-track post (not an attempt),
  * close a job whose album the library already has, or count a real failure.
- * Null while the item may still finish, including a partial import's first 15 min.
+ * Null while the item may still finish, including the first 15 min of a partial
+ * import or of a download whose archive is still being extracted.
  */
 export function judgeQueueItem(item: LidarrQueueItem, now = Date.now()): QueueVerdict | null {
     if (SINGLE_TRACK_POST.test(item.title ?? "")) return { action: "reject", reason: "Single-track post" };
@@ -51,11 +54,12 @@ export function judgeQueueItem(item: LidarrQueueItem, now = Date.now()): QueueVe
     const owned = has(ALREADY_OWNED_PATTERNS);
     if (owned) return { action: "owned", reason: owned };
 
+    const added = item.added ? Date.parse(item.added) : NaN;
     if (has([PARTIAL_IMPORT])) {
-        const added = item.added ? Date.parse(item.added) : NaN;
-        if (now - added < PARTIAL_GRACE_MS) return null;
+        if (now - added < GRACE_MS) return null;
         return { action: "failed", reason: "Has missing tracks" };
     }
+    if (has([AWAITING_EXTRACTION]) && now - added < GRACE_MS) return null;
 
     if (item.trackedDownloadState === "importFailed") return { action: "failed", reason: "Import failed" };
     const failed = has(FAILED_IMPORT_PATTERNS);

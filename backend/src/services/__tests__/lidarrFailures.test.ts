@@ -199,6 +199,28 @@ describe("judgeQueueItem", () => {
         expect(judgeQueueItem(partial(16))).toEqual({ action: "failed", reason: "Has missing tracks" });
     });
 
+    it("waits 15 minutes for an archive to be extracted before counting a failure", () => {
+        const awaiting = (addedMinutesAgo: number) =>
+            item(1, "d", {
+                trackedDownloadStatus: "warning",
+                added: new Date(Date.now() - addedMinutesAgo * 60_000).toISOString(),
+                statusMessages: [{ title: "t", messages: ["Found archive file, might need to be extracted"] }],
+            }) as any;
+
+        expect(judgeQueueItem(awaiting(5))).toBeNull();
+        expect(judgeQueueItem(awaiting(16))).toEqual({ action: "failed", reason: "Import blocked" });
+    });
+
+    it("counts an import Lidarr cannot do without a person as a failure at once", () => {
+        const blocked = item(1, "d", {
+            trackedDownloadStatus: "warning",
+            added: new Date().toISOString(),
+            statusMessages: [{ title: "t", messages: ["Unknown Artist"] }],
+        }) as any;
+
+        expect(judgeQueueItem(blocked)).toEqual({ action: "failed", reason: "Import blocked" });
+    });
+
     it("ignores a status message that is not a failure", () => {
         for (const message of ["Indexer is slow", "Sample rate 48kHz"]) {
             expect(
