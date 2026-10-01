@@ -12,6 +12,7 @@ import { AudiobookHero } from "@/features/audiobook/components/AudiobookHero";
 import { AudiobookActionBar } from "@/features/audiobook/components/AudiobookActionBar";
 import { SectionList } from "@/features/audiobook/components/SectionList";
 import { SectionHeader } from "@/components/ui/SectionHeader";
+import { PageMessage } from "@/components/ui/PageMessage";
 
 export default function AudiobookDetailPage() {
     const { audiobookId, audiobook, isLoading, refetch, heroImage, colorExtractionImage, metadata } =
@@ -39,11 +40,11 @@ export default function AudiobookDetailPage() {
 
     if (!audiobook) {
         return (
-            <div className="flex items-center justify-center min-h-screen bg-[var(--bg-primary)]">
-                <p className="text-xs text-[var(--text-muted)]">
-                    Audiobook not found
-                </p>
-            </div>
+            <PageMessage
+                title="Audiobook not found"
+                description="It may have been removed from Audiobookshelf."
+                action={{ label: "Audiobooks", href: "/audiobooks" }}
+            />
         );
     }
 

@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { CachedImage } from "@/components/ui/CachedImage";
+import { PageMessage } from "@/components/ui/PageMessage";
 
 interface Podcast {
     id: string;
@@ -101,9 +102,7 @@ export default function GenrePage() {
 
     if (!genre) {
         return (
-            <div className="flex items-center justify-center h-screen bg-[var(--bg-primary)]">
-                <p className="text-xs text-[var(--text-muted)]">Genre not found</p>
-            </div>
+            <PageMessage title="Genre not found" action={{ label: "Podcasts", href: "/podcasts" }} />
         );
     }
 

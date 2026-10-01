@@ -21,6 +21,7 @@ import { AlbumHero } from "@/features/album/components/AlbumHero";
 import { AlbumActionBar } from "@/features/album/components/AlbumActionBar";
 import { TrackList } from "@/features/album/components/TrackList";
 import { SimilarAlbums } from "@/features/album/components/SimilarAlbums";
+import { PageMessage } from "@/components/ui/PageMessage";
 
 interface AlbumPageProps {
     params: Promise<{
@@ -41,7 +42,7 @@ export default function AlbumPage({ params }: AlbumPageProps) {
     const [pendingTrackIds, setPendingTrackIds] = useState<string[]>([]);
 
     // Custom hooks
-    const { album, source, loading, reloadAlbum } = useAlbumData(id);
+    const { album, source, loading, failed, notFound, reloadAlbum } = useAlbumData(id);
     const { playAlbum, shufflePlay, addToQueue, downloadAlbum } =
         useAlbumActions();
     const { isPendingByMbid } = useDownloadContext();
@@ -128,22 +129,21 @@ export default function AlbumPage({ params }: AlbumPageProps) {
         return <LoadingScreen />;
     }
 
+    if (failed && !notFound) {
+        return (
+            <PageMessage
+                title="Couldn't load this album"
+                action={{ label: "Try again", onClick: () => reloadAlbum() }}
+            />
+        );
+    }
+
     if (!album) {
         return (
-            <div className="min-h-screen flex items-center justify-center">
-                <div className="text-center">
-                    <h1 className="text-2xl font-bold mb-4">
-                        Error Loading Album
-                    </h1>
-                    <p className="text-[var(--text-secondary)] mb-4">Album not found</p>
-                    <button
-                        onClick={() => router.push("/albums")}
-                        className="px-4 py-2 bg-brand hover:bg-brand-hover text-black rounded-lg transition-colors"
-                    >
-                        Back to Albums
-                    </button>
-                </div>
-            </div>
+            <PageMessage
+                title="Album not found"
+                action={{ label: "Albums", href: "/collection?tab=albums" }}
+            />
         );
     }
 

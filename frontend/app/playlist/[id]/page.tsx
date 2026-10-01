@@ -47,6 +47,7 @@ import { useDoubleTapList } from "@/hooks/useDoubleTap";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { Button } from "@/components/ui/Button";
 import { CachedImage } from "@/components/ui/CachedImage";
+import { PageMessage } from "@/components/ui/PageMessage";
 
 interface Track {
     id: string;
@@ -906,9 +907,11 @@ export default function PlaylistDetailPage() {
 
     if (!playlist) {
         return (
-            <div className="flex items-center justify-center min-h-screen bg-[var(--bg-primary)]">
-                <p className="text-xs text-[var(--text-muted)]">Playlist not found</p>
-            </div>
+            <PageMessage
+                title="Playlist not found"
+                description="It may have been deleted, or it belongs to someone who has not shared it."
+                action={{ label: "Your playlists", href: "/playlists" }}
+            />
         );
     }
 

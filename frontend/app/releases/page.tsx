@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { Calendar, Clock, Download, Music2, Disc, ArrowRight, CheckCircle2, Loader2 } from "lucide-react";
+import { Calendar, Clock, Download, Disc, ArrowRight, CheckCircle2, Loader2 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { api } from "@/lib/api";
@@ -9,6 +9,7 @@ import Link from "next/link";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { CachedImage } from "@/components/ui/CachedImage";
 import { plural } from "@/lib/format";
+import { PageMessage } from "@/components/ui/PageMessage";
 
 interface ReleaseItem {
     id: number | string;
@@ -92,11 +93,11 @@ export default function ReleasesPage() {
 
     if (error) {
         return (
-            <div className="flex flex-col items-center justify-center min-h-screen text-[var(--text-secondary)]">
-                <Music2 className="w-12 h-12 mb-4 opacity-40" />
-                <p>Failed to load releases</p>
-                <p className="text-sm">{error}</p>
-            </div>
+            <PageMessage
+                title="Couldn't load releases"
+                description={error}
+                action={{ label: "Try again", onClick: () => { setError(null); fetchReleases(); } }}
+            />
         );
     }
 

@@ -1,7 +1,6 @@
 "use client";
 
 import DOMPurify from "dompurify";
-import { useRouter } from "next/navigation";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { useImageColor } from "@/hooks/useImageColor";
 
@@ -15,9 +14,9 @@ import { EpisodeList } from "@/features/podcast/components/EpisodeList";
 import { PreviewEpisodes } from "@/features/podcast/components/PreviewEpisodes";
 import { SimilarPodcasts } from "@/features/podcast/components/SimilarPodcasts";
 import { SectionHeader } from "@/components/ui/SectionHeader";
+import { PageMessage } from "@/components/ui/PageMessage";
 
 export default function PodcastDetailPage() {
-    const router = useRouter();
     const {
         podcastId,
         podcast,
@@ -55,19 +54,11 @@ export default function PodcastDetailPage() {
 
     if (previewLoadState === "error") {
         return (
-            <div className="flex items-center justify-center min-h-screen bg-[var(--bg-primary)]">
-                <div className="flex flex-col items-center gap-3 text-center">
-                    <p className="text-xs tabular-nums text-[var(--text-muted)]">
-                        {previewError || "Could not load podcast"}
-                    </p>
-                    <button
-                        onClick={() => router.back()}
-                        className="text-xs text-[var(--text-muted)] underline underline-offset-2 hover:text-gray-400 transition-colors"
-                    >
-                        Go back
-                    </button>
-                </div>
-            </div>
+            <PageMessage
+                title="Couldn't load this podcast"
+                description={previewError || undefined}
+                action={{ label: "Podcasts", href: "/podcasts" }}
+            />
         );
     }
 
@@ -81,9 +72,7 @@ export default function PodcastDetailPage() {
 
     if (!podcast && !previewData) {
         return (
-            <div className="flex items-center justify-center min-h-screen bg-[var(--bg-primary)]">
-                <p className="text-xs text-[var(--text-muted)]">Podcast not found</p>
-            </div>
+            <PageMessage title="Podcast not found" action={{ label: "Podcasts", href: "/podcasts" }} />
         );
     }
 

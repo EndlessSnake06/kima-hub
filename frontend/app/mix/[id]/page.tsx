@@ -13,6 +13,7 @@ import { useToast } from "@/lib/toast-context";
 import { useMixQuery } from "@/hooks/useQueries";
 import { useDoubleTapList } from "@/hooks/useDoubleTap";
 import { CachedImage } from "@/components/ui/CachedImage";
+import { PageMessage } from "@/components/ui/PageMessage";
 
 interface MixTrack {
     id: string;
@@ -177,15 +178,11 @@ export default function MixPage() {
 
     if (!mix) {
         return (
-            <div className="flex flex-col items-center justify-center min-h-screen gap-4">
-                <p className="text-[var(--text-muted)]">Mix not found</p>
-                <button
-                    onClick={() => router.push("/")}
-                    className="px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 text-white text-sm font-medium transition-all"
-                >
-                    Back to Mixes
-                </button>
-            </div>
+            <PageMessage
+                title="Mix not found"
+                description="Mixes are rebuilt regularly, so this one may have been replaced."
+                action={{ label: "Home", href: "/" }}
+            />
         );
     }
 

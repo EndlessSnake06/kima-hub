@@ -27,6 +27,7 @@ import { usePlaySlice } from "@/features/stats/usePlaySlice";
 import Link from "next/link";
 import { Play } from "lucide-react";
 import { PERIODS, type Period, type ListeningStats, type StatsResponse } from "@/features/stats/types";
+import { PageMessage } from "@/components/ui/PageMessage";
 
 export default function StatsPage() {
     const { isAuthenticated, isLoading: authLoading } = useAuth();
@@ -35,6 +36,7 @@ export default function StatsPage() {
     // One period for the whole page, so every figure is comparable to the others.
     const [period, setPeriod] = useState<Period>("all");
     const [reloading, setReloading] = useState(false);
+    const [attempt, setAttempt] = useState(0);
 
     useEffect(() => {
         if (!isAuthenticated) return;
@@ -65,7 +67,7 @@ export default function StatsPage() {
         // `data` is deliberately not a dependency: it is read only to decide
         // whether this is a first load or a re-window.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isAuthenticated, period]);
+    }, [isAuthenticated, period, attempt]);
 
     if (authLoading || (!data && !failed)) return <Waiting />;
 
@@ -73,13 +75,11 @@ export default function StatsPage() {
     // keeps the figures already on screen.
     if (!data) {
         return (
-            <Shell>
-                <p className="t-eyebrow">Stats</p>
-                <p className="t-body mt-4 max-w-[46ch]">
-                    Couldn&apos;t read your listening history just now. Nothing is wrong with the
-                    history itself. Try again in a moment.
-                </p>
-            </Shell>
+            <PageMessage
+                title="Couldn't load your stats"
+                description="Your listening history is fine; the page just couldn't read it."
+                action={{ label: "Try again", onClick: () => { setFailed(false); setAttempt((n) => n + 1); } }}
+            />
         );
     }
 

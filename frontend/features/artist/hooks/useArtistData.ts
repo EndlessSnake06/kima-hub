@@ -75,10 +75,6 @@ export function useArtistData() {
               }
           });
 
-    // Handle errors - only show toast once, don't auto-navigate
-    // The page component should handle displaying a "not found" state
-    // Don't call router.back() as it causes navigation loops
-
     return {
         artist,
         albums,

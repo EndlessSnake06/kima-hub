@@ -27,6 +27,7 @@ import { PopularTracks } from "@/features/artist/components/PopularTracks";
 import { Discography } from "@/features/artist/components/Discography";
 import { AvailableAlbums } from "@/features/artist/components/AvailableAlbums";
 import { SimilarArtists } from "@/features/artist/components/SimilarArtists";
+import { PageMessage } from "@/components/ui/PageMessage";
 
 export default function ArtistPage() {
     const { toast } = useToast();
@@ -154,26 +155,22 @@ export default function ArtistPage() {
         return <LoadingScreen message="Loading artist..." />;
     }
 
-    // Error or not found state
-    if (error || !artist) {
+    if (error) {
         return (
-            <div className="min-h-screen flex items-center justify-center">
-                <div className="text-center space-y-4">
-                    <div className="text-6xl text-[var(--text-muted)]">♪</div>
-                    <h1 className="text-2xl font-semibold text-white">
-                        Artist Not Found
-                    </h1>
-                    <p className="text-neutral-400">
-                        This artist isn&apos;t in your library yet.
-                    </p>
-                    <button
-                        onClick={() => router.back()}
-                        className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 rounded-lg text-white transition-colors"
-                    >
-                        Go Back
-                    </button>
-                </div>
-            </div>
+            <PageMessage
+                title="Couldn't load this artist"
+                action={{ label: "Try again", onClick: () => reloadArtist() }}
+            />
+        );
+    }
+
+    if (!artist) {
+        return (
+            <PageMessage
+                title="Artist not found"
+                description="This artist isn't in your library or on MusicBrainz."
+                action={{ label: "Artists", href: "/collection?tab=artists" }}
+            />
         );
     }
 
