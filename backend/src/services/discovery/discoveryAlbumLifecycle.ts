@@ -66,16 +66,16 @@ export class DiscoveryAlbumLifecycle {
      * check in lidarrRemoval, then its tracks and rows, marking it DELETED.
      */
     async deleteRejectedAlbum(album: DiscoveryAlbumInfo): Promise<void> {
-        // Re-read the status before deleting files: a like since the snapshot skips
-        // everything. The Lidarr delete stays outside the transaction so a timeout
-        // cannot roll back the claim, and the claim below closes the remaining race.
-        const current = await prisma.discoveryAlbum.findUnique({
-            where: { id: album.id },
-            select: { status: true },
+        // Claiming the row before touching files means a like either lands first and
+        // keeps the album, or finds it DELETED and is refused; never a liked album
+        // whose files are gone.
+        const claimed = await prisma.discoveryAlbum.updateMany({
+            where: { id: album.id, status: 'ACTIVE' },
+            data: { status: 'DELETED' },
         });
-        if (!current || current.status !== 'ACTIVE') {
+        if (claimed.count === 0) {
             logger.debug(
-                `[DiscoveryLifecycle] Skipped delete (pre-check) -- ${album.albumTitle} no longer ACTIVE (liked?)`
+                `[DiscoveryLifecycle] Skipped delete -- ${album.albumTitle} no longer ACTIVE (liked?)`
             );
             return;
         }
@@ -85,21 +85,7 @@ export class DiscoveryAlbumLifecycle {
         }
 
         await prisma.$transaction(async (tx) => {
-            // Claim the row atomically: only delete if it is still ACTIVE.
-            // If the user liked it concurrently, count === 0 and we abort.
-            const claimed = await tx.discoveryAlbum.updateMany({
-                where: { id: album.id, status: 'ACTIVE' },
-                data: { status: 'DELETED' },
-            });
-            if (claimed.count === 0) {
-                logger.debug(
-                    `[DiscoveryLifecycle] Skipped delete -- ${album.albumTitle} no longer ACTIVE (liked?)`
-                );
-                return;
-            }
-            // Read inside the transaction, after the claim, and only DISCOVER albums: a
-            // LIBRARY album with the same rgMbid must never be deleted here, even if that
-            // leaves a mislabelled discovery album behind.
+            // Only DISCOVER albums: a LIBRARY album with the same rgMbid is never deleted here.
             const dbAlbum = await tx.album.findFirst({
                 where: { rgMbid: album.rgMbid, location: 'DISCOVER' },
             });

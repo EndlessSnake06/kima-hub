@@ -610,9 +610,8 @@ router.post("/like", async (req, res) => {
                 .json({ error: "Album not in active discovery" });
         }
 
-        // Claim only an ACTIVE row, so a cleanup that already marked it DELETED is not
-        // resurrected; count 0 means cleanup won (409). The file-level race is guarded
-        // by deleteRejectedAlbum's own status check.
+        // Claim only an ACTIVE row; count 0 means cleanup claimed it first and its
+        // files are being removed (409).
         const claimed = await prisma.discoveryAlbum.updateMany({
             where: { id: discoveryAlbum.id, status: "ACTIVE" },
             data: {
