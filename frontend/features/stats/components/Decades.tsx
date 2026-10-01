@@ -56,11 +56,7 @@ export function Decades({ decades }: { decades: ShelfStats["decades"] }) {
                             <g key={d.decade}>
                                 <circle
                                     cx={cx} cy={H / 2} r={r}
-                                    /* The outline is what makes a disc a disc.
-                                       At 12% white and a third of a viewBox
-                                       unit it came out under two pixels of
-                                       near-black, so a shelf that is only 8%
-                                       heard drew a line with nothing on it. */
+                                    /* The outline keeps a barely-heard disc visible. */
                                     fill="var(--chart-ink-empty)"
                                     stroke="var(--chart-ink-edge)" strokeWidth="0.4"
                                     style={{

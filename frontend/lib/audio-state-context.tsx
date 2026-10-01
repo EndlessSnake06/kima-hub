@@ -179,11 +179,8 @@ function parseStorageJson<T>(key: string, fallback: T): T {
 }
 
 /**
- * Did the server say this thing no longer exists?
- *
- * 404 means gone: unsubscribed, deleted, or removed from the library. Anything else --
- * a timeout, a 500, the laptop waking up on a dead wifi connection -- is a reason to try
- * again later, not a reason to throw away what the user was listening to.
+ * Only a 404 means the item is gone. Any other failure, such as a timeout or a
+ * 500, is retried later rather than discarding what the user was listening to.
  */
 function isGone(err: unknown): boolean {
     return (err as { status?: number } | null)?.status === 404;

@@ -13,11 +13,7 @@ interface ScrobblingSectionProps {
     onSaved: () => void;
 }
 
-/**
- * Per-user ListenBrainz scrobbling. Each user supplies their own optional
- * token — plays are mirrored only for the user who listened, and nobody
- * who leaves this empty pays anything (the path simply skips).
- */
+/** Per-user ListenBrainz scrobbling with the user's own optional token. */
 export function ScrobblingSection({
     configured,
     onSaved,

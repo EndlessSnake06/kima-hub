@@ -6,11 +6,9 @@ import type { MapTrack } from "../types";
 export const FIELD_RADIUS = 60;
 
 /**
- * The library as a cloud of stars. Every star is one track at its own 3-D
- * layout coordinate from the backend (UMAP x, y, z normalised into a unit cube
- * with one shared scale), so tracks that sound alike sit together in space.
- * World axes: x → x, z (height) → y, y → depth. Maps computed before the 3-D
- * layout have no z and lie on the middle plane.
+ * Each track at its backend UMAP position, normalised to a unit cube, so similar
+ * tracks sit together. World axes: x → x, z (height) → y, y → depth. A map
+ * without z lies on the middle plane.
  */
 export function toWorld(track: Pick<MapTrack, "x" | "y" | "z">): [number, number, number] {
     const s = FIELD_RADIUS * 2;

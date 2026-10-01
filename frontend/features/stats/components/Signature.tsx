@@ -36,11 +36,6 @@ export function OwnedAgainstPlayed({ signature: s }: { signature: Sig }) {
 
     return (
         <div ref={ref} className="flex flex-col gap-5">
-            {/* Which mark is which. Every row draws two marks on one track and
-                prints "55 → 66", and nothing said what either number was —
-                the sentence that used to carry it was cut along with the rest
-                of the paragraph. A legend is a label, not a paragraph, so it
-                goes at meta size above the thing it labels. */}
             <p className="t-meta">grey is your shelf · amber is what you actually play</p>
 
             <dl className="flex flex-col gap-4">

@@ -1,11 +1,7 @@
 import { NextResponse } from "next/server";
 
-// Standalone PWA on every platform. The previous iOS-specific
-// `display: "browser"` workaround for WebKit #261858 (audio session
-// suspended in standalone WKWebView) made "Add to Home Screen" open a
-// Safari tab whose chrome covered the top nav and bottom player rows.
-// Standalone is the correct long-term default; audio session continuity
-// is handled by the Phase C engine state machine and the AudioContext bridge.
+// Standalone on every platform; the audio controller's AudioContext bridge
+// keeps the iOS audio session alive.
 
 const MANIFEST = {
     id: "/",

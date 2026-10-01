@@ -4,13 +4,7 @@ import { backendUrl } from "@/lib/backend-url";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/**
- * SSE proxy route handler.
- *
- * Next.js rewrites buffer streaming responses, which breaks Server-Sent Events.
- * This route handler fetches the backend SSE endpoint and streams the response
- * directly to the client, bypassing the rewrite proxy entirely.
- */
+/** Streams the backend's event stream through, because Next.js rewrites buffer it. */
 export async function GET(request: NextRequest) {
     const ticket = request.nextUrl.searchParams.get("ticket");
     if (!ticket) {

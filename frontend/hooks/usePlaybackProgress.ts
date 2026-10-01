@@ -3,12 +3,9 @@ import { useAudioPlayback } from "@/lib/audio-playback-context";
 import { clampTime } from "@/lib/format";
 
 /**
- * Shared hook for duration, displayTime, and progress calculations.
- * Used by FullPlayer, MiniPlayer, and OverlayPlayer to avoid duplication.
- *
- * - Prefers engine-reported duration over metadata (RSS durations are unreliable)
- * - Shows saved progress for audiobooks/podcasts before playback starts
- * - Clamps all values to prevent invalid display
+ * Duration, display time and progress for every player. Prefers the engine's
+ * duration over metadata (RSS durations are unreliable), shows saved progress
+ * for audiobooks and podcasts before playback starts, and clamps everything.
  */
 export function usePlaybackProgress() {
     const {

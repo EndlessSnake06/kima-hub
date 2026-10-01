@@ -70,11 +70,8 @@ export function WhatsNewWindow({
         .map((i) => (i.kind === "action" ? i.ifClosed : undefined))
         .filter((t): t is string => !!t);
 
-    // Closing is only honest once the server has the ack. The old path closed
-    // in a `finally` whatever the POST did: a failed dismiss closed the window
-    // locally, wrote no ack, and the window resurfaced on the next login —
-    // while the user's one memory is "I pressed Done". On failure the window
-    // stays open and says so, because the user genuinely has not answered yet.
+    // Closes only once the server has the acknowledgement; on failure the window
+    // stays open and says so, since the answer was not recorded.
     const close = useCallback(async () => {
         if (closing) return; // one in-flight dismiss, whatever double-fires
         setClosing(true);

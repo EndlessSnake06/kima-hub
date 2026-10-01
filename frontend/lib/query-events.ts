@@ -1,9 +1,4 @@
-/**
- * Query Events - Typed event system for cache invalidation
- * 
- * Provides a type-safe wrapper around CustomEvent for triggering React Query cache invalidation.
- * Events are dispatched when data changes and listeners refetch queries to update the UI.
- */
+/** Typed CustomEvents that tell listeners to refetch queries after data changes. */
 
 /**
  * Available query event types

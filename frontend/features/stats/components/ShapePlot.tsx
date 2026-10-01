@@ -2,7 +2,7 @@
 
 /**
  * Taste as a place: brightness across, energy up, one dot per played cell sized
- * by plays. The line through it is the same data by month, faint to bright.
+ * by plays. Monthly points over it run faint to bright.
  * The month strip below is volume and control: pointing at a month moves the
  * ring and rewrites the caption.
  */
@@ -253,16 +253,8 @@ export function ShapePlot({ listening, period }: { listening: ListeningStats; pe
 
                     {path.length > 1 && (
                         <g>
-                            {/* No connecting line.
-                                A centre of gravity moves very little month to
-                                month, so joining the points draws a tangle that
-                                crosses itself four or five times and reads as
-                                noise rather than a journey. Only visible at full
-                                size — at thumbnail scale it looked like a path.
-                                The months are marked instead: bigger where you
-                                listened more, brighter as they approach now. The
-                                drift is legible as a gradient across the cloud,
-                                which is what it actually is. */}
+                            {/* Months as unconnected points, bigger where you listened
+                                more and brighter toward now: joined, they tangle. */}
                             {path.map((p, i) => {
                                 const age = i / Math.max(1, path.length - 1);
                                 const weight = Math.sqrt(p.plays / maxMonth);
@@ -356,11 +348,8 @@ export function ShapePlot({ listening, period }: { listening: ListeningStats; pe
             {/* The plot is a single image to assistive technology, which means a
                 summary sentence was the whole of it. The same figures as a table
                 give a screen reader the evidence rather than only the verdict. */}
-            {/* `sr-only` in Tailwind v4 hides with clip-path and leaves the box
-                its natural size — this table lays out 517 pixels wide. It does
-                not break a phone today only because an ancestor happens to clip
-                it, which is not a guarantee, it is luck. Pinned to a single
-                pixel so no future layout change can let it push the page wide. */}
+            {/* Tailwind v4's sr-only keeps the box's natural width (517px here),
+                so the table is pinned to one pixel to never widen the page. */}
             <div className="absolute w-px h-px overflow-hidden [clip-path:inset(50%)] whitespace-nowrap border-0 p-0 -m-px">
             <table>
                 <caption>Your listening by month: brightness, drive and volume</caption>

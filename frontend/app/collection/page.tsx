@@ -233,11 +233,8 @@ export default function LibraryPage() {
         resetView();
     }, [resetView]);
 
-    // A ?page= beyond the end of the list (stale bookmark, hand-edited URL)
-    // would show an empty grid with a live pager and a Prev button that walks
-    // through nothing. Once a real response has landed, put the URL back on
-    // the last page that exists. One frame of empty grid before the replace
-    // lands is deliberate: the URL stays the single source of truth.
+    // A ?page= past the end is moved back to the last real page once a response
+    // lands. The URL stays the single source of truth, so one empty frame shows.
     const outOfRange =
         !isLoading &&
         !activeQuery.isError &&

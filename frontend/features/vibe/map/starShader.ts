@@ -1,27 +1,9 @@
 import * as THREE from "three";
 
 /**
- * One point shader for every star on the vibe map: the library's tracks, the
- * dust around them and the backdrop sky. A star is a bright core inside a soft
- * halo, sized by distance, with a gentle per-star twinkle and a rare sparkle.
- * Every star stays pin-sharp; depth comes from perspective alone.
- *
- * Per-star attributes:
- *   aColor   linear RGB
- *   aSize    world-space size
- *   aPhase   twinkle phase (radians)
- *   aTwAmp   twinkle depth, 0 = steady
- *   aSpark   1 on the few stars that occasionally flare
- *   aEmph    emphasis (1 = normal, <1 recedes, >1 stands forward); eased on the CPU
- *   aMood    index of the track's dominant mood (-1 = none); tracks only
- *   aReveal  seconds into the load-in at which this star ignites
- *
- * Load-in: uReveal counts seconds since the map appeared. Each star fades in
- * from nothing at its own moment, arriving as a white flash that settles into
- * its own colour.
- *
- * Mood focus: while uFocusMix > 0, stars whose aMood equals uFocusMood take on
- * uFocusColor, so previewing a mood colours exactly its stars.
+ * One point shader for every star: tracks, dust and sky. A sharp core in a soft
+ * halo, sized by distance, twinkling. Each star ignites at its aReveal second of
+ * the load-in as a white flash; while uFocusMix > 0, stars of uFocusMood take uFocusColor.
  */
 const VERT = /* glsl */ `
 uniform float uSizeScale;
@@ -33,14 +15,14 @@ uniform float uRevealFade;
 uniform float uFocusMood;
 uniform float uFocusMix;
 uniform vec3 uFocusColor;
-attribute vec3 aColor;
-attribute float aSize;
-attribute float aPhase;
-attribute float aTwAmp;
-attribute float aSpark;
-attribute float aEmph;
-attribute float aMood;
-attribute float aReveal;
+attribute vec3 aColor;   // linear RGB
+attribute float aSize;   // world-space size
+attribute float aPhase;  // twinkle phase, radians
+attribute float aTwAmp;  // twinkle depth, 0 = steady
+attribute float aSpark;  // 1 on the few stars that flare
+attribute float aEmph;   // 1 normal, <1 recedes, >1 stands forward
+attribute float aMood;   // dominant mood index, -1 = none
+attribute float aReveal; // load-in second this star ignites
 varying vec3 vColor;
 varying float vTw;
 varying float vEmph;

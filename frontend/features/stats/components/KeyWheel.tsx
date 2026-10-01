@@ -84,12 +84,8 @@ export function KeyWheel({ keys, period }: { keys: NonNullable<Signature["key"]>
         <figure ref={ref} className="m-0 flex flex-col gap-5">
             <svg
                 viewBox="0 0 100 100"
-                /* Uncapped below `sm`. The cap, not the screen, was what held the
-                    segments under the 44px target: at 22rem they plateaued at
-                    42px on every phone from 412px up, because the wheel stopped
-                    growing while the screen kept going. Filling the column
-                    clears 44px at 412 and above. It does not at 360 to 393,
-                    where the screen genuinely has no more room to give. */
+                /* Fills the column on phones so segments reach the 44px touch
+                    target from 412px wide; narrower phones have no room for it. */
                  className="w-full sm:max-w-[19rem] aspect-square"
                 role="img"
                 aria-label={`A circle of fifths. You play most often in ${busiest.name}. ${Math.round(keys.minorPct)}% of your listening is in a minor key.`}

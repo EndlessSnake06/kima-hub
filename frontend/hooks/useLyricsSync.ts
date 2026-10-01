@@ -30,11 +30,8 @@ export function useLyricsSync(): LyricsSyncState {
     // Derive the active trackId once per render.
     const trackId = currentTrack?.id ?? null;
 
-    // Initial loading state is determined lazily: if trackId is present
-    // at mount, loading starts as true so the first render shows a
-    // spinner instead of the false-empty "No lyrics available" flash.
-    // This is the anti-pattern documented at useMediaQuery.ts:9
-    // (useState(false) → useEffect(true)) and avoids it entirely.
+    // Loading starts true when there is a track, so the first render shows a
+    // spinner rather than flashing "No lyrics available".
     const [result, setResult] = useState<LyricsResult | null>(null);
     const [isLoading, setIsLoading] = useState(() => trackId != null);
 

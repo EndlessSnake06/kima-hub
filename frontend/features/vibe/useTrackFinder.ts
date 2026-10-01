@@ -12,10 +12,8 @@ export interface FoundTrack {
 }
 
 /**
- * Track lookup for the Song Path and Blend pickers. Tracks whose title or
- * artist match come first (instant, from the loaded map); tracks whose sound
- * matches the words ("dark", "piano") follow from the vibe search. Either kind
- * alone is enough to pick from.
+ * Track lookup for the Song Path and Blend pickers: title or artist matches from
+ * the loaded map first, then tracks whose sound matches the words from vibe search.
  */
 export function useTrackFinder(library: LibraryIndex, query: string, enabled: boolean, limit = 10) {
     const q = query.trim();

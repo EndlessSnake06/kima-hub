@@ -35,11 +35,7 @@ interface MetadataEditorProps {
     onSave?: (updatedData: Record<string, unknown> | null) => void;
 }
 
-/**
- * Metadata Editor Component
- * Plex/Kavita-style metadata editor with pencil icon
- * Opens a modal for editing artist/album/track metadata
- */
+/** A pencil button that opens a dialog for editing artist, album or track metadata. */
 export function MetadataEditor({
     type,
     id,

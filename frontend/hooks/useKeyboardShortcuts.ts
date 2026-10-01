@@ -2,20 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useAudio } from "@/lib/audio-context";
 import { useIsTV } from '@/lib/tv-utils';
 
-/**
- * Global keyboard shortcuts for media playback
- *
- * Shortcuts:
- * - Space: Play/Pause
- * - Arrow Right: Seek forward 10s
- * - Arrow Left: Seek backward 10s
- * - Arrow Up: Volume up 10%
- * - Arrow Down: Volume down 10%
- * - M: Toggle mute
- * - N: Next track
- * - P: Previous track
- * - S: Toggle shuffle
- */
+/** Global playback shortcuts; each key is listed at its case below. */
 export function useKeyboardShortcuts() {
   const isTV = useIsTV();
   const {

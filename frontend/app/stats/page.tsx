@@ -1,10 +1,8 @@
 "use client";
 
 /**
- * Stats: a person, then the machine. Seven blocks, no two neighbours alike:
- * ledger, most played, the week, the key, the shelf, the strip, the machine.
- * Amber is only ever data; numbers carry the weight and words stay light; a
- * figure is stated once; music time is an estimate and says "about".
+ * Stats: the listener, then the server. Amber is only ever data, a figure is
+ * stated once, and music time is an estimate that says "about".
  */
 
 import { useEffect, useState } from "react";
@@ -180,11 +178,8 @@ export default function StatsPage() {
                 />
             )}
 
-            {/* The shelf and the strip below it carry `scope`, because the
-                period control cannot reach them and pretending otherwise would
-                be the same silent-period bug in a new place. What you own is
-                not a listening event; it does not become a different number
-                over thirty days. */}
+            {/* The shelf and the strip carry `scope`: they describe what you
+                own, which the period control does not change. */}
             <Finding
                 anchor="shelf"
                 claim={`${shelf.neverPlayed.toLocaleString()} tracks you have never once played.`}
@@ -311,14 +306,8 @@ function Ledger({
                 </p>
             )}
 
-            {/* One column for the words and figures, one for the plot.
-                Stacking them meant the four counts spread across the full
-                measure with a hundred and seventy pixels of air between each,
-                the fact rows were squeezed into 22rem so every value broke
-                away from its own gloss, and the plot sat capped in a column
-                twice its width. Everything readable goes left and grows; the
-                plot goes right and stops, because it is a square and a square
-                past about 550px is just a tall square. */}
+            {/* Words and figures on the left, growing; the square plot on the
+                right, stopping at 34rem. */}
             <div className="grid items-start gap-x-16 gap-y-(--stat-gap-block) lg:grid-cols-[minmax(0,1fr)_minmax(0,34rem)]">
                 <div className="stats-hero-figure flex flex-col gap-(--stat-gap-block)">
                     <h1
@@ -334,11 +323,8 @@ function Ledger({
 
                     {/* One rank, four figures. The hours above are an estimate
                         and say so; these four are counts and are exact. */}
-                    {/* Four across needs about 100px a column before the labels start
-                        wrapping; a 390px phone gives 75. Two-up below 480 and
-                        four-up above is the width where the labels stay on one
-                        line each, which is the whole reason the row reads as
-                        one rank rather than four ragged blocks. */}
+                    {/* Four across needs ~100px a column to keep labels on one
+                        line, so phones under 480px get two. */}
                     <dl className="grid grid-cols-2 min-[480px]:grid-cols-4 gap-x-4 gap-y-6 sm:gap-x-8 lg:max-w-[42rem]">
                         <Reading value={listening.plays.toLocaleString()} label="listens" />
                         <Reading value={listening.distinctArtists.toLocaleString()} label="artists" />

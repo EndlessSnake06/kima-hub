@@ -15,10 +15,8 @@ function AudioProviderInner({ children }: { children: React.ReactNode }) {
 
     useEffect(() => {
         const ctrl = new AudioController();
-        // The owned <audio> element + AudioContext must be created here (not in
-        // a lazy useState initializer) so Strict Mode's double-invoke
-        // create -> cleanup -> create cycle can't leak a duplicate DOM element;
-        // exposing the instance to the context value then requires this setState.
+        // Created in the effect rather than a useState initializer so Strict Mode's
+        // double invoke cannot leak a second <audio> element.
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setController(ctrl);
 

@@ -1,11 +1,9 @@
 import * as THREE from "three";
 
 /**
- * Picking stars by where they appear on screen. The map is a 3-D cloud, so the
- * star under the pointer is whichever one *projects* nearest to it. Every star
- * is projected once per camera pose (lazily, on the first pointer event after
- * the camera moves) and bucketed into a pixel grid, so a hover or click is a
- * handful of lookups even with a hundred thousand stars.
+ * Picks the star that projects nearest the pointer. Stars are projected once per
+ * camera pose, on the first pointer event after it moves, into a pixel grid, so
+ * a hover is a few lookups even with 100,000 stars.
  */
 const CELL = 32;
 

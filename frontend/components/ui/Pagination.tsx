@@ -9,11 +9,7 @@ interface PaginationProps {
     onPageChange: (page: number) => void;
     /** Disables every control, e.g. while the next page is still loading. */
     disabled?: boolean;
-    /**
-     * What is being paged, in the user's words -- "Artists", "Podcasts".
-     * Read aloud as "Artists pagination", so two paginated sections on one
-     * page are tellable apart by a screen reader.
-     */
+    /** What is paged, e.g. "Artists"; read aloud as "Artists pagination". */
     label: string;
     className?: string;
 }

@@ -94,8 +94,6 @@ export function AudioPlaybackProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         if (!controller) return;
 
-        // subscribe is the Phase C engine contract; cast until audio-controller.ts lands it.
-         
         const unsubscribe = controller.subscribe((snap: EngineSnapshot) => {
             const { status } = snap;
 

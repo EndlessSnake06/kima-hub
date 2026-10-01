@@ -12,11 +12,7 @@ interface State {
     error: Error | null;
 }
 
-/**
- * Error boundary specifically for audio-related errors.
- * Catches errors in the audio provider hierarchy and allows the rest of the app to continue.
- * Falls through gracefully without breaking the entire application.
- */
+/** Catches errors in the audio providers so the rest of the app keeps running. */
 export class AudioErrorBoundary extends Component<Props, State> {
     constructor(props: Props) {
         super(props);

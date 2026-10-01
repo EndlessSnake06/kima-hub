@@ -20,11 +20,9 @@ interface Release {
     items: Parameters<typeof WhatsNewWindow>[0]["release"]["items"];
 }
 
-// One pending-fetch per app session, shared across remounts. The gate lives in
-// AuthenticatedLayout's returned tree, so a route change remounts it — without
-// this cache every navigation paid a /whats-new/pending round trip (which does
-// per-item DB work server-side) and raced a fresh queue against the one the
-// user is reading. A failed fetch is NOT cached: the next mount retries.
+// One pending fetch per app session, shared across the remounts every route
+// change causes, so navigation neither refetches nor replaces the queue being
+// read. A failed fetch is not cached; the next mount retries.
 let pendingFetch: Promise<Release[]> | null = null;
 let pendingFetchKey: string | null = null;
 function fetchPending(): Promise<Release[]> {
@@ -46,12 +44,9 @@ function fetchPending(): Promise<Release[]> {
 
 export function WhatsNewGate() {
     const [queue, setQueue] = useState<Release[]>([]);
-    // A CTA click ("Take me to it") sets a session-scoped defer flag: the user
-    // asked to act on this release NOW, so the remaining windows must not
-    // follow them to the destination page. sessionStorage survives the route
-    // change (component state does not — the gate remounts) and dies with the
-    // tab, so the windows return next visit, still unanswered. Dismissing the
-    // window normally never sets the flag; the queue keeps advancing in-session.
+    // "Take me to it" defers the remaining windows for this tab, so they don't
+    // follow the user to the page. sessionStorage survives the gate remounting on
+    // navigation and clears with the tab; the windows return next visit.
     const [deferred, setDeferred] = useState(() => {
         if (typeof window === "undefined") return false;
         return window.sessionStorage.getItem("whatsnew.deferred") === "1";

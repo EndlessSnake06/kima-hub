@@ -34,10 +34,9 @@ export const useReducedMotion = () => useMediaQuery("(prefers-reduced-motion: re
 export const useIsMobile = () => useMediaQuery("(max-width: 768px)");
 
 /**
- * "Tablet" means the bottom-nav chrome: 769-1024px on any input (a narrow
- * desktop window), or 769-1366px when no input can hover, so an iPad keeps the
- * same navigation in both orientations. `any-hover: none` keeps a touchscreen
- * laptop with a trackpad on the sidebar.
+ * "Tablet" means bottom-nav chrome: 769-1024px, or up to 1366px when nothing can
+ * hover, so an iPad keeps one layout in both orientations while a touchscreen
+ * laptop with a trackpad keeps the sidebar.
  */
 export const useIsTablet = () =>
     useMediaQuery(

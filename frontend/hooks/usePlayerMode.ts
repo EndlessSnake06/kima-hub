@@ -2,12 +2,7 @@ import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { useAudio } from "@/lib/audio-context";
 
-/**
- * Hook that automatically switches player mode based on the current page
- * - Full player: On media pages (album, audiobook, podcast)
- * - Mini player: On other pages
- * - Overlay: Manual user control (doesn't auto-switch)
- */
+/** Full player on album, audiobook and podcast pages, mini elsewhere; the overlay is only opened by the user. */
 export function usePlayerMode() {
     const pathname = usePathname();
     const { currentTrack, currentAudiobook, currentPodcast, playerMode, setPlayerMode } = useAudio();

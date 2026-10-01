@@ -127,12 +127,7 @@ export interface EnrichmentState {
 
 export interface EnrichmentFailure {
     id: string;
-    /**
-     * Track-stage failures (track/audio/vibe/scan) come from the engine's
-     * TrackStage records — the same record the failures API and the retry
-     * control act on — and artist/podcast failures from the ledger. The
-     * fields themselves are unchanged.
-     */
+    /** track/audio/vibe/scan failures come from TrackStage records, artist ones from the failure ledger. */
     entityType: "artist" | "track" | "audio" | "vibe" | "scan";
     entityId: string;
     entityName: string | null;
@@ -172,11 +167,7 @@ export interface AnalysisWorkersConfig {
     cpuCores: number;
     recommended: number;
     description: string;
-    /**
-     * Whether an analyzer is actually running to obey this setting. The
-     * backend derives it from the heartbeat the analyzer writes to Redis every
-     * thirty seconds. Optional so an older backend still typechecks.
-     */
+    /** Whether an analyzer is running, from the heartbeat it writes to Redis every 30s. */
     analyzerOnline?: boolean;
     /**
      * How many subscribers received the change. Redis reports this; zero means
@@ -295,13 +286,9 @@ class ApiClient {
     }
 
     /**
-     * Ensure the access token is fresh. Returns:
-     *   "fresh"         -- exp > 60 min away, no network call made
-     *   "refreshed"     -- token was refreshed successfully
-     *   "rejected"      -- server rejected the refresh token; tokens cleared
-     *   "network-error" -- fetch failed; tokens left intact (transient outage)
-     *
-     * Deduplicates concurrent calls the same way refreshAccessToken does.
+     * "fresh" when the token has over 60 minutes left (no request). Otherwise
+     * refreshes: "rejected" clears tokens, "network-error" keeps them.
+     * Concurrent calls share one request.
      */
     async ensureFreshToken(): Promise<"fresh" | RefreshResult> {
         if (this.ensurePromise) return this.ensurePromise;
@@ -758,11 +745,7 @@ class ApiClient {
         }).catch(() => {});
     }
 
-    /**
-     * Get the current token, lazily loading from localStorage if needed.
-     * This handles the case where the singleton was created during SSR
-     * and this.token wasn't set from localStorage.
-     */
+    /** The token, read from localStorage on first use when the singleton was created during SSR. */
     private getCurrentToken(): string | null {
         // If we already have a token, use it
         if (this.token) {
@@ -780,12 +763,7 @@ class ApiClient {
         return null;
     }
 
-    /**
-     * Get the URL for cover art.
-     * @param coverId - The cover ID, URL, or path
-     * @param size - Optional size in pixels
-     * @param includeToken - Include auth token in URL (needed for canvas color extraction)
-     */
+    /** Cover art URL for an id, URL or path; the token lets a canvas read its pixels for colour extraction. */
     getCoverArtUrl(coverId: string, size?: number, includeToken = true): string {
         const baseUrl = this.getBaseUrl();
         const token = includeToken ? this.getCurrentToken() : null;
@@ -888,11 +866,7 @@ class ApiClient {
         });
     }
 
-    /**
-     * Add many tracks in ONE request. Looping addTrackToPlaylist cost a round
-     * trip per track (four queries each server-side), so adding a 12-track album
-     * was 12 requests and 48 queries.
-     */
+    /** Adds many tracks in one request. */
     async addTracksToPlaylist(playlistId: string, trackIds: string[]) {
         return this.request<{
             added: number;

@@ -89,40 +89,22 @@
      * 4.46:1 inside a card, which is where most labels actually live. */
     --text-muted: #858585; /* labels, meta, timestamps */
 
-/* ── Stacking order ───────────────────────────────────────────────────
- *
- * One ladder, named by what sits on each rung.
- *
- *   10  --z-raised          overlay inside a component: hover play button, scrim
- *   20  --z-scene           overlays within the vibe canvas
- *   30  --z-scene-panel     the vibe sheet
- *   40  --z-nav             bottom navigation
- *   45  --z-player          mini player -- above the nav it overlaps
- *   50  --z-header          fixed top bar
- *   55  --z-dropdown        menus and popovers anchored to a control
- *   65  --z-toast-inline    transient confirmation over page content
- *   70  --z-drawer-backdrop mobile sidebar backdrop
- *   75  --z-panel-backdrop  activity panel scrim (same tier as the drawer)
- *   76  --z-panel           activity panel -- below any dialog it opens
- *   80  --z-modal           dialogs (cover the panel and everything lower)
- *  100  --z-toast           app-level prompts, e.g. "update available"
- *  200  --z-overlay         full-screen player
- * ─────────────────────────────────────────────────────────────────── */
-    --z-raised: 10;
-    --z-scene: 20;
-    --z-scene-panel: 30;
-    --z-nav: 40;
-    --z-player: 45;
-    --z-header: 50;
-    --z-dropdown: 55;
-    --z-toast-inline: 65;
-    --z-drawer-backdrop: 70;
-    --z-drawer: 75;
-    --z-modal: 80;
-    --z-panel-backdrop: 75;
-    --z-panel: 76;
-    --z-toast: 100;
-    --z-overlay: 200;
+/* Stacking order: one ladder, named by what sits on each rung. */
+    --z-raised: 10;            /* overlay inside a component: hover play, scrim */
+    --z-scene: 20;             /* overlays within the vibe canvas */
+    --z-scene-panel: 30;       /* the vibe sheet */
+    --z-nav: 40;               /* bottom navigation */
+    --z-player: 45;            /* mini player, above the nav it overlaps */
+    --z-header: 50;            /* fixed top bar */
+    --z-dropdown: 55;          /* menus and popovers anchored to a control */
+    --z-toast-inline: 65;      /* transient confirmation over page content */
+    --z-drawer-backdrop: 70;   /* mobile sidebar backdrop */
+    --z-drawer: 75;            /* mobile sidebar */
+    --z-modal: 80;             /* dialogs, above the activity panel */
+    --z-panel-backdrop: 75;    /* activity panel scrim */
+    --z-panel: 76;             /* activity panel, below any dialog it opens */
+    --z-toast: 100;            /* app-level prompts such as "update available" */
+    --z-overlay: 200;          /* full-screen player */
 }
 
 * {
@@ -1076,19 +1058,13 @@ body.scanner-active .scanner-overlay {
     }
 }
 
-/* ── Stats display scale ───────────────────────────────────────────────────
- *   --stat-hero    the figure the page opens on, once, one line
- *   --stat-figure  a headline measurement
- *   --stat-claim   a finding stated in words
- *   --stat-lead    a reading, or a sentence interpreting one
- *   --stat-head    a section name, the smallest; presence comes from --stat-gap-*
- * Every gap between steps is at least 1.3x. */
+/* Stats display scale; every step is at least 1.3x the one below. */
 :root {
-    --stat-hero: clamp(2rem, 3.6vw, 2.75rem);      /* 32 - 44 */
-    --stat-figure: clamp(1.5rem, 2.4vw, 1.875rem); /* 24 - 30 */
-    --stat-claim: clamp(1.25rem, 1.9vw, 1.5rem);   /* 20 - 24 */
-    --stat-lead: 1.125rem;                         /* 18 */
-    --stat-head: 1rem;                             /* 16 */
+    --stat-hero: clamp(2rem, 3.6vw, 2.75rem);      /* 32-44: the opening figure */
+    --stat-figure: clamp(1.5rem, 2.4vw, 1.875rem); /* 24-30: a headline measurement */
+    --stat-claim: clamp(1.25rem, 1.9vw, 1.5rem);   /* 20-24: a finding in words */
+    --stat-lead: 1.125rem;                         /* 18: a reading or its gloss */
+    --stat-head: 1rem;                             /* 16: a section name */
 
     /* One rhythm, three ranks. A section is separated by more than twice what
      * separates the blocks inside it, which is the whole of why a section

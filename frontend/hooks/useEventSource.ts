@@ -7,12 +7,7 @@ import { useDownloadProgress } from "@/lib/download-progress-context";
 import { searchResultStore } from "@/lib/search-result-store";
 import { api, getApiBaseUrl } from "@/lib/api";
 
-/**
- * Returns the base URL for SSE connections.
- * Uses getApiBaseUrl() directly -- in proxy/all-in-one mode this returns ""
- * (relative path), which hits the dedicated SSE proxy route (app/api/events/route.ts)
- * that properly streams events without buffering.
- */
+/** In proxy mode this is "", so events go through the streaming route in app/api/events. */
 function getSSEBaseUrl(): string {
     if (typeof window === "undefined") return "";
     return getApiBaseUrl();

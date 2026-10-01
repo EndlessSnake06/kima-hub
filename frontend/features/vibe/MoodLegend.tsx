@@ -14,10 +14,8 @@ interface MoodLegendProps {
 }
 
 /**
- * The moods in this library, counted. Hovering one lights its tracks in that
- * mood's colour and lets the rest fall away; clicking keeps it lit until
- * clicked again. The five moods come first, by size; "No single mood" and
- * "Not analysed yet" follow, so they never read as a mood of their own.
+ * The library's moods, counted, largest first, then "No single mood" and "Not
+ * analysed yet". Hover lights a mood's tracks; a click keeps it lit.
  */
 export function MoodLegend({ tracks, activeMood, scroll = false, onPreview, onToggle }: MoodLegendProps) {
     const moods = useMemo(() => {

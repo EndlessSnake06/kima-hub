@@ -40,7 +40,7 @@ export class AudioController {
     private nativeListeners: Array<{ event: string; handler: EventListener }> = [];
     private nativeListenersNext: Array<{ event: string; handler: EventListener }> = [];
 
-    // Gapless preload bookkeeping (Phase 2B). `expectedNext*` is set by the
+    // Gapless preload bookkeeping. `expectedNext*` is set by the
     // React layer once it knows what's next; `preloadedTrackId`/`idleReady`
     // track what the idle element has actually buffered.
     private expectedNextTrackId: string | null = null;
@@ -62,23 +62,18 @@ export class AudioController {
     private volume = 1;
     private isMuted = false;
 
-    // iOS standalone PWA audio session bridge. iOS WKWebView suspends the
-    // HTMLAudioElement's audio session when backgrounded; MediaSession reports
-    // "playing" but no sound. Routing the element through an AudioContext
-    // keeps the iOS audio session active across backgrounding because the
-    // AudioContext claims it more durably than a bare <audio>.
-    // WebKit #261858. Bridge set up lazily on the first user-gesture play.
+    // iOS standalone PWAs lose the <audio> session in the background while
+    // MediaSession still reports "playing" (WebKit #261858). Routing the element
+    // through an AudioContext holds the session; built on the first gesture play.
     private audioContext: AudioContext | null = null;
     private mediaSourceNode: MediaElementAudioSourceNode | null = null;
     private mediaSourceNodeNext: MediaElementAudioSourceNode | null = null;
     private audioContextBridgeAttempted = false;
     private audioContextStateHandler: (() => void) | null = null;
 
-    // "Running-but-silent" safety net: an AnalyserNode tapped off the media
-    // source. iOS can leave the AudioContext state "running" with the element
-    // "playing" but genuinely emit no audio (post-interruption/backgrounding
-    // edge cases). Only armed for a window after cold-start/foreground since
-    // that is when this has been observed; null off-iOS (bridge never builds).
+    // Detects iOS reporting "running" and "playing" while emitting no sound,
+    // which happens after cold start or returning to the foreground. Armed only
+    // for a window after those; null off iOS, where the bridge is never built.
     private analyser: AnalyserNode | null = null;
     private armDetectorUntil = 0;
     private silentStreak = 0;
@@ -112,11 +107,9 @@ export class AudioController {
         this.attachGestureUnlock();
     }
 
-    // The controller owns its <audio> elements rather than receiving them from
-    // React -- this lets rebuildAudioContextBridge() tear down and recreate
-    // the element/AudioContext graph entirely in-page (no remount) when the
-    // iOS audio session is genuinely wedged, and lets the idle element
-    // pre-buffer the next track for a true-gapless boundary swap.
+    // The controller owns its <audio> elements so rebuildAudioContextBridge()
+    // can recreate the whole graph without a React remount when iOS wedges the
+    // session, and so the idle element can buffer the next track for gapless play.
     private createOwnedElement(role: "main" | "next"): HTMLAudioElement {
         const el = document.createElement("audio");
         el.setAttribute("playsinline", "");
@@ -132,12 +125,9 @@ export class AudioController {
     // Battle-tested iOS code -- preserved verbatim
     // -------------------------------------------------------------------------
 
-    // Claim the iOS "playback" audio session category. iOS demotes / reassigns
-    // the category to another app when our session is interrupted (earbud click,
-    // Control Center, a call), so an explicit resume MUST re-assert it (force)
-    // rather than trusting the one-time latch -- otherwise iOS leaves the session
-    // with whatever app grabbed it (e.g. a sleep-sounds app) and our resume is
-    // silent. The latch still short-circuits the non-gesture auto paths.
+    // Claims the iOS "playback" session category. An interruption can hand the
+    // category to another app, so an explicit resume passes force to re-claim it;
+    // without that the resume is silent. The latch only skips the automatic paths.
     private setAudioSessionPlayback(force = false): void {
         if (this.audioSessionSet && !force) return;
         this.audioSessionSet = true;
@@ -166,11 +156,9 @@ export class AudioController {
         }
     }
 
-    // Persistent (non-one-shot) capture-phase gesture listener. iOS re-suspends
-    // the AudioContext on backgrounding, so a single early-page-life unlock is
-    // not enough -- every later gesture must be able to re-resume it. prime()
-    // is a cheap no-op once the context is already running, so this costs
-    // nothing on repeat gestures or on non-iOS platforms.
+    // A permanent capture-phase gesture listener: iOS re-suspends the context in
+    // the background, so every gesture must be able to resume it. prime() is a
+    // no-op once the context runs, and everywhere off iOS.
     private attachGestureUnlock(): void {
         if (typeof document === "undefined") return;
         this.gestureUnlockHandler = () => this.prime();
@@ -178,11 +166,9 @@ export class AudioController {
         document.addEventListener("touchend", this.gestureUnlockHandler, { passive: true, capture: true });
     }
 
-    // Synchronous, idempotent gesture-time unlock. Contains no `await` and never
-    // calls audio.play() -- it only re-asserts the audio session and nudges the
-    // AudioContext so iOS keeps CoreAudio clocking. Gated on iOS-standalone (its
-    // only purpose is the WebKit #261858 bridge), so it is a true no-op on web,
-    // Android, and even a plain iOS Safari tab.
+    // Synchronous, repeatable gesture-time unlock: no await and no play(), only
+    // re-claims the session and resumes the AudioContext. Runs only in an iOS
+    // standalone PWA; a no-op everywhere else, including iOS Safari tabs.
     prime(): void {
         if (!this.isIosStandalone()) return;
         this.setAudioSessionPlayback(true);
@@ -236,12 +222,9 @@ export class AudioController {
                     this.audio,
                     { state, paused: this.audio.paused },
                 );
-                // OS ended an interruption and the context is live again: re-claim
-                // the playback session category so iOS does not leave it with
-                // whatever app grabbed it. Do NOT call audio.play() here -- iOS
-                // does not emit a route-change signal we can use to tell an earbud
-                // unplug from an interruption end, so auto-resume cannot be made
-                // safe (it routes unplugged audio to the speaker: v1.7.12).
+                // Interruption over: re-claim the session category but never call
+                // play(). iOS gives no signal to tell an earbud unplug from an
+                // interruption end, so resuming here would play through the speaker.
                 if (state === "running" && !this.audio.paused) {
                     this.setAudioSessionPlayback(true);
                 }
@@ -289,7 +272,7 @@ export class AudioController {
 
     // Non-blocking resume confirmation: resume() resolving does not guarantee
     // the context actually reached "running" on iOS. Retries up to 3 times
-    // with backoff, never awaited by any caller (INV-1).
+    // with backoff, never awaited, so no caller's play() loses its user gesture.
     private ensureContextRunning(attempt = 0): void {
         const ctx = this.audioContext;
         if (!ctx || ctx.state === "running" || attempt >= 3) return;
@@ -486,11 +469,9 @@ export class AudioController {
         }
     }
 
-    // "Running-but-silent" detector -- reads the analyser only inside the
-    // armed window while genuinely playing with an advancing decode clock.
-    // Requires 5 consecutive silent ticks (true digital silence) before
-    // dispatching, so ordinary quiet passages (which are never bit-exact
-    // 128 across the whole buffer) do not false-positive.
+    // Reads the analyser only inside the armed window while the clock advances.
+    // Needs 5 consecutive ticks of exact digital silence, which quiet passages
+    // never produce, before reporting.
     private checkSilentPlayback(): void {
         if (!this.analyser) return;
 
@@ -723,14 +704,12 @@ export class AudioController {
     }
 
     // -------------------------------------------------------------------------
-    // Gapless swap (Phase 2B) -- fires from the ACTIVE element's native `ended`.
+    // Gapless swap -- fires from the ACTIVE element's native `ended`.
     // -------------------------------------------------------------------------
 
-    // Deliberate controller-side (impure) eligibility check -- justified by
-    // INV-1: only the swap's `.play()` call needs to be synchronous in this
-    // tail to preserve the iOS user-activation grant, so the eligibility
-    // decision has to live here rather than round-tripping through the pure
-    // reducer first.
+    // Decides gapless eligibility here rather than in the reducer: the swap's
+    // play() must run synchronously in this handler to keep the iOS
+    // user-activation grant.
     private handleActiveEnded(el: HTMLAudioElement): void {
         const eligible =
             !!this.expectedNextTrackId &&
@@ -748,11 +727,9 @@ export class AudioController {
             return;
         }
 
-        // Only this call must be synchronous (INV-1) -- the commit work below
-        // is deferred into `.then()` so a rejection (a `.catch()`, which fires
-        // a microtask later) has nothing to unwind. Committing unconditionally
-        // right after this call would already have mutated pointers/generation
-        // by the time a rejection arrived, silently swallowing the fallback.
+        // Only play() is synchronous. The commit waits for .then() so a
+        // rejection, which arrives a microtask later, has nothing to unwind and
+        // the fallback still runs.
         const swapGen = this.snapshot.generation;
         let p: ReturnType<HTMLAudioElement["play"]> | undefined;
         try {
@@ -771,11 +748,8 @@ export class AudioController {
 
     private onSwapCommitted(swapGen: number): void {
         if (this.snapshot.generation !== swapGen) {
-            // A generation-bumping event (manual skip / ctrl.load()) landed
-            // between the synchronous play() and this resolving -- that path
-            // already applied its own set-src-and-load to the pre-flip
-            // `this.audio`. Abort the swap without flipping pointers or
-            // dispatching/emitting so it doesn't clobber the user's skip.
+            // A skip or load() landed while play() resolved and already loaded
+            // its own track. Abandon the swap without touching pointers or state.
             this.audioNext.pause();
             return;
         }
@@ -1063,12 +1037,10 @@ export class AudioController {
         return { currentSrc: this.snapshot.src, volume: this.volume, isMuted: this.isMuted };
     }
 
-    // Preload the idle element (Phase 2B). setUpcoming2B() records what the
-    // React layer expects to play next; preloadNext() actually starts
-    // buffering it into the idle element. Kept separate so a queue/shuffle
-    // mutation can update the expectation without necessarily re-triggering
-    // a fetch that's already in flight for the same track.
-    setUpcoming2B(url: string, trackId: string, durationS?: number): void {
+    // setExpectedNext() records which track React expects next; preloadNext()
+    // buffers it into the idle element. Separate so a queue change can update
+    // the expectation without restarting a fetch already in flight.
+    setExpectedNext(url: string, trackId: string, durationS?: number): void {
         this.expectedNextTrackId = trackId;
         this.expectedNextUrl = url;
         this.expectedNextDurationS = durationS ?? null;
@@ -1086,7 +1058,7 @@ export class AudioController {
     // Called when the upcoming-track expectation is no longer valid (queue
     // left "track" playback, or repeat mode switched to "one" -- which has
     // no real next track) so a stale preload can never be swapped in.
-    clearUpcoming2B(): void {
+    clearExpectedNext(): void {
         this.expectedNextTrackId = null;
         this.expectedNextUrl = null;
         this.expectedNextDurationS = null;

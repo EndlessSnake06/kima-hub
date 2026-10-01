@@ -1,10 +1,4 @@
 /**
- * Home Page Type Definitions
- *
- * Defines all the data structures used throughout the Home page feature
- */
-
-/**
  * Artist entity from the library
  */
 export interface Artist {

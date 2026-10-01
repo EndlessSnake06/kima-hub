@@ -1,10 +1,8 @@
 import * as THREE from "three";
 
 /**
- * The sky behind the library: stars scattered through a deep shell around the
- * map, at every distance from just past the field's edge to far away, so they
- * shift against each other as the camera moves. They twinkle on their own slow
- * clocks and a few flare now and then. None of this is data; it is depth.
+ * Backdrop stars in a deep shell around the map, so they shift with parallax as
+ * the camera moves. They twinkle and a few flare. Decoration, not data.
  */
 const SKY_STARS = 7000;
 const INNER = 150;

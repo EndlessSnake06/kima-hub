@@ -86,10 +86,9 @@ interface PendingTrack {
 }
 
 /**
- * Column track shared by header and rows; each row renders exactly four
- * children: number/play with the owner-only drag handle, title, album (hidden
- * below md), actions and duration. Both spellings are literal so Tailwind
- * compiles them.
+ * Columns shared by header and rows: number/play (with the owner's drag handle),
+ * title, album (hidden below md), actions, duration. Both strings are literal so
+ * Tailwind compiles them.
  */
 const TRACK_GRID = "grid-cols-[64px_minmax(0,2fr)_minmax(0,1fr)_56px_136px]";
 const TRACK_GRID_MD = "md:grid-cols-[64px_minmax(0,2fr)_minmax(0,1fr)_56px_136px]";

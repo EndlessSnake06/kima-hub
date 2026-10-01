@@ -66,11 +66,6 @@ export function Coverage({ shelf }: { shelf: ShelfStats }) {
                 })}
             </dl>
 
-            {/* A number that large is only depressing if you cannot do anything
-                with it. The sentence that used to sit above this button said
-                the never-played count out loud — which is now the claim of the
-                section this renders inside, so it was being read twice, forty
-                pixels apart. The button says it on its own. */}
             {shelf.neverPlayed > 0 && (
                 <div className="flex flex-col items-start gap-4">
                     <button

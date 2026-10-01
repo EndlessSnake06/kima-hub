@@ -1,37 +1,16 @@
 "use client";
 
 /**
- * Measures listening and reports it; the server decides whether it is a play
- * (Last.fm's rule: over 30 seconds, and half its length or four minutes).
- *
- * ## Why deltas, and why capped
- *
- * Listened time is accumulated as the difference between successive `timeupdate`
- * positions, and each delta is capped at a little over the tick interval. That
- * cap is doing two jobs:
- *
- * - **A drag to the end buys almost nothing.** Scrubbing produces one enormous
- *   position jump; capping it credits a fraction of a second rather than the
- *   whole track. Measuring `currentTime` directly, which is the obvious approach,
- *   would make the scrubber a scrobble button.
- * - **A throttled background tab undercounts rather than losing everything.** iOS
- *   and most browsers slow `timeupdate` when the tab is hidden. An uncapped delta
- *   would over-credit the gap; no delta at all would lose real listening. Capping
- *   takes the conservative side: audio that genuinely played is under-counted, and
- *   under-counting only ever delays a play, never invents one.
- *
- * Anything that is not forward progress inside one track — a seek, a track
- * change, a reload — resets rather than accumulates.
+ * Measures listening as capped deltas between `timeupdate` positions and reports
+ * it; the server decides what counts as a play. The cap makes a scrub to the end
+ * worth almost nothing and makes a throttled background tab undercount, never
+ * overcount. A seek, track change or reload resets the count.
  */
 
 import { useCallback, useEffect, useRef } from "react";
 import { api } from "@/lib/api";
 
-/**
- * The most a single tick may contribute. `timeupdate` fires about four times a
- * second while playing, so 1.5s absorbs ordinary jitter and a brief stall while
- * still making a scrub worth almost nothing.
- */
+/** Most a single tick may add: `timeupdate` fires about 4x a second, so 1.5s absorbs jitter but not a scrub. */
 const MAX_CREDITED_DELTA_SECONDS = 1.5;
 
 /** Mirrors the server's floor. Below this no request is worth making. */
@@ -47,12 +26,7 @@ export function requiredSecondsFor(durationSeconds: number | null | undefined): 
     return Math.min(durationSeconds / 2, MAX_REQUIRED_SECONDS);
 }
 
-/**
- * The measurement, with no React in it.
- *
- * Kept separate from the hook so the rule that matters — a scrub is worth almost
- * nothing — can be tested without a DOM, a renderer or three extra dependencies.
- */
+/** The measurement without React, so it can be tested without a DOM. */
 export class ListenMeter {
     private listened = 0;
     private lastPosition: number | null = null;
@@ -72,13 +46,7 @@ export class ListenMeter {
         if (durationSeconds !== undefined) this.durationSeconds = durationSeconds;
     }
 
-    /**
-     * Learn the track's length without disturbing anything already counted.
-     *
-     * Durations often arrive after playback has begun. That is new information
-     * about the same listen, not a new listen, so it must not clear the counter
-     * or the already-reported flag.
-     */
+    /** A duration that arrives mid-play belongs to the same listen: it keeps the count and the reported flag. */
     setDuration(durationSeconds: number | null): void {
         this.durationSeconds = durationSeconds;
     }

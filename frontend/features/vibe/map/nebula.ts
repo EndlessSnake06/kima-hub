@@ -4,13 +4,8 @@ import type { MapTrack } from "../types";
 import { FIELD_RADIUS, hash01, type TrackField } from "./trackField";
 
 /**
- * The nebula is drawn from the library itself, never painted on:
- *
- *  - Haze: faint glows sitting on the densest pockets of the cloud, tinted by
- *    the moods that live there and strongest where the most tracks crowd
- *    together. A sparse region stays clear sky.
- *  - Dust: a few dim motes scattered close around each star, so clusters read
- *    as luminous gas rather than a handful of points.
+ * The nebula comes from the library: haze glows on the densest pockets, tinted by
+ * their moods, and dim dust motes around each star so clusters read as gas.
  */
 
 export interface HazePuff {

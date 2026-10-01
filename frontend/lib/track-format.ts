@@ -1,15 +1,7 @@
 /**
- * Foobar2000-style title formatting for track display.
- *
- * Supported syntax:
- *   %field%           — substitute field value (empty string if missing)
- *   [block]           — hide entire block if any %field% inside resolved empty
- *   $if2(a, b)        — return a if non-empty, else b
- *   $filepart(path)   — filename without directory or extension
- *
- * Available fields: title, artist, album, filename
- *
- * Reference: https://wiki.hydrogenaudio.org/index.php?title=Foobar2000:Title_Formatting_Reference
+ * Foobar2000-style title formatting over title, artist, album and filename:
+ * %field%, [block] (hidden when a field inside is empty), $if2(a, b) and
+ * $filepart(path). https://wiki.hydrogenaudio.org/index.php?title=Foobar2000:Title_Formatting_Reference
  */
 
 export interface FormatTrack {

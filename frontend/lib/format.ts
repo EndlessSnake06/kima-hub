@@ -1,8 +1,4 @@
-/**
- * Format seconds into a human-readable time string
- * For durations under 1 hour: m:ss (e.g., 5:32)
- * For durations 1 hour or more: h:mm:ss (e.g., 1:05:32)
- */
+/** Seconds as m:ss, or h:mm:ss from an hour up. */
 export function formatTime(seconds: number): string {
     if (isNaN(seconds) || !isFinite(seconds) || seconds < 0) return "0:00";
 

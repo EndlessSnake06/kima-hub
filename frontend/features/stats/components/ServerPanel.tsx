@@ -127,11 +127,7 @@ interface ClearCachesResult { clearedKeys?: number }
 interface CleanupJobsResult { totalCleaned?: number }
 interface RetryFailedResult { reset?: number; failed?: number; permanentlyFailed?: number }
 
-/**
- * One maintenance action. Idle, asking, running, done — and `done` keeps the
- * sentence on screen rather than flashing it, because the number it reports is
- * the only evidence the click did anything.
- */
+/** One maintenance action: idle, asking, running, done. `done` keeps its result on screen. */
 function Action<TResult extends object>({
     label,
     confirmLabel,

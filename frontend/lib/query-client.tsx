@@ -28,11 +28,7 @@ function makeQueryClient() {
 
 let browserQueryClient: QueryClient | undefined = undefined;
 
-/**
- * Gets the QueryClient instance
- * For server-side rendering, always create a new instance
- * For client-side, reuse the same instance across renders
- */
+/** A new client per server render; one shared client in the browser. */
 function getQueryClient() {
     if (typeof window === "undefined") {
         // Server: always make a new query client

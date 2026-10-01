@@ -1304,7 +1304,7 @@ describe("silent-playback-detected", () => {
 });
 
 // ---------------------------------------------------------------------------
-// gapless-swapped: dual-element boundary swap bookkeeping (Phase 2B)
+// gapless-swapped: dual-element boundary swap bookkeeping
 // ---------------------------------------------------------------------------
 
 describe("gapless-swapped", () => {

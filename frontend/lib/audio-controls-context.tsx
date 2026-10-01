@@ -1248,11 +1248,8 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
         return () => ctrl.off("ended", handleEnded);
     }, [controller, state, playback]);
 
-    // -- Next-track prewarm trigger --
-    // Fires once per upcoming track when ≤30s remain; guards via ref so it
-    // never blocks the playback path. Also feeds the controller's gapless
-    // preload (Phase 2B) so the idle element has the next track buffered by
-    // the time this one ends -- repeat-one has no real next, so it's suppressed.
+    // Once per upcoming track, with 30s or less left, prewarms it and starts the
+    // controller's gapless preload. Skipped on repeat-one, which has no next.
     useEffect(() => {
         const ctrl = controllerRef.current;
         if (!ctrl) return;
@@ -1279,7 +1276,7 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
             const ctrl2 = controllerRef.current;
             if (!ctrl2) return;
             pendingGaplessNextRef.current = nextTrack;
-            ctrl2.setUpcoming2B(api.getStreamUrl(nextTrack.id), nextTrack.id, nextTrack.duration);
+            ctrl2.setExpectedNext(api.getStreamUrl(nextTrack.id), nextTrack.id, nextTrack.duration);
             ctrl2.preloadNext();
         };
 
@@ -1287,7 +1284,7 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
         return () => ctrl.off("timeupdate", handleTimeUpdate);
     }, [controller]);
 
-    // -- Gapless-advance handler (Phase 2B) --
+    // -- Gapless-advance handler --
     // The controller already swapped elements synchronously on `ended`; this
     // only advances the queue's index/currentTrack (and duration/time) to
     // match -- no ctrl.load(), the audio is already playing.
@@ -1329,12 +1326,12 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
         return () => ctrl.off("gapless-advance", handleGaplessAdvance);
     }, [controller, state, playback]);
 
-    // -- Clear a stale gapless preload expectation (Phase 2B) --
+    // -- Clear a stale gapless preload expectation --
     // Once playback leaves "track" mode or repeat flips to "one", any
     // preloaded next-track buffer can no longer be swapped in validly.
     useEffect(() => {
         if (state.playbackType !== "track" || state.repeatMode === "one") {
-            controllerRef.current?.clearUpcoming2B();
+            controllerRef.current?.clearExpectedNext();
         }
     }, [state.playbackType, state.repeatMode]);
 

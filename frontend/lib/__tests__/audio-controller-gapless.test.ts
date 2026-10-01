@@ -124,7 +124,7 @@ function makeEligible(
     url: string,
     durationS: number,
 ): void {
-    controller.setUpcoming2B(url, trackId, durationS);
+    controller.setExpectedNext(url, trackId, durationS);
     controller.preloadNext();
     audioNext.duration = durationS;
     audioNext.__fire("canplay");
@@ -241,14 +241,14 @@ describe("AudioController -- gapless swap: not eligible", () => {
     it("preloadedTrackId mismatching expectedNextTrackId is not eligible", () => {
         const { controller, audio, audioNext } = newController();
 
-        controller.setUpcoming2B("http://x.com/b.mp3", "track-2", 100);
+        controller.setExpectedNext("http://x.com/b.mp3", "track-2", 100);
         controller.preloadNext();
         audioNext.duration = 100;
         audioNext.__fire("canplay");
 
         // Queue mutated after the preload was issued -- now expecting a
         // different track than what was actually buffered.
-        controller.setUpcoming2B("http://x.com/c.mp3", "track-3", 120);
+        controller.setExpectedNext("http://x.com/c.mp3", "track-3", 120);
 
         audio.currentTime = 100;
         audio.duration = 100;
@@ -296,14 +296,14 @@ describe("AudioController -- gapless swap: play() rejection", () => {
 // ---------------------------------------------------------------------------
 
 describe("AudioController -- gapless swap: repeat-one suppression", () => {
-    it("clearUpcoming2B() (the React layer's repeat-one guard) closes the eligibility gate even with a ready idle buffer", () => {
+    it("clearExpectedNext() (the React layer's repeat-one guard) closes the eligibility gate even with a ready idle buffer", () => {
         const { controller, audio, audioNext } = newController();
 
         makeEligible(controller, audioNext, "track-2", "http://x.com/b.mp3", 100);
 
         // Simulates the audio-controls-context effect that fires when
         // repeatMode -> "one": the preload is no longer a valid next track.
-        controller.clearUpcoming2B();
+        controller.clearExpectedNext();
 
         audio.currentTime = 100;
         audio.duration = 100;

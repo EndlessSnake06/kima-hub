@@ -174,11 +174,7 @@ function startNudgeRung(snap: EngineSnapshot, now: number): TransitionResult {
     };
 }
 
-/**
- * Start the reload rung. Does NOT increment attempts (caller already did via
- * startNudgeRung, or this is a direct escalation from native-error).
- * Applies the park policy: if hidden, park instead of calling play.
- */
+/** Starts the reload rung without counting an attempt (the caller did). Parks instead of playing when hidden. */
 function startReloadRung(
     snap: EngineSnapshot,
     resumeAt: number,
@@ -257,10 +253,8 @@ function enterError(
 }
 
 /**
- * Escalate: pick nudge first, then reload, then error.
- * Increments attempts before nudge rung (counted once per rung pair).
- * For direct escalation (native-error) that skips nudge, attempts++ is
- * also done here to keep the semantics consistent.
+ * Escalate: nudge, then reload, then error. Attempts increment once per
+ * nudge/reload pair, including a native-error that skips straight to reload.
  */
 function escalate(
     snap: EngineSnapshot,
@@ -668,12 +662,9 @@ export function transition(
                 return { snapshot: snap, effects: [] };
             }
 
-            // A pause landed while this play() call was in flight. pause-requested
-            // always flips status to "paused" synchronously (cls-independent --
-            // even a cross-tab "system" pause does this, see pause-requested
-            // above), so a rejection arriving after that point is reporting on a
-            // play() attempt the user/session has since superseded. Resurrecting
-            // playback here would revert the pause.
+            // A pause landed while play() was in flight; pause-requested sets
+            // "paused" synchronously, so this rejection is for a superseded play()
+            // and resuming here would undo the pause.
             if (snap.status === "paused") {
                 return { snapshot: snap, effects: [] };
             }

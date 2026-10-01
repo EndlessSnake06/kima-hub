@@ -46,11 +46,7 @@ export function useDoubleTap(callback: () => void) {
     return { onTouchEnd, onDoubleClick: callback };
 }
 
-/**
- * Hook for list components that render rows in a .map() loop.
- * Uses data-track-index on each row to identify which item was tapped.
- * Returns a single onTouchEnd handler to attach to every row.
- */
+/** One onTouchEnd handler for every row of a list; each row's data-track-index says which was tapped. */
 export function useDoubleTapList(onPlay: (index: number) => void) {
     const lastTap = useRef<{ time: number; index: number }>({ time: 0, index: -1 });
 

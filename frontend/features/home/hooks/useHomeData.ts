@@ -1,9 +1,4 @@
-/**
- * useHomeData Hook
- *
- * Manages data loading for the Home page, fetching all 7 sections using React Query
- * and providing refresh functionality for mixes.
- */
+/** Loads every Home section and refreshes the mixes. */
 
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";

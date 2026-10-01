@@ -114,11 +114,7 @@ export function useSystemSettings() {
         setSystemSettings((prev) => ({ ...prev, ...updates }));
     };
 
-    /**
-     * Test a service connection
-     * Returns { success: true, version?: string } or { success: false, error: string }
-     * Caller handles displaying the result inline
-     */
+    /** Tests a service connection; the caller shows the result. */
     const testService = async (service: string): Promise<{ success: boolean; version?: string; error?: string }> => {
         try {
             let result;
