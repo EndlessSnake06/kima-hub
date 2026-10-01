@@ -776,7 +776,7 @@ export default function PlaylistDetailPage() {
                                 }}
                                 onDragEnd={handleDragEnd}
                                 aria-label="Drag to reorder"
-                                className="w-6 h-6 flex items-center justify-center rounded opacity-0 group-hover:opacity-60 hover:opacity-100 transition-all cursor-grab active:cursor-grabbing text-[var(--text-muted)] hover:text-white"
+                                className="touch-reveal w-6 h-6 flex items-center justify-center rounded opacity-0 group-hover:opacity-60 hover:opacity-100 focus-visible:opacity-100 transition-all cursor-grab active:cursor-grabbing text-[var(--text-muted)] hover:text-white"
                             >
                                 <GripVertical className="w-4 h-4" />
                             </button>

@@ -271,9 +271,8 @@ code {
         min-width: 44px;
     }
 
-    /* Kept for the three grids that already carry it. The button rule at the
-     * top of this block now covers the same ground, so this is belt and
-     * braces rather than the mechanism. */
+    /* For hover-revealed controls the rules above miss, such as a partial
+     * group-hover opacity. */
     .touch-reveal {
         opacity: 1;
         pointer-events: auto;
