@@ -26,6 +26,7 @@ import {
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 
 type ActionPanel = "create" | "importUrl" | "importFile" | null;
 
@@ -902,16 +903,7 @@ export default function PlaylistsPage() {
                     {displayedPlaylists.length > 0 ? (
                         <div>
                             {/* Section header */}
-                            <div className="flex items-center gap-3 mb-6">
-                                <span className="w-1 h-8 bg-gradient-to-b from-brand to-[#f97316] rounded-full shrink-0" />
-                                <h2 className="text-2xl font-bold tracking-tight">
-                                    {showHiddenTab ? "Hidden" : "All Playlists"}
-                                </h2>
-                                <span className="text-xs tabular-nums text-brand">
-                                    {displayedPlaylists.length}
-                                </span>
-                                <span className="flex-1 border-t border-white/10" />
-                            </div>
+                            <SectionHeader type="track" title={showHiddenTab ? "Hidden" : "All Playlists"} count={displayedPlaylists.length} />
 
                             <div
                                 data-tv-section="playlists"

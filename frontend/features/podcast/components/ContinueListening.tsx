@@ -4,7 +4,7 @@ import { Play, Pause } from "lucide-react";
 import { Episode } from "../types";
 import { formatDuration } from "@/lib/format";
 import { formatDate } from "../utils";
-import { SectionHeader } from "@/features/home/components/SectionHeader";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 
 interface ContinueListeningProps {
     inProgressEpisodes: Episode[];
@@ -47,7 +47,7 @@ export function ContinueListening({
 
     return (
         <section>
-            <SectionHeader title="Continue Listening" color="podcasts" />
+            <SectionHeader title="Continue Listening" type="podcast" />
 
             <div className="space-y-0.5">
                 {/* Previous Episode */}

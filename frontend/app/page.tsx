@@ -6,7 +6,7 @@ import { RefreshCw, AudioWaveform } from "lucide-react";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { useHomeData } from "@/features/home/hooks/useHomeData";
 import { HomeHero } from "@/features/home/components/HomeHero";
-import { SectionHeader } from "@/features/home/components/SectionHeader";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 import { ContinueListening } from "@/features/home/components/ContinueListening";
 import { ArtistsGrid, PopularArtistsGrid } from "@/features/home/components/ArtistsGrid";
 import { MixesGrid } from "@/features/home/components/MixesGrid";
@@ -55,19 +55,19 @@ export default function HomePage() {
                     const sections: Array<{ key: string; visible: boolean; content: React.ReactNode }> = [
                         { key: "library-radio", visible: true, content: (
                             <section data-tv-section="library-radio">
-                                <SectionHeader title="Library Radio" showAllHref="/radio" color="featured" />
+                                <SectionHeader title="Library Radio" showAllHref="/radio" type="featured" />
                                 <LibraryRadioStations />
                             </section>
                         )},
                         { key: "continue-listening", visible: recentlyListened.length > 0, content: (
                             <section data-tv-section="continue-listening">
-                                <SectionHeader title="Continue Listening" showAllHref="/collection?tab=artists" color="featured" />
+                                <SectionHeader title="Continue Listening" showAllHref="/collection?tab=artists" type="featured" />
                                 <ContinueListening items={recentlyListened} />
                             </section>
                         )},
                         { key: "recently-added", visible: recentlyAdded.length > 0, content: (
                             <section data-tv-section="recently-added">
-                                <SectionHeader title="Recently Added" showAllHref="/collection?tab=artists" color="artists" />
+                                <SectionHeader title="Recently Added" showAllHref="/collection?tab=artists" type="artist" />
                                 <ArtistsGrid artists={recentlyAdded} />
                             </section>
                         )},
@@ -75,8 +75,8 @@ export default function HomePage() {
                             <section data-tv-section="made-for-you">
                                 <SectionHeader
                                     title="Made For You"
-                                    color="discover"
-                                    rightAction={
+                                    type="track"
+                                    action={
                                         <div className="flex items-center gap-2">
                                             <button
                                                 onClick={() => setShowMoodMixer(true)}
@@ -108,19 +108,19 @@ export default function HomePage() {
                         )},
                         { key: "recommended", visible: recommended.length > 0, content: (
                             <section data-tv-section="recommended">
-                                <SectionHeader title="Recommended" showAllHref="/discover" badge="Local Engine" color="artists" />
+                                <SectionHeader title="Recommended" showAllHref="/discover" badge="Local Engine" type="artist" />
                                 <ArtistsGrid artists={recommended} />
                             </section>
                         )},
                         { key: "popular-artists", visible: popularArtists.length > 0, content: (
                             <section data-tv-section="popular-artists">
-                                <SectionHeader title="Popular Artists" badge="Local Engine" color="artists" />
+                                <SectionHeader title="Popular Artists" badge="Local Engine" type="artist" />
                                 <PopularArtistsGrid artists={popularArtists} />
                             </section>
                         )},
                         { key: "featured-playlists", visible: isBrowseLoading || featuredPlaylists.length > 0, content: (
                             <section data-tv-section="featured-playlists">
-                                <SectionHeader title="Featured Playlists" showAllHref="/browse/playlists" badge="Deezer" color="tracks" />
+                                <SectionHeader title="Featured Playlists" showAllHref="/browse/playlists" badge="Deezer" type="track" />
                                 {isBrowseLoading && featuredPlaylists.length === 0 ? (
                                     <FeaturedPlaylistsSkeleton />
                                 ) : (
@@ -130,13 +130,13 @@ export default function HomePage() {
                         )},
                         { key: "popular-podcasts", visible: recentPodcasts.length > 0, content: (
                             <section data-tv-section="popular-podcasts">
-                                <SectionHeader title="Popular Podcasts" showAllHref="/podcasts" color="podcasts" />
+                                <SectionHeader title="Popular Podcasts" showAllHref="/podcasts" type="podcast" />
                                 <PodcastsGrid podcasts={recentPodcasts} />
                             </section>
                         )},
                         { key: "audiobooks", visible: recentAudiobooks.length > 0, content: (
                             <section data-tv-section="audiobooks">
-                                <SectionHeader title="Audiobooks" showAllHref="/audiobooks" color="audiobooks" />
+                                <SectionHeader title="Audiobooks" showAllHref="/audiobooks" type="audiobook" />
                                 <AudiobooksGrid audiobooks={recentAudiobooks} />
                             </section>
                         )},

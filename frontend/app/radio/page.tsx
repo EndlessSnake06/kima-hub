@@ -14,6 +14,7 @@ import {
     useRadioPlayer,
 } from "@/features/home/radioData";
 import type { RadioStation } from "@/features/home/radioData";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 
 function RadioStationCard({
     station,
@@ -172,11 +173,7 @@ export default function RadioPage() {
                     <div className="section-stack">
                         {/* Quick Start */}
                         <section>
-                            <h2 className="text-2xl font-bold tracking-tight flex items-center gap-3 mb-6">
-                                <span className="w-1 h-8 bg-gradient-to-b from-brand to-[#f97316] rounded-full" />
-                                <span className="tracking-tight">Quick Start</span>
-                                <span className="flex-1 border-t border-white/10" />
-                            </h2>
+                            <SectionHeader title="Quick Start" />
                             <div className="grid-media">
                                 {STATIC_STATIONS.map((station) => (
                                     <RadioStationCard
@@ -192,16 +189,11 @@ export default function RadioPage() {
                         {/* Genres */}
                         {(isLoading || genresError || genreStations.length > 0) && (
                             <section>
-                                <h2 className="text-2xl font-bold tracking-tight flex items-center gap-3 mb-6">
-                                    <span className="w-1 h-8 bg-gradient-to-b from-[#a855f7] to-[#c026d3] rounded-full" />
-                                    <span className="tracking-tight">By Genre</span>
-                                    <span className="flex-1 border-t border-white/10" />
-                                    {!isLoading && !genresError && (
-                                        <span className="text-xs tabular-nums text-[#a855f7]">
-                                            {genreStations.length} genres
-                                        </span>
-                                    )}
-                                </h2>
+                                <SectionHeader
+                                    type="track"
+                                    title="By Genre"
+                                    count={!isLoading && !genresError ? `${genreStations.length} genres` : undefined}
+                                />
                                 {isLoading ? (
                                     <SectionSkeleton />
                                 ) : genresError ? (
@@ -235,16 +227,11 @@ export default function RadioPage() {
                         {/* Decades */}
                         {(isLoading || decadesError || decadeStations.length > 0) && (
                             <section>
-                                <h2 className="text-2xl font-bold tracking-tight flex items-center gap-3 mb-6">
-                                    <span className="w-1 h-8 bg-gradient-to-b from-[#22c55e] to-[#16a34a] rounded-full" />
-                                    <span className="tracking-tight">By Decade</span>
-                                    <span className="flex-1 border-t border-white/10" />
-                                    {!isLoading && !decadesError && (
-                                        <span className="text-xs tabular-nums text-[#22c55e]">
-                                            {decadeStations.length} decades
-                                        </span>
-                                    )}
-                                </h2>
+                                <SectionHeader
+                                    type="track"
+                                    title="By Decade"
+                                    count={!isLoading && !decadesError ? `${decadeStations.length} decades` : undefined}
+                                />
                                 {isLoading ? (
                                     <SectionSkeleton />
                                 ) : decadesError ? (

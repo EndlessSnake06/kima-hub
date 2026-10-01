@@ -4,7 +4,7 @@ import Image from "next/image";
 import { SimilarArtist } from "../types";
 import { Music, Library } from "lucide-react";
 import { api } from "@/lib/api";
-import { SectionHeader } from "@/features/home/components/SectionHeader";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 
 interface SimilarArtistsProps {
     similarArtists: SimilarArtist[];
@@ -21,7 +21,7 @@ export function SimilarArtists({
 
     return (
         <section>
-            <SectionHeader color="artists" title="Fans Also Like" />
+            <SectionHeader type="artist" title="Fans Also Like" />
             <div
                 data-tv-section="similar-artists"
                 className="grid-media"

@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { shuffleArray } from "@/lib/shuffle";
 import { Pagination } from "@/components/ui/Pagination";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 
 interface Audiobook {
     id: string;
@@ -46,20 +47,6 @@ interface Audiobook {
 
 type FilterType = "all" | "listening" | "finished";
 type SortType = "title" | "author" | "recent" | "series";
-
-function SectionHeader({ title, count, children }: { title: string; count?: number; children?: React.ReactNode }) {
-    return (
-        <div className="flex items-center gap-3 mb-6">
-            <span className="w-1 h-8 bg-gradient-to-b from-[#f59e0b] to-[#d97706] rounded-full shrink-0" />
-            <h2 className="text-2xl font-bold tracking-tight">{title}</h2>
-            {count !== undefined && (
-                <span className="text-xs tabular-nums text-[#f59e0b]">{count}</span>
-            )}
-            <span className="flex-1 border-t border-white/10" />
-            {children}
-        </div>
-    );
-}
 
 export default function AudiobooksPage() {
     const router = useRouter();
@@ -521,7 +508,7 @@ export default function AudiobooksPage() {
                         {/* Continue Listening Section */}
                         {continueListening.length > 0 && filter === "all" && !groupBySeries && (
                             <div>
-                                <SectionHeader title="Continue Listening" count={continueListening.length} />
+                                <SectionHeader type="audiobook" title="Continue Listening" count={continueListening.length} />
                                 <div
                                     className="grid-media"
                                     data-tv-section="continue-listening"
@@ -548,7 +535,7 @@ export default function AudiobooksPage() {
                                 <>
                                     {series.length > 0 && (
                                         <div>
-                                            <SectionHeader title="Series" count={series.length} />
+                                            <SectionHeader type="audiobook" title="Series" count={series.length} />
                                             <div
                                                 className="grid-media"
                                                 data-tv-section="series"
@@ -575,7 +562,7 @@ export default function AudiobooksPage() {
 
                                     {standalone.length > 0 && (
                                         <div>
-                                            <SectionHeader title="Standalone" count={standalone.length} />
+                                            <SectionHeader type="audiobook" title="Standalone" count={standalone.length} />
                                             <div
                                                 className="grid-media"
                                                 data-tv-section="standalone"
@@ -598,7 +585,7 @@ export default function AudiobooksPage() {
                                 </>
                             ) : (
                                 <div>
-                                    <SectionHeader title="All Books" count={filteredBooks.length} />
+                                    <SectionHeader type="audiobook" title="All Books" count={filteredBooks.length} />
                                     <div
                                         className="grid-media"
                                         data-tv-section="audiobooks"

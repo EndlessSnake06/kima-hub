@@ -4,7 +4,7 @@ import { Mic2 } from "lucide-react";
 import { SimilarPodcast } from "../types";
 import { api } from "@/lib/api";
 import { PlayableCard } from "@/components/ui/PlayableCard";
-import { SectionHeader } from "@/features/home/components/SectionHeader";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 
 interface SimilarPodcastsProps {
     podcasts: SimilarPodcast[];
@@ -17,7 +17,7 @@ export function SimilarPodcasts({ podcasts }: SimilarPodcastsProps) {
 
     return (
         <section>
-            <SectionHeader title="Fans Also Like" color="podcasts" />
+            <SectionHeader title="Fans Also Like" type="podcast" />
             <div data-tv-section="similar-podcasts" className="grid-media">
                 {podcasts.map((podcast, index) => (
                     <PlayableCard

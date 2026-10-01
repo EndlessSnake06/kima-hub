@@ -10,6 +10,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useAudioState, useAudioPlayback, useAudioControls } from "@/lib/audio-context";
 import { useToast } from "@/lib/toast-context";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 import {
     ArrowLeft,
     Book,
@@ -208,14 +209,7 @@ export default function SeriesDetailPage() {
             <div className="relative px-4 md:px-8 pb-24 animate-rise">
                 <div className="max-w-[1800px] mx-auto">
                     <div>
-                        <div className="flex items-center gap-3 mb-6">
-                            <span className="w-1 h-8 bg-gradient-to-b from-[#f59e0b] to-[#d97706] rounded-full shrink-0" />
-                            <h2 className="text-2xl font-bold tracking-tight">Books in Series</h2>
-                            <span className="text-xs tabular-nums text-[#f59e0b]">
-                                {books.length}
-                            </span>
-                            <span className="flex-1 border-t border-white/10" />
-                        </div>
+                        <SectionHeader type="audiobook" title="Books in Series" count={books.length} />
 
                         <div className="space-y-0.5">
                             {books.map((book, index) => {

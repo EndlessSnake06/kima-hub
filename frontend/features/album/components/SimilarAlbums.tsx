@@ -4,7 +4,7 @@ import { Disc3 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { SimilarAlbum } from '../types';
 import type { ColorPalette } from '@/hooks/useImageColor';
-import { SectionHeader } from '@/features/home/components/SectionHeader';
+import { SectionHeader } from '@/components/ui/SectionHeader';
 
 interface SimilarAlbumsProps {
   similarAlbums: SimilarAlbum[];
@@ -15,7 +15,7 @@ interface SimilarAlbumsProps {
 export function SimilarAlbums({ similarAlbums, colors, onNavigate }: SimilarAlbumsProps) {
   return (
     <section>
-      <SectionHeader color="albums" title="More Like This" />
+      <SectionHeader type="album" title="More Like This" />
       <div data-tv-section="similar-albums" className="grid-media">
         {similarAlbums.map((album, index) => (
           <PlayableCard

@@ -1,4 +1,5 @@
 import { ReactNode } from "react";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 
 interface SettingsSectionProps {
     id: string;
@@ -18,11 +19,7 @@ export function SettingsSection({
     return (
         <section id={id} className="scroll-mt-24 animate-rise">
             <div className="mb-4">
-                <div className="flex items-center gap-3 mb-1">
-                    <span className="w-1 h-6 bg-gradient-to-b from-brand to-[#f97316] rounded-full shrink-0" />
-                    <h2 className="text-lg font-bold tracking-tight text-white">{title}</h2>
-                    <span className="flex-1 border-t border-white/10" />
-                </div>
+                <SectionHeader title={title} size="sm" className="mb-1" />
                 {description && (
                     <p className="text-xs tabular-nums text-[var(--text-muted)] mt-1 ml-[calc(0.25rem+0.75rem+4px)]">{description}</p>
                 )}

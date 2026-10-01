@@ -6,7 +6,7 @@ import { PodcastPreview } from "../types";
 import type { ColorPalette } from "@/hooks/useImageColor";
 import { formatDuration } from "@/lib/format";
 import { formatDate } from "../utils";
-import { SectionHeader } from "@/features/home/components/SectionHeader";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 
 interface PreviewEpisodesProps {
     previewData: PodcastPreview;
@@ -26,7 +26,7 @@ export function PreviewEpisodes({
 
     return (
         <section>
-            <SectionHeader title="Latest Episodes" color="podcasts" />
+            <SectionHeader title="Latest Episodes" type="podcast" />
 
             {hasEpisodes ? (
                 <>
@@ -108,7 +108,7 @@ export function PreviewEpisodes({
             {/* About Section */}
             {previewData.description && (
                 <div className="mt-8">
-                    <SectionHeader title="About" color="podcasts" />
+                    <SectionHeader title="About" type="podcast" />
                     <div className="relative overflow-hidden rounded-lg border border-white/10 bg-[var(--bg-primary)] p-4">
                         <div
                             className="prose prose-invert prose-sm max-w-none text-[var(--text-secondary)] max-w-3xl text-xs leading-relaxed"

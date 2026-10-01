@@ -7,7 +7,7 @@ import { cn } from "@/lib/cn";
 import { Episode } from "../types";
 import { formatDuration } from "@/lib/format";
 import { formatDate } from "../utils";
-import { SectionHeader } from "@/features/home/components/SectionHeader";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 import { cascadeStyle } from "@/lib/motion";
 
 interface EpisodeListProps {
@@ -262,7 +262,7 @@ export function EpisodeList({
 
     return (
         <section>
-            <SectionHeader title="All Episodes" rightAction={sortButton} color="podcasts" />
+            <SectionHeader title="All Episodes" action={sortButton} type="podcast" />
 
             {/* Table header (desktop only) */}
             <div className="hidden md:grid grid-cols-[40px_minmax(200px,3fr)_minmax(100px,2fr)_auto_auto] gap-4 px-3 py-2 text-xs text-[var(--text-muted)] border-b border-white/10 mb-1">

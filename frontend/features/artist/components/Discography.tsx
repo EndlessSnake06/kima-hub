@@ -5,7 +5,7 @@ import { Disc3 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Album } from "../types";
 import type { ColorPalette } from "@/hooks/useImageColor";
-import { SectionHeader } from "@/features/home/components/SectionHeader";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 
 interface DiscographyProps {
     albums: Album[];
@@ -29,9 +29,9 @@ export function Discography({
     return (
         <section>
             <SectionHeader
-                color="albums"
+                type="album"
                 title="Discography"
-                rightAction={
+                action={
                     <select
                         value={sortBy}
                         onChange={(e) =>

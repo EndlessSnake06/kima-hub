@@ -21,6 +21,7 @@ import { cn } from "@/lib/cn";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { useAudioState } from "@/lib/audio-state-context";
 import { useAudioControls } from "@/lib/audio-controls-context";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 
 const DeezerIcon = ({ className }: { className?: string }) => (
     <svg viewBox="0 0 24 24" className={className} fill="currentColor">
@@ -384,14 +385,7 @@ export default function DeezerPlaylistDetailPage() {
                 <div className="max-w-[1800px] mx-auto">
                     {playlist.tracks.length > 0 ? (
                         <div>
-                            <div className="flex items-center gap-3 mb-6">
-                                <span className="w-1 h-8 bg-gradient-to-b from-[#a855f7] to-[#c026d3] rounded-full shrink-0" />
-                                <h2 className="text-2xl font-bold tracking-tight">Tracks</h2>
-                                <span className="text-xs tabular-nums text-[#a855f7]">
-                                    {playlist.trackCount}
-                                </span>
-                                <span className="flex-1 border-t border-white/10" />
-                            </div>
+                            <SectionHeader type="track" title="Tracks" count={playlist.trackCount} />
 
                             {/* Table Header */}
                             <div className="hidden md:grid grid-cols-[40px_minmax(200px,4fr)_minmax(100px,1fr)_80px] gap-4 px-3 py-2 text-xs text-[var(--text-muted)] border-b border-white/10 mb-1">

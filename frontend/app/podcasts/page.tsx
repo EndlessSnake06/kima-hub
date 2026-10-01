@@ -12,6 +12,7 @@ import { Pagination } from "@/components/ui/Pagination";
 import { usePodcastsQuery, useTopPodcastsQuery, queryKeys } from "@/hooks/useQueries";
 import Image from "next/image";
 import { cn } from "@/lib/cn";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 
 const getProxiedImageUrl = (imageUrl: string | undefined): string | null => {
     if (!imageUrl) return null;
@@ -78,30 +79,6 @@ function PodcastCard({
                 "transform scale-x-0 group-hover:scale-x-100 transition-transform duration-150 origin-center"
             )} />
         </button>
-    );
-}
-
-function SectionHeader({
-    title,
-    count,
-    rightAction,
-}: {
-    title: string;
-    count?: number;
-    rightAction?: React.ReactNode;
-}) {
-    return (
-        <h2 className="text-2xl font-bold tracking-tight flex items-center gap-3 mb-6">
-            <span className="w-1 h-8 bg-gradient-to-b from-[#3b82f6] to-[#2563eb] rounded-full shrink-0" />
-            <span className="tracking-tight">{title}</span>
-            {count !== undefined && (
-                <span className="text-xs tabular-nums text-[#3b82f6]">
-                    {count}
-                </span>
-            )}
-            <span className="flex-1 border-t border-white/10" />
-            {rightAction}
-        </h2>
     );
 }
 
@@ -463,10 +440,10 @@ export default function PodcastsPage() {
                         {/* My Podcasts */}
                         {podcasts.length > 0 && (
                             <section>
-                                <SectionHeader
+                                <SectionHeader type="podcast"
                                     title="My Podcasts"
                                     count={podcasts.length}
-                                    rightAction={
+                                    action={
                                         <div className="flex items-center gap-2">
                                             <button
                                                 onClick={handleRefreshAll}
@@ -531,7 +508,7 @@ export default function PodcastsPage() {
                         {/* Top Podcasts */}
                         {topPodcasts.length > 0 && (
                             <section>
-                                <SectionHeader title="Top Podcasts" />
+                                <SectionHeader type="podcast" title="Top Podcasts" />
                                 <div
                                     className="grid-media"
                                     data-tv-section="top-podcasts"
@@ -565,9 +542,9 @@ export default function PodcastsPage() {
 
 
                                 >
-                                    <SectionHeader
+                                    <SectionHeader type="podcast"
                                         title={genreName}
-                                        rightAction={
+                                        action={
                                             <button
                                                 onClick={() => router.push(`/podcasts/genre/${genreId}`)}
                                                 className="text-xs text-[var(--text-muted)] hover:text-[#3b82f6] transition-colors"
@@ -597,7 +574,7 @@ export default function PodcastsPage() {
                         {podcasts.length === 0 && topPodcasts.length === 0 && (
                             <section>
                                 <div className="relative overflow-hidden rounded-lg border-2 border-white/10 bg-gradient-to-br from-[#0f0f0f] to-[#0a0a0a] p-12">
-                                    <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-[#3b82f6] to-[#2563eb]" />
+                                    <div className="absolute top-0 left-0 w-1 h-full bg-type-podcast" />
                                     <div className="flex flex-col items-center text-center">
                                         <Mic2 className="w-16 h-16 text-[var(--text-muted)] mb-6" />
                                         <h2 className="text-2xl font-bold tracking-tight text-white mb-2">

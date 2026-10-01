@@ -16,6 +16,7 @@ import {
 import { api } from "@/lib/api";
 import { useToast } from "@/lib/toast-context";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 
 interface PlaylistPreview {
     id: string;
@@ -42,32 +43,6 @@ const DeezerIcon = ({ className }: { className?: string }) => (
 );
 
 type BrowseTab = "playlists" | "genres";
-
-function SectionHeader({
-    title,
-    count,
-    children,
-}: {
-    title: string;
-    count?: number;
-    children?: React.ReactNode;
-}) {
-    return (
-        <div className="flex items-center gap-3 mb-6">
-            <span className="w-1 h-8 bg-gradient-to-b from-[#a855f7] to-[#c026d3] rounded-full shrink-0" />
-            <h2 className="text-2xl font-bold tracking-tight">
-                {title}
-            </h2>
-            {count !== undefined && (
-                <span className="text-xs tabular-nums text-[#a855f7]">
-                    {count}
-                </span>
-            )}
-            <span className="flex-1 border-t border-white/10" />
-            {children}
-        </div>
-    );
-}
 
 export default function BrowsePlaylistsPage() {
     const router = useRouter();
@@ -439,7 +414,7 @@ export default function BrowsePlaylistsPage() {
 
 
                         >
-                            <SectionHeader
+                            <SectionHeader type="track"
                                 title={`Results for "${searchQuery}"`}
                                 count={playlists.length}
                             />
@@ -474,7 +449,7 @@ export default function BrowsePlaylistsPage() {
 
 
                         >
-                            <SectionHeader
+                            <SectionHeader type="track"
                                 title={`${selectedGenre.name} Playlists`}
                                 count={genrePlaylists.length}
                             />
@@ -504,7 +479,7 @@ export default function BrowsePlaylistsPage() {
                                             animationDelay: `${sectionIndex++ * 0.1}s`,
                                         }}
                                     >
-                                        <SectionHeader
+                                        <SectionHeader type="track"
                                             title="Featured Playlists"
                                             count={playlists.length}
                                         />
@@ -534,7 +509,7 @@ export default function BrowsePlaylistsPage() {
                                             animationDelay: `${sectionIndex++ * 0.1}s`,
                                         }}
                                     >
-                                        <SectionHeader
+                                        <SectionHeader type="track"
                                             title="Browse by Genre"
                                             count={genres.length}
                                         />

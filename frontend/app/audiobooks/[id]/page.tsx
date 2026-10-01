@@ -11,6 +11,7 @@ import { useAudiobookActions } from "@/features/audiobook/hooks/useAudiobookActi
 import { AudiobookHero } from "@/features/audiobook/components/AudiobookHero";
 import { AudiobookActionBar } from "@/features/audiobook/components/AudiobookActionBar";
 import { SectionList } from "@/features/audiobook/components/SectionList";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 
 export default function AudiobookDetailPage() {
     const { audiobookId, audiobook, isLoading, refetch, heroImage, colorExtractionImage, metadata } =
@@ -101,11 +102,7 @@ export default function AudiobookDetailPage() {
                     {showDescription && (
                         <div>
                             <section>
-                                <div className="flex items-center gap-3 mb-6">
-                                    <span className="w-1 h-6 bg-gradient-to-b from-[#f59e0b] to-[#d97706] rounded-full shrink-0" />
-                                    <h2 className="text-xl font-bold tracking-tight">About</h2>
-                                    <span className="flex-1 border-t border-white/10" />
-                                </div>
+                                <SectionHeader type="audiobook" title="About" size="sm" />
                                 <div className="relative overflow-hidden rounded-lg border border-white/10 bg-[var(--bg-primary)] p-5">
                                     <div
                                         className="prose prose-invert prose-sm max-w-none text-[var(--text-secondary)] [&_a]:text-[#f59e0b] [&_a]:no-underline [&_a:hover]:underline text-sm leading-relaxed"
@@ -122,11 +119,7 @@ export default function AudiobookDetailPage() {
                     {audiobook.series && (
                         <div>
                             <section>
-                                <div className="flex items-center gap-3 mb-6">
-                                    <span className="w-1 h-6 bg-gradient-to-b from-[#f59e0b] to-[#d97706] rounded-full shrink-0" />
-                                    <h2 className="text-xl font-bold tracking-tight">Series</h2>
-                                    <span className="flex-1 border-t border-white/10" />
-                                </div>
+                                <SectionHeader type="audiobook" title="Series" size="sm" />
                                 <div className="flex items-center gap-3 text-sm">
                                     <span className="text-[#f59e0b] font-bold tracking-tight">
                                         {audiobook.series.name}

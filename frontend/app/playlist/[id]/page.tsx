@@ -45,6 +45,7 @@ import {
 import { useTrackFormat } from "@/hooks/useTrackFormat";
 import { formatTrackDisplay } from "@/lib/track-format";
 import { useDoubleTapList } from "@/hooks/useDoubleTap";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 
 interface Track {
     id: string;
@@ -1291,14 +1292,7 @@ export default function PlaylistDetailPage() {
                     {playlist.items?.length > 0 || playlist.pendingTracks?.length > 0 ? (
                         <div className="w-full">
                             {/* Section header */}
-                            <div className="flex items-center gap-3 mb-6">
-                                <span className="w-1 h-8 bg-gradient-to-b from-brand to-[#f97316] rounded-full shrink-0" />
-                                <h2 className="text-2xl font-bold tracking-tight">Tracks</h2>
-                                <span className="text-xs tabular-nums text-brand">
-                                    {playlist.items?.length || 0}
-                                </span>
-                                <span className="flex-1 border-t border-white/10" />
-                            </div>
+                            <SectionHeader type="track" title="Tracks" count={playlist.items?.length || 0} />
 
                             {/* Table Header */}
                             {/* The number and the drag handle share a row's first cell,

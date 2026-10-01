@@ -6,7 +6,7 @@ import type { ColorPalette } from "@/hooks/useImageColor";
 import { PlayableCard } from "@/components/ui/PlayableCard";
 import { Disc3 } from "lucide-react";
 import { api } from "@/lib/api";
-import { SectionHeader } from "@/features/home/components/SectionHeader";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 
 interface AvailableAlbumsProps {
     albums: Album[];
@@ -150,7 +150,7 @@ export function AvailableAlbums({
             {/* Studio Albums Section */}
             {studioAlbums.length > 0 && (
                 <section>
-                    <SectionHeader color="albums" title="Albums Available" />
+                    <SectionHeader type="album" title="Albums Available" />
                     <div data-tv-section="available-albums">
                         <AlbumGrid
                             albums={studioAlbums}
@@ -166,7 +166,7 @@ export function AvailableAlbums({
             {/* EPs, Singles & Demos Section */}
             {epsAndSingles.length > 0 && (
                 <section>
-                    <SectionHeader color="albums" title="Singles and EPs" />
+                    <SectionHeader type="album" title="Singles and EPs" />
                     <div data-tv-section="available-eps-singles">
                         <AlbumGrid
                             albums={epsAndSingles}

@@ -5,7 +5,7 @@ import Image from "next/image";
 import { api } from "@/lib/api";
 import type { Track, Artist } from "../types";
 import { formatNumber, formatTime } from "@/lib/format";
-import { SectionHeader } from "@/features/home/components/SectionHeader";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 import { cascadeStyle } from "@/lib/motion";
 import { useDoubleTapList } from "@/hooks/useDoubleTap";
 
@@ -42,7 +42,7 @@ export const PopularTracks: React.FC<PopularTracksProps> = ({
 
     return (
         <section>
-            <SectionHeader color="tracks" title="Popular" />
+            <SectionHeader type="track" title="Popular" />
             <div data-tv-section="tracks" style={cascadeStyle(Math.min(tracks.length, 10))}>
                 {tracks.slice(0, 10).map((track, index) => {
                     const isPlaying = currentTrackId === track.id;

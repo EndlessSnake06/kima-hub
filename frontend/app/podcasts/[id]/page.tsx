@@ -14,7 +14,7 @@ import { ContinueListening } from "@/features/podcast/components/ContinueListeni
 import { EpisodeList } from "@/features/podcast/components/EpisodeList";
 import { PreviewEpisodes } from "@/features/podcast/components/PreviewEpisodes";
 import { SimilarPodcasts } from "@/features/podcast/components/SimilarPodcasts";
-import { SectionHeader } from "@/features/home/components/SectionHeader";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 
 export default function PodcastDetailPage() {
     const router = useRouter();
@@ -205,7 +205,7 @@ export default function PodcastDetailPage() {
                     {/* About - for subscribed podcasts */}
                     {podcast?.description && (
                         <div>
-                            <SectionHeader title="About" color="podcasts" />
+                            <SectionHeader title="About" type="podcast" />
                             <div className="relative overflow-hidden rounded-lg border border-white/10 bg-[var(--bg-primary)] p-5">
                                 <div
                                     className="prose prose-invert prose-sm max-w-none text-[var(--text-secondary)] max-w-3xl text-sm leading-relaxed"

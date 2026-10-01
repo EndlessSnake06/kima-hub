@@ -19,6 +19,7 @@ import { SoulseekBrowser } from "@/features/search/components/SoulseekBrowser";
 import { TVSearchInput } from "@/features/search/components/TVSearchInput";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import type { FilterTab } from "@/features/search/types";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 
 export default function SearchPage() {
     const searchParams = useSearchParams();
@@ -181,10 +182,7 @@ export default function SearchPage() {
                             <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.5fr] gap-8 animate-fade-soft">
                                 {/* Featured Result - Larger card */}
                                 <div className="space-y-4">
-                                    <h2 className="text-2xl font-bold tracking-tight flex items-center gap-3">
-                                        <span className="w-1 h-8 bg-gradient-to-b from-brand to-[#f97316] rounded-full" />
-                                        Top Match
-                                    </h2>
+                                    <SectionHeader title="Top Match" className="mb-0" />
                                     <TopResult
                                         libraryArtist={
                                             libraryResults?.artists?.[0]
@@ -195,10 +193,7 @@ export default function SearchPage() {
 
                                 {/* Songs list - More prominent */}
                                 <div className="space-y-4">
-                                    <h2 className="text-2xl font-bold tracking-tight flex items-center gap-3">
-                                        <span className="w-1 h-8 bg-gradient-to-b from-[#a855f7] to-[#c026d3] rounded-full" />
-                                        Tracks
-                                    </h2>
+                                    <SectionHeader type="track" title="Tracks" className="mb-0" />
                                     {filterTab === "all" ?
                                         <UnifiedSongsList
                                             tracks={
@@ -222,10 +217,7 @@ export default function SearchPage() {
                                     (showDiscover || showLibrary) &&
                                     hasTopResult && (
                                         <section className="animate-fade-soft">
-                                            <h2 className="text-2xl font-bold tracking-tight flex items-center gap-3 mb-6">
-                                                <span className="w-1 h-8 bg-gradient-to-b from-brand to-[#f97316] rounded-full" />
-                                                Top Match
-                                            </h2>
+                                            <SectionHeader title="Top Match" />
                                             <TopResult
                                                 libraryArtist={
                                                     libraryResults?.artists?.[0]
@@ -237,10 +229,7 @@ export default function SearchPage() {
 
                                 {hasSearched && hasTracks && (
                                     <section className="animate-fade-soft">
-                                        <h2 className="text-2xl font-bold tracking-tight flex items-center gap-3 mb-6">
-                                            <span className="w-1 h-8 bg-gradient-to-b from-[#a855f7] to-[#c026d3] rounded-full" />
-                                            Tracks
-                                        </h2>
+                                        <SectionHeader type="track" title="Tracks" />
                                         {filterTab === "all" ?
                                             <UnifiedSongsList
                                                 tracks={
@@ -271,10 +260,7 @@ export default function SearchPage() {
                             showLibrary &&
                             (libraryResults?.albums?.length ?? 0) > 0 && (
                                 <section className="animate-fade-soft">
-                                    <h2 className="text-2xl font-bold tracking-tight flex items-center gap-3 mb-6">
-                                        <span className="w-1 h-8 bg-gradient-to-b from-[#22c55e] to-[#16a34a] rounded-full" />
-                                        Albums
-                                    </h2>
+                                    <SectionHeader type="album" title="Albums" />
                                     <LibraryAlbumsGrid
                                         albums={libraryResults!.albums!}
                                     />
@@ -286,10 +272,7 @@ export default function SearchPage() {
                             showLibrary &&
                             (libraryResults?.podcasts?.length ?? 0) > 0 && (
                                 <section className="animate-fade-soft">
-                                    <h2 className="text-2xl font-bold tracking-tight flex items-center gap-3 mb-6">
-                                        <span className="w-1 h-8 bg-gradient-to-b from-[#3b82f6] to-[#2563eb] rounded-full" />
-                                        Podcasts
-                                    </h2>
+                                    <SectionHeader type="podcast" title="Podcasts" />
                                     <LibraryPodcastsGrid
                                         podcasts={libraryResults!.podcasts!}
                                     />
@@ -301,10 +284,7 @@ export default function SearchPage() {
                             showLibrary &&
                             (libraryResults?.audiobooks?.length ?? 0) > 0 && (
                                 <section className="animate-fade-soft">
-                                    <h2 className="text-2xl font-bold tracking-tight flex items-center gap-3 mb-6">
-                                        <span className="w-1 h-8 bg-gradient-to-b from-[#f59e0b] to-[#d97706] rounded-full" />
-                                        Audiobooks
-                                    </h2>
+                                    <SectionHeader type="audiobook" title="Audiobooks" />
                                     <LibraryAudiobooksGrid
                                         audiobooks={libraryResults!.audiobooks!}
                                     />
@@ -316,10 +296,7 @@ export default function SearchPage() {
                             showDiscover &&
                             similarArtists.length > 0 && (
                                 <section className="animate-fade-soft">
-                                    <h2 className="text-2xl font-bold tracking-tight flex items-center gap-3 mb-6">
-                                        <span className="w-1 h-8 bg-gradient-to-b from-[#fca200] to-[#d48c00] rounded-full" />
-                                        Related Artists
-                                    </h2>
+                                    <SectionHeader type="artist" title="Related Artists" />
                                     <SimilarArtistsGrid
                                         similarArtists={similarArtists}
                                     />
