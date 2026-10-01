@@ -13,7 +13,6 @@ import { CachedImage } from "@/components/ui/CachedImage";
 export function AccountSection() {
     const { user } = useAuth();
 
-    // Password change state
     const [currentPassword, setCurrentPassword] = useState("");
     const [newPassword, setNewPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
@@ -22,7 +21,6 @@ export function AccountSection() {
     const [passwordStatus, setPasswordStatus] = useState<StatusType>("idle");
     const [passwordMessage, setPasswordMessage] = useState("");
 
-    // 2FA state
     const {
         twoFactorEnabled,
         settingUpTwoFactor,
@@ -118,12 +116,10 @@ export function AccountSection() {
     return (
         <>
             <SettingsSection id="account" title="Account">
-                {/* Username Display */}
-                <SettingsRow label="Username" description={`Logged in as ${user?.username}`}>
-                    <span className="text-xs tabular-nums text-[var(--text-muted)]">{user?.role}</span>
+                <SettingsRow label="Signed in as" description={user?.role === "admin" ? "Administrator" : "Member"}>
+                    <span className="text-sm text-white">{user?.username}</span>
                 </SettingsRow>
 
-                {/* Change Password */}
                 <SettingsRow
                     label="Password"
                     description="Change your account password"
@@ -183,7 +179,6 @@ export function AccountSection() {
                     </div>
                 )}
 
-                {/* Two-Factor Authentication */}
                 <SettingsRow
                     label="Two-factor authentication"
                     description={twoFactorEnabled ? "Enabled" : "Add extra security to your account"}
@@ -207,7 +202,6 @@ export function AccountSection() {
                     )}
                 </SettingsRow>
 
-                {/* 2FA Setup Flow */}
                 {settingUpTwoFactor && (
                     <div className="py-4 space-y-4 border-t border-b border-white/5">
                         <p className="text-xs text-[var(--text-muted)]">
@@ -262,7 +256,6 @@ export function AccountSection() {
                     </div>
                 )}
 
-                {/* 2FA Disable Flow */}
                 {showDisableFlow && (
                     <div className="py-4 space-y-3 border-t border-b border-white/5">
                         <p className="text-xs tabular-nums text-warning">
@@ -305,7 +298,6 @@ export function AccountSection() {
                 )}
             </SettingsSection>
 
-            {/* Recovery Codes Modal */}
             <Modal isOpen={showRecoveryCodes} onClose={closeRecoveryCodes} title="Recovery Codes">
                 <div className="space-y-4">
                     <div className="bg-danger/10 border border-danger/30 rounded-lg p-3">
