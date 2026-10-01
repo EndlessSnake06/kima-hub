@@ -56,6 +56,10 @@ jest.mock("../../services/wikidata", () => ({
     wikidataService: { getArtistInfo: jest.fn().mockResolvedValue(null) },
 }));
 
+jest.mock("../../services/artistSimilarity", () => ({
+    getSimilarArtists: jest.fn().mockResolvedValue([]),
+}));
+
 
 const noData = { kind: "absent", evidence: { mocked: true } } as const;
 const answeredWith = (value: unknown) =>
