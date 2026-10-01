@@ -593,20 +593,6 @@ async function main() {
     }, TWENTY_FOUR_HOURS);
     logger.debug("Podcast cache cleanup scheduled (daily, 30-day expiry)");
 
-    // Fail download jobs that were "processing" when a previous process died.
-    const { reconcileStaleDownloadJobs } = await import(
-        "./services/downloadReconcile"
-    );
-    try {
-        const result = await reconcileStaleDownloadJobs();
-        logger.debug(
-            `Download queue reconciled: ${result.failed} marked failed`
-        );
-    } catch (err) {
-        logger.error("Download queue reconciliation failed:", err);
-        // Non-fatal - queue will start fresh
-    }
-
     runStartupTasks().catch((err) =>
         logger.error("[STARTUP] Background tasks failed:", err)
     );
