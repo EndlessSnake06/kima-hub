@@ -78,10 +78,9 @@ export function usePodcastData() {
     return () => { cancelled = true; };
   }, [podcast, isAuthenticated, podcastId]);
 
-  // Handle preview mode if podcast is not subscribed
+  // An unsubscribed podcast is shown from its directory preview instead.
   useEffect(() => {
-    if (isPodcastLoading) return;
-    if (podcast || !isAuthenticated || previewLoadState !== 'idle') return;
+    if (isPodcastLoading || podcast || !isAuthenticated) return;
 
     let cancelled = false;
 
@@ -107,7 +106,7 @@ export function usePodcastData() {
 
     loadPreviewData();
     return () => { cancelled = true; };
-  }, [isPodcastLoading, podcast, isAuthenticated, podcastId, router, previewLoadState]);
+  }, [isPodcastLoading, podcast, isAuthenticated, podcastId, router]);
 
   // Save sort order to localStorage when it changes
   useEffect(() => {
