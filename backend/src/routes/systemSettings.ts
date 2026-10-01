@@ -773,8 +773,6 @@ const PROTECTED_KEY_PREFIXES = [
 router.post("/clear-caches", async (req, res) => {
   try {
     const { redisClient } = require("../utils/redis");
-    const { notificationService } =
-      await import("../services/notificationService");
 
     // SCAN with the ioredis signature: positional MATCH/COUNT args, and an
     // [nextCursor, keys] array result; the cursor is a string, "0" terminates.
@@ -805,25 +803,12 @@ router.post("/clear-caches", async (req, res) => {
         `[CACHE] Cleared ${keysToDelete.length} cache entries`,
       );
 
-      // Send notification to user
-      await notificationService.notifySystem(
-        req.user!.id,
-        "Caches Cleared",
-        `Successfully cleared ${keysToDelete.length} cache entries`,
-      );
-
       res.json({
         success: true,
         message: `Cleared ${keysToDelete.length} cache entries`,
         clearedKeys: keysToDelete.length,
       });
     } else {
-      await notificationService.notifySystem(
-        req.user!.id,
-        "Caches Cleared",
-        "No cache entries to clear",
-      );
-
       res.json({
         success: true,
         message: "No cache entries to clear",

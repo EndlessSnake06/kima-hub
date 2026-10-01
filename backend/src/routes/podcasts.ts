@@ -29,22 +29,10 @@ const PREVIEW_RSS_TIMEOUT_MS = 8000;
  */
 router.post("/sync-covers", requireAuth, async (req, res) => {
     try {
-        const { notificationService } = await import(
-            "../services/notificationService"
-        );
         logger.debug(" Starting podcast cover sync...");
 
         const podcastResult = await podcastCacheService.syncAllCovers();
         const episodeResult = await podcastCacheService.syncEpisodeCovers();
-
-        // Send notification to user
-        await notificationService.notifySystem(
-            req.user!.id,
-            "Podcast Covers Synced",
-            `Synced ${podcastResult.synced || 0} podcast covers and ${
-                episodeResult.synced || 0
-            } episode covers`
-        );
 
         res.json({
             success: true,

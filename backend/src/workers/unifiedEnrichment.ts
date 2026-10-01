@@ -1292,38 +1292,37 @@ export async function redecideEverything(): Promise<{ reopened: number }> {
     return { reopened };
 }
 
-/** Announce a finished run with one alert per user: the error alert alone when
- * there were failures, otherwise the system alert. */
-export async function sendCompletionNotifications(progress: EnrichmentProgress): Promise<void> {
+const ENRICHMENT_FAILURES_KEY = "enrichment-failures";
+
+/** Keep one alert per admin naming what enrichment could not finish. It changes
+ * only when the failure counts change and is removed once nothing has failed. */
+export async function syncEnrichmentFailureAlert(): Promise<void> {
     const { notificationService } = await import("../services/notificationService");
-    const users = await prisma.user.findMany({ select: { id: true } });
-    // The counts are TrackStage-backed for track stages: the summary
-    // reports what the failures API actually shows.
+    // TrackStage-backed for track stages, so it matches the failures list in Settings.
     const failureCounts = await enrichmentFailureService.getFailureCounts();
+    if (failureCounts.total === 0) {
+        await notificationService.resolve(ENRICHMENT_FAILURES_KEY);
+        return;
+    }
 
-    for (const user of users) {
-        if (failureCounts.total > 0) {
-            const parts: string[] = [];
-            if (failureCounts.artist > 0) parts.push(`${failureCounts.artist} artist(s)`);
-            if (failureCounts.track > 0) parts.push(`${failureCounts.track} track(s)`);
-            if (failureCounts.audio > 0) parts.push(`${failureCounts.audio} audio analysis`);
-            if (failureCounts.vibe > 0) parts.push(`${failureCounts.vibe} vibe embedding(s)`);
-            if (failureCounts.scan > 0) parts.push(`${failureCounts.scan} fingerprint(s)`);
-            if (failureCounts.podcast > 0) parts.push(`${failureCounts.podcast} podcast(s)`);
+    const parts: string[] = [];
+    if (failureCounts.artist > 0) parts.push(`${failureCounts.artist} artist(s)`);
+    if (failureCounts.track > 0) parts.push(`${failureCounts.track} track(s)`);
+    if (failureCounts.audio > 0) parts.push(`${failureCounts.audio} audio analysis`);
+    if (failureCounts.vibe > 0) parts.push(`${failureCounts.vibe} vibe embedding(s)`);
+    if (failureCounts.scan > 0) parts.push(`${failureCounts.scan} fingerprint(s)`);
+    if (failureCounts.podcast > 0) parts.push(`${failureCounts.podcast} podcast(s)`);
 
-            await notificationService.create({
-                userId: user.id,
-                type: "error",
-                title: "Enrichment Completed with Errors",
-                message: `${failureCounts.total} failures: ${parts.join(", ")}. Check Settings > Enrichment for details.`,
-            });
-        } else {
-            await notificationService.notifySystem(
-                user.id,
-                "Enrichment Complete",
-                `Enriched ${progress.artists.completed} artists, ${progress.trackTags.enriched} tracks, ${progress.audioAnalysis.completed} audio analyses`,
-            );
-        }
+    const admins = await prisma.user.findMany({ where: { role: "admin" }, select: { id: true } });
+    for (const admin of admins) {
+        await notificationService.create({
+            userId: admin.id,
+            type: "error",
+            title: "Enrichment failures",
+            message: `${failureCounts.total} items could not be enriched: ${parts.join(", ")}.`,
+            metadata: { href: "/settings#enrichment-failures" },
+            groupKey: ENRICHMENT_FAILURES_KEY,
+        });
     }
 }
 
@@ -1634,12 +1633,11 @@ async function runEnrichmentCycle(fullMode: boolean): Promise<{
 
             if (!stateBeforeNotify?.completionNotificationSent) {
                 try {
-                    await sendCompletionNotifications(progress);
+                    await syncEnrichmentFailureAlert();
 
                     await enrichmentStateService.updateState({ completionNotificationSent: true });
-                    logger.debug("[Enrichment] Completion notification sent");
                 } catch (error) {
-                    logger.error("[Enrichment] Failed to send completion notification:", error);
+                    logger.error("[Enrichment] Failed to update the failure alert:", error);
                 }
             }
         }

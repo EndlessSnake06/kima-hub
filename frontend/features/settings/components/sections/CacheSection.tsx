@@ -9,6 +9,7 @@ import {
     type GpuRuntimeStatus,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { useToast } from "@/lib/toast-context";
 import { useFeatures } from "@/lib/features-context";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import {
@@ -266,6 +267,7 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
     const [error, setError] = useState<string | null>(null);
     const [showInlineFailures, setShowInlineFailures] = useState(false);
     const queryClient = useQueryClient();
+    const { toast } = useToast();
     const syncStartTimeRef = useRef<number>(0);
 
     useEffect(() => {
@@ -495,13 +497,6 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
         return () => clearInterval(intervalId);
     }, [syncing, refetchProgress]);
 
-    const refreshNotifications = () => {
-        queryClient.invalidateQueries({ queryKey: ["notifications"] });
-        queryClient.invalidateQueries({
-            queryKey: ["unread-notification-count"],
-        });
-    };
-
     const handleSyncAndEnrich = async () => {
         setSyncing(true);
         syncStartTimeRef.current = Date.now();
@@ -512,7 +507,6 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
             }
             await api.post("/podcasts/sync-covers", {});
             await api.syncLibraryEnrichment();
-            refreshNotifications();
             refetchProgress();
         } catch (err) {
             console.error("Sync error:", err);
@@ -528,7 +522,6 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
             const result = await api.retryFailedAndBlocked();
             setQueueResult(result.queued);
             refetchProgress();
-            refreshNotifications();
         } catch (err) {
             console.error("Retry failed and blocked error:", err);
             setError("Failed to re-queue failed and blocked work");
@@ -544,7 +537,6 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
             const result = await api.redecideEverything();
             setQueueResult(result.reopened);
             refetchProgress();
-            refreshNotifications();
         } catch (err) {
             console.error("Re-decide everything error:", err);
             setError("Failed to re-open stage questions");
@@ -557,8 +549,8 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
         setClearingCaches(true);
         setError(null);
         try {
-            await api.clearAllCaches();
-            refreshNotifications();
+            const result = await api.clearAllCaches();
+            toast.success(result.message);
         } catch {
             setError("Failed to clear caches");
         } finally {
@@ -573,7 +565,6 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
         try {
             const result = await api.cleanupStaleJobs();
             setCleanupResult(result);
-            refreshNotifications();
         } catch (err) {
             console.error("Stale job cleanup error:", err);
             setError("Failed to cleanup stale jobs");

@@ -9,7 +9,6 @@ import { prisma } from "../utils/db";
 import { requireAuthOrToken } from "../middleware/auth";
 import { apiLimiter } from "../middleware/rateLimiter";
 import { getSystemSettings } from "../utils/systemSettings";
-import { notificationService } from "../services/notificationService";
 import { config } from "../config";
 import { resolveWithinMusicRoot } from "./library/trackPath";
 import { artistSortName } from "../services/artistIdentity";
@@ -109,23 +108,6 @@ router.post("/sync", requireAuthOrToken, apiLimiter, async (req, res) => {
 
         logger.debug("[Audiobooks] Starting manual audiobook sync...");
         const result = await audiobookCacheService.syncAll();
-
-        // Check how many have series after sync
-        const seriesCount = await prisma.audiobook.count({
-            where: { series: { not: null } },
-        });
-        logger.debug(
-            `[Audiobooks] Sync complete. Books with series: ${seriesCount}`
-        );
-
-        // Send notification to user
-        if (req.user?.id) {
-            await notificationService.notifySystem(
-                req.user.id,
-                "Audiobook Sync Complete",
-                `Synced ${result.synced || 0} audiobooks (${seriesCount} with series)${result.failed ? `, ${result.failed} failed` : ""}${result.skipped ? `, ${result.skipped} skipped` : ""}`
-            );
-        }
 
         res.json({
             success: true,

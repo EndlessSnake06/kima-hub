@@ -28,6 +28,7 @@ export function NotificationsTab() {
             case "download_complete":
                 return <CheckCircle className="w-4 h-4 text-success" />;
             case "download_failed":
+            case "error":
                 return <AlertCircle className="w-4 h-4 text-danger-light" />;
             case "playlist_ready":
             case "import_complete":
@@ -39,6 +40,9 @@ export function NotificationsTab() {
     };
 
     const getLink = (notification: Notification): string | null => {
+        if (notification.metadata?.href) {
+            return notification.metadata.href;
+        }
         if (notification.metadata?.playlistId) {
             return `/playlist/${notification.metadata.playlistId}`;
         }

@@ -217,6 +217,7 @@ export async function processScan(
                 userId,
                 payload: {
                     jobId: String(job.id),
+                    manual: !source,
                       result: { tracksAdded: result.tracksAdded, tracksUpdated: result.tracksUpdated, tracksMissing: result.tracksMissing, tracksCorrupt: result.tracksCorrupt },
                   },
               });
@@ -475,25 +476,6 @@ export async function processScan(
             }
         }
 
-        // Send notification for manual scans (not background/webhook scans)
-        if (!source && userId && userId !== "system") {
-            try {
-                const { notificationService } = await import(
-                    "../../services/notificationService"
-                );
-                await notificationService.notifySystem(
-                    userId,
-                    "Library Scan Complete",
-                      `Added ${result.tracksAdded} tracks, updated ${result.tracksUpdated}, missing ${result.tracksMissing}${result.tracksCorrupt > 0 ? `, ${result.tracksCorrupt} corrupt` : ""}`
-                );
-            } catch (error) {
-                logger.error(
-                    `[ScanJob ${job.id}] Failed to send notification:`,
-                    error
-                );
-            }
-        }
-
         // Reconcile Spotify-import pending tracks against new or updated tracks, manual syncs and retried downloads.
         const shouldReconcile =
             result.tracksAdded > 0 ||
@@ -514,25 +496,6 @@ export async function processScan(
                     logger.debug(
                         `[ScanJob ${job.id}] ✓ Reconciled ${reconcileResult.tracksAdded} pending tracks to ${reconcileResult.playlistsUpdated} playlists`
                     );
-
-                    // Send notification about reconciled tracks
-                    if (userId && userId !== "system") {
-                        try {
-                            const { notificationService } = await import(
-                                "../../services/notificationService"
-                            );
-                            await notificationService.notifySystem(
-                                userId,
-                                "Playlist Tracks Matched",
-                                `${reconcileResult.tracksAdded} previously unmatched tracks were added to your playlists`
-                            );
-                        } catch (notifyError) {
-                            logger.error(
-                                `[ScanJob ${job.id}] Failed to send reconcile notification:`,
-                                notifyError
-                            );
-                        }
-                    }
                 } else {
                     logger.debug(
                         `[ScanJob ${job.id}] No pending tracks to reconcile`
@@ -607,7 +570,7 @@ export async function processScan(
             eventBus.emit({
                 type: "scan:complete",
                 userId,
-                payload: { jobId: String(job.id), error: error.message || "Scan failed" },
+                payload: { jobId: String(job.id), manual: !source, error: error.message || "Scan failed" },
             });
         }
         throw error;

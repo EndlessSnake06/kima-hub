@@ -1,8 +1,8 @@
 /**
- * Periodic database cleanup. It deletes only rows that carry no user decision
- * and that a scan or rediscovery recreates (expired exclusions, orphaned
- * discovery tracks, temp and album-less artists, old download jobs). Albums and
- * OwnedAlbum keeps are reported for a human, never deleted.
+ * Periodic database cleanup. It deletes only rows that carry no user decision:
+ * expired exclusions, orphaned discovery tracks, temp and album-less artists,
+ * and download jobs and notifications older than 30 days. Albums and OwnedAlbum
+ * keeps are reported for a human, never deleted.
  */
 
 import { logger } from "../utils/logger";
@@ -18,6 +18,7 @@ interface IntegrityReport {
     consolidatedArtists: number;
     orphanedArtists: number;
     oldDownloadJobs: number;
+    oldNotifications: number;
 }
 
 export async function runDataIntegrityCheck(): Promise<IntegrityReport> {
@@ -32,6 +33,7 @@ export async function runDataIntegrityCheck(): Promise<IntegrityReport> {
         consolidatedArtists: 0,
         orphanedArtists: 0,
         oldDownloadJobs: 0,
+        oldNotifications: 0,
     };
 
     // 1. Remove expired DiscoverExclusion records
@@ -375,6 +377,12 @@ export async function runDataIntegrityCheck(): Promise<IntegrityReport> {
         logger.debug(`     Removed ${oldJobs.count} old download jobs`);
     }
 
+    // 10. Notifications are news, not history: drop anything older than 30 days
+    const oldNotifications = await prisma.notification.deleteMany({
+        where: { createdAt: { lt: thirtyDaysAgo } },
+    });
+    report.oldNotifications = oldNotifications.count;
+
     // Summary
     logger.debug("\nData integrity check complete:");
     logger.debug(`   - Expired exclusions: ${report.expiredExclusions}`);
@@ -387,6 +395,7 @@ export async function runDataIntegrityCheck(): Promise<IntegrityReport> {
     logger.debug(`   - Consolidated artists: ${report.consolidatedArtists}`);
     logger.debug(`   - Orphaned artists: ${report.orphanedArtists}`);
     logger.debug(`   - Old download jobs: ${report.oldDownloadJobs}`);
+    logger.debug(`   - Old notifications: ${report.oldNotifications}`);
 
     return report;
 }

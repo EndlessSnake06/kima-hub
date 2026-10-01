@@ -16,6 +16,9 @@ interface CreateNotificationParams {
     title: string;
     message?: string;
     metadata?: Record<string, any>;
+    /** One row per user per key: a new alert replaces the old one, and an
+     * identical repeat is dropped. */
+    groupKey?: string;
 }
 
 class NotificationService {
@@ -23,17 +26,26 @@ class NotificationService {
      * Create a new notification for a user
      */
     async create(params: CreateNotificationParams) {
-        const { userId, type, title, message, metadata } = params;
+        const { userId, type, title, message, metadata, groupKey } = params;
 
-        const notification = await prisma.notification.create({
-            data: {
-                userId,
-                type,
-                title,
-                message,
-                metadata,
-            },
-        });
+        let notification;
+        if (groupKey) {
+            const where = { userId_groupKey: { userId, groupKey } };
+            const existing = await prisma.notification.findUnique({ where });
+            if (existing && existing.title === title && existing.message === (message ?? null)) {
+                return existing;
+            }
+            const fields = { type, title, message: message ?? null, metadata };
+            notification = await prisma.notification.upsert({
+                where,
+                create: { userId, groupKey, ...fields },
+                update: { ...fields, read: false, cleared: false, createdAt: new Date() },
+            });
+        } else {
+            notification = await prisma.notification.create({
+                data: { userId, type, title, message, metadata },
+            });
+        }
 
         eventBus.emit({
             type: "notification",
@@ -50,6 +62,25 @@ class NotificationService {
             `[NOTIFICATION] Created: ${type} - ${title} for user ${userId}`
         );
         return notification;
+    }
+
+    /**
+     * Delete every user's alert under a group key, once its cause is gone
+     */
+    async resolve(groupKey: string) {
+        const rows = await prisma.notification.findMany({
+            where: { groupKey },
+            select: { id: true, userId: true },
+        });
+        if (rows.length === 0) return;
+        await prisma.notification.deleteMany({ where: { groupKey } });
+        for (const row of rows) {
+            eventBus.emit({
+                type: "notification:cleared",
+                userId: row.userId,
+                payload: { id: row.id },
+            });
+        }
     }
 
     /**
@@ -195,7 +226,7 @@ class NotificationService {
     }
 
     /**
-     * System notification (cache cleared, sync complete, etc.)
+     * System notification for something an admin must act on
      */
     async notifySystem(userId: string, title: string, message?: string) {
         return this.create({

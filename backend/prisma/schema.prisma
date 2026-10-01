@@ -390,9 +390,11 @@ model Notification {
   metadata  Json?
   read      Boolean  @default(false)
   cleared   Boolean  @default(false)
+  groupKey  String?
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@unique([userId, groupKey])
   @@index([userId, cleared, read])
   @@index([userId, cleared, createdAt])
   @@index([createdAt])

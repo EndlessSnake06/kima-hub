@@ -103,9 +103,13 @@ export function useEventSource() {
                                 ["scan-status", data.jobId],
                                 { status: data.error ? "failed" : "completed", progress: 100, jobId: data.jobId, result: data.result, error: data.error }
                             );
-                            queryClient.invalidateQueries({ queryKey: ["notifications"] });
                             queryClient.invalidateQueries({ queryKey: ["enrichment-progress"] });
                             queryClient.invalidateQueries({ queryKey: ["library", "recently-added"] });
+                            if (data.manual) {
+                                window.dispatchEvent(new CustomEvent("scan-finished", {
+                                    detail: { result: data.result, error: data.error },
+                                }));
+                            }
                             break;
                         case "enrichment:progress":
                             queryClient.invalidateQueries({ queryKey: ["enrichment-progress"] });
