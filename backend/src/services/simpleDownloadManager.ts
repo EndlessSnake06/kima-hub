@@ -759,7 +759,7 @@ class SimpleDownloadManager {
                     jobMeta?.albumTitle?.toLowerCase().trim() || "";
 
                 const duplicateJobs = activeJobs.filter((j) => {
-                    if (j.id === job!.id) return false;
+                    if (j.id === job!.id || !jobArtist || !jobAlbum) return false;
                     const meta = j.metadata as any;
                     const candArtist =
                         meta?.artistName?.toLowerCase().trim() || "";
@@ -890,9 +890,10 @@ class SimpleDownloadManager {
     }
 
     /**
-     * Count a failed download against its job, once per download id. Below the
-     * user's retry limit the job waits for Lidarr's next release (searchAgain);
-     * at the limit Lidarr stops looking and the job moves on or fails.
+     * Count a failed download against its job once, ignoring Lidarr's report of a
+     * removal Kima made itself. Below the user's retry limit the job waits for
+     * Lidarr's next release (searchAgain); at the limit Lidarr stops looking and
+     * the job moves on or fails.
      */
     async onImportFailed(
         downloadId: string,
@@ -903,6 +904,11 @@ class SimpleDownloadManager {
 
         if (isRateLimited({ message: reason })) {
             await sourcePauseController.handleRateLimit("lidarr", { message: reason });
+            return { searchAgain: false };
+        }
+
+        if (await prisma.handledDownload.findUnique({ where: { downloadId } })) {
+            logger.debug(`   Kima removed this download itself, not counting it`);
             return { searchAgain: false };
         }
 

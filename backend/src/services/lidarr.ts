@@ -2435,12 +2435,13 @@ class LidarrService {
     }
 
     /**
-     * Delete a queue item and blocklist its release so Lidarr searches for another.
-     * A 404 counts as success. Callers go through lidarrFailures.removeFailedDownload.
+     * Delete a queue item; with blocklist Lidarr never grabs that release again,
+     * and unless skipRedownload it searches for another. A 404 counts as success.
+     * Callers go through lidarrFailures.removeFailedDownload.
      */
-    async removeItemAndBlocklist(
+    async removeQueueItem(
         item: { id: number; title?: string },
-        opts: { skipRedownload?: boolean } = {}
+        opts: { blocklist: boolean; skipRedownload: boolean }
     ): Promise<boolean> {
         await this.ensureInitialized();
 
@@ -2450,15 +2451,9 @@ class LidarrService {
 
         try {
             await this.client.delete(`/api/v1/queue/${item.id}`, {
-                params: {
-                    removeFromClient: true,
-                    blocklist: true,
-                    skipRedownload: opts.skipRedownload ?? false,
-                },
+                params: { removeFromClient: true, ...opts },
             });
-            logger.debug(
-                `[LIDARR] Removed from queue and blocklisted: ${item.title ?? item.id}`
-            );
+            logger.debug(`[LIDARR] Removed from queue: ${item.title ?? item.id}`);
             return true;
         } catch (error: any) {
             if (error.response?.status === 404) {

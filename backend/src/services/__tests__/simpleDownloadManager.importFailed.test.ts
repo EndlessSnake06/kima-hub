@@ -32,6 +32,7 @@ beforeAll(async () => {
 afterEach(async () => {
     await prisma.downloadJob.deleteMany({ where: { userId: USER } });
     await prisma.userDiscoverConfig.deleteMany({ where: { userId: USER } });
+    await prisma.handledDownload.deleteMany({ where: { downloadId: "dl-1" } });
     (lidarrService.unmonitorAlbum as jest.Mock).mockReset();
 });
 
@@ -76,6 +77,16 @@ describe("onImportFailed", () => {
         expect(next).toEqual({ searchAgain: true, jobId: "sdm_a" });
         expect(await meta("sdm_a")).toMatchObject({ previousDownloadIds: ["dl-1", "dl-2"] });
         expect((await prisma.downloadJob.findUniqueOrThrow({ where: { id: "sdm_a" } })).attempts).toBe(3);
+    });
+
+    it("ignores Lidarr's report of a download Kima removed itself", async () => {
+        await job("sdm_a", { lidarrRef: "dl-1" });
+        await prisma.handledDownload.create({ data: { downloadId: "dl-1", reason: "Single-track post" } });
+
+        const result = await simpleDownloadManager.onImportFailed("dl-1", "Manually marked as failed");
+
+        expect(result).toEqual({ searchAgain: false });
+        expect((await prisma.downloadJob.findUniqueOrThrow({ where: { id: "sdm_a" } })).attempts).toBe(1);
     });
 
     it("matches by album MBID when the download id is new", async () => {

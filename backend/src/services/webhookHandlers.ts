@@ -4,6 +4,7 @@
  */
 
 import { simpleDownloadManager } from "./simpleDownloadManager";
+import { rejectSingleTrackPost } from "./lidarrFailures";
 import { queueCleaner } from "../jobs/queueCleaner";
 import { requestScan } from "../workers/scanRequest";
 import { prisma } from "../utils/db";
@@ -75,6 +76,7 @@ async function handleGrab(payload: any): Promise<string | undefined> {
     );
 
     if (result.matched) {
+        await rejectSingleTrackPost(downloadId, payload.release?.releaseTitle);
         queueCleaner.start();
         return result.jobId;
     }

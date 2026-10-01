@@ -11,9 +11,6 @@ import type { LidarrQueueItem } from "../types/lidarr";
 
 const FAILED_IMPORT_PATTERNS = [
     "No files found are eligible for import",
-    "Not an upgrade for existing",
-    "Not a Custom Format upgrade",
-    "missing tracks",
     "Album match is not close enough",
     "Artist name mismatch",
     "automatic import is not possible",
@@ -29,30 +26,54 @@ const FAILED_IMPORT_PATTERNS = [
     "bad archive",
     "Download failed",
     "import failed",
-    "Sample",
 ].map((p) => p.toLowerCase());
 
-/** Why a queue item will not finish on its own, or null while it still might. */
-export function failureReason(item: LidarrQueueItem): string | null {
-    if (item.trackedDownloadState === "importFailed") return "Import failed";
-    const message = (item.statusMessages ?? [])
-        .flatMap((sm) => sm.messages)
-        .find((m) => FAILED_IMPORT_PATTERNS.some((p) => m.toLowerCase().includes(p)));
-    if (message) return message;
+const ALREADY_OWNED_PATTERNS = ["not an upgrade for existing", "not a custom format upgrade"];
+const PARTIAL_IMPORT = "has missing tracks";
+const PARTIAL_GRACE_MS = 15 * 60 * 1000;
+const SINGLE_TRACK_POST = /\[\s*\d+\s*(?:\/|of|\+)\s*\d+\s*\]/i;
+
+export type QueueVerdict = { action: "reject" | "owned" | "failed"; reason: string };
+
+/**
+ * What to do with a queue item: reject a single-track post (not an attempt),
+ * close a job whose album the library already has, or count a real failure.
+ * Null while the item may still finish, including a partial import's first 15 min.
+ */
+export function judgeQueueItem(item: LidarrQueueItem, now = Date.now()): QueueVerdict | null {
+    if (SINGLE_TRACK_POST.test(item.title ?? "")) return { action: "reject", reason: "Single-track post" };
+
+    const messages = (item.statusMessages ?? []).flatMap((sm) => sm.messages);
+    const has = (patterns: string[]) =>
+        messages.find((m) => patterns.some((p) => m.toLowerCase().includes(p)));
+
+    const owned = has(ALREADY_OWNED_PATTERNS);
+    if (owned) return { action: "owned", reason: owned };
+
+    if (has([PARTIAL_IMPORT])) {
+        const added = item.added ? Date.parse(item.added) : NaN;
+        if (now - added < PARTIAL_GRACE_MS) return null;
+        return { action: "failed", reason: "Has missing tracks" };
+    }
+
+    if (item.trackedDownloadState === "importFailed") return { action: "failed", reason: "Import failed" };
+    const failed = has(FAILED_IMPORT_PATTERNS);
+    if (failed) return { action: "failed", reason: failed };
     if (item.trackedDownloadStatus === "warning" && item.trackedDownloadState === "importPending") {
-        return "Import blocked";
+        return { action: "failed", reason: "Import blocked" };
     }
     return null;
 }
 
 /**
- * Blocklist a download's release and remove it from Lidarr; with searchAgain Lidarr
- * then looks for another release. False when already removed or Lidarr refused.
+ * Remove a download from Lidarr, blocklisting its release unless told not to;
+ * with searchAgain Lidarr looks for another. False when another caller already
+ * removed it, it is not in the queue, or Lidarr refused.
  */
 export async function removeFailedDownload(
     downloadId: string,
     reason: string,
-    opts: { searchAgain: boolean; item?: { id: number; title?: string } }
+    opts: { searchAgain: boolean; blocklist?: boolean; item?: { id: number; title?: string } }
 ): Promise<boolean> {
     const claim = await prisma.handledDownload.createMany({
         data: [{ downloadId, reason }],
@@ -64,9 +85,12 @@ export async function removeFailedDownload(
     try {
         const target =
             opts.item ?? (await lidarrService.getQueueItems()).find((q) => q.downloadId === downloadId);
-        removed = target
-            ? await lidarrService.removeItemAndBlocklist(target, { skipRedownload: !opts.searchAgain })
-            : true;
+        if (target) {
+            removed = await lidarrService.removeQueueItem(target, {
+                blocklist: opts.blocklist ?? true,
+                skipRedownload: !opts.searchAgain,
+            });
+        }
     } catch (error: any) {
         logger.warn(`[LIDARR] Could not remove download ${downloadId}: ${error.message}`);
     }
@@ -74,6 +98,14 @@ export async function removeFailedDownload(
         await prisma.handledDownload.deleteMany({ where: { downloadId } });
     }
     return removed;
+}
+
+/** Turn a single-track post away as soon as Lidarr grabs it; the sweep retries later. */
+export async function rejectSingleTrackPost(downloadId: string, releaseTitle?: string): Promise<boolean> {
+    if (!releaseTitle || !SINGLE_TRACK_POST.test(releaseTitle)) return false;
+    logger.debug(`[LIDARR] Rejecting single-track post: ${releaseTitle}`);
+    await removeFailedDownload(downloadId, "Single-track post", { searchAgain: true });
+    return true;
 }
 
 async function ownedDownloadIds(): Promise<Set<string>> {
@@ -89,9 +121,27 @@ async function ownedDownloadIds(): Promise<Set<string>> {
     return ids;
 }
 
+async function settle(item: LidarrQueueItem, verdict: QueueVerdict): Promise<boolean> {
+    const { downloadId } = item;
+    if (verdict.action === "reject") {
+        return removeFailedDownload(downloadId, verdict.reason, { searchAgain: true, item });
+    }
+    if (verdict.action === "owned") {
+        const removed = await removeFailedDownload(downloadId, verdict.reason, {
+            searchAgain: false,
+            blocklist: false,
+            item,
+        });
+        if (removed) await simpleDownloadManager.onDownloadComplete(downloadId);
+        return removed;
+    }
+    const { searchAgain } = await simpleDownloadManager.onImportFailed(downloadId, verdict.reason);
+    return removeFailedDownload(downloadId, verdict.reason, { searchAgain, item });
+}
+
 /**
- * Count each of Kima's failed downloads against its job, then remove it from the
- * queue; Lidarr searches again only while the job is under its retry limit.
+ * Settle each of Kima's stuck downloads. A real failure counts against its job
+ * first, and Lidarr searches again only while the job is under its retry limit.
  */
 export async function sweepFailedDownloads(): Promise<{ removed: number }> {
     const owned = await ownedDownloadIds();
@@ -100,10 +150,8 @@ export async function sweepFailedDownloads(): Promise<{ removed: number }> {
     let removed = 0;
     for (const item of await lidarrService.getQueueItems()) {
         if (!owned.has(item.downloadId)) continue;
-        const reason = failureReason(item);
-        if (!reason) continue;
-        const { searchAgain } = await simpleDownloadManager.onImportFailed(item.downloadId, reason);
-        if (await removeFailedDownload(item.downloadId, reason, { searchAgain, item })) removed++;
+        const verdict = judgeQueueItem(item);
+        if (verdict && (await settle(item, verdict))) removed++;
     }
     return { removed };
 }

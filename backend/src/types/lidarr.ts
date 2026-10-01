@@ -197,6 +197,7 @@ export interface LidarrQueueItem {
   statusMessages: { title: string; messages: string[] }[];
   sizeleft?: number;
   size?: number;
+  added?: string;
 }
 
 export interface LidarrQueueResponse {
