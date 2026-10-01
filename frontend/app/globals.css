@@ -1,9 +1,9 @@
 @import "tailwindcss";
 
 @theme {
-    /* The mono, uppercase micro label used for eyebrows, counts and status
-     * chips. Tailwind's named scale stops at 12px; 10px is the floor. */
-    --text-micro: 0.625rem;      /* 10px */
+    /* The smallest text size, for eyebrows, counts and status chips.
+     * Tailwind's named scale stops at 12px; nothing goes below this. */
+    --text-micro: 0.6875rem;     /* 11px */
     --text-micro--line-height: 1.4;
 
     --color-brand: #fca200;
@@ -950,7 +950,7 @@ body.scanner-active .scanner-overlay {
     padding: 3px 9px;
     border-radius: 999px;
     white-space: nowrap;
-    font-size: 10px;
+    font-size: var(--text-micro);
     line-height: 1.2;
     letter-spacing: 0.02em;
     color: rgba(255, 255, 255, 0.9);

@@ -93,13 +93,13 @@ export function TrackPanel({ track, songPathActive, onClose, onPlay, onVibe, onS
                 <dl className="mt-4 grid grid-cols-2 gap-2">
                     {track.energy != null && (
                         <div className="rounded-lg bg-white/[0.04] px-3 py-2">
-                            <dt className="text-[10px] uppercase tracking-[0.12em] text-[var(--text-muted)]">Energy</dt>
+                            <dt className="text-micro uppercase tracking-[0.12em] text-[var(--text-muted)]">Energy</dt>
                             <dd className="text-sm font-medium tabular-nums text-[var(--text-primary)]">{Math.round(track.energy * 100)}%</dd>
                         </div>
                     )}
                     {track.valence != null && (
                         <div className="rounded-lg bg-white/[0.04] px-3 py-2">
-                            <dt className="text-[10px] uppercase tracking-[0.12em] text-[var(--text-muted)]">Positivity</dt>
+                            <dt className="text-micro uppercase tracking-[0.12em] text-[var(--text-muted)]">Positivity</dt>
                             <dd className="text-sm font-medium tabular-nums text-[var(--text-primary)]">{Math.round(track.valence * 100)}%</dd>
                         </div>
                     )}

@@ -274,7 +274,7 @@ export function EpisodeList({
             </div>
 
             {/* Mobile column labels */}
-            <div className="md:hidden grid grid-cols-[40px_1fr_auto_auto] gap-4 px-3 py-1 text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
+            <div className="md:hidden grid grid-cols-[40px_1fr_auto_auto] gap-4 px-3 py-1 text-micro uppercase tracking-wider text-[var(--text-muted)]">
                 <span>#</span>
                 <span>Title</span>
                 <span className="text-right">Duration</span>
