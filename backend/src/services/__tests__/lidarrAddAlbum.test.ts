@@ -1,7 +1,8 @@
 /**
  * addAlbum: Discover adds only under an artist it tagged, only the exact MBID,
- * only without files; a search that grabs nothing is explained from Lidarr's
- * release list; a Lidarr outage is reported as one, never as "not found".
+ * only without files; every request accepts any edition; a search that grabs
+ * nothing is explained from Lidarr's release list; a Lidarr outage is reported
+ * as one, never as "not found".
  */
 
 import { AcquisitionErrorType, lidarrService } from "../lidarr";
@@ -80,6 +81,18 @@ it("monitors and searches for the album it asked for", async () => {
     expect(client.post).toHaveBeenCalledWith("/api/v1/command", expect.objectContaining({ name: "AlbumSearch" }));
 });
 
+it("lets Lidarr import whichever edition the download matches", async () => {
+    jest.spyOn(service, "getArtistList").mockResolvedValue([artist([TAG])]);
+    catalog = [album("rg-asked", "Antics")];
+
+    await addForDiscover("rg-asked", "Antics");
+
+    expect(client.put).toHaveBeenCalledWith(
+        "/api/v1/album/7",
+        expect.objectContaining({ monitored: true, anyReleaseOk: true })
+    );
+});
+
 describe("a search that grabs nothing", () => {
     const addForLibrary = () => lidarrService.addAlbum("rg-asked", "Interpol", "Antics", "/music", ARTIST_MBID, false);
 
@@ -93,6 +106,14 @@ describe("a search that grabs nothing", () => {
 
         expect(await addForLibrary()).not.toBeNull();
         expect(client.get).not.toHaveBeenCalledWith("/api/v1/release", expect.anything());
+    });
+
+    it("searches once before explaining why nothing was grabbed", async () => {
+        searchMessage = "Album search completed. 0 reports downloaded.";
+
+        await expect(addForLibrary()).rejects.toMatchObject({ type: AcquisitionErrorType.NO_RELEASES_AVAILABLE });
+        const searches = client.post.mock.calls.filter(([, body]) => body?.name === "AlbumSearch");
+        expect(searches).toHaveLength(1);
     });
 
     it("reports the album as owned when every release is rejected for existing files", async () => {
