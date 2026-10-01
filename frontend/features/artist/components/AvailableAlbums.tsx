@@ -5,6 +5,7 @@ import { Album, ArtistSource } from "../types";
 import { MediaCard } from "@/components/cards/MediaCard";
 import { Disc3, Download } from "lucide-react";
 import { api } from "@/lib/api";
+import { isMbid } from "@/lib/mbid";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 
 interface AvailableAlbumsProps {
@@ -44,8 +45,8 @@ function LazyAlbumCard({
     useEffect(() => {
         if (coverArt || fetchAttempted) return;
 
-        const mbid = album.rgMbid || album.mbid;
-        if (!mbid || mbid.startsWith("temp-")) return;
+        const mbid = [album.rgMbid, album.mbid].find(isMbid);
+        if (!mbid) return;
 
         // Fetch cover art from our backend (which caches it)
         const fetchCover = async () => {

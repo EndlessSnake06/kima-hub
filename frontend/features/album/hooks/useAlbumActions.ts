@@ -3,6 +3,7 @@ import { useAudioControls } from "@/lib/audio-context";
 import { useDownloadContext } from "@/lib/download-context";
 import { shuffleArray } from "@/lib/shuffle";
 import { notify } from "@/lib/notify";
+import { isMbid } from "@/lib/mbid";
 import { Album, Track } from "../types";
 
 const toQueueTrack = (track: Track, album: Album) => ({
@@ -60,7 +61,7 @@ export function useAlbumActions() {
 
         if (!requireAlbum(album)) return;
 
-        const mbid = album.rgMbid || album.mbid || album.id;
+        const mbid = [album.rgMbid, album.mbid].find(isMbid);
         if (!mbid) {
             notify.error("Can't download this album", { message: "It has no MusicBrainz ID." });
             return;

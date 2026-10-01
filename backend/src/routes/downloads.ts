@@ -12,77 +12,11 @@ import { sweepFailedDownloads } from "../services/lidarrFailures";
 import crypto from "crypto";
 import { safeError } from "../utils/errors";
 import { failureCause } from "../utils/outcome";
+import { isMbid } from "../services/artistIdentity";
 
 const router = Router();
 
 router.use(requireAuthOrToken);
-
-/**
- * The canonical artist name before a download: MusicBrainz by MBID if given,
- * then MusicBrainz correction, else the original name.
- */
-async function verifyArtistName(
-    artistName: string,
-    artistMbid?: string
-): Promise<{
-    verifiedName: string;
-    wasCorrected: boolean;
-    source: "musicbrainz" | "original";
-    originalName: string;
-}> {
-    const originalName = artistName;
-
-    // Strategy 1: If we have MBID, use MusicBrainz as authoritative source
-    if (artistMbid) {
-        const mbArtist = await musicBrainzService.getArtist(artistMbid);
-        if (mbArtist.kind === "answered") {
-            return {
-                verifiedName: mbArtist.value.name,
-                wasCorrected:
-                    mbArtist.value.name.toLowerCase() !==
-                    artistName.toLowerCase(),
-                source: "musicbrainz",
-                originalName,
-            };
-        }
-        logger.warn(
-            `MusicBrainz lookup for MBID ${artistMbid}: ${
-                mbArtist.kind === "absent"
-                    ? "no such artist"
-                    : failureCause(mbArtist)
-            }`
-        );
-    }
-
-    // Strategy 2: Use MusicBrainz correction
-    try {
-        const correction = await getArtistCorrection(artistName);
-        if (correction?.corrected) {
-            logger.debug(
-                `[VERIFY] MB correction: "${artistName}" → "${correction.canonicalName}"`
-            );
-            return {
-                verifiedName: correction.canonicalName,
-                wasCorrected: true,
-                source: "musicbrainz",
-                originalName,
-            };
-        }
-    } catch (error) {
-        logger.warn(
-            `MusicBrainz correction lookup failed for "${artistName}":`,
-            error
-        );
-    }
-
-    // Strategy 3: Return original name
-    return {
-        verifiedName: artistName,
-        wasCorrected: false,
-        source: "original",
-        originalName,
-    };
-}
 
 // POST /downloads - Create download job
 router.post("/", async (req, res) => {
@@ -103,6 +37,10 @@ router.post("/", async (req, res) => {
             });
         }
 
+        if (!isMbid(mbid)) {
+            return res.status(400).json({ error: "mbid must be a MusicBrainz id" });
+        }
+
         if (type !== "artist" && type !== "album") {
             return res
                 .status(400)
@@ -115,7 +53,6 @@ router.post("/", async (req, res) => {
             });
         }
 
-        // Check if Lidarr is enabled (database or .env)
         const lidarrEnabled = await lidarrService.isEnabled();
         if (!lidarrEnabled) {
             return res.status(400).json({
@@ -123,7 +60,6 @@ router.post("/", async (req, res) => {
             });
         }
 
-        // Determine root folder path based on download type
         const settings = await getSystemSettings();
         const baseMusicPath = settings?.musicPath || config.music.musicPath;
         const rootFolderPath =
@@ -132,7 +68,6 @@ router.post("/", async (req, res) => {
                 : baseMusicPath;
 
         if (type === "artist") {
-            // For artist downloads, fetch albums and create individual jobs
             const jobs = await processArtistDownload(
                 userId,
                 mbid,
@@ -152,25 +87,21 @@ router.post("/", async (req, res) => {
             });
         }
 
-        // Single album download - verify artist name before proceeding
+        // The release group's own credit names the artist Lidarr will file it under.
         let verifiedArtistName = artistName;
-        if (type === "album" && artistName) {
-            const verification = await verifyArtistName(artistName);
-            if (verification.wasCorrected) {
-                logger.debug(
-                    `[DOWNLOAD] Artist name verified: "${artistName}" → "${verification.verifiedName}" (source: ${verification.source})`
-                );
-                verifiedArtistName = verification.verifiedName;
-            }
+        const group = await musicBrainzService.getReleaseGroup(mbid);
+        if (group.kind === "absent" || group.kind === "permanent") {
+            return res.status(404).json({ error: "No such album on MusicBrainz" });
+        }
+        if (group.kind === "answered") {
+            verifiedArtistName =
+                group.value?.["artist-credit"]?.[0]?.artist?.name ?? artistName;
+        } else {
+            logger.warn(`[DOWNLOAD] Release group ${mbid}: ${failureCause(group)}`);
         }
 
-        // Single album download - use transaction with row-level locking to prevent race conditions
-        // This prevents TOCTOU (Time-Of-Check-Time-Of-Use) race condition where two concurrent
-        // requests could both pass the "check if exists" step and create duplicate jobs
+        // One active job per album: concurrent requests lock and re-check inside the transaction.
         const jobResult = await prisma.$transaction(async (tx) => {
-            // Check for existing active job with FOR UPDATE SKIP LOCKED
-            // FOR UPDATE locks the rows for the duration of the transaction
-            // SKIP LOCKED prevents blocking on rows locked by other transactions
             const existingJobs = await tx.$queryRaw<
                 Array<{
                     id: string;
@@ -194,7 +125,6 @@ router.post("/", async (req, res) => {
                 return { duplicate: true, job: existingJob };
             }
 
-            // No existing active job found, create new one
             const newJob = await tx.downloadJob.create({
                 data: {
                     userId,
@@ -214,7 +144,6 @@ router.post("/", async (req, res) => {
             return { duplicate: false, job: newJob };
         });
 
-        // Handle duplicate case - return existing job info
         if (jobResult.duplicate) {
             return res.json({
                 id: jobResult.job.id,
@@ -232,7 +161,6 @@ router.post("/", async (req, res) => {
             `[DOWNLOAD] Triggering Lidarr: ${type} "${subject}" -> ${rootFolderPath}`
         );
 
-        // Process in background
         processDownload(
             job.id,
             type,
@@ -255,9 +183,7 @@ router.post("/", async (req, res) => {
             message: "Download job created. Processing in background.",
         });
     } catch (error: any) {
-        // Handle P2002 unique constraint violation - race condition caught by unique index
-        // This can happen when two transactions both see empty results from SKIP LOCKED
-        // and both attempt to insert, with one winning and the other hitting the unique constraint
+        // Two inserts that both saw no row: the unique index rejects the loser.
         if (error.code === "P2002") {
             const { mbid } = req.body;
             const existingJob = await prisma.downloadJob.findFirst({
@@ -280,9 +206,7 @@ router.post("/", async (req, res) => {
     }
 });
 
-/**
- * Process artist download by creating individual album jobs
- */
+/** One album job per release group of the artist, after adding the artist to Lidarr. */
 async function processArtistDownload(
     userId: string,
     artistMbid: string,
@@ -293,13 +217,10 @@ async function processArtistDownload(
     logger.debug(`\n Processing artist download: ${artistName}`);
     logger.debug(`   Artist MBID: ${artistMbid}`);
 
-    // Generate a batch ID to group all album downloads
     const batchId = crypto.randomUUID();
     logger.debug(`   Batch ID: ${batchId}`);
 
-    // CRITICAL FIX: Resolve canonical artist name from MusicBrainz
-    // Similar-artist sources may return aliases (e.g., "blink" for
-    // "blink-182"); Lidarr needs the official name to find the correct artist
+    // Lidarr needs MusicBrainz's name for the artist, not an alias such as "blink".
     let canonicalArtistName = artistName;
     logger.debug(`   Resolving canonical artist name from MusicBrainz...`);
     const mbArtist = await musicBrainzService.getArtist(artistMbid);
@@ -315,9 +236,6 @@ async function processArtistDownload(
             );
         }
     } else {
-        // The correction path exists for aliases and misspellings — an
-        // "absent" artist or a failed call both fall back to it, then to
-        // the original name.
         logger.warn(
             `   MusicBrainz lookup for ${artistMbid}: ${
                 mbArtist.kind === "absent"
@@ -343,7 +261,6 @@ async function processArtistDownload(
     }
 
     try {
-        // First, add the artist to Lidarr (this monitors all albums)
         const lidarrArtist = await lidarrService.addArtist(
             artistMbid,
             canonicalArtistName,
@@ -357,7 +274,6 @@ async function processArtistDownload(
 
         logger.debug(`   Artist added to Lidarr (ID: ${lidarrArtist.id})`);
 
-        // Fetch albums from MusicBrainz
         const discography = await musicBrainzService.getReleaseGroups(
             artistMbid,
             ["album", "ep"],
@@ -385,7 +301,6 @@ async function processArtistDownload(
             return [];
         }
 
-        // Create individual album jobs
         const jobs: { id: string; subject: string }[] = [];
 
         for (const rg of releaseGroups) {
@@ -393,7 +308,6 @@ async function processArtistDownload(
             const albumTitle = rg.title;
             const albumSubject = `${artistName} - ${albumTitle}`;
 
-            // Check if we already have this album downloaded
             const existingAlbum = await prisma.album.findFirst({
                 where: { rgMbid: albumMbid },
             });
@@ -403,10 +317,7 @@ async function processArtistDownload(
                 continue;
             }
 
-            // Use transaction with row-level locking to prevent race conditions
             const jobResult = await prisma.$transaction(async (tx) => {
-                // Check for existing active job with FOR UPDATE SKIP LOCKED
-                // This prevents TOCTOU race conditions like in the single download case
                 const existingJobs = await tx.$queryRaw<
                     Array<{
                         id: string;
@@ -430,7 +341,7 @@ async function processArtistDownload(
                     };
                 }
 
-                // Also check for recently failed job (within last 30 seconds) to prevent spam retries
+                // A job that failed in the last 30 seconds is not retried yet.
                 const recentFailed = await tx.$queryRaw<
                     Array<{
                         id: string;
@@ -454,7 +365,6 @@ async function processArtistDownload(
                     };
                 }
 
-                // Create new job inside transaction
                 const now = new Date();
                 const job = await tx.downloadJob.create({
                     data: {
@@ -495,7 +405,6 @@ async function processArtistDownload(
             jobs.push({ id: job.id, subject: albumSubject });
             logger.debug(`   [JOB] Created job for: ${albumSubject}`);
 
-            // Start the download in background
             processDownload(
                 job.id,
                 "album",
@@ -516,7 +425,6 @@ async function processArtistDownload(
     }
 }
 
-// Background download processor
 async function processDownload(
     jobId: string,
     type: string,
@@ -532,7 +440,6 @@ async function processDownload(
     }
 
     if (type === "album") {
-        // For albums, use the simple download manager
         let parsedArtist = artistName;
         let parsedAlbum = albumTitle;
 
@@ -549,7 +456,6 @@ async function processDownload(
 
         logger.debug(`Parsed: Artist="${parsedArtist}", Album="${parsedAlbum}"`);
 
-        // Use simple download manager for album downloads
         const result = await simpleDownloadManager.startDownload(
             jobId,
             parsedArtist,
@@ -565,7 +471,7 @@ async function processDownload(
 }
 
 // DELETE /downloads/clear-all - Clear all download jobs for the current user
-// IMPORTANT: Must be BEFORE /:id route to avoid catching "clear-all" as an ID
+// Registered before /:id so "clear-all" is not read as an id.
 router.delete("/clear-all", async (req, res) => {
     try {
         const userId = req.user!.id;
@@ -600,7 +506,7 @@ router.post("/clear-lidarr-queue", requireAdmin, async (_req, res) => {
 });
 
 // GET /downloads/failed - List failed/unavailable albums for the current user
-// IMPORTANT: Must be BEFORE /:id route to avoid catching "failed" as an ID
+// Registered before /:id so "failed" is not read as an id.
 router.get("/failed", async (req, res) => {
     try {
         const userId = req.user!.id;
@@ -623,7 +529,6 @@ router.delete("/failed/:id", async (req, res) => {
         const { id } = req.params;
         const userId = req.user!.id;
 
-        // Verify ownership before deleting
         const failedAlbum = await prisma.unavailableAlbum.findFirst({
             where: { id, userId },
         });
@@ -714,8 +619,6 @@ router.delete("/:id", async (req, res) => {
         const { id } = req.params;
         const userId = req.user!.id;
 
-        // Use deleteMany to handle race conditions gracefully
-        // This won't throw an error if the record was already deleted
         const result = await prisma.downloadJob.deleteMany({
             where: {
                 id,
@@ -723,7 +626,6 @@ router.delete("/:id", async (req, res) => {
             },
         });
 
-        // Return success even if nothing was deleted (idempotent delete)
         res.json({ success: true, deleted: result.count > 0 });
     } catch (error) {
         safeError(res, "Delete download job", error);
@@ -745,7 +647,6 @@ router.get("/", async (req, res) => {
         if (status) {
             where.status = status as string;
         }
-        // Filter out cleared jobs by default (user dismissed from history)
         if (includeCleared !== "true") {
             where.cleared = false;
         }
@@ -756,8 +657,7 @@ router.get("/", async (req, res) => {
             take: parseInt(limit as string, 10),
         });
 
-        // Filter out discovery downloads unless explicitly requested
-        // Discovery downloads are automated and shouldn't show in the UI popover
+        // Discover's automated downloads are hidden unless asked for.
         const filteredJobs =
             includeDiscovery === "true"
                 ? jobs

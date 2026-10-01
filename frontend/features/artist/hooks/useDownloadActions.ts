@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { api } from '@/lib/api';
 import { notify } from "@/lib/notify";
+import { isMbid } from "@/lib/mbid";
 import { useDownloadContext } from '@/lib/download-context';
 import { Artist, Album } from '../types';
 
@@ -11,7 +12,7 @@ export function useDownloadActions() {
     async (artist: Artist | null) => {
       if (!artist) return;
 
-      if (!artist.mbid) {
+      if (!isMbid(artist.mbid)) {
         notify.error("Can't download this artist", { message: 'They have no MusicBrainz ID.' });
         return;
       }
@@ -31,8 +32,7 @@ export function useDownloadActions() {
 
   const downloadAlbum = useCallback(
     async (album: Album, artistName: string) => {
-      // Get MBID (prefer rgMbid, fallback to mbid)
-      const mbid = album.rgMbid || album.mbid;
+      const mbid = [album.rgMbid, album.mbid].find(isMbid);
 
       if (!mbid) {
         notify.error("Can't download this album", { message: 'It has no MusicBrainz ID.' });

@@ -84,6 +84,13 @@ export function hasRealMbid(
     return typeof mbid === "string" && mbid.length > 0 && !mbid.startsWith("temp-");
 }
 
+const MBID_FORMAT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** True for a value shaped like a MusicBrainz id; temp- and row ids fail. */
+export function isMbid(value: unknown): value is string {
+    return typeof value === "string" && MBID_FORMAT.test(value);
+}
+
 export interface ParsedCredit {
     /** The performing artist, never truncated. */
     primary: string;
