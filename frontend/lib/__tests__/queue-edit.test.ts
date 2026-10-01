@@ -41,36 +41,56 @@ describe("insertTrack", () => {
 });
 
 describe("removeTrack", () => {
+    const cur = { upNextAt: 0, shufflePos: 0 };
+
+    it("pulls the up-next cursor back when a track before it goes", () => {
+        const added = insertTrack(snap(["a", "b"], 0), { upNextAt: 1, shufflePos: 0 }, "x");
+        const withY = insertTrack(snap(added.queue, 0), { upNextAt: added.upNextAt, shufflePos: 0 }, "y");
+        const removed = removeTrack(snap(withY.queue, 0), { upNextAt: withY.upNextAt, shufflePos: 0 }, 1);
+        const next = insertTrack(snap(removed.queue, 0), { upNextAt: removed.upNextAt, shufflePos: 0 }, "z");
+        expect(next.queue).toEqual(["a", "y", "z", "b"]);
+    });
+
+    it("leaves the cursor alone when a track after it goes", () => {
+        expect(removeTrack(snap(["a", "x", "b"], 0), { upNextAt: 2, shufflePos: 0 }, 2).upNextAt).toBe(2);
+    });
+
+    it("pulls the shuffle cursor back when a track before it in play order goes", () => {
+        const next = removeTrack(snap(["a", "b", "c"], 0, [0, 2, 1], true), { upNextAt: 1, shufflePos: 2 }, 2);
+        expect(next.shuffleIndices).toEqual([0, 1]);
+        expect(next.shufflePos).toBe(1);
+    });
+
     it("shifts the current index when an earlier track goes", () => {
-        const next = removeTrack(snap(["a", "b", "c"], 2), 0);
+        const next = removeTrack(snap(["a", "b", "c"], 2), cur, 0);
         expect(next.queue).toEqual(["b", "c"]);
         expect(next.currentIndex).toBe(1);
         expect(next.currentTrack).toBeUndefined();
     });
 
     it("keeps the current track when a later one goes", () => {
-        const next = removeTrack(snap(["a", "b", "c"], 0), 2);
+        const next = removeTrack(snap(["a", "b", "c"], 0), cur, 2);
         expect(next.currentIndex).toBe(0);
         expect(next.currentTrack).toBeUndefined();
     });
 
     it("moves to the following track when the current one goes", () => {
-        const next = removeTrack(snap(["a", "b", "c"], 1), 1);
+        const next = removeTrack(snap(["a", "b", "c"], 1), cur, 1);
         expect(next.currentIndex).toBe(1);
         expect(next.currentTrack).toBe("c");
     });
 
     it("wraps to the start when the last track was current", () => {
-        const next = removeTrack(snap(["a", "b"], 1), 1);
+        const next = removeTrack(snap(["a", "b"], 1), cur, 1);
         expect(next.currentIndex).toBe(0);
         expect(next.currentTrack).toBe("a");
     });
 
     it("clears the track when the queue empties", () => {
-        expect(removeTrack(snap(["a"], 0), 0).currentTrack).toBeNull();
+        expect(removeTrack(snap(["a"], 0), cur, 0).currentTrack).toBeNull();
     });
 
     it("renumbers shuffle order", () => {
-        expect(removeTrack(snap(["a", "b", "c"], 0, [2, 0, 1], true), 1).shuffleIndices).toEqual([1, 0]);
+        expect(removeTrack(snap(["a", "b", "c"], 0, [2, 0, 1], true), cur, 1).shuffleIndices).toEqual([1, 0]);
     });
 });

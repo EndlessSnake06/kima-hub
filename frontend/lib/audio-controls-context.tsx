@@ -704,10 +704,16 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
 
     const removeFromQueue = useCallback(
         (index: number) => {
-            const next = removeTrack(queueSnapshot(), index);
+            const next = removeTrack(
+                queueSnapshot(),
+                { upNextAt: upNextInsertRef.current, shufflePos: shuffleInsertPosRef.current },
+                index,
+            );
             queueRef.current = next.queue;
             shuffleIndicesRef.current = next.shuffleIndices;
             currentIndexRef.current = next.currentIndex;
+            upNextInsertRef.current = next.upNextAt;
+            shuffleInsertPosRef.current = next.shufflePos;
 
             state.setQueue(next.queue);
             if (isShuffleRef.current) state.setShuffleIndices(next.shuffleIndices);

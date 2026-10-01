@@ -31,13 +31,18 @@ export function insertTrack<T>(snap: QueueSnapshot<T>, cursors: InsertCursors, t
     return { queue, shuffleIndices, upNextAt: insertAt + 1, shufflePos };
 }
 
-export function removeTrack<T>(snap: QueueSnapshot<T>, index: number) {
+export function removeTrack<T>(snap: QueueSnapshot<T>, cursors: InsertCursors, index: number) {
     const queue = [...snap.queue];
     queue.splice(index, 1);
 
-    const shuffleIndices = snap.isShuffle
-        ? snap.shuffleIndices.filter((i) => i !== index).map((i) => (i > index ? i - 1 : i))
-        : snap.shuffleIndices;
+    let shuffleIndices = snap.shuffleIndices;
+    let shufflePos = cursors.shufflePos;
+    if (snap.isShuffle) {
+        const removedPos = shuffleIndices.indexOf(index);
+        if (removedPos >= 0 && removedPos < shufflePos) shufflePos -= 1;
+        shuffleIndices = shuffleIndices.filter((i) => i !== index).map((i) => (i > index ? i - 1 : i));
+    }
+    const upNextAt = index < cursors.upNextAt ? cursors.upNextAt - 1 : cursors.upNextAt;
 
     let currentIndex = snap.currentIndex;
     let currentTrack: T | null | undefined;
@@ -54,5 +59,5 @@ export function removeTrack<T>(snap: QueueSnapshot<T>, index: number) {
         }
     }
 
-    return { queue, shuffleIndices, currentIndex, currentTrack };
+    return { queue, shuffleIndices, currentIndex, currentTrack, upNextAt, shufflePos };
 }
