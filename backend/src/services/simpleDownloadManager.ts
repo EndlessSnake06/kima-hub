@@ -590,11 +590,38 @@ class SimpleDownloadManager {
     }
 
     /**
-     * Handle download grabbed event (from webhook)
-     * Links the Lidarr downloadId to our job
-     *
-     * IMPORTANT: One logical album = one job, regardless of MBID.
-     * MBIDs can differ between MusicBrainz and Lidarr, but artist+album name is canonical.
+     * The jobs a Lidarr event about an album belongs to: those carrying its MBID
+     * or Lidarr album id, else those with its artist and title. Several users can
+     * each have a job on one album.
+     */
+    private jobsForAlbum<J extends { targetMbid: string | null; lidarrAlbumId: number | null; subject: string; metadata: Prisma.JsonValue }>(
+        jobs: J[],
+        album: { albumMbid?: string; lidarrAlbumId?: number; artistName?: string; albumTitle?: string }
+    ): J[] {
+        const byId = jobs.filter((j) => {
+            const meta = (j.metadata as any) ?? {};
+            const mbidMatch = !!album.albumMbid && (j.targetMbid === album.albumMbid || meta.lidarrMbid === album.albumMbid);
+            const idMatch = !!album.lidarrAlbumId && (j.lidarrAlbumId === album.lidarrAlbumId || meta.lidarrAlbumId === album.lidarrAlbumId);
+            return mbidMatch || idMatch;
+        });
+        if (byId.length > 0) return byId;
+
+        const artist = album.artistName?.toLowerCase().trim();
+        const title = album.albumTitle?.toLowerCase().trim();
+        if (!artist || !title) return [];
+        return jobs.filter((j) => {
+            const meta = (j.metadata as any) ?? {};
+            const subject = j.subject.toLowerCase();
+            return (
+                (meta.artistName?.toLowerCase().trim() === artist && meta.albumTitle?.toLowerCase().trim() === title) ||
+                (subject.includes(artist) && subject.includes(title))
+            );
+        });
+    }
+
+    /**
+     * Lidarr grabbed a release: every job waiting for that album takes the
+     * download. A grab no job asked for is Lidarr's own and stays untracked.
      */
     async onDownloadGrabbed(
         downloadId: string,
@@ -603,237 +630,54 @@ class SimpleDownloadManager {
         artistName: string,
         lidarrAlbumId: number
     ): Promise<{ matched: boolean; jobId?: string }> {
-        logger.debug(`[DOWNLOAD] Grabbed: ${artistName} - ${albumTitle}`);
-        logger.debug(`   Download ID: ${downloadId}`);
+        logger.debug(`[DOWNLOAD] Grabbed: ${artistName} - ${albumTitle} (${downloadId})`);
 
         return await this.withTransaction(
             async (tx) => {
-                // ═══════════════════════════════════════════════════════════════
-                // STEP 1: Idempotency Check - Already processed?
-                // ═══════════════════════════════════════════════════════════════
-                const existingByRef = await tx.downloadJob.findFirst({
-                    where: {
-                        metadata: {
-                            path: ["downloadId"],
-                            equals: downloadId,
-                        },
-                    },
+                const tracked = await tx.downloadJob.findFirst({
+                    where: { metadata: { path: ["downloadId"], equals: downloadId } },
+                    select: { id: true },
                 });
+                if (tracked) return { matched: true, jobId: tracked.id };
 
-                if (existingByRef) {
-                    logger.debug(
-                        `   Already tracked by job: ${existingByRef.id}`
-                    );
-                    return { matched: true, jobId: existingByRef.id };
-                }
-
-                // ═══════════════════════════════════════════════════════════════
-                // STEP 2: Query Unassigned Jobs (Transaction ensures consistent view)
-                // Only get jobs not yet assigned to a download (lidarrRef IS NULL)
-                // ═══════════════════════════════════════════════════════════════
-                const activeJobs = await tx.downloadJob.findMany({
-                    where: {
-                        status: { in: ["pending", "processing"] },
-                        lidarrRef: null, // Not yet assigned to a download
-                    },
+                const waiting = await tx.downloadJob.findMany({
+                    where: { status: { in: ["pending", "processing"] }, lidarrRef: null },
+                    orderBy: { createdAt: "asc" },
                 });
-
-                logger.debug(
-                    `   Found ${activeJobs.length} unassigned active job(s)`
-                );
-
-                // Normalize for matching
-                const normalizedArtist = artistName?.toLowerCase().trim() || "";
-                const normalizedAlbum = albumTitle?.toLowerCase().trim() || "";
-
-                // ═══════════════════════════════════════════════════════════════
-                // STEP 3: Apply Matching Strategies (In Priority Order)
-                // ═══════════════════════════════════════════════════════════════
-                let matchedJob: (typeof activeJobs)[0] | undefined;
-                let matchStrategy = "";
-
-                // Strategy 1: targetMbid
-                matchedJob = activeJobs.find((j) => j.targetMbid === albumMbid);
-                if (matchedJob) matchStrategy = "targetMbid";
-
-                // Strategy 2: lidarrMbid in metadata
-                if (!matchedJob) {
-                    matchedJob = activeJobs.find((j) => {
-                        const meta = j.metadata as any;
-                        return meta?.lidarrMbid === albumMbid;
-                    });
-                    if (matchedJob) matchStrategy = "lidarrMbid";
+                const jobs = this.jobsForAlbum(waiting, { albumMbid, lidarrAlbumId, artistName, albumTitle });
+                if (jobs.length === 0) {
+                    logger.debug(`   No job asked for this album; Lidarr grabbed it on its own`);
+                    return { matched: false };
                 }
 
-                // Strategy 3: lidarrAlbumId
-                if (!matchedJob && lidarrAlbumId > 0) {
-                    matchedJob = activeJobs.find((j) => {
-                        const meta = j.metadata as any;
-                        return (
-                            (j as any).lidarrAlbumId === lidarrAlbumId ||
-                            meta?.lidarrAlbumId === lidarrAlbumId
-                        );
-                    });
-                    if (matchedJob) matchStrategy = "lidarrAlbumId";
-                }
-
-                // Strategy 4: Artist + Album name (canonical match)
-                if (!matchedJob && normalizedArtist && normalizedAlbum) {
-                    matchedJob = activeJobs.find((j) => {
-                        const meta = j.metadata as any;
-                        const candArtist =
-                            meta?.artistName?.toLowerCase().trim() || "";
-                        const candAlbum =
-                            meta?.albumTitle?.toLowerCase().trim() || "";
-                        return (
-                            candArtist === normalizedArtist &&
-                            candAlbum === normalizedAlbum
-                        );
-                    });
-                    if (matchedJob) matchStrategy = "artist+album";
-                }
-
-                // Strategy 5: Subject field
-                if (!matchedJob && normalizedArtist && normalizedAlbum) {
-                    matchedJob = activeJobs.find((j) => {
-                        const subject = j.subject?.toLowerCase().trim() || "";
-                        return (
-                            subject.includes(normalizedArtist) &&
-                            subject.includes(normalizedAlbum)
-                        );
-                    });
-                    if (matchedJob) matchStrategy = "subject";
-                }
-
-                // ═══════════════════════════════════════════════════════════════
-                // STEP 4: Update Matched Job OR Create Tracking Job (Atomic)
-                // ═══════════════════════════════════════════════════════════════
-                if (matchedJob) {
-                    logger.debug(
-                        `   Matched by ${matchStrategy}: ${matchedJob.id}`
-                    );
-
+                const grabbedAt = new Date().toISOString();
+                for (const job of jobs) {
                     await tx.downloadJob.update({
-                        where: { id: matchedJob.id },
+                        where: { id: job.id },
                         data: {
                             status: "processing",
                             lidarrRef: downloadId,
-                            lidarrAlbumId,
-                            targetMbid: matchedJob.targetMbid || albumMbid,
+                            lidarrAlbumId: lidarrAlbumId || job.lidarrAlbumId,
+                            targetMbid: job.targetMbid || albumMbid,
                             metadata: {
-                                ...((matchedJob.metadata as any) || {}),
+                                ...((job.metadata as any) || {}),
                                 downloadId,
                                 lidarrMbid: albumMbid,
-                                grabbedAt: new Date().toISOString(),
+                                grabbedAt,
                             },
                         },
                     });
-
-                    return { matched: true, jobId: matchedJob.id };
                 }
-
-                // No match - check for duplicates before creating tracking job
-                logger.debug(`   No match found, checking for duplicates...`);
-
-                // Skip creating a tracking job for an album already being fetched, so it is
-                // not downloaded twice.
-
-                // Normalize for duplicate detection
-                const normalizedArtistForDup = artistName?.toLowerCase().trim() || "";
-                const normalizedAlbumForDup = albumTitle?.toLowerCase().trim() || "";
-
-                // Check by MBID first (most reliable)
-                let existingJob = null;
-                if (albumMbid) {
-                    existingJob = await tx.downloadJob.findFirst({
-                        where: {
-                            targetMbid: albumMbid,
-                            status: { in: ["pending", "processing", "completed"] },
-                        },
-                    });
-                }
-
-                // If no MBID match, check by artist+album name
-                if (!existingJob && normalizedArtistForDup && normalizedAlbumForDup) {
-                    const candidateJobs = await tx.downloadJob.findMany({
-                        where: {
-                            status: { in: ["pending", "processing", "completed"] },
-                        },
-                    });
-
-                    existingJob = candidateJobs.find((j) => {
-                        const meta = j.metadata as any;
-                        const candArtist = meta?.artistName?.toLowerCase().trim() || "";
-                        const candAlbum = meta?.albumTitle?.toLowerCase().trim() || "";
-                        return (
-                            candArtist === normalizedArtistForDup &&
-                            candAlbum === normalizedAlbumForDup
-                        );
-                    });
-                }
-
-                // If duplicate found, log warning and exit early
-                if (existingJob) {
-                    logger.warn(`[DownloadManager] Duplicate download detected`, {
-                        artist: artistName,
-                        album: albumTitle,
-                        mbid: albumMbid,
-                        existingJobId: existingJob.id,
-                    });
-                    return { matched: false };
-                }
-
-                logger.debug(`   No duplicates found, creating tracking job`);
-
-                // Attribute the download to whoever most recently asked for this artist.
-                const recentJob = await tx.downloadJob.findFirst({
-                    where: {
-                        status: { in: ["pending", "processing", "completed"] },
-                        ...(artistName
-                            ? { subject: { startsWith: artistName, mode: "insensitive" as const } }
-                            : {}),
-                    },
-                    orderBy: { createdAt: "desc" },
-                });
-
-                if (!recentJob?.userId) {
-                    logger.debug(
-                        `   Cannot determine user, skipping job creation`
-                    );
-                    return { matched: false };
-                }
-
-                const trackingJob = await tx.downloadJob.create({
-                    data: {
-                        userId: recentJob.userId,
-                        subject: `${artistName} - ${albumTitle}`,
-                        type: "album",
-                        targetMbid: albumMbid,
-                        status: "processing",
-                        lidarrRef: downloadId,
-                        lidarrAlbumId,
-                        attempts: 1,
-                        metadata: {
-                            artistName,
-                            albumTitle,
-                            downloadId,
-                            grabbedAt: new Date().toISOString(),
-                            source: "lidarr-auto-grab",
-                        },
-                    },
-                });
-
-                logger.debug(`   Created tracking job: ${trackingJob.id}`);
-                return { matched: true, jobId: trackingJob.id };
+                logger.debug(`   ${jobs.length} job(s) took the download`);
+                return { matched: true, jobId: jobs[0].id };
             },
             { logPrefix: "[GRAB-TX]" }
         );
     }
 
     /**
-     * Handle download complete event (from webhook)
-     *
-     * IMPORTANT: One logical album = one job. Match by name if MBID doesn't match.
+     * Lidarr imported a download: every job waiting for that album completes,
+     * and each job's user and batch are told.
      */
     async onDownloadComplete(
         downloadId: string,
@@ -847,191 +691,93 @@ class SimpleDownloadManager {
         downloadBatchId?: string;
         spotifyImportJobId?: string;
     }> {
-        logger.debug(`\n[COMPLETE] Download completed: ${downloadId}`);
+        logger.debug(`[COMPLETE] Download completed: ${downloadId}`);
 
-        const result = await this.withTransaction(
+        const jobs = await this.withTransaction(
             async (tx) => {
-                // ═══════════════════════════════════════════════════════════════
-                // STEP 1: Check if already completed (idempotency)
-                // ═══════════════════════════════════════════════════════════════
-                const completedJob = await tx.downloadJob.findFirst({
-                    where: {
-                        metadata: {
-                            path: ["downloadId"],
-                            equals: downloadId,
-                        },
-                        status: "completed",
-                    },
+                const done = await tx.downloadJob.findFirst({
+                    where: { metadata: { path: ["downloadId"], equals: downloadId }, status: "completed" },
                 });
+                if (done) return [done];
 
-                if (completedJob) {
-                    logger.debug(`   Already completed: ${completedJob.id}`);
-                    const meta = completedJob.metadata as any;
-                    return {
-                        jobId: completedJob.id,
-                        batchId: completedJob.discoveryBatchId || undefined,
-                        downloadBatchId: meta?.batchId,
-                        spotifyImportJobId: meta?.spotifyImportJobId,
-                    };
-                }
-
-                // ═══════════════════════════════════════════════════════════════
-                // STEP 2: Find Active Job
-                // ═══════════════════════════════════════════════════════════════
-                const activeJobs = await tx.downloadJob.findMany({
+                const active = await tx.downloadJob.findMany({
                     where: { status: { in: ["pending", "processing"] } },
+                    orderBy: { createdAt: "asc" },
                 });
-
-                const normalizedArtist = artistName?.toLowerCase().trim() || "";
-                const normalizedAlbum = albumTitle?.toLowerCase().trim() || "";
-
-                let job: (typeof activeJobs)[0] | undefined;
-
-                // Strategy 1: lidarrRef
-                job = activeJobs.find((j) => j.lidarrRef === downloadId);
-                if (job) logger.debug(`    Matched by lidarrRef`);
-
-                // Strategy 2: lidarrAlbumId
-                if (!job && lidarrAlbumId) {
-                    job = activeJobs.find(
-                        (j) => j.lidarrAlbumId === lidarrAlbumId
-                    );
-                    if (job) logger.debug(`    Matched by lidarrAlbumId`);
+                const byDownload = active.filter(
+                    (j) => j.lidarrRef === downloadId || (j.metadata as any)?.previousDownloadIds?.includes(downloadId)
+                );
+                const albumIds = new Set(
+                    [lidarrAlbumId, ...byDownload.map((j) => j.lidarrAlbumId)].filter((id): id is number => !!id)
+                );
+                let matched = active.filter(
+                    (j) => byDownload.includes(j) || (j.lidarrAlbumId !== null && albumIds.has(j.lidarrAlbumId))
+                );
+                if (matched.length === 0) {
+                    matched = this.jobsForAlbum(active, { albumMbid, lidarrAlbumId, artistName, albumTitle });
                 }
-
-                // Strategy 3: previousDownloadIds
-                if (!job) {
-                    job = activeJobs.find((j) => {
-                        const meta = j.metadata as any;
-                        return meta?.previousDownloadIds?.includes(downloadId);
-                    });
-                    if (job) logger.debug(`    Matched by previousDownloadIds`);
-                }
-
-                // Strategy 4: MBID
-                if (!job && albumMbid) {
-                    job = activeJobs.find((j) => j.targetMbid === albumMbid);
-                    if (!job) {
-                        job = activeJobs.find(
-                            (j) => (j.metadata as any)?.lidarrMbid === albumMbid
-                        );
-                    }
-                    if (job) logger.debug(`    Matched by MBID`);
-                }
-
-                // Strategy 5: Name match
-                if (!job && normalizedArtist && normalizedAlbum) {
-                    job = activeJobs.find((j) => {
-                        const meta = j.metadata as any;
-                        const candArtist =
-                            meta?.artistName?.toLowerCase().trim() || "";
-                        const candAlbum =
-                            meta?.albumTitle?.toLowerCase().trim() || "";
-                        const subject = j.subject?.toLowerCase().trim() || "";
-
-                        return (
-                            (candArtist === normalizedArtist &&
-                                candAlbum === normalizedAlbum) ||
-                            (subject.includes(normalizedArtist) &&
-                                subject.includes(normalizedAlbum))
-                        );
-                    });
-                    if (job) logger.debug(`    Matched by name`);
-                }
-
-                if (!job) {
+                if (matched.length === 0) {
                     logger.debug(`   No matching job found`);
-                    return {};
+                    return [];
                 }
 
-                // ═══════════════════════════════════════════════════════════════
-                // STEP 3: Find and Mark Duplicates Complete (Atomic)
-                // ═══════════════════════════════════════════════════════════════
-                const jobMeta = job.metadata as any;
-                const jobArtist =
-                    jobMeta?.artistName?.toLowerCase().trim() || "";
-                const jobAlbum =
-                    jobMeta?.albumTitle?.toLowerCase().trim() || "";
+                const nameKey = (m: any) =>
+                    m?.artistName && m?.albumTitle
+                        ? `${m.artistName.toLowerCase().trim()}\u0000${m.albumTitle.toLowerCase().trim()}`
+                        : null;
+                const names = new Set(matched.map((j) => nameKey(j.metadata)).filter(Boolean));
+                const sameNames = active.filter((j) => !matched.includes(j) && names.has(nameKey(j.metadata)));
 
-                const duplicateJobs = activeJobs.filter((j) => {
-                    if (j.id === job!.id || !jobArtist || !jobAlbum) return false;
-                    const meta = j.metadata as any;
-                    const candArtist =
-                        meta?.artistName?.toLowerCase().trim() || "";
-                    const candAlbum =
-                        meta?.albumTitle?.toLowerCase().trim() || "";
-                    return candArtist === jobArtist && candAlbum === jobAlbum;
-                });
-
-                if (duplicateJobs.length > 0) {
-                    logger.debug(
-                        `   Marking ${duplicateJobs.length} duplicate(s) complete`
+                const completedAt = new Date();
+                const completed = [];
+                for (const job of [...matched, ...sameNames]) {
+                    completed.push(
+                        await tx.downloadJob.update({
+                            where: { id: job.id },
+                            data: {
+                                status: "completed",
+                                completedAt,
+                                error: null,
+                                metadata: { ...((job.metadata as any) || {}), completedAt: completedAt.toISOString() },
+                            },
+                        })
                     );
-                    await tx.downloadJob.updateMany({
-                        where: { id: { in: duplicateJobs.map((j) => j.id) } },
-                        data: {
-                            status: "completed",
-                            completedAt: new Date(),
-                            error: null,
-                        },
-                    });
                 }
-
-                // ═══════════════════════════════════════════════════════════════
-                // STEP 4: Mark Primary Job Complete
-                // ═══════════════════════════════════════════════════════════════
-                await tx.downloadJob.update({
-                    where: { id: job.id },
-                    data: {
-                        status: "completed",
-                        completedAt: new Date(),
-                        error: null,
-                        metadata: {
-                            ...jobMeta,
-                            completedAt: new Date().toISOString(),
-                        },
-                    },
-                });
-
-                logger.debug(`   Job ${job.id} marked complete`);
-
-                return {
-                    jobId: job.id,
-                    batchId: job.discoveryBatchId || undefined,
-                    downloadBatchId: jobMeta?.batchId,
-                    spotifyImportJobId: jobMeta?.spotifyImportJobId,
-                    userId: job.userId,
-                    subject: job.subject,
-                    metadata: jobMeta,
-                };
+                logger.debug(`   ${completed.length} job(s) marked complete`);
+                return completed.map((job) => ({ ...job, announce: true }));
             },
             { logPrefix: "[COMPLETE-TX]" }
         );
 
-        if (result.jobId && result.userId) {
+        for (const job of jobs) {
+            if (!("announce" in job)) continue;
+            const metadata = job.metadata as any;
             await this.announceCompletion({
-                jobId: result.jobId,
-                userId: result.userId,
-                subject: result.subject,
-                metadata: result.metadata,
-                batchId: result.batchId,
-                spotifyImportJobId: result.spotifyImportJobId,
+                jobId: job.id,
+                userId: job.userId,
+                subject: job.subject,
+                metadata,
+                batchId: job.discoveryBatchId || undefined,
+                spotifyImportJobId: metadata?.spotifyImportJobId,
             });
         }
 
+        const first = jobs[0];
+        if (!first) return {};
+        const meta = first.metadata as any;
         return {
-            jobId: result.jobId,
-            batchId: result.batchId,
-            downloadBatchId: result.downloadBatchId,
-            spotifyImportJobId: result.spotifyImportJobId,
+            jobId: first.id,
+            batchId: first.discoveryBatchId || undefined,
+            downloadBatchId: meta?.batchId,
+            spotifyImportJobId: meta?.spotifyImportJobId,
         };
     }
 
     /**
-     * Count a failed download against its job once, ignoring Lidarr's report of a
-     * removal Kima made itself. Below the user's retry limit the job waits for
-     * Lidarr's next release (searchAgain); at the limit Lidarr stops looking and
-     * the job moves on or fails.
+     * Count a failed download once against every job on its album, ignoring
+     * Lidarr's report of a removal Kima made itself. Lidarr searches again while
+     * any of those jobs is under its user's retry limit; a job at its limit moves
+     * on or fails, and the album is unmonitored once none still wants it.
      */
     async onImportFailed(
         downloadId: string,
@@ -1052,55 +798,83 @@ class SimpleDownloadManager {
 
         const counted = await this.withTransaction(
             async (tx) => {
-                const job = await tx.downloadJob.findFirst({
+                const jobs = await tx.downloadJob.findMany({
                     where: {
+                        status: "processing",
                         OR: [
                             { lidarrRef: downloadId },
-                            {
-                                metadata: {
-                                    path: ["previousDownloadIds"],
-                                    array_contains: [downloadId],
-                                },
-                            },
-                            ...(albumMbid ? [{ targetMbid: albumMbid }] : []),
+                            { metadata: { path: ["previousDownloadIds"], array_contains: [downloadId] } },
                         ],
-                        status: "processing",
                     },
+                    orderBy: { createdAt: "asc" },
                 });
-                if (!job) return null;
-
-                const metadata = (job.metadata as any) || {};
-                if (metadata.previousDownloadIds?.includes(downloadId)) {
-                    return { job, metadata, exhausted: false };
+                if (jobs.length === 0 && albumMbid) {
+                    jobs.push(
+                        ...(await tx.downloadJob.findMany({
+                            where: { status: "processing", targetMbid: albumMbid, lidarrRef: null },
+                            orderBy: { createdAt: "asc" },
+                        }))
+                    );
                 }
 
-                const exhausted = job.attempts >= (await this.maxAttempts(job.userId));
-                const attempts = exhausted ? job.attempts : job.attempts + 1;
-                const updated = {
-                    ...metadata,
-                    lastError: reason,
-                    previousDownloadIds: [...(metadata.previousDownloadIds || []), downloadId],
-                    statusText: `Lidarr #${attempts}`,
-                };
-                await tx.downloadJob.update({
-                    where: { id: job.id },
-                    data: { lidarrRef: null, attempts, metadata: updated },
-                });
-                return { job, metadata: updated, exhausted };
+                const albumIds = [
+                    ...new Set(
+                        jobs.filter((j) => j.lidarrRef === downloadId).map((j) => j.lidarrAlbumId).filter((id): id is number => !!id)
+                    ),
+                ];
+                if (albumIds.length > 0) {
+                    jobs.push(
+                        ...(await tx.downloadJob.findMany({
+                            where: {
+                                status: "processing",
+                                lidarrAlbumId: { in: albumIds },
+                                lidarrRef: null,
+                                id: { notIn: jobs.map((j) => j.id) },
+                            },
+                            orderBy: { createdAt: "asc" },
+                        }))
+                    );
+                }
+
+                const results = [];
+                for (const job of jobs) {
+                    const metadata = (job.metadata as any) || {};
+                    if (metadata.previousDownloadIds?.includes(downloadId)) {
+                        results.push({ job, metadata, exhausted: false });
+                        continue;
+                    }
+                    const exhausted = job.attempts >= (await this.maxAttempts(job.userId));
+                    const attempts = exhausted ? job.attempts : job.attempts + 1;
+                    const updated = {
+                        ...metadata,
+                        lastError: reason,
+                        previousDownloadIds: [...(metadata.previousDownloadIds || []), downloadId],
+                        statusText: `Lidarr #${attempts}`,
+                    };
+                    await tx.downloadJob.update({
+                        where: { id: job.id },
+                        data: { lidarrRef: null, attempts, metadata: updated },
+                    });
+                    results.push({ job, metadata: updated, exhausted });
+                }
+                return results;
             },
             { logPrefix: "[FAIL-TX]" }
         );
 
-        if (!counted) return { searchAgain: false };
-        const { job, metadata, exhausted } = counted;
-        if (!exhausted) return { jobId: job.id, searchAgain: true };
+        if (counted.length === 0) return { searchAgain: false };
+        const searchAgain = counted.some((c) => !c.exhausted);
 
-        logger.debug(`[RETRY] ${job.subject}: retry limit reached after ${job.attempts} releases`);
-        if (job.lidarrAlbumId) {
-            await lidarrService.unmonitorAlbum(job.lidarrAlbumId);
+        if (!searchAgain) {
+            const albumIds = new Set(counted.map((c) => c.job.lidarrAlbumId).filter((id): id is number => !!id));
+            for (const id of albumIds) await lidarrService.unmonitorAlbum(id);
         }
-        await this.tryNextAlbumFromArtist({ ...job, metadata }, reason);
-        return { jobId: job.id, searchAgain: false };
+        for (const { job, metadata, exhausted } of counted) {
+            if (!exhausted) continue;
+            logger.debug(`[RETRY] ${job.subject}: retry limit reached after ${job.attempts} releases`);
+            await this.tryNextAlbumFromArtist({ ...job, metadata }, reason);
+        }
+        return { jobId: counted[0].job.id, searchAgain };
     }
 
     /**
