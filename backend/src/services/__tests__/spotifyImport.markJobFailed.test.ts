@@ -8,6 +8,7 @@ jest.mock("../notificationService", () => ({
 }));
 
 import { prisma } from "../../utils/db";
+import { redisClient } from "../../utils/redis";
 import { notificationService } from "../notificationService";
 import { spotifyImportService } from "../spotifyImport";
 import { closeEngineConnections } from "../../__tests__/helpers/engineConnections";
@@ -29,13 +30,20 @@ const importJob = (pendingTracks: unknown[]) =>
         },
     });
 
+const wipeJob = async () => {
+    await prisma.spotifyImportJob.deleteMany({ where: { userId: USER } });
+    await redisClient.del(`import:job:${JOB}`);
+};
+
+beforeEach(wipeJob);
+
 beforeAll(async () => {
     await prisma.user.deleteMany({ where: { id: USER } });
     await prisma.user.create({ data: { id: USER, username: USER, passwordHash: "x", role: "user", tokenVersion: 0 } });
 });
 
 afterEach(async () => {
-    await prisma.spotifyImportJob.deleteMany({ where: { userId: USER } });
+    await wipeJob();
     (notificationService.notifyImportFailed as jest.Mock).mockClear();
 });
 
