@@ -15,6 +15,7 @@ import {
 } from "@/features/home/radioData";
 import type { RadioStation } from "@/features/home/radioData";
 import { SectionHeader } from "@/components/ui/SectionHeader";
+import { PageHeader } from "@/components/layout/PageHeader";
 
 function RadioStationCard({
     station,
@@ -121,55 +122,19 @@ export default function RadioPage() {
     const decadeStations = useMemo(() => buildDecadeStations(decadesData ?? []), [decadesData]);
 
     return (
-        <div className="min-h-screen relative bg-gradient-to-b from-[#0a0a0a] to-black">
-            {/* Static gradient overlay */}
-            <div className="fixed inset-0 pointer-events-none opacity-50">
-                <div className="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-transparent" />
-            </div>
-
+        <div className="min-h-screen">
             <div className="relative">
-                {/* Hero Header */}
-                <div className="relative bg-gradient-to-b from-[#0a0a0a] via-[#0f0f0f] to-transparent pt-6 pb-8 px-4 sm:px-6 md:px-8 border-b border-white/5">
-                    <div className="max-w-[1800px] mx-auto">
-                        {/* System status */}
-                        <div className="flex items-center gap-2 mb-6">
-                            <div className="w-1.5 h-1.5 bg-brand rounded-full" />
-                            <span className="t-eyebrow">
-                                Radio Active
-                            </span>
-                        </div>
+                <PageHeader
+                    eyebrow="Your library"
+                    title="Radio"
+                    description={
+                        isLoading
+                            ? "Endless shuffles from your own music"
+                            : `${STATIC_STATIONS.length + genreStations.length + decadeStations.length} stations, each an endless shuffle from your own music`
+                    }
+                />
 
-                        <div className="flex items-baseline justify-between flex-wrap gap-4">
-                            <div>
-                                <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-white leading-none mb-3">
-                                    Library Radio
-                                </h1>
-                                <p className="text-sm text-[var(--text-muted)]">
-                                    Continuous shuffle from your personal archive
-                                </p>
-                            </div>
-
-                            {/* Stats */}
-                            <div className="flex items-center gap-4">
-                                {!isLoading && (
-                                    <>
-                                        <div className="border-2 border-white/10 bg-[var(--bg-primary)] px-4 py-3 rounded">
-                                            <span className="text-3xl font-bold tabular-nums text-brand">
-                                                {STATIC_STATIONS.length + genreStations.length + decadeStations.length}
-                                            </span>
-                                            <span className="text-xs text-[var(--text-muted)] ml-2">
-                                                stations
-                                            </span>
-                                        </div>
-                                    </>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Content */}
-                <div className="relative max-w-[1800px] mx-auto px-4 sm:px-6 md:px-8 pb-32 pt-8 animate-rise">
+                <div className="relative page-shell pb-32 pt-2 animate-rise">
                     <div className="section-stack">
                         {/* Quick Start */}
                         <section>
@@ -262,26 +227,9 @@ export default function RadioPage() {
                             </section>
                         )}
 
-                        {/* Info panel */}
-                        <section>
-                            <div className="relative overflow-hidden rounded-lg border-2 border-white/10 bg-gradient-to-br from-[#0f0f0f] to-[#0a0a0a] p-8">
-                                <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-brand to-brand-dark" />
-                                <div className="flex items-center gap-3 mb-4 pb-3 border-b border-white/10">
-                                    <div className="w-2 h-2 bg-brand" />
-                                    <span className="text-xs text-[var(--text-secondary)]">
-                                        How It Works
-                                    </span>
-                                </div>
-                                <h3 className="text-xl font-bold tracking-tight text-white mb-3">
-                                    PERSONALIZED RADIO
-                                </h3>
-                                <p className="text-sm text-[var(--text-muted)] leading-relaxed max-w-2xl">
-                                    Radio stations are generated from your personal music library. As you add more music,
-                                    new genre and decade stations will automatically appear. Each station requires a minimum
-                                    number of tracks to ensure a good listening experience.
-                                </p>
-                            </div>
-                        </section>
+                        <p className="t-meta">
+                            Genre and decade stations appear once your library has enough tracks for them.
+                        </p>
                     </div>
                 </div>
             </div>

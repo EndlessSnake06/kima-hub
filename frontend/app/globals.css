@@ -279,6 +279,20 @@ code {
     }
 }
 
+/* The page column: one width and one side gutter for every page. */
+@layer components {
+    .page-shell {
+        max-width: 1800px;
+        margin-inline: auto;
+        padding-inline: 1rem;
+    }
+    @media (min-width: 48rem) {
+        .page-shell {
+            padding-inline: 2rem;
+        }
+    }
+}
+
 /* The vertical beat between top-level page sections: 48px on a phone,
  * opening to 72px on a desktop. */
 @layer components {

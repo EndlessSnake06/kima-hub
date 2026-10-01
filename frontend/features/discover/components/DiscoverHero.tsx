@@ -1,6 +1,8 @@
 import { format } from "date-fns";
 import { Settings } from "lucide-react";
 import { DiscoverPlaylist, DiscoverConfig } from "../types";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { Button } from "@/components/ui/Button";
 
 interface DiscoverHeroProps {
     playlist: DiscoverPlaylist | null;
@@ -23,63 +25,49 @@ export function DiscoverHero({ playlist, config, onOpenSettings }: DiscoverHeroP
     };
 
     return (
-        <div className="relative bg-gradient-to-b from-[#0f0f0f] to-[#0a0a0a] pt-20 pb-8 px-6 md:px-8 border-b border-white/10">
-            <div className="max-w-[1600px] mx-auto">
-                {/* Settings button - top right */}
-                <button
-                    onClick={onOpenSettings}
-                    aria-label="Open discovery settings"
-                    title="Discovery settings"
-                    className="absolute top-6 right-8 flex items-center gap-1.5 px-3 py-2 border border-white/10 rounded-lg hover:border-brand hover:bg-white/5 transition-all duration-300 min-h-[44px] focus-visible:outline-2 focus-visible:outline-[var(--color-brand)] focus-visible:outline-offset-2"
-                >
-                    <Settings className="w-4 h-4 text-[var(--text-secondary)]" />
-                    <span className="text-xs text-[var(--text-secondary)]">Settings</span>
-                </button>
-
-                <div className="flex items-end gap-8">
-                    {/* Info - Bottom Aligned */}
-                    <div className="flex-1 min-w-0 pb-2">
-                        <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-white leading-none mb-6">
-                            Discover Weekly
-                        </h1>
-                        <p className="text-sm md:text-base text-[var(--text-muted)] mb-4 max-w-2xl">
-                            Algorithm-generated playlist / Updated weekly / Personalized to your taste
-                        </p>
-                        {playlist && (
-                            <div className="inline-flex flex-wrap items-center gap-3 text-xs tabular-nums bg-white/[0.02] border border-white/10 rounded-lg px-4 py-2">
-                                <div className="flex items-center gap-2">
-                                    <span className="w-1 h-1 bg-brand rounded-full" />
-                                    <span className="text-[var(--text-secondary)]">
-                                        {format(new Date(playlist.weekStart), "MMM d, yyyy")}
-                                    </span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <span className="w-1 h-1 bg-type-track rounded-full" />
-                                    <span className="text-[var(--text-secondary)]">
-                                        {playlist.totalCount} tracks
-                                    </span>
-                                </div>
-                                {totalDuration > 0 && (
-                                    <div className="flex items-center gap-2">
-                                        <span className="w-1 h-1 bg-white/20 rounded-full" />
-                                        <span className="text-[var(--text-secondary)]">
-                                            {formatTotalDuration(totalDuration)}
-                                        </span>
-                                    </div>
-                                )}
-                                {config?.lastGeneratedAt && (
-                                    <div className="flex items-center gap-2">
-                                        <span className="w-1 h-1 bg-white/20 rounded-full" />
-                                        <span className="text-[var(--text-secondary)]">
-                                            Updated {format(new Date(config.lastGeneratedAt), "MMM d")}
-                                        </span>
-                                    </div>
-                                )}
-                            </div>
-                        )}
+        <PageHeader
+            eyebrow="Discovery"
+            title="Discover Weekly"
+            description="A new playlist every week, picked from your listening"
+            actions={
+                <Button variant="secondary" onClick={onOpenSettings} aria-label="Open discovery settings">
+                    <Settings className="w-4 h-4" />
+                    Settings
+                </Button>
+            }
+        >
+            {playlist && playlist.totalCount > 0 && (
+                <div className="mt-4 inline-flex flex-wrap items-center gap-3 text-xs tabular-nums bg-white/[0.02] border border-white/10 rounded-lg px-4 py-2">
+                    <div className="flex items-center gap-2">
+                        <span className="w-1 h-1 bg-brand rounded-full" />
+                        <span className="text-[var(--text-secondary)]">
+                            {format(new Date(playlist.weekStart), "MMM d, yyyy")}
+                        </span>
                     </div>
+                    <div className="flex items-center gap-2">
+                        <span className="w-1 h-1 bg-type-track rounded-full" />
+                        <span className="text-[var(--text-secondary)]">
+                            {playlist.totalCount} tracks
+                        </span>
+                    </div>
+                    {totalDuration > 0 && (
+                        <div className="flex items-center gap-2">
+                            <span className="w-1 h-1 bg-white/20 rounded-full" />
+                            <span className="text-[var(--text-secondary)]">
+                                {formatTotalDuration(totalDuration)}
+                            </span>
+                        </div>
+                    )}
+                    {config?.lastGeneratedAt && (
+                        <div className="flex items-center gap-2">
+                            <span className="w-1 h-1 bg-white/20 rounded-full" />
+                            <span className="text-[var(--text-secondary)]">
+                                Updated {format(new Date(config.lastGeneratedAt), "MMM d")}
+                            </span>
+                        </div>
+                    )}
                 </div>
-            </div>
-        </div>
+            )}
+        </PageHeader>
     );
 }

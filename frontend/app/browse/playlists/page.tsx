@@ -17,6 +17,7 @@ import { api } from "@/lib/api";
 import { useToast } from "@/lib/toast-context";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { SectionHeader } from "@/components/ui/SectionHeader";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { useDialog } from "@/hooks/useDialog";
 
@@ -256,33 +257,16 @@ export default function BrowsePlaylistsPage() {
     let sectionIndex = 0;
 
     return (
-        <div className="min-h-screen bg-gradient-to-b from-[#0a0a0a] to-black relative">
-            {/* Atmospheric overlay */}
-            <div className="fixed inset-0 pointer-events-none opacity-30">
-                <div className="absolute inset-0 bg-gradient-to-br from-type-track/5 via-transparent to-transparent" />
-            </div>
-
+        <div className="min-h-screen">
             <div className="section-stack">
-            {/* Editorial Hero */}
-            <div className="relative px-4 md:px-8 pt-8 pb-2">
-                <div className="max-w-[1800px] mx-auto">
-                    <div className="flex items-center gap-2 mb-4">
-                        <DeezerIcon className="w-4 h-4 text-brand" />
-                        <span className="text-xs text-[var(--text-secondary)]">
-                            Deezer Discovery
-                        </span>
-                    </div>
-                    <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-white leading-none mb-2">
-                        Browse Playlists
-                    </h1>
-                    <p className="text-sm text-[var(--text-muted)]">
-                        Discover and import playlists from Deezer
-                    </p>
-                </div>
-            </div>
+                <PageHeader
+                    eyebrow="From Deezer"
+                    title="Browse playlists"
+                    description="Find playlists on Deezer and import them into your library"
+                    className="pb-2"
+                />
 
-            <div className="relative px-4 md:px-8 pb-24 animate-rise">
-                <div className="max-w-[1800px] mx-auto">
+                <div className="relative page-shell pb-24 animate-rise">
                     {/* Beta Notice */}
                     <div
                         className="mb-6"
@@ -294,7 +278,7 @@ export default function BrowsePlaylistsPage() {
                                 <span className="font-bold text-brand">
                                     Beta
                                 </span>{" "}
-                                -- Importing from Spotify and Deezer relies on
+                                · Importing from Spotify and Deezer relies on
                                 matching tracks through Soulseek and your
                                 configured indexers. Results may vary depending
                                 on track availability and metadata quality.
@@ -527,7 +511,6 @@ export default function BrowsePlaylistsPage() {
                             </>
                         )}
                 </div>
-            </div>
             </div>
 
             {/* URL Import Modal */}

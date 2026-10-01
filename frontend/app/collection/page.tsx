@@ -15,7 +15,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useLibraryActions } from "@/features/library/hooks/useLibraryActions";
-import { LibraryHeader } from "@/features/library/components/LibraryHeader";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { LibraryTabs } from "@/features/library/components/LibraryTabs";
 import { LibraryToolbar } from "@/features/library/components/LibraryToolbar";
 import { ArtistsGrid } from "@/features/library/components/ArtistsGrid";
@@ -379,11 +379,15 @@ export default function LibraryPage() {
     }, []);
 
     return (
-        <div className="min-h-screen relative bg-gradient-to-b from-[#0a0a0a] to-black">
-            <LibraryHeader totalItems={totalItems} activeTab={activeTab} />
+        <div className="min-h-screen">
+            <PageHeader
+                eyebrow="Your library"
+                title="Collection"
+                description={`${totalItems.toLocaleString()} ${activeTab === "artists" ? "artists" : activeTab === "albums" ? "albums" : "tracks"}`}
+            />
 
-            <div className="relative px-4 md:px-8 pb-24 max-w-[1800px] mx-auto">
-                <div className="mb-6 -mt-4">
+            <div className="relative page-shell pb-24">
+                <div className="mb-6">
                     <LibraryTabs
                         activeTab={activeTab}
                         onTabChange={changeTab}

@@ -26,6 +26,7 @@ import {
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { Button } from "@/components/ui/Button";
 
@@ -796,145 +797,113 @@ export default function PlaylistsPage() {
 
     return (
         <div className="min-h-screen bg-gradient-to-b from-[#0a0a0a] to-black section-stack">
-            {/* Editorial Header */}
-            <div className="relative px-4 md:px-8 pt-8 pb-6">
-                <div className="max-w-[1800px] mx-auto">
-                    {/* System status */}
-                    <div className="flex items-center gap-2 mb-4">
-                        <div className="w-1.5 h-1.5 bg-brand rounded-full" />
-                        <span className="t-eyebrow">
-                            Your Library
-                        </span>
-                    </div>
-
-                    <div className="flex items-end justify-between gap-4">
-                        <div>
-                            <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-white leading-none">
-                                Playlists
-                            </h1>
-                            <div className="flex items-center gap-3 mt-3 text-xs tabular-nums text-[var(--text-muted)]">
-                                <span className="font-bold text-white text-sm normal-case tracking-tight">
-                                    {visiblePlaylists.length} {visiblePlaylists.length === 1 ? "playlist" : "playlists"}
-                                </span>
-                                {hiddenPlaylists.length > 0 && (
-                                    <>
-                                        <span className="text-[var(--text-muted)]">|</span>
-                                        <span>{hiddenPlaylists.length} hidden</span>
-                                    </>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="flex items-center gap-2 shrink-0">
-                            {hiddenPlaylists.length > 0 && (
-                                <button
-                                    onClick={() => setShowHiddenTab(!showHiddenTab)}
-                                    className={cn(
-                                        "px-4 py-2 rounded-lg text-xs tabular-nums transition-all",
-                                        showHiddenTab
-                                            ? "bg-white/10 text-white border border-white/20"
-                                            : "bg-white/5 border border-white/10 text-[var(--text-muted)] hover:text-white/70 hover:border-white/20"
-                                    )}
-                                >
-                                    {showHiddenTab
-                                        ? "Show All"
-                                        : `Hidden (${hiddenPlaylists.length})`}
-                                </button>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Action buttons */}
-                    <div className="flex flex-wrap items-center gap-2 mt-5">
-                        <ActionButton
-                            icon={Plus}
-                            label="Create"
-                            active={activeAction === "create"}
-                            onClick={() => toggleAction("create")}
-                            primary
-                        />
-                        <ActionButton
-                            icon={Link2}
-                            label="Import URL"
-                            active={activeAction === "importUrl"}
-                            onClick={() => toggleAction("importUrl")}
-                        />
-                        <ActionButton
-                            icon={FileMusic}
-                            label="Import File"
-                            active={activeAction === "importFile"}
-                            onClick={() => toggleAction("importFile")}
-                        />
-                        <Link
-                            href="/browse/playlists"
-                            className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold text-[var(--text-secondary)] hover:bg-white/5 border border-white/10 hover:text-white/70 hover:border-white/20 transition-all"
+            <PageHeader
+                eyebrow="Your library"
+                title="Playlists"
+                description={
+                    `${visiblePlaylists.length} ${visiblePlaylists.length === 1 ? "playlist" : "playlists"}` +
+                    (hiddenPlaylists.length > 0 ? ` · ${hiddenPlaylists.length} hidden` : "")
+                }
+                actions={
+                    hiddenPlaylists.length > 0 && (
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            aria-pressed={showHiddenTab}
+                            onClick={() => setShowHiddenTab(!showHiddenTab)}
                         >
-                            <Compass className="w-4 h-4" />
-                            <span className="hidden sm:inline">Browse</span>
-                        </Link>
+                            {showHiddenTab ? "Show all" : `Hidden (${hiddenPlaylists.length})`}
+                        </Button>
+                    )
+                }
+            >
+                {/* Action buttons */}
+                <div className="flex flex-wrap items-center gap-2 mt-5">
+                    <ActionButton
+                        icon={Plus}
+                        label="Create"
+                        active={activeAction === "create"}
+                        onClick={() => toggleAction("create")}
+                        primary
+                    />
+                    <ActionButton
+                        icon={Link2}
+                        label="Import URL"
+                        active={activeAction === "importUrl"}
+                        onClick={() => toggleAction("importUrl")}
+                    />
+                    <ActionButton
+                        icon={FileMusic}
+                        label="Import File"
+                        active={activeAction === "importFile"}
+                        onClick={() => toggleAction("importFile")}
+                    />
+                    <Link
+                        href="/browse/playlists"
+                        className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold text-[var(--text-secondary)] hover:bg-white/5 border border-white/10 hover:text-white/70 hover:border-white/20 transition-all"
+                    >
+                        <Compass className="w-4 h-4" />
+                        <span className="hidden sm:inline">Browse</span>
+                    </Link>
+                </div>
+
+                {/* Inline action panel */}
+                {activeAction && (
+                    <div className="mt-4 p-4 rounded-lg bg-white/[0.02] border border-white/10">
+                        {activeAction === "create" && (
+                            <CreatePanel onClose={() => setActiveAction(null)} />
+                        )}
+                        {activeAction === "importUrl" && (
+                            <ImportUrlPanel onClose={() => setActiveAction(null)} />
+                        )}
+                        {activeAction === "importFile" && (
+                            <ImportM3UPanel onClose={() => setActiveAction(null)} />
+                        )}
                     </div>
+                )}
+            </PageHeader>
 
-                    {/* Inline action panel */}
-                    {activeAction && (
-                        <div className="mt-4 p-4 rounded-lg bg-white/[0.02] border border-white/10">
-                            {activeAction === "create" && (
-                                <CreatePanel onClose={() => setActiveAction(null)} />
-                            )}
-                            {activeAction === "importUrl" && (
-                                <ImportUrlPanel onClose={() => setActiveAction(null)} />
-                            )}
-                            {activeAction === "importFile" && (
-                                <ImportM3UPanel onClose={() => setActiveAction(null)} />
+            <div className="relative page-shell pb-24 animate-rise">
+                {/* Hidden playlists notice */}
+                {showHiddenTab && (
+                    <div className="mb-6 px-4 py-3 bg-white/5 rounded-lg border border-white/10">
+                        <p className="text-xs text-[var(--text-muted)]">
+                            Hidden playlists don&apos;t appear in your library. Use the
+                            eye button on a playlist to bring it back.
+                        </p>
+                    </div>
+                )}
+
+                {displayedPlaylists.length > 0 ? (
+                    <div>
+                        {/* Section header */}
+                        <SectionHeader type="track" title={showHiddenTab ? "Hidden" : "All Playlists"} count={displayedPlaylists.length} />
+
+                        <div
+                            data-tv-section="playlists"
+                            className="grid-media"
+                        >
+                            {displayedPlaylists.map(
+                                (playlist: Playlist, index: number) => (
+                                    <PlaylistCard
+                                        key={playlist.id}
+                                        playlist={playlist}
+                                        index={index}
+                                        onPlay={handlePlayPlaylist}
+                                        onToggleHide={handleToggleHide}
+                                        isHiddenView={showHiddenTab}
+                                    />
+                                )
                             )}
                         </div>
-                    )}
-                </div>
-            </div>
-
-            {/* Content */}
-            <div className="relative px-4 md:px-8 pb-24 animate-rise">
-                <div className="max-w-[1800px] mx-auto">
-                    {/* Hidden playlists notice */}
-                    {showHiddenTab && (
-                        <div className="mb-6 px-4 py-3 bg-white/5 rounded-lg border border-white/10">
-                            <p className="text-xs text-[var(--text-muted)]">
-                                Hidden playlists won&apos;t appear in your library. Hover
-                                and click the eye icon to restore.
-                            </p>
-                        </div>
-                    )}
-
-                    {displayedPlaylists.length > 0 ? (
-                        <div>
-                            {/* Section header */}
-                            <SectionHeader type="track" title={showHiddenTab ? "Hidden" : "All Playlists"} count={displayedPlaylists.length} />
-
-                            <div
-                                data-tv-section="playlists"
-                                className="grid-media"
-                            >
-                                {displayedPlaylists.map(
-                                    (playlist: Playlist, index: number) => (
-                                        <PlaylistCard
-                                            key={playlist.id}
-                                            playlist={playlist}
-                                            index={index}
-                                            onPlay={handlePlayPlaylist}
-                                            onToggleHide={handleToggleHide}
-                                            isHiddenView={showHiddenTab}
-                                        />
-                                    )
-                                )}
-                            </div>
-                        </div>
-                    ) : (
-                        <EmptyState
-                            showHiddenTab={showHiddenTab}
-                            activeAction={activeAction}
-                            setActiveAction={setActiveAction}
-                        />
-                    )}
-                </div>
+                    </div>
+                ) : (
+                    <EmptyState
+                        showHiddenTab={showHiddenTab}
+                        activeAction={activeAction}
+                        setActiveAction={setActiveAction}
+                    />
+                )}
             </div>
         </div>
     );

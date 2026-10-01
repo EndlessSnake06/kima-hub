@@ -40,16 +40,11 @@ export default function HomePage() {
     }
 
     return (
-        <div className="min-h-screen relative bg-gradient-to-b from-[#0a0a0a] to-black">
-            {/* Static gradient overlay */}
-            <div className="fixed inset-0 pointer-events-none opacity-50">
-                <div className="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-transparent" />
-            </div>
-
+        <div className="min-h-screen">
             <div className="relative">
                 <HomeHero />
 
-                <div className="section-stack relative max-w-[1800px] mx-auto px-4 sm:px-6 md:px-8 pb-32 pt-8">
+                <div className="section-stack relative page-shell pb-32 pt-2">
                 {/* Sections rise in staggered order on mount. Only the first 8 visible sections animate;
                     items 9+ render immediately. Animation is mount-only (CSS animation-fill-mode: both). */}
                 {(() => {

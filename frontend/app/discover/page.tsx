@@ -185,12 +185,7 @@ export default function DiscoverWeeklyPage() {
     }
 
     return (
-        <div className="min-h-screen relative">
-            {/* Static gradient overlay - no animation */}
-            <div className="fixed inset-0 pointer-events-none opacity-50">
-                <div className="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-transparent" />
-            </div>
-
+        <div className="min-h-screen">
             <div className="relative">
                 <DiscoverHero
                     playlist={playlist}
@@ -207,8 +202,7 @@ export default function DiscoverWeeklyPage() {
                     onCancelGeneration={handleCancelGeneration}
                 />
 
-                {/* Track Listing */}
-                <div className="px-4 md:px-8 pb-32 max-w-[1800px] mx-auto">
+                <div className="page-shell pb-32">
                     {playlist && playlist.tracks.length > 0 ? (
                             <div className="section-stack">
                                 {/* Section header */}

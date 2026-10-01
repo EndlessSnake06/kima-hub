@@ -7,6 +7,7 @@ import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { api } from "@/lib/api";
 import Link from "next/link";
 import Image from "next/image";
+import { PageHeader } from "@/components/layout/PageHeader";
 
 interface ReleaseItem {
     id: number | string;
@@ -27,6 +28,10 @@ interface ReleaseRadarData {
     recent: ReleaseItem[];
     monitoredArtistCount: number;
     similarArtistCount: number;
+}
+
+function plural(n: number, word: string) {
+    return `${n} ${word}${n === 1 ? "" : "s"}`;
 }
 
 export default function ReleasesPage() {
@@ -100,30 +105,17 @@ export default function ReleasesPage() {
 
     return (
         <div className="min-h-screen pb-32">
-            {/* Hero Section */}
-            <div className="relative h-64 md:h-80 overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-br from-brand/20 via-brand-dark/10 to-transparent" />
-                <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0A] via-transparent to-transparent" />
+            <PageHeader
+                eyebrow="Release radar"
+                title="New and upcoming"
+                description={[
+                    plural(data?.monitoredArtistCount || 0, "monitored artist"),
+                    `${data?.upcoming.length || 0} upcoming`,
+                    `${data?.recent.length || 0} recent`,
+                ].join(" · ")}
+            />
 
-                <div className="relative h-full flex flex-col justify-end p-6 md:p-8">
-                    <div className="flex items-center gap-3 mb-2">
-                        <Calendar className="w-6 h-6 text-brand" />
-                        <span className="text-brand text-sm font-medium">
-                            Release Radar
-                        </span>
-                    </div>
-                    <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-2">
-                        New & Upcoming
-                    </h1>
-                    <p className="text-[var(--text-secondary)] text-sm md:text-base max-w-xl">
-                        {data?.monitoredArtistCount || 0} monitored artists •
-                        {data?.upcoming.length || 0} upcoming •
-                        {data?.recent.length || 0} recent releases
-                    </p>
-                </div>
-            </div>
-
-            <div className="px-4 md:px-8 space-y-10 animate-rise">
+            <div className="page-shell space-y-10 animate-rise">
                 {/* Upcoming Releases */}
                 {data?.upcoming && data.upcoming.length > 0 && (
                     <section>
