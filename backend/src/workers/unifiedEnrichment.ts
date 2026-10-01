@@ -455,9 +455,9 @@ export async function recordStageFailure(
         const pause = await sourcePauseController.getPause(source);
         const until = pause?.until ?? new Date(Date.now() + sourcePauseController.windowMs);
 
-        // A question still waiting 24 h after it first parked raises one alert and
-        // stays pending. The markers live in the record's evidence, so it stays one
-        // alert across restarts.
+        // A question still waiting 24 h after it first parked raises its source's
+        // alert once and stays pending. The marker lives in the record's evidence,
+        // so restarts do not raise it again.
         const [existing] = await prisma.$queryRawUnsafe<
             Array<{ evidence: Record<string, unknown> | null }>
         >(
@@ -488,7 +488,8 @@ export async function recordStageFailure(
                 .notifyAdmins({
                     type: "system",
                     title: `Enrichment waiting on ${source}`,
-                    message: `${stage} for ${trackId} has been waiting on ${source} for over 24 h; the record stays pending until the pause lifts.`,
+                    message: `Some tracks have waited on ${source} for over 24 h. They stay pending until its rate limit lifts.`,
+                    groupKey: `${WAITING_KEY_PREFIX}${source}`,
                 })
                 .catch(() => undefined);
         }
@@ -1286,6 +1287,27 @@ export async function redecideEverything(): Promise<{ reopened: number }> {
 }
 
 const ENRICHMENT_FAILURES_KEY = "enrichment-failures";
+const WAITING_KEY_PREFIX = "enrichment-waiting:";
+
+/** Remove each source's waiting alert once no alerted record still waits on it. */
+export async function syncWaitingAlerts(): Promise<void> {
+    const { notificationService } = await import("../services/notificationService");
+    const alerts = await prisma.notification.findMany({
+        where: { groupKey: { startsWith: WAITING_KEY_PREFIX } },
+        distinct: ["groupKey"],
+        select: { groupKey: true },
+    });
+    if (alerts.length === 0) return;
+    const waiting = await prisma.$queryRawUnsafe<Array<{ source: string }>>(
+        `SELECT DISTINCT source FROM "TrackStage"
+          WHERE status = 'pending' AND "lastErrorCode" = 'RATE_LIMITED'
+            AND evidence->>'waitingAlerted' = 'true'`,
+    );
+    const still = new Set(waiting.map((r) => `${WAITING_KEY_PREFIX}${r.source}`));
+    for (const { groupKey } of alerts) {
+        if (groupKey && !still.has(groupKey)) await notificationService.resolve(groupKey);
+    }
+}
 
 /** Keep one alert per admin naming what enrichment could not finish. It changes
  * only when the failure counts change and is removed once nothing has failed. */
@@ -1428,6 +1450,7 @@ async function runEnrichmentCycle(fullMode: boolean): Promise<{
     try {
         // Close dependents of closed prerequisites first, so they never sit `pending`.
         await closeOrphanedDependents();
+        await syncWaitingAlerts();
 
         // Run phases sequentially, halting if stopped/paused
         const artistResult = await runPhase("artists", executeArtistsPhase);
@@ -2546,14 +2569,6 @@ async function dispatchStageWork(
                     logger.warn(
                         `[Enrichment] ${stage}: ${item.title} lost its worker ${STAGE_REDELIVERY_CAP} times — record closed until a human re-decides`,
                     );
-                    const { notificationService } = await import("../services/notificationService");
-                    await notificationService
-                        .notifyAdmins({
-                            type: "error",
-                            title: `Enrichment: ${item.title} kept losing its worker`,
-                            message: `${stage} was re-offered ${STAGE_REDELIVERY_CAP} times without an answer and stayed un-attempted; the record is closed until reopened from Settings > Enrichment.`,
-                        })
-                        .catch(() => undefined);
                 }
                 continue;
             }

@@ -22,7 +22,7 @@
 
 import { prisma } from "../utils/db";
 import { sourcePauseController } from "../services/sourcePauseController";
-import { getNextWork, recordStageFailure } from "../workers/unifiedEnrichment";
+import { getNextWork, recordStageFailure, syncWaitingAlerts } from "../workers/unifiedEnrichment";
 import { closeEngineConnections } from "./helpers/engineConnections";
 
 const PREFIX = "pause";
@@ -98,6 +98,8 @@ async function wipe(): Promise<void> {
     for (const source of ["musicbrainz", "analyzer", "clap"]) {
         await prisma.$executeRawUnsafe(`DELETE FROM "SourceAttempt" WHERE source = $1`, source);
     }
+    await prisma.notification.deleteMany({ where: { userId: id("admin") } });
+    await prisma.user.deleteMany({ where: { id: id("admin") } });
 }
 
 beforeEach(async () => {
@@ -224,5 +226,42 @@ describe("a rate limit pauses only that source and is not a failure", () => {
         });
         await recordStageFailure(id("a"), "recording", "musicbrainz", mb503);
         expect(await sourcePauseController.isPaused("musicbrainz")).toBe(true);
+    });
+});
+
+describe("a source that keeps enrichment waiting for a day", () => {
+    const tooMany = () => Object.assign(new Error("HTTP 429 Too Many Requests"), { response: { status: 429 } });
+    const alerts = () => prisma.notification.findMany({ where: { userId: id("admin") } });
+
+    beforeEach(async () => {
+        await prisma.user.create({
+            data: { id: id("admin"), username: id("admin"), passwordHash: "x", role: "admin", tokenVersion: 0 },
+        });
+        await putStage(id("b"), "recording", "pending");
+        const dayAgo = new Date(Date.now() - 25 * 60 * 60_000).toISOString();
+        await prisma.$executeRawUnsafe(
+            `UPDATE "TrackStage" SET evidence = jsonb_build_object('waitingSince', $1::text)
+              WHERE "trackId" IN ($2, $3) AND stage = 'recording'`,
+            dayAgo, id("a"), id("b"),
+        );
+    });
+
+    it("raises one alert for the source, not one per track", async () => {
+        await recordStageFailure(id("a"), "recording", "musicbrainz", tooMany());
+        await recordStageFailure(id("b"), "recording", "musicbrainz", tooMany());
+
+        const rows = await alerts();
+        expect(rows).toHaveLength(1);
+        expect(rows[0]).toMatchObject({ title: "Enrichment waiting on musicbrainz", groupKey: "enrichment-waiting:musicbrainz" });
+    });
+
+    it("removes the alert once nothing waits on the source", async () => {
+        await recordStageFailure(id("a"), "recording", "musicbrainz", tooMany());
+        await syncWaitingAlerts();
+        expect(await alerts()).toHaveLength(1);
+
+        await putStage(id("a"), "recording", "done", { attempt: 1 });
+        await syncWaitingAlerts();
+        expect(await alerts()).toHaveLength(0);
     });
 });

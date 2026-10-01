@@ -171,6 +171,9 @@ jest.mock("../../utils/db", () => ({
         enrichmentFailure: {
             findMany: jest.fn().mockResolvedValue([]),
         },
+        notification: {
+            findMany: jest.fn().mockResolvedValue([]),
+        },
         $queryRaw: mockQueryRaw,
         $queryRawUnsafe: mockQueryRaw,
         $executeRaw: jest.fn().mockResolvedValue(0),
