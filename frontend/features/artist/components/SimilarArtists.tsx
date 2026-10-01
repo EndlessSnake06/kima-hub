@@ -1,20 +1,18 @@
 "use client";
 
+import Link from "next/link";
 import { SimilarArtist } from "../types";
 import { Music, Library } from "lucide-react";
+import { plural } from "@/lib/format";
 import { api } from "@/lib/api";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { CachedImage } from "@/components/ui/CachedImage";
 
 interface SimilarArtistsProps {
     similarArtists: SimilarArtist[];
-    onNavigate: (artistId: string) => void;
 }
 
-export function SimilarArtists({
-    similarArtists,
-    onNavigate,
-}: SimilarArtistsProps) {
+export function SimilarArtists({ similarArtists }: SimilarArtistsProps) {
     if (!similarArtists || similarArtists.length === 0) {
         return null;
     }
@@ -35,27 +33,18 @@ export function SimilarArtists({
                         ? Math.round(artist.weight * 100)
                         : null;
 
-                    // For library artists, use the library ID; otherwise use mbid or name
                     const navigationId = artist.inLibrary
                         ? artist.id
                         : artist.mbid || artist.id;
 
                     return (
-                        <div
+                        <Link
                             key={artist.id || artist.name}
+                            href={`/artist/${navigationId}`}
                             data-tv-card
                             data-tv-card-index={index}
-                            tabIndex={0}
-                            onClick={() => onNavigate(navigationId)}
-                            onKeyDown={(e) => {
-                                if (e.key === "Enter") {
-                                    e.preventDefault();
-                                    onNavigate(navigationId);
-                                }
-                            }}
-                            className="bg-transparent hover:bg-white/5 transition-all p-3 rounded-md cursor-pointer group"
+                            className="block bg-transparent hover:bg-white/5 transition-colors p-3 rounded-md group"
                         >
-                            {/* Circular Artist Image */}
                             <div className="w-full aspect-square bg-[#282828] rounded-full mb-2.5 overflow-hidden relative">
                                 {imageUrl ? (
                                     <CachedImage
@@ -70,7 +59,6 @@ export function SimilarArtists({
                                         <Music className="w-12 h-12 text-[var(--text-muted)]" />
                                     </div>
                                 )}
-                                {/* Library indicator badge */}
                                 {artist.inLibrary && (
                                     <div
                                         className="absolute bottom-1 right-1 bg-brand rounded-full p-1"
@@ -81,28 +69,22 @@ export function SimilarArtists({
                                 )}
                             </div>
 
-                            {/* Artist Name */}
                             <h3 className="text-sm font-semibold text-white truncate mb-0.5">
                                 {artist.name}
                             </h3>
 
-                            {/* Album Count - show owned count if in library */}
                             <p className="text-xs text-[var(--text-secondary)] truncate">
-                                {artist.ownedAlbumCount &&
-                                artist.ownedAlbumCount > 0
-                                    ? `${artist.ownedAlbumCount} album${
-                                          artist.ownedAlbumCount > 1 ? "s" : ""
-                                      } in library`
+                                {artist.ownedAlbumCount && artist.ownedAlbumCount > 0
+                                    ? `${plural(artist.ownedAlbumCount, "album")} in library`
                                     : "Artist"}
                             </p>
 
-                            {/* Match Percentage */}
                             {matchPercentage !== null && (
                                 <p className="text-xs text-brand mt-1">
                                     {matchPercentage}% match
                                 </p>
                             )}
-                        </div>
+                        </Link>
                     );
                 })}
             </div>

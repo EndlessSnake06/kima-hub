@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import {
     useAudioState,
     useAudioPlayback,
@@ -31,7 +30,6 @@ import { PageMessage } from "@/components/ui/PageMessage";
 
 export default function ArtistPage() {
     const { toast } = useToast();
-    const router = useRouter();
     // Use split hooks to avoid re-renders from currentTime updates
     const { currentTrack } = useAudioState();
     const { isPlaying } = useAudioPlayback();
@@ -185,7 +183,6 @@ export default function ArtistPage() {
                 colors={colors}
                 onReload={reloadArtist}
             >
-                {/* Action bar inside hero for visual continuity */}
                 <ArtistActionBar
                     albums={albums}
                     source={source}
@@ -203,9 +200,7 @@ export default function ArtistPage() {
                 />
             </ArtistHero>
 
-            {/* Main Content - fills remaining viewport height */}
             <div className="relative min-h-[50vh] flex-1 animate-rise">
-                {/* Dynamic color gradient background */}
                 <div
                     className="absolute inset-0 pointer-events-none"
                     style={{
@@ -218,12 +213,10 @@ export default function ArtistPage() {
                 <div className="absolute inset-0 bg-[linear-gradient(to_bottom,transparent_0%,rgba(16,16,16,0.4)_100%)] pointer-events-none" />
 
                 <div className="relative page-shell py-6 space-y-8">
-                    {/* Bio / About */}
                     {(artist.bio || artist.summary) && (
                         <ArtistBio bio={artist.bio || artist.summary || ""} />
                     )}
 
-                    {/* Popular Tracks */}
                     {artist.topTracks && artist.topTracks.length > 0 && (
                         <PopularTracks
                             tracks={artist.topTracks}
@@ -238,7 +231,6 @@ export default function ArtistPage() {
                         />
                     )}
 
-                    {/* Discography (Owned Albums) */}
                     <Discography
                         albums={ownedAlbums}
                         colors={colors}
@@ -247,7 +239,6 @@ export default function ArtistPage() {
                         onSortChange={setSortBy}
                     />
 
-                    {/* Available Albums to Download */}
                     <AvailableAlbums
                         albums={availableAlbums}
                         source={source}
@@ -256,14 +247,10 @@ export default function ArtistPage() {
                         isPendingDownload={isPendingByMbid}
                     />
 
-                    {/* Similar Artists */}
                     {artist.similarArtists &&
                         artist.similarArtists.length > 0 && (
                             <SimilarArtists
                                 similarArtists={artist.similarArtists}
-                                onNavigate={(id) =>
-                                    router.push(`/artist/${id}`)
-                                }
                             />
                         )}
                 </div>
