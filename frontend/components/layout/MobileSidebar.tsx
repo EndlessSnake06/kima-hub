@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Settings, RefreshCw, LogOut, Compass, X, Radio, ChartNoAxesColumn } from "lucide-react";
-import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/cn";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -18,7 +17,6 @@ interface MobileSidebarProps {
 
 export function MobileSidebar({ isOpen, onClose }: MobileSidebarProps) {
     const pathname = usePathname();
-    const queryClient = useQueryClient();
     const { logout } = useAuth();
     const [isSyncing, setIsSyncing] = useState(false);
     const isFirstRender = useRef(true);
@@ -46,7 +44,6 @@ export function MobileSidebar({ isOpen, onClose }: MobileSidebarProps) {
         try {
             setIsSyncing(true);
             await api.scanLibrary();
-            queryClient.invalidateQueries({ queryKey: ["notifications"] });
             onClose();
         } catch (error) {
             console.error("Failed to sync library:", error);

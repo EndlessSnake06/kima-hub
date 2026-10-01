@@ -90,8 +90,6 @@ export function TopBar() {
             setLastScanTime(now);
             const response = await api.scanLibrary();
             setScanJobId(response.jobId);
-            // Refresh notifications to show the scan started notification
-            queryClient.invalidateQueries({ queryKey: ["notifications"] });
         } catch (error) {
             console.error("Failed to trigger library scan:", error);
             // A refused scan never starts, so nothing else reports it.
