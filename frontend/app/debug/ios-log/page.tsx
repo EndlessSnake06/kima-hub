@@ -10,6 +10,7 @@ import {
 export default function IosLogPage() {
     const [enabled] = useState(() => isIosAudioDebugEnabled());
     const [events, setEvents] = useState<ReturnType<typeof readIosAudioLog>>([]);
+    const [uploadStatus, setUploadStatus] = useState<string | null>(null);
 
     useEffect(() => {
         const id = setInterval(() => {
@@ -30,15 +31,15 @@ export default function IosLogPage() {
 
     async function upload() {
         try {
-            await fetch("/api/debug/ios-log", {
+            const res = await fetch("/api/debug/ios-log", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 credentials: "include",
                 body: JSON.stringify({ events }),
             });
-            alert("Uploaded");
-        } catch (_e) {
-            alert("Upload failed");
+            setUploadStatus(res.ok ? "Uploaded" : `Upload failed (${res.status})`);
+        } catch {
+            setUploadStatus("Upload failed");
         }
     }
 
@@ -52,6 +53,7 @@ export default function IosLogPage() {
             <button onClick={() => { clearIosAudioLog(); setEvents([]); }}>
                 Clear
             </button>
+            {uploadStatus && <span role="status"> {uploadStatus}</span>}
             <table style={{ width: "100%", marginTop: 16, fontFamily: "monospace" }}>
                 <thead>
                     <tr>
