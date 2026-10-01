@@ -93,7 +93,7 @@ const ContinueListeningCard = memo(function ContinueListeningCard({
                                     src={imageSrc}
                                     alt={item.name}
                                     fill
-                                    className="object-cover group-hover:scale-110 transition-transform duration-150"
+                                    className="object-cover cover-zoom"
                                     sizes="180px"
                                     priority={false}
                                 />

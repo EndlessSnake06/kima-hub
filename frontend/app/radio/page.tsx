@@ -37,11 +37,11 @@ function RadioStationCard({
                 station.hoverBorder,
                 "transition-all duration-300",
                 station.hoverShadow,
-                "hover:scale-[1.02] active:scale-[0.98]",
+                "active:scale-[0.98]",
                 "disabled:opacity-50 disabled:cursor-not-allowed"
             )}
         >
-            <div className={cn("absolute inset-0 bg-gradient-to-br", station.color)} />
+            <div className={cn("absolute inset-0 bg-gradient-to-br cover-zoom", station.color)} />
 
             <div className="absolute inset-0 p-4 flex flex-col justify-end">
                 <div>

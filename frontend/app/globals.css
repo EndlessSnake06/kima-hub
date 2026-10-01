@@ -277,6 +277,18 @@ code {
 
 /* The page column: one width and one side gutter for every page. */
 @layer components {
+    /* Every card's cover on hover: a slow, slight push-in. Touch screens and
+     * reduced motion keep the cover still. */
+    .cover-zoom {
+        transition: transform 600ms cubic-bezier(0.33, 1, 0.68, 1);
+    }
+    @media (hover: hover) and (prefers-reduced-motion: no-preference) {
+        .group:hover .cover-zoom,
+        .group:focus-visible .cover-zoom {
+            transform: scale(1.04);
+        }
+    }
+
     .page-shell {
         max-width: 1800px;
         margin-inline: auto;

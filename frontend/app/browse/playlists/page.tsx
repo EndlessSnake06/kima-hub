@@ -198,7 +198,7 @@ export default function BrowsePlaylistsPage() {
                         alt={item.title}
                         fill
                         sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, (max-width: 1280px) 20vw, (max-width: 1536px) 16vw, 14vw"
-                        className="object-cover group-hover:scale-105 transition-transform duration-150"
+                        className="object-cover cover-zoom"
                     />
                 :   <div className="w-full h-full flex items-center justify-center">
                         <Music2 className="w-12 h-12 text-white/10" />
@@ -229,7 +229,7 @@ export default function BrowsePlaylistsPage() {
                     alt={genre.name}
                     fill
                     sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, (max-width: 1280px) 20vw, 16vw"
-                    className="object-cover group-hover:scale-105 transition-transform duration-150"
+                    className="object-cover cover-zoom"
                 />
             :   <div className="w-full h-full bg-gradient-to-br from-type-track/30 to-type-track/10" />
             }

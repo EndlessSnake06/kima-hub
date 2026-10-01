@@ -46,7 +46,7 @@ export function AudiobookCard({
                                 alt={title}
                                 fill
                                 sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, (max-width: 1280px) 20vw, (max-width: 1536px) 16.6vw, (max-width: 2000px) 12.5vw, 10vw"
-                                className="object-cover"
+                                className="object-cover cover-zoom"
                                 loading="lazy"
                                 onError={(e) => {
                                     e.currentTarget.style.display = "none";

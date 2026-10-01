@@ -85,7 +85,7 @@ export const MediaCard = memo(function MediaCard({
                                 alt={title}
                                 fill
                                 sizes={sizes}
-                                className="object-cover group-hover:scale-110 transition-transform duration-150"
+                                className="object-cover cover-zoom"
                             />
                         ) : (
                             <FallbackIcon className="w-10 h-10 text-[var(--text-muted)]" />

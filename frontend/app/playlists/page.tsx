@@ -107,7 +107,7 @@ function PlaylistMosaic({
                 src={coverUrls[0]}
                 alt=""
                 fill
-                className={cn("object-cover", greyed && "opacity-50 grayscale")}
+                className={cn("object-cover cover-zoom", greyed && "opacity-50 grayscale")}
                 sizes="200px"
             />
         );
@@ -116,7 +116,7 @@ function PlaylistMosaic({
     return (
         <div
             className={cn(
-                "grid grid-cols-2 w-full h-full",
+                "grid grid-cols-2 w-full h-full cover-zoom",
                 greyed && "opacity-50 grayscale"
             )}
         >

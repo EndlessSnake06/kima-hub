@@ -40,7 +40,7 @@ const MixCard = memo(
                                                     src={proxiedUrl}
                                                     alt=""
                                                     fill
-                                                    className="object-cover group-hover:scale-105 transition-transform duration-150"
+                                                    className="object-cover cover-zoom"
                                                     sizes="180px"
                                                 />
                                             </div>

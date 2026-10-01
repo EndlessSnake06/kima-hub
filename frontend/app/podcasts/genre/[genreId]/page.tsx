@@ -148,7 +148,7 @@ export default function GenrePage() {
                             <button
                                 key={podcast.id}
                                 onClick={() => handlePodcastClick(podcast)}
-                                className="group text-left bg-[var(--bg-primary)] border border-white/10 rounded-lg overflow-hidden hover:border-type-podcast/40 transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
+                                className="group text-left bg-[var(--bg-primary)] border border-white/10 rounded-lg overflow-hidden hover:border-type-podcast/40 transition-colors duration-300 active:scale-[0.98]"
                             >
                                 <div className="relative w-full aspect-square bg-[var(--bg-secondary)] overflow-hidden">
                                     {podcast.coverUrl ? (
@@ -157,7 +157,7 @@ export default function GenrePage() {
                                             alt={podcast.title}
                                             fill
                                             sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, 16vw"
-                                            className="object-cover group-hover:scale-105 transition-transform duration-150"
+                                            className="object-cover cover-zoom"
                                         />
                                     ) : (
                                         <div className="w-full h-full flex items-center justify-center">
