@@ -162,7 +162,7 @@ export function ListeningClock({ listening, period }: { listening: ListeningStat
                                         onClick={() => toggle(dow, hour)}
                                         aria-disabled={n === 0}
                                         className={[
-                                            "touch-exempt h-6 sm:h-7 rounded-[2px] origin-center",
+                                            "touch-exempt h-6 short:max-sm:h-4 sm:h-7 rounded-[2px] origin-center",
                                             "transition-[box-shadow,opacity] duration-150",
                                             "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/70",
                                             n > 0 && "cursor-pointer",
@@ -207,7 +207,7 @@ export function ListeningClock({ listening, period }: { listening: ListeningStat
                 not a control. Rather than shrink the week to fit a finger — which
                 would cost the only thing the grid is for — the busiest hours get
                 their own full-width rows underneath, and the grid stays a grid. */}
-            <div className="sm:hidden flex flex-col gap-1 -mt-1">
+            <div className="sm:hidden flex flex-col gap-1 -mt-1 short:[&>button:nth-of-type(n+3)]:hidden">
                 <h3 className="t-label mb-1">Your busiest hours</h3>
                 {busiest.map(({ dow, hour, n }) => {
                     const opened = open?.dow === dow && open?.hour === hour;
@@ -235,8 +235,9 @@ export function ListeningClock({ listening, period }: { listening: ListeningStat
             </div>
 
             <figcaption className="flex flex-col gap-4">
-                {/* Reserved height, so rewriting the line never nudges the page. */}
-                <div className="min-h-[3.5rem] flex flex-col gap-1" aria-hidden="true">
+                {/* Reserved height, so rewriting the line never nudges the page. On phones
+                    the busiest-hours rows already say this, so it shows only for an opened hour. */}
+                <div className={`min-h-[3.5rem] flex flex-col gap-1 ${open ? "" : "max-sm:hidden"}`} aria-hidden="true">
                     {shown && (
                         <>
                             <p className="t-figure text-[length:var(--stat-lead)] leading-tight">

@@ -1,5 +1,18 @@
 @import "tailwindcss";
 
+/* Phones, and any screen too short for a header row above the content. */
+@custom-variant compact {
+    @media (max-width: 639px) {
+        @slot;
+    }
+    @media (max-height: 560px) {
+        @slot;
+    }
+}
+
+/* Screens where every row of height counts, such as a phone browser with its toolbars showing. */
+@custom-variant short (@media (max-height: 720px));
+
 @theme {
     /* The smallest text size, for eyebrows, counts and status chips.
      * Tailwind's named scale stops at 12px; nothing goes below this. */

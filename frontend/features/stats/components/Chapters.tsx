@@ -16,9 +16,9 @@ export interface Chapter {
 /**
  * One panel per chapter, side by side. Tabs, digit keys and a sideways swipe
  * move between them, the URL hash names the open one, and nothing on the
- * page scrolls vertically.
+ * page scrolls vertically. `aside` sits at the end of the tab row on compact screens.
  */
-export function Chapters({ chapters }: { chapters: Chapter[] }) {
+export function Chapters({ chapters, aside }: { chapters: Chapter[]; aside?: React.ReactNode }) {
     const track = useRef<HTMLDivElement>(null);
     const tabRow = useRef<HTMLDivElement>(null);
     const [active, setActive] = useState(chapters[0]?.id ?? "");
@@ -156,6 +156,7 @@ export function Chapters({ chapters }: { chapters: Chapter[] }) {
                     })}
                 </div>
                 <Shortcuts chapters={chapters} onJump={go} />
+                {aside && <div className="hidden shrink-0 py-1 compact:block">{aside}</div>}
             </div>
 
             <div
@@ -179,7 +180,7 @@ function Panel({ chapter, open }: { chapter: Chapter; open: boolean }) {
             role="tabpanel"
             aria-labelledby={`tab-${chapter.id}`}
             inert={!open}
-            className="h-full w-full shrink-0 snap-start snap-always pt-4 sm:pt-6"
+            className="h-full w-full shrink-0 snap-start snap-always pt-6 compact:pt-4"
         >
             <FitPanel fill={chapter.fill}>
                 <div className={`${chapter.fill ? "h-full" : ""} ${shown ? "animate-rise" : "opacity-0"}`}>
