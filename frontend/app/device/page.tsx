@@ -95,26 +95,20 @@ export default function DeviceLinkPage() {
         }
     };
 
-    // Countdown timer
+    const expired = timeRemaining <= 0;
+
     useEffect(() => {
-        if (timeRemaining <= 0 || codeUsed) return;
+        if (!linkCode || expired || codeUsed) return;
 
         const timer = setInterval(() => {
-            setTimeRemaining((prev) => {
-                if (prev <= 1) {
-                    clearInterval(timer);
-                    return 0;
-                }
-                return prev - 1;
-            });
+            setTimeRemaining((prev) => Math.max(prev - 1, 0));
         }, 1000);
 
         return () => clearInterval(timer);
-    }, [timeRemaining, codeUsed]);
+    }, [linkCode, expired, codeUsed]);
 
-    // Poll for code usage
     useEffect(() => {
-        if (!linkCode || timeRemaining <= 0 || codeUsed) return;
+        if (!linkCode || expired || codeUsed) return;
 
         const pollInterval = setInterval(async () => {
             try {
@@ -124,7 +118,7 @@ export default function DeviceLinkPage() {
 
                 if (status.status === "used") {
                     setCodeUsed(true);
-                    loadDevices(); // Refresh devices list
+                    loadDevices();
                 }
             } catch (err) {
                 console.error("Failed to check code status:", err);
@@ -132,7 +126,7 @@ export default function DeviceLinkPage() {
         }, 2000);
 
         return () => clearInterval(pollInterval);
-    }, [linkCode, timeRemaining, codeUsed, loadDevices]);
+    }, [linkCode, expired, codeUsed, loadDevices]);
 
     // Copy code to clipboard
     const copyCode = () => {
@@ -236,7 +230,7 @@ export default function DeviceLinkPage() {
                                                 Link Another Device
                                             </button>
                                         </div>
-                                    ) : timeRemaining <= 0 ? (
+                                    ) : expired ? (
                                         <div className="py-8">
                                             <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-danger/20 flex items-center justify-center">
                                                 <Clock className="w-8 h-8 text-danger-light" />
