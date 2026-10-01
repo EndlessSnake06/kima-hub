@@ -99,6 +99,12 @@ const nextConfig: NextConfig = {
             },
         ];
     },
+    async redirects() {
+        return [
+            { source: "/setup", destination: "/login", permanent: true },
+            { source: "/import/spotify", destination: "/import/playlist", permanent: true },
+        ];
+    },
     // /api/* goes to the backend. Images set NEXT_PUBLIC_BACKEND_URL; the
     // fallback is the local dev backend (backend/.env PORT=3111). /api/events
     // is excluded: app/api/events/route.ts streams it without buffering.

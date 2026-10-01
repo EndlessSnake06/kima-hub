@@ -23,8 +23,8 @@ import { useImportToasts } from "@/hooks/useImportToasts";
 
 // Paths that render without the sidebar, top bar and player. Not the same list
 // as auth-context's (no login) or ConditionalAudioProvider's (no audio): /share
-// needs audio but no chrome, and /setup must be here because the sidebar needs audio.
-const publicPaths = ["/login", "/onboarding", "/setup", "/sync", "/share"];
+// needs audio but no chrome.
+const publicPaths = ["/login", "/onboarding", "/sync", "/share"];
 
 export function AuthenticatedLayout({ children }: { children: ReactNode }) {
     const { isAuthenticated, isLoading } = useAuth();
