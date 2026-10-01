@@ -133,7 +133,7 @@ export default function StatsPage() {
                         <PeriodPicker value={period} onChange={setPeriod} busy={reloading} />
                     </div>
                     <h1 className="text-[length:var(--stat-hero)] leading-[1.02] font-light tracking-[-0.03em] text-[var(--text-primary)]">
-                        {period === "all" ? "Nothing to show yet" : "Nothing in this window"}
+                        {period === "all" ? "No plays yet" : "No plays in this period"}
                     </h1>
                     <p className="t-body leading-relaxed max-w-[48ch]">
                         {period === "all"
