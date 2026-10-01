@@ -1,8 +1,8 @@
 /**
  * addAlbum: Discover adds only under an artist it tagged, only the exact MBID,
- * only without files; every request accepts any edition; a search that grabs
- * nothing is explained from Lidarr's release list; a Lidarr outage is reported
- * as one, never as "not found".
+ * only without files; a library request untags the artist; every request
+ * accepts any edition; a search that grabs nothing is explained from Lidarr's
+ * release list; a Lidarr outage is reported as one, never as "not found".
  */
 
 import { AcquisitionErrorType, lidarrService } from "../lidarr";
@@ -91,6 +91,26 @@ it("lets Lidarr import whichever edition the download matches", async () => {
         "/api/v1/album/7",
         expect.objectContaining({ monitored: true, anyReleaseOk: true })
     );
+});
+
+it("takes the Discover tag off an artist the user asks for an album by", async () => {
+    jest.spyOn(service, "getArtistList").mockResolvedValue([artist([TAG])]);
+    const untag = jest.spyOn(service, "removeTagsFromArtist").mockResolvedValue(true);
+    catalog = [album("rg-asked", "Antics")];
+
+    await lidarrService.addAlbum("rg-asked", "Interpol", "Antics", "/music", ARTIST_MBID, false);
+
+    expect(untag).toHaveBeenCalledWith(5, [TAG]);
+});
+
+it("leaves the Discover tag on for Discover's own requests", async () => {
+    jest.spyOn(service, "getArtistList").mockResolvedValue([artist([TAG])]);
+    const untag = jest.spyOn(service, "removeTagsFromArtist").mockResolvedValue(true);
+    catalog = [album("rg-asked", "Antics")];
+
+    await addForDiscover("rg-asked", "Antics");
+
+    expect(untag).not.toHaveBeenCalled();
 });
 
 describe("a search that grabs nothing", () => {

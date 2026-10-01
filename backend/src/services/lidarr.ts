@@ -427,15 +427,18 @@ class LidarrService {
                 );
             }
 
-            // Discover manages only artists it added, which carry its tag; anything else is the user's.
-            if (isDiscovery) {
-                const discoveryTagId = await this.getOrCreateDiscoveryTag();
-                if (!discoveryTagId || !artist.tags?.includes(discoveryTagId)) {
-                    logger.warn(
-                        `   [Lidarr] ${artist.artistName} is in Lidarr outside Discover; not adding "${albumTitle}"`
-                    );
-                    return null;
-                }
+            // Discover manages only artists it added, which carry its tag; a library
+            // request takes the tag off, so Discover's cleanup leaves the artist alone.
+            const discoveryTagId = await this.getOrCreateDiscoveryTag();
+            const discoveryOwned = !!discoveryTagId && !!artist.tags?.includes(discoveryTagId);
+            if (isDiscovery && !discoveryOwned) {
+                logger.warn(
+                    `   [Lidarr] ${artist.artistName} is in Lidarr outside Discover; not adding "${albumTitle}"`
+                );
+                return null;
+            }
+            if (!isDiscovery && discoveryOwned && !(await this.removeTagsFromArtist(artist.id, [discoveryTagId!]))) {
+                logger.warn(`   [Lidarr] ${artist.artistName} keeps the Discover tag; its weekly cleanup may remove it`);
             }
 
             let artistAlbums: LidarrAlbum[] = [];
