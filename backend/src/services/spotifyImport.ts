@@ -296,6 +296,12 @@ async function getImportJob(importJobId: string): Promise<ImportJob | null> {
   return job;
 }
 
+function notifyImportFailed(job: ImportJob): void {
+  notificationService
+    .notifyImportFailed(job.userId, job.playlistName, job.error ?? "Unknown error")
+    .catch((e) => logger.error(`[Spotify Import] Job ${job.id}: failure notification failed:`, e));
+}
+
 class SpotifyImportService {
   private activeImportControllers = new Map<string, AbortController>();
 
@@ -1600,6 +1606,7 @@ class SpotifyImportService {
       job.status = "failed";
       job.error = error.message;
       job.updatedAt = new Date();
+      notifyImportFailed(job);
       throw error;
     }
   }
@@ -1656,6 +1663,7 @@ class SpotifyImportService {
       job.error = message;
       job.updatedAt = new Date();
       await saveImportJob(job);
+      notifyImportFailed(job);
       // Clean up job logger to prevent memory leak
       jobLoggers.delete(job.id);
       return;
@@ -3378,6 +3386,7 @@ class SpotifyImportService {
     job.error = errorMessage;
     job.updatedAt = new Date();
     await saveImportJob(job);
+    notifyImportFailed(job);
   }
 }
 

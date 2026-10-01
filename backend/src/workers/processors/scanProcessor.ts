@@ -3,6 +3,7 @@ import { logger } from "../../utils/logger";
 import { MusicScannerService } from "../../services/musicScanner";
 import { config } from "../../config";
 import { eventBus } from "../../services/eventBus";
+import { notificationService } from "../../services/notificationService";
 import { stringSimilarity } from "../../utils/normalization";
 import * as path from "path";
 
@@ -145,6 +146,18 @@ export interface ScanJobResult {
     duration: number;
 }
 
+const SCAN_RESULT_KEY = "library-scan";
+
+function scanSummary(r: { tracksAdded: number; tracksUpdated: number; tracksMissing: number; tracksCorrupt: number }): string {
+    const parts = [
+        r.tracksAdded > 0 && `${r.tracksAdded} added`,
+        r.tracksUpdated > 0 && `${r.tracksUpdated} updated`,
+        r.tracksMissing > 0 && `${r.tracksMissing} missing`,
+        r.tracksCorrupt > 0 && `${r.tracksCorrupt} corrupt`,
+    ].filter(Boolean);
+    return parts.length > 0 ? parts.join(", ") : "No changes";
+}
+
 export async function processScan(
     job: Job<ScanJobData>
 ): Promise<ScanJobResult> {
@@ -218,13 +231,24 @@ export async function processScan(
                 userId,
                 payload: {
                     jobId: String(job.id),
-                    manual,
-                      result: { tracksAdded: result.tracksAdded, tracksUpdated: result.tracksUpdated, tracksMissing: result.tracksMissing, tracksCorrupt: result.tracksCorrupt },
-                  },
-              });
-          }
+                    result: { tracksAdded: result.tracksAdded, tracksUpdated: result.tracksUpdated, tracksMissing: result.tracksMissing, tracksCorrupt: result.tracksCorrupt },
+                },
+            });
+            if (manual) {
+                await notificationService
+                    .create({
+                        userId,
+                        type: "system",
+                        title: "Library scan finished",
+                        message: scanSummary(result),
+                        groupKey: SCAN_RESULT_KEY,
+                        renotify: true,
+                    })
+                    .catch((e) => logger.error(`[ScanJob ${job.id}] Failed to record scan result:`, e));
+            }
+        }
 
-          logger.debug(
+        logger.debug(
               `[ScanJob ${job.id}] Scan complete: +${result.tracksAdded} ~${result.tracksUpdated} missing:${result.tracksMissing} corrupt:${result.tracksCorrupt}`
           );
 
@@ -571,8 +595,20 @@ export async function processScan(
             eventBus.emit({
                 type: "scan:complete",
                 userId,
-                payload: { jobId: String(job.id), manual, error: error.message || "Scan failed" },
+                payload: { jobId: String(job.id), error: error.message || "Scan failed" },
             });
+            if (manual) {
+                await notificationService
+                    .create({
+                        userId,
+                        type: "error",
+                        title: "Library scan failed",
+                        message: error.message || undefined,
+                        groupKey: SCAN_RESULT_KEY,
+                        renotify: true,
+                    })
+                    .catch((e) => logger.error(`[ScanJob ${job.id}] Failed to record scan failure:`, e));
+            }
         }
         throw error;
     }
