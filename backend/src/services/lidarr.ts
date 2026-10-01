@@ -229,7 +229,7 @@ class LidarrService {
     async addArtist(
         mbid: string,
         artistName: string,
-        rootFolderPath: string = "/music",
+        rootFolderPath: string,
         isDiscovery: boolean = false
     ): Promise<LidarrArtist | null> {
         await this.ensureInitialized();
@@ -351,7 +351,7 @@ class LidarrService {
         rgMbid: string,
         artistName: string,
         albumTitle: string,
-        rootFolderPath: string = "/music",
+        rootFolderPath: string,
         artistMbid?: string,
         isDiscovery: boolean = false
     ): Promise<LidarrAlbum | null> {

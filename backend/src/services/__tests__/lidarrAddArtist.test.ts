@@ -33,7 +33,7 @@ beforeEach(() => {
 const artistPost = () => client.post.mock.calls.find(([url]) => url === "/api/v1/artist");
 
 it("adds with the chosen profiles and monitors no catalogue", async () => {
-    expect(await lidarrService.addArtist(MBID, "Low")).toMatchObject({ id: 9 });
+    expect(await lidarrService.addArtist(MBID, "Low", "/music")).toMatchObject({ id: 9 });
     expect(artistPost()?.[1]).toMatchObject({
         foreignArtistId: MBID,
         qualityProfileId: 3,
@@ -46,7 +46,7 @@ it("adds with the chosen profiles and monitors no catalogue", async () => {
 it("refuses a new artist until the profiles are chosen", async () => {
     service.qualityProfileId = null;
 
-    await expect(lidarrService.addArtist(MBID, "Low")).rejects.toThrow(/Choose a Lidarr quality and metadata profile/);
+    await expect(lidarrService.addArtist(MBID, "Low", "/music")).rejects.toThrow(/Choose a Lidarr quality and metadata profile/);
     expect(client.post).not.toHaveBeenCalled();
 });
 
@@ -54,14 +54,14 @@ it("returns an artist Lidarr already has without needing profiles", async () => 
     service.qualityProfileId = null;
     (service.getArtistList as jest.Mock).mockResolvedValue([{ id: 2, foreignArtistId: MBID }]);
 
-    expect(await lidarrService.addArtist(MBID, "Low")).toMatchObject({ id: 2 });
+    expect(await lidarrService.addArtist(MBID, "Low", "/music")).toMatchObject({ id: 2 });
     expect(client.post).not.toHaveBeenCalled();
 });
 
 it("adds nothing when Lidarr only knows other artists by that name", async () => {
     lookup = [{ foreignArtistId: "another-low", artistName: "Low" }];
 
-    expect(await lidarrService.addArtist(MBID, "Low")).toBeNull();
+    expect(await lidarrService.addArtist(MBID, "Low", "/music")).toBeNull();
     expect(client.post).not.toHaveBeenCalled();
 });
 
@@ -69,5 +69,5 @@ it("throws a Lidarr outage instead of reporting the artist missing", async () =>
     const outage = Object.assign(new Error("connect ECONNREFUSED"), { isAxiosError: true });
     client.get.mockRejectedValue(outage);
 
-    await expect(lidarrService.addArtist(MBID, "Low")).rejects.toBe(outage);
+    await expect(lidarrService.addArtist(MBID, "Low", "/music")).rejects.toBe(outage);
 });
