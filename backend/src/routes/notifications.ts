@@ -356,7 +356,7 @@ router.post(
                     where: {
                         userId: req.user!.id,
                         targetMbid: retryTargetId,
-                        status: { in: ["pending", "processing", "downloading"] },
+                        status: { in: ["pending", "processing"] },
                         cleared: { not: true },
                     },
                 });
@@ -548,7 +548,7 @@ router.post(
                         where: {
                             userId: req.user!.id,
                             targetMbid: failedJob.targetMbid,
-                            status: { in: ["pending", "processing", "downloading"] },
+                            status: { in: ["pending", "processing"] },
                             cleared: { not: true },
                         },
                     });
@@ -734,7 +734,7 @@ router.post(
                 where: {
                     userId: req.user!.id,
                     targetMbid: failedJob.targetMbid,
-                    status: { in: ["pending", "processing", "downloading"] },
+                    status: { in: ["pending", "processing"] },
                     cleared: { not: true },
                 },
             });

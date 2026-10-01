@@ -1,14 +1,20 @@
 /**
  * startDownload acts on why Lidarr refused: an owned album completes the job,
- * an outage is retried, and only a real refusal fails it.
+ * an outage is retried, and only a real refusal fails it. A refused library
+ * album falls back to one untried album by the same artist.
  */
 
 jest.mock("../lidarr", () => ({
     ...jest.requireActual("../lidarr"),
-    lidarrService: { addAlbum: jest.fn() },
+    lidarrService: { addAlbum: jest.fn(), getArtistAlbums: jest.fn() },
 }));
 jest.mock("../musicbrainz", () => ({
-    musicBrainzService: { getReleaseGroup: jest.fn().mockResolvedValue({ kind: "answered", value: {} }) },
+    musicBrainzService: {
+        getReleaseGroup: jest.fn().mockResolvedValue({
+            kind: "answered",
+            value: { "artist-credit": [{ artist: { id: "artist-1" } }] },
+        }),
+    },
 }));
 
 import { prisma } from "../../utils/db";
@@ -18,6 +24,14 @@ import { closeEngineConnections } from "../../__tests__/helpers/engineConnection
 
 const USER = "sdm_start_user";
 const addAlbum = lidarrService.addAlbum as jest.Mock;
+const getArtistAlbums = lidarrService.getArtistAlbums as jest.Mock;
+const lidarrAlbum = (foreignAlbumId: string, title: string, percentOfTracks = 0) => ({
+    id: foreignAlbumId.length,
+    foreignAlbumId,
+    title,
+    albumType: "Album",
+    statistics: { percentOfTracks },
+});
 
 const start = () =>
     simpleDownloadManager.startDownload("sdm_start", "Interpol", "Antics", "rg-asked", USER, false);
@@ -32,6 +46,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
     addAlbum.mockReset();
+    getArtistAlbums.mockReset();
     await prisma.downloadJob.create({
         data: { id: "sdm_start", userId: USER, subject: "Interpol - Antics", type: "album", status: "pending", targetMbid: "rg-asked" },
     });
@@ -86,4 +101,42 @@ it("fails with Lidarr's outage, not 'album not found', after the retries", async
     const job = await row();
     expect(job.status).toBe("failed");
     expect(job.error).toBe("Lidarr unavailable: socket hang up");
+});
+
+it("records the artist on the job", async () => {
+    addAlbum.mockResolvedValue({ id: 7, foreignAlbumId: "rg-asked" });
+
+    await start();
+
+    expect((await row()).artistMbid).toBe("artist-1");
+});
+
+it("falls back past albums already queued or already owned", async () => {
+    await prisma.downloadJob.create({
+        data: { id: "sdm_queued", userId: USER, subject: "Interpol - Turn On", type: "album", status: "pending", targetMbid: "rg-queued", artistMbid: "artist-1" },
+    });
+    getArtistAlbums.mockResolvedValue([
+        lidarrAlbum("rg-asked", "Antics"),
+        lidarrAlbum("rg-queued", "Turn On the Bright Lights"),
+        lidarrAlbum("rg-owned", "Our Love to Admire", 100),
+        lidarrAlbum("rg-next", "El Pintor"),
+    ]);
+    addAlbum.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 9, foreignAlbumId: "rg-next" });
+
+    await start();
+
+    expect((await row()).status).toBe("exhausted");
+    const fallback = await prisma.downloadJob.findFirstOrThrow({
+        where: { userId: USER, targetMbid: "rg-next" },
+    });
+    expect(fallback.status).toBe("processing");
+    expect(addAlbum).toHaveBeenCalledTimes(2);
+});
+
+it("refuses a second active job for the same album", async () => {
+    await expect(
+        prisma.downloadJob.create({
+            data: { userId: USER, subject: "Interpol - Antics", type: "album", status: "processing", targetMbid: "rg-asked" },
+        })
+    ).rejects.toMatchObject({ code: "P2002" });
 });

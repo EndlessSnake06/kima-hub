@@ -973,6 +973,7 @@ router.post("/retry-unavailable", async (req, res) => {
                         targetMbid: album.albumMbid,
                         status: "pending",
                         discoveryBatchId: newBatch.id,
+                        artistMbid: album.artistMbid,
                         metadata: {
                             downloadType: "discovery",
                             rootFolderPath: settings.musicPath,

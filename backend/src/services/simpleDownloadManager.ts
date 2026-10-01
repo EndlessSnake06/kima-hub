@@ -24,6 +24,8 @@ import { sourcePauseController } from "./sourcePauseController";
 import { isRateLimited } from "./enrichmentErrorCodeClassifier";
 import { failureCause } from "../utils/outcome";
 import { removeFailedDownload } from "./lidarrFailures";
+import { distributedLock } from "../utils/distributedLock";
+import type { LidarrAlbum } from "../types/lidarr";
 
 const LIDARR_RETRY_DELAYS_MS = [5_000, 20_000];
 
@@ -162,6 +164,10 @@ class SimpleDownloadManager {
                 if (credit) {
                     artistMbid = credit;
                     logger.debug(`   Found artist MBID: ${artistMbid}`);
+                    await prisma.downloadJob.updateMany({
+                        where: { id: jobId, artistMbid: null },
+                        data: { artistMbid },
+                    });
                 } else {
                     logger.warn(
                         `   Could not extract artist MBID from release group`
@@ -1033,6 +1039,75 @@ class SimpleDownloadManager {
     }
 
     /**
+     * Picks the artist's next album that no job has tried and Lidarr does not
+     * already hold in full, retires the current job, and creates the next one.
+     * Runs under a per-artist lock so two failing jobs cannot pick the same album.
+     */
+    private async createFallbackJob(
+        job: any,
+        artistMbid: string,
+        artistName: string | undefined,
+        metadata: any,
+        lidarrAlbums: LidarrAlbum[]
+    ) {
+        const artistJobs = await prisma.downloadJob.findMany({
+            where: {
+                artistMbid,
+                status: { in: ["pending", "processing", "completed", "failed", "exhausted"] },
+            },
+            select: { targetMbid: true },
+        });
+        const tried = new Set(artistJobs.map((j) => j.targetMbid));
+        tried.add(job.targetMbid);
+
+        const untried = lidarrAlbums.filter(
+            (album) => !tried.has(album.foreignAlbumId) && (album.statistics?.percentOfTracks ?? 0) < 100
+        );
+        logger.debug(`   Untried albums in Lidarr: ${untried.length}`);
+        if (untried.length === 0) return null;
+
+        const studioAlbums = untried.filter(
+            (a: any) => a.albumType?.toLowerCase() === "album" || !a.albumType
+        );
+        const nextAlbum = studioAlbums[0] ?? untried[0];
+        logger.debug(`[RETRY] Trying next album from same artist: ${nextAlbum.title}`);
+
+        await prisma.downloadJob.update({
+            where: { id: job.id },
+            data: {
+                status: "exhausted",
+                error: `All releases exhausted - trying: ${nextAlbum.title}`,
+                completedAt: new Date(),
+            },
+        });
+
+        const settings = await getSystemSettings();
+        const albumMbid = nextAlbum.foreignAlbumId;
+        return prisma.downloadJob.create({
+            data: {
+                userId: job.userId,
+                subject: `${artistName || "Unknown"} - ${nextAlbum.title}`,
+                type: "album",
+                targetMbid: albumMbid,
+                status: "pending",
+                discoveryBatchId: job.discoveryBatchId,
+                artistMbid,
+                metadata: {
+                    artistName,
+                    artistMbid,
+                    albumTitle: nextAlbum.title,
+                    albumMbid,
+                    lidarrAlbumId: nextAlbum.id,
+                    sameArtistFallback: true,
+                    originalJobId: job.id,
+                    downloadType: metadata.downloadType || "library",
+                    rootFolderPath: metadata.rootFolderPath || settings?.musicPath || config.music.musicPath,
+                },
+            },
+        });
+    }
+
+    /**
      * Try another album by the same artist once every release of this one failed.
      * Not for Discover Weekly (it wants new artists) or Spotify imports (they want
      * the exact playlist).
@@ -1115,88 +1190,17 @@ class SimpleDownloadManager {
                 `   Found ${lidarrAlbums.length} albums in Lidarr for artist`
             );
 
-            // Get albums we've already tried
-            const triedAlbumMbids = new Set<string>();
-
-            // Check for other jobs with same artist
-            const artistJobs = await prisma.downloadJob.findMany({
-                where: {
-                    artistMbid: artistMbid,
-                    status: {
-                        in: ["processing", "completed", "failed", "exhausted"],
-                    },
-                },
-            });
-            artistJobs.forEach((j: any) => {
-                triedAlbumMbids.add(j.targetMbid);
-            });
-
-            // Also add current job's album
-            triedAlbumMbids.add(job.targetMbid);
-
-            // Filter to untried albums that exist in Lidarr
-            const untriedAlbums = lidarrAlbums.filter(
-                (album: any) => !triedAlbumMbids.has(album.foreignAlbumId)
+            const newJob = await distributedLock.withLock(
+                `download-fallback:${artistMbid}`,
+                10_000,
+                () => this.createFallbackJob(job, artistMbid, artistName, metadata, lidarrAlbums)
             );
-
-            logger.debug(`   Untried albums in Lidarr: ${untriedAlbums.length}`);
-
-            if (untriedAlbums.length === 0) {
+            if (!newJob) {
                 logger.debug(`   All Lidarr albums from artist exhausted`);
                 return await this.markJobExhausted(job, reason);
             }
-
-            // Pick the first untried album (prioritize studio albums over singles/EPs if possible)
-            const studioAlbums = untriedAlbums.filter(
-                (a: any) =>
-                    a.albumType?.toLowerCase() === "album" || !a.albumType
-            );
-            const nextAlbum =
-                studioAlbums.length > 0 ? studioAlbums[0] : untriedAlbums[0];
-            logger.debug(
-                `[RETRY] Trying next album from same artist: ${nextAlbum.title}`
-            );
-
-            // Mark current job as exhausted (not failed - we're continuing with same artist)
-            await prisma.downloadJob.update({
-                where: { id: job.id },
-                data: {
-                    status: "exhausted",
-                    error: `All releases exhausted - trying: ${nextAlbum.title}`,
-                    completedAt: new Date(),
-                },
-            });
-
-            // Use Lidarr's foreignAlbumId (MBID) for the new job
-            const albumMbid = nextAlbum.foreignAlbumId;
-
-            // Get music path from settings with fallback to config
-            const settings = await getSystemSettings();
-            const defaultMusicPath = settings?.musicPath || config.music.musicPath;
-
-            // Create new job for the next album
-            const newJob = await prisma.downloadJob.create({
-                data: {
-                    userId: job.userId,
-                    subject: `${artistName || "Unknown"} - ${nextAlbum.title}`,
-                    type: "album",
-                    targetMbid: albumMbid,
-                    status: "pending",
-                    discoveryBatchId: job.discoveryBatchId,
-                    artistMbid: artistMbid,
-                    metadata: {
-                        artistName: artistName,
-                        artistMbid: artistMbid,
-                        albumTitle: nextAlbum.title,
-                        albumMbid: albumMbid,
-                        lidarrAlbumId: nextAlbum.id, // Store Lidarr album ID for faster lookup
-                        sameArtistFallback: true,
-                        originalJobId: job.id,
-                        downloadType: metadata.downloadType || "library",
-                        rootFolderPath: metadata.rootFolderPath || defaultMusicPath,
-                    },
-                },
-            });
+            const albumMbid = newJob.targetMbid!;
+            const nextAlbumTitle = (newJob.metadata as any).albumTitle;
 
             logger.debug(`   Created fallback job: ${newJob.id}`);
 
@@ -1204,7 +1208,7 @@ class SimpleDownloadManager {
             const result = await this.startDownload(
                 newJob.id,
                 artistName || "Unknown Artist",
-                nextAlbum.title,
+                nextAlbumTitle,
                 albumMbid,
                 job.userId
             );

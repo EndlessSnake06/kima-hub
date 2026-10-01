@@ -308,7 +308,7 @@ router.post("/download/:albumMbid", async (req, res) => {
 
         const jobWhere: any = {
             userId,
-            status: { in: ["pending", "downloading"] },
+            status: { in: ["pending", "processing"] },
         };
         if (albumMbid) jobWhere.targetMbid = albumMbid;
         else jobWhere.subject = `${artistName} - ${albumTitle}`;

@@ -462,6 +462,7 @@ async function processArtistDownload(
                         subject: albumSubject,
                         type: "album",
                         targetMbid: albumMbid,
+                        artistMbid,
                         status: "pending",
                         metadata: {
                             downloadType,
@@ -769,65 +770,6 @@ router.get("/", async (req, res) => {
     } catch (error) {
         logger.error("List download jobs error:", error);
         res.status(500).json({ error: "Failed to list download jobs" });
-    }
-});
-
-// POST /downloads/keep-track - Keep a discovery track (move to permanent library)
-router.post("/keep-track", async (req, res) => {
-    try {
-        const { discoveryTrackId } = req.body;
-        const userId = req.user!.id;
-
-        if (!discoveryTrackId) {
-            return res.status(400).json({ error: "Missing discoveryTrackId" });
-        }
-
-        const discoveryTrack = await prisma.discoveryTrack.findUnique({
-            where: { id: discoveryTrackId },
-            include: {
-                discoveryAlbum: true,
-            },
-        });
-
-        if (!discoveryTrack) {
-            return res.status(404).json({ error: "Discovery track not found" });
-        }
-
-        // Mark as kept
-        await prisma.discoveryTrack.update({
-            where: { id: discoveryTrackId },
-            data: { userKept: true },
-        });
-
-        // If Lidarr enabled, create job to download full album to permanent library
-        const lidarrEnabled = await lidarrService.isEnabled();
-        if (lidarrEnabled) {
-            const job = await prisma.downloadJob.create({
-                data: {
-                    userId,
-                    subject: `${discoveryTrack.discoveryAlbum.albumTitle} by ${discoveryTrack.discoveryAlbum.artistName}`,
-                    type: "album",
-                    targetMbid: discoveryTrack.discoveryAlbum.rgMbid,
-                    status: "pending",
-                },
-            });
-
-            return res.json({
-                success: true,
-                message:
-                    "Track marked as kept. Full album will be downloaded to permanent library.",
-                downloadJobId: job.id,
-            });
-        }
-
-        res.json({
-            success: true,
-            message:
-                "Track marked as kept. Please add the full album manually to your /music folder.",
-        });
-    } catch (error) {
-        logger.error("Keep track error:", error);
-        res.status(500).json({ error: "Failed to keep track" });
     }
 });
 

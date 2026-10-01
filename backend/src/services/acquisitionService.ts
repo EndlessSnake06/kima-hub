@@ -812,7 +812,7 @@ class AcquisitionService {
         const existingJobWhere: any = {
             userId: context.userId,
             discoveryBatchId: context.discoveryBatchId || null,
-            status: { in: ['pending', 'downloading'] },
+            status: { in: ['pending', 'processing'] },
         };
         if (request.mbid) {
             existingJobWhere.targetMbid = request.mbid;
