@@ -27,6 +27,7 @@ import { dispatchQueryEvent } from "@/lib/query-events";
 import { iosAudioLog } from "./iosAudioLog";
 import { useToast } from "@/lib/toast-context";
 import { BookSession, BookSessionUnavailableError } from "@/lib/book-session";
+import { insertTrack, removeTrack } from "@/lib/queue-edit";
 
 interface AudioControlsContextType {
     // Track methods
@@ -132,12 +133,8 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
         currentTimeRef.current = playback.currentTime;
     }, [playback.currentTime]);
     const currentIndexRef = useRef(state.currentIndex);
-    useEffect(() => {
-        currentIndexRef.current = state.currentIndex;
-    }, [state.currentIndex]);
     const upNextInsertRef = useRef<number>(0);
     const shuffleInsertPosRef = useRef<number>(0);
-    const lastQueueInsertAtRef = useRef<number | null>(null);
     const lastCursorTrackIndexRef = useRef<number | null>(null);
     const lastCursorIsShuffleRef = useRef<boolean | null>(null);
 
@@ -655,6 +652,16 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
         controllerRef.current?.load(streamUrl, { autoplay: true, expectedDurationS: state.queue[prevIndex].duration });
     }, [state, seek]);
 
+    const queueSnapshot = useCallback(
+        () => ({
+            queue: queueRef.current,
+            shuffleIndices: shuffleIndicesRef.current,
+            isShuffle: isShuffleRef.current,
+            currentIndex: currentIndexRef.current,
+        }),
+        []
+    );
+
     const addToQueue = useCallback(
         (track: Track) => {
             // This branch replaces the whole queue, so it runs only when the queue
@@ -670,92 +677,45 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
                 state.setCurrentPodcast(null);
                 setCurrentTimeRef.current(0);
                 state.setShuffleIndices([0]);
+                queueRef.current = [track];
+                currentIndexRef.current = 0;
+                shuffleIndicesRef.current = [0];
 
                 const streamUrl = api.getStreamUrl(track.id);
                 controllerRef.current?.load(streamUrl, { autoplay: true, expectedDurationS: track.duration });
                 return;
             }
 
-            const playingIdx = state.currentIndex;
-            const plannedInsertAt = upNextInsertRef.current;
+            const next = insertTrack(
+                queueSnapshot(),
+                { upNextAt: upNextInsertRef.current, shufflePos: shuffleInsertPosRef.current },
+                track,
+            );
+            queueRef.current = next.queue;
+            shuffleIndicesRef.current = next.shuffleIndices;
+            upNextInsertRef.current = next.upNextAt;
+            shuffleInsertPosRef.current = next.shufflePos;
 
-            state.setQueue((prevQueue) => {
-                const insertAt = Math.min(
-                    Math.max(0, plannedInsertAt),
-                    prevQueue.length
-                );
-                const newQueue = [...prevQueue];
-                newQueue.splice(insertAt, 0, track);
-                upNextInsertRef.current = insertAt + 1;
-                lastQueueInsertAtRef.current = insertAt;
-
-                return newQueue;
-            });
-
-            if (state.isShuffle) {
-                state.setShuffleIndices((prevIndices) => {
-                    if (prevIndices.length === 0) return prevIndices;
-                    const insertAtCandidate =
-                        lastQueueInsertAtRef.current ?? plannedInsertAt;
-                    const insertAt = Math.min(
-                        Math.max(0, insertAtCandidate),
-                        state.queue.length
-                    );
-                    const shifted = prevIndices.map((i) =>
-                        i >= insertAt ? i + 1 : i
-                    );
-                    const currentShufflePos = shifted.indexOf(playingIdx);
-                    const baseInsertPos =
-                        currentShufflePos >= 0 ? currentShufflePos + 1 : 0;
-                    const insertPos = Math.min(
-                        Math.max(baseInsertPos, shuffleInsertPosRef.current),
-                        shifted.length
-                    );
-                    const newIndices = [...shifted];
-                    newIndices.splice(insertPos, 0, insertAt);
-                    shuffleInsertPosRef.current = insertPos + 1;
-
-                    return newIndices;
-                });
-            }
+            state.setQueue(next.queue);
+            if (isShuffleRef.current) state.setShuffleIndices(next.shuffleIndices);
         },
-        [state]
+        [state, queueSnapshot]
     );
 
     const removeFromQueue = useCallback(
         (index: number) => {
-            state.setQueue((prev) => {
-                const newQueue = [...prev];
-                newQueue.splice(index, 1);
+            const next = removeTrack(queueSnapshot(), index);
+            queueRef.current = next.queue;
+            shuffleIndicesRef.current = next.shuffleIndices;
+            currentIndexRef.current = next.currentIndex;
 
-                const curIdx = currentIndexRef.current;
-
-                if (index < curIdx) {
-                    state.setCurrentIndex((prevIndex) => prevIndex - 1);
-                } else if (index === curIdx) {
-                    if (newQueue.length === 0) {
-                        state.setCurrentTrack(null);
-                        controllerRef.current?.pause();
-                    } else if (index >= newQueue.length) {
-                        state.setCurrentIndex(0);
-                        state.setCurrentTrack(newQueue[0]);
-                    } else {
-                        state.setCurrentTrack(newQueue[index]);
-                    }
-                }
-
-                return newQueue;
-            });
-
-            if (state.isShuffle) {
-                state.setShuffleIndices((prev) => {
-                    return prev
-                        .filter((i) => i !== index)
-                        .map((i) => (i > index ? i - 1 : i));
-                });
-            }
+            state.setQueue(next.queue);
+            if (isShuffleRef.current) state.setShuffleIndices(next.shuffleIndices);
+            state.setCurrentIndex(next.currentIndex);
+            if (next.currentTrack !== undefined) state.setCurrentTrack(next.currentTrack);
+            if (next.currentTrack === null) controllerRef.current?.pause();
         },
-        [state]
+        [state, queueSnapshot]
     );
 
     const clearQueue = useCallback(() => {
@@ -1048,6 +1008,7 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
         nextRef.current = next;
         nextPodcastEpisodeRef.current = nextPodcastEpisode;
         queueRef.current = state.queue;
+        currentIndexRef.current = state.currentIndex;
         isShuffleRef.current = state.isShuffle;
         shuffleIndicesRef.current = state.shuffleIndices;
         setCurrentTimeRef.current = playback.setCurrentTime;
