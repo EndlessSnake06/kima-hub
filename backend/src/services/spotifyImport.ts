@@ -3300,26 +3300,25 @@ class SpotifyImportService {
   }
 
   /**
-   * Mark an import job as failed (used by the BullMQ worker's failed handler).
-   * If zero tracks were matched, cleans up all artifacts.
-   * If some tracks matched, keeps the job record for visibility.
+   * Mark an import job as failed (used by the BullMQ worker's failed handler)
+   * and tell the user. A job that matched nothing is removed; one that matched
+   * some tracks is kept so the user can see what happened.
    */
   async markJobFailed(importJobId: string, errorMessage: string): Promise<void> {
     const job = await this.getJob(importJobId);
     if (!job) return;
+    job.error = errorMessage;
+    notifyImportFailed(job);
 
-    // Check if any tracks were pre-matched before the failure
     const hasMatchedTracks = (job.pendingTracks || []).some(
       (t) => t.preMatchedTrackId,
     );
 
     if (!hasMatchedTracks) {
-      // Total failure -- clean up all traces
       logger?.info(
         `[Spotify Import] Job ${importJobId} failed with zero matched tracks, cleaning up`,
       );
 
-      // Emit failure SSE before cleanup
       eventBus.emit({
         type: "import:progress",
         userId: job.userId,
@@ -3340,12 +3339,9 @@ class SpotifyImportService {
       return;
     }
 
-    // Partial failure -- keep job for visibility, user can see what happened
     job.status = "failed";
-    job.error = errorMessage;
     job.updatedAt = new Date();
     await saveImportJob(job);
-    notifyImportFailed(job);
   }
 }
 
