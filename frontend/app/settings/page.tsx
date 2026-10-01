@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useIsMobile, useIsTablet } from "@/hooks/useMediaQuery";
+import { cn } from "@/lib/cn";
+import { useAudioState } from "@/lib/audio-context";
 import { useAuth } from "@/lib/auth-context";
 import { useSettingsData } from "@/features/settings/hooks/useSettingsData";
 import { useSystemSettings } from "@/features/settings/hooks/useSystemSettings";
@@ -11,7 +14,6 @@ import {
     SidebarItem
 } from "@/features/settings/components/ui";
 
-// Section components
 import { AccountSection } from "@/features/settings/components/sections/AccountSection";
 import { SubsonicSection } from "@/features/settings/components/sections/SubsonicSection";
 import { PlaybackSection } from "@/features/settings/components/sections/PlaybackSection";
@@ -27,7 +29,6 @@ import { UserManagementSection } from "@/features/settings/components/sections/U
 import { CorruptTracksSection } from "@/features/settings/components/sections/CorruptTracksSection";
 import { Button } from "@/components/ui/Button";
 
-// Define sidebar items
 const sidebarItems: SidebarItem[] = [
     { id: "account", label: "Account" },
     { id: "subsonic", label: "Native Apps" },
@@ -52,7 +53,6 @@ export default function SettingsPage() {
 
     const isAdmin = user?.role === "admin";
 
-    // User settings hook
     const {
         settings: userSettings,
         isLoading: userLoading,
@@ -62,7 +62,6 @@ export default function SettingsPage() {
         loadSettings: reloadUserSettings,
     } = useSettingsData();
 
-    // System settings hook (only used if admin)
     const {
         systemSettings,
         isLoading: systemLoading,
@@ -76,12 +75,22 @@ export default function SettingsPage() {
     const loadError = userLoadError ?? (isAdmin ? systemLoadError : null);
     const isLoaded = !userLoading && (!isAdmin || !systemLoading);
 
+    const current = isLoaded && !loadError ? JSON.stringify([userSettings, isAdmin ? systemSettings : null]) : null;
+    const [saved, setSaved] = useState<string | null>(null);
+    if (current !== null && saved === null) setSaved(current);
+    const isDirty = current !== null && saved !== null && current !== saved;
+    const isMobile = useIsMobile();
+    const isTablet = useIsTablet();
+    const hasPhoneChrome = isMobile || isTablet;
+    const { currentTrack, currentAudiobook, currentPodcast } = useAudioState();
+    const hasMiniPlayer = !!(currentTrack || currentAudiobook || currentPodcast);
+
     const retryLoad = useCallback(() => {
+        setSaved(null);
         reloadUserSettings();
         if (isAdmin) loadSystemSettings();
     }, [isAdmin, reloadUserSettings, loadSystemSettings]);
 
-    // Handle initial hash for section scrolling
     useEffect(() => {
         if (typeof window !== "undefined") {
             const hash = window.location.hash.substring(1);
@@ -96,7 +105,6 @@ export default function SettingsPage() {
         }
     }, []);
 
-    // Unified save function
     const handleSaveAll = useCallback(async () => {
         setIsSaving(true);
         saveStatus.setLoading();
@@ -121,13 +129,13 @@ export default function SettingsPage() {
         setIsSaving(false);
 
         if (hasError) {
-            saveStatus.setError("Failed to save");
+            saveStatus.setError("Couldn't save");
         } else {
+            setSaved(JSON.stringify([userSettings, isAdmin ? systemSettings : null]));
             saveStatus.setSuccess("Saved");
         }
     }, [userSettings, systemSettings, isAdmin, saveUserSettings, saveSystemSettings, saveStatus]);
 
-    // Test service wrapper
     const handleTestService = useCallback(async (service: string) => {
         setTestingServices(prev => ({ ...prev, [service]: true }));
         try {
@@ -184,14 +192,11 @@ export default function SettingsPage() {
 
     return (
         <SettingsLayout sidebarItems={sidebarItems} isAdmin={isAdmin}>
-                {/* Account Section */}
             <div className="section-stack">
                 <AccountSection />
 
-                {/* Native Apps - Subsonic */}
                 <SubsonicSection />
 
-                {/* Playback Section */}
                 <PlaybackSection
                     value={userSettings.playbackQuality}
                     onChange={(quality) => updateUserSettings({ playbackQuality: quality })}
@@ -205,22 +210,18 @@ export default function SettingsPage() {
                     }
                 />
 
-                {/* Per-user ListenBrainz scrobbling — each user's own optional token */}
                 <ScrobblingSection
                     configured={!!userSettings.hasListenbrainzToken}
                     onSaved={reloadUserSettings}
                 />
 
-                {/* Admin-only sections */}
                 {isAdmin && (
                     <>
-                        {/* Download Preferences */}
                         <DownloadPreferencesSection
                             settings={systemSettings}
                             onUpdate={updateSystemSettings}
                         />
 
-                        {/* Download Services - Lidarr */}
                         <LidarrSection
                             settings={systemSettings}
                             onUpdate={updateSystemSettings}
@@ -228,7 +229,6 @@ export default function SettingsPage() {
                             isTesting={testingServices.lidarr || false}
                         />
 
-                        {/* Media Servers - Audiobookshelf */}
                         <AudiobookshelfSection
                             settings={systemSettings}
                             onUpdate={updateSystemSettings}
@@ -236,7 +236,6 @@ export default function SettingsPage() {
                             isTesting={testingServices.audiobookshelf || false}
                         />
 
-                        {/* P2P Networks - Soulseek */}
                         <SoulseekSection
                             settings={systemSettings}
                             onUpdate={updateSystemSettings}
@@ -244,7 +243,6 @@ export default function SettingsPage() {
                             isTesting={testingServices.soulseek || false}
                         />
 
-                        {/* AI Services */}
                         <AIServicesSection
                             settings={systemSettings}
                             onUpdate={updateSystemSettings}
@@ -252,7 +250,6 @@ export default function SettingsPage() {
                             isTesting={testingServices.openai || testingServices.fanart || false}
                         />
 
-                        {/* Storage */}
                         <StoragePathsSection
                             settings={systemSettings}
                             onUpdate={updateSystemSettings}
@@ -260,38 +257,37 @@ export default function SettingsPage() {
                             isTesting={false}
                         />
 
-                        {/* Cache & Automation */}
                         <CacheSection
                             settings={systemSettings}
                             onUpdate={updateSystemSettings}
                         />
 
-                        {/* Corrupt Tracks */}
                         <CorruptTracksSection />
 
-                        {/* User Management */}
                         <UserManagementSection />
                     </>
                 )}
             </div>
 
-                {/* Save Button - Fixed at bottom */}
-                <div className="sticky bottom-0 pt-8 pb-8 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a] to-[#0a0a0a]/80">
-                    <div className="relative">
-                        <Button
-                            variant="primary"
-                            size="lg"
-                            onClick={handleSaveAll}
-                            disabled={isSaving}
-                            className="w-full"
-                        >
-                            {isSaving ? "Saving..." : "Save Changes"}
-                        </Button>
-                        <div className="absolute -bottom-6 left-1/2 -translate-x-1/2">
-                            <InlineStatus {...saveStatus.props} />
-                        </div>
-                    </div>
+            {(isDirty || saveStatus.props.status !== "idle") && (
+                <div
+                    className={cn(
+                        "sticky z-(--z-raised) mt-8 flex items-center justify-end gap-4 rounded-lg border border-white/10 bg-[#111] px-4 py-3",
+                        (!hasPhoneChrome || !hasMiniPlayer) && "bottom-4",
+                        hasPhoneChrome && hasMiniPlayer && "bottom-[94px]",
+                    )}
+                >
+                    <InlineStatus {...saveStatus.props} />
+                    {isDirty && (
+                        <>
+                            <span className="mr-auto text-sm text-[var(--text-secondary)]">Unsaved changes</span>
+                            <Button variant="primary" onClick={handleSaveAll} disabled={isSaving}>
+                                {isSaving ? "Saving..." : "Save changes"}
+                            </Button>
+                        </>
+                    )}
                 </div>
+            )}
         </SettingsLayout>
     );
 }
