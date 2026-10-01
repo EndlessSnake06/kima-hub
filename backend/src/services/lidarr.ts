@@ -1,7 +1,7 @@
 import axios, { AxiosInstance } from "axios";
 import pLimit from "p-limit";
 import { logger } from "../utils/logger";
-import { albumIdentityKey } from "./albumIdentity";
+import { albumIdentityKey, titlesAgree } from "./albumIdentity";
 import { config } from "../config";
 import { getSystemSettings } from "../utils/systemSettings";
 import { stripAlbumEdition } from "../utils/artistNormalization";
@@ -1102,7 +1102,6 @@ class LidarrService {
                 `   Found ${artistAlbums.length} albums for ${artist.artistName}`
             );
 
-            // Find the specific album by MBID first
             let albumData = artistAlbums.find(
                 (a: LidarrAlbum) => a.foreignAlbumId === rgMbid
             );
@@ -1110,74 +1109,19 @@ class LidarrService {
             // Library requests fall back to a title match; for Discover another edition is a miss.
             if (!albumData && !isDiscovery) {
                 logger.debug(
-                    `   Album MBID not found, trying STRICT name match for: ${albumTitle}`
+                    `   Album MBID not found, matching by title: ${albumTitle}`
                 );
 
-                // Normalize title for matching - remove parenthetical suffixes, edition markers, etc.
-                const normalizeTitle = (title: string) =>
-                    title
-                        .toLowerCase()
-                        .replace(/\(.*?\)/g, "") // Remove parenthetical content (deluxe edition, remaster, etc.)
-                        .replace(/\[.*?\]/g, "") // Remove bracketed content
-                        .replace(
-                            /[-–—]\s*(deluxe|remaster|bonus|special|anniversary|expanded|limited|collector).*$/i,
-                            ""
-                        ) // Remove edition suffixes
-                        .replace(/[^\w\s]/g, "") // Remove remaining punctuation
-                        .replace(/\s+/g, " ") // Normalize whitespace
-                        .trim();
-
-                const targetTitle = normalizeTitle(albumTitle);
-                logger.debug(`   Normalized target: "${targetTitle}"`);
-
-                // Try exact normalized match first
-                albumData = artistAlbums.find(
-                    (a: LidarrAlbum) => normalizeTitle(a.title) === targetTitle
+                albumData = artistAlbums.find((a: LidarrAlbum) =>
+                    titlesAgree(a.title, albumTitle)
                 );
-                if (albumData) {
-                    logger.debug(
-                        ` Matched exact normalized: "${albumData.title}"`
-                    );
-                }
-
-                // Try partial match ONLY if one contains the other completely
-                // This handles "Album Name" matching "Album Name (Deluxe Edition)"
-                if (!albumData) {
-                    albumData = artistAlbums.find((a: LidarrAlbum) => {
-                        const normalized = normalizeTitle(a.title);
-                        // Only match if one is a substring of the other AND they share significant content
-                        // The shorter one must be at least 60% of the longer one's length
-                        const shorter =
-                            normalized.length < targetTitle.length
-                                ? normalized
-                                : targetTitle;
-                        const longer =
-                            normalized.length >= targetTitle.length
-                                ? normalized
-                                : targetTitle;
-                        if (
-                            longer.includes(shorter) &&
-                            shorter.length >= longer.length * 0.6
-                        ) {
-                            return true;
-                        }
-                        return false;
-                    });
-                    if (albumData) {
-                        logger.debug(
-                            ` Matched partial (contained): "${albumData.title}"`
-                        );
-                    }
-                }
 
                 if (albumData) {
                     logger.debug(
                         `   Final match: "${albumData.title}" (MBID: ${albumData.foreignAlbumId})`
                     );
                 } else {
-                    logger.debug(
-                        ` No strict match found - will NOT use loose matching to avoid wrong albums`
-                    );
+                    logger.debug(` No album with a matching title`);
                 }
             }
 
@@ -1489,34 +1433,13 @@ class LidarrService {
                                     `   Trying base album title fallback: "${albumTitle}" → "${baseAlbumTitle}"`
                                 );
 
-                                const normalizeForMatch = (s: string) =>
-                                    s.toLowerCase().replace(/[^\w\s]/g, "").trim();
-                                const normalizedBase = normalizeForMatch(baseAlbumTitle);
+                                const baseMatch = artistAlbums.find(
+                                    (a: LidarrAlbum) =>
+                                        a.id !== updatedAlbum.id &&
+                                        titlesAgree(a.title, baseAlbumTitle)
+                                );
 
-                                const baseMatch = artistAlbums.find((a: LidarrAlbum) => {
-                                    const normalizedAlbumTitle = normalizeForMatch(a.title);
-
-                                    if (normalizedAlbumTitle === normalizedBase) return true;
-
-                                    const shorter =
-                                        normalizedAlbumTitle.length < normalizedBase.length
-                                            ? normalizedAlbumTitle
-                                            : normalizedBase;
-                                    const longer =
-                                        normalizedAlbumTitle.length >= normalizedBase.length
-                                            ? normalizedAlbumTitle
-                                            : normalizedBase;
-                                    if (
-                                        longer.includes(shorter) &&
-                                        shorter.length >= longer.length * 0.7
-                                    ) {
-                                        return true;
-                                    }
-
-                                    return false;
-                                });
-
-                                if (baseMatch && baseMatch.id !== updatedAlbum.id) {
+                                if (baseMatch) {
                                     logger.debug(
                                         `   Found base album: "${baseMatch.title}" (ID: ${baseMatch.id})`
                                     );
@@ -1856,7 +1779,6 @@ class LidarrService {
         }
 
         const normalizedArtist = artistName.toLowerCase().trim();
-        const normalizedAlbum = albumTitle.toLowerCase().trim();
 
         try {
             // Get all artists from Lidarr (cached)
@@ -1880,11 +1802,7 @@ class LidarrService {
 
             // Check if any album matches the title and has files
             for (const album of albums) {
-                const albumTitleNorm = album.title?.toLowerCase().trim() || "";
-                if (
-                    albumTitleNorm === normalizedAlbum ||
-                    albumTitleNorm.includes(normalizedAlbum)
-                ) {
+                if (titlesAgree(album.title ?? "", albumTitle)) {
                     const hasFiles = album.statistics?.percentOfTracks > 0;
                     if (hasFiles) {
                         return true;

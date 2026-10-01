@@ -6,6 +6,7 @@
 import { logger } from "../utils/logger";
 import { normalizeArtistName } from "./artistIdentity";
 import { hasRealMbid } from "./artistIdentity";
+import { titlesAgree } from "./albumIdentity";
 import type { SeedArtist } from "./discovery/discoverySeeding";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../utils/db";
@@ -927,7 +928,6 @@ class DiscoverWeeklyService {
 
             // FALLBACK 2: Normalized name search (handles Unicode/special chars)
             if (tracks.length === 0) {
-                // Normalize for comparison
                 const normalizeStr = (s: string) =>
                     s
                         .toLowerCase()
@@ -937,7 +937,6 @@ class DiscoverWeeklyService {
                         .replace(/\s+/g, " ") // Normalize whitespace
                         .trim();
 
-                const normalizedAlbum = normalizeStr(criteria.albumTitle);
                 const normalizedArtist = normalizeStr(criteria.artistName);
 
                 // Albums by this artist, matched on the full normalised name when it
@@ -956,17 +955,12 @@ class DiscoverWeeklyService {
                         },
                     },
                     include: { artist: true, tracks: true },
-                    orderBy: { title: "asc" }, // deterministic subset for the take:20 fallback (35b review)
+                    orderBy: { title: "asc" },
                     take: 20,
                 });
 
-                // Find matching album by normalized title
                 for (const album of artistAlbums) {
-                    if (
-                        normalizeStr(album.title) === normalizedAlbum ||
-                        normalizeStr(album.title).includes(normalizedAlbum) ||
-                        normalizedAlbum.includes(normalizeStr(album.title))
-                    ) {
+                    if (titlesAgree(album.title, criteria.albumTitle)) {
                         tracks = album.tracks.map((t: any) => ({
                             ...t,
                             album: { ...album, artist: album.artist },
@@ -1870,70 +1864,28 @@ class DiscoverWeeklyService {
         return false;
     }
 
-    /**
-     * Check if an album is owned by artist name + album title
-     * This catches cases where the MBID doesn't match but the album exists
-     */
+    /** Owned under another id: same artist name once folded, and agreeing titles. */
     private async isAlbumOwnedByName(
         artistName: string,
         albumTitle: string
     ): Promise<boolean> {
-        // Normalize for comparison
-        const normalizedArtist = artistName.toLowerCase().trim();
-        const normalizedAlbum = albumTitle
-            .toLowerCase()
-            .replace(/\(.*?\)/g, "") // Remove parenthetical content
-            .replace(/\[.*?\]/g, "") // Remove bracketed content
-            .replace(
-                /[-–—]\s*(deluxe|remaster|bonus|special|anniversary|expanded|limited|collector).*$/i,
-                ""
-            )
-            .trim();
+        const wantedArtist = normalizeArtistName(artistName);
+        if (!wantedArtist) return false;
+        const sameArtist = (name: string) => normalizeArtistName(name) === wantedArtist;
 
-        // Scan the cached owned-album snapshot in-memory instead of a
-        // contains/ILIKE query per candidate (the cache discoverySeeding shares).
         const { albums, ownedAlbumArtists, albumTitleByRgMbid } =
             await discoverySeeding.getOwnedAlbumIndex();
 
-        // Check Album table by name (any location, matching the prior query)
-        const album = albums.find(
-            (a) =>
-                a.title.toLowerCase().includes(normalizedAlbum) &&
-                a.artistName.toLowerCase().includes(normalizedArtist)
-        );
-        if (album) {
-            logger.debug(
-                `     [OWNED-NAME] Found "${albumTitle}" by "${artistName}" in Album table`
-            );
-            return true;
+        const owned =
+            albums.some((a) => sameArtist(a.artistName) && titlesAgree(a.title, albumTitle)) ||
+            ownedAlbumArtists.some((o) => {
+                const title = albumTitleByRgMbid.get(o.rgMbid);
+                return !!title && sameArtist(o.artistName) && titlesAgree(title, albumTitle);
+            });
+        if (owned) {
+            logger.debug(`     [OWNED-NAME] Found "${albumTitle}" by "${artistName}"`);
         }
-
-        // Check OwnedAlbum by looking up associated Album records through rgMbid
-        const ownedAlbumRefs = ownedAlbumArtists.filter((o) =>
-            o.artistName.toLowerCase().includes(normalizedArtist)
-        );
-
-        // Look up the actual album titles for these owned albums
-        for (const ref of ownedAlbumRefs) {
-            const title = albumTitleByRgMbid.get(ref.rgMbid);
-            const ownedNormalized = title
-                ?.toLowerCase()
-                .replace(/\(.*?\)/g, "")
-                .replace(/\[.*?\]/g, "")
-                .trim();
-            if (
-                ownedNormalized &&
-                (ownedNormalized.includes(normalizedAlbum) ||
-                    normalizedAlbum.includes(ownedNormalized))
-            ) {
-                logger.debug(
-                    `     [OWNED-NAME] Found "${albumTitle}" by "${artistName}" in OwnedAlbum table`
-                );
-                return true;
-            }
-        }
-
-        return false;
+        return owned;
     }
 
     /**
