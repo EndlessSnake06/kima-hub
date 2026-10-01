@@ -14,6 +14,7 @@ export function useSettingsData() {
     const { isAuthenticated } = useAuth();
     const [settings, setSettings] = useState<UserSettings>(defaultSettings);
     const [isLoading, setIsLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
 
     useEffect(() => {
@@ -25,11 +26,11 @@ export function useSettingsData() {
     const loadSettings = async () => {
         try {
             setIsLoading(true);
+            setLoadError(null);
             const data = await api.getSettings();
             setSettings(data);
         } catch (error) {
-            console.error("Failed to load settings:", error);
-            // No toast - error visible in UI if settings fail to load
+            setLoadError(error instanceof Error ? error.message : "Failed to load settings");
         } finally {
             setIsLoading(false);
         }
@@ -40,10 +41,9 @@ export function useSettingsData() {
             setIsSaving(true);
             await api.updateSettings(newSettings);
             setSettings(newSettings);
-            // No toast - caller shows inline status
         } catch (error) {
             console.error("Failed to save settings:", error);
-            throw error; // Re-throw so caller can show inline error
+            throw error;
         } finally {
             setIsSaving(false);
         }
@@ -56,6 +56,7 @@ export function useSettingsData() {
     return {
         settings,
         isLoading,
+        loadError,
         isSaving,
         setSettings,
         updateSettings,

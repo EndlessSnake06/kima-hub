@@ -54,6 +54,8 @@ export default function SettingsPage() {
     // User settings hook
     const {
         settings: userSettings,
+        isLoading: userLoading,
+        loadError: userLoadError,
         updateSettings: updateUserSettings,
         saveSettings: saveUserSettings,
         loadSettings: reloadUserSettings,
@@ -62,10 +64,21 @@ export default function SettingsPage() {
     // System settings hook (only used if admin)
     const {
         systemSettings,
+        isLoading: systemLoading,
+        loadError: systemLoadError,
         updateSystemSettings,
         saveSystemSettings,
         testService,
+        loadSystemSettings,
     } = useSystemSettings();
+
+    const loadError = userLoadError ?? (isAdmin ? systemLoadError : null);
+    const isLoaded = !userLoading && (!isAdmin || !systemLoading);
+
+    const retryLoad = useCallback(() => {
+        reloadUserSettings();
+        if (isAdmin) loadSystemSettings();
+    }, [isAdmin, reloadUserSettings, loadSystemSettings]);
 
     // Handle initial hash for section scrolling
     useEffect(() => {
@@ -133,6 +146,38 @@ export default function SettingsPage() {
 
     if (!isAuthenticated) {
         return null;
+    }
+
+    if (loadError) {
+        return (
+            <SettingsLayout sidebarItems={sidebarItems} isAdmin={isAdmin}>
+                <div role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 p-6">
+                    <h2 className="text-lg font-semibold text-[var(--text-primary)]">
+                        Settings could not be loaded
+                    </h2>
+                    <p className="mt-2 text-sm text-[var(--text-secondary)]">
+                        Settings stay hidden until they load, so nothing can be saved over them.
+                    </p>
+                    <p className="mt-1 text-xs text-[var(--text-muted)]">{loadError}</p>
+                    <button
+                        onClick={retryLoad}
+                        className="mt-4 min-h-[44px] px-5 rounded-lg bg-brand text-black font-semibold hover:bg-brand-hover transition-colors"
+                    >
+                        Try again
+                    </button>
+                </div>
+            </SettingsLayout>
+        );
+    }
+
+    if (!isLoaded) {
+        return (
+            <SettingsLayout sidebarItems={sidebarItems} isAdmin={isAdmin}>
+                <div className="flex justify-center py-24" aria-busy="true">
+                    <GradientSpinner size="md" />
+                </div>
+            </SettingsLayout>
+        );
     }
 
     return (

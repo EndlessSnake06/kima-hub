@@ -12,7 +12,7 @@ const defaultSystemSettings: SystemSettings = {
     openaiModel: "gpt-4",
     fanartEnabled: false,
     fanartApiKey: "",
-        acoustidApiKey: "",
+    acoustidApiKey: "",
     audiobookshelfEnabled: false,
     audiobookshelfUrl: "http://localhost:13378",
     audiobookshelfApiKey: "",
@@ -47,6 +47,7 @@ export function useSystemSettings() {
         defaultSystemSettings
     );
     const [isLoading, setIsLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
 
     const isAdmin = user?.role === "admin";
@@ -60,6 +61,7 @@ export function useSystemSettings() {
     const loadSystemSettings = async () => {
         try {
             setIsLoading(true);
+            setLoadError(null);
             const [sysData, userData] = await Promise.all([
                 api.getSystemSettings(),
                 api.getSettings(),
@@ -87,8 +89,7 @@ export function useSystemSettings() {
 
             setSystemSettings(combinedSettings);
         } catch (error) {
-            console.error("Failed to load system settings:", error);
-            // No toast - error will be visible in the UI if settings fail to load
+            setLoadError(error instanceof Error ? error.message : "Failed to load settings");
         } finally {
             setIsLoading(false);
         }
@@ -169,6 +170,7 @@ export function useSystemSettings() {
     return {
         systemSettings,
         isLoading,
+        loadError,
         isSaving,
         setSystemSettings,
         updateSystemSettings,
