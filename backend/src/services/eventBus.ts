@@ -3,6 +3,7 @@ import { logger } from "../utils/logger";
 type SSEEventType =
     | "notification"
     | "notification:cleared"
+    | "notification:read"
     | "download:progress"
     | "download:queued"
     | "download:complete"

@@ -141,20 +141,24 @@ class NotificationService {
      * Mark a notification as read
      */
     async markAsRead(id: string, userId: string) {
-        return prisma.notification.updateMany({
+        const result = await prisma.notification.updateMany({
             where: { id, userId },
             data: { read: true },
         });
+        eventBus.emit({ type: "notification:read", userId, payload: { id } });
+        return result;
     }
 
     /**
      * Mark all notifications as read for a user
      */
     async markAllAsRead(userId: string) {
-        return prisma.notification.updateMany({
+        const result = await prisma.notification.updateMany({
             where: { userId, cleared: false },
             data: { read: true },
         });
+        eventBus.emit({ type: "notification:read", userId, payload: {} });
+        return result;
     }
 
     /**

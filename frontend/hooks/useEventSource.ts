@@ -48,6 +48,7 @@ export function useEventSource() {
                     switch (data.type) {
                         case "notification":
                         case "notification:cleared":
+                        case "notification:read":
                             queryClient.invalidateQueries({ queryKey: ["notifications"] });
                             if (data.notificationType === "playlist_ready" || data.notificationType === "import_complete") {
                                 queryClient.invalidateQueries({ queryKey: ["playlists"] });
