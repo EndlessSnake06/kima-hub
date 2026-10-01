@@ -226,7 +226,7 @@ export function LibraryRadioStations() {
             </div>
 
             {stationPages.length > 1 && (
-                <div className="flex justify-center gap-1.5 mt-3">
+                <div className="flex justify-center mt-1">
                     {stationPages.map((_, index) => (
                         <button
                             key={index}
@@ -234,12 +234,17 @@ export function LibraryRadioStations() {
                                 const el = scrollRef.current;
                                 if (el) el.scrollTo({ left: index * el.clientWidth, behavior: "smooth" });
                             }}
-                            className={cn(
-                                "w-1.5 h-1.5 rounded-full transition-colors",
-                                index === currentPage ? "bg-white" : "bg-white/30 hover:bg-white/50"
-                            )}
+                            className="group/dot flex items-center justify-center"
                             aria-label={`Go to page ${index + 1}`}
-                        />
+                            aria-current={index === currentPage ? "true" : undefined}
+                        >
+                            <span
+                                className={cn(
+                                    "w-1.5 h-1.5 rounded-full transition-colors",
+                                    index === currentPage ? "bg-white" : "bg-white/30 group-hover/dot:bg-white/50",
+                                )}
+                            />
+                        </button>
                     ))}
                 </div>
             )}
