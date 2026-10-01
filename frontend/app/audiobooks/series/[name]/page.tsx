@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 import { formatDuration } from "@/lib/format";
 import { useAuth } from "@/lib/auth-context";
 import { useAudioState, useAudioPlayback, useAudioControls } from "@/lib/audio-context";
-import { useToast } from "@/lib/toast-context";
+import { notify } from "@/lib/notify";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import {
@@ -44,7 +44,6 @@ export default function SeriesDetailPage() {
     const params = useParams();
     const router = useRouter();
     const { isAuthenticated } = useAuth();
-    const { toast } = useToast();
     const { currentAudiobook, playbackType } = useAudioState();
     const { isPlaying } = useAudioPlayback();
     const { playAudiobook, pause, resumeWithGesture } = useAudioControls();
@@ -66,7 +65,7 @@ export default function SeriesDetailPage() {
             } catch (error: unknown) {
                 if (!cancelled) {
                     console.error("Failed to load series:", error);
-                    toast.error("Failed to load series");
+                    notify.error("Failed to load series");
                 }
             } finally {
                 if (!cancelled) setIsLoading(false);
@@ -75,7 +74,7 @@ export default function SeriesDetailPage() {
 
         loadSeries();
         return () => { cancelled = true; };
-    }, [seriesName, isAuthenticated, toast]);
+    }, [seriesName, isAuthenticated]);
 
     const getCoverUrl = (coverUrl: string | null, size = 300) => {
         if (!coverUrl) return null;

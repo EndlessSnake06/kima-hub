@@ -3,7 +3,6 @@ import localFont from "next/font/local";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth-context";
 import { FeaturesProvider } from "@/lib/features-context";
-import { ToastProvider } from "@/lib/toast-context";
 import { DownloadProvider } from "@/lib/download-context";
 import { DownloadProgressProvider } from "@/lib/download-progress-context";
 import { ConditionalAudioProvider } from "@/components/providers/ConditionalAudioProvider";
@@ -73,7 +72,6 @@ export default function RootLayout({
                             <QueryProvider>
                                 <DownloadProgressProvider>
                                     <DownloadProvider>
-                                        <ToastProvider>
                                             <ConditionalAudioProvider>
                                                 <ActivityPanelSettingsProvider>
                                                     <AuthenticatedLayout>
@@ -81,7 +79,6 @@ export default function RootLayout({
                                                     </AuthenticatedLayout>
                                                 </ActivityPanelSettingsProvider>
                                             </ConditionalAudioProvider>
-                                        </ToastProvider>
                                     </DownloadProvider>
                                 </DownloadProgressProvider>
                             </QueryProvider>

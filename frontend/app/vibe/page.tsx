@@ -17,7 +17,7 @@ import { useAudioControls } from "@/lib/audio-controls-context";
 import { api } from "@/lib/api";
 import type { Track, VibeOperation } from "@/lib/audio-state-context";
 import { useIsMobile, useIsTablet } from "@/hooks/useMediaQuery";
-import { useToast } from "@/lib/toast-context";
+import { notify } from "@/lib/notify";
 
 const VibeMapScene = dynamic(
     () => import("@/features/vibe/map/VibeMapScene").then((m) => ({ default: m.VibeMapScene })),
@@ -85,7 +85,6 @@ export default function VibePage() {
 
     const { currentTrack, playbackType, queue, activeOperation } = useAudioState();
     const { playTrack, playTracks, replaceOperation } = useAudioControls();
-    const { toast } = useToast();
     const isMobile = useIsMobile();
     const isTablet = useIsTablet();
     const compact = isMobile || isTablet;
@@ -172,9 +171,9 @@ export default function VibePage() {
             const track = await api.getTrack(trackId);
             if (track) playTrack(track);
         } catch {
-            toast.error("Couldn't play this track");
+            notify.error("Couldn't play this track");
         }
-    }, [playTrack, toast]);
+    }, [playTrack]);
 
     // The second click of a double-click that picked a song-path destination
     // must not also start that track and race the path's queue.
@@ -189,9 +188,9 @@ export default function VibePage() {
             const track = await api.getTrack(selectedTrackId);
             if (track) playTracks([track], 0);
         } catch {
-            toast.error("Couldn't play this track");
+            notify.error("Couldn't play this track");
         }
-    }, [selectedTrackId, playTracks, toast]);
+    }, [selectedTrackId, playTracks]);
 
     const finishDrift = useCallback(async (sourceId: string, targetId: string) => {
         try {
@@ -212,9 +211,9 @@ export default function VibePage() {
             };
             await replaceOperation(operation, tracks, 0);
         } catch {
-            toast.error("Couldn't find a path between those two tracks");
+            notify.error("Couldn't find a path between those two tracks");
         }
-    }, [replaceOperation, toast]);
+    }, [replaceOperation]);
 
     // ── map interaction ──
     const handleTrackClick = useCallback((trackId: string) => {

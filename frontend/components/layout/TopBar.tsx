@@ -15,7 +15,7 @@ import {
 import { ActivityPanelToggle } from "./ActivityPanel";
 import { cn } from "@/lib/cn";
 import { api } from "@/lib/api";
-import { useToast } from "@/lib/toast-context";
+import { notify } from "@/lib/notify";
 import { useDownloadContext } from "@/lib/download-context";
 import { useQuery } from "@tanstack/react-query";
 import { useIsMobile, useIsTablet } from "@/hooks/useMediaQuery";
@@ -38,7 +38,6 @@ export function TopBar() {
         if (typeof window === "undefined") return false;
         return localStorage.getItem("kima_activity_panel_open") === "true";
     });
-    const { toast } = useToast();
     const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const searchInputRef = useRef<HTMLInputElement | null>(null);
     const queryClient = useQueryClient();
@@ -95,12 +94,11 @@ export function TopBar() {
             queryClient.invalidateQueries({ queryKey: ["notifications"] });
         } catch (error) {
             console.error("Failed to trigger library scan:", error);
-            // A refused scan never starts, so no notification follows; the toast
-            // is the only sign the button did anything.
+            // A refused scan never starts, so nothing else reports it.
             const message =
                 error instanceof Error ? error.message : String(error);
             const refused = /403|forbidden|admin/i.test(message);
-            toast.error(
+            notify.error(
                 refused
                     ? "Only an admin can scan the library"
                     : "Could not start the library scan"
@@ -111,10 +109,9 @@ export function TopBar() {
     const handleLogout = async () => {
         try {
             await logout();
-            toast.success("Logged out successfully");
         } catch (error) {
             console.error("Logout error:", error);
-            toast.error("Failed to logout");
+            notify.error("Failed to logout");
         }
     };
 

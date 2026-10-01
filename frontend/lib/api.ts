@@ -59,7 +59,6 @@ interface ServiceTestResult {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ApiData = any;
 
-
 function toSearchParams(params: Record<string, string | number | boolean | undefined>): URLSearchParams {
     const entries: Record<string, string> = {};
     for (const [key, value] of Object.entries(params)) {
@@ -1010,7 +1009,6 @@ class ApiClient {
         });
     }
 
-
     async testOpenai(apiKey: string, model: string) {
         return this.request<ServiceTestResult>("/system-settings/test-openai", {
             method: "POST",
@@ -1902,6 +1900,15 @@ class ApiClient {
 
     async clearAllNotifications(): Promise<{ success: boolean }> {
         return this.post("/notifications/clear-all");
+    }
+
+    async createNotification(body: {
+        type: "error" | "system";
+        title: string;
+        message?: string;
+        href?: string;
+    }): Promise<{ id: string }> {
+        return this.post("/notifications", body);
     }
 
     // Download Activity

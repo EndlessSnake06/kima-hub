@@ -4,7 +4,7 @@ import { useCallback } from "react";
 import { useAudio } from "@/lib/audio-context";
 import { useAudioControls } from "@/lib/audio-controls-context";
 import { useAudioState } from "@/lib/audio-state-context";
-import { useToast } from "@/lib/toast-context";
+import { notify } from "@/lib/notify";
 import { api } from "@/lib/api";
 import type { Audiobook } from "../types";
 
@@ -26,7 +26,6 @@ export function useAudiobookActions(
   } = useAudio();
   const { playAudiobookAt } = useAudioControls();
   const { setCurrentAudiobook, setPlaybackType } = useAudioState();
-  const { toast } = useToast();
 
   const isThisBookPlaying =
     currentAudiobook?.id === audiobookId && playbackType === "audiobook";
@@ -77,11 +76,10 @@ export function useAudiobookActions(
         });
       }
 
-      toast.success("Marked as completed");
       refetch();
     } catch (error) {
       console.error("Failed to mark as completed:", error);
-      toast.error("Failed to mark as completed");
+      notify.error("Failed to mark as completed");
     }
   }, [
     audiobook,
@@ -91,7 +89,6 @@ export function useAudiobookActions(
     isPlaying,
     pause,
     setCurrentAudiobook,
-    toast,
     refetch,
   ]);
 
@@ -112,11 +109,10 @@ export function useAudiobookActions(
         updateCurrentTime(0);
       }
 
-      toast.success("Progress reset");
       refetch();
     } catch (error) {
       console.error("Failed to reset progress:", error);
-      toast.error("Failed to reset progress");
+      notify.error("Failed to reset progress");
     }
   }, [
     audiobookId,
@@ -127,7 +123,6 @@ export function useAudiobookActions(
     setCurrentAudiobook,
     setPlaybackType,
     updateCurrentTime,
-    toast,
     refetch,
   ]);
 

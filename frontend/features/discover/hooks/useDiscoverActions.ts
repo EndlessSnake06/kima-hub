@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { useAudio } from "@/lib/audio-context";
-import { useToast } from "@/lib/toast-context";
+import { notify } from "@/lib/notify";
 import { api } from "@/lib/api";
 import { DiscoverTrack, DiscoverPlaylist } from "../types";
 
@@ -13,13 +13,10 @@ export function useDiscoverActions(
     markGenerationStart?: () => void,
     updateTrackLiked?: (albumId: string, isLiked: boolean) => void
 ) {
-    const { toast } = useToast();
     const { playTracks, isPlaying, pause, resumeWithGesture } = useAudio();
 
     const handleGenerate = useCallback(async () => {
         if (isGenerating) {
-            console.warn("Generation already in progress, ignoring request");
-            toast.warning("Generation already in progress...");
             return;
         }
 
@@ -34,24 +31,22 @@ export function useDiscoverActions(
             if (refreshBatchStatus) {
                 await refreshBatchStatus();
             }
-
-            toast.success("Generation started! Downloading albums...");
         } catch (error: unknown) {
             console.error("Generation failed:", error);
             // Clear pending state on error
             setPendingGeneration?.(false);
             const err = error as Error & { status?: number };
             if (err.status === 409) {
-                toast.warning("A playlist is already being generated...");
+                notify.info("A Discover playlist is already being generated");
                 // Refresh status in case UI is out of sync
                 if (refreshBatchStatus) {
                     await refreshBatchStatus();
                 }
             } else {
-                toast.error(err.message || "Failed to generate playlist");
+                notify.error("Failed to generate Discover playlist", { message: err.message || undefined });
             }
         }
-    }, [toast, isGenerating, refreshBatchStatus, setPendingGeneration, markGenerationStart]);
+    }, [isGenerating, refreshBatchStatus, setPendingGeneration, markGenerationStart]);
 
     const handleLike = useCallback(
         async (track: DiscoverTrack) => {
@@ -63,10 +58,8 @@ export function useDiscoverActions(
             try {
                 if (track.isLiked) {
                     await api.unlikeDiscoverAlbum(track.albumId);
-                    toast.success(`Unmarked ${track.album}`);
                 } else {
                     await api.likeDiscoverAlbum(track.albumId);
-                    toast.success(`${track.album} will be kept!`);
                 }
 
                 // Reload to sync with server state
@@ -75,10 +68,10 @@ export function useDiscoverActions(
                 console.error("Like failed:", error);
                 // Revert optimistic update on error
                 updateTrackLiked?.(track.albumId, track.isLiked);
-                toast.error(error instanceof Error ? error.message : "Failed to update");
+                notify.error("Failed to update Discover album", { message: error instanceof Error ? error.message : undefined });
             }
         },
-        [toast, onGenerationComplete, updateTrackLiked]
+        [onGenerationComplete, updateTrackLiked]
     );
 
     const formatPlaylistTracks = useCallback(() => {

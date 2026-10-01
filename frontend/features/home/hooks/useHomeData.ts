@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
+import { notify } from "@/lib/notify";
 import type {
     Artist,
     ListenedItem,
@@ -48,7 +48,6 @@ export interface UseHomeDataReturn {
 
 /** Every Home section: continue listening, recently added, recommended, mixes, popular, podcasts, audiobooks. */
 export function useHomeData(): UseHomeDataReturn {
-    const { toast } = useToast();
     const { isAuthenticated } = useAuth();
     const queryClient = useQueryClient();
 
@@ -92,10 +91,9 @@ export function useHomeData(): UseHomeDataReturn {
     const handleRefreshMixes = async () => {
         try {
             await refreshMixes();
-            toast.success("Mixes refreshed! Check out your new daily picks");
         } catch (error) {
             console.error("Failed to refresh mixes:", error);
-            toast.error("Failed to refresh mixes");
+            notify.error("Failed to refresh mixes");
         }
     };
 

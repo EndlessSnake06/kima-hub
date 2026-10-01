@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
-import { useToast } from "@/lib/toast-context";
+import { notify } from "@/lib/notify";
 import { cn } from "@/lib/cn";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { useAudioState, useAudioPlayback } from "@/lib/audio-context";
@@ -40,7 +40,6 @@ export default function DiscoverWeeklyPage() {
     } = useDiscoverActions(playlist, reloadData, isGenerating, refreshBatchStatus, setPendingGeneration, markGenerationStart, updateTrackLiked);
     const { currentPreview, handleTogglePreview } = usePreviewPlayer();
     const [retryingUnavailable, setRetryingUnavailable] = useState(false);
-    const { toast } = useToast();
 
     const handleRetryUnavailable = async () => {
         setRetryingUnavailable(true);
@@ -53,18 +52,17 @@ export default function DiscoverWeeklyPage() {
                     })
                 );
                 window.dispatchEvent(new CustomEvent("open-activity-panel"));
-                toast.success(`Retrying ${result.queued} albums`);
                 refreshBatchStatus();
                 setTimeout(() => reloadData(), 15000);
             } else {
-                toast.info(result.message || "No albums to retry");
+                notify.info("No albums to retry", { message: result.message });
             }
         } catch (error) {
             console.error("Failed to retry unavailable albums:", error);
             if ((error as { status?: number })?.status === 409) {
-                toast.error("A discovery batch is already in progress");
+                notify.error("A discovery batch is already in progress");
             } else {
-                toast.error("Failed to retry unavailable albums");
+                notify.error("Failed to retry unavailable albums");
             }
         } finally {
             setRetryingUnavailable(false);

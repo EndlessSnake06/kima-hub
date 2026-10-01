@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
-import { useToast } from "@/lib/toast-context";
+import { notify } from "@/lib/notify";
 import { Button } from "@/components/ui/Button";
 import { CachedImage } from "@/components/ui/CachedImage";
 
@@ -110,7 +110,6 @@ function ImportPlaylistPageContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const queryClient = useQueryClient();
-    const { toast } = useToast();
     const hasAutoFetched = useRef(false);
 
     // State
@@ -130,7 +129,6 @@ function ImportPlaylistPageContent() {
     const [expandedSection, setExpandedSection] = useState<
         "matched" | "download" | "notfound" | null
     >("matched");
-
 
     // Pre-fill URL from query params and reconnect to active import if one exists
     useEffect(() => {
@@ -216,7 +214,7 @@ function ImportPlaylistPageContent() {
             setSelectedAlbums(new Set(downloadableAlbumIds));
             setStep("preview");
         } else if (ssePreviewStatus.status === "failed") {
-            toast.error(ssePreviewStatus.error || "Failed to generate preview");
+            notify.error("Failed to generate preview", { message: ssePreviewStatus.error ?? undefined });
             setStep("input");
             setPreviewJobId(null);
         }
@@ -271,10 +269,7 @@ function ImportPlaylistPageContent() {
 
     // Fetch preview (async — returns job ID, completion arrives via SSE)
     const handleFetchPreview = async () => {
-        if (!url.trim()) {
-            toast.error("Please enter a playlist URL");
-            return;
-        }
+        if (!url.trim()) return;
 
         setIsLoading(true);
         try {
@@ -285,9 +280,9 @@ function ImportPlaylistPageContent() {
             setPreviewJobId(jobId);
             setStep("previewing");
         } catch (err) {
-            const message =
-                err instanceof Error ? err.message : "Failed to start preview";
-            toast.error(message);
+            notify.error("Failed to start preview", {
+                message: err instanceof Error ? err.message : undefined,
+            });
         } finally {
             setIsLoading(false);
         }
@@ -295,10 +290,7 @@ function ImportPlaylistPageContent() {
 
     // Quick import (skip preview, import everything in background)
     const handleQuickImport = async () => {
-        if (!url.trim()) {
-            toast.error("Please enter a playlist URL");
-            return;
-        }
+        if (!url.trim()) return;
 
         setIsLoading(true);
         try {
@@ -321,9 +313,9 @@ function ImportPlaylistPageContent() {
             });
             setStep("importing");
         } catch (err) {
-            const message =
-                err instanceof Error ? err.message : "Failed to start import";
-            toast.error(message);
+            notify.error("Failed to start import", {
+                message: err instanceof Error ? err.message : undefined,
+            });
         } finally {
             setIsLoading(false);
         }
@@ -369,9 +361,9 @@ function ImportPlaylistPageContent() {
             });
             setStep("importing");
         } catch (err) {
-            const message =
-                err instanceof Error ? err.message : "Failed to start import";
-            toast.error(message);
+            notify.error("Failed to start import", {
+                message: err instanceof Error ? err.message : undefined,
+            });
         } finally {
             setIsLoading(false);
         }
@@ -432,15 +424,13 @@ function ImportPlaylistPageContent() {
 
             queryClient.invalidateQueries({ queryKey: ["notifications"] });
         } catch (err) {
-            const message =
-                err instanceof Error ? err.message : "Failed to cancel import";
-            toast.error(message);
+            notify.error("Failed to cancel import", {
+                message: err instanceof Error ? err.message : undefined,
+            });
         } finally {
             setIsCancelling(false);
         }
     };
-
-
 
     return (
         <div className="min-h-screen">

@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { api } from "@/lib/api";
-import { useToast } from "@/lib/toast-context";
+import { notify } from "@/lib/notify";
 import { Trash2, Loader2, ArrowLeft } from "lucide-react";
 import type { DiscoverConfig } from "@/features/discover/types";
 
@@ -19,7 +19,6 @@ export function DiscoverSettingsTab({
     onPlaylistCleared,
     onBack,
 }: DiscoverSettingsTabProps) {
-    const { toast } = useToast();
     const [isClearing, setIsClearing] = useState(false);
     const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -47,7 +46,7 @@ export function DiscoverSettingsTab({
             try {
                 await api.updateDiscoverConfig({ [key]: value });
             } catch {
-                toast.error("Failed to save setting");
+                notify.error("Failed to save setting");
             }
         }, 500);
     }
@@ -68,25 +67,18 @@ export function DiscoverSettingsTab({
         try {
             const result = await api.clearDiscoverPlaylist();
 
-            if (result.likedMoved > 0 && result.activeDeleted > 0) {
-                toast.success(
-                    `Moved ${result.likedMoved} liked album${result.likedMoved !== 1 ? "s" : ""} to library, deleted ${result.activeDeleted} album${result.activeDeleted !== 1 ? "s" : ""}`
-                );
-            } else if (result.likedMoved > 0) {
-                toast.success(
-                    `Moved ${result.likedMoved} liked album${result.likedMoved !== 1 ? "s" : ""} to library`
-                );
-            } else if (result.activeDeleted > 0) {
-                toast.success(
-                    `Deleted ${result.activeDeleted} album${result.activeDeleted !== 1 ? "s" : ""}`
-                );
-            } else {
-                toast.info("No albums to clear");
-            }
+            const albums = (n: number) => `${n} album${n !== 1 ? "s" : ""}`;
+            const parts = [
+                result.likedMoved > 0 && `Moved ${albums(result.likedMoved)} you liked to your library.`,
+                result.activeDeleted > 0 && `Deleted ${albums(result.activeDeleted)}.`,
+            ].filter(Boolean);
+            notify.info("Discover playlist cleared", {
+                message: parts.length > 0 ? parts.join(" ") : "There were no albums to clear.",
+            });
 
             onPlaylistCleared?.();
         } catch {
-            toast.error("Failed to clear playlist");
+            notify.error("Failed to clear playlist");
         } finally {
             setIsClearing(false);
         }

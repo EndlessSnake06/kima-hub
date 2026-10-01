@@ -9,7 +9,6 @@ import {
     type GpuRuntimeStatus,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
 import { useFeatures } from "@/lib/features-context";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import {
@@ -247,6 +246,7 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
     const { user: currentUser } = useAuth();
     const [syncing, setSyncing] = useState(false);
     const [clearingCaches, setClearingCaches] = useState(false);
+    const [clearCachesResult, setClearCachesResult] = useState<string | null>(null);
     const [cleaningStaleJobs, setCleaningStaleJobs] = useState(false);
     const [retryingAll, setRetryingAll] = useState(false);
     const [redeciding, setRedeciding] = useState(false);
@@ -267,7 +267,6 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
     const [error, setError] = useState<string | null>(null);
     const [showInlineFailures, setShowInlineFailures] = useState(false);
     const queryClient = useQueryClient();
-    const { toast } = useToast();
     const syncStartTimeRef = useRef<number>(0);
 
     useEffect(() => {
@@ -547,10 +546,11 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
 
     const handleClearCaches = async () => {
         setClearingCaches(true);
+        setClearCachesResult(null);
         setError(null);
         try {
             const result = await api.clearAllCaches();
-            toast.success(result.message);
+            setClearCachesResult(result.message);
         } catch {
             setError("Failed to clear caches");
         } finally {
@@ -1221,6 +1221,11 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                             {retryResult && (
                                 <p className="text-xs tabular-nums text-success">
                                     Reset {retryResult.reset} failed tracks to pending
+                                </p>
+                            )}
+                            {clearCachesResult && (
+                                <p className="text-xs tabular-nums text-success">
+                                    {clearCachesResult}
                                 </p>
                             )}
                             {cleanupResult && cleanupResult.totalCleaned > 0 && (

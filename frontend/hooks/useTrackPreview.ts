@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { api } from "@/lib/api";
-import { useToast } from "@/lib/toast-context";
+import { notify } from "@/lib/notify";
 import { useAudioController } from "@/lib/audio-controller-context";
 import { useAudioState } from "@/lib/audio-state-context";
 
@@ -12,7 +12,6 @@ interface PreviewableTrack {
 
 export function useTrackPreview<T extends PreviewableTrack>() {
     const controller = useAudioController();
-    const { toast } = useToast();
     const { volume, isMuted } = useAudioState();
     const [previewTrack, setPreviewTrack] = useState<string | null>(null);
     const [previewPlaying, setPreviewPlaying] = useState(false);
@@ -42,7 +41,7 @@ export function useTrackPreview<T extends PreviewableTrack>() {
     const showNoPreviewToast = (trackId: string) => {
         if (toastShownForNoPreviewRef.current.has(trackId)) return;
         toastShownForNoPreviewRef.current.add(trackId);
-        toast.info("No Deezer preview available");
+        notify.info("No Deezer preview available");
     };
 
     const teardownPreviewAudio = useCallback((audio: HTMLAudioElement | null) => {
@@ -137,7 +136,7 @@ export function useTrackPreview<T extends PreviewableTrack>() {
         } catch (error: unknown) {
             if (isAbortError(error)) return;
             console.error("Failed to play preview:", error);
-            toast.error("Failed to play preview");
+            notify.error("Failed to play preview");
             setPreviewPlaying(false);
             setPreviewTrack(null);
         } finally {

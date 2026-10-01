@@ -9,7 +9,7 @@ import { Play, Pause, Music, Shuffle, Save, ListPlus } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { formatTime, plural } from "@/lib/format";
 import { shuffleArray } from "@/lib/shuffle";
-import { useToast } from "@/lib/toast-context";
+import { notify } from "@/lib/notify";
 import { useMixQuery } from "@/hooks/useQueries";
 import { useDoubleTapList } from "@/hooks/useDoubleTap";
 import { CachedImage } from "@/components/ui/CachedImage";
@@ -31,7 +31,6 @@ interface MixTrack {
 }
 
 export default function MixPage() {
-    const { toast } = useToast();
     const params = useParams();
     const router = useRouter();
     const mixId = params.id as string;
@@ -55,7 +54,6 @@ export default function MixPage() {
         if (hours === 0) return `${mins} min`;
         return mins === 0 ? `${hours} hr` : `${hours} hr ${mins} min`;
     };
-
 
     const mixTrackIds = useMemo(() => {
         return new Set(mix?.tracks?.map((track: MixTrack) => track.id) || []);
@@ -131,7 +129,6 @@ export default function MixPage() {
             duration: track.duration,
         };
         addToQueue(formattedTrack);
-        toast.success(`Added ${track.title} to queue`);
     };
 
     const handleSaveAsPlaylist = async () => {
@@ -140,7 +137,6 @@ export default function MixPage() {
         setIsSaving(true);
         try {
             const result = await api.saveMixAsPlaylist(mixId);
-            toast.success(`Saved as "${result.name}" playlist!`);
             window.dispatchEvent(new Event("playlist-created"));
             setTimeout(() => {
                 router.push(`/playlist/${result.id}`);
@@ -149,16 +145,16 @@ export default function MixPage() {
             console.error("Failed to save mix as playlist:", error);
             const err = error as { status?: number; data?: { playlistId?: string } };
             if (err?.status === 409) {
-                toast.info("You've already saved this mix as a playlist.");
+                notify.info("You've already saved this mix as a playlist.");
                 if (err?.data?.playlistId) {
                     setTimeout(() => {
                         router.push(`/playlist/${err.data!.playlistId}`);
                     }, 1000);
                 }
-            } else if (error instanceof Error) {
-                toast.error(error.message);
             } else {
-                toast.error("Failed to save mix as playlist");
+                notify.error("Failed to save mix as playlist", {
+                    message: error instanceof Error ? error.message : undefined,
+                });
             }
         } finally {
             setIsSaving(false);

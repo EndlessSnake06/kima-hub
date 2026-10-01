@@ -9,7 +9,7 @@ import { plural } from "@/lib/format";
 
 interface DiscographyProps {
     albums: Album[];
-    onPlayAlbum: (albumId: string, albumTitle: string) => Promise<void>;
+    onPlayAlbum: (albumId: string) => Promise<void>;
     sortBy: "year" | "dateAdded";
     onSortChange: (sortBy: "year" | "dateAdded") => void;
 }
@@ -64,7 +64,7 @@ export function Discography({
                             fallbackIcon={Disc3}
                             type="album"
                             index={index}
-                            action={{ icon: Play, label: "Play", onClick: () => onPlayAlbum(album.id, album.title) }}
+                            action={{ icon: Play, label: "Play", onClick: () => onPlayAlbum(album.id) }}
                         />
                     );
                 })}

@@ -16,7 +16,7 @@ import {
     PartyPopper,
     Flame,
 } from "lucide-react";
-import { useToast } from "@/lib/toast-context";
+import { notify } from "@/lib/notify";
 
 interface MoodMixerProps {
     isOpen: boolean;
@@ -76,7 +76,6 @@ const MOOD_CONFIG: Record<
 const MOOD_ORDER: BucketMood[] = ["happy", "party", "chill", "sad", "aggressive"];
 
 export function MoodMixer({ isOpen, onClose }: MoodMixerProps) {
-    const { toast } = useToast();
     const { playTracks } = useAudioControls();
     const queryClient = useQueryClient();
     const [presets, setPresets] = useState<PresetWithPending[]>([]);
@@ -90,11 +89,11 @@ export function MoodMixer({ isOpen, onClose }: MoodMixerProps) {
             setPresets(data);
         } catch (error) {
             console.error("Failed to load mood presets:", error);
-            toast.error("Failed to load mood presets");
+            notify.error("Failed to load mood presets");
         } finally {
             setLoading(false);
         }
-    }, [toast]);
+    }, []);
 
     useEffect(() => {
         if (isOpen) {
@@ -107,7 +106,6 @@ export function MoodMixer({ isOpen, onClose }: MoodMixerProps) {
     }, [isOpen, loadPresets]);
 
     const generateMix = async (mood: BucketMood) => {
-        const config = MOOD_CONFIG[mood];
         setGenerating(mood);
 
         try {
@@ -136,8 +134,6 @@ export function MoodMixer({ isOpen, onClose }: MoodMixerProps) {
                 // Save as user's active mood mix
                 await api.saveMoodBucketMix(mood, tracks.map((t) => t.id));
 
-                toast.success(`${config.label} Mix - Playing ${tracks.length} tracks`);
-
                 // Force immediate refetch of mixes on home page
                 // Using refetchQueries instead of invalidateQueries for immediate update
                 await queryClient.refetchQueries({ queryKey: ["mixes"] });
@@ -148,15 +144,13 @@ export function MoodMixer({ isOpen, onClose }: MoodMixerProps) {
 
                 onClose();
             } else {
-                toast.error("Not enough tracks for this mood - try analyzing more music or choose a different mood");
+                notify.error("Not enough tracks for this mood", {
+                    message: "Analyse more music or choose a different mood.",
+                });
             }
         } catch (error: unknown) {
             console.error("Failed to generate mood mix:", error);
-            const errorMessage =
-                error instanceof Error
-                    ? error.message
-                    : "Failed to generate mix";
-            toast.error(errorMessage);
+            notify.error("Failed to generate mix", { message: error instanceof Error ? error.message : undefined });
         } finally {
             setGenerating(null);
         }

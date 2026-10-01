@@ -19,8 +19,6 @@ import { ReactNode } from "react";
 import { useIsMobile, useIsTablet } from "@/hooks/useMediaQuery";
 import { useIsTV } from "@/lib/tv-utils";
 import { useActivityPanel } from "@/hooks/useActivityPanel";
-import { useImportToasts } from "@/hooks/useImportToasts";
-import { useScanToasts } from "@/hooks/useScanToasts";
 
 // Paths that render without the sidebar, top bar and player. Not the same list
 // as auth-context's (no login) or ConditionalAudioProvider's (no audio): /share
@@ -36,8 +34,6 @@ export function AuthenticatedLayout({ children }: { children: ReactNode }) {
     const isMobileOrTablet = isMobile || isTablet;
     const activityPanel = useActivityPanel();
     const { toggle, open, close, setActiveTab } = activityPanel;
-    useImportToasts();
-    useScanToasts();
 
     // Listen for activity panel events (toggle/open/close/tab)
     useEffect(() => {

@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
+import { notify } from "@/lib/notify";
 import { Mic2, Search, Plus, RefreshCw, Rss, X, Loader2 } from "lucide-react";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { Pagination } from "@/components/ui/Pagination";
@@ -45,7 +45,6 @@ export default function PodcastsPage() {
     const { isAuthenticated } = useAuth();
     const router = useRouter();
     const queryClient = useQueryClient();
-    const { toast } = useToast();
 
     const [showRssInput, setShowRssInput] = useState(false);
     const [rssUrl, setRssUrl] = useState("");
@@ -82,7 +81,7 @@ export default function PodcastsPage() {
             queryClient.invalidateQueries({ queryKey: queryKeys.podcasts() });
         } catch (error) {
             console.error("Failed to refresh podcasts:", error);
-            toast.error(`Failed to refresh podcasts: ${error instanceof Error ? error.message : "Unknown error"}`);
+            notify.error("Failed to refresh podcasts", { message: error instanceof Error ? error.message : undefined });
         } finally {
             setIsRefreshingAll(false);
         }
@@ -460,7 +459,6 @@ export default function PodcastsPage() {
                         return genrePodcasts.length > 0 ? (
                             <section
                                 key={genreId}
-
 
                             >
                                 <SectionHeader type="podcast"

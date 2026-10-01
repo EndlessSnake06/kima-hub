@@ -9,7 +9,6 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useAudioState, useAudioControls } from "@/lib/audio-context";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
 import { api } from "@/lib/api";
 
 import {
@@ -28,7 +27,6 @@ export default function QueuePage() {
     const { isAuthenticated } = useAuth();
     const { queue, currentTrack, currentIndex, setQueue } = useAudioState();
     const { playTracks, removeFromQueue, clearQueue } = useAudioControls();
-    const { toast } = useToast();
     const [confirmClear, setConfirmClear] = useState(false);
 
     useEffect(() => {
@@ -39,17 +37,14 @@ export default function QueuePage() {
 
     const handleClearQueue = () => {
         clearQueue();
-        toast.success("Queue cleared");
     };
 
     const handleRemoveTrack = (index: number) => {
         removeFromQueue(index);
-        toast.success("Removed from queue");
     };
 
     const handlePlayFromQueue = (index: number) => {
         playTracks(queue, index);
-        toast.success("Playing from queue");
     };
 
     const handleMoveUp = (index: number) => {

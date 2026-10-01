@@ -12,7 +12,7 @@ import {
     ArrowLeft,
 } from "lucide-react";
 import { api } from "@/lib/api";
-import { useToast } from "@/lib/toast-context";
+import { notify } from "@/lib/notify";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -49,7 +49,6 @@ const DeezerIcon = ({ className }: { className?: string }) => (
 type BrowseTab = "playlists" | "genres";
 
 export default function BrowsePlaylistsPage() {
-    const { toast } = useToast();
 
     const [activeTab, setActiveTab] = useState<BrowseTab>("playlists");
     const [searchQuery, setSearchQuery] = useState("");
@@ -111,7 +110,7 @@ export default function BrowsePlaylistsPage() {
             setPlaylists(response.playlists);
         } catch (error) {
             console.error("Search failed:", error);
-            toast.error("Failed to search playlists");
+            notify.error("Failed to search playlists");
         } finally {
             setIsSearching(false);
         }
@@ -142,13 +141,8 @@ export default function BrowsePlaylistsPage() {
 
             setShowUrlModal(false);
             setUrlInput("");
-            window.dispatchEvent(new CustomEvent("import-status-change", {
-                detail: { status: "started", playlistName: null }
-            }));
         } catch (error: unknown) {
-            const message =
-                error instanceof Error ? error.message : "Invalid playlist URL";
-            toast.error(message);
+            notify.error("Couldn't import playlist", { message: error instanceof Error ? error.message : undefined });
         } finally {
             setIsParsing(false);
         }
@@ -165,7 +159,7 @@ export default function BrowsePlaylistsPage() {
             setGenrePlaylists(response.playlists);
         } catch (error) {
             console.error("Failed to fetch genre playlists:", error);
-            toast.error("Failed to load genre playlists");
+            notify.error("Failed to load genre playlists");
         } finally {
             setIsLoading(false);
         }
@@ -363,7 +357,6 @@ export default function BrowsePlaylistsPage() {
                     {!isLoading && !isSearching && hasSearched && (
                         <div
 
-
                         >
                             <SectionHeader type="track"
                                 title={`Results for "${searchQuery}"`}
@@ -397,7 +390,6 @@ export default function BrowsePlaylistsPage() {
                     {/* Genre Playlists View */}
                     {!isLoading && selectedGenre && (
                         <div
-
 
                         >
                             <SectionHeader type="track"

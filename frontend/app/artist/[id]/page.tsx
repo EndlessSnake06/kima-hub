@@ -9,7 +9,7 @@ import { useDownloadContext } from "@/lib/download-context";
 import { LoadingScreen } from "@/components/ui/LoadingScreen";
 import { useImageColor } from "@/hooks/useImageColor";
 import { api } from "@/lib/api";
-import { useToast } from "@/lib/toast-context";
+import { notify } from "@/lib/notify";
 
 // Hooks
 import { useArtistData } from "@/features/artist/hooks/useArtistData";
@@ -29,7 +29,6 @@ import { SimilarArtists } from "@/features/artist/components/SimilarArtists";
 import { PageMessage } from "@/components/ui/PageMessage";
 
 export default function ArtistPage() {
-    const { toast } = useToast();
     // Use split hooks to avoid re-renders from currentTime updates
     const { currentTrack } = useAudioState();
     const { isPlaying } = useAudioPlayback();
@@ -75,7 +74,7 @@ export default function ArtistPage() {
     const { colors } = useImageColor(lowResImage || rawImageUrl);
 
     // Play album handler
-    async function handlePlayAlbum(albumId: string, albumTitle: string) {
+    async function handlePlayAlbum(albumId: string) {
         try {
             const albumData = await api.getAlbum(albumId);
             if (albumData.tracks && albumData.tracks.length > 0) {
@@ -89,10 +88,9 @@ export default function ArtistPage() {
                     artist: albumData.artist,
                 }));
                 playTracks(tracksWithAlbum, 0);
-                toast.success(`Playing ${albumTitle}`);
             }
         } catch {
-            toast.error("Failed to play album");
+            notify.error("Failed to play album");
         }
     }
 
@@ -129,22 +127,18 @@ export default function ArtistPage() {
         if (!artist) return;
 
         try {
-            toast.success(`Starting ${artist.name} Radio...`);
             const response = await api.getRadioTracks("artist", artist.id);
 
             if (response.tracks && response.tracks.length > 0) {
                 // Backend already returns properly formatted tracks - just pass them through
                 playTracks(response.tracks, 0);
-                toast.success(
-                    `Playing ${artist.name} Radio (${response.tracks.length} tracks)`,
-                );
             } else {
-                toast.error(
+                notify.error(
                     "Not enough similar music in your library for artist radio",
                 );
             }
         } catch {
-            toast.error("Failed to start artist radio");
+            notify.error("Failed to start artist radio");
         }
     }
 

@@ -19,13 +19,13 @@ import {
     PlayerMode,
     VibeOperation,
 } from "./audio-state-context";
-import { OperationConfirmToast } from "@/components/ui/OperationConfirmToast";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useAudioPlayback } from "./audio-playback-context";
 import { api, getApiBaseUrl } from "@/lib/api";
 import { useAudioController } from "./audio-controller-context";
 import { dispatchQueryEvent } from "@/lib/query-events";
 import { iosAudioLog } from "./iosAudioLog";
-import { useToast } from "@/lib/toast-context";
+import { notify } from "@/lib/notify";
 import { BookSession, BookSessionUnavailableError } from "@/lib/book-session";
 import { insertTrack, removeTrack } from "@/lib/queue-edit";
 
@@ -119,10 +119,20 @@ function getNextTrackInfo(
     return queue[nextIndex] ? { ...queue[nextIndex], index: nextIndex } : null;
 }
 
+const OPERATION_NAMES: Record<string, string> = {
+    vibe: "Vibe",
+    drift: "Drift",
+    blend: "Blend",
+    similar: "Similar",
+};
+
+function operationName(type: string | undefined): string {
+    return (type && OPERATION_NAMES[type]) || "the current mix";
+}
+
 export function AudioControlsProvider({ children }: { children: ReactNode }) {
     const state = useAudioState();
     const playback = useAudioPlayback();
-    const { toast } = useToast();
 
     const controller = useAudioController();
     const controllerRef = useRef(controller);
@@ -317,7 +327,7 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
                 session = await BookSession.open(audiobook);
             } catch (err) {
                 if (err instanceof BookSessionUnavailableError || err instanceof Error) {
-                    toast.error("Couldn't load audiobook -- Audiobookshelf is unreachable");
+                    notify.error("Couldn't load audiobook -- Audiobookshelf is unreachable");
                 }
                 return;
             }
@@ -345,7 +355,7 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
                 { autoplay: true, seekTo: fileTime }
             );
         },
-        [state, toast]
+        [state]
     );
 
     const playAudiobook = useCallback(
@@ -434,7 +444,7 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
             try {
                 session = await BookSession.open(persisted);
             } catch {
-                toast.error("Couldn't load audiobook -- Audiobookshelf is unreachable");
+                notify.error("Couldn't load audiobook -- Audiobookshelf is unreachable");
                 return false;
             }
             bookSessionRef.current = session;
@@ -469,7 +479,7 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
             return true;
         }
         return false;
-    }, [state, playback, toast]);
+    }, [state, playback]);
 
     const resume = useCallback(async () => {
         await loadRestoredState();
@@ -886,11 +896,13 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
         state.setIsMuted((prev) => !prev);
     }, [state]);
 
-    const [pendingReplacement, setPendingReplacement] = useState<{
+    type PendingReplacement = {
         currentOpName: string;
         newOpName: string;
         resolve: (confirmed: boolean) => void;
-    } | null>(null);
+    };
+    const [pendingReplacement, setPendingReplacement] = useState<PendingReplacement | null>(null);
+    const pendingReplacementRef = useRef<PendingReplacement | null>(null);
 
     const replaceOperation = useCallback(async (
         newOp: VibeOperation,
@@ -917,22 +929,28 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
             return true;
         }
 
+        pendingReplacementRef.current?.resolve(false);
         return new Promise((resolve) => {
-            setPendingReplacement((prev) => {
-                if (prev) prev.resolve(false);
-                return {
-                    currentOpName: op.type,
-                    newOpName: newOp.type,
-                    resolve: (confirmed) => {
-                        if (confirmed) {
-                            state.setActiveOperation(newOp);
-                            playTracks(newQueue, startIndex, { skipOperationCheck: true });
-                        }
+            let settled = false;
+            const pending = {
+                currentOpName: op.type,
+                newOpName: newOp.type,
+                resolve: (confirmed: boolean) => {
+                    if (settled) return;
+                    settled = true;
+                    if (confirmed) {
+                        state.setActiveOperation(newOp);
+                        playTracks(newQueue, startIndex, { skipOperationCheck: true });
+                    }
+                    if (pendingReplacementRef.current === pending) {
+                        pendingReplacementRef.current = null;
                         setPendingReplacement(null);
-                        resolve(confirmed);
-                    },
-                };
-            });
+                    }
+                    resolve(confirmed);
+                },
+            };
+            pendingReplacementRef.current = pending;
+            setPendingReplacement(pending);
         });
     }, [state, playTracks]);
 
@@ -1436,7 +1454,7 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
                     }
 
                     if (result === "rejected") {
-                        toast.error("Session expired -- sign in again");
+                        notify.error("Session expired -- sign in again");
                     }
                     doTeardown();
                 } finally {
@@ -1450,7 +1468,7 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
             if (typeof unsubscribePlayReset === "function") unsubscribePlayReset();
             ctrl.off("error", handleError);
         };
-    }, [controller, state, toast]);
+    }, [controller, state]);
 
     // Save every 15s on a wall-clock timer while playing: iOS suspends
     // timeupdate with the screen off. Unchanged positions are de-duped.
@@ -1478,7 +1496,6 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
             }
         };
 
-         
         const unsubscribe = ctrl.subscribe((snap) => {
             const { status } = snap;
             if (status === "playing") {
@@ -1654,14 +1671,15 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
     return (
         <AudioControlsContext.Provider value={value}>
             {children}
-            {pendingReplacement && (
-                <OperationConfirmToast
-                    currentOpName={pendingReplacement.currentOpName}
-                    newOpName={pendingReplacement.newOpName}
-                    onConfirm={() => pendingReplacement.resolve(true)}
-                    onCancel={() => pendingReplacement.resolve(false)}
-                />
-            )}
+            <ConfirmDialog
+                isOpen={pendingReplacement !== null}
+                title={`Replace ${operationName(pendingReplacement?.currentOpName)}?`}
+                message={`Start ${operationName(pendingReplacement?.newOpName)} instead. The current queue will be replaced.`}
+                confirmText="Replace"
+                variant="info"
+                onConfirm={() => pendingReplacement?.resolve(true)}
+                onClose={() => pendingReplacement?.resolve(false)}
+            />
         </AudioControlsContext.Provider>
     );
 }

@@ -2,7 +2,7 @@ import { api } from "@/lib/api";
 import { useAudioControls } from "@/lib/audio-context";
 import { useDownloadContext } from "@/lib/download-context";
 import { shuffleArray } from "@/lib/shuffle";
-import { useToast } from "@/lib/toast-context";
+import { notify } from "@/lib/notify";
 import { Album, Track } from "../types";
 
 const toQueueTrack = (track: Track, album: Album) => ({
@@ -21,7 +21,6 @@ const toQueueTrack = (track: Track, album: Album) => ({
 });
 
 export function useAlbumActions() {
-    const { toast } = useToast();
     const {
         playTracks,
         playTrack: playTrackAudio,
@@ -30,7 +29,7 @@ export function useAlbumActions() {
     const { addPendingDownload, isPendingByMbid } = useDownloadContext();
 
     const requireAlbum = (album: Album | null): album is Album => {
-        if (!album) toast.error("Album data not available");
+        if (!album) notify.error("Album data not available");
         return !!album;
     };
 
@@ -52,7 +51,6 @@ export function useAlbumActions() {
     const addToQueue = (track: Track, album: Album | null) => {
         if (!requireAlbum(album)) return;
         addToQueueAudio(toQueueTrack(track, album));
-        toast.success(`Added "${track.title}" to queue`);
     };
 
     const downloadAlbum = async (album: Album | null, e?: React.MouseEvent) => {
@@ -64,29 +62,21 @@ export function useAlbumActions() {
 
         const mbid = album.rgMbid || album.mbid || album.id;
         if (!mbid) {
-            toast.error("Album MBID not available");
+            notify.error("Can't download this album", { message: "It has no MusicBrainz ID." });
             return;
         }
 
-        if (isPendingByMbid(mbid)) {
-            toast.info("Album is already being downloaded");
-            return;
-        }
+        if (isPendingByMbid(mbid)) return;
 
         try {
             addPendingDownload("album", album.title, mbid);
-
-            toast.info(`Preparing download: "${album.title}"...`);
-
             await api.downloadAlbum(
                 album.artist?.name || "Unknown Artist",
                 album.title,
                 mbid
             );
-
-            toast.success(`Downloading "${album.title}"`);
         } catch {
-            toast.error("Failed to start album download");
+            notify.error("Failed to start album download");
         }
     };
 

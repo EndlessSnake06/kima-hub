@@ -10,7 +10,7 @@ import { MediaCard } from "@/components/cards/MediaCard";
 import { api } from "@/lib/api";
 import { useAudioState, useAudioControls } from "@/lib/audio-context";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
+import { notify } from "@/lib/notify";
 import { useAudiobooksQuery, queryKeys } from "@/hooks/useQueries";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -54,7 +54,6 @@ type SortType = "title" | "author" | "recent" | "series";
 export default function AudiobooksPage() {
     const router = useRouter();
     useAuth();
-    const { toast } = useToast();
     const { currentAudiobook } = useAudioState();
     const { pause } = useAudioControls();
 
@@ -217,12 +216,11 @@ export default function AudiobooksPage() {
 
     const handleShuffleAudiobooks = () => {
         if (audiobooks.length === 0) {
-            toast.error("No audiobooks to shuffle");
+            notify.error("No audiobooks to shuffle");
             return;
         }
         const shuffled = shuffleArray(audiobooks);
         if (shuffled[0]) {
-            toast.success(`Playing random audiobook: ${shuffled[0].title}`);
             router.push(`/audiobooks/${shuffled[0].id}`);
         }
     };
@@ -237,20 +235,18 @@ export default function AudiobooksPage() {
                 error?: string;
             }>("/audiobooks/sync", {});
             if (!res?.success) {
-                toast.error(res?.error || "Audiobook sync failed");
+                notify.error("Audiobook sync failed", { message: res?.error });
                 return;
             }
             const r = res.result;
             if (r && r.failed > 0) {
-                toast.error(
-                    `Synced ${r.synced}, failed ${r.failed}${r.errors[0] ? `: ${r.errors[0]}` : ""}`
-                );
-            } else if (r) {
-                toast.success(`Synced ${r.synced} audiobooks`);
+                notify.error("Some audiobooks failed to sync", {
+                    message: `Synced ${r.synced}, failed ${r.failed}${r.errors[0] ? `: ${r.errors[0]}` : ""}`,
+                });
             }
             await queryClient.refetchQueries({ queryKey: queryKeys.audiobooks() });
         } catch (error) {
-            toast.error((error as Error)?.message || "Audiobook sync failed");
+            notify.error("Audiobook sync failed", { message: (error as Error)?.message });
         } finally {
             setIsSyncing(false);
         }

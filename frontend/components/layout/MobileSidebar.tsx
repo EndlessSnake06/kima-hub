@@ -8,7 +8,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/cn";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
+import { notify } from "@/lib/notify";
 import Image from "next/image";
 
 interface MobileSidebarProps {
@@ -20,7 +20,6 @@ export function MobileSidebar({ isOpen, onClose }: MobileSidebarProps) {
     const pathname = usePathname();
     const queryClient = useQueryClient();
     const { logout } = useAuth();
-    const { toast } = useToast();
     const [isSyncing, setIsSyncing] = useState(false);
     const isFirstRender = useRef(true);
     const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -51,7 +50,7 @@ export function MobileSidebar({ isOpen, onClose }: MobileSidebarProps) {
             onClose();
         } catch (error) {
             console.error("Failed to sync library:", error);
-            toast.error("Failed to start scan. Please try again.");
+            notify.error("Could not start the library scan");
         } finally {
             syncTimeoutRef.current = setTimeout(() => setIsSyncing(false), 2000);
         }
@@ -61,11 +60,10 @@ export function MobileSidebar({ isOpen, onClose }: MobileSidebarProps) {
     const handleLogout = async () => {
         try {
             await logout();
-            toast.success("Logged out successfully");
             onClose();
         } catch (error) {
             console.error("Logout error:", error);
-            toast.error("Failed to logout");
+            notify.error("Failed to logout");
         }
     };
 

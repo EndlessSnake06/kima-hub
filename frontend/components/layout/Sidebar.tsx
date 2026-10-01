@@ -11,7 +11,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/hooks/useQueries";
 import { useAudioState } from "@/lib/audio-state-context";
 import { useIsMobile, useIsTablet } from "@/hooks/useMediaQuery";
-import { useToast } from "@/lib/toast-context";
+import { notify } from "@/lib/notify";
 import { useFeatures } from "@/lib/features-context";
 import Image from "next/image";
 import { MobileSidebar } from "./MobileSidebar";
@@ -43,7 +43,6 @@ export function Sidebar() {
     const router = useRouter();
     const queryClient = useQueryClient();
     const { isAuthenticated } = useAuth();
-    const { toast } = useToast();
     const { currentTrack, currentAudiobook, currentPodcast, playbackType } =
         useAudioState();
     const { audiobookshelfEnabled } = useFeatures();
@@ -66,7 +65,6 @@ export function Sidebar() {
         enabled: isAuthenticated,
     });
 
-    // Handle library sync - no toast, notification bar handles feedback
     const handleSync = async () => {
         if (isSyncing) return;
 
@@ -75,7 +73,7 @@ export function Sidebar() {
             await api.scanLibrary();
         } catch (error) {
             console.error("Failed to trigger library scan:", error);
-            toast.error("Failed to start scan. Please try again.");
+            notify.error("Could not start the library scan");
         } finally {
             syncTimeoutRef.current = setTimeout(
                 () => setIsSyncing(false),
@@ -151,7 +149,7 @@ export function Sidebar() {
             router.push(`/playlist/${result.id}`);
         } catch (error) {
             console.error("Failed to create playlist:", error);
-            toast.error("Failed to create playlist");
+            notify.error("Failed to create playlist");
         } finally {
             setIsCreating(false);
         }

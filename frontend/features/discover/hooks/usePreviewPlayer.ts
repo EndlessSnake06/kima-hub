@@ -1,12 +1,11 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { useToast } from "@/lib/toast-context";
+import { notify } from "@/lib/notify";
 import { useAudioController } from "@/lib/audio-controller-context";
 import { useAudioState } from "@/lib/audio-state-context";
 import { api } from "@/lib/api";
 
 export function usePreviewPlayer() {
     const controller = useAudioController();
-    const { toast } = useToast();
     const { volume, isMuted } = useAudioState();
     const [currentPreview, setCurrentPreview] = useState<string | null>(null);
     const [previewAudios, setPreviewAudios] = useState<
@@ -100,7 +99,7 @@ export function usePreviewPlayer() {
                         }
                     };
                     audio.onerror = () => {
-                        toast.error("Failed to load preview");
+                        notify.error("Failed to load preview");
                         setCurrentPreview(null);
                         if (mainPlayerWasPausedRef.current) {
                             controller?.play();
@@ -120,11 +119,11 @@ export function usePreviewPlayer() {
                         setCurrentPreview(albumId);
                     })
                     .catch((error) => {
-                        toast.error("Failed to play preview: " + error.message);
+                        notify.error("Failed to play preview", { message: error.message });
                     });
             }
         },
-        [toast, currentPreview, previewAudios, applyCurrentPlayerVolume, controller]
+        [currentPreview, previewAudios, applyCurrentPlayerVolume, controller]
     );
 
     return {

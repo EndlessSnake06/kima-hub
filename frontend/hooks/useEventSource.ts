@@ -105,11 +105,6 @@ export function useEventSource() {
                             );
                             queryClient.invalidateQueries({ queryKey: ["enrichment-progress"] });
                             queryClient.invalidateQueries({ queryKey: ["library", "recently-added"] });
-                            if (data.manual) {
-                                window.dispatchEvent(new CustomEvent("scan-finished", {
-                                    detail: { result: data.result, error: data.error },
-                                }));
-                            }
                             break;
                         case "enrichment:progress":
                             queryClient.invalidateQueries({ queryKey: ["enrichment-progress"] });
@@ -123,9 +118,6 @@ export function useEventSource() {
                             if (data.status === "completed" || data.status === "failed" || data.status === "cancelled") {
                                 queryClient.invalidateQueries({ queryKey: ["notifications"] });
                                 queryClient.invalidateQueries({ queryKey: ["playlists"] });
-                                window.dispatchEvent(new CustomEvent("import-status-change", {
-                                    detail: { status: data.status, playlistName: data.playlistName, error: data.error }
-                                }));
                             }
                             break;
                         case "discover:progress":

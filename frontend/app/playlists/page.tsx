@@ -243,9 +243,6 @@ function ImportUrlPanel({ onClose }: { onClose: () => void }) {
         setError(null);
         try {
             await api.post<{ jobId: string }>("/spotify/import/quick", { url: trimmed });
-            window.dispatchEvent(new CustomEvent("import-status-change", {
-                detail: { status: "started", playlistName: null }
-            }));
             onClose();
         } catch (err) {
             setError(err instanceof Error ? err.message : "Failed to start import");

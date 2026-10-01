@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { useToast } from "@/lib/toast-context";
+import { notify } from "@/lib/notify";
 import { searchResultStore } from "@/lib/search-result-store";
 import type { SoulseekResult } from "../types";
 
@@ -23,7 +23,6 @@ interface UseSoulseekSearchReturn {
 export function useSoulseekSearch({
     query,
 }: UseSoulseekSearchProps): UseSoulseekSearchReturn {
-    const { toast } = useToast();
     const queryClient = useQueryClient();
     const [soulseekResults, setSoulseekResults] = useState<SoulseekResult[]>([]);
     const [isSoulseekSearching, setIsSoulseekSearching] = useState(false);
@@ -163,16 +162,14 @@ export function useSoulseekSearch({
             }, 5000);
         } catch (error) {
             console.error("Download error:", error);
-            const message =
-                error instanceof Error ? error.message : "Failed to start download";
-            toast.error(message);
+            notify.error("Failed to start download", { message: error instanceof Error ? error.message : undefined });
             setDownloadingFiles((prev) => {
                 const newSet = new Set(prev);
                 newSet.delete(downloadKey);
                 return newSet;
             });
         }
-    }, [toast, queryClient]);
+    }, [queryClient]);
 
     const handleBulkDownload = useCallback(async (results: SoulseekResult[]) => {
         // Four concurrent kickoffs. handleDownload handles its own errors, so

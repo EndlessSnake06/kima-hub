@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { Edit, X, Save } from "lucide-react";
 import { api } from "@/lib/api";
-import { useToast } from "@/lib/toast-context";
+import { notify } from "@/lib/notify";
 import { GradientSpinner } from "./ui/GradientSpinner";
 import { Button } from "@/components/ui/Button";
 import { useDialog } from "@/hooks/useDialog";
@@ -42,7 +42,6 @@ export function MetadataEditor({
     currentData,
     onSave,
 }: MetadataEditorProps) {
-    const { toast } = useToast();
     const [isOpen, setIsOpen] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [isResetting, setIsResetting] = useState(false);
@@ -81,11 +80,10 @@ export function MetadataEditor({
                 await api.resetTrackMetadata(id);
             }
 
-            toast.success("Metadata reset to original values");
             onSave?.(null);
             setIsOpen(false);
         } catch (error: unknown) {
-            toast.error(error instanceof Error ? error.message : "Failed to reset metadata");
+            notify.error("Failed to reset metadata", { message: error instanceof Error ? error.message : undefined });
         } finally {
             setIsResetting(false);
         }
@@ -104,20 +102,11 @@ export function MetadataEditor({
                 response = await api.updateTrackMetadata(id, formData);
             }
 
-            toast.success(
-                `${
-                    type === "artist"
-                        ? "Artist"
-                        : type === "album"
-                        ? "Album"
-                        : "Track"
-                } metadata updated`
-            );
             onSave?.(response);
             setIsOpen(false);
         } catch (error: unknown) {
             console.error("Failed to update metadata:", error);
-            toast.error(error instanceof Error ? error.message : "Failed to update metadata");
+            notify.error("Failed to update metadata", { message: error instanceof Error ? error.message : undefined });
         } finally {
             setIsSaving(false);
         }

@@ -6,14 +6,13 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAudio } from "@/lib/audio-context";
 import { useAudioState } from "@/lib/audio-state-context";
 import { api } from "@/lib/api";
-import { useToast } from "@/lib/toast-context";
+import { notify } from "@/lib/notify";
 import { Podcast, Episode, PodcastPreview } from "../types";
 import { queryKeys } from "@/hooks/useQueries";
 import { dispatchQueryEvent } from "@/lib/query-events";
 
 export function usePodcastActions(podcastId: string, sortedEpisodes?: Episode[]) {
     const router = useRouter();
-    const { toast } = useToast();
     const queryClient = useQueryClient();
     const { playPodcast, currentPodcast, isPlaying, pause, resumeWithGesture } =
         useAudio();
@@ -40,12 +39,12 @@ export function usePodcastActions(podcastId: string, sortedEpisodes?: Episode[])
                     router.push(`/podcasts/${response.podcast.id}`);
                 }
             } catch (error: unknown) {
-                toast.error(error instanceof Error ? error.message : "Couldn't subscribe to this podcast");
+                notify.error("Couldn't subscribe to this podcast", { message: error instanceof Error ? error.message : undefined });
             } finally {
                 setIsSubscribing(false);
             }
         },
-        [router, queryClient, toast]
+        [router, queryClient]
     );
 
     const handleRemovePodcast = useCallback(async () => {

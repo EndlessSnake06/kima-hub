@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { api } from "@/lib/api";
-import { useToast } from "@/lib/toast-context";
+import { notify } from "@/lib/notify";
 import { QRCodeSVG } from "qrcode.react";
 import { Card } from "@/components/ui/Card";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
@@ -39,7 +39,6 @@ interface LinkedDevice {
 export default function DeviceLinkPage() {
     const router = useRouter();
     const { isAuthenticated, isLoading: authLoading } = useAuth();
-    const { toast } = useToast();
     const [linkCode, setLinkCode] = useState<DeviceLinkCode | null>(null);
     const [isGenerating, setIsGenerating] = useState(false);
     const [timeRemaining, setTimeRemaining] = useState(0);
@@ -64,11 +63,11 @@ export default function DeviceLinkPage() {
             setDevices(response);
         } catch (err) {
             console.error("Failed to load devices:", err);
-            toast.error("Failed to load linked devices");
+            notify.error("Failed to load linked devices");
         } finally {
             setIsLoadingDevices(false);
         }
-    }, [toast]);
+    }, []);
 
     useEffect(() => {
         if (isAuthenticated) {
@@ -143,9 +142,8 @@ export default function DeviceLinkPage() {
                 method: "DELETE",
             });
             setDevices((prev) => prev.filter((d) => d.id !== device.id));
-            toast.success(`${device.name} unlinked`);
         } catch {
-            toast.error(`Couldn't unlink ${device.name}. Try again.`);
+            notify.error("Couldn't unlink device", { message: `${device.name} is still linked. Try again.` });
         }
     };
 

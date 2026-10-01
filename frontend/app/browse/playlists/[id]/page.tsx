@@ -15,7 +15,7 @@ import {
     VolumeX,
 } from "lucide-react";
 import { api } from "@/lib/api";
-import { useToast } from "@/lib/toast-context";
+import { notify } from "@/lib/notify";
 import { cn } from "@/lib/cn";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { PageMessage } from "@/components/ui/PageMessage";
@@ -59,7 +59,6 @@ interface DeezerPlaylistFull {
 export default function DeezerPlaylistDetailPage() {
     const params = useParams();
     const router = useRouter();
-    const { toast } = useToast();
     const playlistId = params.id as string;
 
     const [playlist, setPlaylist] = useState<DeezerPlaylistFull | null>(null);
@@ -122,7 +121,7 @@ export default function DeezerPlaylistDetailPage() {
 
     const handlePlayPreview = (track: DeezerTrack) => {
         if (!track.previewUrl) {
-            toast.error("No preview available for this track");
+            notify.error("No preview available for this track");
             return;
         }
 
@@ -157,7 +156,7 @@ export default function DeezerPlaylistDetailPage() {
 
         audio.onerror = () => {
             if (audioRef.current !== audio) return;
-            toast.error("Failed to play preview");
+            notify.error("Failed to play preview");
             setPlayingTrackId(null);
             setIsPreviewPlaying(false);
             audioRef.current = null;

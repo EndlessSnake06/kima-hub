@@ -1,47 +1,32 @@
 import { useCallback } from 'react';
 import { api } from '@/lib/api';
-import { useToast } from '@/lib/toast-context';
+import { notify } from "@/lib/notify";
 import { useDownloadContext } from '@/lib/download-context';
 import { Artist, Album } from '../types';
 
 export function useDownloadActions() {
-  const { toast } = useToast();
   const { addPendingDownload, isPendingByMbid } = useDownloadContext();
 
   const downloadArtist = useCallback(
     async (artist: Artist | null) => {
-      if (!artist) {
-        toast.error('No artist selected');
-        return;
-      }
+      if (!artist) return;
 
       if (!artist.mbid) {
-        toast.error('Artist MBID not available');
+        notify.error("Can't download this artist", { message: 'They have no MusicBrainz ID.' });
         return;
       }
 
-      // Check if already downloading
-      if (isPendingByMbid(artist.mbid)) {
-        toast.info(`${artist.name} is already being downloaded`);
-        return;
-      }
+      if (isPendingByMbid(artist.mbid)) return;
 
       try {
-        // Add to pending downloads
         addPendingDownload('artist', artist.name, artist.mbid);
-
-        toast.info(`Preparing download: "${artist.name}"...`);
-
-        // Trigger download
         await api.downloadArtist(artist.name, artist.mbid);
-
-        toast.success(`Downloading ${artist.name}`);
       } catch (error: unknown) {
         console.error('Failed to download artist:', error);
-        toast.error(error instanceof Error ? error.message : 'Failed to download artist');
+        notify.error('Failed to download artist', { message: error instanceof Error ? error.message : undefined });
       }
     },
-    [toast, addPendingDownload, isPendingByMbid]
+    [addPendingDownload, isPendingByMbid]
   );
 
   const downloadAlbum = useCallback(
@@ -50,32 +35,21 @@ export function useDownloadActions() {
       const mbid = album.rgMbid || album.mbid;
 
       if (!mbid) {
-        toast.error('Album MBID not available');
+        notify.error("Can't download this album", { message: 'It has no MusicBrainz ID.' });
         return;
       }
 
-      // Check if already downloading
-      if (isPendingByMbid(mbid)) {
-        toast.info(`${album.title} is already being downloaded`);
-        return;
-      }
+      if (isPendingByMbid(mbid)) return;
 
       try {
-        // Add to pending downloads
         addPendingDownload('album', `${artistName} - ${album.title}`, mbid);
-
-        toast.info(`Preparing download: "${album.title}"...`);
-
-        // Trigger download
         await api.downloadAlbum(artistName, album.title, mbid);
-
-        toast.success(`Downloading ${album.title}`);
       } catch (error: unknown) {
         console.error('Failed to download album:', error);
-        toast.error(error instanceof Error ? error.message : 'Failed to download album');
+        notify.error('Failed to download album', { message: error instanceof Error ? error.message : undefined });
       }
     },
-    [toast, addPendingDownload, isPendingByMbid]
+    [addPendingDownload, isPendingByMbid]
   );
 
   return {
