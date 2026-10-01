@@ -84,9 +84,9 @@ export function KeyWheel({ keys, period }: { keys: NonNullable<Signature["key"]>
         <figure ref={ref} className="m-0 flex flex-col gap-5">
             <svg
                 viewBox="0 0 100 100"
-                /* Fills the column on phones so segments reach the 44px touch
-                    target from 412px wide; narrower phones have no room for it. */
-                 className="w-full sm:max-w-[19rem] aspect-square"
+                /* As wide as the column allows on phones, for touch targets,
+                    but never taller than the panel leaves room for. */
+                className="w-full aspect-square max-w-[calc(var(--fit-h)*0.4)] lg:max-w-[min(19rem,calc(var(--fit-h)-12rem))]"
                 role="img"
                 aria-label={`A circle of fifths. You play most often in ${busiest.name}. ${Math.round(keys.minorPct)}% of your listening is in a minor key.`}
             >

@@ -85,7 +85,7 @@ export function ListeningClock({ listening, period }: { listening: ListeningStat
         .flatMap((row, dow) => row.map((n, hour) => ({ dow, hour, n })))
         .filter((c) => c.n > 0)
         .sort((a, b) => b.n - a.n)
-        .slice(0, 5);
+        .slice(0, 3);
 
     // Open wins over hover. Moving the pointer away from an opened cell must not
     // retitle the panel that is still showing that cell's tracks.
@@ -162,7 +162,7 @@ export function ListeningClock({ listening, period }: { listening: ListeningStat
                                         onClick={() => toggle(dow, hour)}
                                         aria-disabled={n === 0}
                                         className={[
-                                            "h-6 sm:h-7 rounded-[2px] origin-center",
+                                            "touch-exempt h-6 sm:h-7 rounded-[2px] origin-center",
                                             "transition-[box-shadow,opacity] duration-150",
                                             "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/70",
                                             n > 0 && "cursor-pointer",

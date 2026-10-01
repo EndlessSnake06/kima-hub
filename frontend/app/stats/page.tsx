@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * Stats: the listener, then the server. Amber is only ever data, a figure is
- * stated once, and music time is an estimate that says "about".
+ * Stats: the listener, then the server, one chapter at a time. Amber is only
+ * ever data, a figure is stated once, and music time is an estimate that says "about".
  */
 
 import { useEffect, useState } from "react";
@@ -17,18 +17,19 @@ import { SpokenWord } from "@/features/stats/components/SpokenWord";
 import { SignatureSound, OwnedAgainstPlayed } from "@/features/stats/components/Signature";
 import { ServerPanel } from "@/features/stats/components/ServerPanel";
 import { FalseStarts } from "@/features/stats/components/FalseStarts";
-import { Shortcuts, type Jump } from "@/features/stats/components/Shortcuts";
+import { Chapters, type Chapter } from "@/features/stats/components/Chapters";
 import { hourLabel, hoursValue, monthYear, percent, whenLabel } from "@/features/stats/format";
-import { useReveal } from "@/features/stats/useReveal";
 import { Finding, PlayCore } from "@/features/stats/components/Finding";
 import { usePlaySlice } from "@/features/stats/usePlaySlice";
 import Link from "next/link";
 import { Play } from "lucide-react";
 import { PERIODS, type Period, type ListeningStats, type StatsResponse } from "@/features/stats/types";
 import { PageMessage } from "@/components/ui/PageMessage";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 
 export default function StatsPage() {
     const { isAuthenticated, isLoading: authLoading } = useAuth();
+    const stacked = useMediaQuery("(max-width: 1023px)");
     const [data, setData] = useState<StatsResponse | null>(null);
     const [failed, setFailed] = useState(false);
     // One period for the whole page, so every figure is comparable to the others.
@@ -40,37 +41,32 @@ export default function StatsPage() {
         if (!isAuthenticated) return;
         let cancelled = false;
         (async () => {
-            // Keep the old figures on screen while the new window loads. A page
-            // that empties to skeletons on every toggle makes comparing two
-            // windows impossible, which is the only reason to have the control.
+            // The old figures stay on screen while the new period loads, so two
+            // periods can be compared.
             if (data) setReloading(true);
             try {
-                // The hour-of-day grid is meaningless in UTC, so the server is
-                // told which wall clock to bucket against.
+                // The hour-of-day grid is bucketed on the listener's wall clock.
                 const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
                 const res = await api.get<StatsResponse>(
                     `/stats?tz=${encodeURIComponent(tz)}&period=${period}`,
                 );
                 if (!cancelled) { setData(res); setFailed(false); }
             } catch {
-                // Only `failed` is set. Writing `period` here would refire this
-                // effect and the successful refetch would clear the warning; the
-                // control is reconciled at render against the loaded window.
+                // Writing `period` here would refire this effect; the control is
+                // reconciled at render against the loaded period instead.
                 if (!cancelled) setFailed(true);
             } finally {
                 if (!cancelled) setReloading(false);
             }
         })();
         return () => { cancelled = true; };
-        // `data` is deliberately not a dependency: it is read only to decide
-        // whether this is a first load or a re-window.
+        // `data` only decides whether this is a first load or a period change.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isAuthenticated, period, attempt]);
 
     if (authLoading || (!data && !failed)) return <Waiting />;
 
-    // Error page only when there is nothing to show; a failed period switch
-    // keeps the figures already on screen.
+    // A failed period switch keeps the figures already on screen.
     if (!data) {
         return (
             <PageMessage
@@ -83,178 +79,155 @@ export default function StatsPage() {
 
     const { listening, shelf, spoken, signature, system } = data;
     const hasPlays = listening.plays > 0;
+    // After a failed switch the control shows the period whose figures are on screen.
+    const shown = failed ? data.period : period;
 
-    // The claim over the energy curve is read from the same numbers the curve
-    // draws, rather than being a sentence somebody typed once and left.
+    // The claim over the energy curve is read from the numbers the curve draws.
     const played = signature.hourly.filter((h) => h.plays > 0);
     const frantic = played.length > 2
         ? played.reduce((a, b) => (b.energy > a.energy ? b : a))
         : null;
 
-    // Only what actually rendered, so a digit never jumps to nothing.
-    const jumps: Jump[] = [
-        { anchor: "top", label: "Top" },
-        ...(hasPlays ? [{ anchor: "played", label: "Most played" }] : []),
-        // Each guard has to match the guard on the section it points at, or a
-        // digit scrolls to nothing. `when` mirrors the peak check rather than
-        // relying on "has plays implies has a peak", which is true today and is
-        // not written down anywhere.
-        ...(hasPlays && listening.peak ? [{ anchor: "when", label: "Your week" }] : []),
-        ...(hasPlays && signature.key ? [{ anchor: "sound", label: "Keys and energy" }] : []),
-        { anchor: "shelf", label: "The shelf" },
-        { anchor: "strip", label: "Also true" },
-        { anchor: "health", label: "The machine" },
-    ];
-
-    return (
-        <Shell>
-            {/* ── Part one: you ──────────────────────────────────────────── */}
-            {hasPlays ? (
-                <Ledger
-                    listening={listening}
-                    shelf={shelf}
-                    signature={signature}
-                    // What is on screen, not what was last asked for. After a
-                    // failed switch these differ, and the control has to show
-                    // the window whose figures are actually being displayed.
-                    period={failed ? data.period : period}
-                    onPeriod={setPeriod}
-                    reloading={reloading}
-                    stale={failed}
-                />
-            ) : (
-                // The picker lives here too, and has to. Narrow to thirty days
-                // on a library you have not touched this month and the page has
-                // no plays to draw — without the control on the empty state
-                // there is nothing to press to get back out of the window.
-                <header className="flex flex-col gap-4">
-                    <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-3 border-b border-white/[0.08] pb-4">
-                        <p className="t-eyebrow">Your listening</p>
-                        <PeriodPicker value={period} onChange={setPeriod} busy={reloading} />
-                    </div>
-                    <h1 className="text-[length:var(--stat-hero)] leading-[1.02] font-light tracking-[-0.03em] text-[var(--text-primary)]">
-                        {period === "all" ? "No plays yet" : "No plays in this period"}
-                    </h1>
-                    <p className="t-body leading-relaxed max-w-[48ch]">
-                        {period === "all"
-                            ? "This page fills in as you listen. A track counts once you've heard half of it, so clicking through an album won't pad it out."
-                            : "You have not played anything in this period. Widen it above and the page fills back in."}
-                    </p>
-                </header>
-            )}
-
-            {/* Two dense lists and nothing else. These are the first thing
-                anyone scrolls for, so they get no claim, no paragraph and no
-                chart standing between the reader and the names. */}
-            {hasPlays && (
-                <Band
-                    id="played"
-                    title="Most played"
-                    aside={PERIODS.find((p) => p.id === period)?.sentence || "all time"}
-                >
-                    <TopLists listening={listening} period={period} />
-                </Band>
-            )}
-
-            {hasPlays && listening.peak && (
+    const chapters: Chapter[] = [
+        {
+            id: "overview",
+            label: "Overview",
+            content: hasPlays
+                ? <Overview listening={listening} shelf={shelf} signature={signature} period={shown} withShape={!stacked} />
+                : <NoPlays period={shown} />,
+        },
+        // Where the Overview stacks, the plot has no room beside the figures and gets its own chapter.
+        ...(hasPlays && stacked ? [{
+            id: "shape",
+            label: "Shape",
+            content: (
+                <div className="mx-auto w-full max-w-[max(16rem,calc(var(--fit-h)-13.5rem))]">
+                    <ShapePlot listening={listening} period={shown} />
+                </div>
+            ),
+        }] : []),
+        ...(hasPlays ? [{
+            id: "played",
+            label: "Most played",
+            content: <TopLists listening={listening} period={shown} />,
+        }] : []),
+        ...(hasPlays && listening.peak ? [{
+            id: "rhythm",
+            label: "Rhythm",
+            content: (
                 <Finding
-                    anchor="when"
                     claim={`Your week peaks on ${whenLabel(listening.peak.weekday, listening.peak.hour)}.`}
                     note="Every hour you have ever played anything, in your own timezone."
-                    evidence={<ListeningClock listening={listening} period={period} />}
+                    evidence={<ListeningClock listening={listening} period={shown} />}
                 />
-            )}
-
-            {hasPlays && signature.key && (
+            ),
+        }] : []),
+        ...(hasPlays && signature.key ? [{
+            id: "mood",
+            label: "Mood",
+            content: (
                 <Finding
-                    anchor="sound"
                     claim={
                         frantic
                             ? `The music you play is most frantic around ${hourLabel(frantic.hour)}.`
                             : "You reach for minor keys."
                     }
                     note={`Keys and energy are both read from the audio itself, across ${shelf.analysis.done.toLocaleString()} analysed tracks. Press a segment of the wheel to put that key on.`}
-                    evidence={<SignatureSound signature={signature} period={period} />}
+                    evidence={<SignatureSound signature={signature} period={shown} />}
                 />
-            )}
-
-            {/* The shelf and the strip carry `scope`: they describe what you
-                own, which the period control does not change. */}
-            <Finding
-                anchor="shelf"
-                claim={`${shelf.neverPlayed.toLocaleString()} tracks you have never once played.`}
-                scope={period === "all" ? undefined : "all time"}
-                note="That is not a failure. It is what owning a collection looks like."
-                evidence={
-                    <div className="flex flex-col gap-(--stat-gap-block)">
-                        <Coverage shelf={shelf} />
-                        {shelf.decades.length > 1 && <Decades decades={shelf.decades} />}
+            ),
+        }] : []),
+        {
+            id: "unplayed",
+            label: "Unplayed",
+            content: (
+                <Finding
+                    claim={`${shelf.neverPlayed.toLocaleString()} tracks you have never once played.`}
+                    scope={shown === "all" ? undefined : "all time"}
+                    note="That is not a failure. It is what owning a collection looks like."
+                    evidence={
+                        <div className="flex flex-col gap-(--stat-gap-block)">
+                            <Coverage shelf={shelf} />
+                            {shelf.decades.length > 1 && <Decades decades={shelf.decades} />}
+                        </div>
+                    }
+                />
+            ),
+        },
+        {
+            id: "also",
+            label: "Also true",
+            content: (
+                <Aside note={shown === "all" ? undefined : "all time"}>
+                    <div className="grid gap-x-12 gap-y-(--stat-gap-block) sm:grid-cols-2 lg:grid-cols-3">
+                        {signature.ownedVsPlayed.length > 0 && (
+                            <Column label="What you own against what you play">
+                                <OwnedAgainstPlayed signature={signature} />
+                            </Column>
+                        )}
+                        <Column label="Spoken word">
+                            <SpokenWord spoken={spoken} />
+                        </Column>
+                        {hasPlays && (
+                            <Column label="Where it came from">
+                                <SourceSplit listening={listening} />
+                            </Column>
+                        )}
                     </div>
-                }
-            />
-
-            {/* Everything that is a reading rather than an argument. Three
-                columns, three labels, no sentences explaining what a column is
-                for — the label does that, and the numbers do the rest. */}
-            <Band id="strip" title="Also true" aside={period === "all" ? undefined : "all time"}>
-                <div className="grid gap-x-12 gap-y-(--stat-gap-block) sm:grid-cols-2 lg:grid-cols-3">
-                    {signature.ownedVsPlayed.length > 0 && (
-                        <Column label="What you own against what you play">
-                            <OwnedAgainstPlayed signature={signature} />
-                        </Column>
-                    )}
-                    <Column label="Spoken word">
-                        <SpokenWord spoken={spoken} />
-                    </Column>
-                    {hasPlays && (
-                        <Column label="Where it came from">
-                            <SourceSplit listening={listening} />
-                        </Column>
-                    )}
-                </div>
-            </Band>
-
-            {/* ── Part two: the machine ──────────────────────────────────── */}
-            <Divide id="health" label="The machine" />
-
-            {system && (
-                <Band id="server" title="How it's running" aside={`Kima ${system.version}`}>
+                </Aside>
+            ),
+        },
+        ...(system ? [{
+            id: "health",
+            label: "Health",
+            content: (
+                <Aside note={`Kima ${system.version}`}>
                     <ServerPanel system={system} />
-                </Band>
-            )}
+                </Aside>
+            ),
+        }] : []),
+        { id: "false-starts", label: "False starts", fill: true, content: <FalseStarts /> },
+    ];
 
-            <Band id="false-starts" title="False starts" aside="nothing runs until you ask">
-                <FalseStarts />
-            </Band>
-
-            <Shortcuts jumps={jumps} />
-        </Shell>
+    return (
+        <Frame
+            controls={
+                <>
+                    {shown === "all" && hasPlays && listening.firstPlay && (
+                        <p className="t-meta hidden sm:block">since {monthYear(listening.firstPlay)}</p>
+                    )}
+                    <PeriodPicker value={shown} onChange={setPeriod} busy={reloading} />
+                </>
+            }
+            status={
+                failed ? (
+                    <p className="t-meta text-[var(--text-secondary)]" role="status">
+                        Couldn&apos;t load that period. These are still the figures for{" "}
+                        {PERIODS.find((p) => p.id === shown)?.label.toLowerCase() ?? "all time"}.
+                    </p>
+                ) : null
+            }
+        >
+            <Chapters chapters={chapters} />
+        </Frame>
     );
 }
 
-/* ── The opening screen ──────────────────────────────────────────────────── */
+/* ── The chapters ────────────────────────────────────────────────────────── */
 
-/**
- * The opening screen: one sentence, a row of supporting figures, and value/gloss
- * lines beside the taste plot, so the page is read before any scrolling.
- */
-function Ledger({
+/** One sentence, the four counts, the readings, and the taste plot beside them. */
+function Overview({
     listening,
     shelf,
     signature,
     period,
-    onPeriod,
-    reloading,
-    stale,
+    withShape,
 }: {
     listening: ListeningStats;
     shelf: StatsResponse["shelf"];
     signature: StatsResponse["signature"];
     period: Period;
-    onPeriod: (p: Period) => void;
-    reloading: boolean;
-    /** The last request failed and these figures are the previous window's. */
-    stale: boolean;
+    withShape: boolean;
 }) {
     const heard = percent(shelf.tracks.heard, shelf.tracks.total);
     const window = PERIODS.find((p) => p.id === period)?.sentence ?? "";
@@ -283,57 +256,30 @@ function Ledger({
     ].filter(Boolean) as Array<{ value: string; note: string }>;
 
     return (
-        <header className="flex flex-col gap-(--stat-gap-block)">
-            <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-3 border-b border-white/[0.08] pb-4">
-                <p className="t-eyebrow">Your listening</p>
-                <div className="flex items-baseline gap-4">
-                    {/* "Since December 2025" is the period statement, so it only
-                        belongs beside the window that actually starts there. */}
-                    {period === "all" && listening.firstPlay && (
-                        <p className="t-meta hidden sm:block">since {monthYear(listening.firstPlay)}</p>
-                    )}
-                    <PeriodPicker value={period} onChange={onPeriod} busy={reloading} />
-                </div>
-            </div>
+        <div className="grid items-start gap-x-16 gap-y-(--stat-gap-block) lg:grid-cols-[minmax(0,1fr)_minmax(0,30rem)]">
+            <div className="flex flex-col gap-(--stat-gap-block)">
+                <h1
+                    className="text-[length:var(--stat-hero)] leading-[1.02] font-light tracking-[-0.03em] text-[var(--text-primary)] text-balance"
+                    aria-label={`About ${hoursValue(listening.estimatedSeconds)} hours of music ${window}`.trim()}
+                >
+                    About{" "}
+                    <span className="t-figure text-[length:var(--stat-hero)]">
+                        {hoursValue(listening.estimatedSeconds)}
+                    </span>{" "}
+                    hours of music{window ? ` ${window}` : ""}.
+                </h1>
 
-            {/* Quiet, and only when it happened. Keeping the figures and saying
-                nothing would leave the reader looking at a window they did not
-                ask for with no way to tell. */}
-            {stale && (
-                <p className="t-meta text-[var(--text-secondary)]" role="status">
-                    Couldn&apos;t load that period. These are still the figures for{" "}
-                    {PERIODS.find((p) => p.id === period)?.label.toLowerCase() ?? "all time"}.
-                </p>
-            )}
+                {/* The hours are an estimate and say so; these four counts are exact.
+                    Under 480px four columns cannot hold their labels, so phones get two. */}
+                <dl className="grid grid-cols-2 min-[480px]:grid-cols-4 gap-x-4 gap-y-6 sm:gap-x-8 lg:max-w-[42rem]">
+                    <Reading value={listening.plays.toLocaleString()} label="listens" />
+                    <Reading value={listening.distinctArtists.toLocaleString()} label="artists" />
+                    <Reading value={listening.distinctAlbums.toLocaleString()} label="albums" />
+                    <Reading value={`${heard}%`} label="of your shelf" />
+                </dl>
 
-            {/* Words and figures on the left, growing; the square plot on the
-                right, stopping at 34rem. */}
-            <div className="grid items-start gap-x-16 gap-y-(--stat-gap-block) lg:grid-cols-[minmax(0,1fr)_minmax(0,34rem)]">
-                <div className="stats-hero-figure flex flex-col gap-(--stat-gap-block)">
-                    <h1
-                        className="text-[length:var(--stat-hero)] leading-[1.02] font-light tracking-[-0.03em] text-[var(--text-primary)] text-balance"
-                        aria-label={`About ${hoursValue(listening.estimatedSeconds)} hours of music ${window}`.trim()}
-                    >
-                        About{" "}
-                        <span className="t-figure text-[length:var(--stat-hero)]">
-                            {hoursValue(listening.estimatedSeconds)}
-                        </span>{" "}
-                        hours of music{window ? ` ${window}` : ""}.
-                    </h1>
-
-                    {/* One rank, four figures. The hours above are an estimate
-                        and say so; these four are counts and are exact. */}
-                    {/* Four across needs ~100px a column to keep labels on one
-                        line, so phones under 480px get two. */}
-                    <dl className="grid grid-cols-2 min-[480px]:grid-cols-4 gap-x-4 gap-y-6 sm:gap-x-8 lg:max-w-[42rem]">
-                        <Reading value={listening.plays.toLocaleString()} label="listens" />
-                        <Reading value={listening.distinctArtists.toLocaleString()} label="artists" />
-                        <Reading value={listening.distinctAlbums.toLocaleString()} label="albums" />
-                        <Reading value={`${heard}%`} label="of your shelf" />
-                    </dl>
-
-                    <div className="flex flex-col gap-5">
-                        <dl className="flex flex-col lg:max-w-[42rem]">
+                <div className="flex flex-col gap-5">
+                    <dl className="flex flex-col lg:max-w-[42rem]">
                         {facts.map((f) => (
                             <div
                                 key={f.value}
@@ -346,17 +292,34 @@ function Ledger({
                             </div>
                         ))}
                     </dl>
-                        {signature.concentration && (
-                            <PlayCore count={signature.concentration.forHalf} period={period} />
-                        )}
-                    </div>
-                </div>
-
-                <div className="w-full max-w-[26rem] lg:max-w-none lg:justify-self-end">
-                    <ShapePlot listening={listening} period={period} />
+                    {signature.concentration && (
+                        <PlayCore count={signature.concentration.forHalf} period={period} />
+                    )}
                 </div>
             </div>
-        </header>
+
+            {withShape && (
+                <div className="w-full justify-self-end max-w-[max(16rem,calc(var(--fit-h)-13.5rem))]">
+                    <ShapePlot listening={listening} period={period} />
+                </div>
+            )}
+        </div>
+    );
+}
+
+/** The Overview when the period holds no plays; the period picker stays above it as the way out. */
+function NoPlays({ period }: { period: Period }) {
+    return (
+        <div className="flex flex-col gap-4">
+            <h1 className="text-[length:var(--stat-hero)] leading-[1.02] font-light tracking-[-0.03em] text-[var(--text-primary)]">
+                {period === "all" ? "No plays yet" : "No plays in this period"}
+            </h1>
+            <p className="t-body leading-relaxed max-w-[48ch]">
+                {period === "all"
+                    ? "This page fills in as you listen. A track counts once you've heard half of it, so clicking through an album won't pad it out."
+                    : "You have not played anything in this period. Widen it above and the page fills back in."}
+            </p>
+        </div>
     );
 }
 
@@ -417,43 +380,13 @@ function Reading({ value, label }: { value: string; label: string }) {
 
 /* ── Structure ───────────────────────────────────────────────────────────── */
 
-/**
- * A named block that reports rather than argues. Its rule sits on the heading's
- * baseline and ends in one fact about what follows.
- */
-function Band({
-    id,
-    title,
-    aside,
-    children,
-}: {
-    id?: string;
-    title: string;
-    /** One fact about this band, set at the end of the rule. */
-    aside?: string;
-    children: React.ReactNode;
-}) {
-    const { ref, shown } = useReveal<HTMLElement>({ threshold: 0.1 });
-
+/** A chapter that reports rather than argues, with one fact about it set above. */
+function Aside({ note, children }: { note?: string; children: React.ReactNode }) {
     return (
-        <section
-            ref={ref}
-            id={id}
-            className={`flex flex-col scroll-mt-24 stats-settle ${shown ? "animate-rise" : "opacity-0"}`}
-        >
-            <div className="flex items-baseline gap-5 mb-6">
-                <h2 className="shrink-0 text-[length:var(--stat-head)] leading-none font-normal tracking-[-0.01em] text-[var(--text-primary)]">
-                    {title}
-                </h2>
-                <div className="h-px flex-1 translate-y-[-0.35em] bg-white/[0.08]" />
-                {aside && (
-                    <span className="shrink-0 t-meta hidden sm:block max-w-[24ch] text-right">
-                        {aside}
-                    </span>
-                )}
-            </div>
+        <div className="flex flex-col gap-5">
+            {note && <p className="t-meta">{note}</p>}
             {children}
-        </section>
+        </div>
     );
 }
 
@@ -467,30 +400,24 @@ function Column({ label, children }: { label: string; children: React.ReactNode 
     );
 }
 
-/** Full-width break between listening figures and the server's health. */
-function Divide({ id, label }: { id: string; label: string }) {
+/** The page at exactly the height of the content area, so only the chapters move. */
+function Frame({
+    controls,
+    status,
+    children,
+}: {
+    controls: React.ReactNode;
+    status?: React.ReactNode;
+    children: React.ReactNode;
+}) {
     return (
-        <div id={id} className="flex items-center gap-6 scroll-mt-24 pt-2">
-            <span className="t-eyebrow shrink-0">{label}</span>
-            <span className="h-px flex-1 bg-white/[0.14]" />
-        </div>
-    );
-}
-
-/** Page gutters, and the measure the whole page is set to. */
-function Shell({ children }: { children: React.ReactNode }) {
-    return (
-        <div className="relative page-shell pb-28">
-            {/* Scroll progress. Kept outside the gapped column so it adds no
-             * section gap above the first content. */}
-            <div aria-hidden className="sticky top-0 z-(--z-raised) -mx-5 sm:-mx-8 lg:-mx-12 h-px bg-white/[0.04]">
-                <div className="stats-progress-rule h-full w-full bg-brand/50 origin-left scale-x-0" />
+        <div className="page-shell relative flex h-full flex-col pt-2 pb-[var(--stats-under)] sm:pt-6">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 sm:pb-3">
+                <p className="t-eyebrow">Your listening</p>
+                <div className="flex items-baseline gap-4">{controls}</div>
             </div>
-
-            {/* The gap belongs between sections, not above the first one. */}
-            <div className="flex flex-col gap-(--stat-gap-section) pt-6 sm:pt-8">
-                {children}
-            </div>
+            {status}
+            {children}
         </div>
     );
 }
@@ -545,7 +472,8 @@ function Ranked({
     return (
         <div className="flex flex-col gap-3">
             <h3 className="t-label text-[var(--text-secondary)]">{label}</h3>
-            <ol className="flex flex-col gap-1.5">
+            {/* Phones and tablets show the top five, so both lists fit one panel. */}
+            <ol className="flex flex-col gap-1.5 max-lg:[&>li:nth-child(n+6)]:hidden">
                 {items.map((item, i) => {
                     const inner = (
                         <>
@@ -611,9 +539,13 @@ function Ranked({
 
 function Waiting() {
     return (
-        <Shell>
-            <div className="flex flex-col gap-(--stat-gap-block)" aria-busy="true" aria-label="Loading your stats">
-                <div className="h-3 w-28 rounded bg-white/[0.05] animate-pulse" />
+        <Frame controls={<div className="h-4 w-40 rounded bg-white/[0.04] animate-pulse" />}>
+            <div className="flex gap-6 border-b border-white/[0.08] py-3">
+                {[0, 1, 2, 3].map((i) => (
+                    <div key={i} className="h-3 w-16 rounded bg-white/[0.05] animate-pulse" />
+                ))}
+            </div>
+            <div className="flex flex-col gap-(--stat-gap-block) pt-6" aria-busy="true" aria-label="Loading your stats">
                 <div className="h-12 w-80 max-w-full rounded bg-white/[0.04] animate-pulse" />
                 <div className="grid grid-cols-2 gap-6 sm:grid-cols-4">
                     {[0, 1, 2, 3].map((i) => (
@@ -626,20 +558,7 @@ function Waiting() {
                         </div>
                     ))}
                 </div>
-                <div className="grid items-start gap-x-12 gap-y-8 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
-                    <div className="flex flex-col gap-3">
-                        {[0, 1, 2, 3, 4].map((i) => (
-                            <div
-                                key={i}
-                                className="h-4 w-full max-w-xs rounded bg-white/[0.03] animate-pulse"
-                                style={{ animationDelay: `${120 + i * 70}ms` }}
-                            />
-                        ))}
-                    </div>
-                    {/* Square, because a square is what lands here. */}
-                    <div className="aspect-square w-full rounded bg-white/[0.025] animate-pulse [animation-delay:200ms]" />
-                </div>
             </div>
-        </Shell>
+        </Frame>
     );
 }

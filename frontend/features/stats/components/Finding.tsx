@@ -7,14 +7,12 @@
  */
 
 import { Loader2, Play } from "lucide-react";
-import { useReveal } from "../useReveal";
 import { usePlaySlice } from "../usePlaySlice";
 
 export function Finding({
     claim,
     note,
     evidence,
-    anchor,
     scope,
 }: {
     /** The thing being asserted, in plain words. The loudest element. */
@@ -23,20 +21,11 @@ export function Finding({
     note?: React.ReactNode;
     /** The graphic that proves it. */
     evidence?: React.ReactNode;
-    anchor?: string;
     /** Names the period a shelf section is about, for sections the period control does not reach. */
     scope?: string;
 }) {
-    const { ref, shown } = useReveal<HTMLElement>({ threshold: 0.1 });
-
     return (
-        <section
-            ref={ref}
-            id={anchor}
-            className={`scroll-mt-24 stats-settle flex flex-col gap-(--stat-gap-block) ${
-                shown ? "animate-rise" : "opacity-0"
-            }`}
-        >
+        <div className="flex flex-col gap-(--stat-gap-block)">
             <div className="flex flex-wrap items-baseline justify-between gap-x-10 gap-y-2 border-b border-white/[0.08] pb-4">
                 <h2 className="text-[length:var(--stat-claim)] leading-[1.2] font-light tracking-[-0.02em] text-[var(--text-primary)] max-w-[26ch] text-balance">
                     {claim}
@@ -46,7 +35,7 @@ export function Finding({
             </div>
 
             {evidence}
-        </section>
+        </div>
     );
 }
 

@@ -237,8 +237,9 @@ code {
     /* A 44px floor for anything a finger has to hit, set here rather than per
      * component. Range, checkbox and radio are excluded: a range input is its
      * own 4px track, and checkboxes sit in fixed grid columns they would
-     * overflow. Their tap area comes from the label beside them. */
-    button,
+     * overflow. Their tap area comes from the label beside them. Cells of a
+     * chart marked .touch-exempt are a picture on touch screens and keep their size. */
+    button:not(.touch-exempt),
     input:not([type="range"]):not([type="checkbox"]):not([type="radio"]),
     select,
     textarea {
@@ -247,7 +248,7 @@ code {
 
     /* The same 44px floor for width, so icon buttons are a full fingertip wide.
      * textarea is already full-width; range, checkbox and radio as above. */
-    button,
+    button:not(.touch-exempt),
     input:not([type="range"]):not([type="checkbox"]):not([type="radio"]),
     select {
         min-width: 44px;
@@ -983,53 +984,6 @@ body.scanner-active .scanner-overlay {
     text-overflow: ellipsis;
 }
 
-/* ── Scroll-driven motion (stats page) ─────────────────────────────────────
- * Motion follows scroll position, not a timer. Additive and gated behind
- * @supports; no content depends on it. With reduced motion, animations have
- * no duration and rest at their untransformed start. */
-@supports (animation-timeline: scroll()) {
-    @media (prefers-reduced-motion: no-preference) {
-        /* The opening figure recedes as you leave it behind — it does not
-         * vanish, it settles, so scrolling back up brings it forward again. */
-        @keyframes stats-hero-recede {
-            from { opacity: 1; transform: scale(1) translateY(0); }
-            to   { opacity: 0.55; transform: scale(0.92) translateY(-1.5rem); }
-        }
-        .stats-hero-figure {
-            animation: stats-hero-recede linear both;
-            animation-timeline: scroll(nearest block);
-            animation-range: 0 65vh;
-            transform-origin: left center;
-            will-change: transform, opacity;
-        }
-
-        /* A hairline that fills as you descend. The only progress indicator on
-         * the page that is honest by construction: it cannot be wrong, because
-         * it is the scroll position itself. */
-        @keyframes stats-progress {
-            from { transform: scaleX(0); }
-            to   { transform: scaleX(1); }
-        }
-        .stats-progress-rule {
-            animation: stats-progress linear both;
-            animation-timeline: scroll(nearest block);
-            transform-origin: left center;
-        }
-
-        /* Sections lift the last of the way in as they enter the viewport,
-         * on top of the JS reveal rather than instead of it. */
-        @keyframes stats-section-settle {
-            from { transform: translateY(1.25rem); }
-            to   { transform: translateY(0); }
-        }
-        .stats-settle {
-            animation: stats-section-settle linear both;
-            animation-timeline: view(block);
-            animation-range: entry 0% entry 60%;
-        }
-    }
-}
-
 /* ── Chart ink ─────────────────────────────────────────────────────────────
  * SVG chart furniture a Tailwind class cannot reach. Five rungs named for the
  * job; a new chart picks a rung rather than inventing another white. */
@@ -1064,20 +1018,23 @@ body.scanner-active .scanner-overlay {
     --stat-figure: clamp(1.5rem, 2.4vw, 1.875rem); /* 24-30: a headline measurement */
     --stat-claim: clamp(1.25rem, 1.9vw, 1.5rem);   /* 20-24: a finding in words */
     --stat-lead: 1.125rem;                         /* 18: a reading or its gloss */
-    --stat-head: 1rem;                             /* 16: a section name */
 
-    /* One rhythm, three ranks. A section is separated by more than twice what
-     * separates the blocks inside it, which is the whole of why a section
-     * reads as a section. Both were cut by a third with the scale -- 112px of
-     * black between two sections is not rhythm, it is a gap you scroll past. */
-    --stat-gap-section: 4.5rem; /* 72 */
+    /* Space between blocks inside a chapter. */
     --stat-gap-block: 2rem;     /* 32 */
-    --stat-gap-tight: 0.75rem;  /* 12 */
+
+    /* Room under the chapters for the player when it floats over the content. */
+    --stats-under: 1rem;
+}
+
+/* The mini player floats over the content wherever the bottom-nav layout is used. */
+@media (max-width: 1024px), (max-width: 1366px) and (any-hover: none) and (pointer: coarse) {
+    :root {
+        --stats-under: 6rem;
+    }
 }
 
 @media (max-width: 640px) {
     :root {
-        --stat-gap-section: 3rem;
         --stat-gap-block: 1.5rem;
     }
 }
