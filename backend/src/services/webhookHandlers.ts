@@ -9,6 +9,8 @@ import { queueCleaner } from "../jobs/queueCleaner";
 import { requestScan } from "../workers/scanRequest";
 import { prisma } from "../utils/db";
 import { logger } from "../utils/logger";
+import { webhookEventStore } from "./webhookEventStore";
+import { webhookEventsTotal, webhookProcessingDuration } from "../utils/metrics";
 
 /**
  * Run the side effects for one webhook event and return the correlation
@@ -46,6 +48,31 @@ export async function dispatchWebhookEvent(
         default:
             logger.debug(`   Unhandled event: ${eventType}`);
             return undefined;
+    }
+}
+
+/** Dispatch a stored event and record the outcome on it; never throws. */
+export async function processStoredEvent(
+    id: string,
+    eventType: string,
+    payload: any
+): Promise<void> {
+    const startTime = Date.now();
+    let status = "success";
+    try {
+        const correlationId = await dispatchWebhookEvent(eventType, payload);
+        await webhookEventStore.markProcessed(id, correlationId);
+    } catch (error: any) {
+        status = "failed";
+        logger.error(`[WEBHOOK] ${eventType} event ${id} failed:`, error.message);
+        try {
+            await webhookEventStore.markFailed(id, error.message);
+        } catch (markError: any) {
+            logger.error(`[WEBHOOK] Could not record the failure of ${id}:`, markError.message);
+        }
+    } finally {
+        webhookEventsTotal.inc({ event_type: eventType, status });
+        webhookProcessingDuration.observe({ event_type: eventType }, (Date.now() - startTime) / 1000);
     }
 }
 

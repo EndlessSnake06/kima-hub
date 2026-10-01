@@ -18,7 +18,6 @@ import type {
     LidarrQueueItem,
     LidarrQueueResponse,
     LidarrHistoryRecord,
-    LidarrHistoryResponse,
 } from "../types/lidarr";
 
 /** Why an acquisition failed, which decides the fallback. */
@@ -2736,35 +2735,18 @@ export interface LidarrIndexerRelease {
 
 export const lidarrService = new LidarrService();
 
-/** Recently completed Lidarr downloads, used to find completions whose webhook never arrived. */
-export async function getRecentCompletedDownloads(
+/** Lidarr's history of one event type since `since`, with album and artist attached. */
+export async function getHistorySince(
     lidarrUrl: string,
     apiKey: string,
-    sinceMinutes: number = 5
+    since: Date,
+    eventType: number
 ): Promise<LidarrHistoryRecord[]> {
-    try {
-        const response = await axios.get<LidarrHistoryResponse>(
-            `${lidarrUrl}/api/v1/history`,
-            {
-                params: {
-                    page: 1,
-                    pageSize: 100,
-                    sortKey: "date",
-                    sortDirection: "descending",
-                    eventType: 3, // 3 = downloadFolderImported (successful import)
-                },
-                headers: { "X-Api-Key": apiKey },
-            }
-        );
-
-        // Filter to only recent imports (within last X minutes)
-        const cutoff = new Date(Date.now() - sinceMinutes * 60 * 1000);
-        return response.data.records.filter((record) => {
-            return new Date(record.date) >= cutoff;
-        });
-    } catch (error: any) {
-        logger.error("Failed to fetch Lidarr history:", error.message);
-        throw error;
-    }
+    const { data } = await axios.get<LidarrHistoryRecord[]>(`${lidarrUrl}/api/v1/history/since`, {
+        params: { date: since.toISOString(), eventType, includeAlbum: true, includeArtist: true },
+        headers: { "X-Api-Key": apiKey },
+        timeout: 30_000,
+    });
+    return data;
 }
 

@@ -1,7 +1,6 @@
 import { prisma } from "../utils/db";
 import { logger } from "../utils/logger";
 import { getSystemSettings } from "../utils/systemSettings";
-import { getRecentCompletedDownloads } from "../services/lidarr";
 import { sweepFailedDownloads } from "../services/lidarrFailures";
 import { requestScan } from "../workers/scanRequest";
 import { simpleDownloadManager } from "../services/simpleDownloadManager";
@@ -129,122 +128,14 @@ class QueueCleanerService {
                 this.emptyQueueChecks = 0;
             }
 
-            // PART 2: Check for completed downloads (missing webhooks)
-            const completedDownloads = await getRecentCompletedDownloads(
-                settings.lidarrUrl,
-                settings.lidarrApiKey,
-                5 // Only check last 5 minutes since we're running frequently
-            );
-
-            let recoveredCount = 0;
-            let skippedCount = 0;
-
-            for (const download of completedDownloads) {
-                // Skip records without album data (can happen with certain event types)
-                if (!download.album?.foreignAlbumId) {
-                    skippedCount++;
-                    continue;
-                }
-
-                const mbid = download.album.foreignAlbumId;
-
-                // Find matching job(s) in database by MBID or downloadId
-                const orphanedJobs = await prisma.downloadJob.findMany({
-                    where: {
-                        status: { in: ["processing", "pending"] },
-                        OR: [
-                            { targetMbid: mbid },
-                            { lidarrRef: download.downloadId },
-                        ],
-                    },
-                });
-
-                if (orphanedJobs.length > 0) {
-                    const artistName =
-                        download.artist?.name || "Unknown Artist";
-                    const albumTitle = download.album?.title || "Unknown Album";
-                    logger.debug(
-                        `Recovered orphaned job: ${artistName} - ${albumTitle}`
-                    );
-                    logger.debug(`   Download ID: ${download.downloadId}`);
-                    this.emptyQueueChecks = 0; // Reset counter - found work to do
-                    recoveredCount += orphanedJobs.length;
-
-                    // Mark all matching jobs as complete
-                    await prisma.downloadJob.updateMany({
-                        where: {
-                            id: {
-                                in: orphanedJobs.map(
-                                    (j: { id: string }) => j.id
-                                ),
-                            },
-                        },
-                        data: {
-                            status: "completed",
-                            completedAt: new Date(),
-                        },
-                    });
-
-                    // Check batch completion for any Discovery jobs
-                    // Use proper checkBatchCompletion() instead of manual logic
-                    const discoveryBatchIds = new Set<string>();
-                    for (const job of orphanedJobs) {
-                        if (job.discoveryBatchId) {
-                            discoveryBatchIds.add(job.discoveryBatchId);
-                        }
-                    }
-
-                    if (discoveryBatchIds.size > 0) {
-                        const discoverWeeklyService = await this.getDiscoverWeeklyService();
-                        for (const batchId of discoveryBatchIds) {
-                            logger.debug(
-                                `    Checking Discovery batch completion: ${batchId}`
-                            );
-                            await discoverWeeklyService.checkBatchCompletion(
-                                batchId
-                            );
-                        }
-                    }
-
-                    // Trigger library scan for non-discovery jobs
-                    const nonDiscoveryJobs = orphanedJobs.filter(
-                        (j: { discoveryBatchId: string | null }) =>
-                            !j.discoveryBatchId
-                    );
-                    if (nonDiscoveryJobs.length > 0) {
-                        logger.debug(
-                            `    Triggering library scan for recovered job(s)...`
-                        );
-                        const result = await requestScan({
-                            source: "queue-cleaner-recovery",
-                        });
-                        if (!result.queued) {
-                            logger.debug(`    Scan skipped: ${result.reason}`);
-                        }
-                    }
-                }
-            }
-
-            if (recoveredCount > 0) {
-                logger.debug(`Recovered ${recoveredCount} orphaned job(s)`);
-            }
-
-            // Only log skipped count occasionally to reduce noise
-            if (skippedCount > 0 && this.emptyQueueChecks === 0) {
-                logger.debug(
-                    `   (Skipped ${skippedCount} incomplete download records)`
-                );
-            }
-
-            // PART 3: Check if we should stop (no activity)
+            // Stop once nothing is queued or swept
             const activeJobs = await prisma.downloadJob.count({
                 where: {
                     status: { in: ["pending", "processing"] },
                 },
             });
 
-            const hadActivity =
-                swept.removed > 0 || recoveredCount > 0 || activeJobs > 0;
+            const hadActivity = swept.removed > 0 || activeJobs > 0;
 
             if (!hadActivity) {
                 this.emptyQueueChecks++;

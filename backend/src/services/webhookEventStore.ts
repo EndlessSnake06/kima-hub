@@ -106,12 +106,13 @@ class WebhookEventStore {
     }
 
     /**
-     * Get unprocessed events for reconciliation
-     * Excludes events that have exceeded max retries
+     * Unprocessed events under the retry cap, skipping those stored in the
+     * last `minAgeMs` (still being processed by the route that stored them).
      */
     async getUnprocessedEvents(
         source?: string,
-        maxRetries: number = 3
+        maxRetries: number = 3,
+        minAgeMs: number = 0
     ): Promise<StoredWebhookEvent[]> {
         const events = await prisma.webhookEvent.findMany({
             where: {
@@ -119,6 +120,7 @@ class WebhookEventStore {
                 retryCount: {
                     lt: maxRetries,
                 },
+                createdAt: { lte: new Date(Date.now() - minAgeMs) },
                 ...(source && { source }),
             },
             orderBy: {

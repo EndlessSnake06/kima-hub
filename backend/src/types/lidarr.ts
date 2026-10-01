@@ -210,26 +210,17 @@ export interface LidarrQueueResponse {
 export interface LidarrHistoryRecord {
   id: number;
   albumId: number;
-  downloadId: string;
+  downloadId?: string;
   eventType: string;
+  sourceTitle: string;
   date: string;
-  data: {
-    droppedPath?: string;
-    importedPath?: string;
-  };
-  album: {
+  data: Record<string, string>;
+  album?: {
     id: number;
     title: string;
     foreignAlbumId: string;
   };
-  artist: {
-    name: string;
+  artist?: {
+    artistName: string;
   };
-}
-
-export interface LidarrHistoryResponse {
-  page: number;
-  pageSize: number;
-  totalRecords: number;
-  records: LidarrHistoryRecord[];
 }

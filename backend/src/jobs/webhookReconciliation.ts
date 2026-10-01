@@ -1,20 +1,23 @@
 /**
- * Retries unprocessed Lidarr webhook events every 5 minutes, rescheduling after
- * each run so cycles never overlap. DownloadJob reconciliation against Lidarr
- * is workers/index.ts's runReconciliationCycle.
+ * Every 2 minutes: recovers Lidarr events whose webhook never arrived, then
+ * retries stored events that are still unprocessed. Each cycle reschedules
+ * after it finishes, so cycles never overlap.
  */
 
 import { logger } from "../utils/logger";
 import { webhookEventStore } from "../services/webhookEventStore";
-import { dispatchWebhookEvent } from "../services/webhookHandlers";
+import { processStoredEvent } from "../services/webhookHandlers";
+import { recoverMissedEvents } from "../services/lidarrHistoryRecovery";
 import { getSystemSettings } from "../utils/systemSettings";
 
 class WebhookReconciliationService {
     private isRunning = false;
     private cycleRunning = false;
     private timeoutId?: NodeJS.Timeout;
-    private readonly RECONCILE_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+    private readonly RECONCILE_INTERVAL_MS = 2 * 60 * 1000;
     private readonly MAX_RETRIES = 3;
+    // The webhook route is still processing events younger than this.
+    private readonly IN_FLIGHT_MS = 60 * 1000;
 
     /**
      * Start the reconciliation loop
@@ -65,43 +68,19 @@ class WebhookReconciliationService {
 
             logger.debug("[WEBHOOK-RECONCILE] Starting reconciliation cycle");
 
-            const startTime = Date.now();
-            let processedCount = 0;
-            let failedCount = 0;
+            const recovered = await recoverMissedEvents(settings.lidarrUrl, settings.lidarrApiKey);
+            if (recovered > 0) {
+                logger.info(`[WEBHOOK-RECONCILE] Recovered ${recovered} event(s) from Lidarr history`);
+            }
 
             const unprocessedEvents = await webhookEventStore.getUnprocessedEvents(
                 "lidarr",
-                this.MAX_RETRIES
+                this.MAX_RETRIES,
+                this.IN_FLIGHT_MS
             );
-
-            if (unprocessedEvents.length === 0) {
-                logger.debug("[WEBHOOK-RECONCILE] No unprocessed events");
-            } else {
-                logger.debug(
-                    `[WEBHOOK-RECONCILE] Found ${unprocessedEvents.length} unprocessed events`
-                );
-
-                for (const event of unprocessedEvents) {
-                    try {
-                        const correlationId = await this.processEvent(event);
-                        await webhookEventStore.markProcessed(event.id, correlationId);
-                        processedCount++;
-                    } catch (error: any) {
-                        logger.error(
-                            `[WEBHOOK-RECONCILE] Failed to process event ${event.id}:`,
-                            error.message
-                        );
-                        await webhookEventStore.markFailed(event.id, error.message);
-                        failedCount++;
-                    }
-                }
+            for (const event of unprocessedEvents) {
+                await processStoredEvent(event.id, event.eventType, event.payload);
             }
-
-            const duration = Date.now() - startTime;
-            logger.debug(
-                `[WEBHOOK-RECONCILE] Cycle complete in ${duration}ms: ` +
-                `${processedCount} events processed, ${failedCount} failed`
-            );
         } catch (error: any) {
             logger.error("[WEBHOOK-RECONCILE] Reconciliation cycle failed:", error.message);
         } finally {
@@ -113,24 +92,6 @@ class WebhookReconciliationService {
                 }, this.RECONCILE_INTERVAL_MS);
             }
         }
-    }
-
-    /**
-     * Process a single webhook event
-     */
-    private async processEvent(event: any): Promise<string | undefined> {
-        const payload = event.payload;
-        const eventType = event.eventType;
-
-        logger.debug(
-            `[WEBHOOK-RECONCILE] Processing ${eventType} event (retry ${event.retryCount})`
-        );
-
-        // Same handlers as the live route (services/webhookHandlers.ts) —
-        // including the queueCleaner kick and the scan enqueue that the
-        // old private copy dropped, which made replay produce a different
-        // end state than live processing.
-        return dispatchWebhookEvent(eventType, payload);
     }
 
     /**
