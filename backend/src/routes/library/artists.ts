@@ -576,9 +576,10 @@ router.get("/artists/:id", async (req, res) => {
         // Cold start: earliest-released tracks per MusicBrainz, falling back
         // to the plain first-10 slice when MB has nothing.
         try {
-          const rgs = hasRealMbid(effectiveMbid)
+          const fetched = hasRealMbid(effectiveMbid)
             ? await musicBrainzService.getReleaseGroups(effectiveMbid, ["album"], 50)
-            : [];
+            : null;
+          const rgs = fetched?.kind === "answered" ? fetched.value : [];
           const releaseDateByRg = new Map<string, string>();
           for (const rg of rgs as Array<{
             id: string;
