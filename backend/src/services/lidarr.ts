@@ -2527,34 +2527,16 @@ class LidarrService {
         const client = this.client;
 
         try {
-            const fetchAlbums = async (): Promise<LidarrAlbum[]> => {
-                const albums: LidarrAlbum[] = [];
-                const artists = await this.getArtistList();
-
-                const artistBatchSize = 25;
-                for (let start = 0; start < artists.length; start += artistBatchSize) {
-                    const batch = artists.slice(start, start + artistBatchSize);
-                    const responses = await Promise.all(
-                        batch.map((artist) =>
-                            client.get("/api/v1/album", { params: { artistId: artist.id } })
-                        )
-                    );
-                    for (const response of responses) {
-                        if (!Array.isArray(response.data)) {
-                            throw new Error("album list is not an array");
-                        }
-                        albums.push(...(response.data as LidarrAlbum[]));
-                    }
-                }
-                return albums;
-            };
-
-            const [queueResponse, albums] = await Promise.all([
+            const [queueResponse, albumResponse, artists] = await Promise.all([
                 client.get("/api/v1/queue", {
                     params: { page: 1, pageSize: 1000, includeUnknownArtistItems: true },
                 }),
-                fetchAlbums(),
+                client.get("/api/v1/album"),
+                this.getArtistList(),
             ]);
+            if (!Array.isArray(albumResponse.data)) {
+                throw new Error("album list is not an array");
+            }
             if (!Array.isArray(queueResponse.data?.records)) {
                 throw new Error("queue response has no records");
             }
@@ -2580,14 +2562,16 @@ class LidarrService {
                 }
             }
 
-            for (const album of albums) {
+            // Lidarr's album list carries no artist, only its id.
+            const artistNames = new Map(artists.map((artist) => [artist.id, artist.artistName]));
+            for (const album of albumResponse.data as LidarrAlbum[]) {
                 if (!(album.statistics?.percentOfTracks > 0)) continue;
 
                 const albumInfo: AlbumSnapshotInfo = {
                     id: album.id,
                     title: album.title,
                     foreignAlbumId: album.foreignAlbumId,
-                    artistName: album.artist?.artistName || "",
+                    artistName: artistNames.get(album.artistId) || "",
                     hasFiles: true,
                 };
 

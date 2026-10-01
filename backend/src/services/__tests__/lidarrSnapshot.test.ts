@@ -17,20 +17,22 @@ function useClient(handler: Handler) {
     };
 }
 
-const healthy: Handler = (url, params) => {
-    if (url === "/api/v1/artist") return { data: [{ id: 1 }, { id: 2 }] };
+const healthy: Handler = (url) => {
+    if (url === "/api/v1/artist") {
+        return { data: [{ id: 1, artistName: "Artist 1" }, { id: 2, artistName: "Artist 2" }] };
+    }
     if (url === "/api/v1/queue") {
         return { data: { records: [{ id: 9, downloadId: "dl-1", status: "downloading", title: "Q" }] } };
     }
     if (url === "/api/v1/album") {
         return {
-            data: [{
-                id: params.artistId * 10,
-                title: `Album ${params.artistId}`,
-                foreignAlbumId: `mbid-${params.artistId}`,
-                artist: { artistName: `Artist ${params.artistId}` },
-                statistics: { percentOfTracks: 100 },
-            }],
+            data: [1, 2, 3].map((n) => ({
+                id: n * 10,
+                artistId: n === 3 ? 1 : n,
+                title: `Album ${n}`,
+                foreignAlbumId: `mbid-${n}`,
+                statistics: { percentOfTracks: n === 3 ? 0 : 100 },
+            })),
         };
     }
     throw new Error(`unexpected ${url}`);
@@ -43,11 +45,22 @@ describe("getReconciliationSnapshot", () => {
 
         expect(snapshot?.queue.has("dl-1")).toBe(true);
         expect([...snapshot!.albumsByMbid.keys()].sort()).toEqual(["mbid-1", "mbid-2"]);
+        expect(snapshot!.albumsByTitle.get("artist 2|album 2")?.id).toBe(20);
     });
 
-    it("is null when one artist's albums fail to load", async () => {
+    it("loads every album in one request", async () => {
+        useClient(healthy);
+        await lidarrService.getReconciliationSnapshot();
+
+        const albumCalls = (lidarrService as any).client.get.mock.calls.filter(
+            ([url]: [string]) => url === "/api/v1/album"
+        );
+        expect(albumCalls).toEqual([["/api/v1/album"]]);
+    });
+
+    it("is null when the album list fails to load", async () => {
         useClient((url, params) => {
-            if (url === "/api/v1/album" && params.artistId === 2) throw new Error("database is locked");
+            if (url === "/api/v1/album") throw new Error("database is locked");
             return healthy(url, params);
         });
         expect(await lidarrService.getReconciliationSnapshot()).toBeNull();

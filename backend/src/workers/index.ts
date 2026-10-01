@@ -1,5 +1,6 @@
 import { Worker } from "bullmq";
 import { logger } from "../utils/logger";
+import { prisma } from "../utils/db";
 import {
     scanQueue,
     discoverQueue,
@@ -171,13 +172,17 @@ async function runDataIntegrityCycle() {
 timeouts.push(setTimeout(runDataIntegrityCycle, 10000));
 logger.debug("Data integrity check scheduled (every 24 hours, self-rescheduling)");
 
-// Self-rescheduling reconciliation cycle (replaces setInterval to prevent pile-up)
-// Each cycle waits for the previous one to fully complete before scheduling the next.
-// This prevents zombie operations from accumulating when operations exceed their timeout.
+// Matches active downloads against Lidarr and the library. Each cycle schedules
+// the next when it finishes, and does nothing while no download is active.
 async function runReconciliationCycle() {
     if (reconciliationRunning) return;
     reconciliationRunning = true;
     try {
+        const activeJobs = await prisma.downloadJob.count({
+            where: { status: { in: ["pending", "processing"] } },
+        });
+        if (activeJobs === 0) return;
+
         const { lidarrService } = await import("../services/lidarr");
         const snapshot = await withTimeout(
             lidarrService.getReconciliationSnapshot(),
