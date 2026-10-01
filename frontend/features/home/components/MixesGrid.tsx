@@ -1,6 +1,9 @@
 "use client";
 
-import { MixCard } from "@/components/MixCard";
+import { Music } from "lucide-react";
+import { MediaCard } from "@/components/cards/MediaCard";
+import { api } from "@/lib/api";
+import { plural } from "@/lib/format";
 import { Mix } from "../types";
 import { memo, type CSSProperties } from "react";
 import { cn } from "@/lib/cn";
@@ -26,7 +29,16 @@ const MixesGrid = memo(function MixesGrid({ mixes }: MixesGridProps) {
                         )}
                         style={{ "--i": index } as CSSProperties}
                     >
-                        <MixCard mix={mix} index={index} />
+                        <MediaCard
+                            href={`/mix/${mix.id}`}
+                            title={mix.name}
+                            subtitle={plural(mix.trackCount, "track")}
+                            imageUrl={mix.coverUrls.slice(0, 4).map((url) => api.getCoverArtUrl(url, 300))}
+                            fallbackIcon={Music}
+                            type="track"
+                            index={index}
+                            className="mx-1"
+                        />
                     </div>
                 );
             })}

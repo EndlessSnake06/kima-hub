@@ -3,7 +3,7 @@ import { Album } from "../types";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { MediaCard } from "@/components/cards/MediaCard";
-import { Disc3 } from "lucide-react";
+import { Disc3, Play } from "lucide-react";
 import { api } from "@/lib/api";
 import { cascadeStyle } from "@/lib/motion";
 
@@ -38,7 +38,7 @@ const AlbumCardItem = memo(
                 fallbackIcon={Disc3}
                 type="album"
                 index={index}
-                onPlay={() => onPlay(album.id)}
+                action={{ icon: Play, label: "Play", onClick: () => onPlay(album.id) }}
                 onDelete={() => onDelete(album.id, album.title)}
             />
         );

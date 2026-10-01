@@ -1,16 +1,14 @@
 "use client";
 
-import { PlayableCard } from "@/components/ui/PlayableCard";
-import { Disc3 } from "lucide-react";
+import { MediaCard } from "@/components/cards/MediaCard";
+import { Disc3, Play } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Album } from "../types";
-import type { ColorPalette } from "@/hooks/useImageColor";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { plural } from "@/lib/format";
 
 interface DiscographyProps {
     albums: Album[];
-    colors: ColorPalette | null;
     onPlayAlbum: (albumId: string, albumTitle: string) => Promise<void>;
     sortBy: "year" | "dateAdded";
     onSortChange: (sortBy: "year" | "dateAdded") => void;
@@ -18,7 +16,6 @@ interface DiscographyProps {
 
 export function Discography({
     albums,
-    colors,
     onPlayAlbum,
     sortBy,
     onSortChange,
@@ -58,24 +55,16 @@ export function Discography({
                         .join(" • ");
 
                     return (
-                        <PlayableCard
+                        <MediaCard
                             key={album.id}
                             href={`/album/${album.id}`}
-                            coverArt={
-                                album.coverArt
-                                    ? api.getCoverArtUrl(album.coverArt, 300)
-                                    : null
-                            }
+                            imageUrl={album.coverArt ? api.getCoverArtUrl(album.coverArt, 300) : null}
                             title={album.title}
                             subtitle={subtitle}
-                            placeholderIcon={
-                                <Disc3 className="w-12 h-12 text-[var(--text-muted)]" />
-                            }
-                            badge="owned"
-                            circular={false}
-                            colors={colors}
-                            onPlay={() => onPlayAlbum(album.id, album.title)}
-                            tvCardIndex={index}
+                            fallbackIcon={Disc3}
+                            type="album"
+                            index={index}
+                            action={{ icon: Play, label: "Play", onClick: () => onPlayAlbum(album.id, album.title) }}
                         />
                     );
                 })}

@@ -45,10 +45,7 @@ export function useDownloadActions() {
   );
 
   const downloadAlbum = useCallback(
-    async (album: Album, artistName: string, e: React.MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-
+    async (album: Album, artistName: string) => {
       // Get MBID (prefer rgMbid, fallback to mbid)
       const mbid = album.rgMbid || album.mbid;
 

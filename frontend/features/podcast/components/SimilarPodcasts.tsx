@@ -3,7 +3,7 @@
 import { Mic2 } from "lucide-react";
 import { SimilarPodcast } from "../types";
 import { api } from "@/lib/api";
-import { PlayableCard } from "@/components/ui/PlayableCard";
+import { MediaCard } from "@/components/cards/MediaCard";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 
 interface SimilarPodcastsProps {
@@ -20,16 +20,15 @@ export function SimilarPodcasts({ podcasts }: SimilarPodcastsProps) {
             <SectionHeader title="Fans Also Like" type="podcast" />
             <div data-tv-section="similar-podcasts" className="grid-media">
                 {podcasts.map((podcast, index) => (
-                    <PlayableCard
+                    <MediaCard
                         key={podcast.id}
                         href={`/podcasts/${podcast.id}`}
-                        coverArt={podcast.coverUrl ? api.getCoverArtUrl(podcast.coverUrl, 300) : null}
+                        imageUrl={podcast.coverUrl ? api.getCoverArtUrl(podcast.coverUrl, 300) : null}
                         title={podcast.title}
                         subtitle={podcast.author}
-                        placeholderIcon={<Mic2 className="w-12 h-12 text-[var(--text-muted)]" />}
-                        circular={false}
-                        showPlayButton={false}
-                        tvCardIndex={index}
+                        fallbackIcon={Mic2}
+                        type="podcast"
+                        index={index}
                     />
                 ))}
             </div>

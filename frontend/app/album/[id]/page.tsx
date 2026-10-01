@@ -1,7 +1,6 @@
 "use client";
 
 import { use, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { useAudioState, useAudioPlayback, useAudioControls } from "@/lib/audio-context";
 import { LoadingScreen } from "@/components/ui/LoadingScreen";
 import { useImageColor } from "@/hooks/useImageColor";
@@ -31,7 +30,6 @@ interface AlbumPageProps {
 
 export default function AlbumPage({ params }: AlbumPageProps) {
     const { id } = use(params);
-    const router = useRouter();
     const addToPlaylist = useAddToPlaylistMutation();    // Use split hooks to avoid re-renders from currentTime updates
     const { currentTrack } = useAudioState();
     const { isPlaying } = useAudioPlayback();
@@ -248,8 +246,6 @@ export default function AlbumPage({ params }: AlbumPageProps) {
                     {album.similarAlbums && album.similarAlbums.length > 0 && (
                         <SimilarAlbums
                             similarAlbums={album.similarAlbums}
-                            colors={colors}
-                            onNavigate={(id) => router.push(`/album/${id}`)}
                         />
                     )}
                 </div>

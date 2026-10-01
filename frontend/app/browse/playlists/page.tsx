@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useRouter } from "next/navigation";
 import {
     Search,
     Loader2,
@@ -19,7 +18,8 @@ import { SectionHeader } from "@/components/ui/SectionHeader";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { useDialog } from "@/hooks/useDialog";
-import { CachedImage } from "@/components/ui/CachedImage";
+import { MediaCard } from "@/components/cards/MediaCard";
+import { TileCard } from "@/components/cards/TileCard";
 import { plural } from "@/lib/format";
 
 interface PlaylistPreview {
@@ -49,7 +49,6 @@ const DeezerIcon = ({ className }: { className?: string }) => (
 type BrowseTab = "playlists" | "genres";
 
 export default function BrowsePlaylistsPage() {
-    const router = useRouter();
     const { toast } = useToast();
 
     const [activeTab, setActiveTab] = useState<BrowseTab>("playlists");
@@ -155,10 +154,6 @@ export default function BrowsePlaylistsPage() {
         }
     };
 
-    const handleItemClick = (item: PlaylistPreview) => {
-        router.push(`/browse/playlists/${item.id}`);
-    };
-
     const handleGenreClick = async (genre: Genre) => {
         setSelectedGenre(genre);
         setIsLoading(true);
@@ -186,63 +181,30 @@ export default function BrowsePlaylistsPage() {
         index: number,
         context?: string,
     ) => (
-        <button
+        <MediaCard
             key={`${item.source}-${item.type}-${item.id}-${context || "main"}-${index}`}
-            onClick={() => handleItemClick(item)}
-            className="group cursor-pointer text-left w-full"
-        >
-            <div className="relative aspect-square mb-2.5 rounded-lg overflow-hidden bg-[var(--bg-primary)] border border-white/10 group-hover:border-type-track/40 transition-all duration-300">
-                {item.imageUrl ?
-                    <CachedImage
-                        src={item.imageUrl}
-                        alt={item.title}
-                        fill
-                        sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, (max-width: 1280px) 20vw, (max-width: 1536px) 16vw, 14vw"
-                        className="object-cover cover-zoom"
-                    />
-                :   <div className="w-full h-full flex items-center justify-center">
-                        <Music2 className="w-12 h-12 text-white/10" />
-                    </div>
-                }
-
-                {/* Hover accent line */}
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-type-track transform scale-x-0 group-hover:scale-x-100 transition-transform duration-150 origin-center" />
-            </div>
-            <h3 className="text-sm font-bold text-white truncate tracking-tight">
-                {item.title}
-            </h3>
-            <p className="text-xs tabular-nums text-[var(--text-muted)] truncate mt-0.5">
-                {plural(item.trackCount, "song")} · {item.creator}
-            </p>
-        </button>
+            href={`/browse/playlists/${item.id}`}
+            title={item.title}
+            subtitle={`${plural(item.trackCount, "song")} · ${item.creator}`}
+            imageUrl={item.imageUrl}
+            fallbackIcon={Music2}
+            type="track"
+            index={index}
+        />
     );
 
-    const renderGenreCard = (genre: Genre) => (
-        <button
+    const renderGenreCard = (genre: Genre, index: number) => (
+        <TileCard
             key={genre.id}
+            title={genre.name}
+            imageUrl={genre.imageUrl}
+            tint="from-type-track/30 to-type-track/10"
+            hoverBorder="hover:border-type-track/40"
+            accent="from-type-track to-type-track"
             onClick={() => handleGenreClick(genre)}
-            className="group cursor-pointer relative aspect-square rounded-lg overflow-hidden border border-white/10 hover:border-type-track/40 transition-all duration-300"
-        >
-            {genre.imageUrl ?
-                <CachedImage
-                    src={genre.imageUrl}
-                    alt={genre.name}
-                    fill
-                    sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, (max-width: 1280px) 20vw, 16vw"
-                    className="object-cover cover-zoom"
-                />
-            :   <div className="w-full h-full bg-gradient-to-br from-type-track/30 to-type-track/10" />
-            }
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-            <div className="absolute bottom-3 left-3 right-3">
-                <h3 className="text-sm font-bold text-white tracking-tight">
-                    {genre.name}
-                </h3>
-            </div>
-
-            {/* Hover accent line */}
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-type-track transform scale-x-0 group-hover:scale-x-100 transition-transform duration-150 origin-center" />
-        </button>
+            index={index}
+            className="aspect-square"
+        />
     );
 
     if (isLoading && !selectedGenre && !hasSearched) {

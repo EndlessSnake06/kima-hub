@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
-import { Calendar, Clock, Download, Disc, ArrowRight, CheckCircle2, Loader2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Calendar, Clock, Download, Disc, ArrowRight, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { api } from "@/lib/api";
 import Link from "next/link";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { CachedImage } from "@/components/ui/CachedImage";
+import { MediaCard } from "@/components/cards/MediaCard";
 import { plural } from "@/lib/format";
 import { PageMessage } from "@/components/ui/PageMessage";
 
@@ -183,39 +183,6 @@ export default function ReleasesPage() {
     );
 }
 
-/**
- * Cover art for one release, or a placeholder. Art loads through this app's
- * image endpoint, so a cover that disappears fails on our origin and falls
- * back to the placeholder instead of a broken box.
- */
-function ReleaseCover({ release }: { release: ReleaseItem }) {
-    const [broken, setBroken] = useState(false);
-
-    const src = useMemo(
-        () => (release.coverUrl ? api.getCoverArtUrl(release.coverUrl, 500) : null),
-        [release.coverUrl],
-    );
-
-    if (!src || broken) {
-        return (
-            <div className="w-full h-full flex items-center justify-center">
-                <Disc className="w-12 h-12 text-[var(--text-muted)]" />
-            </div>
-        );
-    }
-
-    return (
-        <CachedImage
-            src={src}
-            alt={release.title}
-            fill
-            sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, (max-width: 1280px) 20vw, 16vw"
-            className="object-cover cover-zoom"
-            onError={() => setBroken(true)}
-        />
-    );
-}
-
 function ReleaseCard({
     release,
     formatDate,
@@ -227,66 +194,38 @@ function ReleaseCard({
     onDownload: (albumMbid: string, releaseId: string | number) => void;
     isDownloading: boolean;
 }) {
-    const isUpcoming = release.status === 'upcoming';
+    const isUpcoming = release.status === "upcoming";
     const hasIt = release.inLibrary;
 
     return (
-        <div className="group relative">
-            <div className="aspect-square rounded-lg overflow-hidden bg-white/5 mb-3 relative">
-                <ReleaseCover release={release} />
-
-                <div className={cn(
-                    "absolute top-2 left-2 px-2 py-1 rounded text-xs font-medium",
-                    isUpcoming ? "bg-brand text-black" :
-                    hasIt ? "bg-success/90 text-black" : "bg-white/20 text-white"
-                )}>
-                    {isUpcoming ? formatDate(release.releaseDate) :
-                     hasIt ? "In Library" : "Available"}
-                </div>
-
-                {release.canDownload && !hasIt && (
-                    <button
-                        onClick={() => onDownload(release.albumMbid, release.id)}
-                        disabled={isDownloading}
-                        className={cn(
-                            "absolute inset-0 flex items-center justify-center",
-                            "bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity",
-                            isDownloading && "opacity-100"
-                        )}
-                    >
-                        {isDownloading ? (
-                            <Loader2 className="w-8 h-8 text-white animate-spin" />
-                        ) : (
-                            <Download className="w-8 h-8 text-white" />
-                        )}
-                    </button>
-                )}
-
-                {hasIt && (
-                    <div className="absolute bottom-2 right-2">
-                        <CheckCircle2 className="w-5 h-5 text-success" />
-                    </div>
-                )}
-            </div>
-
-            <div className="space-y-1">
-                <h3 className="text-sm font-medium text-white truncate" title={release.title}>
-                    {release.title}
-                </h3>
-                <p className="text-xs text-[var(--text-secondary)] truncate" title={release.artistName}>
-                    {release.artistName}
-                </p>
-                {isUpcoming && (
-                    <p className="text-xs text-[var(--text-secondary)]">
-                        {new Date(release.releaseDate).toLocaleDateString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                            year: "numeric",
-                        })}
-                    </p>
-                )}
-            </div>
-        </div>
+        <MediaCard
+            title={release.title}
+            subtitle={release.artistName}
+            imageUrl={release.coverUrl ? api.getCoverArtUrl(release.coverUrl, 500) : null}
+            fallbackIcon={Disc}
+            type="album"
+            badge={
+                <span
+                    className={cn(
+                        "block px-2 py-1 rounded text-xs font-medium",
+                        isUpcoming ? "bg-brand text-black" : hasIt ? "bg-success/90 text-black" : "bg-white/20 text-white",
+                    )}
+                >
+                    {isUpcoming ? formatDate(release.releaseDate) : hasIt ? "In Library" : "Available"}
+                </span>
+            }
+            corner={hasIt && <CheckCircle2 className="w-5 h-5 text-success" aria-label="In library" />}
+            action={
+                release.canDownload && !hasIt
+                    ? {
+                          icon: Download,
+                          label: "Download",
+                          onClick: () => onDownload(release.albumMbid, release.id),
+                          busy: isDownloading,
+                      }
+                    : undefined
+            }
+        />
     );
 }
 

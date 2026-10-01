@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useRef, useMemo, useCallback, useEffect, type CSSProperties } from "react";
-import { Radio, Play, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
+import { useState, useRef, useMemo, useCallback, useEffect } from "react";
+import { Radio, ChevronLeft, ChevronRight } from "lucide-react";
+import { TileCard } from "@/components/cards/TileCard";
 import { cn } from "@/lib/cn";
 import { useIsMobile, useIsTablet } from "@/hooks/useMediaQuery";
 import { cascadeStyle } from "@/lib/motion";
@@ -86,76 +87,28 @@ export function LibraryRadioStations() {
         });
     };
 
-    const renderCard = (station: RadioStation, compact: boolean, globalIdx: number, delayIdx = globalIdx) => {
-        return (
-            <button
-                key={station.id}
-                data-tv-card
-                data-tv-card-index={globalIdx}
-                tabIndex={0}
-                onClick={() => startRadio(station)}
-                disabled={loadingStation !== null}
-                className={cn(
-                    "relative group overflow-hidden",
-                    "bg-[var(--bg-primary)] border border-white/10 rounded-lg",
-                    station.hoverBorder,
-                    "transition-[border-color] duration-150",
-                    "",
-                    "",
-                    "disabled:opacity-50 disabled:cursor-not-allowed",
-                    "animate-rise [animation-delay:calc(var(--i)*var(--stagger))]",
-                    compact
-                        ? "flex-shrink-0 snap-start w-[180px] h-[80px]"
-                        : "w-full aspect-[5/3]"
-                )}
-                style={{ "--i": delayIdx } as CSSProperties}
->
-            {/* Subtle gradient tint */}
-            <div className={cn("absolute inset-0 bg-gradient-to-br", station.color)} />
-
-            {/* Content */}
-            <div className="absolute inset-0 p-3 flex flex-col justify-between">
-                <div className="flex items-center gap-1.5">
-                    <Radio className="w-3 h-3 text-[var(--text-secondary)]" />
-                    <span className="text-xs text-[var(--text-secondary)]">
-                        Radio
-                    </span>
-                </div>
-                <div>
-                    <h3 className="text-sm font-bold text-white truncate tracking-tight leading-tight">
-                        {station.name}
-                    </h3>
-                    <p className="text-xs text-[var(--text-muted)] truncate">
-                        {station.description}
-                    </p>
-                </div>
-            </div>
-
-            {/* Bottom accent bar on hover */}
-            <div className={cn(
-                "absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r",
-                station.accentGradient,
-                "transform scale-x-0 group-hover:scale-x-100 transition-transform duration-150"
-            )} />
-
-            {/* Loading overlay */}
-            {loadingStation === station.id && (
-                <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-(--z-raised)">
-                    <Loader2 className="w-5 h-5 text-white animate-spin" />
-                </div>
-            )}
-
-            {/* Play overlay on hover */}
-            {loadingStation !== station.id && (
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                    <div className="w-9 h-9 rounded-lg bg-white flex items-center justify-center">
-                        <Play className="w-4 h-4 text-black ml-0.5" fill="currentColor" />
-                    </div>
-                </div>
-            )}
-        </button>
+    const renderCard = (station: RadioStation, compact: boolean, globalIdx: number, delayIdx = globalIdx) => (
+        <TileCard
+            key={station.id}
+            title={station.name}
+            subtitle={station.description}
+            eyebrow={
+                <span className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
+                    <Radio className="w-3 h-3" />
+                    Radio
+                </span>
+            }
+            tint={station.color}
+            hoverBorder={station.hoverBorder}
+            accent={station.accentGradient}
+            onClick={() => startRadio(station)}
+            playable
+            busy={loadingStation === station.id}
+            disabled={loadingStation !== null}
+            index={delayIdx}
+            className={compact ? "flex-shrink-0 snap-start w-[180px] h-[80px]" : "w-full aspect-[5/3]"}
+        />
     );
-    };
 
     // Desktop: horizontal scroll
     if (!isMobileOrTablet) {

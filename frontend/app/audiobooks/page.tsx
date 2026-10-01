@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
-import { AudiobookCard } from "@/components/ui/AudiobookCard";
+import { MediaCard } from "@/components/cards/MediaCard";
 import { api } from "@/lib/api";
 import { useAudioState, useAudioControls } from "@/lib/audio-context";
 import { useAuth } from "@/lib/auth-context";
@@ -15,6 +15,7 @@ import { useAudiobooksQuery, queryKeys } from "@/hooks/useQueries";
 import { useQueryClient } from "@tanstack/react-query";
 import {
     Book,
+    CheckCircle,
     ListTree,
     Shuffle,
     ArrowUpDown,
@@ -487,15 +488,18 @@ export default function AudiobooksPage() {
                                 data-tv-section="continue-listening"
                             >
                                 {continueListening.map((book, index) => (
-                                    <AudiobookCard
+                                    <MediaCard
                                         key={book.id}
-                                        id={book.id}
+                                        href={`/audiobooks/${book.id}`}
                                         title={book.title}
-                                        author={book.author}
-                                        coverUrl={book.coverUrl}
-                                        progress={book.progress}
+                                        subtitle={book.author}
+                                        imageUrl={getCoverUrl(book.coverUrl)}
+                                        fallbackIcon={Book}
+                                        type="audiobook"
+                                        aspect="portrait"
                                         index={index}
-                                        getCoverUrl={getCoverUrl}
+                                        progress={book.progress?.isFinished ? undefined : book.progress?.progress}
+                                        corner={book.progress?.isFinished && <CheckCircle className="w-5 h-5 text-success" aria-label="Finished" />}
                                     />
                                 ))}
                             </div>
@@ -517,15 +521,17 @@ export default function AudiobooksPage() {
                                                 const firstBook = books[0];
                                                 const bookCount = `${books.length} ${books.length === 1 ? "book" : "books"}`;
                                                 return (
-                                                    <AudiobookCard
+                                                    <MediaCard
                                                         key={seriesName}
-                                                        id={seriesName}
+                                                        href={`/audiobooks/series/${encodeURIComponent(seriesName)}`}
                                                         title={seriesName}
-                                                        author={firstBook.author}
-                                                        coverUrl={firstBook.coverUrl}
-                                                        seriesBadge={bookCount}
+                                                        subtitle={firstBook.author}
+                                                        imageUrl={getCoverUrl(firstBook.coverUrl)}
+                                                        fallbackIcon={Book}
+                                                        type="audiobook"
+                                                        aspect="portrait"
                                                         index={index}
-                                                        getCoverUrl={getCoverUrl}
+                                                        corner={<span className="block bg-brand text-black rounded px-2 py-0.5 text-xs font-semibold">{bookCount}</span>}
                                                     />
                                                 );
                                             })}
@@ -541,15 +547,18 @@ export default function AudiobooksPage() {
                                             data-tv-section="standalone"
                                         >
                                             {standalone.map((book, index) => (
-                                                <AudiobookCard
+                                                <MediaCard
                                                     key={book.id}
-                                                    id={book.id}
+                                                    href={`/audiobooks/${book.id}`}
                                                     title={book.title}
-                                                    author={book.author}
-                                                    coverUrl={book.coverUrl}
-                                                    progress={book.progress}
+                                                    subtitle={book.author}
+                                                    imageUrl={getCoverUrl(book.coverUrl)}
+                                                    fallbackIcon={Book}
+                                                    type="audiobook"
+                                                    aspect="portrait"
                                                     index={index}
-                                                    getCoverUrl={getCoverUrl}
+                                                    progress={book.progress?.isFinished ? undefined : book.progress?.progress}
+                                                    corner={book.progress?.isFinished && <CheckCircle className="w-5 h-5 text-success" aria-label="Finished" />}
                                                 />
                                             ))}
                                         </div>
@@ -564,15 +573,18 @@ export default function AudiobooksPage() {
                                     data-tv-section="audiobooks"
                                 >
                                     {paginatedBooks.map((book, index) => (
-                                        <AudiobookCard
+                                        <MediaCard
                                             key={book.id}
-                                            id={book.id}
+                                            href={`/audiobooks/${book.id}`}
                                             title={book.title}
-                                            author={book.author}
-                                            coverUrl={book.coverUrl}
-                                            progress={book.progress}
+                                            subtitle={book.author}
+                                            imageUrl={getCoverUrl(book.coverUrl)}
+                                            fallbackIcon={Book}
+                                            type="audiobook"
+                                            aspect="portrait"
                                             index={index}
-                                            getCoverUrl={getCoverUrl}
+                                            progress={book.progress?.isFinished ? undefined : book.progress?.progress}
+                                            corner={book.progress?.isFinished && <CheckCircle className="w-5 h-5 text-success" aria-label="Finished" />}
                                         />
                                     ))}
                                 </div>

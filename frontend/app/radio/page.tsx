@@ -2,9 +2,8 @@
 
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Play, Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
-import { cn } from "@/lib/cn";
+import { TileCard } from "@/components/cards/TileCard";
 import {
     GenreCount,
     DecadeCount,
@@ -13,75 +12,14 @@ import {
     buildDecadeStations,
     useRadioPlayer,
 } from "@/features/home/radioData";
-import type { RadioStation } from "@/features/home/radioData";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { PageHeader } from "@/components/layout/PageHeader";
-
-function RadioStationCard({
-    station,
-    loadingStation,
-    onPlay,
-}: {
-    station: RadioStation;
-    loadingStation: string | null;
-    onPlay: () => void;
-}) {
-    return (
-        <button
-            onClick={onPlay}
-            disabled={loadingStation !== null}
-            className={cn(
-                "relative group w-full overflow-hidden",
-                "aspect-[4/3] rounded-lg",
-                "bg-[var(--bg-primary)] border-2 border-white/10",
-                station.hoverBorder,
-                "transition-all duration-300",
-                station.hoverShadow,
-                "active:scale-[0.98]",
-                "disabled:opacity-50 disabled:cursor-not-allowed"
-            )}
-        >
-            <div className={cn("absolute inset-0 bg-gradient-to-br cover-zoom", station.color)} />
-
-            <div className="absolute inset-0 p-4 flex flex-col justify-end">
-                <div>
-                    <h3 className="text-base font-bold text-white truncate tracking-tight leading-tight mb-1">
-                        {station.name}
-                    </h3>
-                    <p className="text-xs tabular-nums text-[var(--text-muted)] truncate">
-                        {station.description}
-                    </p>
-                </div>
-            </div>
-
-            <div className={cn(
-                "absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r",
-                station.accentGradient,
-                "transform scale-x-0 group-hover:scale-x-100 transition-transform duration-150 origin-center"
-            )} />
-
-            {loadingStation === station.id && (
-                <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-(--z-raised)">
-                    <Loader2 className="w-6 h-6 text-white animate-spin" />
-                </div>
-            )}
-
-            {loadingStation !== station.id && (
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                    <div className="w-12 h-12 rounded-lg bg-white flex items-center justify-center">
-                        <Play className="w-5 h-5 text-black ml-0.5" fill="currentColor" />
-                    </div>
-                </div>
-            )}
-        </button>
-    );
-}
 
 function SectionSkeleton() {
     return (
         <div className="grid-media">
             {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="aspect-[4/3] rounded-lg bg-[var(--bg-primary)] border-2 border-white/10 animate-pulse" />
+                <div key={i} className="aspect-[4/3] rounded-lg bg-[var(--bg-primary)] border border-white/10 animate-pulse" />
             ))}
         </div>
     );
@@ -128,11 +66,18 @@ export default function RadioPage() {
                             <SectionHeader title="Quick Start" />
                             <div className="grid-media">
                                 {STATIC_STATIONS.map((station) => (
-                                    <RadioStationCard
+                                    <TileCard
                                         key={station.id}
-                                        station={station}
-                                        loadingStation={loadingStation}
-                                        onPlay={() => startRadio(station)}
+                                        title={station.name}
+                                        subtitle={station.description}
+                                        tint={station.color}
+                                        hoverBorder={station.hoverBorder}
+                                        accent={station.accentGradient}
+                                        onClick={() => startRadio(station)}
+                                        playable
+                                        busy={loadingStation === station.id}
+                                        disabled={loadingStation !== null}
+                                        className="w-full aspect-[4/3]"
                                     />
                                 ))}
                             </div>
@@ -163,11 +108,18 @@ export default function RadioPage() {
                                 ) : (
                                     <div className="grid-media">
                                         {genreStations.map((station) => (
-                                            <RadioStationCard
+                                            <TileCard
                                                 key={station.id}
-                                                station={station}
-                                                loadingStation={loadingStation}
-                                                onPlay={() => startRadio(station)}
+                                                title={station.name}
+                                                subtitle={station.description}
+                                                tint={station.color}
+                                                hoverBorder={station.hoverBorder}
+                                                accent={station.accentGradient}
+                                                onClick={() => startRadio(station)}
+                                                playable
+                                                busy={loadingStation === station.id}
+                                                disabled={loadingStation !== null}
+                                                className="w-full aspect-[4/3]"
                                             />
                                         ))}
                                     </div>
@@ -200,11 +152,18 @@ export default function RadioPage() {
                                 ) : (
                                     <div className="grid-media">
                                         {decadeStations.map((station) => (
-                                            <RadioStationCard
+                                            <TileCard
                                                 key={station.id}
-                                                station={station}
-                                                loadingStation={loadingStation}
-                                                onPlay={() => startRadio(station)}
+                                                title={station.name}
+                                                subtitle={station.description}
+                                                tint={station.color}
+                                                hoverBorder={station.hoverBorder}
+                                                accent={station.accentGradient}
+                                                onClick={() => startRadio(station)}
+                                                playable
+                                                busy={loadingStation === station.id}
+                                                disabled={loadingStation !== null}
+                                                className="w-full aspect-[4/3]"
                                             />
                                         ))}
                                     </div>

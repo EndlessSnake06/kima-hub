@@ -28,7 +28,8 @@ import { cn } from "@/lib/cn";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { Button } from "@/components/ui/Button";
-import { CachedImage } from "@/components/ui/CachedImage";
+import { plural } from "@/lib/format";
+import { MediaCard } from "@/components/cards/MediaCard";
 
 type ActionPanel = "create" | "importUrl" | "importFile" | null;
 
@@ -53,86 +54,19 @@ interface Playlist {
     };
 }
 
-function PlaylistMosaic({
-    items,
-    size = 4,
-    greyed = false,
-}: {
-    items?: PlaylistItem[];
-    size?: number;
-    greyed?: boolean;
-}) {
-    const coverUrls = useMemo(() => {
-        if (!items || items.length === 0) return [];
-
-        const tracksWithCovers = items.filter(
-            (item) => item.track?.album?.coverUrl
-        );
-        if (tracksWithCovers.length === 0) return [];
-
-        const coverCounts = new Map<string, number>();
-        for (const item of tracksWithCovers) {
-            const cover = item.track.album!.coverUrl!;
-            coverCounts.set(cover, (coverCounts.get(cover) || 0) + 1);
-        }
-        const uniqueCovers = Array.from(coverCounts.entries())
-            .sort((a, b) => b[1] - a[1])
-            .map(([cover]) => cover);
-
-        const urls = uniqueCovers.map((cover) => api.getCoverArtUrl(cover, 200));
-
-        if (urls.length >= size) return urls.slice(0, size);
-        if (urls.length <= 1) return urls;
-
-        if (urls.length === 2) return [urls[0], urls[1], urls[1], urls[0]];
-        return [urls[0], urls[1], urls[2], urls[0]];
-    }, [items, size]);
-
-    if (coverUrls.length === 0) {
-        return (
-            <div
-                className={cn(
-                    "w-full h-full flex items-center justify-center bg-[var(--bg-primary)]",
-                    greyed && "opacity-50"
-                )}
-            >
-                <Music className="w-10 h-10 text-white/10" />
-            </div>
-        );
+function mosaicUrls(items: PlaylistItem[] | undefined): string[] {
+    const counts = new Map<string, number>();
+    for (const item of items ?? []) {
+        const cover = item.track?.album?.coverUrl;
+        if (cover) counts.set(cover, (counts.get(cover) || 0) + 1);
     }
+    const urls = [...counts.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([cover]) => api.getCoverArtUrl(cover, 200));
 
-    if (coverUrls.length === 1) {
-        return (
-            <CachedImage
-                src={coverUrls[0]}
-                alt=""
-                fill
-                className={cn("object-cover cover-zoom", greyed && "opacity-50 grayscale")}
-                sizes="200px"
-            />
-        );
-    }
-
-    return (
-        <div
-            className={cn(
-                "grid grid-cols-2 w-full h-full cover-zoom",
-                greyed && "opacity-50 grayscale"
-            )}
-        >
-            {coverUrls.slice(0, 4).map((url, index) => (
-                <div key={index} className="relative">
-                    <CachedImage
-                        src={url}
-                        alt=""
-                        fill
-                        className="object-cover"
-                        sizes="100px"
-                    />
-                </div>
-            ))}
-        </div>
-    );
+    if (urls.length === 2) return [urls[0], urls[1], urls[1], urls[0]];
+    if (urls.length === 3) return [urls[0], urls[1], urls[2], urls[0]];
+    return urls.slice(0, 4);
 }
 
 function PlaylistCard({
@@ -150,6 +84,7 @@ function PlaylistCard({
 }) {
     const isShared = playlist.isOwner === false;
     const [isHiding, setIsHiding] = useState(false);
+    const imageUrl = useMemo(() => mosaicUrls(playlist.items), [playlist.items]);
 
     const handleToggleHide = async (e: React.MouseEvent) => {
         e.preventDefault();
@@ -163,89 +98,35 @@ function PlaylistCard({
     };
 
     return (
-        <Link href={`/playlist/${playlist.id}`}>
-            <div
-                className={cn(
-                    "group cursor-pointer p-3 rounded-lg transition-all border border-transparent hover:bg-white/[0.03] hover:border-white/5",
-                    isHiddenView && "opacity-60 hover:opacity-100"
-                )}
-                data-tv-card
-                data-tv-card-index={index}
-                tabIndex={0}
-            >
-                {/* Cover Image */}
-                <div className="relative aspect-square mb-3 rounded-lg overflow-hidden bg-[var(--bg-primary)] border border-white/10">
-                    <PlaylistMosaic
-                        items={playlist.items}
-                        greyed={isHiddenView}
-                    />
-
-                    {isShared && (
-                        <button
-                            onClick={handleToggleHide}
-                            disabled={isHiding}
-                            className={cn(
-"absolute top-2 right-2 w-7 h-7 rounded-lg flex items-center justify-center",
-"bg-black/60 transition-all duration-200",
-                                "opacity-0 group-hover:opacity-100",
-                                playlist.isHidden
-                                    ? "text-success"
-                                    : "text-[var(--text-muted)]",
-                                isHiding && "opacity-50 cursor-not-allowed"
-                            )}
-                            title={
-                                playlist.isHidden
-                                    ? "Show playlist"
-                                    : "Hide playlist"
-                            }
-                        >
-                            {playlist.isHidden ? (
-                                <Eye className="w-3.5 h-3.5" />
-                            ) : (
-                                <EyeOff className="w-3.5 h-3.5" />
-                            )}
-                        </button>
-                    )}
-
+        <MediaCard
+            href={`/playlist/${playlist.id}`}
+            title={playlist.name}
+            subtitle={`${isShared && playlist.user?.username ? `${playlist.user.username} · ` : ""}${plural(playlist.trackCount || 0, "song")}`}
+            imageUrl={imageUrl}
+            fallbackIcon={Music}
+            type="track"
+            index={index}
+            className={cn(isHiddenView && "opacity-60 hover:opacity-100")}
+            action={{ icon: Play, label: "Play", onClick: () => onPlay(playlist.id) }}
+            corner={
+                isShared && (
                     <button
-                        onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            onPlay(playlist.id);
-                        }}
+                        type="button"
+                        onClick={handleToggleHide}
+                        disabled={isHiding}
+                        aria-label={playlist.isHidden ? "Show playlist" : "Hide playlist"}
+                        title={playlist.isHidden ? "Show playlist" : "Hide playlist"}
                         className={cn(
-"absolute bottom-2 right-2 w-10 h-10 rounded-lg flex items-center justify-center",
-"bg-brand transition-all duration-200",
-"hover:bg-brand-hover hover:scale-105",
-    "opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0"
+                            "w-8 h-8 rounded-lg flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity duration-150",
+                            playlist.isHidden ? "text-success" : "text-[var(--text-muted)]",
+                            isHiding && "opacity-50 cursor-not-allowed",
                         )}
-                        title="Play playlist"
                     >
-                        <Play className="w-4 h-4 fill-current ml-0.5 text-black" />
+                        {playlist.isHidden ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
                     </button>
-
-                    <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-brand to-brand-dark transform scale-x-0 group-hover:scale-x-100 transition-transform duration-150 origin-left" />
-                </div>
-
-                <h3
-                    className={cn(
-                        "text-sm font-bold truncate tracking-tight",
-                        isHiddenView ? "text-[var(--text-muted)]" : "text-white"
-                    )}
-                >
-                    {playlist.name}
-                </h3>
-                <p className="text-xs tabular-nums text-[var(--text-muted)] mt-0.5 truncate">
-                    {isShared && playlist.user?.username ? (
-                        <span>
-                            {playlist.user.username} | {" "}
-                        </span>
-                    ) : null}
-                    {playlist.trackCount || 0}{" "}
-                    {playlist.trackCount === 1 ? "song" : "songs"}
-                </p>
-            </div>
-        </Link>
+                )
+            }
+        />
     );
 }
 

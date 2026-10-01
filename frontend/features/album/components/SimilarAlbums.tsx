@@ -1,39 +1,39 @@
-import React from 'react';
-import { PlayableCard } from '@/components/ui/PlayableCard';
-import { Disc3 } from 'lucide-react';
-import { api } from '@/lib/api';
-import { SimilarAlbum } from '../types';
-import type { ColorPalette } from '@/hooks/useImageColor';
-import { SectionHeader } from '@/components/ui/SectionHeader';
+import { Check, Disc3 } from "lucide-react";
+import { api } from "@/lib/api";
+import { SimilarAlbum } from "../types";
+import { MediaCard } from "@/components/cards/MediaCard";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 
 interface SimilarAlbumsProps {
-  similarAlbums: SimilarAlbum[];
-  colors: ColorPalette | null;
-  onNavigate: (albumId: string) => void;
+    similarAlbums: SimilarAlbum[];
 }
 
-export function SimilarAlbums({ similarAlbums, colors, onNavigate }: SimilarAlbumsProps) {
-  return (
-    <section>
-      <SectionHeader type="album" title="More Like This" />
-      <div data-tv-section="similar-albums" className="grid-media">
-        {similarAlbums.map((album, index) => (
-          <PlayableCard
-            key={album.id}
-            href={`/album/${album.id}`}
-            coverArt={album.coverArt ? api.getCoverArtUrl(album.coverArt, 300) : album.coverUrl}
-            title={album.title}
-            subtitle={album.artist?.name}
-            placeholderIcon={<Disc3 className="w-12 h-12 text-[var(--text-muted)]" />}
-            circular={false}
-            badge={album.owned ? "owned" : undefined}
-            colors={colors}
-            showPlayButton={false}
-            onClick={() => onNavigate(album.id)}
-            tvCardIndex={index}
-          />
-        ))}
-      </div>
-    </section>
-  );
+export function SimilarAlbums({ similarAlbums }: SimilarAlbumsProps) {
+    return (
+        <section>
+            <SectionHeader type="album" title="More Like This" />
+            <div data-tv-section="similar-albums" className="grid-media">
+                {similarAlbums.map((album, index) => (
+                    <MediaCard
+                        key={album.id}
+                        href={`/album/${album.id}`}
+                        imageUrl={album.coverArt ? api.getCoverArtUrl(album.coverArt, 300) : album.coverUrl}
+                        title={album.title}
+                        subtitle={album.artist?.name}
+                        fallbackIcon={Disc3}
+                        type="album"
+                        index={index}
+                        badge={
+                            album.owned && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-success/20 border border-success/30 rounded-full text-xs font-medium text-success">
+                                    <Check className="w-3 h-3" />
+                                    Owned
+                                </span>
+                            )
+                        }
+                    />
+                ))}
+            </div>
+        </section>
+    );
 }

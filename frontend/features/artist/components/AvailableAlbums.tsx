@@ -2,17 +2,15 @@
 
 import { useState, useEffect } from "react";
 import { Album, ArtistSource } from "../types";
-import type { ColorPalette } from "@/hooks/useImageColor";
-import { PlayableCard } from "@/components/ui/PlayableCard";
-import { Disc3 } from "lucide-react";
+import { MediaCard } from "@/components/cards/MediaCard";
+import { Disc3, Download } from "lucide-react";
 import { api } from "@/lib/api";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 
 interface AvailableAlbumsProps {
     albums: Album[];
     source: ArtistSource | null;
-    colors: ColorPalette | null;
-    onDownloadAlbum: (album: Album, e: React.MouseEvent) => void;
+    onDownloadAlbum: (album: Album) => void;
     isPendingDownload: (mbid: string) => boolean;
 }
 
@@ -20,15 +18,13 @@ interface AvailableAlbumsProps {
 function LazyAlbumCard({
     album,
     source,
-    colors,
     onDownloadAlbum,
     isPendingDownload,
     index,
 }: {
     album: Album;
     source: ArtistSource | null;
-    colors: ColorPalette | null;
-    onDownloadAlbum: (album: Album, e: React.MouseEvent) => void;
+    onDownloadAlbum: (album: Album) => void;
     isPendingDownload: (mbid: string) => boolean;
     index: number;
 }) {
@@ -82,22 +78,20 @@ function LazyAlbumCard({
     const subtitle = subtitleParts.join(" • ");
 
     return (
-        <PlayableCard
-            key={album.id}
+        <MediaCard
             href={`/album/${album.id}`}
-            coverArt={coverArt}
+            imageUrl={coverArt}
             title={album.title}
             subtitle={subtitle}
-            placeholderIcon={
-                <Disc3 className="w-12 h-12 text-[var(--text-muted)]" />
-            }
-            circular={false}
-            badge="download"
-            showPlayButton={false}
-            colors={colors}
-            isDownloading={isPendingDownload(albumMbid)}
-            onDownload={(e) => onDownloadAlbum(album, e)}
-            tvCardIndex={index}
+            fallbackIcon={Disc3}
+            type="album"
+            index={index}
+            action={{
+                icon: Download,
+                label: "Download",
+                onClick: () => onDownloadAlbum(album),
+                busy: isPendingDownload(albumMbid),
+            }}
         />
     );
 }
@@ -105,7 +99,6 @@ function LazyAlbumCard({
 function AlbumGrid({
     albums,
     source,
-    colors,
     onDownloadAlbum,
     isPendingDownload,
 }: Omit<AvailableAlbumsProps, "artistName">) {
@@ -116,7 +109,6 @@ function AlbumGrid({
                     key={album.id}
                     album={album}
                     source={source}
-                    colors={colors}
                     onDownloadAlbum={onDownloadAlbum}
                     isPendingDownload={isPendingDownload}
                     index={index}
@@ -129,7 +121,6 @@ function AlbumGrid({
 export function AvailableAlbums({
     albums,
     source,
-    colors,
     onDownloadAlbum,
     isPendingDownload,
 }: AvailableAlbumsProps) {
@@ -155,8 +146,7 @@ export function AvailableAlbums({
                         <AlbumGrid
                             albums={studioAlbums}
                             source={source}
-                            colors={colors}
-                            onDownloadAlbum={onDownloadAlbum}
+                                    onDownloadAlbum={onDownloadAlbum}
                             isPendingDownload={isPendingDownload}
                         />
                     </div>
@@ -171,8 +161,7 @@ export function AvailableAlbums({
                         <AlbumGrid
                             albums={epsAndSingles}
                             source={source}
-                            colors={colors}
-                            onDownloadAlbum={onDownloadAlbum}
+                                    onDownloadAlbum={onDownloadAlbum}
                             isPendingDownload={isPendingDownload}
                         />
                     </div>

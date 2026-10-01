@@ -15,6 +15,7 @@ import { SectionHeader } from "@/components/ui/SectionHeader";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { CachedImage } from "@/components/ui/CachedImage";
+import { MediaCard } from "@/components/cards/MediaCard";
 
 const getProxiedImageUrl = (imageUrl: string | undefined): string | null => {
     if (!imageUrl) return null;
@@ -32,55 +33,6 @@ interface SearchResult {
     feedUrl: string | null;
     trackCount?: number;
     itunesId?: number | null;
-}
-
-function PodcastCard({
-    podcast,
-    onClick,
-    index,
-}: {
-    podcast: { id: string; title: string; author: string; coverUrl?: string; episodeCount?: number };
-    onClick: () => void;
-    index: number;
-}) {
-    const imageUrl = getProxiedImageUrl(podcast.coverUrl);
-    return (
-        <button
-            onClick={onClick}
-            data-tv-card
-            data-tv-card-index={index}
-            tabIndex={0}
-            className="group text-left bg-[var(--bg-primary)] border border-white/10 rounded-lg overflow-hidden hover:border-type-podcast/40 transition-colors duration-300 active:scale-[0.98]"
-        >
-            <div className="relative w-full aspect-square bg-[var(--bg-secondary)] overflow-hidden">
-                {imageUrl ? (
-                    <CachedImage
-                        src={imageUrl}
-                        alt={podcast.title}
-                        fill
-                        sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, 20vw"
-                        className="object-cover cover-zoom"
-                    />
-                ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                        <Mic2 className="w-12 h-12 text-[var(--text-muted)]" />
-                    </div>
-                )}
-            </div>
-            <div className="p-3">
-                <h3 className="text-sm font-bold text-white truncate tracking-tight">
-                    {podcast.title}
-                </h3>
-                <p className="text-xs tabular-nums text-[var(--text-muted)] truncate mt-0.5">
-                    {podcast.author}
-                </p>
-            </div>
-            <div className={cn(
-                "h-0.5 bg-type-podcast",
-                "transform scale-x-0 group-hover:scale-x-100 transition-transform duration-150 origin-center"
-            )} />
-        </button>
-    );
 }
 
 export default function PodcastsPage() {
@@ -447,10 +399,14 @@ export default function PodcastsPage() {
                                 data-tv-section="my-podcasts"
                             >
                                 {paginatedPodcasts.map((podcast, index) => (
-                                    <PodcastCard
+                                    <MediaCard
                                         key={podcast.id}
-                                        podcast={podcast}
-                                        onClick={() => router.push(`/podcasts/${podcast.id}`)}
+                                        href={`/podcasts/${podcast.id}`}
+                                        title={podcast.title}
+                                        subtitle={podcast.author}
+                                        imageUrl={getProxiedImageUrl(podcast.coverUrl)}
+                                        fallbackIcon={Mic2}
+                                        type="podcast"
                                         index={index}
                                     />
                                 ))}
@@ -475,10 +431,14 @@ export default function PodcastsPage() {
                                 data-tv-section="top-podcasts"
                             >
                                 {topPodcasts.map((podcast, index) => (
-                                    <PodcastCard
+                                    <MediaCard
                                         key={podcast.id}
-                                        podcast={podcast}
-                                        onClick={() => router.push(`/podcasts/${podcast.id}`)}
+                                        href={`/podcasts/${podcast.id}`}
+                                        title={podcast.title}
+                                        subtitle={podcast.author}
+                                        imageUrl={getProxiedImageUrl(podcast.coverUrl)}
+                                        fallbackIcon={Mic2}
+                                        type="podcast"
                                         index={index}
                                     />
                                 ))}
@@ -519,10 +479,14 @@ export default function PodcastsPage() {
                                     data-tv-section={`genre-${genreId}`}
                                 >
                                     {genrePodcasts.map((podcast: { id: string; title: string; author: string; coverUrl?: string; episodeCount?: number }, index: number) => (
-                                        <PodcastCard
+                                        <MediaCard
                                             key={podcast.id}
-                                            podcast={podcast}
-                                            onClick={() => router.push(`/podcasts/${podcast.id}`)}
+                                            href={`/podcasts/${podcast.id}`}
+                                            title={podcast.title}
+                                            subtitle={podcast.author}
+                                            imageUrl={getProxiedImageUrl(podcast.coverUrl)}
+                                            fallbackIcon={Mic2}
+                                            type="podcast"
                                             index={index}
                                         />
                                     ))}

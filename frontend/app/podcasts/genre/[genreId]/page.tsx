@@ -4,9 +4,8 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Mic2, ArrowLeft } from "lucide-react";
 import { api } from "@/lib/api";
-import { cn } from "@/lib/cn";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
-import { CachedImage } from "@/components/ui/CachedImage";
+import { MediaCard } from "@/components/cards/MediaCard";
 import { PageMessage } from "@/components/ui/PageMessage";
 
 interface Podcast {
@@ -37,36 +36,39 @@ export default function GenrePage() {
     const [podcasts, setPodcasts] = useState<Podcast[]>([]);
     const [loading, setLoading] = useState(false);
     const [hasMore, setHasMore] = useState(true);
-    const [offset, setOffset] = useState(0);
     const observerRef = useRef<IntersectionObserver | null>(null);
     const loadMoreRef = useRef<HTMLDivElement>(null);
+    const inFlightRef = useRef(false);
+    const offsetRef = useRef(0);
 
     const LIMIT = 20;
 
     const loadMorePodcasts = useCallback(async () => {
-        if (loading || !hasMore) return;
+        if (inFlightRef.current || !hasMore) return;
+        inFlightRef.current = true;
 
         setLoading(true);
         try {
             const data = await api.getPodcastsByGenrePaginated(
                 parseInt(genreId),
                 LIMIT,
-                offset
+                offsetRef.current
             );
 
             if (data.length < LIMIT) {
                 setHasMore(false);
             }
 
+            offsetRef.current += data.length;
             setPodcasts((prev) => [...prev, ...data]);
-            setOffset((prev) => prev + data.length);
         } catch (error) {
             console.error("Failed to load podcasts:", error);
             setHasMore(false);
         } finally {
+            inFlightRef.current = false;
             setLoading(false);
         }
-    }, [genreId, offset, loading, hasMore]);
+    }, [genreId, hasMore]);
 
     useEffect(() => {
         if (observerRef.current) observerRef.current.disconnect();
@@ -95,10 +97,6 @@ export default function GenrePage() {
         loadMorePodcasts();
         // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only: initial load should not re-trigger when loadMorePodcasts identity changes
     }, []);
-
-    const handlePodcastClick = (podcast: Podcast) => {
-        router.push(`/podcasts/${podcast.id || podcast.itunesId}`);
-    };
 
     if (!genre) {
         return (
@@ -144,40 +142,17 @@ export default function GenrePage() {
                 {/* Content */}
                 <div className="relative page-shell pb-32 pt-8 animate-rise">
                     <div className="grid-media">
-                        {podcasts.map((podcast) => (
-                            <button
+                        {podcasts.map((podcast, index) => (
+                            <MediaCard
                                 key={podcast.id}
-                                onClick={() => handlePodcastClick(podcast)}
-                                className="group text-left bg-[var(--bg-primary)] border border-white/10 rounded-lg overflow-hidden hover:border-type-podcast/40 transition-colors duration-300 active:scale-[0.98]"
-                            >
-                                <div className="relative w-full aspect-square bg-[var(--bg-secondary)] overflow-hidden">
-                                    {podcast.coverUrl ? (
-                                        <CachedImage
-                                            src={podcast.coverUrl}
-                                            alt={podcast.title}
-                                            fill
-                                            sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, 16vw"
-                                            className="object-cover cover-zoom"
-                                        />
-                                    ) : (
-                                        <div className="w-full h-full flex items-center justify-center">
-                                            <Mic2 className="w-12 h-12 text-[var(--text-muted)]" />
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="p-3">
-                                    <h3 className="text-sm font-bold text-white truncate tracking-tight">
-                                        {podcast.title}
-                                    </h3>
-                                    <p className="text-xs tabular-nums text-[var(--text-muted)] truncate mt-0.5">
-                                        {podcast.author}
-                                    </p>
-                                </div>
-                                <div className={cn(
-                                    "h-0.5 bg-type-podcast",
-                                    "transform scale-x-0 group-hover:scale-x-100 transition-transform duration-150 origin-center"
-                                )} />
-                            </button>
+                                href={`/podcasts/${podcast.id || podcast.itunesId}`}
+                                title={podcast.title}
+                                subtitle={podcast.author}
+                                imageUrl={podcast.coverUrl}
+                                fallbackIcon={Mic2}
+                                type="podcast"
+                                index={index}
+                            />
                         ))}
                     </div>
 

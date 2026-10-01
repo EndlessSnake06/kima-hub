@@ -120,8 +120,8 @@ export default function ArtistPage() {
     }
 
     // Download album handler
-    function handleDownloadAlbum(album: Album, e: React.MouseEvent) {
-        downloadAlbum(album, artist?.name || "", e);
+    function handleDownloadAlbum(album: Album) {
+        downloadAlbum(album, artist?.name || "");
     }
 
     // Start artist radio handler
@@ -233,7 +233,6 @@ export default function ArtistPage() {
 
                     <Discography
                         albums={ownedAlbums}
-                        colors={colors}
                         onPlayAlbum={handlePlayAlbum}
                         sortBy={sortBy}
                         onSortChange={setSortBy}
@@ -242,7 +241,6 @@ export default function ArtistPage() {
                     <AvailableAlbums
                         albums={availableAlbums}
                         source={source}
-                        colors={colors}
                         onDownloadAlbum={handleDownloadAlbum}
                         isPendingDownload={isPendingByMbid}
                     />

@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { Music } from "lucide-react";
+import { Music, Play } from "lucide-react";
 import { Artist } from "../types";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { api } from "@/lib/api";
@@ -39,7 +39,7 @@ const ArtistCardItem = memo(
                 fallbackIcon={Music}
                 type="artist"
                 index={index}
-                onPlay={() => onPlay(artist.id)}
+                action={{ icon: Play, label: "Play", onClick: () => onPlay(artist.id) }}
                 onDelete={() => onDelete(artist.id, artist.name)}
             />
         );
