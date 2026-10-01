@@ -59,12 +59,15 @@ const clientNotificationSchema = z.object({
     type: z.enum(["error", "system"]),
     title: z.string().trim().min(1).max(120),
     message: z.string().trim().max(500).optional(),
-    href: z.string().regex(/^\/[^/]/).max(200).optional(),
+    href: z.string().regex(/^\/[^/\\]/).max(200).optional(),
 });
+
+const CLIENT_ROWS_PER_USER = 50;
 
 /**
  * POST /notifications
- * Record an outcome the browser saw. One row per title, so a repeat replaces it.
+ * Record an outcome the browser saw. One row per title, so a repeat replaces it,
+ * and only the newest 50 titles are kept.
  */
 router.post("/", requireAuth, async (req: Request, res: Response) => {
     const parsed = clientNotificationSchema.safeParse(req.body);
@@ -82,6 +85,7 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
             groupKey: `client:${title}`,
             renotify: true,
         });
+        await notificationService.trimGroup(req.user!.id, "client:", CLIENT_ROWS_PER_USER);
         res.status(201).json(notification);
     } catch (error: any) {
         logger.error("Error creating notification:", error);

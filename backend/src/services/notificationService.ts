@@ -94,6 +94,21 @@ class NotificationService {
         }
     }
 
+    /** Delete a user's rows under a key prefix beyond the newest `keep`. */
+    async trimGroup(userId: string, keyPrefix: string, keep: number) {
+        const stale = await prisma.notification.findMany({
+            where: { userId, groupKey: { startsWith: keyPrefix } },
+            orderBy: { createdAt: "desc" },
+            skip: keep,
+            select: { id: true },
+        });
+        if (stale.length === 0) return;
+        await prisma.notification.deleteMany({ where: { id: { in: stale.map((r) => r.id) } } });
+        for (const row of stale) {
+            eventBus.emit({ type: "notification:cleared", userId, payload: { id: row.id } });
+        }
+    }
+
     /**
      * Get all uncleared notifications for a user
      */

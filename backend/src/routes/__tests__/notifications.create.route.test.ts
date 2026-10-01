@@ -1,6 +1,7 @@
 /**
  * POST /notifications records an outcome the browser saw in the caller's own tray.
- * A repeat of the same title replaces its row, and the key cannot reach server alerts.
+ * A repeat of the same title replaces its row, only the newest 50 titles are kept,
+ * and the key cannot reach server alerts.
  */
 
 jest.mock("../../middleware/auth", () => ({
@@ -92,6 +93,25 @@ describe("POST /notifications", () => {
         expect(row).toMatchObject({ read: false, cleared: false });
     });
 
+    it("keeps only the newest 50 titles without touching server alerts", async () => {
+        await prisma.notification.create({
+            data: { userId: USER, type: "system", title: "Server", groupKey: "lidarr:down", createdAt: new Date(0) },
+        });
+        const base = Date.now() - 60 * 60 * 1000;
+        await prisma.notification.createMany({
+            data: Array.from({ length: 50 }, (_, i) => ({
+                userId: USER, type: "error", title: `Old ${i}`, groupKey: `client:Old ${i}`, createdAt: new Date(base + i * 1000),
+            })),
+        });
+
+        await request(makeApp()).post("/notifications").send({ type: "error", title: "Newest" });
+
+        const all = await rows();
+        expect(all).toHaveLength(51);
+        expect(all.map((r) => r.title)).toEqual(expect.arrayContaining(["Newest", "Server", "Old 49"]));
+        expect(all.map((r) => r.title)).not.toContain("Old 0");
+    });
+
     it("rejects types, links and sizes the browser may not set", async () => {
         const app = makeApp();
         const bad = [
@@ -100,6 +120,7 @@ describe("POST /notifications", () => {
             { type: "error", title: "x".repeat(121) },
             { type: "error", title: "x", href: "https://evil.example" },
             { type: "error", title: "x", href: "//evil.example" },
+            { type: "error", title: "x", href: "/\\evil.example" },
         ];
         for (const body of bad) {
             const res = await request(app).post("/notifications").send(body);
