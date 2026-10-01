@@ -37,7 +37,7 @@ interface EnrichmentState {
     lastError?: string;
     currentPhase: EnrichmentPhase;
     lastActivity: string;
-    completionNotificationSent?: boolean; // Prevent repeated completion notifications
+    completionNotificationSent?: boolean; // Set once a finished run has refreshed the failure alert and vibe map
     coreCacheCleared?: boolean; // Prevent repeated cache clearing on core complete
     fullCacheCleared?: boolean; // Prevent repeated cache clearing on full complete
 

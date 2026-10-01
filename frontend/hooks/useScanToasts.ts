@@ -8,7 +8,7 @@ interface ScanResult {
     tracksCorrupt: number;
 }
 
-export function scanSummary(r: ScanResult): string {
+function scanSummary(r: ScanResult): string {
     const parts = [
         r.tracksAdded > 0 && `${r.tracksAdded} added`,
         r.tracksUpdated > 0 && `${r.tracksUpdated} updated`,

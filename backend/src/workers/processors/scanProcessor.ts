@@ -158,6 +158,7 @@ export async function processScan(
         discoveryBatchId,
         spotifyImportJobId,
     } = job.data;
+    const manual = source === "manual-scan";
 
     logger.debug(`\n═══════════════════════════════════════════════`);
     logger.debug(`[ScanJob ${job.id}] Starting library scan for user ${userId}`);
@@ -217,7 +218,7 @@ export async function processScan(
                 userId,
                 payload: {
                     jobId: String(job.id),
-                    manual: !source,
+                    manual,
                       result: { tracksAdded: result.tracksAdded, tracksUpdated: result.tracksUpdated, tracksMissing: result.tracksMissing, tracksCorrupt: result.tracksCorrupt },
                   },
               });
@@ -480,8 +481,8 @@ export async function processScan(
         const shouldReconcile =
             result.tracksAdded > 0 ||
             result.tracksUpdated > 0 ||
-            !source ||
-            source.startsWith("retry-");
+            manual ||
+            source?.startsWith("retry-");
         if (shouldReconcile) {
             try {
                 logger.debug(
@@ -511,7 +512,7 @@ export async function processScan(
 
         // Reconcile Discovery Weekly tracks
         // This backfills Discovery Weekly playlists with albums that downloaded after initial playlist creation
-        // Run on: new tracks added OR manual sync (no source = manual scan button)
+        // Run on: new tracks added OR manual sync
         if (shouldReconcile) {
             try {
                 logger.debug(
@@ -570,7 +571,7 @@ export async function processScan(
             eventBus.emit({
                 type: "scan:complete",
                 userId,
-                payload: { jobId: String(job.id), manual: !source, error: error.message || "Scan failed" },
+                payload: { jobId: String(job.id), manual, error: error.message || "Scan failed" },
             });
         }
         throw error;
