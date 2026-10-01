@@ -146,17 +146,18 @@ test.describe("Queue", () => {
         expect(titlesAfter[0]).toBe(targetTitle);
     });
 
-    test("Clear Queue empties the up-next list", async ({ page }) => {
+    test("Clear queue empties the up-next list", async ({ page }) => {
         await startPlayingFirstAlbum(page);
 
         // Navigate via sidebar Queue link (client-side nav) to keep React state
         await page.getByRole("link", { name: "Queue" }).click();
         await page.waitForURL(/\/queue/);
 
-        // Clear Queue button only appears when queue.length > 0
-        const clearBtn = page.getByText("Clear Queue");
+        // Clear queue only appears when queue.length > 0, and asks before clearing
+        const clearBtn = page.getByRole("button", { name: "Clear queue" });
         await expect(clearBtn).toBeVisible({ timeout: 5_000 });
         await clearBtn.click();
+        await page.getByRole("dialog", { name: "Clear the queue?" }).getByRole("button", { name: "Clear queue" }).click();
 
         // Up Next section should disappear (or show empty state)
         await expect(page.getByText("No tracks in queue")).toBeVisible({ timeout: 5_000 });
