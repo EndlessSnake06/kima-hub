@@ -113,6 +113,16 @@ it("leaves the Discover tag on for Discover's own requests", async () => {
     expect(untag).not.toHaveBeenCalled();
 });
 
+it("reports an album Lidarr holds in full as owned without searching", async () => {
+    jest.spyOn(service, "getArtistList").mockResolvedValue([artist([])]);
+    catalog = [{ ...album("rg-asked", "Antics", 11), statistics: { trackFileCount: 11, percentOfTracks: 100 } as any }];
+
+    await expect(
+        lidarrService.addAlbum("rg-asked", "Interpol", "Antics", "/music", ARTIST_MBID, false)
+    ).rejects.toMatchObject({ type: AcquisitionErrorType.ALREADY_OWNED });
+    expect(client.post).not.toHaveBeenCalled();
+});
+
 describe("a search that grabs nothing", () => {
     const addForLibrary = () => lidarrService.addAlbum("rg-asked", "Interpol", "Antics", "/music", ARTIST_MBID, false);
 

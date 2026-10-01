@@ -91,7 +91,7 @@ class LidarrService {
 
     private artistAddInFlight = new Map<string, Promise<LidarrArtist | null>>();
 
-    private readonly ROOT_FOLDER_CREATE_DELAY = 2000;
+    private readonly ARTIST_ADD_SETTLE_MS = 2000;
 
     constructor() {
         this.enabled = config.lidarr?.enabled || false;
@@ -175,9 +175,6 @@ class LidarrService {
     }
 
     /**
-     * Ensure the root folder exists in Lidarr, fallback to first available if not
-     */
-    /**
      * Where and how Lidarr files a new artist: the asked music folder (or Lidarr's
      * first), with the profiles chosen in Kima or else that folder's defaults.
      */
@@ -257,7 +254,7 @@ class LidarrService {
         this.invalidateArtistCache();
         logger.debug(`Added artist to Lidarr: ${artistName}${isDiscovery ? " (tagged as discovery)" : ""}`);
 
-        await new Promise((resolve) => setTimeout(resolve, this.ROOT_FOLDER_CREATE_DELAY));
+        await new Promise((resolve) => setTimeout(resolve, this.ARTIST_ADD_SETTLE_MS));
         try {
             await this.client.post("/api/v1/command", { name: "RefreshArtist", artistId: added.id });
         } catch (refreshError: any) {
@@ -544,8 +541,11 @@ class LidarrService {
             }
 
             if (albumData.statistics?.percentOfTracks >= 100) {
-                logger.debug(`   Album fully downloaded (${albumData.statistics.trackFileCount} files), skipping search`);
-                return albumData;
+                throw new AcquisitionError(
+                    `Already in Lidarr: all ${albumData.statistics.trackFileCount} tracks`,
+                    AcquisitionErrorType.ALREADY_OWNED,
+                    false
+                );
             }
 
             if (!artist.monitored) {
