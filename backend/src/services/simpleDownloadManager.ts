@@ -917,13 +917,19 @@ class SimpleDownloadManager {
         const result = await this.withTransaction(
             async (tx) => {
                 // ═══════════════════════════════════════════════════════════════
-                // STEP 1: Find job and check for recent failure (DB-based dedup)
+                // STEP 1: Find the job; each download id counts as one failure
                 // ═══════════════════════════════════════════════════════════════
                 const job = await tx.downloadJob.findFirst({
                     where: {
                         OR: [
                             { lidarrRef: downloadId },
-                            { targetMbid: albumMbid || undefined },
+                            {
+                                metadata: {
+                                    path: ["previousDownloadIds"],
+                                    array_contains: [downloadId],
+                                },
+                            },
+                            ...(albumMbid ? [{ targetMbid: albumMbid }] : []),
                         ],
                         status: "processing",
                     },
@@ -934,22 +940,10 @@ class SimpleDownloadManager {
                     return { retried: false, failed: false };
                 }
 
-                // Check for recent failure (deduplication)
                 const metadata = (job.metadata as any) || {};
-                const lastFailureAt = metadata.lastFailureAt;
-                const FAILURE_DEDUP_WINDOW_MS = 30000; // 30 seconds
-
-                if (lastFailureAt) {
-                    const timeSinceLastFailure =
-                        Date.now() - new Date(lastFailureAt).getTime();
-                    if (timeSinceLastFailure < FAILURE_DEDUP_WINDOW_MS) {
-                        logger.debug(
-                            `   Duplicate failure (${Math.round(
-                                timeSinceLastFailure / 1000
-                            )}s ago), skipping`
-                        );
-                        return { retried: false, failed: false, jobId: job.id };
-                    }
+                if (metadata.previousDownloadIds?.includes(downloadId)) {
+                    logger.debug(`   Download already counted as failed, skipping`);
+                    return { retried: false, failed: false, jobId: job.id };
                 }
 
                 logger.debug(`   Found job: ${job.id}`);
@@ -958,10 +952,10 @@ class SimpleDownloadManager {
                 // STEP 2: Update failure tracking
                 // ═══════════════════════════════════════════════════════════════
                 const failureCount = (metadata.failureCount || 0) + 1;
-                const previousDownloadIds = metadata.previousDownloadIds || [];
-                if (downloadId && !previousDownloadIds.includes(downloadId)) {
-                    previousDownloadIds.push(downloadId);
-                }
+                const previousDownloadIds = [
+                    ...(metadata.previousDownloadIds || []),
+                    downloadId,
+                ];
 
                 // Update status text for retry attempts
                 const lidarrAttempts = (metadata.lidarrAttempts || 1) + 1;
@@ -975,7 +969,6 @@ class SimpleDownloadManager {
                             ...metadata,
                             failureCount,
                             lastError: reason,
-                            lastFailureAt: new Date().toISOString(),
                             previousDownloadIds,
                             lidarrAttempts,
                             statusText,
