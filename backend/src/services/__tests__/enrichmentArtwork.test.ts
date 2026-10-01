@@ -1,18 +1,7 @@
 /**
- * The enrichment service was already on the multi-source path. It is here so
- * that it stays there.
- *
- * It called `imageProviderService`, which was the only one of the four artwork
- * doors that walked more than one provider -- and which is now deleted, its job
- * absorbed into `artwork.ts` along with the three single-source doors and the
- * two routes that guessed. Both of its call sites were rewritten in that move,
- * and neither had a single line of test covering it: measured with coverage,
- * this file had 0 of 159 statements executed by any test in the suite.
- *
- * So this proves the two rewrites did not change what enrichment asks for or
- * what it does with the answer.
- *
- * Doctrine: the failure and boundary paths first, the happy path last.
+ * Enrichment asks the shared artwork door (artwork.ts) for artist and album
+ * images, by name and real MBID, and carries the answer into its result.
+ * Failure and boundary paths come first, the happy path last.
  */
 
 const mockArtistFindUnique = jest.fn();
@@ -21,7 +10,10 @@ const mockAlbumFindUnique = jest.fn();
 jest.mock("../../utils/db", () => ({
     prisma: {
         artist: { findUnique: (...a: unknown[]) => mockArtistFindUnique(...a) },
-        album: { findUnique: (...a: unknown[]) => mockAlbumFindUnique(...a) },
+        album: {
+            findUnique: (...a: unknown[]) => mockAlbumFindUnique(...a),
+            findMany: jest.fn().mockResolvedValue([]),
+        },
         systemSettings: { findFirst: jest.fn().mockResolvedValue(null) },
     },
 }));

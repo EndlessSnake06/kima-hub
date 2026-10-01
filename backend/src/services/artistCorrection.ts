@@ -1,16 +1,16 @@
 /**
- * Artist name correction via MusicBrainz for Lidarr and Soulseek acquisition:
- * { corrected, canonicalName, mbid } | null. "of mice" must resolve to "Of Mice
- * & Men" and "blink" to "blink-182"; suffixes such as "(feat. Y)" or "[Live]"
- * are removed before searching.
+ * Artist names to MusicBrainz identity. resolveArtistMbid is the one checked
+ * lookup for any stored artist id; getArtistCorrection repairs a typed name
+ * ("of mice" → "Of Mice & Men") before Lidarr or Soulseek acquisition.
  */
 
 import * as fuzz from "fuzzball";
 import { logger } from "../utils/logger";
 import { redisClient } from "../utils/redis";
 import { musicBrainzService } from "./musicbrainz";
-import { failureCause } from "../utils/outcome";
+import { absent, answered, failureCause, Outcome } from "../utils/outcome";
 import { normalizeArtistName } from "./artistIdentity";
+import { isGenericAlbumTitle, titlesAgree } from "./albumIdentity";
 
 export interface ArtistCorrection {
     corrected: boolean;
@@ -125,4 +125,70 @@ function fuzzyScore(a: string, b: string): number {
         normalizeArtistName(a),
         normalizeArtistName(b)
     );
+}
+
+export interface ResolvedArtist {
+    mbid: string;
+    name: string;
+}
+
+/** Same-named artists whose catalogues are checked before giving up. */
+const MAX_CATALOGUE_CHECKS = 3;
+
+/**
+ * The one way an artist name becomes a MusicBrainz id. A candidate must carry
+ * the name, or an alias, exactly once folded. Callers that store the id pass
+ * the artist's album titles: the catalogue must hold one, and a shared name
+ * with no usable title is refused. Without titles the top name match is used.
+ */
+export async function resolveArtistMbid(
+    artistName: string,
+    albumTitles?: string[]
+): Promise<Outcome<ResolvedArtist>> {
+    const query = stripArtistSuffixes(artistName);
+    const wanted = normalizeArtistName(query);
+    if (!wanted) return absent({ artistName });
+
+    const found = await musicBrainzService.searchArtist(query, 10);
+    if (found.kind !== "answered") return found;
+
+    const named = found.value.filter((candidate: any) =>
+        [candidate.name, ...(candidate.aliases ?? []).map((alias: any) => alias.name)].some(
+            (name) => typeof name === "string" && normalizeArtistName(name) === wanted
+        )
+    );
+    if (named.length === 0) {
+        return absent({ artistName, hits: found.value.length });
+    }
+
+    const titles = (albumTitles ?? []).filter((title) => !isGenericAlbumTitle(title));
+    if (titles.length === 0) {
+        if (albumTitles && named.length > 1) {
+            return absent({ artistName, ambiguous: named.length });
+        }
+        return answered(
+            { mbid: named[0].id, name: named[0].name },
+            { artistName, by: "name" }
+        );
+    }
+
+    for (const candidate of named.slice(0, MAX_CATALOGUE_CHECKS)) {
+        const catalogue = await musicBrainzService.getReleaseGroups(
+            candidate.id,
+            ["album", "ep", "single"],
+            100
+        );
+        if (catalogue.kind === "absent") continue;
+        if (catalogue.kind !== "answered") return catalogue;
+        const match = catalogue.value.find((group: any) =>
+            titles.some((title) => titlesAgree(group.title, title))
+        );
+        if (match) {
+            return answered(
+                { mbid: candidate.id, name: candidate.name },
+                { artistName, by: "catalogue", album: match.title }
+            );
+        }
+    }
+    return absent({ artistName, candidates: named.length });
 }

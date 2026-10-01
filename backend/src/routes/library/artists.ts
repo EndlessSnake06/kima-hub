@@ -355,44 +355,8 @@ router.get("/artists/:id", async (req, res) => {
     let albumsWithOwnership = [];
     const ownedRgMbids = new Set(artist.ownedAlbums.map((o) => o.rgMbid));
 
-    let effectiveMbid = artist.mbid;
-    if (!effectiveMbid || (effectiveMbid.startsWith("temp-") && artist.enrichmentStatus !== "unresolvable")) {
-      logger.debug(
-        ` Artist has temp/no MBID, searching MusicBrainz for ${artist.name}...`,
-      );
-      const found = await musicBrainzService.searchArtist(
-        artist.name,
-        1,
-      );
-      if (found.kind === "answered" && found.value.length > 0) {
-        effectiveMbid = found.value[0].id;
-        logger.debug(`  Found MBID: ${effectiveMbid}`);
-
-        try {
-          await prisma.artist.update({
-            where: { id: artist.id },
-            data: { mbid: effectiveMbid },
-          });
-        } catch (mbidError: any) {
-          if (mbidError.code === "P2002") {
-            logger.debug(
-              `MBID ${effectiveMbid} already exists for another artist, skipping update`,
-            );
-          } else {
-            logger.error(`  ✗ Failed to update MBID:`, mbidError);
-          }
-        }
-      } else if (
-        found.kind === "answered" ||
-        found.kind === "absent"
-      ) {
-        logger.debug(`  ✗ No MusicBrainz match found for ${artist.name}`);
-      } else {
-        logger.error(
-          `  MusicBrainz search ${found.kind}: ${failureCause(found)}`,
-        );
-      }
-    }
+    // The id belongs to enrichment; a page view never searches for or stores one.
+    const effectiveMbid = artist.mbid;
 
     const dbAlbums = artist.albums.map((album) => ({
       ...album,

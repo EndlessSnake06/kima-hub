@@ -10,6 +10,7 @@ import { findAlbumArtwork, findArtistArtwork } from "../services/artwork";
 import { redisClient } from "../utils/redis";
 import { downloadAndStoreImage, isNativePath, nativeFileExists } from "../services/imageStorage";
 import { failureCause } from "../utils/outcome";
+import { resolveArtistMbid } from "../services/artistCorrection";
 
 /**
  * Enriches an artist with metadata from Wikidata
@@ -31,22 +32,20 @@ export async function enrichSimilarArtist(artist: Artist): Promise<void> {
     let summarySource = "none";
 
     try {
-        // If artist has a temp MBID, try to get the real one from MusicBrainz
         if (!hasRealMbid(artist.mbid)) {
-            logger.debug(
-                `${logPrefix} Temp MBID detected, searching MusicBrainz...`
-            );
-            const found = await musicBrainzService.searchArtist(
+            const albums = await prisma.album.findMany({
+                where: { artistId: artist.id },
+                select: { title: true },
+            });
+            const found = await resolveArtistMbid(
                 artist.name,
-                1
+                albums.map((album) => album.title)
             );
-            if (found.kind === "answered" && found.value[0]?.id) {
-                const realMbid = found.value[0].id;
+            if (found.kind === "answered") {
+                const realMbid = found.value.mbid;
                 logger.debug(
-                    `${logPrefix} MusicBrainz: Found real MBID: ${realMbid}`
+                    `${logPrefix} MusicBrainz: ${realMbid} (${found.evidence.by})`
                 );
-
-                // Update artist with real MBID
                 try {
                     await prisma.artist.update({
                         where: { id: artist.id },
@@ -62,14 +61,9 @@ export async function enrichSimilarArtist(artist: Artist): Promise<void> {
                         throw mbidError;
                     }
                 }
-            } else if (
-                found.kind === "absent" ||
-                found.kind === "answered"
-            ) {
-                // Nothing usable in the answer — an honest "no match"
-                // (or a degenerate empty answer): mark unresolvable.
+            } else if (found.kind === "absent") {
                 logger.debug(
-                    `${logPrefix} MusicBrainz: No match found, marking as unresolvable`
+                    `${logPrefix} MusicBrainz: No verified match, marking as unresolvable`
                 );
                 await prisma.artist.update({
                     where: { id: artist.id },
@@ -77,11 +71,9 @@ export async function enrichSimilarArtist(artist: Artist): Promise<void> {
                 });
                 return;
             } else {
-                // A failed search keeps the question open: the artist
-                // stays on its temp MBID and the next cycle asks again —
-                // do not mark unresolvable on a source outage.
+                // An outage keeps the question open for the next cycle.
                 logger.debug(
-                    `${logPrefix} MusicBrainz search ${found.kind}: ${failureCause(found)}`
+                    `${logPrefix} MusicBrainz ${found.kind}: ${failureCause(found)}`
                 );
             }
         }

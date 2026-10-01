@@ -52,7 +52,7 @@ import {
 import {
     classifyFailure,
 } from "../services/enrichmentErrorCodeClassifier";
-import { titlesAgree } from "../services/enrichment";
+import { titlesAgree } from "../services/albumIdentity";
 import { hasRealMbid } from "../services/artistIdentity";
 import type { Outcome } from "../utils/outcome";
 

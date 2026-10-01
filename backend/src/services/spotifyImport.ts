@@ -24,6 +24,8 @@ import { rankAfter, rankForPosition } from "../utils/lexoRank";
 import { allocateAppendRanks } from "./playlistService";
 import { trackIdentityService } from "./trackIdentity";
 import { failureCause } from "../utils/outcome";
+import { resolveArtistMbid } from "./artistCorrection";
+import { titlesAgree } from "./albumIdentity";
 import { songLinkService } from "./songlink";
 import { eventBus } from "./eventBus";
 import { extractPlaylist as ytdlpExtractPlaylist } from "./ytdlp";
@@ -38,8 +40,6 @@ import {
   normalizeApostrophes,
   stripTrackSuffix,
   normalizeTrackTitle,
-  normalizeAlbumForMatching,
-  stringSimilarity,
 } from "../utils/normalization";
 
 // Store loggers for each job
@@ -465,58 +465,30 @@ class SpotifyImportService {
     };
   }
 
-  /**
-   * Look up album info from MusicBrainz for downloading
-   */
+  /** The album's release group, found in the catalogue of the verified artist. */
   private async findAlbumMbid(
     artistName: string,
     albumName: string,
   ): Promise<{ artistMbid: string | null; albumMbid: string | null }> {
-    // Search for artist first
-    const artists = await musicBrainzService.searchArtist(artistName, 5);
-    if (artists.kind !== "answered") {
+    const artist = await resolveArtistMbid(artistName, [albumName]);
+    if (artist.kind !== "answered") {
       logger?.warn(
-        `MB artist search ${artists.kind}: ${
-          artists.kind === "absent"
-            ? "no match"
-            : failureCause(artists)
+        `MB artist for "${artistName}" / "${albumName}": ${
+          artist.kind === "absent" ? "no verified match" : failureCause(artist)
         }`,
       );
       return { artistMbid: null, albumMbid: null };
     }
+    const artistMbid = artist.value.mbid;
 
-    // Find best matching artist
-    let bestArtist = artists.value[0];
-    for (const artist of artists.value) {
-      if (normalizeString(artist.name) === normalizeString(artistName)) {
-        bestArtist = artist;
-        break;
-      }
-    }
-
-    const artistMbid = bestArtist.id;
-
-    // Search for album by this artist
-    const discography =
-      await musicBrainzService.getReleaseGroups(artistMbid);
-    if (discography.kind !== "answered") {
-      logger?.warn(
-        `MB discography for ${artistName}: ${
-          discography.kind === "absent"
-            ? "no release-groups"
-            : failureCause(discography)
-        }`,
-      );
-      return { artistMbid, albumMbid: null };
-    }
-
-    for (const rg of discography.value) {
-      if (stringSimilarity(rg.title, albumName) >= 80) {
-        return { artistMbid, albumMbid: rg.id };
-      }
-    }
-
-    return { artistMbid, albumMbid: null };
+    const catalogue = await musicBrainzService.getReleaseGroups(
+      artistMbid,
+      ["album", "ep", "single"],
+      100,
+    );
+    if (catalogue.kind !== "answered") return { artistMbid, albumMbid: null };
+    const match = catalogue.value.find((rg: any) => titlesAgree(rg.title, albumName));
+    return { artistMbid, albumMbid: match?.id ?? null };
   }
 
   /**
@@ -784,12 +756,12 @@ class SpotifyImportService {
           if (preResolvedMbid) {
             albumMbid = preResolvedMbid;
             logger?.debug(`${logPrefix} Using pre-resolved MBID: ${albumMbid}`);
-            const artists = await musicBrainzService.searchArtist(artistName, 1);
-            if (artists.kind === "answered") {
-              artistMbid = artists.value[0]?.id ?? null;
-            } else if (artists.kind !== "absent") {
+            const group = await musicBrainzService.getReleaseGroup(albumMbid);
+            if (group.kind === "answered") {
+              artistMbid = group.value?.["artist-credit"]?.[0]?.artist?.id ?? null;
+            } else if (group.kind !== "absent") {
               logger?.debug(
-                `${logPrefix} Artist search failed: ${failureCause(artists)}`,
+                `${logPrefix} Release group lookup failed: ${failureCause(group)}`,
               );
             }
           } else if (albumName && albumName !== "Unknown Album") {

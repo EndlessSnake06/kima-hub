@@ -5,6 +5,8 @@
 
 import { logger } from "../utils/logger";
 import { hasRealMbid } from "./artistIdentity";
+import { titlesAgree } from "./albumIdentity";
+import { resolveArtistMbid } from "./artistCorrection";
 import { prisma } from "../utils/db";
 import { musicBrainzService } from "./musicbrainz";
 import { failureCause } from "../utils/outcome";
@@ -165,19 +167,20 @@ class EnrichmentService {
             config.sources.musicbrainz &&
             !hasRealMbid(artist.mbid)
         ) {
-            const found = await musicBrainzService.searchArtist(
+            const albums = await prisma.album.findMany({
+                where: { artistId: artist.id },
+                select: { title: true },
+            });
+            const found = await resolveArtistMbid(
                 artist.name,
-                1
+                albums.map((album) => album.title)
             );
-            if (found.kind === "answered" && found.value[0]) {
-                enrichmentData.mbid = found.value[0].id;
+            if (found.kind === "answered") {
+                enrichmentData.mbid = found.value.mbid;
                 enrichmentData.confidence += 0.4;
-                logger.debug(`  Found MBID: ${enrichmentData.mbid}`);
-            } else if (
-                found.kind === "answered" ||
-                found.kind === "absent"
-            ) {
-                logger.debug(`  No MusicBrainz match for ${artist.name}`);
+                logger.debug(`  Found MBID: ${enrichmentData.mbid} (${found.evidence.by})`);
+            } else if (found.kind === "absent") {
+                logger.debug(`  No verified MusicBrainz match for ${artist.name}`);
             } else {
                 logger.error(`  MusicBrainz lookup ${found.kind}: ${failureCause(found)}`);
             }
@@ -540,36 +543,6 @@ class EnrichmentService {
         }
     }
 
-}
-
-/**
- * Whether two album titles name the same record: exact, punctuation-insensitive,
- * then without edition markers. Checks candidates only; it never renames, so
- * "Playing the Angel (Deluxe)" stays distinct locally.
- */
-export function titlesAgree(a: string, b: string): boolean {
-    const bare = (t: string) => foldTitle(musicBrainzService.normalizeForSearch(t));
-    if (!a || !b) return false;
-    // Identical text is the same title even when nothing survives the fold
-    // (an album called "!!!"); the empty-fold guard below is for DIFFERENT text.
-    const exact = (t: string) => t.normalize("NFKC").toLowerCase().trim();
-    if (exact(a) !== "" && exact(a) === exact(b)) return true;
-    const same = (x: string, y: string) => x !== "" && x === y;
-    return same(foldTitle(a), foldTitle(b)) || same(bare(a), bare(b));
-}
-
-/**
- * Keep the letters, numbers and combining marks of any script (marks change
- * words in Devanagari, Thai, Japanese), dropping only Latin accents so "Café"
- * matches "Cafe". An empty fold never agrees with anything.
- */
-function foldTitle(t: string): string {
-    return t
-        .normalize("NFKD")
-        .replace(/(\p{Script=Latin})\p{M}+/gu, "$1")
-        .normalize("NFKC")
-        .toLowerCase()
-        .replace(/[^\p{L}\p{M}\p{N}]/gu, "");
 }
 
 export const enrichmentService = new EnrichmentService();

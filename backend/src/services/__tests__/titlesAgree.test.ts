@@ -1,14 +1,7 @@
 /**
- * titlesAgree decides whether a MusicBrainz hit is the album we asked for.
- *
- * It used to fold with /[^a-z0-9]/, so any title with no Latin letters folded
- * to "" and every such pair "agreed": a search hit for "ロンドン" was accepted
- * as the album "東京事変". These tests pin the Unicode-aware fold and the rule
- * that two empty folds never agree.
- *
- * normalizeForSearch is the REAL one from musicbrainz.ts (only redis, the DB
- * and the other network services are mocked), because how it strips edition
- * markers is part of what is being compared.
+ * titlesAgree decides whether a MusicBrainz hit is the album we asked for. It
+ * folds Unicode-aware, and two titles that fold to nothing never agree. The real
+ * normalizeForSearch runs, because its edition stripping is part of the compare.
  */
 
 jest.mock("../../utils/db", () => ({ prisma: {} }));
@@ -16,10 +9,8 @@ jest.mock("../../utils/redis", () => ({ redisClient: { get: jest.fn(), setEx: je
 jest.mock("../../utils/logger", () => ({
     logger: { warn: jest.fn(), debug: jest.fn(), error: jest.fn(), info: jest.fn() },
 }));
-jest.mock("../artistSimilarity", () => ({ getSimilarArtists: jest.fn() }));
-jest.mock("../wikidata", () => ({ wikidataService: { getArtistInfo: jest.fn() } }));
 
-import { titlesAgree } from "../enrichment";
+import { titlesAgree } from "../albumIdentity";
 
 describe("titlesAgree", () => {
     it("does not match two different Japanese titles", () => {

@@ -4,6 +4,7 @@ import { logger } from "../utils/logger";
 import { withTimeout } from "../utils/timeout";
 import { getSimilarArtists } from "../services/artistSimilarity";
 import { musicBrainzService } from "../services/musicbrainz";
+import { resolveArtistMbid } from "../services/artistCorrection";
 import { deezerService } from "../services/deezer";
 import { redisClient } from "../utils/redis";
 import { requireAuthOrToken } from "../middleware/auth";
@@ -149,18 +150,13 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
 
         // If we have a name but no MBID, search for it
         if (!mbid && artistName) {
-            const found = await musicBrainzService.searchArtist(
-                artistName,
-                1
-            );
+            const found = await resolveArtistMbid(artistName);
             if (found.kind === "answered") {
-                if (found.value.length > 0) {
-                    mbid = found.value[0].id;
-                    artistName = found.value[0].name;
-                }
+                mbid = found.value.mbid;
+                artistName = found.value.name;
             } else if (found.kind === "absent") {
                 logger.debug(
-                    `[Discovery] no artist matches ${artistName} on MusicBrainz`
+                    `[Discovery] no artist named ${artistName} on MusicBrainz`
                 );
             } else {
                 // A failed search is not "no such artist": serve the page
