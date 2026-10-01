@@ -106,15 +106,18 @@ export default function ReleasesPage() {
             <PageHeader
                 eyebrow="Release radar"
                 title="New and upcoming"
-                description={[
-                    plural(data?.monitoredArtistCount || 0, "monitored artist"),
-                    `${data?.upcoming.length || 0} upcoming`,
-                    `${data?.recent.length || 0} recent`,
-                ].join(" · ")}
+                description={
+                    data?.monitoredArtistCount
+                        ? [
+                              plural(data.monitoredArtistCount, "monitored artist"),
+                              `${data.upcoming.length} upcoming`,
+                              `${data.recent.length} recent`,
+                          ].join(" · ")
+                        : undefined
+                }
             />
 
             <div className="page-shell space-y-10 animate-rise">
-                {/* Upcoming Releases */}
                 {data?.upcoming && data.upcoming.length > 0 && (
                     <section>
                         <div className="flex items-center gap-3 mb-6">
@@ -137,7 +140,6 @@ export default function ReleasesPage() {
                     </section>
                 )}
 
-                {/* Recently Released */}
                 {data?.recent && data.recent.length > 0 && (
                     <section>
                         <div className="flex items-center gap-3 mb-6">
@@ -160,7 +162,6 @@ export default function ReleasesPage() {
                     </section>
                 )}
 
-                {/* Empty State */}
                 {(!data?.upcoming?.length && !data?.recent?.length) && (
                     <div className="flex flex-col items-center justify-center py-20 text-center">
                         <Calendar className="w-16 h-16 text-[var(--text-muted)] mb-6" />
@@ -231,11 +232,9 @@ function ReleaseCard({
 
     return (
         <div className="group relative">
-            {/* Cover Art */}
             <div className="aspect-square rounded-lg overflow-hidden bg-white/5 mb-3 relative">
                 <ReleaseCover release={release} />
 
-                {/* Status Badge */}
                 <div className={cn(
                     "absolute top-2 left-2 px-2 py-1 rounded text-xs font-medium",
                     isUpcoming ? "bg-brand text-black" :
@@ -245,7 +244,6 @@ function ReleaseCard({
                      hasIt ? "In Library" : "Available"}
                 </div>
 
-                {/* Download Button Overlay */}
                 {release.canDownload && !hasIt && (
                     <button
                         onClick={() => onDownload(release.albumMbid, release.id)}
@@ -264,7 +262,6 @@ function ReleaseCard({
                     </button>
                 )}
 
-                {/* In Library Indicator */}
                 {hasIt && (
                     <div className="absolute bottom-2 right-2">
                         <CheckCircle2 className="w-5 h-5 text-success" />
@@ -272,7 +269,6 @@ function ReleaseCard({
                 )}
             </div>
 
-            {/* Info */}
             <div className="space-y-1">
                 <h3 className="text-sm font-medium text-white truncate" title={release.title}>
                     {release.title}

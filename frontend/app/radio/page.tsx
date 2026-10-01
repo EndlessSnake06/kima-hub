@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Radio, Play, Loader2 } from "lucide-react";
+import { Play, Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import {
@@ -36,23 +36,14 @@ function RadioStationCard({
                 "bg-[var(--bg-primary)] border-2 border-white/10",
                 station.hoverBorder,
                 "transition-all duration-300",
-                "",
                 station.hoverShadow,
                 "hover:scale-[1.02] active:scale-[0.98]",
                 "disabled:opacity-50 disabled:cursor-not-allowed"
             )}
         >
-            {/* Subtle gradient tint */}
             <div className={cn("absolute inset-0 bg-gradient-to-br", station.color)} />
 
-            {/* Content */}
-            <div className="absolute inset-0 p-4 flex flex-col justify-between">
-                <div className="flex items-center gap-1.5">
-                    <Radio className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
-                    <span className="text-xs text-[var(--text-secondary)]">
-                        Radio
-                    </span>
-                </div>
+            <div className="absolute inset-0 p-4 flex flex-col justify-end">
                 <div>
                     <h3 className="text-base font-bold text-white truncate tracking-tight leading-tight mb-1">
                         {station.name}
@@ -63,21 +54,18 @@ function RadioStationCard({
                 </div>
             </div>
 
-            {/* Bottom accent bar on hover */}
             <div className={cn(
                 "absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r",
                 station.accentGradient,
                 "transform scale-x-0 group-hover:scale-x-100 transition-transform duration-150 origin-center"
             )} />
 
-            {/* Loading overlay */}
             {loadingStation === station.id && (
                 <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-(--z-raised)">
                     <Loader2 className="w-6 h-6 text-white animate-spin" />
                 </div>
             )}
 
-            {/* Play overlay on hover */}
             {loadingStation !== station.id && (
                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                     <div className="w-12 h-12 rounded-lg bg-white flex items-center justify-center">
@@ -136,7 +124,6 @@ export default function RadioPage() {
 
                 <div className="relative page-shell pb-32 pt-2 animate-rise">
                     <div className="section-stack">
-                        {/* Quick Start */}
                         <section>
                             <SectionHeader title="Quick Start" />
                             <div className="grid-media">
@@ -151,7 +138,6 @@ export default function RadioPage() {
                             </div>
                         </section>
 
-                        {/* Genres */}
                         {(isLoading || genresError || genreStations.length > 0) && (
                             <section>
                                 <SectionHeader
@@ -189,7 +175,6 @@ export default function RadioPage() {
                             </section>
                         )}
 
-                        {/* Decades */}
                         {(isLoading || decadesError || decadeStations.length > 0) && (
                             <section>
                                 <SectionHeader
