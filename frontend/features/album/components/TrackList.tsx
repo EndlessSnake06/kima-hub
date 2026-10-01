@@ -7,12 +7,6 @@ import { formatNumber, formatTime } from "@/lib/format";
 import { useDoubleTap } from "@/hooks/useDoubleTap";
 import { cascadeStyle } from "@/lib/motion";
 
-// Shared by the header and every row: number/play 40px, title flex, play-count
-// badge (hidden below md), actions 136px, duration 100px.
-
-const _TRACK_GRID = "grid-cols-[40px_minmax(0,2fr)_96px_136px_100px]";
-const _TRACK_GRID_MD = "md:grid-cols-[40px_minmax(0,2fr)_96px_136px_100px]";
-
 interface TrackListProps {
     tracks: Track[];
     album: Album;
@@ -101,7 +95,7 @@ const TrackRow = memo(
                 data-track-index={index}
                 tabIndex={0}
                 className={cn(
-                    "group grid grid-cols-[40px_minmax(0,2fr)_96px_136px_100px] md:grid-cols-[40px_minmax(0,2fr)_96px_136px_100px] gap-2 md:gap-4 px-4 py-2 rounded-lg hover:bg-[var(--bg-tertiary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2 transition-colors cursor-pointer touch-manipulation",
+                    "group grid grid-cols-[40px_minmax(0,1fr)_auto_auto] md:grid-cols-[40px_minmax(0,2fr)_96px_136px_100px] gap-2 md:gap-4 px-4 py-2 rounded-lg hover:bg-[var(--bg-tertiary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand focus-visible:outline-offset-2 transition-colors cursor-pointer touch-manipulation",
                     isPlaying && "bg-[var(--bg-hover)] border-l-2",
                     isPreviewOnly && "opacity-70 hover:opacity-90",
                     "animate-rise [animation-delay:calc(var(--i)*var(--stagger))]"
@@ -187,7 +181,7 @@ const TrackRow = memo(
                             <span>{formatNumber(track.playCount)}</span>
                         </div>
                     ) : (
-                        <span aria-hidden="true" />
+                        <span aria-hidden="true" className="hidden md:block" />
                     )}
 
                 {/* Column 4: Row actions (Add to queue, Add to playlist) */}
