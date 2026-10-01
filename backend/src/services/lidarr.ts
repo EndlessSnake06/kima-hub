@@ -2609,77 +2609,57 @@ class LidarrService {
 
     /**
      * Everything reconciliation needs in one snapshot fetch, as Maps for lookups by job data.
+     * Null when Lidarr is off or any fetch fails: a partial snapshot would read as missing downloads.
      */
-    async getReconciliationSnapshot(): Promise<ReconciliationSnapshot> {
+    async getReconciliationSnapshot(): Promise<ReconciliationSnapshot | null> {
         await this.ensureInitialized();
 
-        const snapshot: ReconciliationSnapshot = {
-            queue: new Map(),
-            albumsByMbid: new Map(),
-            albumsByTitle: new Map(),
-            fetchedAt: new Date(),
-        };
-
         if (!this.enabled || !this.client) {
-            return snapshot;
+            return null;
         }
+        const client = this.client;
 
         try {
-            const fetchAlbumsForSnapshot = async (): Promise<LidarrAlbum[]> => {
+            const fetchAlbums = async (): Promise<LidarrAlbum[]> => {
                 const albums: LidarrAlbum[] = [];
-
                 const artists = await this.getArtistList();
 
                 const artistBatchSize = 25;
                 for (let start = 0; start < artists.length; start += artistBatchSize) {
                     const batch = artists.slice(start, start + artistBatchSize);
-                    const batchResponses = await Promise.all(
+                    const responses = await Promise.all(
                         batch.map((artist) =>
-                            this.client!
-                                .get("/api/v1/album", {
-                                    params: { artistId: artist.id },
-                                })
-                                .catch((err: any) => {
-                                    logger.warn(
-                                        `[LIDARR] Failed to fetch albums for artist ${artist.id} during snapshot:`,
-                                        err.message
-                                    );
-                                    return { data: [] };
-                                })
+                            client.get("/api/v1/album", { params: { artistId: artist.id } })
                         )
                     );
-
-                    for (const response of batchResponses) {
-                        if (Array.isArray(response.data)) {
-                            albums.push(...(response.data as LidarrAlbum[]));
+                    for (const response of responses) {
+                        if (!Array.isArray(response.data)) {
+                            throw new Error("album list is not an array");
                         }
+                        albums.push(...(response.data as LidarrAlbum[]));
                     }
                 }
-
-                logger.debug(
-                    `[LIDARR] Snapshot album fetch: ${artists.length} artists, ${albums.length} albums fetched`
-                );
-
                 return albums;
             };
 
-            // Fetch queue and albums in parallel
-            const [queueResponse, albumsResponse] = await Promise.all([
-                this.client.get("/api/v1/queue", {
+            const [queueResponse, albums] = await Promise.all([
+                client.get("/api/v1/queue", {
                     params: { page: 1, pageSize: 1000, includeUnknownArtistItems: true },
-                }).catch((err: any) => {
-                    logger.error("[LIDARR] Failed to fetch queue for snapshot:", err.message);
-                    return { data: { records: [] } };
                 }),
-                fetchAlbumsForSnapshot().catch((err: any) => {
-                    logger.error("[LIDARR] Failed to fetch albums for snapshot:", err.message);
-                    return [];
-                }),
+                fetchAlbums(),
             ]);
+            if (!Array.isArray(queueResponse.data?.records)) {
+                throw new Error("queue response has no records");
+            }
 
-            // Index queue items by downloadId
-            const queueItems = queueResponse.data.records || [];
-            for (const item of queueItems) {
+            const snapshot: ReconciliationSnapshot = {
+                queue: new Map(),
+                albumsByMbid: new Map(),
+                albumsByTitle: new Map(),
+                fetchedAt: new Date(),
+            };
+
+            for (const item of queueResponse.data.records) {
                 if (item.downloadId) {
                     snapshot.queue.set(item.downloadId, {
                         id: item.id,
@@ -2693,11 +2673,8 @@ class LidarrService {
                 }
             }
 
-            // Index albums by MBID and normalized title
-            const albums = albumsResponse || [];
             for (const album of albums) {
-                const hasFiles = album.statistics?.percentOfTracks > 0;
-                if (!hasFiles) continue; // Only index albums with files
+                if (!(album.statistics?.percentOfTracks > 0)) continue;
 
                 const albumInfo: AlbumSnapshotInfo = {
                     id: album.id,
@@ -2707,12 +2684,9 @@ class LidarrService {
                     hasFiles: true,
                 };
 
-                // Index by MBID
                 if (album.foreignAlbumId) {
                     snapshot.albumsByMbid.set(album.foreignAlbumId, albumInfo);
                 }
-
-                // Index by normalized "artist|title" for title-based lookups
                 if (albumInfo.artistName && album.title) {
                     const key = `${albumInfo.artistName.toLowerCase().trim()}|${album.title.toLowerCase().trim()}`;
                     snapshot.albumsByTitle.set(key, albumInfo);
@@ -2722,11 +2696,10 @@ class LidarrService {
             logger.debug(
                 `[LIDARR] Snapshot fetched: ${snapshot.queue.size} queue items, ${snapshot.albumsByMbid.size} albums with files`
             );
-
             return snapshot;
         } catch (error: any) {
-            logger.error("[LIDARR] Failed to create reconciliation snapshot:", error.message);
-            return snapshot;
+            logger.warn(`[LIDARR] Snapshot skipped this cycle: ${error.message}`);
+            return null;
         }
     }
 

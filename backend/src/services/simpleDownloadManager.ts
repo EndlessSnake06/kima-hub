@@ -1327,7 +1327,7 @@ class SimpleDownloadManager {
      * Accepts a prefetched snapshot to avoid repeat API calls.
      */
     async markStaleJobsAsFailed(
-        existingSnapshot?: ReconciliationSnapshot
+        existingSnapshot?: ReconciliationSnapshot | null
     ): Promise<number> {
         const pendingCutoff = new Date(Date.now() - this.PENDING_TIMEOUT_MS);
         const noSourceCutoff = new Date(Date.now() - this.NO_SOURCE_TIMEOUT_MS);
@@ -1414,8 +1414,6 @@ class SimpleDownloadManager {
             return stalePendingJobs.length;
         }
 
-        // Use existing snapshot - do NOT re-fetch if undefined (means Lidarr is unavailable)
-        // If no snapshot provided, get one; but if explicitly undefined, skip Lidarr checks
         const snapshot = existingSnapshot;
 
         const staleJobs: typeof processingJobs = [];
@@ -1461,7 +1459,7 @@ class SimpleDownloadManager {
                     }
                 }
             }
-            // If no snapshot and job has lidarrRef, skip it (Lidarr unavailable, can't check status)
+            // Without a snapshot Lidarr's state is unknown, so grabbed jobs wait for the next cycle.
         }
 
         // Batch update jobs that need timeout extension
@@ -1835,7 +1833,7 @@ class SimpleDownloadManager {
      * when called alongside other reconciliation methods.
      */
     async reconcileWithLidarr(
-        existingSnapshot?: ReconciliationSnapshot
+        existingSnapshot?: ReconciliationSnapshot | null
     ): Promise<{
         reconciled: number;
         errors: string[];
@@ -1854,7 +1852,6 @@ class SimpleDownloadManager {
 
         logger.debug(`   Found ${processingJobs.length} processing job(s)`);
 
-        // Use existing snapshot - do NOT re-fetch if undefined (means Lidarr is unavailable)
         if (!existingSnapshot) {
             logger.debug(`   No Lidarr snapshot available, skipping reconciliation`);
             return { reconciled: 0, errors: [] };
@@ -1965,7 +1962,7 @@ class SimpleDownloadManager {
      * treated as a replacement, since Lidarr retries with new releases.
      */
     async syncWithLidarrQueue(
-        existingSnapshot?: ReconciliationSnapshot
+        existingSnapshot?: ReconciliationSnapshot | null
     ): Promise<{
         cancelled: number;
         errors: string[];
@@ -1990,7 +1987,6 @@ class SimpleDownloadManager {
             `   Found ${processingJobs.length} processing job(s) with lidarrRef`
         );
 
-        // Use existing snapshot - do NOT re-fetch if undefined (means Lidarr is unavailable)
         if (!existingSnapshot) {
             logger.debug(`   No Lidarr snapshot available, skipping queue sync`);
             return { cancelled: 0, errors: [] };
