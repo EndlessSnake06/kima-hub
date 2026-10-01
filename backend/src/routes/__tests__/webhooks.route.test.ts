@@ -179,7 +179,7 @@ describe('POST /webhooks/lidarr -- webhook secret validation', () => {
             ...ENABLED_SETTINGS,
             lidarrWebhookSecret: 'correct-secret',
         });
-        (webhookEventStore.storeEvent as jest.Mock).mockResolvedValue(STORED_EVENT);
+        (webhookEventStore.storeEvent as jest.Mock).mockResolvedValue({ event: STORED_EVENT, created: true });
         (webhookEventStore.markProcessed as jest.Mock).mockResolvedValue(undefined);
 
         const res = await request(app)
@@ -199,7 +199,7 @@ describe('POST /webhooks/lidarr -- event handling', () => {
 
     it('stores event and returns 200 with eventId for a Grab event', async () => {
         (getSystemSettings as jest.Mock).mockResolvedValue(ENABLED_SETTINGS);
-        (webhookEventStore.storeEvent as jest.Mock).mockResolvedValue(STORED_EVENT);
+        (webhookEventStore.storeEvent as jest.Mock).mockResolvedValue({ event: STORED_EVENT, created: true });
         (webhookEventStore.markProcessed as jest.Mock).mockResolvedValue(undefined);
 
         const payload = {
@@ -219,10 +219,23 @@ describe('POST /webhooks/lidarr -- event handling', () => {
         expect(webhookEventStore.storeEvent).toHaveBeenCalledWith('lidarr', 'Grab', payload);
     });
 
+    it('does not process an event Lidarr sent again', async () => {
+        (getSystemSettings as jest.Mock).mockResolvedValue(ENABLED_SETTINGS);
+        (webhookEventStore.storeEvent as jest.Mock).mockResolvedValue({ event: { ...STORED_EVENT, eventType: 'Download' }, created: false });
+
+        const res = await request(app)
+            .post('/webhooks/lidarr')
+            .send({ eventType: 'Download', downloadId: 'dl-xyz', album: { id: 2, mbId: 'mbid-lateralus' } });
+        await new Promise((resolve) => setImmediate(resolve));
+
+        expect(res.status).toBe(200);
+        expect(simpleDownloadManager.onDownloadComplete).not.toHaveBeenCalled();
+    });
+
     it('stores and returns 200 for a Download event', async () => {
         (getSystemSettings as jest.Mock).mockResolvedValue(ENABLED_SETTINGS);
         const downloadEvent = { ...STORED_EVENT, eventType: 'Download' };
-        (webhookEventStore.storeEvent as jest.Mock).mockResolvedValue(downloadEvent);
+        (webhookEventStore.storeEvent as jest.Mock).mockResolvedValue({ event: downloadEvent, created: true });
         (webhookEventStore.markProcessed as jest.Mock).mockResolvedValue(undefined);
 
         const res = await request(app)
@@ -241,7 +254,7 @@ describe('POST /webhooks/lidarr -- event handling', () => {
     it('handles ImportFailure event without error', async () => {
         (getSystemSettings as jest.Mock).mockResolvedValue(ENABLED_SETTINGS);
         const failEvent = { ...STORED_EVENT, eventType: 'ImportFailure' };
-        (webhookEventStore.storeEvent as jest.Mock).mockResolvedValue(failEvent);
+        (webhookEventStore.storeEvent as jest.Mock).mockResolvedValue({ event: failEvent, created: true });
         (webhookEventStore.markProcessed as jest.Mock).mockResolvedValue(undefined);
 
         const res = await request(app)
@@ -260,7 +273,7 @@ describe('POST /webhooks/lidarr -- event handling', () => {
     it('handles Health event (no-op) without error', async () => {
         (getSystemSettings as jest.Mock).mockResolvedValue(ENABLED_SETTINGS);
         const healthEvent = { ...STORED_EVENT, eventType: 'Health' };
-        (webhookEventStore.storeEvent as jest.Mock).mockResolvedValue(healthEvent);
+        (webhookEventStore.storeEvent as jest.Mock).mockResolvedValue({ event: healthEvent, created: true });
         (webhookEventStore.markProcessed as jest.Mock).mockResolvedValue(undefined);
 
         const res = await request(app)
@@ -273,7 +286,7 @@ describe('POST /webhooks/lidarr -- event handling', () => {
     it('handles Test event (no-op) without error', async () => {
         (getSystemSettings as jest.Mock).mockResolvedValue(ENABLED_SETTINGS);
         const testEvent = { ...STORED_EVENT, eventType: 'Test' };
-        (webhookEventStore.storeEvent as jest.Mock).mockResolvedValue(testEvent);
+        (webhookEventStore.storeEvent as jest.Mock).mockResolvedValue({ event: testEvent, created: true });
         (webhookEventStore.markProcessed as jest.Mock).mockResolvedValue(undefined);
 
         const res = await request(app)
@@ -286,7 +299,7 @@ describe('POST /webhooks/lidarr -- event handling', () => {
     it('handles unknown event types gracefully (logs debug, no crash)', async () => {
         (getSystemSettings as jest.Mock).mockResolvedValue(ENABLED_SETTINGS);
         const unknownEvent = { ...STORED_EVENT, eventType: 'UnknownFutureEvent' };
-        (webhookEventStore.storeEvent as jest.Mock).mockResolvedValue(unknownEvent);
+        (webhookEventStore.storeEvent as jest.Mock).mockResolvedValue({ event: unknownEvent, created: true });
         (webhookEventStore.markProcessed as jest.Mock).mockResolvedValue(undefined);
 
         const res = await request(app)
@@ -299,7 +312,7 @@ describe('POST /webhooks/lidarr -- event handling', () => {
 
     it('handles missing downloadId in Grab gracefully', async () => {
         (getSystemSettings as jest.Mock).mockResolvedValue(ENABLED_SETTINGS);
-        (webhookEventStore.storeEvent as jest.Mock).mockResolvedValue(STORED_EVENT);
+        (webhookEventStore.storeEvent as jest.Mock).mockResolvedValue({ event: STORED_EVENT, created: true });
         (webhookEventStore.markProcessed as jest.Mock).mockResolvedValue(undefined);
 
         // No downloadId -- simpleDownloadManager should not be called
@@ -339,7 +352,7 @@ describe('POST /webhooks/lidarr -- rate limit', () => {
             ...ENABLED_SETTINGS,
             lidarrWebhookSecret: 'correct-secret',
         });
-        (webhookEventStore.storeEvent as jest.Mock).mockResolvedValue(STORED_EVENT);
+        (webhookEventStore.storeEvent as jest.Mock).mockResolvedValue({ event: STORED_EVENT, created: true });
     });
 
     it('never limits requests carrying the secret, and limits the rest', async () => {

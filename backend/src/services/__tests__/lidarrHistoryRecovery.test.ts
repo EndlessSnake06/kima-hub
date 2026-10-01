@@ -60,7 +60,7 @@ it("handles a missed import once, under the webhook's event id", async () => {
 });
 
 it("leaves an event the webhook already delivered alone", async () => {
-    const event = await webhookEventStore.storeEvent("lidarr", "Download", { eventType: "Download", downloadId: "dl-2" });
+    const { event } = await webhookEventStore.storeEvent("lidarr", "Download", { eventType: "Download", downloadId: "dl-2" });
     onlyType(8, [record("dl-2")]);
 
     expect(await recoverMissedEvents("http://lidarr", "key")).toBe(0);
@@ -99,7 +99,7 @@ it("reads from 10 minutes before the newest event, never more than 7 days back",
     const floor = history.mock.calls[0][2] as Date;
     expect(Math.abs(Date.now() - 7 * day - floor.getTime())).toBeLessThan(5000);
 
-    const event = await webhookEventStore.storeEvent("lidarr", "Grab", { eventType: "Grab", downloadId: "dl-5" });
+    const { event } = await webhookEventStore.storeEvent("lidarr", "Grab", { eventType: "Grab", downloadId: "dl-5" });
     history.mockClear();
     await recoverMissedEvents("http://lidarr", "key");
     const since = history.mock.calls[0][2] as Date;

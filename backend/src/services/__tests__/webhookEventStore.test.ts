@@ -47,10 +47,11 @@ describe("WebhookEventStore", () => {
         it("stores a new event and returns it", async () => {
             (prisma.webhookEvent.create as jest.Mock).mockResolvedValue(BASE_EVENT);
 
-            const result = await webhookEventStore.storeEvent("test", "TestEvent", {
+            const { event: result, created } = await webhookEventStore.storeEvent("test", "TestEvent", {
                 eventType: "TestEvent",
             });
 
+            expect(created).toBe(true);
             expect(prisma.webhookEvent.create).toHaveBeenCalledTimes(1);
             expect(result.id).toBe(BASE_EVENT.id);
             expect(result.source).toBe("test");
@@ -66,14 +67,14 @@ describe("WebhookEventStore", () => {
             (prisma.webhookEvent.create as jest.Mock).mockRejectedValue(dupError);
             (prisma.webhookEvent.findUnique as jest.Mock).mockResolvedValue(BASE_EVENT);
 
-            const result = await webhookEventStore.storeEvent(
+            const { event: result, created } = await webhookEventStore.storeEvent(
                 "lidarr",
                 "Grab",
                 { eventType: "Grab", downloadId: "123" },
                 "lidarr-Grab-123"
             );
 
-            // Must NOT throw -- must return the existing event
+            expect(created).toBe(false);
             expect(result.id).toBe(BASE_EVENT.id);
             expect(prisma.webhookEvent.findUnique).toHaveBeenCalledWith({
                 where: { eventId: "lidarr-Grab-123" },

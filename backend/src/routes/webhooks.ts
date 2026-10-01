@@ -87,11 +87,11 @@ router.post("/lidarr", async (req, res) => {
             logger.debug(`   Payload:`, JSON.stringify(req.body, null, 2));
         }
 
-        const storedEvent = await webhookEventStore.storeEvent("lidarr", eventType, req.body);
-        res.json({ success: true, eventId: storedEvent.id });
+        const { event, created } = await webhookEventStore.storeEvent("lidarr", eventType, req.body);
+        res.json({ success: true, eventId: event.id });
 
-        if (!storedEvent.processed) {
-            void processStoredEvent(storedEvent.id, eventType, req.body);
+        if (created) {
+            void processStoredEvent(event.id, eventType, req.body);
         }
     } catch (error: any) {
         logger.error("Webhook error:", error.message);

@@ -43,13 +43,13 @@ export function toWebhookPayload(eventType: string, record: LidarrHistoryRecord)
  * 7 days back) and handles each record not seen yet. Returns how many were new.
  */
 export async function recoverMissedEvents(lidarrUrl: string, apiKey: string): Promise<number> {
-    const cycleStart = new Date();
+    const now = Date.now();
     const newest = await prisma.webhookEvent.findFirst({
         where: { source: "lidarr" },
         orderBy: { createdAt: "desc" },
         select: { createdAt: true },
     });
-    const floor = cycleStart.getTime() - LOOKBACK_FLOOR_MS;
+    const floor = now - LOOKBACK_FLOOR_MS;
     const since = new Date(Math.max(floor, (newest?.createdAt.getTime() ?? floor) - OVERLAP_MS));
 
     let recovered = 0;
@@ -58,8 +58,8 @@ export async function recoverMissedEvents(lidarrUrl: string, apiKey: string): Pr
         for (const record of records) {
             if (!record.downloadId) continue;
             const payload = toWebhookPayload(eventType, record);
-            const event = await webhookEventStore.storeEvent("lidarr", eventType, payload);
-            if (event.createdAt < cycleStart) continue;
+            const { event, created } = await webhookEventStore.storeEvent("lidarr", eventType, payload);
+            if (!created) continue;
             recovered++;
             await processStoredEvent(event.id, eventType, payload);
         }

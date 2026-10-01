@@ -28,15 +28,15 @@ interface StoredWebhookEvent {
 
 class WebhookEventStore {
     /**
-     * Store a webhook event before processing
-     * Uses eventId for deduplication (same event won't be stored twice)
+     * Stores an event once per eventId. `created` is false when the event was
+     * already stored, so only its first arrival is processed.
      */
     async storeEvent(
         source: string,
         eventType: string,
         payload: WebhookEventPayload,
         eventId?: string
-    ): Promise<StoredWebhookEvent> {
+    ): Promise<{ event: StoredWebhookEvent; created: boolean }> {
         const generatedEventId = eventId || this.generateEventId(source, payload);
 
         try {
@@ -50,7 +50,7 @@ class WebhookEventStore {
             });
 
             logger.debug(`[WEBHOOK-STORE] Stored ${source} event: ${eventType} (${event.id})`);
-            return event as StoredWebhookEvent;
+            return { event: event as StoredWebhookEvent, created: true };
         } catch (error: any) {
             if (error.code === 'P2002' && error.meta?.target?.includes('eventId')) {
                 logger.debug(`[WEBHOOK-STORE] Duplicate event ignored: ${generatedEventId}`);
@@ -60,7 +60,7 @@ class WebhookEventStore {
                 if (!existing) {
                     throw new Error('Duplicate event but not found in database');
                 }
-                return existing as StoredWebhookEvent;
+                return { event: existing as StoredWebhookEvent, created: false };
             }
             throw error;
         }
