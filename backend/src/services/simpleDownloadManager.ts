@@ -9,7 +9,7 @@
 import { logger } from "../utils/logger";
 import { prisma } from "../utils/db";
 import { Prisma, PrismaClient } from "@prisma/client";
-import { lidarrService, LidarrIndexerRelease, AcquisitionError, AcquisitionErrorType, ReconciliationSnapshot } from "./lidarr";
+import { lidarrService, AcquisitionError, AcquisitionErrorType, ReconciliationSnapshot } from "./lidarr";
 import { yieldToEventLoop } from "../utils/async";
 import { musicBrainzService } from "./musicbrainz";
 import { getSystemSettings } from "../utils/systemSettings";
