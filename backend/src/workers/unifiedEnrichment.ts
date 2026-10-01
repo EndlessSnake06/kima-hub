@@ -355,11 +355,6 @@ async function resumeInfrastructure(): Promise<void> {
 }
 
 /**
- * Timeout wrapper to prevent operations from hanging indefinitely
- * If an operation takes longer than the timeout, it will fail and move to the next item
- */
-
-/**
  * Per-stage budget, sized to the stage's work rather than the track's length:
  * identification is a few HTTP calls, analysis and embedding decode a 90 s
  * window, fingerprinting is bounded by fpcalc's own timeout. A `working` record

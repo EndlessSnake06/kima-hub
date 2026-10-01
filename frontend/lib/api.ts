@@ -26,8 +26,10 @@ export interface MoodBucketMix {
     tracks?: ApiData[];
 }
 
-/** The 1.11 release window's mood-mix question (backend services/releases/moodMixes.ts). */
-/** "remove" is what a retired mix's clear is called; it does the same as "rebuild". */
+/**
+ * The 1.11 release window's mood-mix answer (backend services/releases/moodMixes.ts).
+ * "remove" clears a retired mix and does the same as "rebuild".
+ */
 export type MoodMixDecision = "rebuild" | "keep" | "remove";
 
 export interface MoodMixReleaseState {

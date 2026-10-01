@@ -18,7 +18,7 @@ export function useTrackPreview<T extends PreviewableTrack>() {
     const previewAudioRef = useRef<HTMLAudioElement | null>(null);
     const mainPlayerWasPausedRef = useRef(false);
     const noPreviewTrackIdsRef = useRef<Set<string>>(new Set());
-    const toastShownForNoPreviewRef = useRef<Set<string>>(new Set());
+    const noPreviewNotifiedRef = useRef<Set<string>>(new Set());
     const inFlightTrackIdRef = useRef<string | null>(null);
 
     const applyCurrentPlayerVolume = useCallback((audio: HTMLAudioElement) => {
@@ -38,9 +38,9 @@ export function useTrackPreview<T extends PreviewableTrack>() {
         );
     };
 
-    const showNoPreviewToast = (trackId: string) => {
-        if (toastShownForNoPreviewRef.current.has(trackId)) return;
-        toastShownForNoPreviewRef.current.add(trackId);
+    const notifyNoPreview = (trackId: string) => {
+        if (noPreviewNotifiedRef.current.has(trackId)) return;
+        noPreviewNotifiedRef.current.add(trackId);
         notify.info("No Deezer preview available");
     };
 
@@ -83,7 +83,7 @@ export function useTrackPreview<T extends PreviewableTrack>() {
         try {
             if (inFlightTrackIdRef.current === track.id) return;
             if (noPreviewTrackIdsRef.current.has(track.id)) {
-                showNoPreviewToast(track.id);
+                notifyNoPreview(track.id);
                 return;
             }
 
@@ -114,7 +114,7 @@ export function useTrackPreview<T extends PreviewableTrack>() {
             audio.onerror = () => {
                 if (previewAudioRef.current !== audio) return;
                 noPreviewTrackIdsRef.current.add(track.id);
-                showNoPreviewToast(track.id);
+                notifyNoPreview(track.id);
                 setPreviewPlaying(false);
                 setPreviewTrack(null);
                 previewAudioRef.current = null;

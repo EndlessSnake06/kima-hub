@@ -596,11 +596,6 @@ router.post("/refresh-all", requireAuth, async (req, res) => {
     }
 });
 
-/**
- * GET /podcasts/:id
- * Get a specific podcast with full details and episodes
- * Requires user to be subscribed
- */
 /** Episodes per page, and with a podcast's detail, so the response does not grow with the show's age. */
 const EPISODE_PAGE_SIZE = 50;
 const EPISODE_PAGE_MAX = 200;
@@ -625,12 +620,12 @@ function parseEpisodePage(query: Record<string, unknown>): {
     return { limit, offset };
 }
 
+/** GET /podcasts/:id: a podcast the user subscribes to, with one page of episodes. */
 router.get("/:id", requireAuth, async (req, res) => {
     try {
         const { id } = req.params;
         const { limit, offset } = parseEpisodePage(req.query);
 
-        // Check if user is subscribed
         const subscription = await prisma.podcastSubscription.findUnique({
             where: {
                 userId_podcastId: {
