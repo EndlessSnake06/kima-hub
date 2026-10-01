@@ -72,9 +72,10 @@ export function ArtistHero({
 
                     {/* Artist Info - Bottom Aligned */}
                     <div className="flex-1 min-w-0 pb-1">
-                        <p className="text-xs font-medium text-[var(--text-secondary)] mb-1">
-                            Artist
-                        </p>
+                        <div className="flex items-center gap-2 mb-1">
+                            <div className="w-1.5 h-1.5 bg-type-artist rounded-full" />
+                            <span className="t-eyebrow">Artist</span>
+                        </div>
                         <div className="flex items-center gap-3 group mb-2">
                             <h1 className="text-2xl md:text-4xl lg:text-5xl font-bold tracking-tight text-white leading-tight line-clamp-2">
                                 {displayData.name}

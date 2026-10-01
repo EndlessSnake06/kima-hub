@@ -68,7 +68,7 @@ export function AlbumHero({
                     {/* Album Info - Bottom Aligned */}
                     <div className="flex-1 min-w-0 pb-1">
                         <div className="flex items-center gap-2 mb-1">
-                            <div className="w-1.5 h-1.5 bg-brand rounded-full" />
+                            <div className="w-1.5 h-1.5 bg-type-album rounded-full" />
                             <span className="t-eyebrow">Album</span>
                         </div>
                         <div className="flex items-center gap-2 group mb-2">
