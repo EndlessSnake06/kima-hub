@@ -6,7 +6,7 @@ import { Loader2, Trash2, type LucideIcon } from "lucide-react";
 import { CachedImage } from "@/components/ui/CachedImage";
 import { cn } from "@/lib/cn";
 
-export type MediaType = "artist" | "album" | "track" | "podcast" | "audiobook";
+type MediaType = "artist" | "album" | "track" | "podcast" | "audiobook";
 
 const TYPE_STYLES: Record<MediaType, { border: string; bar: string }> = {
     artist: { border: "hover:border-type-artist/50", bar: "bg-type-artist" },
@@ -16,7 +16,7 @@ const TYPE_STYLES: Record<MediaType, { border: string; bar: string }> = {
     audiobook: { border: "hover:border-type-audiobook/50", bar: "bg-type-audiobook" },
 };
 
-export interface MediaCardAction {
+interface MediaCardAction {
     icon: LucideIcon;
     label: string;
     onClick: () => void;
