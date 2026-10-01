@@ -43,23 +43,20 @@ export default function MixPage() {
     const { data: mix, isLoading } = useMixQuery(mixId);
     const [isSaving, setIsSaving] = useState(false);
 
-    // Calculate total duration
     const totalDuration = useMemo(() => {
         if (!mix?.tracks) return 0;
         return mix.tracks.reduce((sum: number, track: MixTrack) => sum + (track.duration || 0), 0);
     }, [mix?.tracks]);
 
     const formatTotalDuration = (seconds: number) => {
-        const hours = Math.floor(seconds / 3600);
-        const mins = Math.floor((seconds % 3600) / 60);
-        if (hours > 0) {
-            return `about ${hours} hr ${mins} min`;
-        }
-        return `${mins} min`;
+        const total = Math.max(1, Math.round(seconds / 60));
+        const hours = Math.floor(total / 60);
+        const mins = total % 60;
+        if (hours === 0) return `${mins} min`;
+        return mins === 0 ? `${hours} hr` : `${hours} hr ${mins} min`;
     };
 
 
-    // Check if this mix is currently playing
     const mixTrackIds = useMemo(() => {
         return new Set(mix?.tracks?.map((track: MixTrack) => track.id) || []);
     }, [mix?.tracks]);
