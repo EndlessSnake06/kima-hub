@@ -318,6 +318,7 @@ class SimpleDownloadManager {
                         payload: { jobId: job.id, subject: job.subject, error: error.message || "Download failed" },
                     });
                 }
+                if (job) await this.notifyFailure(job, error.message || "No sources available");
 
                 // Check batch completion for discovery jobs
                 if (job?.discoveryBatchId) {
@@ -387,6 +388,7 @@ class SimpleDownloadManager {
                     payload: { jobId: job.id, subject: job.subject, error: error.message || "Failed to add album to Lidarr" },
                 });
             }
+            if (job) await this.notifyFailure(job, error.message || "Failed to add album to Lidarr");
 
             // Check batch completion for discovery jobs
             if (job?.discoveryBatchId) {
@@ -1370,6 +1372,28 @@ class SimpleDownloadManager {
         return true;
     }
 
+    /** One tray row per failed album, when the notification policy says the user needs it. */
+    private async notifyFailure(
+        job: { id: string; userId: string; subject: string },
+        reason: string
+    ): Promise<void> {
+        try {
+            const decision = await notificationPolicyService.evaluateNotification(job.id, "failed");
+            if (!decision.shouldNotify) {
+                logger.debug(`   Suppressing failure notification: ${decision.reason}`);
+                return;
+            }
+            await notificationService.notifyDownloadFailed(job.userId, job.subject, reason);
+            await prisma.$executeRaw`
+                UPDATE "DownloadJob"
+                SET metadata = coalesce(metadata, '{}'::jsonb) || '{"notificationSent": true}'::jsonb
+                WHERE id = ${job.id}
+            `;
+        } catch (notifError) {
+            logger.error("Failed to evaluate/send failure notification:", notifError);
+        }
+    }
+
     /** Fails a job that has run out of releases and same-artist albums. */
     private async markJobExhausted(
         job: any,
@@ -1404,45 +1428,7 @@ class SimpleDownloadManager {
             );
         }
 
-        // Send failure notification using policy service
-        try {
-            const decision =
-                await notificationPolicyService.evaluateNotification(
-                    job.id,
-                    "failed"
-                );
-
-            if (decision.shouldNotify) {
-                logger.debug(
-                    `   Sending failure notification: ${decision.reason}`
-                );
-                await notificationService.notifyDownloadFailed(
-                    job.userId,
-                    job.subject,
-                    reason
-                );
-
-                // Mark notification as sent
-                await prisma.downloadJob.update({
-                    where: { id: job.id },
-                    data: {
-                        metadata: {
-                            ...(job.metadata as any),
-                            notificationSent: true,
-                        },
-                    },
-                });
-            } else {
-                logger.debug(
-                    `   Suppressing failure notification: ${decision.reason}`
-                );
-            }
-        } catch (notifError) {
-            logger.error(
-                "Failed to evaluate/send failure notification:",
-                notifError
-            );
-        }
+        await this.notifyFailure(job, reason);
 
         return { retried: false, failed: true, jobId: job.id };
     }
@@ -1523,6 +1509,7 @@ class SimpleDownloadManager {
                     userId: job.userId,
                     payload: { jobId: job.id, subject: job.subject, error: "Download never started - timed out" },
                 });
+                await this.notifyFailure(job, "Download never started - timed out");
             }
 
             logger.debug(`   Batch updated ${stalePendingJobs.length} pending jobs to failed`);
@@ -1707,9 +1694,6 @@ class SimpleDownloadManager {
                 );
             }
 
-            // If no replacement was started, mark the original job as failed
-            // NOTE: No notification here - stale cleanup is a background safety net
-            // Notifications are only sent from markJobExhausted when truly exhausted
             if (!replacementStarted) {
                 await prisma.downloadJob.update({
                     where: { id: job.id },
@@ -1724,6 +1708,7 @@ class SimpleDownloadManager {
                     userId: job.userId,
                     payload: { jobId: job.id, subject: job.subject, error: errorMessage },
                 });
+                await this.notifyFailure(job, errorMessage);
             }
 
             if (job.discoveryBatchId) {

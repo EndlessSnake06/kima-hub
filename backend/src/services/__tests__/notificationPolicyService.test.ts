@@ -1,26 +1,7 @@
 /**
- * R27 — `hasAlreadyNotified`'s unbounded per-user history scan.
- *
- * The duplicate-notification check loaded every column of every terminal
- * DownloadJob the user has ever had, with no `select` and no `take` -- cost
- * grew with lifetime history on a query that runs once per job. Fixed to
- * select only the column the comparison reads (plus `id`, which the debug
- * log on a match uses) and bound the scan to the user's most recent
- * DUPLICATE_CHECK_WINDOW terminal jobs, ordered by `completedAt`.
- *
- * `completedAt` is nullable -- not every terminal row is guaranteed to have
- * it (rows written before `endJob()` existed, or by a terminal write that
- * bypasses it, can be null) -- and Postgres sorts NULLS FIRST on a bare
- * `DESC`, which would let null rows crowd out real dated ones inside the
- * bounded window. The `nulls: "last"` below is what prevents that; the test
- * pins the exact call contract sent to Prisma. Prisma's `SortOrderInput`
- * (`{ sort, nulls }`) is confirmed present on the installed 5.22.0 generated
- * client's `DownloadJobOrderByWithRelationInput.completedAt` type, no
- * preview flag required. The DB-side NULLS LAST sort itself isn't
- * observable through a mocked Prisma client -- verified empirically instead
- * against a real Postgres instance with a legacy null-`completedAt` slice
- * seeded in, confirming the null rows sort after dated ones and are no
- * longer returned ahead of them.
+ * A download notifies once per album: a job is silent when another job for the
+ * same artist and album already notified, checked over the user's recent jobs.
+ * A failed job notifies whatever its error says.
  */
 
 import { prisma } from "../../utils/db";
@@ -98,12 +79,7 @@ describe("notificationPolicyService.hasAlreadyNotified (via evaluateNotification
         });
     });
 
-    it("still finds a matching duplicate ahead of an unrelated legacy row with no completedAt-derived ordering info in the returned set", async () => {
-        // The window is bounded and ordered in SQL, not in JS -- once rows
-        // come back, hasAlreadyNotified just walks them in whatever order
-        // Prisma returned. This pins that the walk itself doesn't depend on
-        // completedAt (it isn't even selected), so a legacy null-completedAt
-        // row sitting anywhere in the window can't hide a real match.
+    it("finds a matching job anywhere in the returned window", async () => {
         (prisma.downloadJob.findUnique as jest.Mock).mockResolvedValue(makeJob());
         (prisma.downloadJob.findMany as jest.Mock).mockResolvedValue([
             {
@@ -138,5 +114,28 @@ describe("notificationPolicyService.hasAlreadyNotified (via evaluateNotification
         );
 
         expect(decision.shouldNotify).toBe(true);
+    });
+});
+
+describe("failed downloads", () => {
+    it.each([
+        "All releases and albums exhausted: Lidarr returned nothing",
+        "Choose a Lidarr quality and metadata profile in Settings before downloading",
+        "something nobody listed",
+    ])("notifies for %p", async (error) => {
+        (prisma.downloadJob.findUnique as jest.Mock).mockResolvedValue(makeJob({ status: "failed", error }));
+        (prisma.downloadJob.findMany as jest.Mock).mockResolvedValue([]);
+
+        const decision = await notificationPolicyService.evaluateNotification("job-1", "failed");
+
+        expect(decision).toMatchObject({ shouldNotify: true, notificationType: "download_failed" });
+    });
+
+    it("stays silent for a Discover job", async () => {
+        (prisma.downloadJob.findUnique as jest.Mock).mockResolvedValue(
+            makeJob({ status: "failed", error: "x", metadata: { downloadType: "discovery" } })
+        );
+
+        expect((await notificationPolicyService.evaluateNotification("job-1", "failed")).shouldNotify).toBe(false);
     });
 });

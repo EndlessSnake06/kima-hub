@@ -58,6 +58,7 @@ afterEach(async () => {
     jest.restoreAllMocks();
     await prisma.sourceAttempt.deleteMany({ where: { source: "lidarr" } });
     await prisma.downloadJob.deleteMany({ where: { userId: USER } });
+    await prisma.notification.deleteMany({ where: { userId: USER } });
 });
 
 afterAll(async () => {
@@ -170,4 +171,34 @@ it("refuses a second active job for the same album", async () => {
             data: { userId: USER, subject: "Interpol - Antics", type: "album", status: "processing", targetMbid: "rg-asked" },
         })
     ).rejects.toMatchObject({ code: "P2002" });
+});
+
+it("fails a download Lidarr cannot start and tells the user in the tray", async () => {
+    getArtistAlbums.mockResolvedValue([]);
+    addAlbum.mockRejectedValue(new Error("Choose a Lidarr quality and metadata profile in Settings before downloading"));
+
+    expect((await start()).success).toBe(false);
+    const job = await row();
+    expect(job.status).toBe("failed");
+    expect((job.metadata as any).statusText).toBe("Failed to start");
+    expect((job.metadata as any).notificationSent).toBe(true);
+    const [note] = await prisma.notification.findMany({ where: { userId: USER } });
+    expect(note?.message).toMatch(/Choose a Lidarr quality/);
+});
+
+it.each([
+    ["never started", { status: "pending" }, /never started/],
+    ["found no sources", { status: "processing", metadata: { startedAt: "2020-01-01T00:00:00Z" } }, /No sources found/],
+])("tells the user in the tray when a download %s", async (_label, fields, message) => {
+    jest.spyOn(simpleDownloadManager as any, "tryNextAlbumFromArtist").mockResolvedValue({ retried: false });
+    await prisma.downloadJob.update({
+        where: { id: "sdm_start" },
+        data: { ...fields, createdAt: new Date("2020-01-01T00:00:00Z") },
+    });
+
+    await simpleDownloadManager.markStaleJobsAsFailed(null);
+
+    expect((await row()).status).toBe("failed");
+    const [note] = await prisma.notification.findMany({ where: { userId: USER } });
+    expect(note?.message).toMatch(message);
 });

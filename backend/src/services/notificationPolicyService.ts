@@ -1,6 +1,6 @@
 /**
- * Download-job notifications: failures stay silent while retries remain; only
- * a final success or exhausted retries notify.
+ * Download-job notifications: one per album, when the download completes or
+ * fails for good. Discover and playlist-import jobs report as a batch instead.
  */
 
 import { logger } from "../utils/logger";
@@ -12,44 +12,11 @@ interface NotificationDecision {
     notificationType?: "download_complete" | "download_failed";
 }
 
-// Configuration constants
 const DEFAULT_RETRY_WINDOW_MINUTES = 30;
-const SUPPRESS_TRANSIENT_FAILURES = true;
 // How many of the user's recent terminal jobs are checked for an earlier
 // notification of the same album. Retries land close in time, so a bounded
 // recent window suffices; a miss costs one extra notification.
 const DUPLICATE_CHECK_WINDOW = 100;
-
-// Failure classification patterns
-const TRANSIENT_PATTERNS = [
-    "no sources found",
-    "no indexer results",
-    "no releases available",
-    "import failed",
-    "connection timeout",
-    "rate limited",
-    "temporarily unavailable",
-    "searching for alternative",
-    "download stuck",
-];
-
-const PERMANENT_PATTERNS = [
-    "all releases exhausted",
-    "all albums exhausted",
-    "artist not found",
-    "download cancelled",
-    "album not found in lidarr",
-];
-
-const CRITICAL_PATTERNS = [
-    "disk full",
-    "permission denied",
-    "lidarr unavailable",
-    "authentication failed",
-    "invalid api key",
-];
-
-type FailureClassification = "transient" | "permanent" | "critical";
 
 class NotificationPolicyService {
     /**
@@ -231,36 +198,9 @@ class NotificationPolicyService {
             };
         }
 
-        // Classify the failure
-        const classification = this.classifyFailure(
-            job,
-            job.error || "Unknown error"
-        );
-
-        // Critical errors always notify
-        if (classification === "critical") {
-            return {
-                shouldNotify: true,
-                reason: "Critical error requires user intervention",
-                notificationType: "download_failed",
-            };
-        }
-
-        // Transient failures - suppress if configured
-        if (classification === "transient" && SUPPRESS_TRANSIENT_FAILURES) {
-            return {
-                shouldNotify: false,
-                reason: "Transient failure - suppressed (may succeed on retry)",
-            };
-        }
-
-        // Permanent failures or transient with suppress disabled
         return {
             shouldNotify: true,
-            reason:
-                classification === "permanent"
-                    ? "Permanent failure after retries exhausted"
-                    : "Failure notification (transient suppression disabled)",
+            reason: "Download failed",
             notificationType: "download_failed",
         };
     }
@@ -355,50 +295,6 @@ class NotificationPolicyService {
         }
 
         return false;
-    }
-
-    /**
-     * Classify failure type based on error message
-     * @returns 'transient' | 'permanent' | 'critical'
-     */
-    private classifyFailure(job: any, error: string): FailureClassification {
-        const errorLower = error.toLowerCase();
-
-        // Check critical patterns first
-        for (const pattern of CRITICAL_PATTERNS) {
-            if (errorLower.includes(pattern)) {
-                logger.debug(
-                    `[NOTIFICATION-POLICY]   Classified as CRITICAL: ${pattern}`
-                );
-                return "critical";
-            }
-        }
-
-        // Check permanent patterns
-        for (const pattern of PERMANENT_PATTERNS) {
-            if (errorLower.includes(pattern)) {
-                logger.debug(
-                    `[NOTIFICATION-POLICY]   Classified as PERMANENT: ${pattern}`
-                );
-                return "permanent";
-            }
-        }
-
-        // Check transient patterns
-        for (const pattern of TRANSIENT_PATTERNS) {
-            if (errorLower.includes(pattern)) {
-                logger.debug(
-                    `[NOTIFICATION-POLICY]   Classified as TRANSIENT: ${pattern}`
-                );
-                return "transient";
-            }
-        }
-
-        // Default to transient if unknown
-        logger.debug(
-            `[NOTIFICATION-POLICY]   Classified as TRANSIENT (default)`
-        );
-        return "transient";
     }
 }
 
