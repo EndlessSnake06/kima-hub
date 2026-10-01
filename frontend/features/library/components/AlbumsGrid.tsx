@@ -1,11 +1,9 @@
-import React, { memo, useCallback, useMemo, type CSSProperties } from "react";
-import Link from "next/link";
+import { memo } from "react";
 import { Album } from "../types";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
-import { CachedImage } from "@/components/ui/CachedImage";
-import { Disc3, Play, Trash2 } from "lucide-react";
-import { cn } from "@/lib/cn";
+import { MediaCard } from "@/components/cards/MediaCard";
+import { Disc3 } from "lucide-react";
 import { api } from "@/lib/api";
 import { cascadeStyle } from "@/lib/motion";
 
@@ -31,92 +29,18 @@ const AlbumCardItem = memo(
         onPlay,
         onDelete,
     }: AlbumCardItemProps) {
-        const handlePlay = useCallback(
-            (e: React.MouseEvent) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onPlay(album.id);
-            },
-            [album.id, onPlay],
-        );
-        const handleDelete = useCallback(
-            (e: React.MouseEvent) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onDelete(album.id, album.title);
-            },
-            [album.id, album.title, onDelete],
-        );
-
-        const coverArtUrl = useMemo(
-            () => (album.coverArt ? api.getCoverArtUrl(album.coverArt, 200) : null),
-            [album.coverArt],
-        );
-
         return (
-            <Link
+            <MediaCard
                 href={`/album/${album.id}`}
-                prefetch={true}
-                data-tv-card
-                data-tv-card-index={index}
-                tabIndex={0}
-                style={{ "--i": index } as CSSProperties}
-                className={cn(
-                    "group block",
-                    "animate-rise [animation-delay:calc(var(--i)*var(--stagger))]",
-                )}
-            >
-                <div className="relative bg-[var(--bg-primary)] border-2 border-white/10 rounded-lg overflow-hidden hover:border-type-album/50 transition-all duration-200" style={{ transform: "translateZ(0)" }}>
-                    <div className="relative aspect-square">
-                        <div className="w-full h-full bg-[#181818] flex items-center justify-center overflow-hidden" style={{ contain: "content" }}>
-                            {coverArtUrl ? (
-                                <CachedImage
-                                    src={coverArtUrl}
-                                    alt={album.title}
-                                    fill
-                                    className="object-cover group-hover:scale-110 transition-transform duration-150"
-                                    sizes="(max-width: 640px) 50vw, (max-width: 1024px) 25vw, 16vw"
-                                />
-                            ) : (
-                                <Disc3 className="w-12 h-12 text-[var(--text-muted)]" />
-                            )}
-                        </div>
-
-                        {/* Gradient overlay on hover */}
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
-
-                        {/* Play button */}
-                        <button
-                            onClick={handlePlay}
-                            className="touch-reveal absolute bottom-3 right-3 w-11 h-11 rounded-lg bg-brand flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-150 hover:scale-110 hover:bg-brand-hover"
-                        >
-                            <Play className="w-5 h-5 fill-current ml-0.5 text-black" />
-                        </button>
-
-                        {/* Delete button */}
-                        <button
-                            onClick={handleDelete}
-                            className="absolute top-2 right-2 w-8 h-8 rounded-lg bg-black/80 hidden md:flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-danger/90 transition-all duration-150 border border-white/20"
-                            title="Delete album"
-                        >
-                            <Trash2 className="w-4 h-4 text-white" />
-                        </button>
-
-                        {/* Color accent bar */}
-                        <div className="absolute bottom-0 left-0 right-0 h-1 bg-type-album transform scale-x-0 group-hover:scale-x-100 transition-transform duration-150" />
-                    </div>
-
-                    {/* Info section with monospace data */}
-                    <div className="p-3 bg-gradient-to-b from-[#0a0a0a] to-[#0f0f0f]">
-                        <h3 className="text-sm font-bold text-white truncate mb-1 tracking-tight">
-                            {album.title}
-                        </h3>
-                        <p className="text-xs tabular-nums text-[var(--text-muted)] truncate">
-                            {album.artist?.name}
-                        </p>
-                    </div>
-                </div>
-            </Link>
+                title={album.title}
+                subtitle={album.artist?.name}
+                imageUrl={album.coverArt ? api.getCoverArtUrl(album.coverArt, 200) : null}
+                fallbackIcon={Disc3}
+                type="album"
+                index={index}
+                onPlay={() => onPlay(album.id)}
+                onDelete={() => onDelete(album.id, album.title)}
+            />
         );
     },
     (prevProps, nextProps) => {

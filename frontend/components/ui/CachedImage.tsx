@@ -8,10 +8,7 @@ interface CachedImageProps extends Omit<ImageProps, "src"> {
     fill?: boolean;
 }
 
-/**
- * Image component with Service Worker caching
- * The SW handles cache-first fetching for /api/library/cover-art/* routes
- */
+/* Cover art is served cache-first by the service worker for /api/library/cover-art/*. */
 const CachedImage = memo(function CachedImage({
     src,
     alt = "",
@@ -21,7 +18,6 @@ const CachedImage = memo(function CachedImage({
         return null;
     }
 
-    // Add lazy loading by default for better performance
     const imageProps = {
         ...props,
         loading: props.loading || 'lazy',

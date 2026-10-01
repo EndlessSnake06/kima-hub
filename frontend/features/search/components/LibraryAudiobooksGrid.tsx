@@ -27,12 +27,7 @@ export function LibraryAudiobooksGrid({
                             : null
                     }
                     fallbackIcon={Book}
-                    accentColor={{
-                        border: "hover:border-type-audiobook/50",
-                        gradient: "bg-type-audiobook",
-                        button: "bg-brand text-black",
-                        shadow: "",
-                    }}
+                    type="audiobook"
                     index={index}
                 />
             ))}
