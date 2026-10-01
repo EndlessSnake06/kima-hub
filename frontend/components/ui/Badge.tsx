@@ -11,11 +11,11 @@ const Badge = memo(forwardRef<HTMLSpanElement, BadgeProps>(
     // blue read 4.46:1 and the red 4.31:1 against this ground -- both just
     // under the 4.5:1 floor for text this size.
     const variantStyles = {
-      success: "bg-green-500/10 text-green-400 ring-green-500/20",
+      success: "bg-success/10 text-success ring-success/20",
       warning: "bg-brand/10 text-brand ring-brand/20",
       error: "bg-red-500/10 text-red-400 ring-red-500/20",
-      info: "bg-blue-500/10 text-blue-400 ring-blue-500/20",
-      ai: "bg-purple-500/10 text-purple-400 ring-purple-500/20",
+      info: "bg-white/10 text-[var(--text-secondary)] ring-white/15",
+      ai: "bg-type-track/20 text-white ring-type-track/40",
       default: "bg-[var(--bg-hover)] text-[var(--text-secondary)] ring-[#262626]",
     };
 

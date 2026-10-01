@@ -39,7 +39,7 @@ export function AudiobookCard({
         >
             <div className="cursor-pointer group relative h-full flex flex-col">
                 <div className="relative flex-shrink-0">
-                    <div className="aspect-[2/3] rounded-lg overflow-hidden bg-[var(--bg-primary)] border border-white/10 group-hover:border-[#f59e0b]/40 transition-all duration-300 relative">
+                    <div className="aspect-[2/3] rounded-lg overflow-hidden bg-[var(--bg-primary)] border border-white/10 group-hover:border-type-audiobook/40 transition-all duration-300 relative">
                         {resolvedCoverUrl ? (
                             <CachedImage
                                 src={resolvedCoverUrl}
@@ -65,7 +65,7 @@ export function AudiobookCard({
                         {progress && !progress.isFinished && progress.progress > 0 && (
                             <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/60">
                                 <div
-                                    className="h-full bg-[#f59e0b]"
+                                    className="h-full bg-brand"
                                     style={{ width: `${progress.progress}%` }}
                                 />
                             </div>
@@ -73,20 +73,20 @@ export function AudiobookCard({
 
                         {/* Completion badge */}
                         {progress?.isFinished && (
-                            <div className="absolute top-2 right-2 bg-green-500 rounded-full p-1">
+                            <div className="absolute top-2 right-2 bg-success rounded-full p-1">
                                 <CheckCircle className="w-3 h-3 text-white" />
                             </div>
                         )}
 
                         {/* Series badge */}
                         {seriesBadge && (
-                            <div className="absolute top-2 right-2 bg-[#f59e0b] text-black rounded px-2 py-0.5 text-xs font-semibold">
+                            <div className="absolute top-2 right-2 bg-brand text-black rounded px-2 py-0.5 text-xs font-semibold">
                                 {seriesBadge}
                             </div>
                         )}
 
                         {/* Hover accent line */}
-                        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-[#f59e0b] to-[#d97706] transform scale-x-0 group-hover:scale-x-100 transition-transform duration-150 origin-center" />
+                        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-type-audiobook transform scale-x-0 group-hover:scale-x-100 transition-transform duration-150 origin-center" />
                     </div>
                 </div>
 

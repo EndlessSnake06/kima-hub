@@ -105,7 +105,7 @@ export default function AudiobookDetailPage() {
                                 <SectionHeader type="audiobook" title="About" size="sm" />
                                 <div className="relative overflow-hidden rounded-lg border border-white/10 bg-[var(--bg-primary)] p-5">
                                     <div
-                                        className="prose prose-invert prose-sm max-w-none text-[var(--text-secondary)] [&_a]:text-[#f59e0b] [&_a]:no-underline [&_a:hover]:underline text-sm leading-relaxed"
+                                        className="prose prose-invert prose-sm max-w-none text-[var(--text-secondary)] [&_a]:text-brand [&_a]:no-underline [&_a:hover]:underline text-sm leading-relaxed"
                                         dangerouslySetInnerHTML={{
                                             __html: DOMPurify.sanitize(audiobook.description || ""),
                                         }}
@@ -121,7 +121,7 @@ export default function AudiobookDetailPage() {
                             <section>
                                 <SectionHeader type="audiobook" title="Series" size="sm" />
                                 <div className="flex items-center gap-3 text-sm">
-                                    <span className="text-[#f59e0b] font-bold tracking-tight">
+                                    <span className="text-brand font-bold tracking-tight">
                                         {audiobook.series.name}
                                     </span>
                                     <span className="text-[var(--text-muted)]">|</span>

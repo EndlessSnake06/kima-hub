@@ -9,7 +9,7 @@ export function LyricsPanel({ onBack }: { onBack: () => void }) {
             <div className="flex items-center gap-3 px-5 py-4 border-b-2 border-white/20">
                 <button
                     onClick={onBack}
-                    className="border border-white/20 p-2 hover:border-[#a855f7] hover:bg-white/5 transition-colors"
+                    className="border border-white/20 p-2 hover:border-brand hover:bg-white/5 transition-colors"
                     title="Back to activity"
                     aria-label="Back to activity"
                 >

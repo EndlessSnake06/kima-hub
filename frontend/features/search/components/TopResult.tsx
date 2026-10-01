@@ -26,7 +26,7 @@ export function TopResult({ libraryArtist, discoveryArtist }: TopResultProps) {
     return (
         <Link
             href={`/artist/${artistId}`}
-            className="group relative block overflow-hidden rounded-2xl bg-gradient-to-br from-[#1a1a1a] to-[#0f0f0f] border border-white/5 hover:border-[#eab308]/30 transition-all duration-200 hover:scale-[1.02]"
+            className="group relative block overflow-hidden rounded-2xl bg-gradient-to-br from-[#1a1a1a] to-[#0f0f0f] border border-white/5 hover:border-brand/30 transition-all duration-200 hover:scale-[1.02]"
             data-tv-card
             data-tv-card-index={0}
             tabIndex={0}
@@ -51,7 +51,7 @@ export function TopResult({ libraryArtist, discoveryArtist }: TopResultProps) {
             <div className="relative p-8 flex items-end min-h-[280px]">
                 <div className="flex items-center gap-6 w-full">
                     {/* Artist Image */}
-                    <div className="relative w-32 h-32 rounded-2xl bg-[#181818] flex items-center justify-center overflow-hidden shrink-0 ring-2 ring-white/10 group-hover:ring-[#eab308]/50 transition-all duration-200">
+                    <div className="relative w-32 h-32 rounded-2xl bg-[#181818] flex items-center justify-center overflow-hidden shrink-0 ring-2 ring-white/10 group-hover:ring-brand/50 transition-all duration-200">
                         {imageUrl ? (
                             <Image
                                 src={api.getCoverArtUrl(imageUrl, 200)}
@@ -71,15 +71,15 @@ export function TopResult({ libraryArtist, discoveryArtist }: TopResultProps) {
                     {/* Text Content */}
                     <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-2">
-                            <span className="text-xs font-semibold text-[#eab308]">
+                            <span className="text-xs font-semibold text-brand">
                                 Artist
                             </span>
-                            <span className="w-1 h-1 rounded-full bg-[#eab308]/50" />
+                            <span className="w-1 h-1 rounded-full bg-brand/50" />
                             <span className="text-xs text-[var(--text-muted)]">
                                 {isLibrary ? "Your Library" : "Discover"}
                             </span>
                         </div>
-                        <h3 className="text-4xl font-bold text-white mb-2 leading-tight truncate group-hover:text-[#eab308] transition-colors duration-200">
+                        <h3 className="text-4xl font-bold text-white mb-2 leading-tight truncate group-hover:text-brand transition-colors duration-200">
                             {name}
                         </h3>
                         <div className="flex items-center gap-2 text-[var(--text-secondary)] group-hover:text-gray-300 transition-colors">
@@ -91,7 +91,7 @@ export function TopResult({ libraryArtist, discoveryArtist }: TopResultProps) {
             </div>
 
             {/* Accent Line */}
-            <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-[#eab308] via-[#f59e0b] to-[#eab308] transform scale-x-0 group-hover:scale-x-100 transition-transform duration-150 origin-center" />
+            <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-brand via-brand-dark to-brand transform scale-x-0 group-hover:scale-x-100 transition-transform duration-150 origin-center" />
         </Link>
     );
 }

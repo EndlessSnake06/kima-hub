@@ -123,11 +123,11 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
 
     const styles = {
         success:
-            "bg-gradient-to-br from-[#141414] to-[#0f0f0f] border-green-500/50 text-green-500",
+            "bg-gradient-to-br from-[#141414] to-[#0f0f0f] border-success/50 text-success",
         error: "bg-gradient-to-br from-[#141414] to-[#0f0f0f] border-red-500/50 text-red-500",
         warning:
-            "bg-gradient-to-br from-[#141414] to-[#0f0f0f] border-yellow-500/50 text-yellow-500",
-        info: "bg-gradient-to-br from-[#141414] to-[#0f0f0f] border-blue-500/50 text-blue-500",
+            "bg-gradient-to-br from-[#141414] to-[#0f0f0f] border-warning/50 text-warning",
+        info: "bg-gradient-to-br from-[#141414] to-[#0f0f0f] border-white/20 text-[var(--text-primary)]",
     };
 
     const Icon = icons[toast.type];

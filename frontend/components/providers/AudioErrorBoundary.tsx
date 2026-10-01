@@ -42,7 +42,7 @@ export class AudioErrorBoundary extends Component<Props, State> {
                         <p className="text-[var(--text-secondary)]">Playback system error</p>
                         <button
                             onClick={() => window.location.reload()}
-                            className="px-4 py-2 rounded-lg bg-brand hover:bg-[#d4a000] text-black font-semibold transition-all"
+                            className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-hover text-black font-semibold transition-all"
                         >
                             Reload
                         </button>

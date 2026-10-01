@@ -108,7 +108,7 @@ export function SubsonicSection() {
                     </span>
                     <button
                         onClick={() => copyToClipboard(serverUrl)}
-                        className="text-xs text-brand hover:text-[#f97316] transition-colors shrink-0"
+                        className="text-xs text-brand hover:text-brand-hover transition-colors shrink-0"
                     >
                         Copy
                     </button>
@@ -143,7 +143,7 @@ export function SubsonicSection() {
                             onClick={handleGenerate}
                             disabled={generating}
                             className="px-4 py-2 bg-brand text-black text-xs font-semibold rounded-lg
-                                hover:bg-[#f97316] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                             {generating ? "Generating..." : "Generate Token"}
                         </button>
@@ -159,7 +159,7 @@ export function SubsonicSection() {
             {/* Newly generated token display */}
             {newToken && (
                 <div className="py-4 space-y-3 border-t border-b border-white/5">
-                    <p className="text-xs text-[#f59e0b]">
+                    <p className="text-xs text-warning">
                         Save this key — it won&apos;t be shown again.
                     </p>
                     <div className="flex items-start gap-2 min-w-0 overflow-hidden">
@@ -168,7 +168,7 @@ export function SubsonicSection() {
                         </code>
                         <button
                             onClick={() => copyToClipboard(newToken)}
-                            className="text-xs text-brand hover:text-[#f97316] transition-colors shrink-0 pt-2"
+                            className="text-xs text-brand hover:text-brand-hover transition-colors shrink-0 pt-2"
                         >
                             Copy
                         </button>

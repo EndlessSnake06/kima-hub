@@ -48,7 +48,7 @@ function PodcastCard({
             data-tv-card
             data-tv-card-index={index}
             tabIndex={0}
-            className="group text-left bg-[var(--bg-primary)] border border-white/10 rounded-lg overflow-hidden hover:border-[#3b82f6]/40 transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
+            className="group text-left bg-[var(--bg-primary)] border border-white/10 rounded-lg overflow-hidden hover:border-type-podcast/40 transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
         >
             <div className="relative w-full aspect-square bg-[var(--bg-secondary)] overflow-hidden">
                 {imageUrl ? (
@@ -75,7 +75,7 @@ function PodcastCard({
                 </p>
             </div>
             <div className={cn(
-                "h-0.5 bg-gradient-to-r from-[#3b82f6] to-[#2563eb]",
+                "h-0.5 bg-type-podcast",
                 "transform scale-x-0 group-hover:scale-x-100 transition-transform duration-150 origin-center"
             )} />
         </button>
@@ -260,7 +260,7 @@ export default function PodcastsPage() {
                     <div className="max-w-[1800px] mx-auto">
                         {/* System status */}
                         <div className="flex items-center gap-2 mb-6">
-                            <div className="w-1.5 h-1.5 bg-[#3b82f6] rounded-full" />
+                            <div className="w-1.5 h-1.5 bg-type-podcast rounded-full" />
                             <span className="t-eyebrow">
                                 Podcast Library
                             </span>
@@ -285,13 +285,13 @@ export default function PodcastsPage() {
                                                         onChange={(e) => { setRssUrl(e.target.value); setRssError(null); }}
                                                         onKeyDown={(e) => e.key === "Enter" && handleRssSubscribe()}
                                                         placeholder="https://example.com/feed.xml"
-                                                        className="flex-1 px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-[#3b82f6] text-sm"
+                                                        className="flex-1 px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-brand text-sm"
                                                         autoFocus
                                                     />
                                                     <button
                                                         onClick={handleRssSubscribe}
                                                         disabled={isSubscribingRss || !rssUrl.trim()}
-                                                        className="px-4 py-2.5 rounded-lg bg-[#3b82f6] hover:bg-[#2563eb] text-white text-sm font-semibold disabled:opacity-50 flex items-center gap-2 transition-all whitespace-nowrap"
+                                                        className="px-4 py-2.5 rounded-lg bg-brand hover:bg-brand-hover text-black text-sm font-semibold disabled:opacity-50 flex items-center gap-2 transition-all whitespace-nowrap"
                                                     >
                                                         {isSubscribingRss ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                                                         Subscribe
@@ -324,7 +324,7 @@ export default function PodcastsPage() {
                             <div className="flex items-center gap-4">
                                 {podcasts.length > 0 && (
                                     <div className="border-2 border-white/10 bg-[var(--bg-primary)] px-4 py-3 rounded hidden sm:block">
-                                        <span className="text-3xl font-bold tabular-nums text-[#3b82f6]">
+                                        <span className="text-3xl font-bold tabular-nums text-brand">
                                             {podcasts.length}
                                         </span>
                                         <span className="text-xs text-[var(--text-muted)] ml-2">
@@ -346,7 +346,7 @@ export default function PodcastsPage() {
                                         aria-controls="podcast-search-listbox"
                                         aria-label="Search podcasts to subscribe"
                                         aria-autocomplete="list"
-                                        className="w-full pl-10 pr-4 py-2.5 bg-[var(--bg-primary)] border-2 border-white/10 rounded-lg text-white placeholder-gray-600 focus:outline-none focus:border-[#3b82f6]/50 transition-all text-sm tabular-nums"
+                                        className="w-full pl-10 pr-4 py-2.5 bg-[var(--bg-primary)] border-2 border-white/10 rounded-lg text-white placeholder-gray-600 focus:outline-none focus:border-brand/50 transition-all text-sm tabular-nums"
                                     />
                                     {isSearching && (
                                         <div className="absolute right-3 top-1/2 -translate-y-1/2 z-(--z-raised)">
@@ -407,7 +407,7 @@ export default function PodcastsPage() {
                                                                     setShowDropdown(false);
                                                                 }}
                                                                 aria-label={`Subscribe to ${result.name}`}
-                                                                className="min-h-[44px] min-w-[44px] rounded-lg bg-[#3b82f6] hover:bg-[#2563eb] flex items-center justify-center transition-colors"
+                                                                className="min-h-[44px] min-w-[44px] rounded-lg bg-brand hover:bg-brand-hover flex items-center justify-center transition-colors"
                                                             >
                                                                 <Plus className="w-3.5 h-3.5 text-white" />
                                                             </button>
@@ -458,7 +458,7 @@ export default function PodcastsPage() {
                                                 value={sortBy}
                                                 onChange={(e) => setSortBy(e.target.value as SortOption)}
                                                 aria-label="Sort podcasts"
-                                                className="px-3 py-1.5 bg-[var(--bg-primary)] border-2 border-white/10 rounded-lg text-white text-xs focus:outline-none focus:border-[#3b82f6]/50 [&>option]:bg-[var(--bg-primary)] [&>option]:text-white cursor-pointer"
+                                                className="px-3 py-1.5 bg-[var(--bg-primary)] border-2 border-white/10 rounded-lg text-white text-xs focus:outline-none focus:border-brand/50 [&>option]:bg-[var(--bg-primary)] [&>option]:text-white cursor-pointer"
                                             >
                                                 <option value="title">Title</option>
                                                 <option value="author">Author</option>
@@ -471,7 +471,7 @@ export default function PodcastsPage() {
                                                     setCurrentPage(1);
                                                 }}
                                                 aria-label="Podcasts per page"
-                                                className="px-3 py-1.5 bg-[var(--bg-primary)] border-2 border-white/10 rounded-lg text-white text-xs tabular-nums focus:outline-none focus:border-[#3b82f6]/50 [&>option]:bg-[var(--bg-primary)] [&>option]:text-white cursor-pointer"
+                                                className="px-3 py-1.5 bg-[var(--bg-primary)] border-2 border-white/10 rounded-lg text-white text-xs tabular-nums focus:outline-none focus:border-brand/50 [&>option]:bg-[var(--bg-primary)] [&>option]:text-white cursor-pointer"
                                             >
                                                 <option value={25}>25</option>
                                                 <option value={50}>50</option>
@@ -547,7 +547,7 @@ export default function PodcastsPage() {
                                         action={
                                             <button
                                                 onClick={() => router.push(`/podcasts/genre/${genreId}`)}
-                                                className="text-xs text-[var(--text-muted)] hover:text-[#3b82f6] transition-colors"
+                                                className="text-xs text-[var(--text-muted)] hover:text-brand transition-colors"
                                             >
                                                 View All
                                             </button>

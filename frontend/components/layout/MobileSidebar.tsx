@@ -196,7 +196,7 @@ export function MobileSidebar({ isOpen, onClose }: MobileSidebarProps) {
                             disabled={isSyncing}
                             className={cn(
                                 "w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-colors duration-200 text-left",
-                                isSyncing ? "text-green-400" : (
+                                isSyncing ? "text-brand" : (
                                     "text-[var(--text-secondary)] hover:text-white hover:bg-white/5"
                                 ),
                             )}

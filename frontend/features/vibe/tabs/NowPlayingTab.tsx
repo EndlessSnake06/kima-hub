@@ -45,7 +45,7 @@ export function NowPlayingTab() {
                         </div>
                     )}
                     {isPlaying && (
-                        <div className="absolute bottom-2 right-2 w-2.5 h-2.5 rounded-full bg-[#1db954] animate-pulse" />
+                        <div className="absolute bottom-2 right-2 w-2.5 h-2.5 rounded-full bg-brand animate-pulse" />
                     )}
                 </div>
 

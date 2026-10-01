@@ -102,7 +102,7 @@ const TrackRow = memo(
                 )}
                 style={
                     ((isPlaying
-                        ? { "--i": index, borderLeftColor: colors?.vibrant || "#a855f7" }
+                        ? { "--i": index, borderLeftColor: colors?.vibrant || "#fca200" }
                         : { "--i": index }) as unknown) as React.CSSProperties
                 }
                 {...doubleTapProps}
@@ -127,7 +127,7 @@ const TrackRow = memo(
                             className={cn(
                                 "group-hover:hidden text-sm",
                                 isPlaying
-                                    ? "text-purple-400 font-bold animate-pulse"
+                                    ? "text-brand font-bold animate-pulse"
                                     : "text-[var(--text-muted)]"
                             )}
                         >
@@ -146,19 +146,19 @@ const TrackRow = memo(
                         <div
                             className={cn(
                                 "font-medium truncate text-sm md:text-base flex items-center gap-2",
-                                isPlaying ? "text-purple-400" : "text-white"
+                                isPlaying ? "text-brand" : "text-white"
                             )}
                         >
                             <span className="truncate">
                                 {track.displayTitle ?? track.title}
                             </span>
                             {isMissingTrack && (
-                                <span className="shrink-0 text-micro bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded border border-amber-500/30 font-medium">
+                                <span className="shrink-0 text-micro bg-warning/20 text-warning px-1.5 py-0.5 rounded border border-warning/30 font-medium">
                                     MISSING
                                 </span>
                             )}
                             {isPreviewOnly && (
-                                <span className="shrink-0 text-micro bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded border border-blue-500/30 font-medium">
+                                <span className="shrink-0 text-micro bg-white/10 text-[var(--text-secondary)] px-1.5 py-0.5 rounded border border-white/10 font-medium">
                                     Preview
                                 </span>
                             )}

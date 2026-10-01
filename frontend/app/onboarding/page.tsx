@@ -398,7 +398,7 @@ export default function OnboardingPage() {
                                             <button
                                                 type="submit"
                                                 disabled={submitting}
-                                                className="w-full py-3.5 bg-brand text-black font-bold rounded-lg hover:bg-[#e69200] transition-all disabled:opacity-50 disabled:cursor-not-allowed relative group overflow-hidden mt-8 focus:outline-none focus:ring-2 focus:ring-brand/30"
+                                                className="w-full py-3.5 bg-brand text-black font-bold rounded-lg hover:bg-brand-hover transition-all disabled:opacity-50 disabled:cursor-not-allowed relative group overflow-hidden mt-8 focus:outline-none focus:ring-2 focus:ring-brand/30"
                                             >
                                                 <span className="relative z-(--z-raised) flex items-center justify-center gap-2">
                                                     {submitting ?
@@ -602,7 +602,7 @@ export default function OnboardingPage() {
                                                 }
                                                 disabled={submitting}
                                                 tabIndex={0}
-                                                className="flex-1 py-3.5 bg-brand text-black font-bold rounded-lg hover:bg-[#e69200] transition-all disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-brand/30"
+                                                className="flex-1 py-3.5 bg-brand text-black font-bold rounded-lg hover:bg-brand-hover transition-all disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-brand/30"
                                             >
                                                 {submitting ?
                                                     <>
@@ -766,7 +766,7 @@ function IntegrationCard({
                             <p
                                 className={`text-xs ${
                                     result.ok ?
-                                    "text-green-400"
+                                    "text-success"
                                     : "text-red-400"
                                 }`}
                             >
@@ -916,7 +916,7 @@ function SoulseekCard({
                             <p
                                 className={`text-xs ${
                                     result.ok ?
-                                    "text-green-400"
+                                    "text-success"
                                     : "text-red-400"
                                 }`}
                             >

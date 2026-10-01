@@ -34,7 +34,7 @@ export function AudiobookActionBar({
             {onPlayPause && (
                 <button
                     onClick={onPlayPause}
-                    className="w-10 h-10 rounded-lg bg-[#f59e0b] hover:bg-[#d97706] transition-all flex items-center justify-center hover:scale-105 active:scale-95"
+                    className="w-10 h-10 rounded-lg bg-brand hover:bg-brand-hover transition-all flex items-center justify-center hover:scale-105 active:scale-95"
                     title={showingPause ? "Pause" : (hasProgress && !isFinished ? "Resume" : "Play")}
                 >
                     {showingPause ? (
@@ -57,7 +57,7 @@ export function AudiobookActionBar({
                     </div>
                     <div className="w-24 h-1 bg-white/10 rounded-full overflow-hidden">
                         <div
-                            className="h-full bg-[#f59e0b] rounded-full transition-all"
+                            className="h-full bg-brand rounded-full transition-all"
                             style={{
                                 width: `${isThisBookPlaying ? (currentTime / audiobook.duration) * 100 : audiobook.progress!.progress}%`,
                             }}
@@ -81,7 +81,7 @@ export function AudiobookActionBar({
                         </button>
                         <button
                             onClick={onMarkAsCompleted}
-                            className="p-2 rounded-lg text-green-400/60 hover:text-green-400 hover:bg-green-500/10 border border-transparent hover:border-green-500/20 transition-all"
+                            className="p-2 rounded-lg text-success/60 hover:text-success hover:bg-success/10 border border-transparent hover:border-success/20 transition-all"
                             title="Mark as completed"
                         >
                             <CheckCircle className="w-4 h-4" />

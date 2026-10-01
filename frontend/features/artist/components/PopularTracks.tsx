@@ -129,7 +129,7 @@ export const PopularTracks: React.FC<PopularTracksProps> = ({
                                             {track.displayTitle ?? track.title}
                                         </span>
                                         {isUnowned && (
-                                            <span className="shrink-0 text-micro bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded font-medium">
+                                            <span className="shrink-0 text-micro bg-white/10 text-[var(--text-secondary)] px-1.5 py-0.5 rounded font-medium">
                                                 Preview
                                             </span>
                                         )}

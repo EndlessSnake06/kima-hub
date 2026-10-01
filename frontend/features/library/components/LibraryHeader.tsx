@@ -8,7 +8,7 @@ export function LibraryHeader({ totalItems, activeTab }: LibraryHeaderProps) {
     <div className="relative bg-gradient-to-b from-[#0a0a0a] via-[#0f0f0f] to-transparent pt-6 pb-8 px-6 md:px-8">
       {/* System status indicator */}
       <div className="flex items-center gap-2 mb-6">
-        <div className="w-1.5 h-1.5 bg-[#22c55e] rounded-full" />
+        <div className="w-1.5 h-1.5 bg-brand rounded-full" />
         <span className="t-eyebrow">
           Archive Online
         </span>
@@ -27,7 +27,7 @@ export function LibraryHeader({ totalItems, activeTab }: LibraryHeaderProps) {
 
         {/* Live counter */}
         <div className="flex items-baseline gap-2 border border-white/10 bg-[var(--bg-primary)] px-4 py-3 rounded">
-          <span className="text-4xl font-bold tabular-nums text-[#eab308]">
+          <span className="text-4xl font-bold tabular-nums text-brand">
             {totalItems.toLocaleString()}
           </span>
           <span className="text-xs tabular-nums text-[var(--text-muted)]">

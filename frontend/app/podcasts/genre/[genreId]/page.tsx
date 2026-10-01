@@ -127,7 +127,7 @@ export default function GenrePage() {
                         </button>
 
                         <div className="flex items-center gap-2 mb-4">
-                            <div className="w-1.5 h-1.5 bg-[#3b82f6] rounded-full" />
+                            <div className="w-1.5 h-1.5 bg-type-podcast rounded-full" />
                             <span className="t-eyebrow">
                                 Genre
                             </span>
@@ -149,7 +149,7 @@ export default function GenrePage() {
                             <button
                                 key={podcast.id}
                                 onClick={() => handlePodcastClick(podcast)}
-                                className="group text-left bg-[var(--bg-primary)] border border-white/10 rounded-lg overflow-hidden hover:border-[#3b82f6]/40 transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
+                                className="group text-left bg-[var(--bg-primary)] border border-white/10 rounded-lg overflow-hidden hover:border-type-podcast/40 transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
                             >
                                 <div className="relative w-full aspect-square bg-[var(--bg-secondary)] overflow-hidden">
                                     {podcast.coverUrl ? (
@@ -176,7 +176,7 @@ export default function GenrePage() {
                                     </p>
                                 </div>
                                 <div className={cn(
-                                    "h-0.5 bg-gradient-to-r from-[#3b82f6] to-[#2563eb]",
+                                    "h-0.5 bg-type-podcast",
                                     "transform scale-x-0 group-hover:scale-x-100 transition-transform duration-150 origin-center"
                                 )} />
                             </button>

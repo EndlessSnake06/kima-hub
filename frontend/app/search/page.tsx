@@ -89,7 +89,7 @@ export default function SearchPage() {
                 {/* Hero Header - Only show when no search */}
                 {!hasSearched && (
                     <div className="mb-12 text-center animate-rise">
-                        <div className="inline-flex items-center gap-3 mb-4 text-[#eab308]">
+                        <div className="inline-flex items-center gap-3 mb-4 text-brand">
                             <span className="text-sm font-semibold">
                                 Discovery Engine
                             </span>
@@ -113,8 +113,8 @@ export default function SearchPage() {
                                     {query}
                                 </h1>
                                 {isLoading && (
-                                    <div className="flex items-center gap-2 text-sm text-[#eab308]">
-                                        <div className="w-1 h-1 rounded-full bg-[#eab308] animate-ping" />
+                                    <div className="flex items-center gap-2 text-sm text-brand">
+                                        <div className="w-1 h-1 rounded-full bg-brand animate-ping" />
                                         <span className="font-medium">
                                             Searching across sources...
                                         </span>
@@ -152,7 +152,7 @@ export default function SearchPage() {
                         <div className="flex flex-col items-center justify-center py-24 relative">
                             <div className="relative">
                                 <GradientSpinner size="xl" className="mb-6" />
-                                <div className="absolute inset-0 bg-gradient-to-r from-[#eab308] to-[#a855f7] opacity-20 blur-xl animate-pulse" />
+                                <div className="absolute inset-0 bg-gradient-to-r from-brand to-brand-dark opacity-20 blur-xl animate-pulse" />
                             </div>
                             <p className="text-[var(--text-secondary)] text-sm animate-pulse">
                                 Scanning library and network...
@@ -320,7 +320,7 @@ export default function SearchPage() {
                         <div className="flex flex-col items-center justify-center py-32 text-center animate-fade-soft">
                             <div className="relative mb-8">
                                 <SearchIcon className="w-20 h-20 text-[var(--text-muted)]" />
-                                <div className="absolute inset-0 bg-gradient-to-br from-[#eab308]/20 to-[#a855f7]/20 blur-2xl" />
+                                <div className="absolute inset-0 bg-gradient-to-br from-brand/20 to-brand-dark/20 blur-2xl" />
                             </div>
                             <h3 className="text-2xl font-bold text-white mb-3">
                                 No matches found

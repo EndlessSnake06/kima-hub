@@ -262,7 +262,7 @@ export default function MixPage() {
                         <button
                             onClick={handlePlayMix}
                             aria-label={isThisMixPlaying && isPlaying ? `Pause ${mix.name}` : `Play ${mix.name}`}
-                            className="h-12 w-12 rounded-full bg-brand hover:bg-[#d4a000] hover:scale-105 flex items-center justify-center transition-all"
+                            className="h-12 w-12 rounded-full bg-brand hover:bg-brand-hover hover:scale-105 flex items-center justify-center transition-all"
                         >
                             {isThisMixPlaying && isPlaying ? (
                                 <Pause className="w-5 h-5 fill-current text-black" />

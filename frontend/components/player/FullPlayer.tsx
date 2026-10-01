@@ -183,10 +183,10 @@ export function FullPlayer() {
                                     className={cn(
                                         "inline-flex items-center gap-1 text-micro font-semibold px-1.5 py-0.5 rounded mt-1",
                                         vibeMatchScore >= 80
-                                            ? "bg-green-500/20 text-green-400"
+                                            ? "bg-success/20 text-success"
                                             : vibeMatchScore >= 60
                                             ? "bg-brand/20 text-brand"
-                                            : "bg-orange-500/20 text-orange-400"
+                                            : "bg-warning/20 text-warning"
                                     )}
                                 >
                                     <AudioWaveform className="w-2.5 h-2.5" />
@@ -207,7 +207,7 @@ export function FullPlayer() {
                                 className={cn(
                                     "transition-all duration-200 hover:scale-110 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:scale-100",
                                     isShuffle
-                                        ? "text-[#a855f7] hover:text-[#c084fc]"
+                                        ? "text-brand hover:text-brand-light"
                                         : "text-[var(--text-secondary)] hover:text-white"
                                 )}
                                 disabled={!hasMedia || playbackType !== "track"}
@@ -328,7 +328,7 @@ export function FullPlayer() {
                                 className={cn(
                                     "transition-all duration-200 hover:scale-110 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:scale-100",
                                     repeatMode !== "off"
-                                        ? "text-[#a855f7] hover:text-[#c084fc]"
+                                        ? "text-brand hover:text-brand-light"
                                         : "text-[var(--text-secondary)] hover:text-white"
                                 )}
                                 disabled={!hasMedia || playbackType !== "track"}
@@ -457,7 +457,7 @@ export function FullPlayer() {
                                         ? "rgba(255,255,255,0.15)"
                                         : `linear-gradient(to right, #fca200 ${volume * 100}%, rgba(255,255,255,0.15) ${volume * 100}%)`
                                 }}
-                                className="w-full h-1 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-[#eab308] [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:transition-all [&::-webkit-slider-thumb]:hover:scale-110"
+                                className="w-full h-1 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-brand [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:transition-all [&::-webkit-slider-thumb]:hover:scale-110"
                             />
                         </div>
 

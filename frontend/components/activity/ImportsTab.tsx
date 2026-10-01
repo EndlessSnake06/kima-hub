@@ -69,10 +69,10 @@ function statusLabel(status: string): string {
 }
 
 function statusColor(status: string): string {
-    if (ACTIVE_STATUSES.includes(status)) return "text-blue-400";
-    if (status === "completed") return "text-[#22c55e]";
+    if (ACTIVE_STATUSES.includes(status)) return "text-brand";
+    if (status === "completed") return "text-success";
     if (status === "failed") return "text-red-400";
-    if (status === "cancelled") return "text-[#eab308]";
+    if (status === "cancelled") return "text-warning";
     return "text-[var(--text-muted)]";
 }
 
@@ -139,7 +139,7 @@ export function ImportsTab() {
             {activeImports.length > 0 && (
                 <div className="flex items-center justify-between px-3 py-2 border-b-2 border-white/10">
                     <div className="flex items-center gap-2">
-                        <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-brand animate-pulse" />
                         <span className="t-eyebrow">
                             {String(activeImports.length).padStart(2, "0")}{" "}
                             ACTIVE
@@ -196,9 +196,9 @@ function ImportJobCard({
 }) {
     const isActive = ACTIVE_STATUSES.includes(job.status);
     const borderColor = isActive
-        ? "border-blue-400"
+        ? "border-brand"
         : job.status === "completed"
-          ? "border-[#22c55e]"
+          ? "border-success"
           : job.status === "failed"
             ? "border-red-400"
             : "border-white/5";
@@ -227,7 +227,7 @@ function ImportJobCard({
                             <GradientSpinner size="sm" />
                         )
                     ) : job.status === "completed" ? (
-                        <CheckCircle2 className="w-4 h-4 text-[#22c55e]" />
+                        <CheckCircle2 className="w-4 h-4 text-success" />
                     ) : (
                         <AlertCircle className="w-4 h-4 text-red-400" />
                     )}
@@ -285,7 +285,7 @@ function ImportJobCard({
                     {isActive && job.albumsTotal > 0 && (
                         <div className="mt-2 h-1 bg-white/5 rounded-full overflow-hidden">
                             <div
-                                className="h-full bg-blue-400 rounded-full transition-all duration-300"
+                                className="h-full bg-brand rounded-full transition-all duration-300"
                                 style={{
                                     width: `${Math.round((job.albumsCompleted / job.albumsTotal) * 100)}%`,
                                 }}
@@ -304,7 +304,7 @@ function ImportJobCard({
                     {job.status === "completed" && job.createdPlaylistId && (
                         <Link
                             href={`/playlist/${job.createdPlaylistId}`}
-                            className="inline-flex items-center gap-1 mt-1.5 text-micro tabular-nums font-semibold text-[#22c55e] hover:text-[#4ade80] transition-colors"
+                            className="inline-flex items-center gap-1 mt-1.5 text-micro tabular-nums font-semibold text-success hover:text-success/80 transition-colors"
                         >
                             <ExternalLink className="w-3 h-3" />
                             View Playlist

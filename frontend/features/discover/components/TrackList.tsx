@@ -169,7 +169,7 @@ export function TrackList({
                                     className={cn(
                                         "p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-all",
                                         track.isLiked
-                                            ? "text-[#a855f7] hover:text-[#9333ea]"
+                                            ? "text-brand hover:text-brand-light"
                                             : "text-[var(--text-secondary)] hover:text-white"
                                     )}
                                     title={

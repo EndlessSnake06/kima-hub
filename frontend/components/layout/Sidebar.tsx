@@ -223,7 +223,7 @@ export function Sidebar() {
                             className={cn(
                                 "w-11 h-11 flex items-center justify-center rounded-full transition-all duration-300",
                                 isSyncing ?
-                                    "bg-[#1DB954] text-black"
+                                    "bg-brand text-black"
                                 :   "bg-white/10 text-white hover:bg-white/15 active:scale-95",
                             )}
                             aria-label={
@@ -263,7 +263,7 @@ export function Sidebar() {
                 aria-label="Main navigation"
             >
                 <div className="mb-3 flex items-center gap-2 px-2 animate-rise">
-                    <div className="w-1.5 h-1.5 bg-[#22c55e] rounded-full" />
+                    <div className="w-1.5 h-1.5 bg-brand rounded-full" />
                     <span className="t-eyebrow">
                         Navigation Index
                     </span>
@@ -283,7 +283,7 @@ export function Sidebar() {
                                 className={cn(
                                     "flex items-center gap-3 py-2.5 px-2 border-l-2 transition-all duration-200 group relative",
                                     isActive ?
-                                        "bg-[var(--bg-primary)] border-[#eab308] text-white"
+                                        "bg-[var(--bg-primary)] border-brand text-white"
                                     :   "border-transparent text-[var(--text-muted)] hover:text-white hover:bg-white/5 hover:border-white/20",
                                 )}
                             >
@@ -291,7 +291,7 @@ export function Sidebar() {
                                 <span
                                     className={cn(
                                         "w-6 text-xs tabular-nums font-semibold text-center shrink-0 transition-colors duration-200",
-                                        isActive ? "text-[#eab308]" : (
+                                        isActive ? "text-brand" : (
                                             "text-[var(--text-muted)] group-hover:text-[var(--text-secondary)]"
                                         ),
                                     )}
@@ -303,7 +303,7 @@ export function Sidebar() {
                                 <div
                                     className={cn(
                                         "w-px h-4 shrink-0",
-                                        isActive ? "bg-[#eab308]/30" : (
+                                        isActive ? "bg-brand/30" : (
                                             "bg-white/10 group-hover:bg-white/20"
                                         ),
                                     )}
@@ -338,13 +338,13 @@ export function Sidebar() {
                     )}
                 >
                     <div className="flex items-center gap-2 px-2 animate-rise">
-                        <div className="w-1.5 h-1.5 bg-[#a855f7] rounded-full" />
+                        <div className="w-1.5 h-1.5 bg-type-track rounded-full" />
                         <Link
                             href="/playlists"
                             prefetch={false}
                             className="group/link"
                         >
-                            <span className="text-xs font-medium text-[var(--text-muted)] group-hover/link:text-[#a855f7] transition-colors">
+                            <span className="text-xs font-medium text-[var(--text-muted)] group-hover/link:text-brand transition-colors">
                                 Playlist Stack
                             </span>
                         </Link>
@@ -355,7 +355,7 @@ export function Sidebar() {
                                 setShowCreatePlaylist((v) => !v);
                                 setNewPlaylistName("");
                             }}
-                            className="w-6 h-6 flex items-center justify-center bg-[var(--bg-primary)] border-2 border-white/10 text-[var(--text-muted)] hover:text-[#a855f7] hover:border-[#a855f7]/50 hover:bg-[#a855f7]/5 transition-all duration-200"
+                            className="w-6 h-6 flex items-center justify-center bg-[var(--bg-primary)] border-2 border-white/10 text-[var(--text-muted)] hover:text-brand hover:border-brand/50 hover:bg-brand/5 transition-all duration-200"
                             aria-label="Create playlist"
                             title="Create Playlist"
                         >
@@ -379,14 +379,14 @@ export function Sidebar() {
                                     }}
                                     placeholder="Playlist name"
                                     autoFocus
-                                    className="w-full bg-[var(--bg-primary)] border border-white/10 rounded px-2.5 py-1.5 text-xs text-white placeholder-gray-600 outline-none focus:border-[#a855f7]/50 transition-colors"
+                                    className="w-full bg-[var(--bg-primary)] border border-white/10 rounded px-2.5 py-1.5 text-xs text-white placeholder-gray-600 outline-none focus:border-brand/50 transition-colors"
                                 />
                                 <button
                                     onClick={handleCreatePlaylist}
                                     disabled={
                                         !newPlaylistName.trim() || isCreating
                                     }
-                                    className="mt-2 w-full py-1.5 bg-[#9333ea] hover:bg-[#7e22ce] disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold rounded transition-colors"
+                                    className="mt-2 w-full py-1.5 bg-brand hover:bg-brand-hover disabled:opacity-40 disabled:cursor-not-allowed text-black text-xs font-semibold rounded transition-colors"
                                 >
                                     {isCreating ? "Creating..." : "Create"}
                                 </button>
@@ -427,7 +427,7 @@ export function Sidebar() {
                                         className={cn(
                                             "flex items-center gap-3 py-2 px-2 border-l-2 transition-all duration-200 group",
                                             isActive ?
-                                                "bg-[var(--bg-primary)] border-[#a855f7] text-white"
+                                                "bg-[var(--bg-primary)] border-brand text-white"
                                             :   "border-transparent text-[var(--text-muted)] hover:text-white hover:bg-white/5 hover:border-white/20",
                                         )}
                                     >
@@ -435,7 +435,7 @@ export function Sidebar() {
                                         <span
                                             className={cn(
                                                 "w-5 t-meta font-semibold text-center shrink-0 transition-colors duration-200",
-                                                isActive ? "text-[#a855f7]" : (
+                                                isActive ? "text-brand" : (
                                                     "text-[var(--text-muted)] group-hover:text-[var(--text-secondary)]"
                                                 ),
                                             )}
@@ -457,7 +457,7 @@ export function Sidebar() {
                                                 </div>
                                                 {isShared && (
                                                     <span
-                                                        className="shrink-0 w-1 h-1 rounded-full bg-[#a855f7]"
+                                                        className="shrink-0 w-1 h-1 rounded-full bg-brand"
                                                         title={`Shared by ${
                                                             playlist.user
                                                                 ?.username ||

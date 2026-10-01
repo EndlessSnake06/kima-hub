@@ -30,7 +30,7 @@ export function DiscoverHero({ playlist, config, onOpenSettings }: DiscoverHeroP
                     onClick={onOpenSettings}
                     aria-label="Open discovery settings"
                     title="Discovery settings"
-                    className="absolute top-6 right-8 flex items-center gap-1.5 px-3 py-2 border border-white/10 rounded-lg hover:border-purple-500 hover:bg-white/5 transition-all duration-300 min-h-[44px] focus-visible:outline-2 focus-visible:outline-[var(--color-brand)] focus-visible:outline-offset-2"
+                    className="absolute top-6 right-8 flex items-center gap-1.5 px-3 py-2 border border-white/10 rounded-lg hover:border-brand hover:bg-white/5 transition-all duration-300 min-h-[44px] focus-visible:outline-2 focus-visible:outline-[var(--color-brand)] focus-visible:outline-offset-2"
                 >
                     <Settings className="w-4 h-4 text-[var(--text-secondary)]" />
                     <span className="text-xs text-[var(--text-secondary)]">Settings</span>
@@ -48,13 +48,13 @@ export function DiscoverHero({ playlist, config, onOpenSettings }: DiscoverHeroP
                         {playlist && (
                             <div className="inline-flex flex-wrap items-center gap-3 text-xs tabular-nums bg-white/[0.02] border border-white/10 rounded-lg px-4 py-2">
                                 <div className="flex items-center gap-2">
-                                    <span className="w-1 h-1 bg-[#eab308] rounded-full" />
+                                    <span className="w-1 h-1 bg-brand rounded-full" />
                                     <span className="text-[var(--text-secondary)]">
                                         {format(new Date(playlist.weekStart), "MMM d, yyyy")}
                                     </span>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <span className="w-1 h-1 bg-[#a855f7] rounded-full" />
+                                    <span className="w-1 h-1 bg-type-track rounded-full" />
                                     <span className="text-[var(--text-secondary)]">
                                         {playlist.totalCount} tracks
                                     </span>

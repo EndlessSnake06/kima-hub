@@ -196,9 +196,9 @@ export function SeekSlider({
                     container: "h-1",
                     track: "bg-white/[0.15]",
                     progress: isActive
-                        ? "bg-[#eab308]"
+                        ? "bg-brand"
                         : hasMedia
-                        ? "bg-[#eab308]/50"
+                        ? "bg-brand/50"
                         : "bg-gray-600",
                 };
             case "overlay":
@@ -206,7 +206,7 @@ export function SeekSlider({
                     container: "h-1",
                     track: "bg-white/20",
                     progress: isActive
-                        ? "bg-gradient-to-r from-[#eab308] to-[#f97316]"
+                        ? "bg-gradient-to-r from-brand to-brand-dark"
                         : "bg-white/40",
                 };
             default:
@@ -214,7 +214,7 @@ export function SeekSlider({
                     container: "h-1",
                     track: "bg-white/[0.15]",
                     progress: isActive
-                        ? "bg-[#eab308] group-hover:bg-[#eab308]"
+                        ? "bg-brand group-hover:bg-brand"
                         : hasMedia
                         ? "bg-white/50"
                         : "bg-gray-600",
@@ -253,7 +253,7 @@ export function SeekSlider({
                 {showHandle && isActive && (
                     <div
                         className={cn(
-                            "absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-[#eab308] rounded-full transition-opacity ",
+                            "absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-brand rounded-full transition-opacity ",
                             isDragging
                                 ? "opacity-100 scale-125"
                                 : "opacity-0 group-hover:opacity-100"

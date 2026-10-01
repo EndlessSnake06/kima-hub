@@ -155,8 +155,8 @@ export function OverlayPlayer() {
                             className={cn(
                                 "absolute inset-0 rounded-2xl blur-2xl opacity-50",
                                 activeOperation.type !== 'idle'
-                                    ? "bg-gradient-to-br from-brand/30 via-transparent to-purple-500/30"
-                                    : "bg-gradient-to-br from-brand/20 via-transparent to-[#f97316]/20"
+                                    ? "bg-gradient-to-br from-brand/30 via-transparent to-type-track/30"
+                                    : "bg-gradient-to-br from-brand/20 via-transparent to-brand-dark/20"
                             )}
                         />
 
@@ -367,7 +367,7 @@ export function OverlayPlayer() {
                                 !canSkip
                                     ? "text-[var(--text-muted)] cursor-not-allowed"
                                     : isShuffle
-                                    ? "text-[#a855f7]"
+                                    ? "text-brand"
                                     : "text-[var(--text-muted)] hover:text-white"
                             )}
                             title="Shuffle"
@@ -383,7 +383,7 @@ export function OverlayPlayer() {
                                 !canSkip
                                     ? "text-[var(--text-muted)] cursor-not-allowed"
                                     : repeatMode !== "off"
-                                    ? "text-[#a855f7]"
+                                    ? "text-brand"
                                     : "text-[var(--text-muted)] hover:text-white"
                             )}
                             title={

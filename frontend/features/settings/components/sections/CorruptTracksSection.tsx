@@ -42,7 +42,7 @@ export function CorruptTracksSection() {
                     {isLoading ? (
                         <Loader2 className="w-4 h-4 animate-spin text-[var(--text-muted)]" />
                     ) : (
-                        <span className={`text-sm tabular-nums ${count > 0 ? "text-amber-400": "text-[var(--text-muted)]"}`}>
+                        <span className={`text-sm tabular-nums ${count > 0 ? "text-warning": "text-[var(--text-muted)]"}`}>
                             {count} file{count !== 1 ? "s" : ""}
                         </span>
                     )}
@@ -71,7 +71,7 @@ export function CorruptTracksSection() {
                                         key={track.id}
                                         className="flex items-start gap-3 px-3 py-2 bg-white/[0.02] rounded-lg"
                                     >
-                                        <AlertTriangle className="w-3.5 h-3.5 text-amber-400/60 mt-0.5 shrink-0" />
+                                        <AlertTriangle className="w-3.5 h-3.5 text-warning/60 mt-0.5 shrink-0" />
                                         <div className="min-w-0 flex-1">
                                             <p className="text-xs font-medium text-[var(--text-secondary)] truncate">
                                                 {track.title}

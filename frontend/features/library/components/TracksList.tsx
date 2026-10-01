@@ -67,8 +67,8 @@ const TrackRow = memo(
                 className={cn(
                     "grid grid-cols-[auto_1fr_auto] md:grid-cols-[auto_1fr_1fr_auto] items-center gap-3 px-4 py-3 rounded-lg border-2 transition-all duration-200 group cursor-pointer touch-manipulation",
                     isCurrentlyPlaying
-                        ? "bg-[#a855f7]/10 border-[#a855f7]/30 "
-                        : "bg-[var(--bg-primary)] border-white/5 hover:border-[#a855f7]/30 hover:bg-[#a855f7]/5",
+                        ? "bg-brand/10 border-brand/30 "
+                        : "bg-[var(--bg-primary)] border-white/5 hover:border-brand/30 hover:bg-brand/5",
                     "animate-rise [animation-delay:calc(var(--i)*var(--stagger))]",
                 )}
             >
@@ -85,14 +85,14 @@ const TrackRow = memo(
                         <span
                             className={cn(
                                 "text-sm tabular-nums font-bold group-hover:hidden",
-                                isCurrentlyPlaying ? "text-[#a855f7]" : "text-[var(--text-muted)]",
+                                isCurrentlyPlaying ? "text-brand" : "text-[var(--text-muted)]",
                             )}
                         >
                             {isCurrentlyPlaying ?
-                                <AudioLines className="w-4 h-4 text-[#a855f7]" />
+                                <AudioLines className="w-4 h-4 text-brand" />
                             :   displayTrackLabel}
                         </span>
-                        <Play className="w-4 h-4 text-[#a855f7] opacity-0 group-hover:opacity-100 transition-opacity duration-150 fill-current" />
+                        <Play className="w-4 h-4 text-brand opacity-0 group-hover:opacity-100 transition-opacity duration-150 fill-current" />
                     </button>
                 </div>
 
@@ -116,7 +116,7 @@ const TrackRow = memo(
                         <h3
                             className={cn(
                                 "text-sm font-bold truncate tracking-tight",
-                                isCurrentlyPlaying ? "text-[#a855f7]" : "text-white",
+                                isCurrentlyPlaying ? "text-brand" : "text-white",
                             )}
                         >
                             {track.displayTitle ?? track.title}
@@ -233,10 +233,10 @@ export function TracksList({
         <>
             {/* Header row - terminal style */}
             <div className="grid grid-cols-[auto_1fr_auto] md:grid-cols-[auto_1fr_1fr_auto] items-center gap-3 px-4 py-3 bg-[var(--bg-primary)] border-2 border-white/10 rounded-lg mb-2">
-                <div className="w-8 text-center text-xs font-semibold text-[#a855f7]">#</div>
-                <div className="text-xs font-semibold text-[#a855f7]">Title</div>
-                <div className="hidden md:block text-xs font-semibold text-[#a855f7]">Album</div>
-                <div className="w-[140px] text-right pr-2 text-xs font-semibold text-[#a855f7]">Duration</div>
+                <div className="w-8 text-center text-xs font-semibold text-[var(--text-muted)]">#</div>
+                <div className="text-xs font-semibold text-[var(--text-muted)]">Title</div>
+                <div className="hidden md:block text-xs font-semibold text-[var(--text-muted)]">Album</div>
+                <div className="w-[140px] text-right pr-2 text-xs font-semibold text-[var(--text-muted)]">Duration</div>
             </div>
 
             <div key={gridKey} data-tv-section="library-tracks" className="space-y-1" style={cascadeStyle(tracks.length)}>

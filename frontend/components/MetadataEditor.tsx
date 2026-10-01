@@ -400,8 +400,8 @@ export function MetadataEditor({
                             </div>
 
                             {/* Manual Override Warning */}
-                            <div className="bg-yellow-600/10 border border-yellow-600/20 rounded p-4">
-                                <p className="text-sm text-yellow-400">
+                            <div className="bg-warning/10 border border-warning/20 rounded p-4">
+                                <p className="text-sm text-warning">
                                     <strong>Note:</strong> Manually edited
                                     metadata will not be overwritten by
                                     automatic enrichment.
@@ -432,7 +432,7 @@ export function MetadataEditor({
                             <button
                                 onClick={handleSave}
                                 disabled={isSaving}
-                                className="px-6 py-2 rounded-full bg-brand hover:bg-[#d4a000] text-black font-bold transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="px-6 py-2 rounded-full bg-brand hover:bg-brand-hover text-black font-bold transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {isSaving ? (
                                     <>

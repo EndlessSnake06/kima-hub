@@ -37,7 +37,7 @@ const AudiobookCard = memo(function AudiobookCard({
                 )}
                 style={{ "--i": index } as CSSProperties}
             >
-                <div className="relative bg-[var(--bg-primary)] border border-white/10 rounded-lg overflow-hidden hover:border-[#f59e0b]/40 transition-[border-color] duration-150 mx-1">
+                <div className="relative bg-[var(--bg-primary)] border border-white/10 rounded-lg overflow-hidden hover:border-type-audiobook/40 transition-[border-color] duration-150 mx-1">
                     <div className="relative aspect-square">
                         <div className="w-full h-full bg-[#181818] flex items-center justify-center overflow-hidden">
                             {audiobook.coverUrl ? (
@@ -54,7 +54,7 @@ const AudiobookCard = memo(function AudiobookCard({
                             )}
                         </div>
                     </div>
-                    <div className="h-0.5 bg-gradient-to-r from-[#f59e0b] to-[#d97706] scale-x-0 group-hover:scale-x-100 transition-transform duration-150" />
+                    <div className="h-0.5 bg-type-audiobook scale-x-0 group-hover:scale-x-100 transition-transform duration-150" />
                     <div className="relative z-10 p-3 bg-gradient-to-b from-[#0a0a0a] to-[#0f0f0f]">
                         <h3 className="text-sm font-bold text-white truncate tracking-tight">
                             {audiobook.title}

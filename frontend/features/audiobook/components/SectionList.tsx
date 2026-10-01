@@ -33,7 +33,7 @@ export function SectionList({
                             <span className="text-xs tabular-nums text-[var(--text-muted)] w-6 text-right shrink-0">
                                 {index + 1}
                             </span>
-                            <span className="text-sm font-bold text-white group-hover:text-[#f59e0b] transition-colors truncate tracking-tight">
+                            <span className="text-sm font-bold text-white group-hover:text-brand transition-colors truncate tracking-tight">
                                 {section.title}
                             </span>
                             <span className="ml-auto text-xs tabular-nums text-[var(--text-muted)] shrink-0">

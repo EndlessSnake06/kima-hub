@@ -80,7 +80,7 @@ export function ArtistHero({
                                 {displayData.name}
                             </h1>
                             {displayData.hasUserOverrides && (
-                                <span className="px-2 py-0.5 text-xs bg-amber-500/20 text-amber-400 rounded-full border border-amber-500/30 shrink-0">
+                                <span className="px-2 py-0.5 text-xs bg-white/10 text-[var(--text-secondary)] rounded-full border border-white/10 shrink-0">
                                     Edited
                                 </span>
                             )}

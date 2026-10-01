@@ -105,7 +105,7 @@ export function HistoryTab() {
             <div className="flex items-center justify-between px-3 py-2 border-b-2 border-white/10">
                 <div className="flex items-center gap-3">
                     {completed.length > 0 && (
-                        <span className="flex items-center gap-1.5 text-xs tabular-nums font-semibold text-green-400">
+                        <span className="flex items-center gap-1.5 text-xs tabular-nums font-semibold text-success">
                             <CheckCircle className="w-3 h-3" />
                             {String(completed.length).padStart(2, "0")}
                         </span>
@@ -151,8 +151,8 @@ export function HistoryTab() {
                 {/* Completed section */}
                 {completed.length > 0 && (
                     <div>
-                        <div className="px-3 py-2 border-b-2 border-green-400/20 bg-green-400/5">
-                            <span className="text-xs tabular-nums font-semibold text-green-400">
+                        <div className="px-3 py-2 border-b-2 border-success/20 bg-success/5">
+                            <span className="text-xs tabular-nums font-semibold text-success">
                                 COMPLETED ({String(completed.length).padStart(2, "0")})
                             </span>
                         </div>
@@ -191,7 +191,7 @@ function HistoryItem({
     return (
         <div className={cn(
             "px-3 py-3 border-b border-white/5 transition-colors group border-l-2",
-            isCompleted && "border-green-400/30 hover:bg-green-400/5",
+            isCompleted && "border-success/30 hover:bg-success/5",
             isFailed && "border-red-400/30 hover:bg-red-400/5"
         )}>
             <div className="flex items-start gap-3">
@@ -205,7 +205,7 @@ function HistoryItem({
                 {/* Status icon */}
                 <div className="mt-0.5 flex-shrink-0">
                     {isCompleted ? (
-                        <CheckCircle className="w-4 h-4 text-green-400" />
+                        <CheckCircle className="w-4 h-4 text-success" />
                     ) : (
                         <XCircle className="w-4 h-4 text-red-400" />
                     )}
@@ -250,7 +250,7 @@ function HistoryItem({
                             title="Retry download"
                         >
                             <RotateCcw className={cn(
-                                "w-3 h-3 text-[var(--text-muted)] hover:text-[#eab308]",
+                                "w-3 h-3 text-[var(--text-muted)] hover:text-brand",
                                 isRetrying && "animate-spin"
                             )} />
                         </button>

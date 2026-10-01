@@ -71,7 +71,7 @@ export function UnifiedSongsList({
                             className="w-10 h-10 flex items-center justify-center flex-shrink-0"
                         >
                             {isDownloading ? (
-                                <CheckCircle className="w-4 h-4 text-green-400" />
+                                <CheckCircle className="w-4 h-4 text-success" />
                             ) : (
                                 <Download className="w-4 h-4 text-brand" />
                             )}

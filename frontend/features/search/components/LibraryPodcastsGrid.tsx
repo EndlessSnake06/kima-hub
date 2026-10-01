@@ -29,9 +29,9 @@ export function LibraryPodcastsGrid({ podcasts }: LibraryPodcastsGridProps) {
                         }
                         fallbackIcon={Music}
                         accentColor={{
-                            border: "hover:border-[#3b82f6]/50",
-                            gradient: "bg-gradient-to-r from-[#3b82f6] to-[#2563eb]",
-                            button: "bg-[#3b82f6] text-white",
+                            border: "hover:border-type-podcast/50",
+                            gradient: "bg-type-podcast",
+                            button: "bg-brand text-black",
                             shadow: "",
                         }}
                         index={index}

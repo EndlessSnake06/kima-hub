@@ -141,7 +141,7 @@ export default function SeriesDetailPage() {
 
                         {/* System status */}
                         <div className="flex items-center gap-2 mb-4">
-                            <div className="w-1.5 h-1.5 bg-[#f59e0b] rounded-full" />
+                            <div className="w-1.5 h-1.5 bg-type-audiobook rounded-full" />
                             <span className="t-eyebrow">
                                 Series
                             </span>
@@ -224,7 +224,7 @@ export default function SeriesDetailPage() {
                                         key={book.id}
                                         className={`group relative rounded-lg transition-all ${
                                             isCurrentBook
-                                                ? "bg-white/5 border border-[#f59e0b]/30"
+                                                ? "bg-white/5 border border-type-audiobook/30"
                                                 : "border border-transparent hover:bg-white/[0.03] hover:border-white/5"
                                         }`}
                                     >
@@ -232,7 +232,7 @@ export default function SeriesDetailPage() {
                                         {book.progress && book.progress.progress > 0 && !book.progress.isFinished && (
                                             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white/5 rounded-full overflow-hidden">
                                                 <div
-                                                    className="h-full bg-[#f59e0b]/60 transition-all"
+                                                    className="h-full bg-brand transition-all"
                                                     style={{ width: `${book.progress.progress}%` }}
                                                 />
                                             </div>
@@ -242,23 +242,23 @@ export default function SeriesDetailPage() {
                                             {/* Number / Play */}
                                             <div className="w-8 flex items-center justify-center shrink-0">
                                                 {book.progress?.isFinished ? (
-                                                    <CheckCircle className="w-4 h-4 text-green-400" />
+                                                    <CheckCircle className="w-4 h-4 text-success" />
                                                 ) : isBookPlaying ? (
                                                     <Pause
-                                                        className="w-4 h-4 text-[#f59e0b] cursor-pointer"
+                                                        className="w-4 h-4 text-brand cursor-pointer"
                                                         onClick={() => pause()}
                                                     />
                                                 ) : (
                                                     <>
                                                         <span className={`text-xs tabular-nums ${
-                                                            isCurrentBook ? "text-[#f59e0b] font-bold hidden" : "text-[var(--text-muted)] group-hover:hidden"
+                                                            isCurrentBook ? "text-brand font-bold hidden" : "text-[var(--text-muted)] group-hover:hidden"
                                                         }`}>
                                                             {book.series?.sequence || index + 1}
                                                         </span>
                                                         <Play
                                                             className={`w-4 h-4 cursor-pointer ${
                                                                 isCurrentBook
-                                                                    ? "text-[#f59e0b]"
+                                                                    ? "text-brand"
                                                                     : "text-white hidden group-hover:block"
                                                             }`}
                                                             onClick={() => {
@@ -299,7 +299,7 @@ export default function SeriesDetailPage() {
                                                 className="flex-1 min-w-0"
                                             >
                                                 <h3 className={`font-bold truncate text-sm tracking-tight ${
-                                                    isCurrentBook ? "text-[#f59e0b]" : "text-white"
+                                                    isCurrentBook ? "text-brand" : "text-white"
                                                 }`}>
                                                     {book.title}
                                                 </h3>
@@ -310,11 +310,11 @@ export default function SeriesDetailPage() {
 
                                             {/* Progress */}
                                             {book.progress?.isFinished ? (
-                                                <span className="text-xs text-green-400 shrink-0">
+                                                <span className="text-xs text-success shrink-0">
                                                     Finished
                                                 </span>
                                             ) : book.progress && book.progress.progress > 0 ? (
-                                                <span className="text-xs tabular-nums text-[#f59e0b] shrink-0">
+                                                <span className="text-xs tabular-nums text-brand shrink-0">
                                                     {Math.round(book.progress.progress)}%
                                                 </span>
                                             ) : null}

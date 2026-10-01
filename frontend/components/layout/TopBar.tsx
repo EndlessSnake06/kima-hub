@@ -375,7 +375,7 @@ export function TopBar() {
                                 isPolling
                                     ? "bg-white/10 text-[var(--text-muted)] cursor-not-allowed"
                                     : hasActiveDownloads
-                                    ? " text-green-400 "
+                                    ? "text-brand"
                                     : "bg-[var(--bg-primary)] text-white hover:bg-white/20"
                             )}
                             title={

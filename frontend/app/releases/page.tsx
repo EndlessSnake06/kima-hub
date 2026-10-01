@@ -102,13 +102,13 @@ export default function ReleasesPage() {
         <div className="min-h-screen pb-32">
             {/* Hero Section */}
             <div className="relative h-64 md:h-80 overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-br from-amber-500/20 via-orange-600/10 to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-br from-brand/20 via-brand-dark/10 to-transparent" />
                 <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0A] via-transparent to-transparent" />
 
                 <div className="relative h-full flex flex-col justify-end p-6 md:p-8">
                     <div className="flex items-center gap-3 mb-2">
-                        <Calendar className="w-6 h-6 text-amber-400" />
-                        <span className="text-amber-400 text-sm font-medium">
+                        <Calendar className="w-6 h-6 text-brand" />
+                        <span className="text-brand text-sm font-medium">
                             Release Radar
                         </span>
                     </div>
@@ -128,7 +128,7 @@ export default function ReleasesPage() {
                 {data?.upcoming && data.upcoming.length > 0 && (
                     <section>
                         <div className="flex items-center gap-3 mb-6">
-                            <Clock className="w-5 h-5 text-amber-400" />
+                            <Clock className="w-5 h-5 text-brand" />
                             <h2 className="text-xl font-semibold text-white">Coming Soon</h2>
                             <span className="text-[var(--text-muted)] text-sm">({data.upcoming.length})</span>
                         </div>
@@ -151,7 +151,7 @@ export default function ReleasesPage() {
                 {data?.recent && data.recent.length > 0 && (
                     <section>
                         <div className="flex items-center gap-3 mb-6">
-                            <Disc className="w-5 h-5 text-emerald-400" />
+                            <Disc className="w-5 h-5 text-success" />
                             <h2 className="text-xl font-semibold text-white">Just Dropped</h2>
                             <span className="text-[var(--text-muted)] text-sm">({data.recent.length})</span>
                         </div>
@@ -180,7 +180,7 @@ export default function ReleasesPage() {
                         </p>
                         <Link
                             href="/settings"
-                            className="inline-flex items-center gap-2 px-4 py-2 bg-amber-500/20 text-amber-400 rounded-lg hover:bg-amber-500/30 transition-colors"
+                            className="inline-flex items-center gap-2 px-4 py-2 bg-brand text-black rounded-lg hover:bg-brand-hover transition-colors"
                         >
                             Configure Lidarr
                             <ArrowRight className="w-4 h-4" />
@@ -249,8 +249,8 @@ function ReleaseCard({
                 {/* Status Badge */}
                 <div className={cn(
                     "absolute top-2 left-2 px-2 py-1 rounded text-xs font-medium",
-                    isUpcoming ? "bg-amber-500/90 text-black" :
-                    hasIt ? "bg-emerald-500/90 text-black" : "bg-white/20 text-white"
+                    isUpcoming ? "bg-brand text-black" :
+                    hasIt ? "bg-success/90 text-black" : "bg-white/20 text-white"
                 )}>
                     {isUpcoming ? formatDate(release.releaseDate) :
                      hasIt ? "In Library" : "Available"}
@@ -278,7 +278,7 @@ function ReleaseCard({
                 {/* In Library Indicator */}
                 {hasIt && (
                     <div className="absolute bottom-2 right-2">
-                        <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                        <CheckCircle2 className="w-5 h-5 text-success" />
                     </div>
                 )}
             </div>
@@ -292,7 +292,7 @@ function ReleaseCard({
                     {release.artistName}
                 </p>
                 {isUpcoming && (
-                    <p className="text-xs text-amber-400/80">
+                    <p className="text-xs text-[var(--text-secondary)]">
                         {new Date(release.releaseDate).toLocaleDateString("en-US", {
                             month: "short",
                             day: "numeric",

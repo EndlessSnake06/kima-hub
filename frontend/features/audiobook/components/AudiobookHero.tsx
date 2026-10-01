@@ -64,7 +64,7 @@ export function AudiobookHero({
 
                     {/* System status */}
                     <div className="flex items-center gap-2 mb-4">
-                        <div className="w-1.5 h-1.5 bg-[#f59e0b] rounded-full" />
+                        <div className="w-1.5 h-1.5 bg-type-audiobook rounded-full" />
                         <span className="t-eyebrow">
                             Audiobook
                         </span>
@@ -116,7 +116,7 @@ export function AudiobookHero({
                                 <span className="text-[var(--text-muted)]">|</span>
                                 <span>{formatTime(audiobook.duration)}</span>
                                 <span className="text-[var(--text-muted)]">|</span>
-                                <span className={isFinished ? "text-green-400" : "text-[#f59e0b]"}>
+                                <span className={isFinished ? "text-success" : "text-brand"}>
                                     {isFinished ? "Finished" : `${Math.round(progressPercent)}% complete`}
                                 </span>
                             </div>
@@ -125,7 +125,7 @@ export function AudiobookHero({
                             {(audiobook.series || (audiobook.genres && audiobook.genres.length > 0)) && (
                                 <div className="hidden md:flex flex-wrap gap-1.5 mt-3">
                                     {audiobook.series && (
-                                        <span className="px-2.5 py-0.5 bg-white/5 border border-white/10 rounded text-xs tabular-nums text-[#f59e0b]">
+                                        <span className="px-2.5 py-0.5 bg-white/5 border border-white/10 rounded text-xs tabular-nums text-brand">
                                             {audiobook.series.name} #{audiobook.series.sequence}
                                         </span>
                                     )}

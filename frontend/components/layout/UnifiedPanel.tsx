@@ -84,7 +84,7 @@ export function UnifiedPanel({ isOpen, onToggle }: UnifiedPanelProps) {
                 >
                     <ChevronLeft className="w-5 h-5 text-[var(--text-muted)]" />
                     {hasActivity && (
-                        <span className="absolute top-4 right-3 w-1.5 h-1.5 rounded-full bg-[#22c55e]" />
+                        <span className="absolute top-4 right-3 w-1.5 h-1.5 rounded-full bg-brand" />
                     )}
                 </div>
 
@@ -107,7 +107,7 @@ export function UnifiedPanel({ isOpen, onToggle }: UnifiedPanelProps) {
                     {/* Header */}
                     <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
                         <div className="flex items-center gap-2">
-                            <div className="w-1.5 h-1.5 bg-[#22c55e] rounded-full" />
+                            <div className="w-1.5 h-1.5 bg-brand rounded-full" />
                             <span className="t-eyebrow">
                                 Feed
                             </span>

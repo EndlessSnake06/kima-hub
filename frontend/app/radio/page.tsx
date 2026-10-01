@@ -265,7 +265,7 @@ export default function RadioPage() {
                         {/* Info panel */}
                         <section>
                             <div className="relative overflow-hidden rounded-lg border-2 border-white/10 bg-gradient-to-br from-[#0f0f0f] to-[#0a0a0a] p-8">
-                                <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-brand to-[#f97316]" />
+                                <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-brand to-brand-dark" />
                                 <div className="flex items-center gap-3 mb-4 pb-3 border-b border-white/10">
                                     <div className="w-2 h-2 bg-brand" />
                                     <span className="text-xs text-[var(--text-secondary)]">

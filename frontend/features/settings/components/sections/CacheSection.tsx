@@ -95,11 +95,11 @@ function EnrichmentStage({
         <div className="flex items-start gap-3 py-2">
             <div
                 className={`mt-0.5 p-1.5 rounded-lg ${
-                    isComplete ? "bg-green-500/20" : "bg-white/5"
+                    isComplete ? "bg-success/20" : "bg-white/5"
                 }`}
             >
                 {isComplete ? (
-                    <CheckCircle className="w-4 h-4 text-green-400" />
+                    <CheckCircle className="w-4 h-4 text-success" />
                 ) : hasActivity ? (
                     <Loader2 className="w-4 h-4 text-brand animate-spin" />
                 ) : (
@@ -123,9 +123,9 @@ function EnrichmentStage({
                         progress={progress}
                         color={
                             isComplete
-                                ? "bg-green-500"
+                                ? "bg-success"
                                 : isBackground
-                                ? "bg-purple-500"
+                                ? "bg-brand/60"
                                 : "bg-brand"
                         }
                     />
@@ -135,7 +135,7 @@ function EnrichmentStage({
                         {completed} / {total}
                     </span>
                     {queued > 0 && (
-                        <span className="text-blue-400">
+                        <span className="text-[var(--text-secondary)]">
                             {queued} queued
                         </span>
                     )}
@@ -159,7 +159,7 @@ function EnrichmentStage({
 const sliderClass = `w-32 h-1.5 bg-white/5 rounded-lg appearance-none cursor-pointer
     [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5
     [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-gradient-to-r
-    [&::-webkit-slider-thumb]:from-brand [&::-webkit-slider-thumb]:to-[#f97316]
+    [&::-webkit-slider-thumb]:from-brand [&::-webkit-slider-thumb]:to-brand-dark
     hover:[&::-webkit-slider-thumb]:scale-110 [&::-webkit-slider-thumb]:transition-transform`;
 
 const secondaryBtnClass =`px-4 py-1.5 text-xs tabular-nums bg-white/5 border border-white/10 text-[var(--text-secondary)] rounded-lg
@@ -669,7 +669,7 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                             </h3>
                             {enrichmentProgress.coreComplete &&
                                 !enrichmentProgress.isFullyComplete && (
-                                    <span className="text-xs tabular-nums text-purple-400 flex items-center gap-1">
+                                    <span className="text-xs tabular-nums text-brand flex items-center gap-1">
                                         <Loader2 className="w-3 h-3 animate-spin" />
                                         {(enrichmentProgress.audioAnalysis?.pending ?? 0) > 0 || (enrichmentProgress.audioAnalysis?.processing ?? 0) > 0
                                             ? "Audio analysis running"
@@ -677,7 +677,7 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                                     </span>
                                 )}
                             {enrichmentProgress.isFullyComplete && (
-                                <span className="text-xs tabular-nums text-green-400 flex items-center gap-1">
+                                <span className="text-xs tabular-nums text-success flex items-center gap-1">
                                     <CheckCircle className="w-3 h-3" />
                                     Complete
                                 </span>
@@ -777,7 +777,7 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                                     syncing || isEnrichmentActive
                                 }
                                 className="px-3 py-2.5 min-h-[44px] text-xs font-semibold bg-brand text-black rounded-lg
-                                hover:bg-[#f97316] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             >
                                 {syncing ? "Syncing..." : "Sync New"}
                             </button>
@@ -804,7 +804,7 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                                 </button>
                             )}
                             {queueResult !== null && (
-                                <span className="self-center text-xs tabular-nums text-green-400">
+                                <span className="self-center text-xs tabular-nums text-success">
                                     Re-queued {queueResult} stage questions
                                 </span>
                             )}
@@ -814,8 +814,8 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                                     {enrichmentState?.status === "running" ? (
                                         <button
                                             onClick={handlePause}
-                                            className="flex items-center gap-1.5 px-3 py-2.5 min-h-[44px] text-xs tabular-nums bg-yellow-600/20 border border-yellow-600/30 text-yellow-400 rounded-lg
-                                            hover:bg-yellow-600/30 transition-colors"
+                                            className="flex items-center gap-1.5 px-3 py-2.5 min-h-[44px] text-xs tabular-nums bg-warning/20 border border-warning/30 text-warning rounded-lg
+                                            hover:bg-warning/30 transition-colors"
                                         >
                                             <Pause className="w-3 h-3" />
                                             Pause
@@ -823,8 +823,8 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                                     ) : (
                                         <button
                                             onClick={handleResume}
-                                            className="flex items-center gap-1.5 px-3 py-2.5 min-h-[44px] text-xs tabular-nums bg-green-600/20 border border-green-600/30 text-green-400 rounded-lg
-                                            hover:bg-green-600/30 transition-colors"
+                                            className="flex items-center gap-1.5 px-3 py-2.5 min-h-[44px] text-xs tabular-nums bg-success/20 border border-success/30 text-success rounded-lg
+                                            hover:bg-success/30 transition-colors"
                                         >
                                             <Play className="w-3 h-3" />
                                             Resume
@@ -890,7 +890,7 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                                             )}
                                             {enrichmentState.status ===
                                                 "paused" && (
-                                                <Pause className="w-3 h-3 text-yellow-400" />
+                                                <Pause className="w-3 h-3 text-warning" />
                                             )}
                                             {enrichmentState.status ===
                                                 "stopping" && (
@@ -1129,7 +1129,7 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                                         )}
                                         {clapWorkersConfig &&
                                             clapWorkersConfig.analyzerOnline === false && (
-                                                <span className="text-xs text-amber-400 w-24 text-right">
+                                                <span className="text-xs text-warning w-24 text-right">
                                                     analyzer offline
                                                 </span>
                                             )}
@@ -1162,9 +1162,9 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                                     <span
                                         className={`text-xs text-right ${
                                             gpuStatus.status === "failed"
-                                                ? "text-amber-400"
+                                                ? "text-warning"
                                                 : gpuStatus.effective
-                                                  ? "text-emerald-400"
+                                                  ? "text-success"
                                                   : "text-[var(--text-muted)]"
                                         }`}
                                     >
@@ -1227,12 +1227,12 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                             )}
 
                             {retryResult && (
-                                <p className="text-xs tabular-nums text-green-400">
+                                <p className="text-xs tabular-nums text-success">
                                     Reset {retryResult.reset} failed tracks to pending
                                 </p>
                             )}
                             {cleanupResult && cleanupResult.totalCleaned > 0 && (
-                                <p className="text-xs tabular-nums text-green-400">
+                                <p className="text-xs tabular-nums text-success">
                                     Cleaned:{" "}
                                     {cleanupResult.cleaned.discoveryBatches.cleaned}{" "}
                                     batches,{" "}

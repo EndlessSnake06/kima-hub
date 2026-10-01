@@ -23,9 +23,9 @@ export function LibraryAlbumsGrid({ albums }: LibraryAlbumsGridProps) {
                     }
                     fallbackIcon={Disc3}
                     accentColor={{
-                        border: "hover:border-[#22c55e]/50",
-                        gradient: "bg-gradient-to-r from-[#22c55e] to-[#16a34a]",
-                        button: "bg-[#22c55e] text-black",
+                        border: "hover:border-type-album/50",
+                        gradient: "bg-type-album",
+                        button: "bg-brand text-black",
                         shadow: "",
                     }}
                     index={index}

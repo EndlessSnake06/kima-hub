@@ -20,7 +20,7 @@ const Card = memo(forwardRef<HTMLDivElement, CardProps>(
             ),
             ai: cn(
                 "bg-gradient-to-br from-[#121212] to-[#0f0f0f] border border-[var(--border-subtle)]",
-                hover && "hover:border-yellow-500/30"
+                hover && "hover:border-brand/30"
             ),
             metric: "bg-[var(--bg-secondary)] border border-[var(--border-subtle)]",
         };

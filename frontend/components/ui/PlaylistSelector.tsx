@@ -266,7 +266,7 @@ export function PlaylistSelector({
                         <button
                             onClick={handleConfirm}
                             disabled={selected.size === 0 || isConfirming}
-                            className="w-full py-3 rounded-lg font-bold transition-all flex items-center justify-center gap-2 disabled:cursor-not-allowed bg-brand hover:bg-[#d4a000] text-black disabled:bg-gray-700 disabled:text-gray-500"
+                            className="w-full py-3 rounded-lg font-bold transition-all flex items-center justify-center gap-2 disabled:cursor-not-allowed bg-brand hover:bg-brand-hover text-black disabled:bg-gray-700 disabled:text-gray-500"
                         >
                             {isConfirming ? (
                                 <GradientSpinner size="sm" />
@@ -301,7 +301,7 @@ export function PlaylistSelector({
                                 isCreating ||
                                 isSaving
                             }
-                            className="px-5 py-3 bg-brand hover:bg-[#d4a000] disabled:bg-gray-700 disabled:cursor-not-allowed text-black font-bold rounded-lg transition-all flex items-center gap-2 disabled:text-gray-500"
+                            className="px-5 py-3 bg-brand hover:bg-brand-hover disabled:bg-gray-700 disabled:cursor-not-allowed text-black font-bold rounded-lg transition-all flex items-center gap-2 disabled:text-gray-500"
                         >
                             <Plus className="w-5 h-5" />
                             <span className="hidden sm:inline">Create</span>

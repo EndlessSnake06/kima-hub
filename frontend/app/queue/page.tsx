@@ -89,7 +89,7 @@ export default function QueuePage() {
                     <div className="flex items-center justify-between">
                         <div>
                             <div className="flex items-center gap-3 mb-2">
-                                <ListMusic className="w-8 h-8 text-purple-400" />
+                                <ListMusic className="w-8 h-8 text-brand" />
                                 <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white">
                                     Queue
                                 </h1>
@@ -131,7 +131,7 @@ export default function QueuePage() {
                             Now Playing
                         </h2>
                         <Card>
-                            <div className="flex items-center gap-4 p-4 bg-[var(--bg-hover)] border-l-2 border-purple-500">
+                            <div className="flex items-center gap-4 p-4 bg-[var(--bg-hover)] border-l-2 border-brand">
                                 <div className="relative flex-shrink-0 w-16 h-16">
                                     {currentTrack.album?.coverArt ? (
                                         <Image
@@ -151,11 +151,11 @@ export default function QueuePage() {
                                         </div>
                                     )}
                                     <div className="absolute inset-0 flex items-center justify-center">
-                                        <Play className="w-6 h-6 text-purple-400 fill-purple-400 animate-pulse" />
+                                        <Play className="w-6 h-6 text-brand fill-brand animate-pulse" />
                                     </div>
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <h3 className="text-sm font-medium text-purple-400 truncate">
+                                    <h3 className="text-sm font-medium text-brand truncate">
                                         {currentTrack.displayTitle ??
                                             currentTrack.title}
                                     </h3>

@@ -70,7 +70,7 @@ export function MoodMixChoice() {
     };
 
     const savedNote = playlist && (
-        <p className="text-sm text-green-400 flex items-center gap-2" data-testid="moodmix-saved">
+        <p className="text-sm text-success flex items-center gap-2" data-testid="moodmix-saved">
             <Check className="w-4 h-4" />
             Saved as the playlist&nbsp;
             <a href={`/playlist/${playlist.id}`} className="underline hover:text-white">
@@ -84,7 +84,7 @@ export function MoodMixChoice() {
         return (
             <div className="flex flex-col gap-2">
                 {savedNote}
-                <p className="text-sm text-green-400 flex items-center gap-2" data-testid="moodmix-rebuilt">
+                <p className="text-sm text-success flex items-center gap-2" data-testid="moodmix-rebuilt">
                     <Check className="w-4 h-4" />
                     {decision !== "rebuild"
                         ? "You don't have a saved mood mix any more, so there's nothing to do."

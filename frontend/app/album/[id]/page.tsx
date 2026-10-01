@@ -149,7 +149,7 @@ export default function AlbumPage({ params }: AlbumPageProps) {
                     <p className="text-[var(--text-secondary)] mb-4">Album not found</p>
                     <button
                         onClick={() => router.push("/albums")}
-                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                        className="px-4 py-2 bg-brand hover:bg-brand-hover text-black rounded-lg transition-colors"
                     >
                         Back to Albums
                     </button>

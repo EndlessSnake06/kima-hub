@@ -20,9 +20,8 @@ const Button = memo(forwardRef<HTMLButtonElement, ButtonProps>(
         ref
     ) => {
         const baseStyles =
-        "inline-flex items-center justify-center min-h-[44px] rounded-lg font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0a] disabled:opacity-50 disabled:cursor-not-allowed";
+        "inline-flex items-center justify-center min-h-[44px] rounded-lg font-medium transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed";
 
-        // Kima brand color: #fca200
         const variantStyles = {
             primary:
             "bg-brand hover:bg-brand-hover text-black px-4 py-2 ",

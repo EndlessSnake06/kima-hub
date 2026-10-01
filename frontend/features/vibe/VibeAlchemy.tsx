@@ -130,7 +130,7 @@ export function VibeAlchemy({ library, onHighlight, onClose }: VibeAlchemyProps)
                     <div>
                         <button
                             onClick={() => setAddingTo("add")}
-                            className={`text-xs mb-2 flex items-center gap-1 ${addingTo === "add" ? "text-emerald-400" : "text-[var(--text-muted)]"}`}
+                            className={`text-xs mb-2 flex items-center gap-1 ${addingTo === "add" ? "text-success" : "text-[var(--text-muted)]"}`}
                             aria-pressed={addingTo === "add"}
                         >
                             <Plus className="w-3 h-3" /> More Like

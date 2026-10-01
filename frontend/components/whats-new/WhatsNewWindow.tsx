@@ -268,7 +268,7 @@ export function WhatsNewWindow({
                         disabled={closing}
                         data-autofocus
                         data-testid="whatsnew-done"
-                        className="shrink-0 h-11 px-5 rounded-lg bg-brand hover:bg-[#e69200] text-black text-sm font-semibold transition-colors disabled:opacity-60"
+                        className="shrink-0 h-11 px-5 rounded-lg bg-brand hover:bg-brand-hover text-black text-sm font-semibold transition-colors disabled:opacity-60"
                     >
                         {closing ? "Saving..." : unanswered > 0 && asks.length > 0 ? "Close" : "Done"}
                     </button>

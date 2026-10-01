@@ -11,7 +11,7 @@ import { formatTime } from "@/lib/format";
 
 const OPERATION_STYLES: Record<string, { label: string; borderColor: string }> = {
     drift: { label: "Song Path", borderColor: "var(--color-brand)" },
-    vibe: { label: "Vibe", borderColor: "#1db954" },
+    vibe: { label: "Vibe", borderColor: "#fca200" },
     blend: { label: "Blend", borderColor: "#a056e0" },
     similar: { label: "Similar", borderColor: "#5c8dd6" },
 };
@@ -79,7 +79,7 @@ export function QueueTab() {
                         </p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                        <div className="w-2 h-2 rounded-full bg-[#1db954] animate-pulse" />
+                        <div className="w-2 h-2 rounded-full bg-brand animate-pulse" />
                         {isPlaying ? (
                             <Pause className="w-3.5 h-3.5 text-[var(--text-muted)]" />
                         ) : (

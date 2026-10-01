@@ -55,7 +55,7 @@ export function InlineStatus({
         <span
             className={cn(
                 "inline-flex items-center gap-1.5 text-sm",
-                status === "success" && "text-emerald-400",
+                status === "success" && "text-success",
                 status === "error" && "text-red-400",
                 status === "loading" && "text-[var(--text-secondary)]",
                 className

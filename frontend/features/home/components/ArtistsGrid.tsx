@@ -44,7 +44,7 @@ const ArtistTileCard = memo(function ArtistTileCard({
                 )}
                 style={{ "--i": index } as CSSProperties}
             >
-                <div className="relative bg-[var(--bg-primary)] border border-white/10 rounded-lg overflow-hidden hover:border-[#fca200]/40 transition-[border-color] duration-150 mx-1">
+                <div className="relative bg-[var(--bg-primary)] border border-white/10 rounded-lg overflow-hidden hover:border-type-artist/40 transition-[border-color] duration-150 mx-1">
                     <div className="relative aspect-square">
                         <div className="w-full h-full bg-[#181818] flex items-center justify-center overflow-hidden">
                             {imageSrc ? (
@@ -61,7 +61,7 @@ const ArtistTileCard = memo(function ArtistTileCard({
                             )}
                         </div>
                     </div>
-                    <div className="h-0.5 bg-gradient-to-r from-[#fca200] to-[#d48c00] scale-x-0 group-hover:scale-x-100 transition-transform duration-150" />
+                    <div className="h-0.5 bg-type-artist scale-x-0 group-hover:scale-x-100 transition-transform duration-150" />
                     <div className="relative z-10 p-3 bg-gradient-to-b from-[#0a0a0a] to-[#0f0f0f]">
                         <h3 className="text-sm font-bold text-white truncate tracking-tight">
                             {name}

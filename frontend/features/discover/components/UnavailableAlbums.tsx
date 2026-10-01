@@ -33,7 +33,7 @@ export function UnavailableAlbums({
                     onClick={() => setIsExpanded(!isExpanded)}
                     className="flex items-center gap-2 hover:bg-[var(--bg-hover)] transition-colors rounded-lg flex-1"
                 >
-                    <Music className="w-5 h-5 text-orange-400" />
+                    <Music className="w-5 h-5 text-warning" />
                     <span className="text-sm font-medium text-[var(--text-secondary)]">
                         {unavailable.length} album{unavailable.length !== 1 ? "s" : ""} unavailable
                     </span>
@@ -47,7 +47,7 @@ export function UnavailableAlbums({
                     <button
                         onClick={(e) => { e.stopPropagation(); onRetryAll(); }}
                         disabled={isRetrying}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs tabular-nums text-orange-400 hover:text-orange-300 hover:bg-orange-500/10 rounded transition-colors disabled:opacity-50"
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs tabular-nums text-warning hover:text-warning hover:bg-warning/10 rounded transition-colors disabled:opacity-50"
                     >
                         <RefreshCw className={cn("w-3 h-3", isRetrying && "animate-spin")} />
                         Retry All
@@ -92,9 +92,9 @@ export function UnavailableAlbums({
                                         className="w-8 h-8 flex items-center justify-center"
                                     >
                                         {isPreviewPlaying ? (
-                                            <Pause className="w-4 h-4 text-orange-400 fill-current" />
+                                            <Pause className="w-4 h-4 text-warning fill-current" />
                                         ) : (
-                                            <Play className="w-4 h-4 text-orange-400 fill-current ml-0.5" />
+                                            <Play className="w-4 h-4 text-warning fill-current ml-0.5" />
                                         )}
                                     </button>
                                 ) : (
@@ -115,7 +115,7 @@ export function UnavailableAlbums({
                                     {album.previewUrl && (
                                         <>
                                             <span>•</span>
-                                            <span className="text-orange-400">
+                                            <span className="text-warning">
                                                 30s Preview
                                             </span>
                                         </>
@@ -139,8 +139,8 @@ export function UnavailableAlbums({
                                     className={cn(
                                         "px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap",
                                         album.attemptNumber === 0
-                                            ? "bg-orange-500/20 border border-orange-500/30 text-orange-400"
-                                            : "bg-blue-500/20 border border-blue-500/30 text-blue-400"
+                                            ? "bg-warning/20 border border-warning/30 text-warning"
+                                            : "bg-white/10 border border-white/10 text-[var(--text-secondary)]"
                                     )}
                                 >
                                     {attemptLabel}

@@ -189,7 +189,7 @@ function PlaylistCard({
 "bg-black/60 transition-all duration-200",
                                 "opacity-0 group-hover:opacity-100",
                                 playlist.isHidden
-                                    ? "text-green-400"
+                                    ? "text-success"
                                     : "text-[var(--text-muted)]",
                                 isHiding && "opacity-50 cursor-not-allowed"
                             )}
@@ -216,7 +216,7 @@ function PlaylistCard({
                         className={cn(
 "absolute bottom-2 right-2 w-10 h-10 rounded-lg flex items-center justify-center",
 "bg-brand transition-all duration-200",
-"hover:bg-[#f97316] hover:scale-105",
+"hover:bg-brand-hover hover:scale-105",
     "opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0"
                         )}
                         title="Play playlist"
@@ -224,7 +224,7 @@ function PlaylistCard({
                         <Play className="w-4 h-4 fill-current ml-0.5 text-black" />
                     </button>
 
-                    <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-brand to-[#f97316] transform scale-x-0 group-hover:scale-x-100 transition-transform duration-150 origin-left" />
+                    <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-brand to-brand-dark transform scale-x-0 group-hover:scale-x-100 transition-transform duration-150 origin-left" />
                 </div>
 
                 <h3
@@ -310,7 +310,7 @@ function CreatePanel({ onClose }: { onClose: () => void }) {
             <button
                 type="submit"
                 disabled={!name.trim() || isSubmitting}
-                className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand text-black hover:bg-[#f97316] transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+                className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand text-black hover:bg-brand-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
             >
                 {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
                 Create
@@ -386,7 +386,7 @@ function ImportUrlPanel({ onClose }: { onClose: () => void }) {
             <button
                 type="submit"
                 disabled={!url.trim() || isSubmitting}
-                className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand text-black hover:bg-[#f97316] transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+                className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand text-black hover:bg-brand-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
             >
                 {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Link2 className="w-3.5 h-3.5" />}
                 Import
@@ -457,14 +457,14 @@ function ImportM3UPanel({ onClose }: { onClose: () => void }) {
         return (
             <div className="flex flex-wrap items-center gap-3">
                 <div className="flex items-center gap-2 text-sm text-white">
-                    <Check className="w-4 h-4 text-green-400 shrink-0" />
+                    <Check className="w-4 h-4 text-success shrink-0" />
                     <span>
                         Created &ldquo;{playlistName}&rdquo; with {result.matched} of {result.total} tracks matched.
                     </span>
                 </div>
                 <Link
                     href={`/playlist/${result.playlistId}`}
-                    className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand text-black hover:bg-[#f97316] transition-colors"
+                    className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand text-black hover:bg-brand-hover transition-colors"
                 >
                     View Playlist
                 </Link>
@@ -506,7 +506,7 @@ function ImportM3UPanel({ onClose }: { onClose: () => void }) {
                     <button
                         type="submit"
                         disabled={!playlistName.trim() || isSubmitting}
-                className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand text-black hover:bg-[#f97316] transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+                className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand text-black hover:bg-brand-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
                     >
                         {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
                         Create Playlist
@@ -550,7 +550,7 @@ function ActionButton({
                 primary
                     ? active
                         ? "bg-brand text-black ring-2 ring-brand/40"
-                        : "bg-brand text-black hover:bg-[#f97316]"
+                        : "bg-brand text-black hover:bg-brand-hover"
                     : active
                         ? "bg-white/10 text-white border border-white/20"
                         : "text-[var(--text-secondary)] hover:bg-white/5 border border-white/10 hover:text-white/70 hover:border-white/20"
@@ -576,7 +576,7 @@ function EmptyState({
     if (showHiddenTab) {
         return (
         <div className="relative overflow-hidden rounded-lg border-2 border-white/10 bg-gradient-to-br from-[#0f0f0f] to-[#0a0a0a] p-12">
-                <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-brand to-[#f97316]" />
+                <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-brand to-brand-dark" />
                 <div className="flex items-center gap-3 mb-8 pb-4 border-b border-white/10">
                     <div className="w-2 h-2 bg-brand" />
                     <span className="text-xs text-[var(--text-secondary)]">
@@ -600,7 +600,7 @@ function EmptyState({
 
     return (
         <div className="relative overflow-hidden rounded-lg border-2 border-white/10 bg-gradient-to-br from-[#0f0f0f] to-[#0a0a0a] p-8 md:p-12">
-            <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-brand to-[#f97316]" />
+            <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-brand to-brand-dark" />
 
             <div className="flex items-center gap-3 mb-8 pb-4 border-b border-white/10">
                 <div className="w-2 h-2 bg-brand" />

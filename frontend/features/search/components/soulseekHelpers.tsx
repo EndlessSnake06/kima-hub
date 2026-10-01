@@ -16,7 +16,7 @@ export const getQualityBadge = (result: SoulseekResult) => {
     }
     if (result.bitrate >= 320) {
         return (
-            <span className="px-2 py-1 text-xs font-semibold bg-green-600/20 text-green-400 rounded">
+            <span className="px-2 py-1 text-xs font-semibold bg-success/20 text-success rounded">
                 320 kbps
             </span>
         );

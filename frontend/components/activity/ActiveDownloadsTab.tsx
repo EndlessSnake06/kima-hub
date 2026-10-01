@@ -71,7 +71,7 @@ export function ActiveDownloadsTab() {
             {/* Header - monospace terminal style */}
             <div className="flex items-center justify-between px-3 py-2 border-b-2 border-white/10">
                 <div className="flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#22c55e] animate-pulse" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-brand animate-pulse" />
                     <span className="t-eyebrow">
                         {String(downloads.length).padStart(2, "0")} ACTIVE
                     </span>
@@ -90,7 +90,7 @@ export function ActiveDownloadsTab() {
                 {downloads.map((download, index) => (
                     <div
                         key={download.id}
-                        className="px-3 py-3 border-b border-white/5 border-l-2 border-[#22c55e] bg-[var(--bg-secondary)] hover:bg-white/5 transition-colors group"
+                        className="px-3 py-3 border-b border-white/5 border-l-2 border-brand bg-[var(--bg-secondary)] hover:bg-white/5 transition-colors group"
                     >
                         <div className="flex items-start gap-3">
                             {/* Index number */}
@@ -119,8 +119,8 @@ export function ActiveDownloadsTab() {
                                         className={cn(
                                             "text-xs tabular-nums font-semibold",
                                             download.status === "processing"
-                                                ? "text-blue-400"
-                                                : "text-[#eab308]"
+                                                ? "text-brand"
+                                                : "text-warning"
                                         )}
                                     >
                                         {download.status}

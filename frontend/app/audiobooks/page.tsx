@@ -288,14 +288,14 @@ export default function AudiobooksPage() {
             <div className="min-h-screen bg-gradient-to-b from-[#0a0a0a] to-black relative overflow-hidden">
                 {/* Atmospheric overlay */}
                 <div className="fixed inset-0 pointer-events-none opacity-30">
-                    <div className="absolute inset-0 bg-gradient-to-br from-[#f59e0b]/5 via-transparent to-transparent" />
+                    <div className="absolute inset-0 bg-gradient-to-br from-type-audiobook/5 via-transparent to-transparent" />
                 </div>
 
                 <div className="relative px-4 md:px-8 py-16 md:py-24 max-w-[1800px] mx-auto">
                     {/* Editorial hero */}
                     <div className="mb-16">
                         <div className="flex items-center gap-2 mb-4">
-                            <div className="w-1.5 h-1.5 bg-[#f59e0b] rounded-full" />
+                            <div className="w-1.5 h-1.5 bg-type-audiobook rounded-full" />
                             <span className="t-eyebrow">
                                 Not Configured
                             </span>
@@ -317,13 +317,13 @@ export default function AudiobooksPage() {
                         ].map((step) => (
                             <div
                                 key={step.num}
-                                className="rounded-lg border border-white/10 bg-[var(--bg-primary)] p-6 hover:border-[#f59e0b]/30 transition-all"
+                                className="rounded-lg border border-white/10 bg-[var(--bg-primary)] p-6 hover:border-type-audiobook/30 transition-all"
                             >
                                 {/* 20% opacity put this at 1.4:1, and it is the
                                     only thing on the card saying which step
                                     comes first. 60% clears the 3:1 that text
                                     this size needs. */}
-                                <div className="text-3xl font-bold text-[#f59e0b]/60 mb-3 tracking-tight">
+                                <div className="text-3xl font-bold text-brand/60 mb-3 tracking-tight">
                                     {step.num}
                                 </div>
                                 <h3 className="text-sm font-bold text-white tracking-tight mb-2">
@@ -340,7 +340,7 @@ export default function AudiobooksPage() {
                     <div className="flex flex-col sm:flex-row gap-3 max-w-xl">
                         <button
                             onClick={() => router.push("/settings#audiobookshelf")}
-                            className="flex-1 h-12 px-6 rounded-lg bg-[#f59e0b] hover:bg-[#d97706] transition-all font-bold text-sm text-black hover:scale-[1.02] active:scale-[0.98]"
+                            className="flex-1 h-12 px-6 rounded-lg bg-brand hover:bg-brand-hover transition-all font-bold text-sm text-black hover:scale-[1.02] active:scale-[0.98]"
                         >
                             Configure Audiobookshelf
                         </button>
@@ -371,14 +371,14 @@ export default function AudiobooksPage() {
         <div className="min-h-screen bg-gradient-to-b from-[#0a0a0a] to-black relative">
             {/* Atmospheric overlay */}
             <div className="fixed inset-0 pointer-events-none opacity-30">
-                <div className="absolute inset-0 bg-gradient-to-br from-[#f59e0b]/5 via-transparent to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-br from-type-audiobook/5 via-transparent to-transparent" />
             </div>
 
             {/* Editorial Hero */}
             <div className="relative px-4 md:px-8 pt-8 pb-2">
                 <div className="max-w-[1800px] mx-auto">
                     <div className="flex items-center gap-2 mb-4">
-                        <div className="w-1.5 h-1.5 bg-[#f59e0b] rounded-full" />
+                        <div className="w-1.5 h-1.5 bg-type-audiobook rounded-full" />
                         <span className="t-eyebrow">
                             Library
                         </span>
@@ -404,7 +404,7 @@ export default function AudiobooksPage() {
                                     onClick={() => setFilter(f)}
                                     className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
                                         filter === f
-                                            ? "bg-[#f59e0b] text-black"
+                                            ? "bg-brand text-black"
                                             : "bg-white/5 text-[var(--text-secondary)] hover:bg-white/10 hover:text-white border border-white/10 hover:border-white/20"
                                     }`}
                                 >
@@ -414,7 +414,7 @@ export default function AudiobooksPage() {
 
                             <button
                                 onClick={handleShuffleAudiobooks}
-                                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#f59e0b] hover:bg-[#d97706] text-black font-semibold text-xs transition-all hover:scale-[1.02] active:scale-[0.98]"
+                                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand hover:bg-brand-hover text-black font-semibold text-xs transition-all hover:scale-[1.02] active:scale-[0.98]"
                             >
                                 <Shuffle className="w-3.5 h-3.5" />
                                 <span className="hidden sm:inline">Random</span>
@@ -455,7 +455,7 @@ export default function AudiobooksPage() {
                                 onClick={() => setGroupBySeries(!groupBySeries)}
                                 className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all flex items-center gap-2 ${
                                     groupBySeries
-                                        ? "bg-[#f59e0b] text-black"
+                                        ? "bg-brand text-black"
                                         : "bg-white/5 text-[var(--text-secondary)] hover:bg-white/10 hover:text-white border border-white/10 hover:border-white/20"
                                 }`}
                                 title="Show series as single cards"

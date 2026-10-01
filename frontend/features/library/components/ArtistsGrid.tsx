@@ -70,7 +70,7 @@ const ArtistCardItem = memo(
                     "animate-rise [animation-delay:calc(var(--i)*var(--stagger))]",
                 )}
             >
-                <div className="relative bg-[var(--bg-primary)] border-2 border-white/10 rounded-lg overflow-hidden hover:border-[#fca200]/50 transition-all duration-200" style={{ transform: "translateZ(0)" }}>
+                <div className="relative bg-[var(--bg-primary)] border-2 border-white/10 rounded-lg overflow-hidden hover:border-type-artist/50 transition-all duration-200" style={{ transform: "translateZ(0)" }}>
                     <div className="relative aspect-square">
                         <div className="w-full h-full bg-[#181818] flex items-center justify-center overflow-hidden" style={{ contain: "content" }}>
                             {coverArtUrl ? (
@@ -92,7 +92,7 @@ const ArtistCardItem = memo(
                         {/* Play button */}
                         <button
                             onClick={handlePlay}
-                            className="touch-reveal absolute bottom-3 right-3 w-11 h-11 rounded-lg bg-[#fca200] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-150 hover:scale-110 hover:bg-[#d48c00]"
+                            className="touch-reveal absolute bottom-3 right-3 w-11 h-11 rounded-lg bg-brand flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-150 hover:scale-110 hover:bg-brand-dark"
                         >
                             <Play className="w-5 h-5 fill-current ml-0.5 text-white" />
                         </button>
@@ -107,7 +107,7 @@ const ArtistCardItem = memo(
                         </button>
 
                         {/* Color accent bar */}
-                        <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-[#fca200] to-[#d48c00] transform scale-x-0 group-hover:scale-x-100 transition-transform duration-150" />
+                        <div className="absolute bottom-0 left-0 right-0 h-1 bg-type-artist transform scale-x-0 group-hover:scale-x-100 transition-transform duration-150" />
                     </div>
 
                     {/* Info section with monospace data */}

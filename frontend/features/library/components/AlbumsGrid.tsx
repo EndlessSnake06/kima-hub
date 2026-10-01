@@ -66,7 +66,7 @@ const AlbumCardItem = memo(
                     "animate-rise [animation-delay:calc(var(--i)*var(--stagger))]",
                 )}
             >
-                <div className="relative bg-[var(--bg-primary)] border-2 border-white/10 rounded-lg overflow-hidden hover:border-[#22c55e]/50 transition-all duration-200" style={{ transform: "translateZ(0)" }}>
+                <div className="relative bg-[var(--bg-primary)] border-2 border-white/10 rounded-lg overflow-hidden hover:border-type-album/50 transition-all duration-200" style={{ transform: "translateZ(0)" }}>
                     <div className="relative aspect-square">
                         <div className="w-full h-full bg-[#181818] flex items-center justify-center overflow-hidden" style={{ contain: "content" }}>
                             {coverArtUrl ? (
@@ -88,7 +88,7 @@ const AlbumCardItem = memo(
                         {/* Play button */}
                         <button
                             onClick={handlePlay}
-                            className="touch-reveal absolute bottom-3 right-3 w-11 h-11 rounded-lg bg-[#22c55e] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-150 hover:scale-110 hover:bg-[#16a34a]"
+                            className="touch-reveal absolute bottom-3 right-3 w-11 h-11 rounded-lg bg-brand flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-150 hover:scale-110 hover:bg-brand-hover"
                         >
                             <Play className="w-5 h-5 fill-current ml-0.5 text-black" />
                         </button>
@@ -103,7 +103,7 @@ const AlbumCardItem = memo(
                         </button>
 
                         {/* Color accent bar */}
-                        <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-[#22c55e] to-[#16a34a] transform scale-x-0 group-hover:scale-x-100 transition-transform duration-150" />
+                        <div className="absolute bottom-0 left-0 right-0 h-1 bg-type-album transform scale-x-0 group-hover:scale-x-100 transition-transform duration-150" />
                     </div>
 
                     {/* Info section with monospace data */}

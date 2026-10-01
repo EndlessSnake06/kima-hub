@@ -80,14 +80,14 @@ export function ConfirmDialog({
             confirmButton: "bg-red-500 hover:bg-red-600 text-white",
         },
         warning: {
-            icon: "text-yellow-500",
-            iconBg: "bg-yellow-500/10",
-            confirmButton: "bg-yellow-500 hover:bg-yellow-600 text-black",
+            icon: "text-warning",
+            iconBg: "bg-warning/10",
+            confirmButton: "bg-warning hover:bg-warning/90 text-black",
         },
         info: {
-            icon: "text-blue-500",
-            iconBg: "bg-blue-500/10",
-            confirmButton: "bg-blue-500 hover:bg-blue-600 text-white",
+            icon: "text-brand",
+            iconBg: "bg-brand/10",
+            confirmButton: "bg-brand hover:bg-brand-hover text-black",
         },
     };
 

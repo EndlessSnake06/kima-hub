@@ -26,7 +26,7 @@ export function NotificationsTab() {
     const getIcon = (type: string) => {
         switch (type) {
             case "download_complete":
-                return <CheckCircle className="w-4 h-4 text-green-400" />;
+                return <CheckCircle className="w-4 h-4 text-success" />;
             case "download_failed":
                 return <AlertCircle className="w-4 h-4 text-red-400" />;
             case "playlist_ready":
@@ -98,7 +98,7 @@ export function NotificationsTab() {
                             key={notification.id}
                             className={cn(
                                 "px-3 py-3 border-b border-white/5 transition-colors group relative",
-                                !notification.read && "bg-[var(--bg-secondary)] border-l-2 border-[#eab308]",
+                                !notification.read && "bg-[var(--bg-secondary)] border-l-2 border-brand",
                                 notification.read && "border-l-2 border-transparent hover:border-white/20 hover:bg-white/5"
                             )}
                         >
@@ -138,7 +138,7 @@ export function NotificationsTab() {
                                         {link && (
                                             <Link
                                                 href={link}
-                                                className="text-micro font-semibold text-[#eab308] hover:underline flex items-center gap-1"
+                                                className="text-micro font-semibold text-brand hover:underline flex items-center gap-1"
                                             >
                                                 VIEW
                                                 <ExternalLink className="w-2.5 h-2.5" />

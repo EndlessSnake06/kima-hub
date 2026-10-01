@@ -34,21 +34,18 @@ const getDescriptionLabel = (item: ListenedItem) => {
     return "Artist";
 };
 
-const TYPE_COLORS: Record<string, { border: string; accent: string; gradient: string }> = {
+const TYPE_COLORS: Record<string, { border: string; accent: string }> = {
     artist: {
-        border: "hover:border-[#fca200]/40",
-        accent: "from-[#fca200] to-[#d48c00]",
-        gradient: "",
+        border: "hover:border-type-artist/40",
+        accent: "bg-type-artist",
     },
     podcast: {
-        border: "hover:border-[#3b82f6]/40",
-        accent: "from-[#3b82f6] to-[#2563eb]",
-        gradient: "",
+        border: "hover:border-type-podcast/40",
+        accent: "bg-type-podcast",
     },
     audiobook: {
-        border: "hover:border-[#f59e0b]/40",
-        accent: "from-[#f59e0b] to-[#d97706]",
-        gradient: "",
+        border: "hover:border-type-audiobook/40",
+        accent: "bg-type-audiobook",
     },
 };
 
@@ -112,14 +109,14 @@ const ContinueListeningCard = memo(function ContinueListeningCard({
                         {hasProgress && (
                             <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/50">
                                 <div
-                                    className={`h-full bg-gradient-to-r ${colors.accent}`}
+                                    className="h-full bg-brand"
                                     style={{ width: `${item.progress}%` }}
                                 />
                             </div>
                         )}
                     </div>
                     {!hasProgress && (
-                        <div className={`h-0.5 bg-gradient-to-r ${colors.accent} scale-x-0 group-hover:scale-x-100 transition-transform duration-150`} />
+                        <div className={`h-0.5 ${colors.accent} scale-x-0 group-hover:scale-x-100 transition-transform duration-150`} />
                     )}
                     <div className="relative z-10 p-3 bg-gradient-to-b from-[#0a0a0a] to-[#0f0f0f]">
                         <h3 className="text-sm font-bold text-white truncate tracking-tight">

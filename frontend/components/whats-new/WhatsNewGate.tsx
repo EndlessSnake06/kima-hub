@@ -130,7 +130,7 @@ export function WhatsNewGate() {
                 ) : item.runsFromWindow ? (
                     <div className="flex flex-col gap-2">
                         {started === item.key ? (
-                            <p className="text-sm text-green-400 flex items-center gap-2" data-testid="reembed-started">
+                            <p className="text-sm text-success flex items-center gap-2" data-testid="reembed-started">
                                 <Loader2 className="w-4 h-4 animate-spin" />
                                 Rebuild started. It runs in the background — you can close this and keep listening.
                             </p>
@@ -142,7 +142,7 @@ export function WhatsNewGate() {
                                 onClick={() => setConfirming(true)}
                                 disabled={running !== null}
                                 data-testid="reembed-run"
-                                className="self-start h-11 px-4 rounded-lg bg-brand hover:bg-[#e69200] text-black text-sm font-semibold flex items-center gap-2 transition-colors disabled:opacity-60"
+                                className="self-start h-11 px-4 rounded-lg bg-brand hover:bg-brand-hover text-black text-sm font-semibold flex items-center gap-2 transition-colors disabled:opacity-60"
                             >
                                 {running === item.key ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                                 {running === item.key ? "Starting..." : (item.confirmLabel ?? item.cta)}

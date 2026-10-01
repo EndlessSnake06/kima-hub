@@ -44,7 +44,7 @@ const PlaylistCard = memo(function PlaylistCard({
                 )}
                 style={{ "--i": index } as CSSProperties}
             >
-                <div className="relative bg-[var(--bg-primary)] border border-white/10 rounded-lg overflow-hidden hover:border-[#a855f7]/40 transition-[border-color] duration-150 mx-1">
+                <div className="relative bg-[var(--bg-primary)] border border-white/10 rounded-lg overflow-hidden hover:border-type-track/40 transition-[border-color] duration-150 mx-1">
                     <div className="relative aspect-square">
                         <div className="w-full h-full bg-[#181818] flex items-center justify-center overflow-hidden">
                             {playlist.imageUrl ? (
@@ -56,19 +56,19 @@ const PlaylistCard = memo(function PlaylistCard({
                                     unoptimized
                                 />
                             ) : (
-                                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#a855f7]/20 to-[#a855f7]/5">
+                                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-type-track/20 to-type-track/5">
                                     <Music2 className="w-10 h-10 text-[var(--text-muted)]" />
                                 </div>
                             )}
                         </div>
                         <div className="absolute top-2 left-2 p-1 bg-black/60 rounded">
-                            <DeezerIcon className="w-3.5 h-3.5 text-[#a855f7]" />
+                            <DeezerIcon className="w-3.5 h-3.5 text-brand" />
                         </div>
-                        <button className="touch-reveal absolute bottom-3 right-3 w-11 h-11 rounded-lg bg-[#9333ea] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 hover:scale-110 hover:bg-[#7e22ce]">
+                        <button className="touch-reveal absolute bottom-3 right-3 w-11 h-11 rounded-lg bg-brand flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 hover:scale-110 hover:bg-brand-hover">
                             <Play className="w-4 h-4 fill-current ml-0.5 text-white" />
                         </button>
                     </div>
-                    <div className="h-0.5 bg-gradient-to-r from-[#a855f7] to-[#c026d3] scale-x-0 group-hover:scale-x-100 transition-transform duration-150" />
+                    <div className="h-0.5 bg-type-track scale-x-0 group-hover:scale-x-100 transition-transform duration-150" />
                     <div className="relative z-10 p-3 bg-gradient-to-b from-[#0a0a0a] to-[#0f0f0f]">
                         <h3 className="text-sm font-bold text-white truncate tracking-tight">
                             {playlist.title}

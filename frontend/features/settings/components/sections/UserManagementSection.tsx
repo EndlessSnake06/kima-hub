@@ -132,7 +132,7 @@ export function UserManagementSection() {
                                 onClick={handleCreate}
                                 disabled={creating || !newUsername.trim() || newPassword.length < 6}
                                 className="px-4 py-1.5 text-xs font-semibold bg-brand text-black rounded-lg
-                                    hover:bg-[#f97316] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                    hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             >
                                 {creating ? "Creating..." : "Create"}
                             </button>

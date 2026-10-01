@@ -280,7 +280,7 @@ export default function SettingsPage() {
                             onClick={handleSaveAll}
                             disabled={isSaving}
                             className="w-full bg-brand text-black font-bold py-3 px-4 rounded-lg
-                                hover:bg-[#f97316] active:scale-[0.98] transition-all
+                                hover:bg-brand-hover active:scale-[0.98] transition-all
                                 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {isSaving ? "Saving..." : "Save Changes"}

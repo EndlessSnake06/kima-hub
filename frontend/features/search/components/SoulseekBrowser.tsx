@@ -283,7 +283,7 @@ export function SoulseekBrowser({
                 {selectedKeys.size > 0 && (
                     <button
                         onClick={handleBulkDownloadClick}
-                        className="ml-auto px-4 py-1.5 text-sm font-bold rounded-full bg-brand text-black hover:bg-[#d4a000] transition-colors flex items-center gap-2"
+                        className="ml-auto px-4 py-1.5 text-sm font-bold rounded-full bg-brand text-black hover:bg-brand-hover transition-colors flex items-center gap-2"
                     >
                         <Download className="w-4 h-4" />
                         Download {selectedKeys.size} selected
@@ -450,7 +450,7 @@ function ResultRow({
                     className={cn(
                         "p-1.5 rounded-full transition-colors",
                         isDownloading
-                            ? "text-green-400 cursor-not-allowed"
+                            ? "text-success cursor-not-allowed"
                             : "text-brand hover:bg-brand/10",
                     )}
                 >

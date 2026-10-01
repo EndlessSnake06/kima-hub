@@ -153,17 +153,17 @@ export function MiniPlayer() {
                     <div
                         className="rounded-l-2xl p-[2px]"
                         style={{
-                            background: "linear-gradient(90deg, #fca200 0%, #f97316 100%)",
+                            background: "linear-gradient(90deg, #fca200 0%, #d48c00 100%)",
                         }}
                     >
                         <div className="rounded-l-xl overflow-hidden">
                             <div className="relative bg-gradient-to-r from-[#1a1508] via-[#1a1200] to-[#1a1508]">
-                                <div className="absolute inset-0 bg-gradient-to-r from-brand/30 to-[#f97316]/20" />
+                                <div className="absolute inset-0 bg-gradient-to-r from-brand/30 to-brand-dark/20" />
 
                                 {/* Progress bar at top */}
                                 <div className="relative h-[2px] bg-white/20 w-full">
                                     <div
-                                        className="h-full bg-[#eab308] transition-all duration-150"
+                                        className="h-full bg-brand transition-all duration-150"
                                         style={{ width: `${progress}%` }}
                                     />
                                 </div>
@@ -219,19 +219,19 @@ export function MiniPlayer() {
                 <div
                     className="rounded-2xl p-[2px]"
                     style={{
-                        background: "linear-gradient(90deg, #fca200 0%, #f97316 50%, #fca200 100%)",
+                        background: "linear-gradient(90deg, #fca200 0%, #d48c00 50%, #fca200 100%)",
                     }}
                 >
                     {/* Inner container with overflow hidden for proper clipping */}
                     <div className="rounded-xl overflow-hidden">
                         {/* Single solid background with gradient overlay - prevents corner bleed */}
                         <div className="relative bg-gradient-to-r from-[#1a1508] via-[#1a1200] to-[#1a1508]">
-                            <div className="absolute inset-0 bg-gradient-to-r from-brand/25 via-[#f97316]/35 to-brand/25" />
+                            <div className="absolute inset-0 bg-gradient-to-r from-brand/25 via-brand-dark/35 to-brand/25" />
 
                             {/* Progress bar at top - inside the clipped container */}
                             <div className="relative h-[2px] bg-white/20 w-full">
                                 <div
-                                    className="h-full bg-[#eab308] transition-all duration-150"
+                                    className="h-full bg-brand transition-all duration-150"
                                     style={{ width: `${progress}%` }}
                                 />
                             </div>
@@ -482,7 +482,7 @@ export function MiniPlayer() {
                                 "rounded p-1.5 transition-colors",
                                 hasMedia && canSkip
                                     ? isShuffle
-                                        ? "text-[#a855f7] hover:text-[#c084fc]"
+                                        ? "text-brand hover:text-brand-light"
                                         : "text-[var(--text-secondary)] hover:text-white"
                                     : "text-[var(--text-muted)] cursor-not-allowed"
                             )}
@@ -603,7 +603,7 @@ export function MiniPlayer() {
                                 "rounded p-1.5 transition-colors",
                                 hasMedia && canSkip
                                     ? repeatMode !== "off"
-                                        ? "text-[#a855f7] hover:text-[#c084fc]"
+                                        ? "text-brand hover:text-brand-light"
                                         : "text-[var(--text-secondary)] hover:text-white"
                                     : "text-[var(--text-muted)] cursor-not-allowed"
                             )}

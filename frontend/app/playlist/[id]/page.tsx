@@ -618,7 +618,7 @@ export default function PlaylistDetailPage() {
                     >
                         <div className="flex items-center justify-center">
                             {isMissing ? (
-                                <FileX className="w-4 h-4 text-amber-400" />
+                                <FileX className="w-4 h-4 text-warning" />
                             ) : (
                                 <AlertCircle className="w-4 h-4 text-red-400" />
                             )}
@@ -657,7 +657,7 @@ export default function PlaylistDetailPage() {
                         <div className="flex items-center justify-end gap-1">
                             <span className={cn(
                                 "text-xs tabular-nums mr-2 hidden sm:inline",
-                                isMissing ? "text-amber-400" : "text-red-400"
+                                isMissing ? "text-warning" : "text-red-400"
                             )}>
                                 {isMissing ? "Missing from disk" : "Failed"}
                             </span>
@@ -1087,7 +1087,7 @@ export default function PlaylistDetailPage() {
                         <button
                             onClick={handlePlayPlaylist}
                             aria-label={isThisPlaylistPlaying && isPlaying ? "Pause" : "Play all"}
-                            className="h-12 w-12 rounded-lg bg-brand hover:bg-[#f97316] hover:scale-105 flex items-center justify-center transition-all"
+                            className="h-12 w-12 rounded-lg bg-brand hover:bg-brand-hover hover:scale-105 flex items-center justify-center transition-all"
                         >
                             {isThisPlaylistPlaying && isPlaying ? (
                                 <Pause className="w-5 h-5 fill-current text-black" />
@@ -1177,7 +1177,7 @@ export default function PlaylistDetailPage() {
                                         />
                                         <button
                                             onClick={handleCopyShareUrl}
-                                            className="h-8 px-3 rounded bg-brand hover:bg-[#f97316] text-black text-xs font-semibold flex items-center gap-1.5 transition-colors flex-shrink-0"
+                                            className="h-8 px-3 rounded bg-brand hover:bg-brand-hover text-black text-xs font-semibold flex items-center gap-1.5 transition-colors flex-shrink-0"
                                         >
                                             {shareCopied ? (
                                                 <Check className="w-3.5 h-3.5" />
@@ -1238,7 +1238,7 @@ export default function PlaylistDetailPage() {
                         className={cn(
                             "h-8 w-8 rounded-lg flex items-center justify-center transition-all",
                             playlist.isHidden
-                                ? "text-brand hover:text-[#f97316]"
+                                ? "text-brand hover:text-brand-hover"
                                 : "text-[var(--text-muted)] hover:text-white/60",
                             isHiding && "opacity-50 cursor-not-allowed"
                         )}
@@ -1334,7 +1334,7 @@ export default function PlaylistDetailPage() {
                     ) : (
                         <div>
                             <div className="relative overflow-hidden rounded-lg border-2 border-white/10 bg-gradient-to-br from-[#0f0f0f] to-[#0a0a0a] p-12">
-                                <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-brand to-[#f97316]" />
+                                <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-brand to-brand-dark" />
 
                                 <div className="flex items-center gap-3 mb-8 pb-4 border-b border-white/10">
                                     <div className="w-2 h-2 bg-brand" />

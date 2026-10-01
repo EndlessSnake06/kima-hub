@@ -98,7 +98,7 @@ export function DiscoverSettingsTab({
             <div className="flex items-center gap-3 px-5 py-4 border-b-2 border-white/20">
                 <button
                     onClick={onBack}
-                    className="border border-white/20 p-2 hover:border-[#a855f7] hover:bg-white/5 transition-colors"
+                    className="border border-white/20 p-2 hover:border-brand hover:bg-white/5 transition-colors"
                     title="Back to activity"
                 >
                     <ArrowLeft className="w-4 h-4 text-[var(--text-secondary)]" />
@@ -115,7 +115,7 @@ export function DiscoverSettingsTab({
                     </label>
                     <div className="border border-white/10 p-4 mb-3">
                         <div className="flex items-baseline justify-between">
-                            <span className="text-4xl font-bold text-[#a855f7] tabular-nums">
+                            <span className="text-4xl font-bold text-brand tabular-nums">
                                 {config?.playlistSize || 10}
                             </span>
                             <span className="text-xs text-[var(--text-muted)]">
@@ -132,7 +132,7 @@ export function DiscoverSettingsTab({
                         onChange={(e) =>
                             handleConfigChange("playlistSize", parseInt(e.target.value))
                         }
-                        className="w-full h-1 bg-white/10 appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-[#a855f7] [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-white/20 hover:[&::-webkit-slider-thumb]:bg-white"
+                        className="w-full h-1 bg-white/10 appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-brand [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-white/20 hover:[&::-webkit-slider-thumb]:bg-white"
                     />
                     <p className="text-xs text-[var(--text-muted)] mt-3">
                         One track per album / Larger = more discovery
@@ -146,7 +146,7 @@ export function DiscoverSettingsTab({
                     </label>
                     <div className="border border-white/10 p-4 mb-3">
                         <div className="flex items-baseline justify-between">
-                            <span className="text-4xl font-bold text-[#a855f7] tabular-nums">
+                            <span className="text-4xl font-bold text-brand tabular-nums">
                                 {((config?.downloadRatio ?? 1.3) * 100 - 100).toFixed(0)}%
                             </span>
                             <span className="text-xs text-[var(--text-muted)]">
@@ -163,7 +163,7 @@ export function DiscoverSettingsTab({
                         onChange={(e) =>
                             handleConfigChange("downloadRatio", parseFloat(e.target.value))
                         }
-                        className="w-full h-1 bg-white/10 appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-[#a855f7] [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-white/20 hover:[&::-webkit-slider-thumb]:bg-white"
+                        className="w-full h-1 bg-white/10 appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-brand [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-white/20 hover:[&::-webkit-slider-thumb]:bg-white"
                     />
                     <p className="text-xs text-[var(--text-muted)] mt-3">
                         Redundancy for failed downloads / Higher = more reliable
@@ -177,7 +177,7 @@ export function DiscoverSettingsTab({
                     </label>
                     <div className="border border-white/10 p-4 mb-3">
                         <div className="flex items-baseline justify-between">
-                            <span className="text-4xl font-bold text-[#a855f7] tabular-nums">
+                            <span className="text-4xl font-bold text-brand tabular-nums">
                                 {(config?.exclusionMonths ?? 6) === 0
                                     ? "--"
                                     : config?.exclusionMonths ?? 6}
@@ -198,7 +198,7 @@ export function DiscoverSettingsTab({
                         onChange={(e) =>
                             handleConfigChange("exclusionMonths", parseInt(e.target.value))
                         }
-                        className="w-full h-1 bg-white/10 appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-[#a855f7] [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-white/20 hover:[&::-webkit-slider-thumb]:bg-white"
+                        className="w-full h-1 bg-white/10 appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-brand [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-white/20 hover:[&::-webkit-slider-thumb]:bg-white"
                     />
                     <p className="text-xs tabular-nums text-[var(--text-muted)] mt-3">
                         Cooldown period for repeat recommendations / 0 = disabled
