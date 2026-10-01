@@ -15,6 +15,7 @@ import {
     setGpuEnabled,
 } from "../services/gpuRuntime";
 import { queueCleaner } from "../jobs/queueCleaner";
+import { configureLidarrWebhook } from "../services/lidarrWebhookSetup";
 import { safeError } from "../utils/errors";
 
 const router = Router();
@@ -290,148 +291,14 @@ router.post("/", async (req, res) => {
       // Don't fail the request if .env write fails
     }
 
-    // Auto-configure Lidarr webhook if Lidarr is enabled
     if (data.lidarrEnabled && data.lidarrUrl && data.lidarrApiKey) {
       try {
-        logger.debug("[LIDARR] Auto-configuring webhook...");
-
-        const axios = (await import("axios")).default;
-        const lidarrUrl = data.lidarrUrl;
-        const apiKey = data.lidarrApiKey;
-
-        // Determine webhook URL
-        // Use KIMA_CALLBACK_URL env var if set, otherwise default to backend:3006
-        // In Docker, services communicate via Docker network names (backend, lidarr, etc.)
-        const callbackHost =
-          process.env.KIMA_CALLBACK_URL || "http://backend:3006";
-        const webhookUrl = `${callbackHost}/api/webhooks/lidarr`;
-
-        logger.debug(`   Webhook URL: ${webhookUrl}`);
-
-        // Check if webhook already exists - find by name "Kima" OR by URL containing "lidify" or "webhooks/lidarr"
-        const notificationsResponse = await axios.get(
-          `${lidarrUrl}/api/v1/notification`,
-          {
-            headers: { "X-Api-Key": apiKey },
-            timeout: 10000,
-          },
-        );
-
-        // The Lidarr /api/v1/notification endpoint always returns a flat array,
-        // but some versions or proxies may return a paged envelope ({ records: [...] })
-        // or an error object. Normalise before use.
-        const notificationsRaw = notificationsResponse.data;
-        if (!Array.isArray(notificationsRaw) && !Array.isArray(notificationsRaw?.records)) {
-          throw new Error(
-            `Unexpected response shape from /api/v1/notification: ${typeof notificationsRaw} — aborting webhook setup to prevent duplicate creation`,
-          );
-        }
-        const notifications: any[] = Array.isArray(notificationsRaw)
-          ? notificationsRaw
-          : notificationsRaw.records;
-
-        // Find existing Kima webhook by name (primary) or URL pattern (fallback)
-        const existingWebhook = notifications.find(
-          (n: any) =>
-            n.implementation === "Webhook" &&
-            // Match by name
-            (n.name === "Kima" ||
-              // Or match by URL pattern (catches old webhooks with different URLs)
-              n.fields?.find(
-                (f: any) =>
-                  f.name === "url" &&
-                  (f.value?.includes("webhooks/lidarr") ||
-                    f.value?.includes("lidify")),
-              )),
-        );
-
-        if (existingWebhook) {
-          const currentUrl = existingWebhook.fields?.find(
-            (f: any) => f.name === "url",
-          )?.value;
-          logger.debug(
-            `   Found existing webhook: "${existingWebhook.name}" with URL: ${currentUrl}`,
-          );
-          if (currentUrl !== webhookUrl) {
-            logger.debug(`   URL needs updating from: ${currentUrl}`);
-            logger.debug(`   URL will be updated to: ${webhookUrl}`);
-          }
-        }
-
-        const webhookConfig = {
-          onGrab: true,
-          onReleaseImport: true,
-          onAlbumDownload: true,
-          onDownloadFailure: true,
-          onImportFailure: true,
-          onAlbumDelete: true,
-          onRename: true,
-          onHealthIssue: false,
-          onApplicationUpdate: false,
-          supportsOnGrab: true,
-          supportsOnReleaseImport: true,
-          supportsOnAlbumDownload: true,
-          supportsOnDownloadFailure: true,
-          supportsOnImportFailure: true,
-          supportsOnAlbumDelete: true,
-          supportsOnRename: true,
-          supportsOnHealthIssue: true,
-          supportsOnApplicationUpdate: true,
-          includeHealthWarnings: false,
-          name: "Kima",
-          implementation: "Webhook",
-          implementationName: "Webhook",
-          configContract: "WebhookSettings",
-          infoLink: "https://wiki.servarr.com/lidarr/supported#webhook",
-          tags: [],
-          fields: [
-            { name: "url", value: webhookUrl },
-            { name: "method", value: 1 }, // 1 = POST
-            { name: "username", value: "" },
-            { name: "password", value: "" },
-          ],
-        };
-
-        if (existingWebhook) {
-          if (!existingWebhook.id) {
-            throw new Error(
-              `Found existing webhook "${existingWebhook.name}" but it has no id — aborting webhook setup`,
-            );
-          }
-          // Update existing webhook
-          await axios.put(
-            `${lidarrUrl}/api/v1/notification/${existingWebhook.id}?forceSave=true`,
-            { ...existingWebhook, ...webhookConfig },
-            {
-              headers: { "X-Api-Key": apiKey },
-              timeout: 10000,
-            },
-          );
-          logger.debug("   Webhook updated");
-        } else {
-          // Create new webhook (use forceSave to skip test)
-          await axios.post(
-            `${lidarrUrl}/api/v1/notification?forceSave=true`,
-            webhookConfig,
-            {
-              headers: { "X-Api-Key": apiKey },
-              timeout: 10000,
-            },
-          );
-          logger.debug("   Webhook created");
-        }
-
-        logger.debug("Lidarr webhook configured automatically\n");
+        await configureLidarrWebhook(data.lidarrUrl, data.lidarrApiKey);
       } catch (webhookError: any) {
-        logger.error("Failed to auto-configure webhook:", webhookError.message);
+        logger.error("Failed to configure the Lidarr webhook:", webhookError.message);
         if (webhookError.response?.data) {
-          logger.error(
-            "   Lidarr error details:",
-            JSON.stringify(webhookError.response.data, null, 2),
-          );
+          logger.error("   Lidarr said:", JSON.stringify(webhookError.response.data));
         }
-        logger.debug(" User can configure webhook manually in Lidarr UI\n");
-        // Don't fail the request if webhook config fails
       }
     }
 

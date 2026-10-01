@@ -50,14 +50,14 @@ export const authLimiter = rateLimit({
 });
 
 
-// Webhook limiter (120 req/minute per IP) for the Lidarr webhook endpoint, which
-// is intentionally excluded from apiLimiter and may run without a configured
-// secret. Bounds the "unauthenticated spoofed events / repeated full scans" abuse
-// vector while staying well above any legitimate Lidarr webhook rate.
+// Webhook limiter (120 req/minute per IP). Requests carrying the configured
+// Lidarr secret skip it (routes/webhooks.ts marks them), so only unauthenticated
+// traffic is bounded.
 export const webhookLimiter = rateLimit({
     windowMs: 1 * 60 * 1000, // 1 minute
     max: 120,
     message: "Too many webhook requests, please slow down.",
+    skip: (_req, res) => res.locals.webhookVerified === true,
     standardHeaders: true,
     legacyHeaders: false,
     ...trustProxyValidation,

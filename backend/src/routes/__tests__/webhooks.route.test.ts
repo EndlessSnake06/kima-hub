@@ -328,3 +328,38 @@ describe('POST /webhooks/lidarr -- event handling', () => {
         expect(res.body.error).toBe('Webhook processing failed');
     });
 });
+
+describe('POST /webhooks/lidarr -- rate limit', () => {
+    let app: express.Application;
+
+    beforeAll(() => { app = makeApp(); });
+    beforeEach(() => {
+        jest.clearAllMocks();
+        (getSystemSettings as jest.Mock).mockResolvedValue({
+            ...ENABLED_SETTINGS,
+            lidarrWebhookSecret: 'correct-secret',
+        });
+        (webhookEventStore.storeEvent as jest.Mock).mockResolvedValue(STORED_EVENT);
+    });
+
+    it('never limits requests carrying the secret, and limits the rest', async () => {
+        for (let i = 0; i < 130; i++) {
+            const res = await request(app)
+                .post('/webhooks/lidarr')
+                .set('x-webhook-secret', 'correct-secret')
+                .send({ eventType: 'Test' });
+            expect(res.status).toBe(200);
+        }
+
+        const statuses: number[] = [];
+        for (let i = 0; i < 130; i++) {
+            const res = await request(app)
+                .post('/webhooks/lidarr')
+                .set('x-webhook-secret', 'wrong-secret')
+                .send({ eventType: 'Test' });
+            statuses.push(res.status);
+        }
+        expect(statuses.filter((s) => s === 429).length).toBeGreaterThan(0);
+        expect(statuses.filter((s) => s !== 401 && s !== 429)).toEqual([]);
+    });
+});

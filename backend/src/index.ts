@@ -57,7 +57,6 @@ import { requireAuth, requireAdmin, invalidateUserCache } from "./middleware/aut
 import {
     authLimiter,
     apiLimiter,
-    webhookLimiter,
 } from "./middleware/rateLimiter";
 const app = express();
 
@@ -165,7 +164,7 @@ app.use("/api/search", apiLimiter, searchRoutes);
 app.use("/api/recommendations", apiLimiter, recommendationsRoutes);
 app.use("/api/downloads", apiLimiter, downloadsRoutes);
 app.use("/api/notifications", apiLimiter, notificationsRoutes);
-app.use("/api/webhooks", webhookLimiter, webhooksRoutes); // Excluded from apiLimiter; bounded by a dedicated webhookLimiter (120/min)
+app.use("/api/webhooks", webhooksRoutes); // Excluded from apiLimiter; the router applies webhookLimiter
 // /api/audiobooks gets apiLimiter like every other mount; cover and stream
 // routes stay unauthenticated by design (the player and lockscreen artwork
 // request them), so the limiter is their only bound.

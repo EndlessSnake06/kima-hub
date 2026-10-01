@@ -3,8 +3,10 @@
  * and processed asynchronously, so events survive restarts and can be replayed.
  */
 
-import { Router } from "express";
+import { Router, type NextFunction, type Request, type Response } from "express";
 import { dispatchWebhookEvent } from "../services/webhookHandlers";
+import { WEBHOOK_SECRET_HEADER } from "../services/lidarrWebhookSetup";
+import { webhookLimiter } from "../middleware/rateLimiter";
 import { getSystemSettings } from "../utils/systemSettings";
 import { logger } from "../utils/logger";
 import crypto from "crypto";
@@ -13,6 +15,25 @@ import { webhookEventsTotal, webhookProcessingDuration } from "../utils/metrics"
 
 const router = Router();
 let webhookSecretWarned = false;
+
+/** Marks requests that carry the configured secret; the limiter lets those through. */
+async function checkWebhookSecret(req: Request, res: Response, next: NextFunction) {
+    res.locals.webhookVerified = false;
+    try {
+        const secret = (await getSystemSettings())?.lidarrWebhookSecret;
+        const provided = req.get(WEBHOOK_SECRET_HEADER);
+        if (secret && provided) {
+            const a = Buffer.from(provided);
+            const b = Buffer.from(secret);
+            res.locals.webhookVerified = a.length === b.length && crypto.timingSafeEqual(a, b);
+        }
+    } catch (error: any) {
+        logger.error("[WEBHOOK] Could not read the webhook secret:", error.message);
+    }
+    next();
+}
+
+router.use(checkWebhookSecret, webhookLimiter);
 
 // GET /webhooks/lidarr/verify - Webhook verification endpoint
 router.get("/lidarr/verify", (req, res) => {
@@ -45,29 +66,16 @@ router.post("/lidarr", async (req, res) => {
             });
         }
 
-        // The secret is optional and Lidarr sends none by default, so without one the
-        // request is accepted (warned once); the webhook rate limiter bounds abuse.
         if (settings.lidarrWebhookSecret) {
-            const providedSecret = req.headers["x-webhook-secret"] as string;
-
-            if (
-                !providedSecret ||
-                providedSecret.length !== settings.lidarrWebhookSecret.length ||
-                !crypto.timingSafeEqual(
-                    Buffer.from(providedSecret),
-                    Buffer.from(settings.lidarrWebhookSecret)
-                )
-            ) {
-                logger.debug(
-                    `[WEBHOOK] Lidarr webhook received with invalid or missing secret`
-                );
+            if (!res.locals.webhookVerified) {
+                logger.debug(`[WEBHOOK] Lidarr webhook received with invalid or missing secret`);
                 return res.status(401).json({
                     error: "Unauthorized - Invalid webhook secret",
                 });
             }
         } else if (!webhookSecretWarned) {
             logger.warn(
-                "[WEBHOOK] Lidarr webhooks accepted without a lidarrWebhookSecret configured (rate-limited). Set lidarrWebhookSecret in settings to require authentication."
+                "[WEBHOOK] Lidarr webhooks are accepted without a secret and rate-limited. Saving the Lidarr settings gives Lidarr one."
             );
             webhookSecretWarned = true;
         }
