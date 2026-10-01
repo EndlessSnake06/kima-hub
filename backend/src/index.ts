@@ -52,6 +52,7 @@ import {
     checkEmbeddingWritePath,
     reportEmbeddingWritePathAtStartup,
 } from "./services/embeddingsHealth";
+import { lidarrHealthMonitor } from "./services/lidarrHealth";
 import { errorHandler } from "./middleware/errorHandler";
 import { requireAuth, requireAdmin, invalidateUserCache } from "./middleware/auth";
 import {
@@ -214,9 +215,10 @@ async function healthHandler(_req: express.Request, res: express.Response) {
         checks.redis = "error";
     }
 
-    // Reported but not part of the health verdict: a broken vibe engine must not
-    // put the server into a 503 restart loop.
+    // Reported but not part of the health verdict: a broken vibe engine or Lidarr
+    // must not put the server into a 503 restart loop.
     const embeddingCheck = await checkEmbeddingWritePath();
+    const lidarr = lidarrHealthMonitor.getState();
 
     const allOk = Object.values(checks).every((v) => v === "ok");
     res.status(allOk ? 200 : 503).json({
@@ -225,6 +227,8 @@ async function healthHandler(_req: express.Request, res: express.Response) {
         version: config.version,
         ...checks,
         embeddingWritePath: embeddingCheck.ok ? "ok" : "error",
+        lidarr: lidarr.status,
+        ...(lidarr.reason && { lidarrReason: lidarr.reason }),
         ...(embeddingCheck.ok
             ? {}
             : {
@@ -555,9 +559,9 @@ async function main() {
         logger.error("Cache warmup failed:", err);
     });
 
-    // Webhook reconciliation - runs every 5 minutes to process missed events
     const { webhookReconciliation } = await import("./jobs/webhookReconciliation");
     webhookReconciliation.start();
+    lidarrHealthMonitor.start();
 
     // Webhook event cleanup - runs daily to remove old processed events
     const { webhookEventStore } = await import("./services/webhookEventStore");
@@ -628,9 +632,10 @@ async function gracefulShutdown(signal: string) {
         if (podcastCleanupInterval) clearInterval(podcastCleanupInterval);
         if (webhookCleanupInterval) clearInterval(webhookCleanupInterval);
 
-        // Stop webhook reconciliation
+        // Stop the Lidarr background loops
         const { webhookReconciliation } = await import("./jobs/webhookReconciliation");
         webhookReconciliation.stop();
+        lidarrHealthMonitor.stop();
 
         // Disconnect Soulseek
         logger.debug("Disconnecting Soulseek...");

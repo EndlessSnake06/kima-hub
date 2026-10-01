@@ -132,6 +132,17 @@ class SourcePauseController {
         return true;
     }
 
+    /** Lift `source`'s pause, but only one set with `code`. */
+    async release(source: SourceName, code: string, now: Date = new Date()): Promise<void> {
+        await prisma.$executeRawUnsafe(
+            `UPDATE "SourceAttempt" SET "nextRetryAt" = $3
+              WHERE source = $1 AND status = 'paused' AND "lastErrorCode" = $2 AND "nextRetryAt" > $3`,
+            source,
+            code,
+            now,
+        );
+    }
+
     /** Sources currently paused (for logging / diagnostics). */
     async listPaused(now: Date = new Date()): Promise<SourceName[]> {
         const rows = await prisma.$queryRawUnsafe<Array<{ source: string }>>(

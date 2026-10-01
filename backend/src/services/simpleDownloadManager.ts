@@ -258,6 +258,11 @@ class SimpleDownloadManager {
                 return { success: true };
             }
 
+            if (job && errorType === AcquisitionErrorType.LIDARR_UNAVAILABLE) {
+                await this.holdForLidarr(job, artistName, albumTitle, error.message);
+                return { success: true };
+            }
+
             logger.error(`   Failed to start download:`, error.message);
 
             if (errorType === AcquisitionErrorType.NO_RELEASES_AVAILABLE) {
@@ -397,7 +402,7 @@ class SimpleDownloadManager {
         }
     }
 
-    /** Retries twice when Lidarr is down or locked; null from addAlbum means it did not take the album. */
+    /** Retries twice when Lidarr is down or locked, unless it is paused; null from addAlbum means it did not take the album. */
     private async addAlbumToLidarr(
         ...args: Parameters<typeof lidarrService.addAlbum>
     ): Promise<NonNullable<Awaited<ReturnType<typeof lidarrService.addAlbum>>>> {
@@ -415,12 +420,70 @@ class SimpleDownloadManager {
                 const unavailable =
                     error instanceof AcquisitionError &&
                     error.type === AcquisitionErrorType.LIDARR_UNAVAILABLE;
-                if (!unavailable || attempt >= LIDARR_RETRY_DELAYS_MS.length) throw error;
+                if (
+                    !unavailable ||
+                    attempt >= LIDARR_RETRY_DELAYS_MS.length ||
+                    (await sourcePauseController.isPaused("lidarr"))
+                ) {
+                    throw error;
+                }
                 const delayMs = LIDARR_RETRY_DELAYS_MS[attempt];
                 logger.warn(`   ${error.message}; retrying in ${delayMs / 1000}s`);
                 await new Promise((resolve) => setTimeout(resolve, delayMs));
             }
         }
+    }
+
+    /** Lidarr is down or unhealthy: the job waits as pending until the health monitor resumes it. */
+    private async holdForLidarr(
+        job: { id: string; metadata: unknown },
+        artistName: string,
+        albumTitle: string,
+        reason: string
+    ): Promise<void> {
+        logger.warn(`   ${reason}; waiting for Lidarr`);
+        await prisma.downloadJob.update({
+            where: { id: job.id },
+            data: {
+                status: "pending",
+                metadata: {
+                    ...((job.metadata as any) ?? {}),
+                    artistName,
+                    albumTitle,
+                    waitingForLidarr: true,
+                    statusText: "Waiting for Lidarr",
+                },
+            },
+        });
+    }
+
+    /** Start every download that was held while Lidarr was unavailable. */
+    async resumeHeldDownloads(): Promise<number> {
+        const held = await prisma.downloadJob.findMany({
+            where: { status: "pending", metadata: { path: ["waitingForLidarr"], equals: true } },
+            orderBy: { createdAt: "asc" },
+        });
+        let resumed = 0;
+        for (const job of held) {
+            if (await sourcePauseController.isPaused("lidarr")) break;
+            const { waitingForLidarr: _, ...metadata } = job.metadata as any;
+            const claimed = await prisma.downloadJob.updateMany({
+                where: { id: job.id, status: "pending", metadata: { path: ["waitingForLidarr"], equals: true } },
+                data: { metadata },
+            });
+            if (claimed.count === 0) continue;
+            await this.startDownload(
+                job.id,
+                metadata.artistName,
+                metadata.albumTitle,
+                job.targetMbid!,
+                job.userId,
+                !!job.discoveryBatchId
+            );
+            resumed++;
+        }
+        if (resumed > 0) logger.info(`[LIDARR] Resumed ${resumed} download(s) held while Lidarr was unavailable`);
+        return resumed;
     }
 
     /** Lidarr already has this album at or above the wanted quality: the job is done. */
@@ -1394,6 +1457,7 @@ class SimpleDownloadManager {
     /**
      * Fail stale jobs: pending over 10 min (never started), processing without a
      * Lidarr ref over 5 min (no sources), with one over 15 min and not downloading.
+     * Jobs waiting for Lidarr are spared, and nothing is judged against a paused Lidarr.
      * Accepts a prefetched snapshot to avoid repeat API calls.
      */
     async markStaleJobsAsFailed(
@@ -1429,7 +1493,7 @@ class SimpleDownloadManager {
 
         // Handle old pending jobs - batch update instead of individual updates
         const stalePendingJobs = pendingJobs.filter(
-            (job) => job.createdAt < pendingCutoff
+            (job) => job.createdAt < pendingCutoff && !(job.metadata as any)?.waitingForLidarr
         );
 
         const pendingDiscoveryBatchIds = new Set<string>();
@@ -1485,6 +1549,7 @@ class SimpleDownloadManager {
         }
 
         const snapshot = existingSnapshot;
+        const lidarrPaused = await sourcePauseController.isPaused("lidarr");
 
         const staleJobs: typeof processingJobs = [];
         const jobsToExtend: { id: string; metadata: any }[] = [];
@@ -1497,7 +1562,7 @@ class SimpleDownloadManager {
 
             // Jobs without lidarrRef = Lidarr never grabbed = no sources found
             if (!job.lidarrRef) {
-                if (startedAt < noSourceCutoff) {
+                if (startedAt < noSourceCutoff && !lidarrPaused) {
                     staleJobs.push(job);
                 }
             } else if (snapshot) {

@@ -7,6 +7,7 @@ import { getSystemSettings } from "../utils/systemSettings";
 import { stripAlbumEdition } from "../utils/artistNormalization";
 import { lidarrApiCallsTotal, lidarrApiDuration } from "../utils/metrics";
 import { sourcePauseController } from "./sourcePauseController";
+import { lidarrHealthMonitor } from "./lidarrHealth";
 import { failureCause } from "../utils/outcome";
 import type {
     LidarrAlbum,
@@ -111,14 +112,18 @@ class LidarrService {
         this.enabled = config.lidarr?.enabled || false;
 
         if (this.enabled && config.lidarr) {
-            this.client = axios.create({
-                baseURL: config.lidarr.url,
-                timeout: this.API_TIMEOUT_DEFAULT,
-                headers: {
-                    "X-Api-Key": config.lidarr.apiKey,
-                },
-            });
+            this.client = this.createClient(config.lidarr.url, config.lidarr.apiKey);
         }
+    }
+
+    /** An outage seen by any request triggers a health check at once. */
+    private createClient(baseURL: string, apiKey: string): AxiosInstance {
+        const client = axios.create({ baseURL, timeout: this.API_TIMEOUT_DEFAULT, headers: { "X-Api-Key": apiKey } });
+        client.interceptors.response.use(undefined, (error) => {
+            if (isTransient(error)) lidarrHealthMonitor.reportFailure();
+            return Promise.reject(error);
+        });
+        return client;
     }
 
     private async ensureInitialized() {
@@ -134,13 +139,7 @@ class LidarrService {
 
                 if (url && apiKey) {
                     logger.debug("Lidarr configured from database");
-                    this.client = axios.create({
-                        baseURL: url,
-                        timeout: this.API_TIMEOUT_DEFAULT,
-                        headers: {
-                            "X-Api-Key": apiKey,
-                        },
-                    });
+                    this.client = this.createClient(url, apiKey);
                     this.qualityProfileId = settings.lidarrQualityProfileId ?? 1;
                     this.metadataProfileId = settings.lidarrMetadataProfileId ?? 1;
                     this.enabled = true;
@@ -951,15 +950,12 @@ class LidarrService {
             throw new Error("Lidarr not enabled");
         }
 
-        // A paused source is not hammered: while 'lidarr' rests (a
-        // rate-limit-shaped failure paused it, or an operator did), no
-        // new Lidarr queries are issued and the download simply does not
-        // start — it can be retried when the pause lifts.
         if (await sourcePauseController.isPaused("lidarr")) {
-            logger.warn(
-                `   [Lidarr] Source paused; skipping add of "${albumTitle}" by ${artistName}`,
+            throw new AcquisitionError(
+                "Lidarr is paused",
+                AcquisitionErrorType.LIDARR_UNAVAILABLE,
+                true
             );
-            return null;
         }
 
         try {
@@ -2520,12 +2516,12 @@ class LidarrService {
 
     /**
      * Everything reconciliation needs in one snapshot fetch, as Maps for lookups by job data.
-     * Null when Lidarr is off or any fetch fails: a partial snapshot would read as missing downloads.
+     * Null when Lidarr is off, paused, or any fetch fails: a partial snapshot would read as missing downloads.
      */
     async getReconciliationSnapshot(): Promise<ReconciliationSnapshot | null> {
         await this.ensureInitialized();
 
-        if (!this.enabled || !this.client) {
+        if (!this.enabled || !this.client || (await sourcePauseController.isPaused("lidarr"))) {
             return null;
         }
         const client = this.client;

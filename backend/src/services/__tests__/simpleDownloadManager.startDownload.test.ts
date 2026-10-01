@@ -1,7 +1,8 @@
 /**
  * startDownload acts on why Lidarr refused: an owned album completes the job,
- * an outage is retried, and only a real refusal fails it. A refused library
- * album falls back to one untried album by the same artist.
+ * an outage is retried and then held until Lidarr is back, and only a real
+ * refusal fails it. A refused library album falls back to one untried album
+ * by the same artist.
  */
 
 jest.mock("../lidarr", () => ({
@@ -20,6 +21,7 @@ jest.mock("../musicbrainz", () => ({
 import { prisma } from "../../utils/db";
 import { AcquisitionError, AcquisitionErrorType, lidarrService } from "../lidarr";
 import { simpleDownloadManager } from "../simpleDownloadManager";
+import { sourcePauseController } from "../sourcePauseController";
 import { closeEngineConnections } from "../../__tests__/helpers/engineConnections";
 
 const USER = "sdm_start_user";
@@ -54,6 +56,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
     jest.restoreAllMocks();
+    await prisma.sourceAttempt.deleteMany({ where: { source: "lidarr" } });
     await prisma.downloadJob.deleteMany({ where: { userId: USER } });
 });
 
@@ -87,7 +90,7 @@ it("retries while Lidarr is unavailable and starts once it answers", async () =>
     expect((await row()).status).toBe("processing");
 });
 
-it("fails with Lidarr's outage, not 'album not found', after the retries", async () => {
+it("holds the job for Lidarr after the retries, without failing it", async () => {
     jest.spyOn(global, "setTimeout").mockImplementation(((fn: () => void) => {
         fn();
         return 0;
@@ -96,11 +99,39 @@ it("fails with Lidarr's outage, not 'album not found', after the retries", async
         new AcquisitionError("Lidarr unavailable: socket hang up", AcquisitionErrorType.LIDARR_UNAVAILABLE)
     );
 
-    expect((await start()).success).toBe(false);
+    expect((await start()).success).toBe(true);
     expect(addAlbum).toHaveBeenCalledTimes(3);
     const job = await row();
-    expect(job.status).toBe("failed");
-    expect(job.error).toBe("Lidarr unavailable: socket hang up");
+    expect(job.status).toBe("pending");
+    expect(job.metadata).toMatchObject({ waitingForLidarr: true, artistName: "Interpol", albumTitle: "Antics" });
+});
+
+it("does not retry against a paused Lidarr, and spares the held job from the stale sweep", async () => {
+    await sourcePauseController.pause("lidarr", { until: new Date(Date.now() + 60_000), code: "LIDARR_UNHEALTHY" });
+    addAlbum.mockRejectedValue(new AcquisitionError("Lidarr is paused", AcquisitionErrorType.LIDARR_UNAVAILABLE));
+
+    await start();
+    expect(addAlbum).toHaveBeenCalledTimes(1);
+
+    await prisma.downloadJob.update({ where: { id: "sdm_start" }, data: { createdAt: new Date(Date.now() - 60 * 60_000) } });
+    await simpleDownloadManager.markStaleJobsAsFailed(null);
+    expect((await row()).status).toBe("pending");
+});
+
+it("resumes held downloads once Lidarr is back", async () => {
+    await sourcePauseController.pause("lidarr", { until: new Date(Date.now() + 60_000), code: "LIDARR_UNHEALTHY" });
+    addAlbum.mockRejectedValue(new AcquisitionError("Lidarr is paused", AcquisitionErrorType.LIDARR_UNAVAILABLE));
+    await start();
+
+    expect(await simpleDownloadManager.resumeHeldDownloads()).toBe(0);
+
+    await sourcePauseController.release("lidarr", "LIDARR_UNHEALTHY");
+    addAlbum.mockResolvedValue({ id: 7, foreignAlbumId: "rg-asked" });
+    expect(await simpleDownloadManager.resumeHeldDownloads()).toBe(1);
+    expect(addAlbum).toHaveBeenLastCalledWith("rg-asked", "Interpol", "Antics", expect.anything(), "artist-1", false);
+    const job = await row();
+    expect(job.status).toBe("processing");
+    expect((job.metadata as any).waitingForLidarr).toBeUndefined();
 });
 
 it("records the artist on the job", async () => {

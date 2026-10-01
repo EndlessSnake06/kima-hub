@@ -3,6 +3,7 @@
  * removed at most once, and only downloads belonging to a Kima job are swept.
  */
 
+import { sourcePauseController } from "./sourcePauseController";
 import { prisma } from "../utils/db";
 import { logger } from "../utils/logger";
 import { lidarrService } from "./lidarr";
@@ -144,6 +145,7 @@ async function settle(item: LidarrQueueItem, verdict: QueueVerdict): Promise<boo
  * first, and Lidarr searches again only while the job is under its retry limit.
  */
 export async function sweepFailedDownloads(): Promise<{ removed: number }> {
+    if (await sourcePauseController.isPaused("lidarr")) return { removed: 0 };
     const owned = await ownedDownloadIds();
     if (owned.size === 0) return { removed: 0 };
 
