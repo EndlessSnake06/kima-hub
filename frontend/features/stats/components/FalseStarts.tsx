@@ -121,7 +121,7 @@ export function FalseStarts() {
                         {elapsed >= 3 && ` · ${elapsed}s`}
                     </p>
                 )}
-                {error && <p className="t-meta text-red-400">{error}</p>}
+                {error && <p className="t-meta text-danger-light">{error}</p>}
             </div>
         );
     }
@@ -376,7 +376,7 @@ export function FalseStarts() {
                 </div>
             )}
 
-            {error && <p className="t-meta text-red-400">{error}</p>}
+            {error && <p className="t-meta text-danger-light">{error}</p>}
         </div>
     );
 }

@@ -156,7 +156,7 @@ export function VibeAlchemy({ library, onHighlight, onClose }: VibeAlchemyProps)
                     <div>
                         <button
                             onClick={() => setAddingTo("subtract")}
-                            className={`text-xs mb-2 flex items-center gap-1 ${addingTo === "subtract" ? "text-rose-400" : "text-[var(--text-muted)]"}`}
+                            className={`text-xs mb-2 flex items-center gap-1 ${addingTo === "subtract" ? "text-danger-light" : "text-[var(--text-muted)]"}`}
                             aria-pressed={addingTo === "subtract"}
                         >
                             <Minus className="w-3 h-3" /> Less Like
@@ -227,7 +227,7 @@ export function VibeAlchemy({ library, onHighlight, onClose }: VibeAlchemyProps)
                     <FlaskConical className="w-4 h-4" />{" "}
                     {mutation.isPending ? "Computing..." : "Blend"}
                 </button>
-                {computeError && <p className="text-xs text-rose-400/70 text-center mt-1">{computeError}</p>}
+                {computeError && <p className="text-xs text-danger-light/70 text-center mt-1">{computeError}</p>}
             </div>
 
             {results.length > 0 && (

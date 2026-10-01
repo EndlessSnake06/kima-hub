@@ -252,7 +252,7 @@ export function FullPlayer() {
                                 className={cn(
                                     "w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 relative group",
                                     audioError
-                                        ? "bg-red-500 text-white hover:scale-110 hover:bg-red-400"
+                                        ? "bg-danger text-white hover:scale-110 hover:bg-danger-light"
                                         : hasMedia && !isBuffering
                                         ? "bg-brand text-black hover:scale-110"
                                         : isBuffering

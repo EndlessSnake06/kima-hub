@@ -71,7 +71,7 @@ function statusLabel(status: string): string {
 function statusColor(status: string): string {
     if (ACTIVE_STATUSES.includes(status)) return "text-brand";
     if (status === "completed") return "text-success";
-    if (status === "failed") return "text-red-400";
+    if (status === "failed") return "text-danger-light";
     if (status === "cancelled") return "text-warning";
     return "text-[var(--text-muted)]";
 }
@@ -200,7 +200,7 @@ function ImportJobCard({
         : job.status === "completed"
           ? "border-success"
           : job.status === "failed"
-            ? "border-red-400"
+            ? "border-danger-light"
             : "border-white/5";
 
     return (
@@ -229,7 +229,7 @@ function ImportJobCard({
                     ) : job.status === "completed" ? (
                         <CheckCircle2 className="w-4 h-4 text-success" />
                     ) : (
-                        <AlertCircle className="w-4 h-4 text-red-400" />
+                        <AlertCircle className="w-4 h-4 text-danger-light" />
                     )}
                 </div>
 
@@ -295,7 +295,7 @@ function ImportJobCard({
 
                     {/* Error message */}
                     {job.status === "failed" && job.error && (
-                        <p className="text-micro tabular-nums text-red-400/70 mt-1 truncate">
+                        <p className="text-micro tabular-nums text-danger-light/70 mt-1 truncate">
                             {job.error}
                         </p>
                     )}
@@ -320,7 +320,7 @@ function ImportJobCard({
                         className="p-1 hover:bg-white/10 transition-colors shrink-0"
                         title="Cancel import"
                     >
-                        <X className="w-3 h-3 text-[var(--text-muted)] hover:text-red-400" />
+                        <X className="w-3 h-3 text-[var(--text-muted)] hover:text-danger-light" />
                     </button>
                 )}
             </div>

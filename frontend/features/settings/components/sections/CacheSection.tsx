@@ -145,10 +145,10 @@ function EnrichmentStage({
                         </span>
                     )}
                     {failed > 0 && (
-                        <span className="text-red-400">{failed} failed</span>
+                        <span className="text-danger-light">{failed} failed</span>
                     )}
                     {permanentlyFailed > 0 && (
-                        <span className="text-red-400/60">{permanentlyFailed} permanently failed</span>
+                        <span className="text-danger-light/60">{permanentlyFailed} permanently failed</span>
                     )}
                 </div>
             </div>
@@ -183,7 +183,7 @@ function EnrichmentFailuresList({ active = false }: { active?: boolean }) {
                 <div key={f.id} className="flex items-center justify-between py-1 px-2 bg-white/[0.02] rounded text-xs tabular-nums">
                     <div className="flex-1 min-w-0">
                         <span className="text-[var(--text-secondary)] truncate block">{f.entityName || f.entityId}</span>
-                        <span className="text-red-400/50 text-micro">{f.errorMessage || "Unknown error"}</span>
+                        <span className="text-danger-light/50 text-micro">{f.errorMessage || "Unknown error"}</span>
                     </div>
                     <span className="text-[var(--text-muted)] text-micro ml-2 shrink-0">{f.errorCode}</span>
                 </div>
@@ -652,8 +652,8 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                         <span className="text-xs text-[var(--text-muted)]">Loading enrichment status...</span>
                     </div>
                 ) : isProgressError && !enrichmentProgress ? (
-                    <div className="mb-6 p-4 bg-white/5 rounded-lg border border-red-500/20 flex items-center justify-between">
-                        <span className="text-xs text-red-400">Failed to load enrichment status</span>
+                    <div className="mb-6 p-4 bg-white/5 rounded-lg border border-danger/20 flex items-center justify-between">
+                        <span className="text-xs text-danger-light">Failed to load enrichment status</span>
                         <button
                             onClick={() => refetchProgress()}
                             className="px-3 py-2.5 min-h-[44px] text-micro bg-white/5 border border-white/10 text-[var(--text-secondary)] rounded-lg hover:bg-white/10 transition-colors"
@@ -832,8 +832,8 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                                     )}
                                     <button
                                         onClick={handleStop}
-                                        className="flex items-center gap-1.5 px-3 py-2.5 min-h-[44px] text-xs tabular-nums bg-red-600/20 border border-red-600/30 text-red-400 rounded-lg
-                                        hover:bg-red-600/30 transition-colors"
+                                        className="flex items-center gap-1.5 px-3 py-2.5 min-h-[44px] text-xs tabular-nums bg-danger/20 border border-danger/30 text-danger-light rounded-lg
+                                        hover:bg-danger/30 transition-colors"
                                     >
                                         <StopCircle className="w-3 h-3" />
                                         Stop
@@ -846,7 +846,7 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                             <div className="mt-4 pt-3 border-t border-white/10">
                                 <button
                                     onClick={() => setShowInlineFailures(!showInlineFailures)}
-                                    className="flex items-center gap-2 text-xs tabular-nums text-red-400/70 hover:text-red-400 transition-colors"
+                                    className="flex items-center gap-2 text-xs tabular-nums text-danger-light/70 hover:brightness-125 transition-colors"
                                 >
                                     <AlertTriangle className="w-3 h-3" />
                                     {showInlineFailures ? "Hide" : "Show"} Failures ({totalFailures})
@@ -864,8 +864,8 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                                         {enrichmentState.hung ? (
                                             <>
                                                 <div className="flex items-center gap-2">
-                                                    <AlertTriangle className="w-3 h-3 text-red-400" />
-                                                    <span className="text-red-300 font-medium">
+                                                    <AlertTriangle className="w-3 h-3 text-danger-light" />
+                                                    <span className="text-danger-light font-medium">
                                                         Enrichment appears
                                                         stalled
                                                     </span>
@@ -894,7 +894,7 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                                             )}
                                             {enrichmentState.status ===
                                                 "stopping" && (
-                                                <StopCircle className="w-3 h-3 text-red-400 animate-pulse" />
+                                                <StopCircle className="w-3 h-3 text-danger-light animate-pulse" />
                                             )}
                                             <span className="text-[var(--text-secondary)] tabular-nums">
                                                 {enrichmentState.status ===
@@ -1248,7 +1248,7 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                                     No stale jobs found
                                 </p>
                             )}
-                            {error && <p className="text-xs tabular-nums text-red-400">{error}</p>}
+                            {error && <p className="text-xs tabular-nums text-danger-light">{error}</p>}
                         </div>
                     )}
                 </div>

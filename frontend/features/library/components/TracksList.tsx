@@ -161,7 +161,7 @@ const TrackRow = memo(
                             e.stopPropagation();
                             onDelete(track.id, track.title);
                         }}
-                        className="w-10 h-10 rounded-lg flex items-center justify-center text-[var(--text-secondary)] hover:text-red-500 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all duration-150 border border-transparent hover:border-red-500/30"
+                        className="w-10 h-10 rounded-lg flex items-center justify-center text-[var(--text-secondary)] hover:text-danger hover:bg-danger/10 opacity-0 group-hover:opacity-100 transition-all duration-150 border border-transparent hover:border-danger/30"
                         title="Delete Track"
                     >
                         <Trash2 className="w-4 h-4" />

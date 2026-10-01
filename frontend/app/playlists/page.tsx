@@ -323,7 +323,7 @@ function CreatePanel({ onClose }: { onClose: () => void }) {
                 <X className="w-4 h-4" />
             </button>
             {error && (
-                <p className="w-full text-xs tabular-nums text-red-400 mt-1">{error}</p>
+                <p className="w-full text-xs tabular-nums text-danger-light mt-1">{error}</p>
             )}
         </form>
     );
@@ -400,7 +400,7 @@ function ImportUrlPanel({ onClose }: { onClose: () => void }) {
                 <X className="w-4 h-4" />
             </button>
             {error && (
-                <p className="w-full text-xs tabular-nums text-red-400 mt-1">{error}</p>
+                <p className="w-full text-xs tabular-nums text-danger-light mt-1">{error}</p>
             )}
         </form>
     );
@@ -519,7 +519,7 @@ function ImportM3UPanel({ onClose }: { onClose: () => void }) {
                         <X className="w-4 h-4" />
                     </button>
                     {error && (
-                        <p className="w-full text-xs tabular-nums text-red-400 mt-1">{error}</p>
+                        <p className="w-full text-xs tabular-nums text-danger-light mt-1">{error}</p>
                     )}
                 </form>
             )}

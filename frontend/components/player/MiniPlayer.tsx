@@ -271,12 +271,12 @@ export function MiniPlayer() {
                                     {audioError ? (
                                         <>
                                             <div className="flex items-center gap-1">
-                                                <AlertTriangle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
-                                                <p className="text-red-300 text-sm font-medium truncate leading-tight">
+                                                <AlertTriangle className="w-3.5 h-3.5 text-danger-light flex-shrink-0" />
+                                                <p className="text-danger-light text-sm font-medium truncate leading-tight">
                                                     Playback Error
                                                 </p>
                                             </div>
-                                            <p className="text-red-200/70 text-xs truncate leading-tight mt-0.5">
+                                            <p className="text-danger-light/70 text-xs truncate leading-tight mt-0.5">
                                                 Tap retry to reconnect
                                             </p>
                                         </>
@@ -324,7 +324,7 @@ export function MiniPlayer() {
                                         className={cn(
                                             "w-10 h-10 rounded-full flex items-center justify-center transition",
                                             audioError
-                                                ? "bg-red-500 text-white hover:bg-red-400"
+                                                ? "bg-danger text-white hover:bg-danger-light"
                                                 : isBuffering
                                                 ? "bg-brand/80 text-black"
                                                 : "bg-brand text-black hover:scale-105"

@@ -354,7 +354,7 @@ export default function OnboardingPage() {
                                                     }
                                                     className={`w-full px-4 py-3 bg-white/5 border rounded-lg text-white placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-transparent transition-all ${
                                                         showPasswordTooShort ?
-                                                        "border-red-500/50"
+                                                        "border-danger/50"
                                                         : "border-white/10"
                                                     }`}
                                                     placeholder="At least 6 characters"
@@ -381,7 +381,7 @@ export default function OnboardingPage() {
                                                     }
                                                     className={`w-full px-4 py-3 bg-white/5 border rounded-lg text-white placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-transparent transition-all ${
                                                         showPasswordMismatch ?
-                                                        "border-red-500/50"
+                                                        "border-danger/50"
                                                         : "border-white/10"
                                                     }`}
                                                     placeholder="Confirm your password"
@@ -390,7 +390,7 @@ export default function OnboardingPage() {
                                             </div>
 
                                             {error && (
-                                                <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-sm text-red-400">
+                                                <div className="bg-danger/10 border border-danger/30 rounded-lg p-4 text-sm text-danger-light">
                                                     {error}
                                                 </div>
                                             )}
@@ -558,8 +558,8 @@ export default function OnboardingPage() {
                                         </div>
 
                                         {error && (
-                                            <div className="flex items-center gap-2 p-4 rounded-lg bg-red-500/10 border border-red-500/20">
-                                                <p className="text-sm text-red-500">
+                                            <div className="flex items-center gap-2 p-4 rounded-lg bg-danger/10 border border-danger/20">
+                                                <p className="text-sm text-danger">
                                                     {error}
                                                 </p>
                                             </div>
@@ -767,7 +767,7 @@ function IntegrationCard({
                                 className={`text-xs ${
                                     result.ok ?
                                     "text-success"
-                                    : "text-red-400"
+                                    : "text-danger-light"
                                 }`}
                             >
                                 {result.message}
@@ -917,7 +917,7 @@ function SoulseekCard({
                                 className={`text-xs ${
                                     result.ok ?
                                     "text-success"
-                                    : "text-red-400"
+                                    : "text-danger-light"
                                 }`}
                             >
                                 {result.message}

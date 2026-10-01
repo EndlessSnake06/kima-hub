@@ -84,10 +84,10 @@ function Probe({ label, ms }: { label: string; ms: number | null }) {
             <span className="flex items-center gap-2">
                 <span
                     aria-hidden
-                    className={`w-1.5 h-1.5 rounded-full ${ok ? "bg-brand" : "bg-red-400"}`}
+                    className={`w-1.5 h-1.5 rounded-full ${ok ? "bg-brand" : "bg-danger-light"}`}
                 />
                 <span
-                    className={`t-figure text-[length:var(--stat-lead)] ${ok ? "" : "text-red-400"}`}
+                    className={`t-figure text-[length:var(--stat-lead)] ${ok ? "" : "text-danger-light"}`}
                 >
                     {ok ? `${ms < 1 ? ms.toFixed(1) : Math.round(ms)}ms` : "no answer"}
                 </span>

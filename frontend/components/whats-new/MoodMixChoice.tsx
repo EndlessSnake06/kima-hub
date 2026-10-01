@@ -30,7 +30,7 @@ export function MoodMixChoice() {
 
     if (loadFailed) {
         return (
-            <p className="text-sm text-red-400">
+            <p className="text-sm text-danger-light">
                 Couldn&rsquo;t load your mood mix. Closing this keeps it as it is.
             </p>
         );
@@ -145,7 +145,7 @@ export function MoodMixChoice() {
                     </>
                 )}
             </div>
-            {error && <p className="text-sm text-red-400" data-testid="moodmix-error">{error}</p>}
+            {error && <p className="text-sm text-danger-light" data-testid="moodmix-error">{error}</p>}
         </div>
     );
 }

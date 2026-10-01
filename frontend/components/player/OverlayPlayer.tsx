@@ -301,7 +301,7 @@ export function OverlayPlayer() {
                             className={cn(
                                 "w-16 h-16 rounded-full flex items-center justify-center hover:scale-105 transition-all",
                                 audioError
-                                    ? "bg-red-500 text-black hover:bg-red-400"
+                                    ? "bg-danger text-black hover:bg-danger-light"
                                     : isBuffering
                                     ? "bg-brand/80 text-black"
                                     : "bg-brand text-black"

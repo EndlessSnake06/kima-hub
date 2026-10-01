@@ -212,7 +212,7 @@ export function SubsonicSection() {
                                 <button
                                     onClick={() => handleRevoke(key.id)}
                                     disabled={revoking === key.id}
-                                    className="text-xs tabular-nums text-red-400 hover:text-red-300 transition-colors shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="text-xs tabular-nums text-danger-light hover:brightness-125 transition-colors shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     {revoking === key.id ? "Revoking..." : "Revoke"}
                                 </button>

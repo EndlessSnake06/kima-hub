@@ -191,7 +191,7 @@ export function AccountSection() {
                         twoFactorEnabled ? (
                             <button
                                 onClick={() => setShowDisableFlow(true)}
-                                className="text-xs text-red-400 hover:text-red-300 transition-colors"
+                                className="text-xs text-danger-light hover:brightness-125 transition-colors"
                             >
                                 Disable
                             </button>
@@ -283,8 +283,8 @@ export function AccountSection() {
                             <button
                                 onClick={handleDisable2FA}
                                 disabled={!disablePassword || disableToken.length !== 6}
-                                className="px-4 py-2 bg-red-500 text-white text-xs font-semibold rounded-lg
-                                    hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                className="px-4 py-2 bg-danger text-white text-xs font-semibold rounded-lg
+                                    hover:bg-danger/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             >
                                 Disable 2FA
                             </button>
@@ -307,8 +307,8 @@ export function AccountSection() {
             {/* Recovery Codes Modal */}
             <Modal isOpen={showRecoveryCodes} onClose={closeRecoveryCodes} title="Recovery Codes">
                 <div className="space-y-4">
-                    <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
-                        <p className="text-xs text-red-300">
+                    <div className="bg-danger/10 border border-danger/30 rounded-lg p-3">
+                        <p className="text-xs text-danger-light">
                             Save these codes! You&apos;ll need them if you lose your authenticator.
                         </p>
                     </div>

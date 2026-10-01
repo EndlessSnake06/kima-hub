@@ -104,7 +104,7 @@ export function PodcastActionBar({
                     {!showDeleteConfirm ? (
                         <button
                             onClick={() => onShowDeleteConfirm(true)}
-                            className="flex items-center gap-2 px-3 py-2 rounded-lg text-red-400/60 hover:text-red-400 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 transition-all text-xs tabular-nums"
+                            className="flex items-center gap-2 px-3 py-2 rounded-lg text-danger-light/60 hover:brightness-125 hover:bg-danger/10 border border-transparent hover:border-danger/20 transition-all text-xs tabular-nums"
                         >
                             <Trash2 className="w-3.5 h-3.5" />
                             <span className="hidden md:inline">Remove</span>
@@ -116,7 +116,7 @@ export function PodcastActionBar({
                             </span>
                             <button
                                 onClick={onRemove}
-                                className="px-3 py-2 rounded-lg text-xs font-semibold bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/20 transition-all"
+                                className="px-3 py-2 rounded-lg text-xs font-semibold bg-danger/20 text-danger-light hover:bg-danger/30 border border-danger/20 transition-all"
                             >
                                 Confirm
                             </button>

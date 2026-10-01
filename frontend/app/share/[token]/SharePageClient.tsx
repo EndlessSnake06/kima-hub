@@ -339,7 +339,7 @@ export default function SharePageClient() {
                     {tracks.length > 0 && (
                         <div className="mb-8">
                             {playbackError && (
-                                <p className="text-xs text-red-400/70 text-center mb-3">
+                                <p className="text-xs text-danger-light/70 text-center mb-3">
                                     {playbackError}
                                 </p>
                             )}

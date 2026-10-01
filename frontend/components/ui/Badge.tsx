@@ -13,7 +13,7 @@ const Badge = memo(forwardRef<HTMLSpanElement, BadgeProps>(
     const variantStyles = {
       success: "bg-success/10 text-success ring-success/20",
       warning: "bg-brand/10 text-brand ring-brand/20",
-      error: "bg-red-500/10 text-red-400 ring-red-500/20",
+      error: "bg-danger/10 text-danger-light ring-danger/20",
       info: "bg-white/10 text-[var(--text-secondary)] ring-white/15",
       ai: "bg-type-track/20 text-white ring-type-track/40",
       default: "bg-[var(--bg-hover)] text-[var(--text-secondary)] ring-[#262626]",

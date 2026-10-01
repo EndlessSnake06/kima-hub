@@ -304,7 +304,7 @@ export default function PodcastsPage() {
                                                         <X className="w-4 h-4" />
                                                     </button>
                                                 </div>
-                                                {rssError && <p className="text-red-400 text-xs mt-1">{rssError}</p>}
+                                                {rssError && <p className="text-danger-light text-xs mt-1">{rssError}</p>}
                                             </div>
                                         </div>
                                     ) : (

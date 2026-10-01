@@ -216,7 +216,7 @@ export function DiscoverSettingsTab({
                     <button
                         onClick={handleClearPlaylist}
                         disabled={isClearing}
-                        className="w-full flex items-center justify-center gap-3 px-4 py-3 border-2 border-red-500/30 hover:border-red-500 hover:bg-red-500/10 text-red-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold text-xs"
+                        className="w-full flex items-center justify-center gap-3 px-4 py-3 border-2 border-danger/30 hover:border-danger hover:bg-danger/10 text-danger-light transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold text-xs"
                     >
                         {isClearing ? (
                             <>

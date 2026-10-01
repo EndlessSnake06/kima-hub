@@ -264,7 +264,7 @@ export default function AudiobooksPage() {
     if (error && isConfigured) {
         return (
             <div className="px-4 md:px-8 pt-8 max-w-[1800px] mx-auto">
-                <div role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 p-6 max-w-xl">
+                <div role="alert" className="rounded-lg border border-danger/30 bg-danger/10 p-6 max-w-xl">
                     <h1 className="text-lg font-semibold text-[var(--text-primary)]">
                         Couldn&apos;t load audiobooks
                     </h1>

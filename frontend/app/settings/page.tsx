@@ -151,7 +151,7 @@ export default function SettingsPage() {
     if (loadError) {
         return (
             <SettingsLayout sidebarItems={sidebarItems} isAdmin={isAdmin}>
-                <div role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 p-6">
+                <div role="alert" className="rounded-lg border border-danger/30 bg-danger/10 p-6">
                     <h2 className="text-lg font-semibold text-[var(--text-primary)]">
                         Settings could not be loaded
                     </h2>

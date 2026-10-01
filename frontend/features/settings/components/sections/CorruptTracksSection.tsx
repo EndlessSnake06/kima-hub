@@ -93,7 +93,7 @@ export function CorruptTracksSection() {
                         <button
                             onClick={() => setShowConfirm(true)}
                             disabled={deleteMutation.isPending}
-                            className="flex items-center gap-2 px-4 py-2 text-xs tabular-nums text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-lg transition-colors disabled:opacity-50"
+                            className="flex items-center gap-2 px-4 py-2 text-xs tabular-nums text-danger-light hover:brightness-125 bg-danger/10 hover:bg-danger/20 border border-danger/20 rounded-lg transition-colors disabled:opacity-50"
                         >
                             {deleteMutation.isPending ? (
                                 <Loader2 className="w-3.5 h-3.5 animate-spin" />

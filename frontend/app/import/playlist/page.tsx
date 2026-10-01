@@ -630,8 +630,8 @@ function ImportPlaylistPageContent() {
                                 </div>
                             </div>
                             {preview.summary.notFound > 0 ? (
-                                <div className="animate-rise text-center py-3 bg-red-500/10 rounded-lg" style={{ "--i": 3 } as CSSProperties}>
-                                    <div className="text-xl font-bold text-red-400">
+                                <div className="animate-rise text-center py-3 bg-danger/10 rounded-lg" style={{ "--i": 3 } as CSSProperties}>
+                                    <div className="text-xl font-bold text-danger-light">
                                         {preview.summary.notFound}
                                     </div>
                                     <div className="text-xs text-[var(--text-muted)]">
@@ -845,7 +845,7 @@ function ImportPlaylistPageContent() {
                                     className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/5 transition-colors"
                                 >
                                     <div className="flex items-center gap-2">
-                                        <X className="w-4 h-4 text-red-400" />
+                                        <X className="w-4 h-4 text-danger-light" />
                                         <span className="text-sm font-medium text-white">
                                             {preview.summary.notFound} songs not
                                             found
@@ -1029,7 +1029,7 @@ function ImportPlaylistPageContent() {
                             className={
                                 "w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 " +
                                 (importJob.status === "failed"
-                                    ? "bg-red-500"
+                                    ? "bg-danger"
                                     : importJob.status === "cancelled"
                                     ? "bg-warning"
                                     : "bg-success")

@@ -177,7 +177,7 @@ export function UserManagementSection() {
                                 {currentUser?.id !== user.id && (
                                     <button
                                         onClick={() => setConfirmDelete(user.id)}
-                                        className="p-2 text-[var(--text-muted)] hover:text-red-400 transition-colors"
+                                        className="p-2 text-[var(--text-muted)] hover:text-danger-light transition-colors"
                                     >
                                         <Trash2 className="w-4 h-4" />
                                     </button>
@@ -212,7 +212,7 @@ export function UserManagementSection() {
                         </button>
                         <button
                             onClick={() => confirmDelete && handleDelete(confirmDelete)}
-                            className="px-4 py-2 text-xs font-semibold bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                            className="px-4 py-2 text-xs font-semibold bg-danger text-white rounded-lg hover:bg-danger/90 transition-colors"
                         >
                             Delete
                         </button>

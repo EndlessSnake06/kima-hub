@@ -620,7 +620,7 @@ export default function PlaylistDetailPage() {
                             {isMissing ? (
                                 <FileX className="w-4 h-4 text-warning" />
                             ) : (
-                                <AlertCircle className="w-4 h-4 text-red-400" />
+                                <AlertCircle className="w-4 h-4 text-danger-light" />
                             )}
                         </div>
 
@@ -657,7 +657,7 @@ export default function PlaylistDetailPage() {
                         <div className="flex items-center justify-end gap-1">
                             <span className={cn(
                                 "text-xs tabular-nums mr-2 hidden sm:inline",
-                                isMissing ? "text-warning" : "text-red-400"
+                                isMissing ? "text-warning" : "text-danger-light"
                             )}>
                                 {isMissing ? "Missing from disk" : "Failed"}
                             </span>
@@ -690,7 +690,7 @@ export default function PlaylistDetailPage() {
                                         handleRemovePendingTrack(pending.id);
                                     }}
                                     disabled={isRemoving}
-                                    className="p-1.5 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-red-400 transition-all"
+                                    className="p-1.5 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-danger-light transition-all"
                                     title="Remove from playlist"
                                 >
                                     {isRemoving ? (
@@ -880,7 +880,7 @@ export default function PlaylistDetailPage() {
                                     <ChevronDown className="w-4 h-4" />
                                 </button>
                                 <button
-                                    className="p-1.5 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-red-400 transition-all"
+                                    className="p-1.5 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-danger-light transition-all"
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         handleRemoveTrack(playlistItem.track.id);
@@ -1200,7 +1200,7 @@ export default function PlaylistDetailPage() {
                                                 toast.error("Failed to revoke share link");
                                             }
                                         }}
-                                        className="text-micro text-[var(--text-muted)] hover:text-red-400/70 transition-colors mt-1"
+                                        className="text-micro text-[var(--text-muted)] hover:text-danger-light/70 transition-colors mt-1"
                                     >
                                         Revoke link
                                     </button>
@@ -1255,7 +1255,7 @@ export default function PlaylistDetailPage() {
                     {playlist.isOwner && (
                         <button
                             onClick={() => setShowDeleteConfirm(true)}
-                            className="h-8 w-8 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-red-400 transition-all"
+                            className="h-8 w-8 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-danger-light transition-all"
                             title="Delete Playlist"
                         >
                             <Trash2 className="w-5 h-5" />
@@ -1269,10 +1269,10 @@ export default function PlaylistDetailPage() {
                 <div className="max-w-[1800px] mx-auto">
                     {/* Pending tracks notice */}
                     {playlist.pendingCount > 0 && (
-                        <div className="mb-4 px-4 py-2 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center justify-between">
+                        <div className="mb-4 px-4 py-2 bg-danger/10 border border-danger/20 rounded-lg flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                                <AlertCircle className="w-4 h-4 text-red-400" />
-                                <span className="text-xs tabular-nums text-red-300">
+                                <AlertCircle className="w-4 h-4 text-danger-light" />
+                                <span className="text-xs tabular-nums text-danger-light">
                                     {playlist.pendingCount} track
                                     {playlist.pendingCount !== 1 ? "s" : ""} failed to
                                     download
@@ -1281,7 +1281,7 @@ export default function PlaylistDetailPage() {
                             <button
                                 onClick={handleRetryAllPending}
                                 disabled={retryingAll}
-                                className="flex items-center gap-1.5 px-3 py-1 text-xs tabular-nums text-red-300 hover:text-red-200 hover:bg-red-500/20 rounded transition-colors disabled:opacity-50"
+                                className="flex items-center gap-1.5 px-3 py-1 text-xs tabular-nums text-danger-light hover:brightness-125 hover:bg-danger/20 rounded transition-colors disabled:opacity-50"
                             >
                                 <RefreshCw className={cn("w-3 h-3", retryingAll && "animate-spin")} />
                                 Retry All

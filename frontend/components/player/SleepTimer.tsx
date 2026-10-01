@@ -140,7 +140,7 @@ export function SleepTimer({ size = "md" }: SleepTimerProps) {
                                     clearTimer();
                                     setIsOpen(false);
                                 }}
-                                className="w-full text-center text-sm text-red-400 hover:text-red-300 py-1 transition-colors"
+                                className="w-full text-center text-sm text-danger-light hover:brightness-125 py-1 transition-colors"
                             >
                                 Cancel Timer
                             </button>

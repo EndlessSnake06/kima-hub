@@ -238,8 +238,8 @@ export default function SyncPage() {
 
                             {/* Error state */}
                             {error && (
-                                <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
-                                    <p className="text-red-400 text-sm">
+                                <div className="p-4 bg-danger/10 border border-danger/20 rounded-lg">
+                                    <p className="text-danger-light text-sm">
                                         {error}
                                     </p>
                                 </div>

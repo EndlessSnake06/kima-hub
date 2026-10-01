@@ -124,7 +124,7 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
     const styles = {
         success:
             "bg-gradient-to-br from-[#141414] to-[#0f0f0f] border-success/50 text-success",
-        error: "bg-gradient-to-br from-[#141414] to-[#0f0f0f] border-red-500/50 text-red-500",
+        error: "bg-gradient-to-br from-[#141414] to-[#0f0f0f] border-danger/50 text-danger",
         warning:
             "bg-gradient-to-br from-[#141414] to-[#0f0f0f] border-warning/50 text-warning",
         info: "bg-gradient-to-br from-[#141414] to-[#0f0f0f] border-white/20 text-[var(--text-primary)]",

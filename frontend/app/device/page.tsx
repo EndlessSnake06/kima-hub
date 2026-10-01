@@ -193,7 +193,7 @@ export default function DeviceLinkPage() {
                         </h2>
 
                         {error && (
-                            <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm flex items-center gap-2">
+                            <div className="mb-4 p-3 bg-danger/10 border border-danger/20 rounded-lg text-danger-light text-sm flex items-center gap-2">
                                 <AlertCircle className="w-4 h-4" />
                                 {error}
                             </div>
@@ -241,8 +241,8 @@ export default function DeviceLinkPage() {
                                     </div>
                                 ) : timeRemaining <= 0 ? (
                                     <div className="py-8">
-                                        <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-500/20 flex items-center justify-center">
-                                            <Clock className="w-8 h-8 text-red-400" />
+                                        <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-danger/20 flex items-center justify-center">
+                                            <Clock className="w-8 h-8 text-danger-light" />
                                         </div>
                                         <h3 className="text-xl font-bold text-white mb-2">
                                             Code Expired
@@ -349,7 +349,7 @@ export default function DeviceLinkPage() {
                                         </div>
                                         <button
                                             onClick={() => revokeDevice(device.id)}
-                                            className="p-2 min-h-[44px] min-w-[44px] text-[var(--text-secondary)] hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all flex items-center justify-center"
+                                            className="p-2 min-h-[44px] min-w-[44px] text-[var(--text-secondary)] hover:text-danger-light hover:bg-danger/10 rounded-lg transition-all flex items-center justify-center"
                                             aria-label={`Revoke ${device.name}`}
                                         >
                                             <Trash2 className="w-4 h-4" />

@@ -56,7 +56,7 @@ export function InlineStatus({
             className={cn(
                 "inline-flex items-center gap-1.5 text-sm",
                 status === "success" && "text-success",
-                status === "error" && "text-red-400",
+                status === "error" && "text-danger-light",
                 status === "loading" && "text-[var(--text-secondary)]",
                 className
             )}

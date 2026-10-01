@@ -412,7 +412,7 @@ export function TopBar() {
                         </Link>
                         <button
                             onClick={handleLogout}
-                            className="w-11 h-11 rounded-full flex items-center justify-center transition-all duration-200 text-red-400 hover:text-red-300"
+                            className="w-11 h-11 rounded-full flex items-center justify-center transition-all duration-200 text-danger-light hover:brightness-125"
                             aria-label="Logout"
                             title="Logout"
                         >

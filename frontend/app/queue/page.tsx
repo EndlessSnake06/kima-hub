@@ -286,7 +286,7 @@ export default function QueuePage() {
                                                             queueIndex
                                                         )
                                                     }
-                                                    className="p-2.5 min-h-[44px] min-w-[44px] hover:bg-red-500/10 rounded-md transition-colors text-red-400 flex items-center justify-center"
+                                                    className="p-2.5 min-h-[44px] min-w-[44px] hover:bg-danger/10 rounded-md transition-colors text-danger-light flex items-center justify-center"
                                                     aria-label={`Remove ${track.displayTitle ?? track.title} from queue`}
                                                 >
                                                     <X className="w-4 h-4" />

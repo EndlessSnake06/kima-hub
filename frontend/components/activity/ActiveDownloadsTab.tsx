@@ -78,7 +78,7 @@ export function ActiveDownloadsTab() {
                 </div>
                 <button
                     onClick={handleCancelAll}
-                    className="text-micro font-semibold text-[var(--text-muted)] hover:text-red-400 transition-colors"
+                    className="text-micro font-semibold text-[var(--text-muted)] hover:text-danger-light transition-colors"
                     title="Cancel all downloads"
                 >
                     CANCEL
@@ -171,7 +171,7 @@ export function ActiveDownloadsTab() {
                                 className="p-1 hover:bg-white/10 transition-colors shrink-0"
                                 title="Cancel download"
                             >
-                                <X className="w-3 h-3 text-[var(--text-muted)] hover:text-red-400" />
+                                <X className="w-3 h-3 text-[var(--text-muted)] hover:text-danger-light" />
                             </button>
                         </div>
                     </div>

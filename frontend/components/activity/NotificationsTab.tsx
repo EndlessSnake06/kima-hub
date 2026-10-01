@@ -28,7 +28,7 @@ export function NotificationsTab() {
             case "download_complete":
                 return <CheckCircle className="w-4 h-4 text-success" />;
             case "download_failed":
-                return <AlertCircle className="w-4 h-4 text-red-400" />;
+                return <AlertCircle className="w-4 h-4 text-danger-light" />;
             case "playlist_ready":
             case "import_complete":
                 return <ListMusic className="w-4 h-4 text-brand" />;
@@ -164,7 +164,7 @@ export function NotificationsTab() {
                                         title="Dismiss"
                                         aria-label="Dismiss"
                                     >
-                                        <Trash2 className="w-3 h-3 text-[var(--text-muted)] hover:text-red-400" />
+                                        <Trash2 className="w-3 h-3 text-[var(--text-muted)] hover:text-danger-light" />
                                     </button>
                                 </div>
                             </div>

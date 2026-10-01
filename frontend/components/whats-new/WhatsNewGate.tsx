@@ -135,7 +135,7 @@ export function WhatsNewGate() {
                                 Rebuild started. It runs in the background — you can close this and keep listening.
                             </p>
                         ) : runError && reembed?.key === item.key ? (
-                            <p className="text-sm text-red-400">{runError}</p>
+                            <p className="text-sm text-danger-light">{runError}</p>
                         ) : (
                             <button
                                 type="button"

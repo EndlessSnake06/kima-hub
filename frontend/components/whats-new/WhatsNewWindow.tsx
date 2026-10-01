@@ -249,7 +249,7 @@ export function WhatsNewWindow({
                 <footer className="shrink-0 px-6 py-4 border-t border-white/10 flex items-center justify-between gap-4">
                     <div className="flex flex-col gap-1 min-w-0">
                         {closeError && (
-                            <p className="text-xs text-red-400" data-testid="whatsnew-close-error" role="alert">
+                            <p className="text-xs text-danger-light" data-testid="whatsnew-close-error" role="alert">
                                 {closeError}
                             </p>
                         )}

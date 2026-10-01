@@ -75,9 +75,9 @@ export function ConfirmDialog({
 
     const variantStyles = {
         danger: {
-            icon: "text-red-500",
-            iconBg: "bg-red-500/10",
-            confirmButton: "bg-red-500 hover:bg-red-600 text-white",
+            icon: "text-danger",
+            iconBg: "bg-danger/10",
+            confirmButton: "bg-danger hover:bg-danger/90 text-white",
         },
         warning: {
             icon: "text-warning",

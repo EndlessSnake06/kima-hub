@@ -111,7 +111,7 @@ export function HistoryTab() {
                         </span>
                     )}
                     {failed.length > 0 && (
-                        <span className="flex items-center gap-1.5 text-xs tabular-nums font-semibold text-red-400">
+                        <span className="flex items-center gap-1.5 text-xs tabular-nums font-semibold text-danger-light">
                             <XCircle className="w-3 h-3" />
                             {String(failed.length).padStart(2, "0")}
                         </span>
@@ -130,8 +130,8 @@ export function HistoryTab() {
                 {/* Failed section first */}
                 {failed.length > 0 && (
                     <div>
-                        <div className="px-3 py-2 border-b-2 border-red-400/20 bg-red-400/5">
-                            <span className="text-xs tabular-nums font-semibold text-red-400">
+                        <div className="px-3 py-2 border-b-2 border-danger-light/20 bg-danger-light/5">
+                            <span className="text-xs tabular-nums font-semibold text-danger-light">
                                 FAILED ({String(failed.length).padStart(2, "0")})
                             </span>
                         </div>
@@ -192,7 +192,7 @@ function HistoryItem({
         <div className={cn(
             "px-3 py-3 border-b border-white/5 transition-colors group border-l-2",
             isCompleted && "border-success/30 hover:bg-success/5",
-            isFailed && "border-red-400/30 hover:bg-red-400/5"
+            isFailed && "border-danger-light/30 hover:bg-danger-light/5"
         )}>
             <div className="flex items-start gap-3">
                 {/* Index number */}
@@ -207,7 +207,7 @@ function HistoryItem({
                     {isCompleted ? (
                         <CheckCircle className="w-4 h-4 text-success" />
                     ) : (
-                        <XCircle className="w-4 h-4 text-red-400" />
+                        <XCircle className="w-4 h-4 text-danger-light" />
                     )}
                 </div>
 
@@ -231,7 +231,7 @@ function HistoryItem({
                         </span>
                     </div>
                     {item.error && (
-                        <p className="text-micro tabular-nums text-red-400/70 mt-1 line-clamp-2">
+                        <p className="text-micro tabular-nums text-danger-light/70 mt-1 line-clamp-2">
                             {item.error}
                         </p>
                     )}
@@ -260,7 +260,7 @@ function HistoryItem({
                         className="p-1 hover:bg-white/10 transition-colors"
                         title="Remove from history"
                     >
-                        <Trash2 className="w-3 h-3 text-[var(--text-muted)] hover:text-red-400" />
+                        <Trash2 className="w-3 h-3 text-[var(--text-muted)] hover:text-danger-light" />
                     </button>
                 </div>
             </div>

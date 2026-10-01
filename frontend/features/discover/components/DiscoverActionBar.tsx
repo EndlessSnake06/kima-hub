@@ -47,7 +47,7 @@ export function DiscoverActionBar({
                 {isGenerating && onCancelGeneration && (
                     <button
                         onClick={onCancelGeneration}
-                        className="h-12 px-4 flex items-center gap-2 border-2 border-red-500/30 hover:border-red-500 hover:bg-red-500/10 text-red-400 rounded-lg transition-all duration-300 text-sm font-bold"
+                        className="h-12 px-4 flex items-center gap-2 border-2 border-danger/30 hover:border-danger hover:bg-danger/10 text-danger-light rounded-lg transition-all duration-300 text-sm font-bold"
                     >
                         <X className="w-4 h-4" />
                         Cancel
