@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import {
@@ -18,6 +18,7 @@ import { useToast } from "@/lib/toast-context";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { Button } from "@/components/ui/Button";
+import { useDialog } from "@/hooks/useDialog";
 
 interface PlaylistPreview {
     id: string;
@@ -55,6 +56,9 @@ export default function BrowsePlaylistsPage() {
     const [isSearching, setIsSearching] = useState(false);
     const [hasSearched, setHasSearched] = useState(false);
     const [showUrlModal, setShowUrlModal] = useState(false);
+    const urlDialogRef = useRef<HTMLDivElement>(null);
+    const closeUrlModal = useCallback(() => setShowUrlModal(false), []);
+    useDialog(urlDialogRef, showUrlModal, closeUrlModal);
     const [urlInput, setUrlInput] = useState("");
     const [isParsing, setIsParsing] = useState(false);
     const [loadError, setLoadError] = useState<string | null>(null);
@@ -533,6 +537,10 @@ export default function BrowsePlaylistsPage() {
                     onClick={() => setShowUrlModal(false)}
                 >
                     <div
+                        ref={urlDialogRef}
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="url-import-title"
                         className="bg-[var(--bg-secondary)] rounded-lg max-w-lg w-full border border-white/10 animate-in zoom-in-95 duration-200"
                         onClick={(e) => e.stopPropagation()}
                     >
@@ -550,7 +558,7 @@ export default function BrowsePlaylistsPage() {
                                 <div className="w-8 h-8 rounded-lg bg-type-track flex items-center justify-center">
                                     <Link2 className="w-4 h-4 text-white" />
                                 </div>
-                                <h3 className="text-lg font-bold text-white tracking-tight">
+                                <h3 id="url-import-title" className="text-lg font-bold text-white tracking-tight">
                                     Import Playlist
                                 </h3>
                             </div>

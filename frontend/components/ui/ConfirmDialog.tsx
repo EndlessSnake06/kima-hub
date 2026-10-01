@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 import { AlertTriangle, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/cn";
+import { useDialog } from "@/hooks/useDialog";
 
 interface ConfirmDialogProps {
     isOpen: boolean;
@@ -29,49 +30,7 @@ export function ConfirmDialog({
     const cancelRef = useRef<HTMLButtonElement>(null);
     const dialogRef = useRef<HTMLDivElement>(null);
 
-    // Focus the cancel button when opened
-    useEffect(() => {
-        if (isOpen) {
-            cancelRef.current?.focus();
-        }
-    }, [isOpen]);
-
-    // Close on Escape; trap focus within the dialog
-    useEffect(() => {
-        if (!isOpen) return;
-
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === "Escape") {
-                e.preventDefault();
-                onClose();
-                return;
-            }
-            if (e.key === "Tab" && dialogRef.current) {
-                const focusable = Array.from(
-                    dialogRef.current.querySelectorAll<HTMLElement>(
-                        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-                    )
-                ).filter((el) => !el.hasAttribute("disabled"));
-                if (focusable.length === 0) return;
-                const first = focusable[0];
-                const last = focusable[focusable.length - 1];
-                if (e.shiftKey) {
-                    if (document.activeElement === first) {
-                        e.preventDefault();
-                        last.focus();
-                    }
-                } else {
-                    if (document.activeElement === last) {
-                        e.preventDefault();
-                        first.focus();
-                    }
-                }
-            }
-        };
-
-        document.addEventListener("keydown", handleKeyDown);
-        return () => document.removeEventListener("keydown", handleKeyDown);
-    }, [isOpen, onClose]);
+    useDialog(dialogRef, isOpen, onClose, cancelRef);
 
     if (!isOpen) return null;
 
@@ -114,7 +73,6 @@ export function ConfirmDialog({
                 className="bg-[#121212] rounded-xl max-w-md w-full overflow-hidden border border-white/10 animate-pop"
                 onClick={(e) => e.stopPropagation()}
             >
-                {/* Header */}
                 <div className="flex items-start gap-4 p-6 border-b border-white/10">
                     <div
                         className={`w-12 h-12 rounded-full ${styles.iconBg} flex items-center justify-center flex-shrink-0`}
@@ -136,7 +94,6 @@ export function ConfirmDialog({
                     </button>
                 </div>
 
-                {/* Actions */}
                 <div className="flex gap-3 p-6 bg-[var(--bg-primary)]/50">
                     <Button
                         variant="secondary"

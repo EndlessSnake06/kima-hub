@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Edit, X, Save } from "lucide-react";
 import { api } from "@/lib/api";
 import { useToast } from "@/lib/toast-context";
 import { GradientSpinner } from "./ui/GradientSpinner";
 import Image from "next/image";
 import { Button } from "@/components/ui/Button";
+import { useDialog } from "@/hooks/useDialog";
 
 interface MetadataEditorProps {
     type: "artist" | "album" | "track";
@@ -61,6 +62,9 @@ export function MetadataEditor({
         setIsOpen(false);
         setFormData(currentData);
     };
+
+    const dialogRef = useRef<HTMLDivElement>(null);
+    useDialog(dialogRef, isOpen, handleClose);
 
     const handleReset = async () => {
         if (
@@ -132,19 +136,29 @@ export function MetadataEditor({
             {/* Pencil Icon Button */}
             <button
                 onClick={handleOpen}
-                className="p-2 rounded-full bg-black/40 hover:bg-black/60 transition-all opacity-0 group-hover:opacity-100"
+                className="p-2 rounded-full bg-black/40 hover:bg-black/60 transition-all opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                 title={`Edit ${type} metadata`}
+                aria-label={`Edit ${type} metadata`}
             >
                 <Edit className="w-4 h-4 text-white" />
             </button>
 
             {/* Modal */}
             {isOpen && (
-                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-(--z-modal) p-4">
-                    <div className="bg-[#121212] rounded-lg max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-                        {/* Header */}
+                <div
+                    className="fixed inset-0 bg-black/80 flex items-center justify-center z-(--z-modal) p-4"
+                    onClick={handleClose}
+                >
+                    <div
+                        ref={dialogRef}
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="metadata-editor-title"
+                        onClick={(e) => e.stopPropagation()}
+                        className="bg-[#121212] rounded-lg max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+                    >
                         <div className="flex items-center justify-between p-6 border-b border-white/10">
-                            <h2 className="text-2xl font-bold text-white">
+                            <h2 id="metadata-editor-title" className="text-2xl font-bold text-white">
                                 Edit{" "}
                                 {type === "artist"
                                     ? "Artist"
@@ -155,6 +169,7 @@ export function MetadataEditor({
                             </h2>
                             <button
                                 onClick={handleClose}
+                                aria-label="Close"
                                 className="p-2 hover:bg-white/10 rounded-full transition-all"
                             >
                                 <X className="w-6 h-6 text-white" />

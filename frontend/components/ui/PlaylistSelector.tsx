@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { api } from "@/lib/api";
 import { X, Plus, Music2, Check } from "lucide-react";
 import { GradientSpinner } from "./GradientSpinner";
 import { Button } from "@/components/ui/Button";
+import { useDialog } from "@/hooks/useDialog";
 
 interface PlaylistSelectorProps {
     isOpen: boolean;
@@ -61,6 +62,9 @@ export function PlaylistSelector({
             setIsLoading(false);
         }
     };
+    const dialogRef = useRef<HTMLDivElement>(null);
+    useDialog(dialogRef, isOpen, onClose);
+
     useEffect(() => {
         if (!isOpen) return;
         let cancelled = false;
@@ -162,15 +166,20 @@ export function PlaylistSelector({
             onClick={onClose}
         >
             <div
-                className="bg-linear-to-b from-[#121212] to-[#121212] rounded-xl max-w-md w-full max-h-[80vh] overflow-hidden flex flex-col border border-white/10 animate-pop"
+                ref={dialogRef}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="playlist-selector-title"
+                className="bg-[#121212] rounded-xl max-w-md w-full max-h-[80vh] overflow-hidden flex flex-col border border-white/10 animate-pop"
                 onClick={(e) => e.stopPropagation()}
             >
                 <div className="flex items-center justify-between p-6 border-b border-white/10">
-                    <h2 className="text-2xl font-bold text-white">
+                    <h2 id="playlist-selector-title" className="text-2xl font-bold text-white">
                         Add to Playlist
                     </h2>
                     <button
                         onClick={onClose}
+                        aria-label="Close"
                         className="p-2 hover:bg-white/10 rounded-full transition-colors"
                     >
                         <X className="w-5 h-5 text-[var(--text-secondary)]" />
