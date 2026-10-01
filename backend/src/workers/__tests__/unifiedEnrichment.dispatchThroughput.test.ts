@@ -184,10 +184,11 @@ async function seedLibrary(): Promise<void> {
     });
 }
 
-async function seedTrack(n: number, stages: Array<[string, string]>): Promise<string> {
-    const trackId = id(`t${n}`);
-    await prisma.track.create({
-        data: {
+/** Bulk inserts: the caps are hundreds of tracks, too many for a row-by-row seed. */
+async function seedTracks(count: number, stages: Array<[string, string]>): Promise<void> {
+    const trackIds = Array.from({ length: count }, (_, n) => id(`t${n}`));
+    await prisma.track.createMany({
+        data: trackIds.map((trackId, n) => ({
             id: trackId,
             albumId: id("alb"),
             title: `Track ${n}`,
@@ -198,23 +199,14 @@ async function seedTrack(n: number, stages: Array<[string, string]>): Promise<st
             fileSize: 1000,
             analysisStatus: "pending",
             enrichmentTags: [],
-        },
+        })),
     });
     for (const [stage, status] of stages) {
         await prisma.$executeRawUnsafe(
             `INSERT INTO "TrackStage" (id, "trackId", stage, status, source, attempt, retryable, evidence)
-             VALUES ($1, $2, $3, $4, 'test', 0, true, '{}'::jsonb)
-             ON CONFLICT ("trackId", stage) DO UPDATE SET status = EXCLUDED.status`,
-            `${trackId}__${stage}`, trackId, stage, status,
+             SELECT t || '__' || $2, t, $2, $3, 'test', 0, true, '{}'::jsonb FROM unnest($1::text[]) AS t`,
+            trackIds, stage, status,
         );
-    }
-    return trackId;
-}
-
-/** seedTracks — bulk, because the cap figures are library-scale. */
-async function seedTracks(count: number, stages: Array<[string, string]>): Promise<void> {
-    for (let i = 0; i < count; i++) {
-        await seedTrack(i, stages);
     }
 }
 
