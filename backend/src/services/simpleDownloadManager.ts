@@ -1330,62 +1330,55 @@ class SimpleDownloadManager {
     }
 
     /**
-     * Mark a job as exhausted (all releases and same-artist albums tried)
-     *
-     * IMPORTANT: Before failing, check if another job for the same album already succeeded.
-     * This handles race conditions where duplicates exist and one succeeds.
+     * A job is completed when another job already brought in the same album,
+     * matched by release-group id or by exact artist and album title.
      */
+    private async completeFromDuplicate(job: any): Promise<boolean> {
+        const meta = (job.metadata as any) ?? {};
+        const artistName = String(meta.artistName ?? "").toLowerCase().trim();
+        const albumTitle = String(meta.albumTitle ?? "").toLowerCase().trim();
+        const targetMbid = job.targetMbid ?? null;
+        if (!targetMbid && !(artistName && albumTitle)) return false;
+
+        const [duplicate] = await prisma.$queryRaw<Array<{ id: string }>>`
+            SELECT id FROM "DownloadJob"
+            WHERE id <> ${job.id}
+              AND status = 'completed'
+              AND ("targetMbid" = ${targetMbid}
+                OR (${artistName} <> '' AND ${albumTitle} <> ''
+                  AND lower(trim(metadata->>'artistName')) = ${artistName}
+                  AND lower(trim(metadata->>'albumTitle')) = ${albumTitle}))
+            LIMIT 1
+        `;
+        if (!duplicate) return false;
+
+        logger.debug(`   Completed by duplicate job ${duplicate.id}`);
+        await prisma.downloadJob.update({
+            where: { id: job.id },
+            data: {
+                status: "completed",
+                completedAt: new Date(),
+                error: null,
+                metadata: { ...meta, mergedWithJob: duplicate.id },
+            },
+        });
+        eventBus.emit({
+            type: "download:complete",
+            userId: job.userId,
+            payload: { jobId: job.id, subject: job.subject },
+        });
+        return true;
+    }
+
+    /** Fails a job that has run out of releases and same-artist albums. */
     private async markJobExhausted(
         job: any,
         reason: string
     ): Promise<{ retried: boolean; failed: boolean; jobId?: string }> {
         logger.debug(`[RETRY] Job fully exhausted: ${job.id}`);
 
-        const meta = job.metadata as any;
-        const artistName = meta?.artistName?.toLowerCase().trim() || "";
-        const albumTitle = meta?.albumTitle?.toLowerCase().trim() || "";
-
-        // Before marking as failed, check if another job for the same album already SUCCEEDED
-        // This handles duplicate job scenarios
-        if (artistName && albumTitle) {
-            const completedDuplicate = await prisma.downloadJob.findFirst({
-                where: {
-                    id: { not: job.id },
-                    status: "completed",
-                },
-            });
-
-            if (completedDuplicate) {
-                const dupMeta = completedDuplicate.metadata as any;
-                const dupArtist =
-                    dupMeta?.artistName?.toLowerCase().trim() || "";
-                const dupAlbum =
-                    dupMeta?.albumTitle?.toLowerCase().trim() || "";
-
-                if (dupArtist === artistName && dupAlbum === albumTitle) {
-                    logger.debug(
-                        `   Found completed duplicate job ${completedDuplicate.id} - marking this as completed too`
-                    );
-                    await prisma.downloadJob.update({
-                        where: { id: job.id },
-                        data: {
-                            status: "completed",
-                            completedAt: new Date(),
-                            error: null,
-                            metadata: {
-                                ...meta,
-                                mergedWithJob: completedDuplicate.id,
-                            },
-                        },
-                    });
-                    eventBus.emit({
-                        type: "download:complete",
-                        userId: job.userId,
-                        payload: { jobId: job.id, subject: job.subject },
-                    });
-                    return { retried: false, failed: false, jobId: job.id };
-                }
-            }
+        if (await this.completeFromDuplicate(job)) {
+            return { retried: false, failed: false, jobId: job.id };
         }
 
         await prisma.downloadJob.update({
@@ -1434,7 +1427,7 @@ class SimpleDownloadManager {
                     where: { id: job.id },
                     data: {
                         metadata: {
-                            ...meta,
+                            ...(job.metadata as any),
                             notificationSent: true,
                         },
                     },
@@ -1679,51 +1672,7 @@ class SimpleDownloadManager {
                 "CLEANUP",
                 `Marking stale: ${job.subject} - ${errorMessage}`
             );
-            const artistName = metadata?.artistName?.toLowerCase().trim() || "";
-            const albumTitle = metadata?.albumTitle?.toLowerCase().trim() || "";
-
-            // FIRST: Check if a COMPLETED job already exists for this album
-            // This handles the case where a duplicate job succeeded while this one was processing
-            if (artistName && albumTitle) {
-                const completedDuplicate = await prisma.downloadJob.findFirst({
-                    where: {
-                        id: { not: job.id },
-                        status: "completed",
-                    },
-                });
-
-                if (completedDuplicate) {
-                    const dupMeta = completedDuplicate.metadata as any;
-                    const dupArtist =
-                        dupMeta?.artistName?.toLowerCase().trim() || "";
-                    const dupAlbum =
-                        dupMeta?.albumTitle?.toLowerCase().trim() || "";
-
-                    if (dupArtist === artistName && dupAlbum === albumTitle) {
-                        logger.debug(
-                            `   Found completed duplicate - marking this job as completed too`
-                        );
-                        await prisma.downloadJob.update({
-                            where: { id: job.id },
-                            data: {
-                                status: "completed",
-                                completedAt: new Date(),
-                                error: null,
-                                metadata: {
-                                    ...metadata,
-                                    mergedWithJob: completedDuplicate.id,
-                                },
-                            },
-                        });
-                        eventBus.emit({
-                            type: "download:complete",
-                            userId: job.userId,
-                            payload: { jobId: job.id, subject: job.subject },
-                        });
-                        continue; // Skip to next stale job
-                    }
-                }
-            }
+            if (await this.completeFromDuplicate(job)) continue;
 
             if (job.lidarrAlbumId && job.lidarrRef) {
                 await removeFailedDownload(job.lidarrRef, errorMessage, { searchAgain: false });
