@@ -18,6 +18,7 @@ import { musicBrainzService } from "./musicbrainz";
 import { failureCause } from "../utils/outcome";
 import { sourcePauseController } from "./sourcePauseController";
 import { updateBatchStatus } from "./discovery/optimisticBatchUpdate";
+import { removeDiscoveryArtist } from "./discovery/lidarrRemoval";
 import { lidarrService } from "./lidarr";
 import { requestScan } from "../workers/scanRequest";
 import { subWeeks } from "date-fns";
@@ -113,12 +114,7 @@ class DiscoverWeeklyService {
 
             // CRITICAL: Process previous week's liked albums before generating new ones
             discoveryLogger.section("PROCESSING PREVIOUS WEEK");
-            if (!settings) {
-                discoveryLogger.error("System settings row missing — cannot process previous week");
-                discoveryLogger.end(false, "System settings missing");
-                throw new Error("System settings row missing");
-            }
-            await discoveryAlbumLifecycle.processBeforeGeneration(userId, settings);
+            await discoveryAlbumLifecycle.processBeforeGeneration(userId);
 
             const targetCount = config.playlistSize;
 
@@ -215,7 +211,6 @@ class DiscoverWeeklyService {
             // Step 4: Create batch and jobs in a transaction
             discoveryLogger.section("STEP 4: CREATE BATCH & JOBS");
 
-            // Get music path from settings (already fetched at line 276) with fallback to app config
             const musicPath = settings?.musicPath || appConfig.music.musicPath;
 
             const batch = await prisma.$transaction(async (tx) => {
@@ -1751,8 +1746,8 @@ class DiscoverWeeklyService {
     }
 
     /**
-     * Remove from Lidarr the discovery-tagged artists with no successful download
-     * in this batch and no other music in the library. The tag is the source of truth.
+     * Remove from Lidarr the Discover-tagged artists with no successful download in
+     * this batch and no active album from another week; lidarrRemoval decides files.
      */
     private async cleanupFailedArtists(batchId: string): Promise<void> {
         logger.debug(
@@ -1802,23 +1797,6 @@ class DiscoverWeeklyService {
                 continue;
             }
 
-            // Keep if artist has liked/moved discovery albums
-            const hasKept = await prisma.discoveryAlbum.findFirst({
-                where: {
-                    artistMbid,
-                    status: { in: ["LIKED", "MOVED"] },
-                },
-            });
-
-            if (hasKept) {
-                logger.debug(
-                    `   Keeping ${artistName} - has liked albums (removing tag)`
-                );
-                await lidarrService.removeDiscoveryTagByMbid(artistMbid);
-                kept++;
-                continue;
-            }
-
             // Keep if artist has ACTIVE discovery albums from other weeks
             const hasActiveOther = await prisma.discoveryAlbum.findFirst({
                 where: {
@@ -1836,20 +1814,11 @@ class DiscoverWeeklyService {
                 continue;
             }
 
-            // Artist has discovery tag, no successful downloads, no liked albums = remove
-            try {
-                const result = await lidarrService.deleteArtistById(
-                    lidarrArtist.id,
-                    true
-                );
-                if (result.success) {
-                    logger.debug(` Removed: ${artistName}`);
-                    removed++;
-                }
-            } catch (error: any) {
-                logger.error(
-                    ` Failed to remove ${artistName}: ${error.message}`
-                );
+            if (await removeDiscoveryArtist(lidarrArtist)) {
+                logger.debug(` Removed: ${artistName}`);
+                removed++;
+            } else {
+                kept++;
             }
         }
 

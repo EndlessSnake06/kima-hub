@@ -632,17 +632,6 @@ class LidarrService {
             if (exists) {
                 logger.debug(`Artist already in Lidarr: ${artistName}`);
 
-                // If this is a discovery add and artist doesn't have discovery tag, add it
-                if (isDiscovery && discoveryTagId) {
-                    const existingTags = exists.tags || [];
-                    if (!existingTags.includes(discoveryTagId)) {
-                        logger.debug(
-                            `   Adding discovery tag to existing artist...`
-                        );
-                        await this.addTagsToArtist(exists.id, [discoveryTagId]);
-                    }
-                }
-
                 // If monitorAllAlbums is true, update the artist to monitor all albums
                 if (monitorAllAlbums) {
                     logger.debug(`   Updating artist to monitor all albums...`);
@@ -969,9 +958,6 @@ class LidarrService {
             logger.debug(`   Album MBID: ${rgMbid}`);
             logger.debug(`   Artist MBID: ${artistMbid || "none"}`);
 
-            // NEW APPROACH: Add artist first, then find album in their catalog
-            // This avoids the broken external album search API
-
             // Check if artist exists (uses cached artist list)
             const existingArtistList = await this.getArtistList();
             let artist = existingArtistList.find(
@@ -980,20 +966,6 @@ class LidarrService {
             );
 
             let justAddedArtist = false;
-
-            // If discovery and artist exists, ensure they have the discovery tag
-            if (isDiscovery && artist) {
-                const discoveryTagId = await this.getOrCreateDiscoveryTag();
-                if (discoveryTagId) {
-                    const existingTags = artist.tags || [];
-                    if (!existingTags.includes(discoveryTagId)) {
-                        logger.debug(
-                            `   Adding discovery tag to existing artist...`
-                        );
-                        await this.addTagsToArtist(artist.id, [discoveryTagId]);
-                    }
-                }
-            }
 
             if (!artist && artistMbid) {
                 logger.debug(`   Adding artist first: ${artistName}`);
@@ -1037,6 +1009,17 @@ class LidarrService {
                 logger.debug(
                     `   Artist already exists: ${artist.artistName} (ID: ${artist.id})`
                 );
+            }
+
+            // Discover manages only artists it added, which carry its tag; anything else is the user's.
+            if (isDiscovery) {
+                const discoveryTagId = await this.getOrCreateDiscoveryTag();
+                if (!discoveryTagId || !artist.tags?.includes(discoveryTagId)) {
+                    logger.warn(
+                        `   [Lidarr] ${artist.artistName} is in Lidarr outside Discover; not adding "${albumTitle}"`
+                    );
+                    return null;
+                }
             }
 
             // Get artist's albums from Lidarr
@@ -1115,10 +1098,8 @@ class LidarrService {
                 (a: LidarrAlbum) => a.foreignAlbumId === rgMbid
             );
 
-            // If MBID doesn't match, try STRICT name matching
-            // IMPORTANT: We removed loose matching (base name, first word) because it caused
-            // wrong albums to be downloaded (e.g., "A Trip To The Mystery Planet" matching "A Funk Odyssey")
-            if (!albumData) {
+            // Library requests fall back to a title match; for Discover another edition is a miss.
+            if (!albumData && !isDiscovery) {
                 logger.debug(
                     `   Album MBID not found, trying STRICT name match for: ${albumTitle}`
                 );
@@ -1180,11 +1161,6 @@ class LidarrService {
                     }
                 }
 
-                // NO base name matching - this caused wrong albums to be matched
-                // NO first word matching - this caused wrong albums to be matched
-                // If we don't have an exact or contained match, we should FAIL
-                // and let the discovery system find a different album
-
                 if (albumData) {
                     logger.debug(
                         `   Final match: "${albumData.title}" (MBID: ${albumData.foreignAlbumId})`
@@ -1225,7 +1201,13 @@ class LidarrService {
                 `   Found album in catalog: ${albumData.title} (ID: ${albumData.id})`
             );
 
-            // Skip search if album is fully downloaded
+            if (isDiscovery && (albumData.statistics?.trackFileCount ?? 0) > 0) {
+                logger.warn(
+                    `   [Lidarr] "${albumData.title}" already has files in Lidarr; Discover only fetches new albums`
+                );
+                return null;
+            }
+
             if (albumData.statistics?.percentOfTracks >= 100) {
                 logger.debug(`   Album fully downloaded (${albumData.statistics.trackFileCount} files), skipping search`);
                 return albumData;
@@ -1493,7 +1475,7 @@ class LidarrService {
                         if (retryResult.message?.includes("0 reports")) {
                             const baseAlbumTitle = this.extractBaseTitle(albumTitle);
 
-                            if (baseAlbumTitle !== albumTitle && baseAlbumTitle.length > 2) {
+                            if (!isDiscovery && baseAlbumTitle !== albumTitle && baseAlbumTitle.length > 2) {
                                 logger.debug(
                                     `   Trying base album title fallback: "${albumTitle}" → "${baseAlbumTitle}"`
                                 );
@@ -1728,84 +1710,48 @@ class LidarrService {
         }
     }
 
-    /**
-     * Delete an album from Lidarr by Lidarr album ID
-     * This unmonitors the album and optionally deletes files
-     */
-    async deleteAlbum(
-        lidarrAlbumId: number,
-        deleteFiles: boolean = true
-    ): Promise<{ success: boolean; message: string }> {
+    /** One album, or null when Lidarr no longer has it. Any other error throws. */
+    async getAlbum(albumId: number): Promise<LidarrAlbum | null> {
         await this.ensureInitialized();
-
-        if (!this.enabled || !this.client) {
-            return {
-                success: false,
-                message: "Lidarr not enabled or configured",
-            };
-        }
-
+        if (!this.enabled || !this.client) throw new Error("Lidarr not enabled");
         try {
-            logger.debug(`[LIDARR] Deleting album ID: ${lidarrAlbumId}`);
-
-            // First get the album to check for track files
-            const albumResponse = await this.client.get(
-                `/api/v1/album/${lidarrAlbumId}`
-            );
-            const album = albumResponse.data;
-            const artistId = album.artistId;
-            const albumTitle = album.title || "Unknown";
-
-            if (deleteFiles) {
-                // Get track files for this album
-                const trackFilesResponse = await this.client.get(
-                    "/api/v1/trackFile",
-                    {
-                        params: { albumId: lidarrAlbumId },
-                    }
-                );
-
-                const trackFiles = trackFilesResponse.data;
-
-                if (trackFiles && trackFiles.length > 0) {
-                    // Delete each track file
-                    for (const trackFile of trackFiles) {
-                        try {
-                            await this.client.delete(
-                                `/api/v1/trackFile/${trackFile.id}`
-                            );
-                        } catch (e) {
-                            // Ignore individual file deletion errors
-                        }
-                    }
-                    logger.debug(
-                        `[LIDARR] Deleted ${trackFiles.length} track files for album: ${albumTitle}`
-                    );
-                }
-            }
-
-            // Unmonitor the album (don't delete the album record, just unmonitor)
-            await this.client.put(`/api/v1/album/${lidarrAlbumId}`, {
-                ...album,
-                monitored: false,
-            });
-
-            logger.debug(
-                `[LIDARR] Successfully unmonitored album: ${albumTitle}`
-            );
-            return {
-                success: true,
-                message: `Deleted files and unmonitored ${albumTitle}`,
-            };
+            return (await this.client.get(`/api/v1/album/${albumId}`)).data;
         } catch (error: any) {
-            logger.error(
-                "[LIDARR] Delete album error:",
-                error?.message || error
-            );
-            return {
-                success: false,
-                message: error?.message || "Failed to delete album from Lidarr",
-            };
+            if (error.response?.status === 404) return null;
+            throw error;
+        }
+    }
+
+    /** One artist, or null when Lidarr no longer has it. Any other error throws. */
+    async getArtistById(artistId: number): Promise<LidarrArtist | null> {
+        await this.ensureInitialized();
+        if (!this.enabled || !this.client) throw new Error("Lidarr not enabled");
+        try {
+            return (await this.client.get(`/api/v1/artist/${artistId}`)).data;
+        } catch (error: any) {
+            if (error.response?.status === 404) return null;
+            throw error;
+        }
+    }
+
+    /** Every album Lidarr lists for an artist. Errors throw. */
+    async getAlbumsByArtistId(artistId: number): Promise<LidarrAlbum[]> {
+        await this.ensureInitialized();
+        if (!this.enabled || !this.client) throw new Error("Lidarr not enabled");
+        return (await this.client.get("/api/v1/album", { params: { artistId } })).data ?? [];
+    }
+
+    /** Delete an album from Lidarr; a 404 counts as done. Callers go through discovery/lidarrRemoval. */
+    async deleteAlbumById(albumId: number, deleteFiles: boolean): Promise<void> {
+        await this.ensureInitialized();
+        if (!this.enabled || !this.client) throw new Error("Lidarr not enabled");
+        try {
+            await this.client.delete(`/api/v1/album/${albumId}`, {
+                params: { deleteFiles, addImportListExclusion: false },
+                timeout: this.API_TIMEOUT_DEFAULT,
+            });
+        } catch (error: any) {
+            if (error.response?.status !== 404) throw error;
         }
     }
 
@@ -2122,49 +2068,6 @@ class LidarrService {
                 error.message
             );
             return null;
-        }
-    }
-
-    /**
-     * Add tags to an artist
-     */
-    async addTagsToArtist(
-        artistId: number,
-        tagIds: number[]
-    ): Promise<boolean> {
-        await this.ensureInitialized();
-
-        if (!this.enabled || !this.client) {
-            return false;
-        }
-
-        try {
-            // Get current artist data
-            const response = await this.client.get(
-                `/api/v1/artist/${artistId}`
-            );
-            const artist = response.data;
-
-            // Merge new tags with existing (avoid duplicates)
-            const existingTags = artist.tags || [];
-            const mergedTags = [...new Set([...existingTags, ...tagIds])];
-
-            // Update artist with new tags
-            await this.client.put(`/api/v1/artist/${artistId}`, {
-                ...artist,
-                tags: mergedTags,
-            });
-
-            logger.debug(
-                `[LIDARR] Added tags ${tagIds} to artist ${artist.artistName}`
-            );
-            return true;
-        } catch (error: any) {
-            logger.error(
-                "[LIDARR] Failed to add tags to artist:",
-                error.message
-            );
-            return false;
         }
     }
 

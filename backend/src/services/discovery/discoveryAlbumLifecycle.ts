@@ -3,10 +3,10 @@
  * rejected or expired ones from the database and Lidarr.
  */
 
-import axios from 'axios';
 import { prisma } from '../../utils/db';
 import { logger } from '../../utils/logger';
 import { updateArtistCounts } from '../artistCountsService';
+import { removeDiscoveryAlbum } from './lidarrRemoval';
 
 export interface DiscoveryAlbumInfo {
     id: string;
@@ -14,12 +14,6 @@ export interface DiscoveryAlbumInfo {
     artistName: string;
     albumTitle: string;
     lidarrAlbumId?: number | null;
-}
-
-export interface LidarrSettings {
-    lidarrEnabled?: boolean;
-    lidarrUrl?: string | null;
-    lidarrApiKey?: string | null;
 }
 
 export class DiscoveryAlbumLifecycle {
@@ -68,14 +62,10 @@ export class DiscoveryAlbumLifecycle {
     }
 
     /**
-     * Deletes a rejected/active discovery album.
-     * Removes from Lidarr (if enabled), deletes tracks and album from DB,
-     * deletes discovery tracks, marks as DELETED.
+     * Deletes a rejected discovery album: its Lidarr album through the identity
+     * check in lidarrRemoval, then its tracks and rows, marking it DELETED.
      */
-    async deleteRejectedAlbum(
-        album: DiscoveryAlbumInfo,
-        settings: LidarrSettings
-    ): Promise<void> {
+    async deleteRejectedAlbum(album: DiscoveryAlbumInfo): Promise<void> {
         // Re-read the status before deleting files: a like since the snapshot skips
         // everything. The Lidarr delete stays outside the transaction so a timeout
         // cannot roll back the claim, and the claim below closes the remaining race.
@@ -90,28 +80,8 @@ export class DiscoveryAlbumLifecycle {
             return;
         }
 
-        if (
-            settings.lidarrEnabled &&
-            settings.lidarrUrl &&
-            settings.lidarrApiKey &&
-            album.lidarrAlbumId
-        ) {
-            try {
-                await axios.delete(
-                    `${settings.lidarrUrl}/api/v1/album/${album.lidarrAlbumId}`,
-                    {
-                        params: { deleteFiles: true },
-                        headers: { 'X-Api-Key': settings.lidarrApiKey },
-                        timeout: 10000,
-                    }
-                );
-            } catch (lidarrError: any) {
-                if (lidarrError.response?.status !== 404) {
-                    logger.debug(
-                        `[DiscoveryLifecycle] Lidarr delete failed: ${lidarrError.message}`
-                    );
-                }
-            }
+        if (album.lidarrAlbumId) {
+            await removeDiscoveryAlbum(album.lidarrAlbumId, album.rgMbid);
         }
 
         await prisma.$transaction(async (tx) => {
@@ -153,10 +123,7 @@ export class DiscoveryAlbumLifecycle {
      * - ACTIVE albums are deleted
      * - Cleans up unavailable albums for user
      */
-    async processBeforeGeneration(
-        userId: string,
-        settings: LidarrSettings
-    ): Promise<{ moved: number; deleted: number }> {
+    async processBeforeGeneration(userId: string): Promise<{ moved: number; deleted: number }> {
         logger.debug(`[DiscoveryLifecycle] Processing previous discovery albums...`);
 
         const discoveryAlbums = await prisma.discoveryAlbum.findMany({
@@ -209,16 +176,13 @@ export class DiscoveryAlbumLifecycle {
             await Promise.all(
                 chunk.map(async (album) => {
                     try {
-                        await this.deleteRejectedAlbum(
-                            {
-                                id: album.id,
-                                rgMbid: album.rgMbid,
-                                artistName: album.artistName,
-                                albumTitle: album.albumTitle,
-                                lidarrAlbumId: album.lidarrAlbumId,
-                            },
-                            settings
-                        );
+                        await this.deleteRejectedAlbum({
+                            id: album.id,
+                            rgMbid: album.rgMbid,
+                            artistName: album.artistName,
+                            albumTitle: album.albumTitle,
+                            lidarrAlbumId: album.lidarrAlbumId,
+                        });
                         deleted++;
                     } catch (error: any) {
                         logger.error(

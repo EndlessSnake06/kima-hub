@@ -16,6 +16,7 @@ import { discoverQueue } from "../workers/queues";
 import { requestScan } from "../workers/scanRequest";
 import { getSystemSettings } from "../utils/systemSettings";
 import { lidarrService } from "../services/lidarr";
+import { discoveryArtistVerdict, removeDiscoveryAlbum, removeDiscoveryArtist } from "../services/discovery/lidarrRemoval";
 import {
   UserFacingError,
   IntegrationError,
@@ -1386,8 +1387,6 @@ router.delete("/clear", async (req, res) => {
         if (activeAlbums.length > 0) {
             logger.debug(`\n[CLEANUP] Deleting non-liked albums...`);
 
-            const checkedArtistIds = new Set<number>();
-
             for (const album of activeAlbums) {
                 try {
                     // Claim the row before deleting anything: if the user liked it since the
@@ -1403,121 +1402,8 @@ router.delete("/clear", async (req, res) => {
                         continue;
                     }
 
-                    // Remove from Lidarr if enabled
-                    if (
-                        settings.lidarrEnabled &&
-                        settings.lidarrUrl &&
-                        settings.lidarrApiKey &&
-                        album.lidarrAlbumId
-                    ) {
-                        try {
-                            // Get album details to find artist ID
-                            let artistId: number | undefined;
-                            try {
-                                const albumResponse = await axios.get(
-                                    `${settings.lidarrUrl}/api/v1/album/${album.lidarrAlbumId}`,
-                                    {
-                                        headers: {
-                                            "X-Api-Key": settings.lidarrApiKey,
-                                        },
-                                        timeout: 10000,
-                                    }
-                                );
-                                artistId = albumResponse.data.artistId;
-                            } catch (e: any) {
-                                if (e.response?.status !== 404) throw e;
-                            }
-
-                            // Delete album from Lidarr
-                            await axios.delete(
-                                `${settings.lidarrUrl}/api/v1/album/${album.lidarrAlbumId}`,
-                                {
-                                    params: { deleteFiles: true },
-                                    headers: {
-                                        "X-Api-Key": settings.lidarrApiKey,
-                                    },
-                                    timeout: 10000,
-                                }
-                            );
-                            logger.debug(
-                                `    Deleted from Lidarr: ${album.albumTitle}`
-                            );
-
-                            // Check if artist should be removed too
-                            if (artistId && !checkedArtistIds.has(artistId)) {
-                                checkedArtistIds.add(artistId);
-
-                                try {
-                                    const artistResponse = await axios.get(
-                                        `${settings.lidarrUrl}/api/v1/artist/${artistId}`,
-                                        {
-                                            headers: {
-                                                "X-Api-Key":
-                                                    settings.lidarrApiKey,
-                                            },
-                                            timeout: 10000,
-                                        }
-                                    );
-
-                                    const artist = artistResponse.data;
-                                    const artistMbid = artist.foreignArtistId;
-
-                                    // Check if artist has any NATIVE library content (real user library)
-                                    // This is more reliable than checking Album.location which can be wrong
-                                    const hasNativeOwnedAlbums =
-                                        await prisma.ownedAlbum.findFirst({
-                                            where: {
-                                                artist: { mbid: artistMbid },
-                                                source: "native_scan",
-                                            },
-                                        });
-
-                                    // Check if artist has any LIKED/MOVED discovery albums
-                                    const hasKeptDiscoveryAlbums =
-                                        await prisma.discoveryAlbum.findFirst({
-                                            where: {
-                                                artistMbid: artistMbid,
-                                                status: {
-                                                    in: ["LIKED", "MOVED"],
-                                                },
-                                            },
-                                        });
-
-                                    // Only remove artist if they have no native library content and no kept discovery albums
-                                    if (
-                                        !hasNativeOwnedAlbums &&
-                                        !hasKeptDiscoveryAlbums
-                                    ) {
-                                        await axios.delete(
-                                            `${settings.lidarrUrl}/api/v1/artist/${artistId}`,
-                                            {
-                                                params: { deleteFiles: true },
-                                                headers: {
-                                                    "X-Api-Key":
-                                                        settings.lidarrApiKey,
-                                                },
-                                                timeout: 10000,
-                                            }
-                                        );
-                                        logger.debug(
-                                            `    Removed artist from Lidarr: ${artist.artistName}`
-                                        );
-                                    } else {
-                                        logger.debug(
-                                            `    Keeping artist in Lidarr: ${artist.artistName} (has library or kept albums)`
-                                        );
-                                    }
-                                } catch (e: any) {
-                                    // Artist might have other albums
-                                }
-                            }
-                        } catch (lidarrError: any) {
-                            if (lidarrError.response?.status !== 404) {
-                                logger.debug(
-                                    `  Lidarr delete failed for ${album.albumTitle}: ${lidarrError.message}`
-                                );
-                            }
-                        }
+                    if (album.lidarrAlbumId) {
+                        await removeDiscoveryAlbum(album.lidarrAlbumId, album.rgMbid);
                     }
 
                     // FALLBACK: Direct filesystem deletion (in case Lidarr's deleteFiles didn't work)
@@ -1694,107 +1580,9 @@ router.delete("/clear", async (req, res) => {
                         continue;
                     }
 
-                    if (job.lidarrAlbumId) {
-                        try {
-                            // Get artist ID before deleting album
-                            let artistId: number | undefined;
-                            try {
-                                const albumResponse = await axios.get(
-                                    `${settings.lidarrUrl}/api/v1/album/${job.lidarrAlbumId}`,
-                                    {
-                                        headers: {
-                                            "X-Api-Key": settings.lidarrApiKey,
-                                        },
-                                        timeout: 10000,
-                                    }
-                                );
-                                artistId = albumResponse.data.artistId;
-                            } catch (e) {
-                                // Album might not exist
-                            }
-
-                            // Delete album from Lidarr
-                            await axios.delete(
-                                `${settings.lidarrUrl}/api/v1/album/${job.lidarrAlbumId}`,
-                                {
-                                    params: { deleteFiles: true },
-                                    headers: {
-                                        "X-Api-Key": settings.lidarrApiKey,
-                                    },
-                                    timeout: 10000,
-                                }
-                            );
-                            logger.debug(
-                                `    Cleaned up extra album: ${albumTitle}`
-                            );
-
-                            // Check if artist should be removed too
-                            if (artistId) {
-                                // Check if artist has any liked albums by NAME (more reliable than MBID)
-                                const hasLikedByArtistName =
-                                    await prisma.discoveryAlbum.findFirst({
-                                        where: {
-                                            artistName: {
-                                                equals: artistName,
-                                                mode: "insensitive",
-                                            },
-                                            status: { in: ["LIKED", "MOVED"] },
-                                        },
-                                    });
-
-                                if (hasLikedByArtistName) {
-                                    logger.debug(
-                                        `    Keeping artist: ${artistName} (has liked albums)`
-                                    );
-                                    continue;
-                                }
-
-                                const artistMbid = metadata?.artistMbid;
-                                if (
-                                    artistMbid &&
-                                    !artistMbid.startsWith("temp-")
-                                ) {
-                                    // Check if artist has native library content
-                                    const hasNativeLibrary =
-                                        await prisma.ownedAlbum.findFirst({
-                                            where: {
-                                                artist: { mbid: artistMbid },
-                                                source: "native_scan",
-                                            },
-                                        });
-
-                                    if (!hasNativeLibrary) {
-                                        try {
-                                            await axios.delete(
-                                                `${settings.lidarrUrl}/api/v1/artist/${artistId}`,
-                                                {
-                                                    params: {
-                                                        deleteFiles: true,
-                                                    },
-                                                    headers: {
-                                                        "X-Api-Key":
-                                                            settings.lidarrApiKey,
-                                                    },
-                                                    timeout: 10000,
-                                                }
-                                            );
-                                            logger.debug(
-                                                `    Removed extra artist from Lidarr: ${artistName}`
-                                            );
-                                        } catch (e) {
-                                            // Artist might have other albums
-                                        }
-                                    }
-                                }
-                            }
-                        } catch (e: any) {
-                            // Ignore - might already be removed
-                            if (e.response?.status !== 404) {
-                                logger.debug(
-                                    `    Failed to clean up ${albumTitle}: ${e.message}`
-                                );
-                            }
-                        }
+                    if (job.lidarrAlbumId && job.targetMbid) {
+                        await removeDiscoveryAlbum(job.lidarrAlbumId, job.targetMbid);
+                        logger.debug(`    Cleaned up extra album: ${albumTitle}`);
                     }
                 }
             }
@@ -1805,123 +1593,14 @@ router.delete("/clear", async (req, res) => {
             where: { userId },
         });
 
-        // === PHASE 1.5: Clean up failed artists from Lidarr ===
-        // Get all failed download jobs for this user and remove their artists from Lidarr
-        if (
-            settings.lidarrEnabled &&
-            settings.lidarrUrl &&
-            settings.lidarrApiKey
-        ) {
-            logger.debug(
-                `\n[CLEANUP] Checking for failed artists to remove from Lidarr...`
-            );
-
-            const failedJobs = await prisma.downloadJob.findMany({
-                where: {
-                    userId,
-                    status: "failed",
-                    discoveryBatchId: { not: null },
-                },
-            });
-
-            // Group by artist
-            const failedArtistMbids = new Set<string>();
-            const artistNames = new Map<string, string>();
-
-            for (const job of failedJobs) {
-                const metadata = job.metadata as any;
-                if (metadata?.artistMbid) {
-                    failedArtistMbids.add(metadata.artistMbid);
-                    artistNames.set(
-                        metadata.artistMbid,
-                        metadata.artistName || "Unknown"
-                    );
-                }
-            }
-
-            // Remove failed artists that don't have native library content
-            for (const artistMbid of failedArtistMbids) {
-                try {
-                    // Check if artist has any NATIVE library content (real user library)
-                    const hasNativeOwnedAlbums =
-                        await prisma.ownedAlbum.findFirst({
-                            where: {
-                                artist: { mbid: artistMbid },
-                                source: "native_scan",
-                            },
-                        });
-
-                    if (hasNativeOwnedAlbums) {
-                        logger.debug(
-                            `   Keeping ${artistNames.get(
-                                artistMbid
-                            )} - has native library content`
-                        );
-                        continue;
-                    }
-
-                    // Check if artist has any LIKED discovery albums
-                    const hasLikedDiscovery =
-                        await prisma.discoveryAlbum.findFirst({
-                            where: {
-                                artistMbid,
-                                status: { in: ["LIKED", "MOVED"] },
-                            },
-                        });
-
-                    if (hasLikedDiscovery) {
-                        logger.debug(
-                            `   Keeping ${artistNames.get(
-                                artistMbid
-                            )} - has liked discovery albums`
-                        );
-                        continue;
-                    }
-
-                    // Find and remove from Lidarr
-                    const searchResponse = await axios.get(
-                        `${settings.lidarrUrl}/api/v1/artist`,
-                        {
-                            headers: { "X-Api-Key": settings.lidarrApiKey },
-                            timeout: 10000,
-                        }
-                    );
-
-                    const lidarrArtist = searchResponse.data.find(
-                        (a: any) => a.foreignArtistId === artistMbid
-                    );
-
-                    if (lidarrArtist) {
-                        await axios.delete(
-                            `${settings.lidarrUrl}/api/v1/artist/${lidarrArtist.id}`,
-                            {
-                                params: { deleteFiles: true },
-                                headers: { "X-Api-Key": settings.lidarrApiKey },
-                                timeout: 10000,
-                            }
-                        );
-                        logger.debug(
-                            ` Removed failed artist from Lidarr: ${artistNames.get(
-                                artistMbid
-                            )}`
-                        );
-                    }
-                } catch (e: any) {
-                    // Ignore errors - artist might already be removed
-                }
-            }
-
-            // DON'T delete download jobs immediately - scanner needs them to identify discovery albums
-            // They will be cleaned up by the data integrity worker after 30 days
-            // Only delete FAILED jobs (they won't help with matching anyway)
-            await prisma.downloadJob.deleteMany({
-                where: {
-                    userId,
-                    discoveryBatchId: { not: null },
-                    status: "failed",
-                },
-            });
-        }
+        // Failed jobs no longer help the scanner match discovery albums.
+        await prisma.downloadJob.deleteMany({
+            where: {
+                userId,
+                discoveryBatchId: { not: null },
+                status: "failed",
+            },
+        });
 
         // === PHASE 2: Clean up orphaned discovery records ===
         // These are Album/Track records with location="DISCOVER" that weren't linked to a DiscoveryAlbum
@@ -2042,10 +1721,7 @@ router.delete("/clear", async (req, res) => {
             );
         }
 
-        // === PHASE 3: Tag-based Lidarr cleanup ===
-        // Only remove artists that have the "lidify-discovery" tag
-        // This is the ONLY reliable way to identify discovery artists
-        // User's pre-existing library is NEVER touched (no tag = safe)
+        // === PHASE 3: remove Discover-tagged artists; lidarrRemoval decides whether files go ===
         let lidarrArtistsRemoved = 0;
         if (
             settings.lidarrEnabled &&
@@ -2065,46 +1741,9 @@ router.delete("/clear", async (req, res) => {
                 );
 
                 for (const lidarrArtist of discoveryArtists) {
-                    const artistMbid = lidarrArtist.foreignArtistId;
-                    const artistName = lidarrArtist.artistName;
-
-                    if (!artistMbid) continue;
-
-                    // Double-check: if artist has LIKED albums, remove tag but don't delete
-                    // (This is a safety net - the like endpoint should have already removed the tag)
-                    const hasKeptDiscovery =
-                        await prisma.discoveryAlbum.findFirst({
-                            where: {
-                                artistMbid: artistMbid,
-                                status: { in: ["LIKED", "MOVED"] },
-                            },
-                        });
-
-                    if (hasKeptDiscovery) {
-                        // Remove the tag but keep the artist
-                        logger.debug(
-                            `   Keeping ${artistName} - has liked albums (removing tag)`
-                        );
-                        await lidarrService.removeDiscoveryTagByMbid(
-                            artistMbid
-                        );
-                        continue;
-                    }
-
-                    // Artist has discovery tag AND no liked albums = safe to delete
-                    try {
-                        const result = await lidarrService.deleteArtistById(
-                            lidarrArtist.id,
-                            true
-                        );
-                        if (result.success) {
-                            lidarrArtistsRemoved++;
-                            logger.debug(` Removed: ${artistName}`);
-                        }
-                    } catch (deleteError: any) {
-                        logger.debug(
-                            ` Failed to remove ${artistName}: ${deleteError.message}`
-                        );
+                    if (await removeDiscoveryArtist(lidarrArtist)) {
+                        lidarrArtistsRemoved++;
+                        logger.debug(` Removed: ${lidarrArtist.artistName}`);
                     }
                 }
 
@@ -2263,34 +1902,7 @@ router.post("/cleanup-lidarr", requireAdmin, async (req, res) => {
             return res.status(400).json({ error: "Lidarr not configured" });
         }
 
-        const lidarrArtists = await lidarrService.getArtists();
-        logger.debug(
-            `[CLEANUP] Found ${lidarrArtists.length} artists in Lidarr`
-        );
-
-        const artistsRemoved: string[] = [];
-        const artistsKept: string[] = [];
-        const errors: string[] = [];
-
-        // Batch fetch all artist MBIDs that have native owned albums
-        const nativeOwnedArtistMbids = new Set(
-            (await prisma.ownedAlbum.findMany({
-                where: { source: "native_scan" },
-                select: { artist: { select: { mbid: true } } },
-                distinct: ["artistId"],
-            })).map((oa) => oa.artist.mbid).filter(Boolean)
-        );
-
-        // Batch fetch all artist MBIDs that have LIKED/MOVED discovery albums
-        const keptDiscoveryArtistMbids = new Set(
-            (await prisma.discoveryAlbum.findMany({
-                where: { status: { in: ["LIKED", "MOVED"] } },
-                select: { artistMbid: true },
-                distinct: ["artistMbid"],
-            })).map((da) => da.artistMbid)
-        );
-
-        // Batch fetch all artist MBIDs that have ACTIVE discovery albums
+        const discoveryArtists = await lidarrService.getDiscoveryArtists();
         const activeDiscoveryArtistMbids = new Set(
             (await prisma.discoveryAlbum.findMany({
                 where: { status: "ACTIVE" },
@@ -2299,55 +1911,24 @@ router.post("/cleanup-lidarr", requireAdmin, async (req, res) => {
             })).map((da) => da.artistMbid)
         );
 
-        for (const lidarrArtist of lidarrArtists) {
-            const artistMbid = lidarrArtist.foreignArtistId;
+        const artistsRemoved: string[] = [];
+        const artistsKept: string[] = [];
+        const errors: string[] = [];
+
+        for (const lidarrArtist of discoveryArtists) {
             const artistName = lidarrArtist.artistName;
-
-            if (!artistMbid) continue;
-
+            if (activeDiscoveryArtistMbids.has(lidarrArtist.foreignArtistId)) {
+                artistsKept.push(`${artistName} (has active discovery)`);
+                continue;
+            }
             try {
-                const hasNativeOwnedAlbums = nativeOwnedArtistMbids.has(artistMbid);
-                const hasKeptDiscoveryAlbums = keptDiscoveryArtistMbids.has(artistMbid);
-                const hasActiveDiscoveryAlbums = activeDiscoveryArtistMbids.has(artistMbid);
-
-                if (hasNativeOwnedAlbums || hasKeptDiscoveryAlbums) {
-                    artistsKept.push(
-                        `${artistName} (has native library or kept albums)`
-                    );
-                    continue;
-                }
-
-                if (hasActiveDiscoveryAlbums) {
-                    artistsKept.push(`${artistName} (has active discovery)`);
-                    continue;
-                }
-
-                // This artist has no library albums and no active/kept discovery albums
-                // They should be removed from Lidarr
-                if (dryRun) {
-                    artistsRemoved.push(artistName);
-                    continue;
-                }
-
-                logger.debug(
-                    `[CLEANUP] Removing discovery-only artist: ${artistName}`
-                );
-
-                const deleted = await lidarrService.deleteArtistById(
-                    lidarrArtist.id,
-                    true
-                );
-                if (!deleted.success) {
-                    errors.push(`Failed to remove ${artistName}: ${deleted.message}`);
-                    continue;
-                }
-
-                artistsRemoved.push(artistName);
-                logger.debug(`[CLEANUP] Removed: ${artistName}`);
+                const removable = dryRun
+                    ? (await discoveryArtistVerdict(lidarrArtist)) === "delete"
+                    : await removeDiscoveryArtist(lidarrArtist);
+                if (removable) artistsRemoved.push(artistName);
+                else artistsKept.push(`${artistName} (library, liked, or files Discover did not fetch)`);
             } catch (error: any) {
-                const msg = `Failed to process ${artistName}: ${error.message}`;
-                errors.push(msg);
-                logger.error(`[CLEANUP] ${msg}`);
+                errors.push(`Failed to process ${artistName}: ${error.message}`);
             }
         }
 
