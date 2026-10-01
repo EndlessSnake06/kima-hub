@@ -1,10 +1,8 @@
 import { prisma } from "../utils/db";
 import { logger } from "../utils/logger";
 import { getSystemSettings } from "../utils/systemSettings";
-import {
-    cleanStuckDownloads,
-    getRecentCompletedDownloads,
-} from "../services/lidarr";
+import { getRecentCompletedDownloads } from "../services/lidarr";
+import { sweepFailedDownloads } from "../services/lidarrFailures";
 import { requestScan } from "../workers/scanRequest";
 import { simpleDownloadManager } from "../services/simpleDownloadManager";
 import { yieldToEventLoop } from "../utils/async";
@@ -125,67 +123,10 @@ class QueueCleanerService {
                 this.emptyQueueChecks = 0;
             }
 
-            // PART 1: Check for stuck downloads needing blocklist + retry
-            const cleanResult = await cleanStuckDownloads(
-                settings.lidarrUrl,
-                settings.lidarrApiKey
-            );
-
-            if (cleanResult.removed > 0) {
-                logger.debug(
-                    `[CLEANUP] Removed ${cleanResult.removed} stuck download(s) - searching for alternatives`
-                );
-                this.emptyQueueChecks = 0; // Reset counter - queue had activity
-
-                // Update retry count for jobs that might match these titles
-                // Note: This is a best-effort match since we only have the title
-                for (const title of cleanResult.items) {
-                    // Try to extract artist and album from the title
-                    // Typical format: "Artist - Album" or "Artist - Album (Year)"
-                    const parts = title.split(" - ");
-                    if (parts.length >= 2) {
-                        const artistName = parts[0].trim();
-                        const albumPart = parts.slice(1).join(" - ").trim();
-                        // Remove year in parentheses if present
-                        const albumTitle = albumPart
-                            .replace(/\s*\(\d{4}\)\s*$/, "")
-                            .trim();
-
-                        // Find matching processing jobs
-                        const matchingJobs = await prisma.downloadJob.findMany({
-                            where: {
-                                status: "processing",
-                                subject: {
-                                    contains: albumTitle,
-                                    mode: "insensitive",
-                                },
-                            },
-                        });
-
-                        for (const job of matchingJobs) {
-                            const metadata = (job.metadata as any) || {};
-                            const currentRetryCount = metadata.retryCount || 0;
-
-                            await prisma.downloadJob.update({
-                                where: { id: job.id },
-                                data: {
-                                    metadata: {
-                                        ...metadata,
-                                        retryCount: currentRetryCount + 1,
-                                        lastError:
-                                            "Import failed - searching for alternative release",
-                                    },
-                                },
-                            });
-
-                            logger.debug(
-                                `   Updated job ${job.id}: retry ${
-                                    currentRetryCount + 1
-                                }`
-                            );
-                        }
-                    }
-                }
+            const swept = await sweepFailedDownloads();
+            if (swept.removed > 0) {
+                logger.debug(`[CLEANUP] Removed ${swept.removed} failed download(s)`);
+                this.emptyQueueChecks = 0;
             }
 
             // PART 2: Check for completed downloads (missing webhooks)
@@ -303,7 +244,7 @@ class QueueCleanerService {
             });
 
             const hadActivity =
-                cleanResult.removed > 0 || recoveredCount > 0 || activeJobs > 0;
+                swept.removed > 0 || recoveredCount > 0 || activeJobs > 0;
 
             if (!hadActivity) {
                 this.emptyQueueChecks++;

@@ -2421,9 +2421,8 @@ class LidarrService {
     }
 
     /**
-     * Delete a located queue item and blocklist its release; the only queue-delete
-     * call. A 404 counts as success; `skipRedownload: false` lets Lidarr search for
-     * an alternative.
+     * Delete a queue item and blocklist its release so Lidarr searches for another.
+     * A 404 counts as success. Callers go through lidarrFailures.removeFailedDownload.
      */
     async removeItemAndBlocklist(
         item: { id: number; title?: string },
@@ -2459,64 +2458,18 @@ class LidarrService {
         }
     }
 
-    /**
-     * Find a queue item by its download id and blocklist-and-remove it.
-     * A download that is not in the queue counts as success.
-     */
-    async blocklistAndRemove(
-        downloadId: string,
-        opts: { skipRedownload?: boolean } = {}
-    ): Promise<boolean> {
+    /** Every item in Lidarr's download queue; throws when Lidarr cannot be read. */
+    async getQueueItems(): Promise<LidarrQueueItem[]> {
         await this.ensureInitialized();
 
         if (!this.enabled || !this.client) {
             throw new Error("Lidarr not enabled");
         }
 
-        const queueResponse = await this.client.get("/api/v1/queue", {
-            params: { page: 1, pageSize: 100 },
+        const response = await this.client.get("/api/v1/queue", {
+            params: { page: 1, pageSize: 1000, includeUnknownArtistItems: true },
         });
-
-        const queueData = queueResponse.data as LidarrQueueResponse;
-        const queueItem = queueData.records.find(
-            (item) => item.downloadId === downloadId
-        );
-
-        if (!queueItem) {
-            logger.debug(
-                `[LIDARR] Download ${downloadId} not found in queue (may already be removed)`
-            );
-            return true;
-        }
-
-        return this.removeItemAndBlocklist(queueItem, opts);
-    }
-
-    /**
-     * Find queue item by download ID
-     */
-    async findQueueItemByDownloadId(downloadId: string): Promise<LidarrQueueItem | null> {
-        await this.ensureInitialized();
-
-        if (!this.enabled || !this.client) {
-            return null;
-        }
-
-        try {
-            const response = await this.client.get("/api/v1/queue", {
-                params: { page: 1, pageSize: 100 },
-            });
-
-            const queueData = response.data as LidarrQueueResponse;
-            return (
-                queueData.records.find(
-                    (item) => item.downloadId === downloadId
-                ) || null
-            );
-        } catch (error: any) {
-            logger.error(`[LIDARR] Failed to find queue item:`, error.message);
-            return null;
-        }
+        return (response.data as LidarrQueueResponse).records;
     }
 
     /**
@@ -2823,127 +2776,6 @@ export interface LidarrIndexerRelease {
 }
 
 export const lidarrService = new LidarrService();
-
-// Patterns that indicate a stuck download (case-insensitive matching)
-const FAILED_IMPORT_PATTERNS = [
-    // Import issues
-    "No files found are eligible for import",
-    "Not an upgrade for existing",
-    "Not a Custom Format upgrade",
-    "missing tracks",
-    "Album match is not close enough", // Lidarr matching threshold failure
-    "Artist name mismatch", // Manual import required - artist doesn't match
-    "automatic import is not possible", // Generic auto-import failure
-    // Unpack/extraction failures
-    "Unable to extract",
-    "Failed to extract",
-    "Unpacking failed",
-    "unpack error",
-    "Error extracting",
-    "extraction failed",
-    "corrupt archive",
-    "invalid archive",
-    "CRC failed",
-    "bad archive",
-    // Download/transfer issues
-    "Download failed",
-    "import failed",
-    "Sample",
-];
-
-/**
- * Clean stuck downloads from Lidarr queue
- * Returns items that were removed and will trigger automatic search for alternatives
- */
-export async function cleanStuckDownloads(
-    lidarrUrl: string,
-    apiKey: string
-): Promise<{ removed: number; items: string[] }> {
-    const removed: string[] = [];
-
-    try {
-        // Fetch current queue
-        const response = await axios.get<LidarrQueueResponse>(
-            `${lidarrUrl}/api/v1/queue`,
-            {
-                params: {
-                    page: 1,
-                    pageSize: 100,
-                    includeUnknownArtistItems: true,
-                },
-                headers: { "X-Api-Key": apiKey },
-            }
-        );
-
-        logger.debug(
-            ` Queue cleaner: checking ${response.data.records.length} items`
-        );
-
-        for (const item of response.data.records) {
-            // Check if this item has a failed import message
-            const allMessages =
-                item.statusMessages?.flatMap((sm) => sm.messages) || [];
-
-            // Log ALL items to understand what states we're seeing
-            logger.debug(`   - ${item.title}`);
-            logger.debug(
-                `      Status: ${item.status}, TrackedStatus: ${item.trackedDownloadStatus}, State: ${item.trackedDownloadState}`
-            );
-            if (allMessages.length > 0) {
-                logger.debug(`      Messages: ${allMessages.join("; ")}`);
-            }
-
-            // Check for pattern matches in messages
-            const hasFailedPattern = allMessages.some((msg) =>
-                FAILED_IMPORT_PATTERNS.some((pattern) =>
-                    msg.toLowerCase().includes(pattern.toLowerCase())
-                )
-            );
-
-            // Also check if trackedDownloadStatus is "warning" with importPending state
-            // These are items that have finished downloading but can't be imported
-            const isStuckWarning =
-                item.trackedDownloadStatus === "warning" &&
-                item.trackedDownloadState === "importPending";
-
-            // CRITICAL: importFailed state is TERMINAL - will never recover
-            // Don't wait for timeout, clean up immediately
-            const isImportFailed = item.trackedDownloadState === "importFailed";
-
-            const shouldRemove =
-                hasFailedPattern || isStuckWarning || isImportFailed;
-
-            if (shouldRemove) {
-                const reason = isImportFailed
-                    ? "importFailed state (terminal)"
-                    : hasFailedPattern
-                    ? "failed pattern match"
-                    : "stuck warning state";
-                logger.debug(`   [REMOVE] Removing ${item.title} (${reason})`);
-
-                // Same delete the rest of the codebase uses (class method;
-                // reads the same system settings as the url/key passed in)
-                const ok = await lidarrService.removeItemAndBlocklist(item, {
-                    skipRedownload: false,
-                });
-                if (ok) {
-                    removed.push(item.title);
-                }
-            }
-        }
-
-        if (removed.length > 0) {
-            logger.debug(
-                ` Queue cleaner: removed ${removed.length} stuck item(s)`
-            );
-        }
-
-        return { removed: removed.length, items: removed };
-    } catch (error: any) {
-        logger.error("Queue clean failed:", error.message);
-        throw error;
-    }
-}
 
 /** Recently completed Lidarr downloads, used to find completions whose webhook never arrived. */
 export async function getRecentCompletedDownloads(

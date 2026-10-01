@@ -9,7 +9,7 @@ import { hasRealMbid } from "./artistIdentity";
 import type { SeedArtist } from "./discovery/discoverySeeding";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../utils/db";
-import axios from "axios";
+import { removeFailedDownload } from "./lidarrFailures";
 import {
     getSimilarArtists,
     type SimilarArtist,
@@ -1718,47 +1718,22 @@ class DiscoverWeeklyService {
                 return;
             }
 
-            // Get Lidarr queue
-            const queueResponse = await axios.get(
-                `${settings.lidarrUrl}/api/v1/queue`,
-                {
-                    params: { pageSize: 500 },
-                    headers: { "X-Api-Key": settings.lidarrApiKey },
-                    timeout: 30000,
-                }
-            );
-
-            const queueItems = queueResponse.data?.records || [];
             let removed = 0;
-
-            for (const item of queueItems) {
-                const downloadId = item.downloadId;
-
-                // Check if this is one of our downloads
-                if (downloadId && ourDownloadIds.has(downloadId)) {
-                    // Check if it's in a stuck state
-                    const isStuck =
-                        item.status === "warning" ||
-                        item.status === "failed" ||
-                        item.trackedDownloadState === "importFailed" ||
-                        item.trackedDownloadState === "importBlocked";
-
-                    if (isStuck) {
-                        try {
-                            // Same single implementation the download paths
-                            // use; skipRedownload=false so Lidarr may find
-                            // an alternative release.
-                            await lidarrService.blocklistAndRemove(downloadId, {
-                                skipRedownload: false,
-                            });
-                            logger.debug(
-                                `   Removed orphaned queue item: ${item.title}`
-                            );
-                            removed++;
-                        } catch (e) {
-                            // Ignore removal errors
-                        }
-                    }
+            for (const item of await lidarrService.getQueueItems()) {
+                if (!ourDownloadIds.has(item.downloadId)) continue;
+                const stuck =
+                    item.status === "warning" ||
+                    item.status === "failed" ||
+                    item.trackedDownloadState === "importFailed" ||
+                    item.trackedDownloadState === "importBlocked";
+                if (
+                    stuck &&
+                    (await removeFailedDownload(item.downloadId, "Discover batch finished", {
+                        searchAgain: false,
+                        item,
+                    }))
+                ) {
+                    removed++;
                 }
             }
 

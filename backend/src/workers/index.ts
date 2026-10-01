@@ -33,6 +33,7 @@ import {
 } from "./librarySyncCron";
 import { runDataIntegrityCheck } from "./dataIntegrity";
 import { simpleDownloadManager } from "../services/simpleDownloadManager";
+import { sweepFailedDownloads } from "../services/lidarrFailures";
 import { queueCleaner } from "../jobs/queueCleaner";
 import { enrichmentStateService } from "../services/enrichmentState";
 
@@ -249,9 +250,9 @@ async function runLidarrCleanupCycle() {
     lidarrCleanupRunning = true;
     try {
         const result = await withTimeout(
-            simpleDownloadManager.clearLidarrQueue(),
+            sweepFailedDownloads(),
             180000,
-            "clearLidarrQueue timed out"
+            "sweepFailedDownloads timed out"
         );
         if (result && result.removed > 0) {
             logger.debug(
@@ -276,7 +277,7 @@ timeouts.push(
     setTimeout(async () => {
         try {
             logger.debug("Running initial Lidarr queue cleanup...");
-            const result = await simpleDownloadManager.clearLidarrQueue();
+            const result = await sweepFailedDownloads();
             if (result.removed > 0) {
                 logger.debug(
                     `Initial cleanup: removed ${result.removed} stuck download(s)`

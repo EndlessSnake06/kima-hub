@@ -970,6 +970,13 @@ model UserSettings {
   user            User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+/// A Lidarr download Kima removed from the queue; the row stops any other path removing it again.
+model HandledDownload {
+  downloadId String   @id
+  reason     String
+  createdAt  DateTime @default(now())
+}
+
 model WebhookEvent {
   id            String    @id @default(cuid())
   eventId       String    @unique

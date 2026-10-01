@@ -8,6 +8,7 @@ import { lidarrService } from "../services/lidarr";
 import { musicBrainzService } from "../services/musicbrainz";
 import { getArtistCorrection } from "../services/artistCorrection";
 import { simpleDownloadManager } from "../services/simpleDownloadManager";
+import { sweepFailedDownloads } from "../services/lidarrFailures";
 import crypto from "crypto";
 import { safeError } from "../utils/errors";
 import { failureCause } from "../utils/outcome";
@@ -589,12 +590,8 @@ router.delete("/clear-all", async (req, res) => {
 // POST /downloads/clear-lidarr-queue - Clear stuck/failed items from Lidarr's queue
 router.post("/clear-lidarr-queue", requireAdmin, async (_req, res) => {
     try {
-        const result = await simpleDownloadManager.clearLidarrQueue();
-        res.json({
-            success: true,
-            removed: result.removed,
-            errors: result.errors,
-        });
+        const result = await sweepFailedDownloads();
+        res.json({ success: true, removed: result.removed });
     } catch (error: any) {
         logger.error("Clear Lidarr queue error:", error);
         res.status(500).json({ error: "Failed to clear Lidarr queue" });

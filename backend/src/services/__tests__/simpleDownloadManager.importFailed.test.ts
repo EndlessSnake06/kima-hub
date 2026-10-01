@@ -3,11 +3,6 @@
  * and each download id counts as one failure however often Lidarr reports it.
  */
 
-jest.mock("../lidarr", () => ({
-    ...jest.requireActual("../lidarr"),
-    lidarrService: { blocklistAndRemove: jest.fn().mockResolvedValue(undefined) },
-}));
-
 import { prisma } from "../../utils/db";
 import { simpleDownloadManager } from "../simpleDownloadManager";
 import { closeEngineConnections } from "../../__tests__/helpers/engineConnections";
