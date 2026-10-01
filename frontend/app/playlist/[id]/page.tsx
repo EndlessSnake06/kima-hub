@@ -90,8 +90,8 @@ interface PendingTrack {
  * title, album (hidden below md), actions, duration. Both strings are literal so
  * Tailwind compiles them.
  */
-const TRACK_GRID = "grid-cols-[64px_minmax(0,2fr)_minmax(0,1fr)_56px_136px]";
-const TRACK_GRID_MD = "md:grid-cols-[64px_minmax(0,2fr)_minmax(0,1fr)_56px_136px]";
+const TRACK_GRID = "grid-cols-[64px_minmax(0,2fr)_minmax(0,1fr)_56px_160px]";
+const TRACK_GRID_MD = "md:grid-cols-[64px_minmax(0,2fr)_minmax(0,1fr)_56px_160px]";
 
 export default function PlaylistDetailPage() {
     const controller = useAudioController();
@@ -576,10 +576,7 @@ export default function PlaylistDetailPage() {
         [playlist?.mergedItems, playlist?.items]
     );
 
-    // Measure the list container's offset within the scroll container (#main-content)
-    // so the virtualizer positions rows correctly. Re-measures on reflow above the
-    // list (e.g. the responsive hero crossing the md breakpoint shifts listRef ~52px)
-    // via a ResizeObserver, so scrollMargin can't go stale if overscan is later tuned.
+    // The list's offset inside #main-content, re-measured whenever content above it reflows.
     useLayoutEffect(() => {
         const measure = () => {
             if (!listRef.current || !scrollContainerRef.current) return;
@@ -630,7 +627,8 @@ export default function PlaylistDetailPage() {
                                 <button
                                     onClick={() => handlePlayPreview(pending.id)}
                                     className="w-full h-full flex items-center justify-center hover:bg-white/5 transition-colors"
-                                    title="Play 30s Deezer preview"
+                                    aria-label="Play a 30-second preview"
+                                    title="Play a 30-second preview"
                                 >
                                     {isPreviewPlaying ? (
                                         <Volume2 className="w-5 h-5 text-brand animate-pulse" />
@@ -670,11 +668,12 @@ export default function PlaylistDetailPage() {
                                     }}
                                     disabled={isRetrying}
                                     className={cn(
-                                        "p-1.5 rounded-lg hover:bg-white/10 transition-all",
+                                        "w-11 h-11 md:w-9 md:h-9 flex items-center justify-center rounded-lg hover:bg-white/10 transition-all",
                                         isRetrying
                                             ? "text-brand"
                                             : "text-[var(--text-muted)] hover:text-white/60"
                                     )}
+                                    aria-label="Retry download"
                                     title="Retry download"
                                 >
                                     {isRetrying ? (
@@ -691,7 +690,8 @@ export default function PlaylistDetailPage() {
                                         handleRemovePendingTrack(pending.id);
                                     }}
                                     disabled={isRemoving}
-                                    className="p-1.5 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-danger-light transition-all"
+                                    className="w-11 h-11 md:w-9 md:h-9 flex items-center justify-center rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-danger-light transition-all"
+                                    aria-label="Remove from playlist"
                                     title="Remove from playlist"
                                 >
                                     {isRemoving ? (
@@ -739,7 +739,6 @@ export default function PlaylistDetailPage() {
                         isCurrentlyPlaying && "bg-white/5 border-brand/30"
                     )}
                 >
-                    {/* Track Number / Play Button + Drag Handle */}
                     <div className="flex items-center justify-center gap-1">
                         <button
                             onClick={(e) => {
@@ -783,7 +782,6 @@ export default function PlaylistDetailPage() {
                         )}
                     </div>
 
-                    {/* Title + Artist */}
                     <div className="flex items-center gap-3 min-w-0">
                         <div className="relative w-10 h-10 bg-[var(--bg-primary)] rounded-lg shrink-0 overflow-hidden border border-white/10">
                             {playlistItem.track.album?.coverArt ? (
@@ -831,63 +829,60 @@ export default function PlaylistDetailPage() {
                         </div>
                     </div>
 
-                    {/* Album */}
                     <p className="hidden md:block self-center text-xs tabular-nums text-[var(--text-muted)] truncate">
                         {playlistItem.track.album.title}
                     </p>
 
-                    {/* Duration + Actions */}
-                    {/* Duration sits in its own cell rather than between the
-                        buttons, so the row reads left to right as data first,
-                        controls last. */}
                     <span className="hidden md:block self-center text-xs tabular-nums text-[var(--text-muted)] text-right">
                         {formatTime(playlistItem.track.duration)}
                     </span>
 
-                    <div className="flex items-center justify-end gap-2">
+                    <div className="flex items-center justify-end gap-1">
                         <button
-                            className="p-1.5 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-white transition-all"
+                            className="w-11 h-11 md:w-9 md:h-9 flex items-center justify-center rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-white transition-all"
                             onClick={(e) => {
                                 e.stopPropagation();
                                 handleAddToQueue(playlistItem.track);
                             }}
-                            title="Add to Queue"
+                            aria-label="Add to queue"
+                            title="Add to queue"
                         >
                             <ListPlus className="w-4 h-4" />
                         </button>
                         {playlist?.isOwner && (
                             <>
                                 <button
-                                aria-label="Move track up"
-                                className="hidden md:flex p-1.5 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-white transition-all"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleMoveTrackUp(playlistItem.id);
-                                }}
-                                title="Move up"
+                                    aria-label="Move up"
+                                    className="hidden md:flex w-9 h-9 items-center justify-center rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-white transition-all"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleMoveTrackUp(playlistItem.id);
+                                    }}
+                                    title="Move up"
                                 >
                                     <ChevronUp className="w-4 h-4" />
                                 </button>
                                 <button
-                                    aria-label="Move track down"
-                                className="hidden md:flex p-1.5 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-white transition-all"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleMoveTrackDown(playlistItem.id);
-                                }}
-                                title="Move down"
+                                    aria-label="Move down"
+                                    className="hidden md:flex w-9 h-9 items-center justify-center rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-white transition-all"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleMoveTrackDown(playlistItem.id);
+                                    }}
+                                    title="Move down"
                                 >
                                     <ChevronDown className="w-4 h-4" />
                                 </button>
                                 <button
-                                    className="p-1.5 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-danger-light transition-all"
+                                    className="w-11 h-11 md:w-9 md:h-9 flex items-center justify-center rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-danger-light transition-all"
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         handleRemoveTrack(playlistItem.track.id);
                                     }}
-                                    title="Remove from Playlist"
+                                    aria-label="Remove from playlist"
+                                    title="Remove from playlist"
                                 >
-                                    <Trash2 className="w-4 h-4" />
+                                    <X className="w-4 h-4" />
                                 </button>
                             </>
                         )}
@@ -914,14 +909,11 @@ export default function PlaylistDetailPage() {
         );
     }
 
-    // Get hero image from first cover
     const heroImage = coverUrls.length > 0 ? api.getCoverArtUrl(coverUrls[0] as string, 500) : null;
 
     return (
         <div className="min-h-screen bg-gradient-to-b from-[#0a0a0a] to-black section-stack">
-            {/* Hero Section */}
             <div className="relative">
-                {/* Blurred background */}
                 {heroImage && (
                     <div className="absolute inset-0 overflow-hidden">
                         <div className="absolute inset-0 scale-110 blur-md opacity-20">
@@ -940,7 +932,6 @@ export default function PlaylistDetailPage() {
 
                 <div className="relative page-shell pt-8 pb-6">
                     <div>
-                        {/* Back navigation */}
                         <button
                             onClick={() => router.push("/playlists")}
                             className="flex items-center gap-2 text-xs tabular-nums text-[var(--text-muted)] hover:text-white transition-colors mb-6"
@@ -957,7 +948,6 @@ export default function PlaylistDetailPage() {
                         </div>
 
                         <div className="flex items-end gap-6">
-                            {/* Cover Art Mosaic */}
                             <div className="w-[140px] h-[140px] md:w-[192px] md:h-[192px] bg-[var(--bg-primary)] rounded-lg shrink-0 overflow-hidden relative border-2 border-white/10">
                                 {coverUrls && coverUrls.length === 1 ? (
                                     <CachedImage
@@ -992,7 +982,6 @@ export default function PlaylistDetailPage() {
                                 )}
                             </div>
 
-                            {/* Playlist Info */}
                             <div className="flex-1 min-w-0 pb-1">
                                 {playlist.isOwner && isEditingName ? (
                                     <input
@@ -1077,10 +1066,8 @@ export default function PlaylistDetailPage() {
                 </div>
             </div>
 
-            {/* Action Bar */}
             <div className="relative page-shell py-4">
                 <div className="flex items-center gap-4">
-                    {/* Play Button */}
                     {playlist.items && playlist.items.length > 0 && (
                         <button
                             onClick={handlePlayPlaylist}
@@ -1095,7 +1082,6 @@ export default function PlaylistDetailPage() {
                         </button>
                     )}
 
-                    {/* Shuffle */}
                     {playlist.items && playlist.items.length > 1 && (
                         <button
                             onClick={() => {
@@ -1128,7 +1114,6 @@ export default function PlaylistDetailPage() {
 
                     <div className="flex-1" />
 
-                    {/* Share Button */}
                     {playlist.isOwner && (
                         <div className="relative" data-share-popover>
                             <button
@@ -1150,7 +1135,6 @@ export default function PlaylistDetailPage() {
                                 )}
                             </button>
 
-                            {/* Share Popover */}
                             {showSharePopover && shareUrl && (
                                 <div className="absolute right-0 top-full mt-2 z-(--z-dropdown) w-80 bg-[var(--bg-hover)] border border-white/10 rounded-lg p-3">
                                     <div className="flex items-center gap-2 mb-2">
@@ -1209,7 +1193,6 @@ export default function PlaylistDetailPage() {
                         </div>
                     )}
 
-                    {/* Visibility Toggle */}
                     {playlist.isOwner && (
                         <button
                             onClick={handleTogglePublic}
@@ -1231,7 +1214,6 @@ export default function PlaylistDetailPage() {
                         </button>
                     )}
 
-                    {/* Hide Button */}
                     <button
                         onClick={handleToggleHide}
                         disabled={isHiding}
@@ -1251,7 +1233,6 @@ export default function PlaylistDetailPage() {
                         )}
                     </button>
 
-                    {/* Delete */}
                     {playlist.isOwner && (
                         <button
                             onClick={() => setShowDeleteConfirm(true)}
@@ -1264,10 +1245,8 @@ export default function PlaylistDetailPage() {
                 </div>
             </div>
 
-            {/* Track Listing */}
             <div className="relative page-shell pb-32">
                 <div>
-                    {/* Pending tracks notice */}
                     {playlist.pendingCount > 0 && (
                         <div className="mb-4 px-4 py-2 bg-danger/10 border border-danger/20 rounded-lg flex items-center justify-between">
                             <div className="flex items-center gap-2">
@@ -1291,10 +1270,8 @@ export default function PlaylistDetailPage() {
 
                     {playlist.items?.length > 0 || playlist.pendingTracks?.length > 0 ? (
                         <div className="w-full">
-                            {/* Section header */}
                             <SectionHeader type="track" title="Tracks" count={playlist.items?.length || 0} />
 
-                            {/* Table Header */}
                             {/* The number and the drag handle share a row's first cell,
                                 so they share one heading. See TRACK_GRID. */}
                             <div className={cn("hidden md:grid", TRACK_GRID, "gap-4 px-4 py-2 text-xs text-[var(--text-muted)] border-b border-white/10 mb-2")}>
@@ -1305,7 +1282,6 @@ export default function PlaylistDetailPage() {
                                 <span className="sr-only">Actions</span>
                             </div>
 
-                            {/* Track Rows -- window-virtualized */}
                             <div
                                 ref={listRef}
                                 style={{
@@ -1360,7 +1336,6 @@ export default function PlaylistDetailPage() {
                 </div>
             </div>
 
-            {/* Confirm Dialog */}
             <ConfirmDialog
                 isOpen={showDeleteConfirm}
                 onClose={() => setShowDeleteConfirm(false)}
