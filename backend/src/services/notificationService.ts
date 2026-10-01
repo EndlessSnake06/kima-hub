@@ -19,6 +19,9 @@ interface CreateNotificationParams {
     /** One row per user per key: a new alert replaces the old one, and an
      * identical repeat is dropped. */
     groupKey?: string;
+    /** With a group key: an identical repeat still comes back unread. For outcomes
+     * of something the user just did, where the repeat is the answer they wait for. */
+    renotify?: boolean;
 }
 
 class NotificationService {
@@ -26,13 +29,13 @@ class NotificationService {
      * Create a new notification for a user
      */
     async create(params: CreateNotificationParams) {
-        const { userId, type, title, message, metadata, groupKey } = params;
+        const { userId, type, title, message, metadata, groupKey, renotify } = params;
 
         let notification;
         if (groupKey) {
             const where = { userId_groupKey: { userId, groupKey } };
             const existing = await prisma.notification.findUnique({ where });
-            if (existing && existing.title === title && existing.message === (message ?? null)) {
+            if (!renotify && existing && existing.title === title && existing.message === (message ?? null)) {
                 return existing;
             }
             const fields = { type, title, message: message ?? null, metadata };
@@ -222,6 +225,19 @@ class NotificationService {
             title: "Import Complete",
             message,
             metadata: { playlistId, playlistName, matchedTracks, totalTracks },
+        });
+    }
+
+    /**
+     * Notify user that a Spotify import failed
+     */
+    async notifyImportFailed(userId: string, playlistName: string, error: string) {
+        return this.create({
+            userId,
+            type: "error",
+            title: "Import failed",
+            message: `"${playlistName}": ${error}`,
+            metadata: { href: "/import/playlist" },
         });
     }
 

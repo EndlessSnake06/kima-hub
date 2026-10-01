@@ -3,6 +3,7 @@ import { logger } from "../utils/logger";
 import { notificationService } from "../services/notificationService";
 import { requireAuth } from "../middleware/auth";
 import { prisma } from "../utils/db";
+import { z } from "zod";
 
 const router = Router();
 
@@ -53,6 +54,40 @@ router.get(
         }
     }
 );
+
+const clientNotificationSchema = z.object({
+    type: z.enum(["error", "system"]),
+    title: z.string().trim().min(1).max(120),
+    message: z.string().trim().max(500).optional(),
+    href: z.string().regex(/^\/[^/]/).max(200).optional(),
+});
+
+/**
+ * POST /notifications
+ * Record an outcome the browser saw. One row per title, so a repeat replaces it.
+ */
+router.post("/", requireAuth, async (req: Request, res: Response) => {
+    const parsed = clientNotificationSchema.safeParse(req.body);
+    if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid notification" });
+    }
+    const { type, title, message, href } = parsed.data;
+    try {
+        const notification = await notificationService.create({
+            userId: req.user!.id,
+            type,
+            title,
+            message,
+            metadata: href ? { href } : undefined,
+            groupKey: `client:${title}`,
+            renotify: true,
+        });
+        res.status(201).json(notification);
+    } catch (error: any) {
+        logger.error("Error creating notification:", error);
+        res.status(500).json({ error: "Failed to create notification" });
+    }
+});
 
 /**
  * POST /notifications/:id/read
