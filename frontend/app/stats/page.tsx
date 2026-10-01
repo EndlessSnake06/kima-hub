@@ -494,7 +494,7 @@ function Divide({ id, label }: { id: string; label: string }) {
 /** Page gutters, and the measure the whole page is set to. */
 function Shell({ children }: { children: React.ReactNode }) {
     return (
-        <div className="relative px-5 sm:px-8 lg:px-12 pb-28 max-w-[1800px] mx-auto">
+        <div className="relative page-shell pb-28">
             {/* Scroll progress. Kept outside the gapped column so it adds no
              * section gap above the first content. */}
             <div aria-hidden className="sticky top-0 z-(--z-raised) -mx-5 sm:-mx-8 lg:-mx-12 h-px bg-white/[0.04]">

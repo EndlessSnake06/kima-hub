@@ -193,7 +193,7 @@ export default function MixPage() {
         <div className="min-h-screen">
             {/* Compact Hero - Spotify Style */}
             <div
-                className="relative pt-16 pb-10 px-4 md:px-8"
+                className="relative pt-16 pb-10 page-shell"
                 style={{
                     background: mix.color
                         ? `${mix.color}, linear-gradient(to bottom, transparent, #1a1a1a)`
@@ -255,7 +255,7 @@ export default function MixPage() {
             </div>
 
             {/* Action Bar */}
-            <div className="bg-gradient-to-b from-[#1a1a1a]/60 to-transparent px-4 md:px-8 py-4">
+            <div className="bg-gradient-to-b from-[#1a1a1a]/60 to-transparent page-shell py-4">
                 <div className="flex items-center gap-4">
                     {/* Play Button */}
                     {mix.tracks && mix.tracks.length > 0 && (
@@ -298,7 +298,7 @@ export default function MixPage() {
             </div>
 
             {/* Track Listing */}
-            <div className="px-4 md:px-8 pb-32">
+            <div className="page-shell pb-32">
                 {mix.tracks && mix.tracks.length > 0 ? (
                     <div className="w-full">
                         {/* Table Header */}

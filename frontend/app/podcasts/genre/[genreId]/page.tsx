@@ -116,8 +116,8 @@ export default function GenrePage() {
 
             <div className="relative">
                 {/* Hero */}
-                <div className="relative bg-gradient-to-b from-[#0a0a0a] via-[#0f0f0f] to-transparent pt-6 pb-8 px-4 sm:px-6 md:px-8 border-b border-white/5">
-                    <div className="max-w-[1800px] mx-auto">
+                <div className="relative bg-gradient-to-b from-[#0a0a0a] via-[#0f0f0f] to-transparent pt-6 pb-8 page-shell border-b border-white/5">
+                    <div>
                         <button
                             onClick={() => router.push("/podcasts")}
                             className="flex items-center gap-2 text-xs tabular-nums text-[var(--text-muted)] hover:text-white transition-colors mb-6"
@@ -143,7 +143,7 @@ export default function GenrePage() {
                 </div>
 
                 {/* Content */}
-                <div className="relative max-w-[1800px] mx-auto px-4 sm:px-6 md:px-8 pb-32 pt-8 animate-rise">
+                <div className="relative page-shell pb-32 pt-8 animate-rise">
                     <div className="grid-media">
                         {podcasts.map((podcast) => (
                             <button

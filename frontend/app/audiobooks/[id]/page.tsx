@@ -86,7 +86,7 @@ export default function AudiobookDetailPage() {
                     }}
                 />
 
-                <div className="relative max-w-[1800px] mx-auto px-4 md:px-8 py-8 section-stack">
+                <div className="relative page-shell py-8 section-stack">
                     {/* Sections */}
                     {audiobook.sections && audiobook.sections.length > 0 && (
                         <div>

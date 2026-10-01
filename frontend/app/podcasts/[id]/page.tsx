@@ -155,7 +155,7 @@ export default function PodcastDetailPage() {
                     }}
                 />
 
-                    <div className="relative max-w-[1800px] mx-auto px-4 md:px-8 py-8 section-stack">
+                    <div className="relative page-shell py-8 section-stack">
                     {/* Continue Listening */}
                     {podcast && inProgressEpisodes.length > 0 && (
                         <div>

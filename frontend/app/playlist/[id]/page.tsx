@@ -938,8 +938,8 @@ export default function PlaylistDetailPage() {
                     </div>
                 )}
 
-                <div className="relative px-4 md:px-8 pt-8 pb-6">
-                    <div className="max-w-[1800px] mx-auto">
+                <div className="relative page-shell pt-8 pb-6">
+                    <div>
                         {/* Back navigation */}
                         <button
                             onClick={() => router.push("/playlists")}
@@ -1081,8 +1081,8 @@ export default function PlaylistDetailPage() {
             </div>
 
             {/* Action Bar */}
-            <div className="relative px-4 md:px-8 py-4">
-                <div className="max-w-[1800px] mx-auto flex items-center gap-4">
+            <div className="relative page-shell py-4">
+                <div className="flex items-center gap-4">
                     {/* Play Button */}
                     {playlist.items && playlist.items.length > 0 && (
                         <button
@@ -1268,8 +1268,8 @@ export default function PlaylistDetailPage() {
             </div>
 
             {/* Track Listing */}
-            <div className="relative px-4 md:px-8 pb-32">
-                <div className="max-w-[1800px] mx-auto">
+            <div className="relative page-shell pb-32">
+                <div>
                     {/* Pending tracks notice */}
                     {playlist.pendingCount > 0 && (
                         <div className="mb-4 px-4 py-2 bg-danger/10 border border-danger/20 rounded-lg flex items-center justify-between">

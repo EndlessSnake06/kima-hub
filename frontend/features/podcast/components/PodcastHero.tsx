@@ -49,8 +49,8 @@ export function PodcastHero({
             />
 
             {/* Hero Content */}
-            <div className="relative px-4 md:px-8 pt-8 pb-6">
-                <div className="max-w-[1800px] mx-auto">
+            <div className="relative page-shell pt-8 pb-6">
+                <div>
                     {/* Back navigation */}
                     <button
                         onClick={() => router.push("/podcasts")}
@@ -139,8 +139,8 @@ export function PodcastHero({
 
             {/* Action Bar */}
             {children && (
-                <div className="relative px-4 md:px-8 pb-4">
-                    <div className="max-w-[1800px] mx-auto">
+                <div className="relative page-shell pb-4">
+                    <div>
                         {children}
                     </div>
                 </div>

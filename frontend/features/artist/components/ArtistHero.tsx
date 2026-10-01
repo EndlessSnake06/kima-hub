@@ -49,7 +49,7 @@ export function ArtistHero({
             />
 
             {/* Compact Hero Content - Full Width */}
-            <div className="relative px-4 md:px-8 pt-16 pb-6">
+            <div className="relative page-shell pt-16 pb-6">
                 <div className="flex items-end gap-6">
                     {/* Artist Image - Circular */}
                     <div className="w-[140px] h-[140px] md:w-[192px] md:h-[192px] bg-[#282828] rounded-full shrink-0 overflow-hidden relative">
@@ -143,7 +143,7 @@ export function ArtistHero({
 
             {/* Action Bar - Full Width */}
             {children && (
-                <div className="relative px-4 md:px-8 pb-4">{children}</div>
+                <div className="relative page-shell pb-4">{children}</div>
             )}
         </div>
     );

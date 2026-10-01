@@ -128,8 +128,8 @@ export default function SeriesDetailPage() {
                     </div>
                 )}
 
-                <div className="relative px-4 md:px-8 pt-8 pb-6">
-                    <div className="max-w-[1800px] mx-auto">
+                <div className="relative page-shell pt-8 pb-6">
+                    <div>
                         {/* Back navigation */}
                         <button
                             onClick={() => router.push("/audiobooks")}
@@ -206,8 +206,8 @@ export default function SeriesDetailPage() {
             </div>
 
             {/* Books List */}
-            <div className="relative px-4 md:px-8 pb-24 animate-rise">
-                <div className="max-w-[1800px] mx-auto">
+            <div className="relative page-shell pb-24 animate-rise">
+                <div>
                     <div>
                         <SectionHeader type="audiobook" title="Books in Series" count={books.length} />
 

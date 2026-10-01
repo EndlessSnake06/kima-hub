@@ -211,8 +211,8 @@ export default function DeezerPlaylistDetailPage() {
     if (error || !playlist) {
         return (
             <div className="min-h-screen bg-gradient-to-b from-[#0a0a0a] to-black">
-                <div className="relative px-4 md:px-8 pt-8">
-                    <div className="max-w-[1800px] mx-auto">
+                <div className="relative page-shell pt-8">
+                    <div>
                         <button
                             onClick={() => router.push("/browse/playlists")}
                             className="flex items-center gap-2 text-xs tabular-nums text-[var(--text-muted)] hover:text-white transition-colors mb-8"
@@ -262,8 +262,8 @@ export default function DeezerPlaylistDetailPage() {
                     </div>
                 )}
 
-                <div className="relative px-4 md:px-8 pt-8 pb-6">
-                    <div className="max-w-[1800px] mx-auto">
+                <div className="relative page-shell pt-8 pb-6">
+                    <div>
                         {/* Back navigation */}
                         <button
                             onClick={() => router.push("/browse/playlists")}
@@ -330,8 +330,8 @@ export default function DeezerPlaylistDetailPage() {
             </div>
 
             {/* Action Bar */}
-            <div className="relative px-4 md:px-8 pb-4">
-                <div className="max-w-[1800px] mx-auto">
+            <div className="relative page-shell pb-4">
+                <div>
                     <div className="flex items-center gap-3">
                         {/* Download/Import Button */}
                         <Button
@@ -383,8 +383,8 @@ export default function DeezerPlaylistDetailPage() {
             </div>
 
             {/* Track Listing */}
-            <div className="relative px-4 md:px-8 pb-32 animate-rise">
-                <div className="max-w-[1800px] mx-auto">
+            <div className="relative page-shell pb-32 animate-rise">
+                <div>
                     {playlist.tracks.length > 0 ? (
                         <div>
                             <SectionHeader type="track" title="Tracks" count={playlist.trackCount} />
