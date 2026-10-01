@@ -175,7 +175,7 @@ it("refuses a second active job for the same album", async () => {
 
 it("fails a download Lidarr cannot start and tells the user in the tray", async () => {
     getArtistAlbums.mockResolvedValue([]);
-    addAlbum.mockRejectedValue(new Error("Choose a Lidarr quality and metadata profile in Settings before downloading"));
+    addAlbum.mockRejectedValue(new Error("Lidarr's music folder /music has no default profiles. Set them in Lidarr, or choose them in Kima's Lidarr settings"));
 
     expect((await start()).success).toBe(false);
     const job = await row();
@@ -183,7 +183,7 @@ it("fails a download Lidarr cannot start and tells the user in the tray", async 
     expect((job.metadata as any).statusText).toBe("Failed to start");
     expect((job.metadata as any).notificationSent).toBe(true);
     const [note] = await prisma.notification.findMany({ where: { userId: USER } });
-    expect(note?.message).toMatch(/Choose a Lidarr quality/);
+    expect(note?.message).toMatch(/has no default profiles/);
 });
 
 it.each([

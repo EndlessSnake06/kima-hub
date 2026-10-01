@@ -177,48 +177,29 @@ class LidarrService {
     /**
      * Ensure the root folder exists in Lidarr, fallback to first available if not
      */
-    private async ensureRootFolderExists(
-        requestedPath: string
-    ): Promise<string> {
-        if (!this.client) {
-            return requestedPath;
+    /**
+     * Where and how Lidarr files a new artist: the asked music folder (or Lidarr's
+     * first), with the profiles chosen in Kima or else that folder's defaults.
+     */
+    private async newArtistTarget(requestedPath: string): Promise<{
+        rootFolderPath: string;
+        qualityProfileId: number;
+        metadataProfileId: number;
+    }> {
+        const folders: LidarrRootFolder[] = (await this.client!.get("/api/v1/rootfolder")).data ?? [];
+        const folder = folders.find((f) => f.path === requestedPath) ?? folders[0];
+        if (!folder) {
+            throw new UserFacingError("Add a music folder in Lidarr before downloading", 409);
         }
-
-        try {
-            const rootFolders: LidarrRootFolder[] = (await this.client.get("/api/v1/rootfolder")).data;
-
-            if (rootFolders.length === 0) {
-                logger.warn("  No root folders configured in Lidarr!");
-                return requestedPath;
-            }
-
-            const exists = rootFolders.find(
-                (folder) => folder.path === requestedPath
-            );
-
-            if (exists) {
-                return requestedPath;
-            }
-
-            const fallback = rootFolders[0].path;
-            logger.debug(`  Root folder "${requestedPath}" not found in Lidarr`);
-            logger.debug(`   Using fallback: "${fallback}"`);
-            return fallback;
-        } catch (error) {
-            logger.error("Error checking root folders:", error);
-            return requestedPath; // Return requested path and let Lidarr error if needed
-        }
-    }
-
-    /** Lidarr profiles are chosen by the user; Kima never guesses one. */
-    private chosenProfiles(): { qualityProfileId: number; metadataProfileId: number } {
-        if (this.qualityProfileId === null || this.metadataProfileId === null) {
+        const qualityProfileId = this.qualityProfileId ?? (folder.defaultQualityProfileId || null);
+        const metadataProfileId = this.metadataProfileId ?? (folder.defaultMetadataProfileId || null);
+        if (qualityProfileId === null || metadataProfileId === null) {
             throw new UserFacingError(
-                "Choose a Lidarr quality and metadata profile in Settings before downloading",
+                `Lidarr's music folder ${folder.path} has no default profiles. Set them in Lidarr, or choose them in Kima's Lidarr settings`,
                 409
             );
         }
-        return { qualityProfileId: this.qualityProfileId, metadataProfileId: this.metadataProfileId };
+        return { rootFolderPath: folder.path, qualityProfileId, metadataProfileId };
     }
 
     /**
@@ -239,7 +220,7 @@ class LidarrService {
         }
         const existing = (await this.getArtistList()).find((a) => a.foreignArtistId === mbid);
         if (existing) return existing;
-        const profiles = this.chosenProfiles();
+        const target = await this.newArtistTarget(rootFolderPath);
 
         const lookup = await this.client.get<LidarrArtist[]>("/api/v1/artist/lookup", {
             params: { term: `lidarr:${mbid}` },
@@ -254,8 +235,7 @@ class LidarrService {
         const artistPayload: LidarrAddArtistRequest = {
             foreignArtistId: artistData.foreignArtistId,
             artistName: artistData.artistName,
-            rootFolderPath: await this.ensureRootFolderExists(rootFolderPath),
-            ...profiles,
+            ...target,
             monitored: true,
             monitorNewItems: "none",
             addOptions: { monitor: "existing", searchForMissingAlbums: false },

@@ -120,7 +120,7 @@ describe("notificationPolicyService.hasAlreadyNotified (via evaluateNotification
 describe("failed downloads", () => {
     it.each([
         "All releases and albums exhausted: Lidarr returned nothing",
-        "Choose a Lidarr quality and metadata profile in Settings before downloading",
+        "Lidarr's music folder /music has no default profiles. Set them in Lidarr, or choose them in Kima's Lidarr settings",
         "something nobody listed",
     ])("notifies for %p", async (error) => {
         (prisma.downloadJob.findUnique as jest.Mock).mockResolvedValue(makeJob({ status: "failed", error }));

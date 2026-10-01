@@ -1,7 +1,8 @@
 /**
- * addArtist adds only the artist with the asked MusicBrainz id, with the
- * profiles the user chose, monitoring nothing on its own. A Lidarr outage is
- * thrown so the download waits for Lidarr instead of failing.
+ * addArtist adds only the artist with the asked MusicBrainz id, monitoring
+ * nothing on its own. Profiles chosen in Kima win; otherwise the music folder's
+ * defaults in Lidarr are used. A Lidarr outage is thrown so the download waits
+ * for Lidarr instead of failing.
  */
 
 import { lidarrService } from "../lidarr";
@@ -10,14 +11,19 @@ const MBID = "artist-mbid";
 const client = { get: jest.fn(), post: jest.fn(), put: jest.fn(), delete: jest.fn() };
 const service = lidarrService as any;
 let lookup: { foreignArtistId: string; artistName: string }[];
+let folders: { path: string; defaultQualityProfileId?: number; defaultMetadataProfileId?: number }[];
 
 beforeEach(() => {
     jest.restoreAllMocks();
     Object.values(client).forEach((fn) => fn.mockReset());
     lookup = [{ foreignArtistId: MBID, artistName: "Low" }];
+    folders = [
+        { path: "/other", defaultQualityProfileId: 7, defaultMetadataProfileId: 8 },
+        { path: "/music", defaultQualityProfileId: 5, defaultMetadataProfileId: 6 },
+    ];
     client.get.mockImplementation(async (url: string) => {
         if (url === "/api/v1/artist/lookup") return { data: lookup };
-        if (url === "/api/v1/rootfolder") return { data: [{ path: "/music" }] };
+        if (url === "/api/v1/rootfolder") return { data: folders };
         return { data: [] };
     });
     client.post.mockResolvedValue({ data: { id: 9, foreignArtistId: MBID } });
@@ -43,10 +49,28 @@ it("adds with the chosen profiles and monitors no catalogue", async () => {
     });
 });
 
-it("refuses a new artist until the profiles are chosen", async () => {
+it("uses the music folder's defaults in Lidarr when none are chosen in Kima", async () => {
     service.qualityProfileId = null;
+    service.metadataProfileId = null;
 
-    await expect(lidarrService.addArtist(MBID, "Low", "/music")).rejects.toThrow(/Choose a Lidarr quality and metadata profile/);
+    await lidarrService.addArtist(MBID, "Low", "/music");
+
+    expect(artistPost()?.[1]).toMatchObject({ rootFolderPath: "/music", qualityProfileId: 5, metadataProfileId: 6 });
+});
+
+it("fills only the profile not chosen in Kima from the folder", async () => {
+    service.metadataProfileId = null;
+
+    await lidarrService.addArtist(MBID, "Low", "/music");
+
+    expect(artistPost()?.[1]).toMatchObject({ qualityProfileId: 3, metadataProfileId: 6 });
+});
+
+it("refuses a new artist when neither Kima nor the folder has profiles", async () => {
+    service.qualityProfileId = null;
+    folders = [{ path: "/music" }];
+
+    await expect(lidarrService.addArtist(MBID, "Low", "/music")).rejects.toMatchObject({ statusCode: 409 });
     expect(client.post).not.toHaveBeenCalled();
 });
 

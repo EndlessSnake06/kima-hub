@@ -137,16 +137,16 @@ describe("POST /downloads", () => {
             expect(mockAddArtist).not.toHaveBeenCalled();
         });
 
-        it("tells the user to choose Lidarr profiles", async () => {
+        it("tells the user where to set Lidarr profiles", async () => {
             mockGetArtist.mockResolvedValue({ kind: "answered", value: { name: "Low" } });
             mockAddArtist.mockRejectedValue(
-                new UserFacingError("Choose a Lidarr quality and metadata profile in Settings before downloading", 409)
+                new UserFacingError("Lidarr's music folder /music has no default profiles. Set them in Lidarr, or choose them in Kima's Lidarr settings", 409)
             );
 
             const res = await postArtist();
 
             expect(res.status).toBe(409);
-            expect(res.body.error).toMatch(/Choose a Lidarr quality/);
+            expect(res.body.error).toMatch(/has no default profiles/);
             expect(mockAddArtist).toHaveBeenCalledWith(RG, "Low", "/music");
         });
     });

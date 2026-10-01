@@ -108,6 +108,8 @@ interface LidarrLink {
 export interface LidarrRootFolder {
   id: number;
   path: string;
+  defaultQualityProfileId?: number;
+  defaultMetadataProfileId?: number;
   accessible: boolean;
   freeSpace: number;
   totalSpace: number;
