@@ -13,6 +13,7 @@ import { simpleDownloadManager } from "./simpleDownloadManager";
 import { musicBrainzService } from "./musicbrainz";
 import { failureCause } from "../utils/outcome";
 import { getArtistCorrection } from "./artistCorrection";
+import { isMbid } from "./artistIdentity";
 import { AcquisitionErrorType } from "./lidarr";
 import { distributedLock } from "../utils/distributedLock";
 import PQueue from "p-queue";
@@ -228,6 +229,28 @@ class AcquisitionService {
         logger.debug(`[Acquisition] Updated job ${jobId}: ${statusText}`);
     }
 
+    /**
+     * With an album id, the release group's own credit names the artist; a name
+     * guess is used only when there is no id to read it from.
+     */
+    private async canonicalArtistName(request: AlbumAcquisitionRequest): Promise<string> {
+        if (request.mbid && isMbid(request.mbid)) {
+            const group = await musicBrainzService.getReleaseGroup(request.mbid);
+            if (group.kind === "answered") {
+                return group.value?.["artist-credit"]?.[0]?.artist?.name ?? request.artistName;
+            }
+            logger.warn(`[Acquisition] Release group ${request.mbid}: ${group.kind === "absent" ? "not on MusicBrainz" : failureCause(group)}`);
+            return request.artistName;
+        }
+        try {
+            const correction = await getArtistCorrection(request.artistName);
+            return correction?.corrected ? correction.canonicalName : request.artistName;
+        } catch (error) {
+            logger.warn(`[Acquisition] Artist correction failed for "${request.artistName}":`, error);
+            return request.artistName;
+        }
+    }
+
     /** Acquire an album from Soulseek or Lidarr per the user's settings, with fallback; queued so albums run in parallel. */
     async acquireAlbum(
         request: AlbumAcquisitionRequest,
@@ -304,22 +327,10 @@ class AcquisitionService {
             throw new UserFacingError('Album MBID is required when Soulseek is not available', 400, 'INVALID_INPUT');
         }
 
-        // Verify artist name before acquisition
-        try {
-            const correction = await getArtistCorrection(
-                request.artistName
-            );
-            if (correction?.corrected) {
-                logger.debug(
-                    `[Acquisition] Artist corrected: "${request.artistName}" → "${correction.canonicalName}"`
-                );
-                request = { ...request, artistName: correction.canonicalName };
-            }
-        } catch (error) {
-            logger.warn(
-                `[Acquisition] Artist correction failed for "${request.artistName}":`,
-                error
-            );
+        const artistName = await this.canonicalArtistName(request);
+        if (artistName !== request.artistName) {
+            logger.debug(`[Acquisition] Artist corrected: "${request.artistName}" → "${artistName}"`);
+            request = { ...request, artistName };
         }
 
         // Get download behavior configuration
