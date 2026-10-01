@@ -35,9 +35,13 @@ class NotificationService {
         if (groupKey) {
             const where = { userId_groupKey: { userId, groupKey } };
             const existing = await prisma.notification.findUnique({ where });
-            if (!renotify && existing && existing.title === title && existing.message === (message ?? null)) {
-                return existing;
-            }
+            const identical =
+                existing &&
+                existing.type === type &&
+                existing.title === title &&
+                existing.message === (message ?? null) &&
+                JSON.stringify(existing.metadata ?? null) === JSON.stringify(metadata ?? null);
+            if (!renotify && identical) return existing;
             const fields = { type, title, message: message ?? null, metadata };
             notification = await prisma.notification.upsert({
                 where,
