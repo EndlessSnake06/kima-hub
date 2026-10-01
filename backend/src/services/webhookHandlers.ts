@@ -12,8 +12,8 @@ import { logger } from "../utils/logger";
 
 /**
  * Run the side effects for one webhook event and return the correlation
- * id (download job id) when one was matched. Unknown event types return
- * undefined; "Health"/"Test" events are deliberately no-ops.
+ * id (download job id) when one was matched. Event names are Lidarr's
+ * WebhookEventType; Health and Test events are no-ops.
  */
 export async function dispatchWebhookEvent(
     eventType: string,
@@ -24,18 +24,21 @@ export async function dispatchWebhookEvent(
             return handleGrab(payload);
 
         case "Download":
-        case "AlbumDownload":
-        case "TrackRetag":
-        case "Rename":
             return handleDownload(payload);
 
         case "ImportFailure":
-        case "DownloadFailed":
         case "DownloadFailure":
             return handleImportFailure(payload);
 
+        case "AlbumDelete":
+            return handleAlbumDelete(payload);
+
+        case "Rename":
+        case "Retag":
+            await requestScan({ source: "lidarr-rename" });
+            return undefined;
+
         case "Health":
-        case "HealthIssue":
         case "HealthRestored":
         case "Test":
             return undefined;
@@ -52,8 +55,7 @@ export async function dispatchWebhookEvent(
  */
 async function handleGrab(payload: any): Promise<string | undefined> {
     const downloadId = payload.downloadId;
-    const albumMbid =
-        payload.albums?.[0]?.foreignAlbumId || payload.albums?.[0]?.mbId;
+    const albumMbid = payload.albums?.[0]?.mbId;
     const albumTitle = payload.albums?.[0]?.title;
     const artistName = payload.artist?.name;
     const lidarrAlbumId = payload.albums?.[0]?.id;
@@ -91,11 +93,10 @@ async function handleGrab(payload: any): Promise<string | undefined> {
  */
 async function handleDownload(payload: any): Promise<string | undefined> {
     const downloadId = payload.downloadId;
-    const albumTitle = payload.album?.title || payload.albums?.[0]?.title;
+    const albumTitle = payload.album?.title;
     const artistName = payload.artist?.name;
-    const albumMbid =
-        payload.album?.foreignAlbumId || payload.albums?.[0]?.foreignAlbumId;
-    const lidarrAlbumId = payload.album?.id || payload.albums?.[0]?.id;
+    const albumMbid = payload.album?.mbId;
+    const lidarrAlbumId = payload.album?.id;
 
     logger.debug(`   Album: ${artistName} - ${albumTitle}`);
     logger.debug(`   Download ID: ${downloadId}`);
@@ -148,9 +149,8 @@ async function handleImportFailure(
     payload: any
 ): Promise<string | undefined> {
     const downloadId = payload.downloadId;
-    const albumMbid =
-        payload.album?.foreignAlbumId || payload.albums?.[0]?.foreignAlbumId;
-    const albumTitle = payload.album?.title || payload.release?.title;
+    const albumMbid = payload.album?.mbId;
+    const albumTitle = payload.album?.title;
     const reason = payload.message || "Import failed";
 
     logger.debug(`   Album: ${albumTitle}`);
@@ -168,4 +168,16 @@ async function handleImportFailure(
         albumMbid
     );
     return result.jobId;
+}
+
+/**
+ * Lidarr removed an album: a download running for it can never import, and
+ * Discover must not try to delete the album again.
+ */
+async function handleAlbumDelete(payload: any): Promise<string | undefined> {
+    const lidarrAlbumId = payload.album?.id;
+    if (!lidarrAlbumId) return undefined;
+
+    logger.debug(`   Album removed: ${payload.artist?.name} - ${payload.album?.title}`);
+    return simpleDownloadManager.onAlbumDeleted(lidarrAlbumId);
 }

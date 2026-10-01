@@ -1039,6 +1039,41 @@ class SimpleDownloadManager {
     }
 
     /**
+     * Lidarr deleted the album: fail the jobs downloading it without falling
+     * back to another album, and forget the id on Discover rows.
+     */
+    async onAlbumDeleted(lidarrAlbumId: number): Promise<string | undefined> {
+        const error = "Album removed from Lidarr";
+        const jobs = await prisma.downloadJob.findMany({
+            where: { lidarrAlbumId, status: "processing" },
+        });
+
+        for (const job of jobs) {
+            const { count } = await prisma.downloadJob.updateMany({
+                where: { id: job.id, status: "processing" },
+                data: { status: "failed", error, completedAt: new Date() },
+            });
+            if (count === 0) continue;
+
+            eventBus.emit({
+                type: "download:failed",
+                userId: job.userId,
+                payload: { jobId: job.id, subject: job.subject, error },
+            });
+            if (job.discoveryBatchId) {
+                const { discoverWeeklyService } = await import("./discoverWeekly");
+                await discoverWeeklyService.checkBatchCompletion(job.discoveryBatchId);
+            }
+        }
+
+        await prisma.discoveryAlbum.updateMany({
+            where: { lidarrAlbumId },
+            data: { lidarrAlbumId: null },
+        });
+        return jobs[0]?.id;
+    }
+
+    /**
      * Picks the artist's next album that no job has tried and Lidarr does not
      * already hold in full, retires the current job, and creates the next one.
      * Runs under a per-artist lock so two failing jobs cannot pick the same album.

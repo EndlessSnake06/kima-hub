@@ -206,7 +206,7 @@ describe('POST /webhooks/lidarr -- event handling', () => {
             eventType: 'Grab',
             downloadId: 'dl-abc-123',
             artist: { name: 'Radiohead' },
-            albums: [{ id: 1, title: 'OK Computer', foreignAlbumId: 'mbid-ok-computer' }],
+            albums: [{ id: 1, title: 'OK Computer', mbId: 'mbid-ok-computer' }],
         };
 
         const res = await request(app)
@@ -231,7 +231,7 @@ describe('POST /webhooks/lidarr -- event handling', () => {
                 eventType: 'Download',
                 downloadId: 'dl-xyz',
                 artist: { name: 'Tool' },
-                album: { id: 2, title: 'Lateralus', foreignAlbumId: 'mbid-lateralus' },
+                album: { id: 2, title: 'Lateralus', mbId: 'mbid-lateralus' },
             });
 
         expect(res.status).toBe(200);
