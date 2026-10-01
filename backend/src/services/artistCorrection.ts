@@ -79,21 +79,18 @@ export async function getArtistCorrection(
         }
         const candidates = found.kind === "answered" ? found.value : [];
 
-        // Score candidates with token-set fuzzy match against the cleaned
-        // query; require a confident match (>= 90) before correcting.
-        interface Scored {
-            name: string;
-            mbid: string;
-            score: number;
-        }
-        const scored: Scored[] = candidates
+        // Token-set scoring gives any name containing the typed words 100, so an
+        // artist whose name is exactly what was typed always wins.
+        const wanted = normalizeArtistName(cleaned);
+        const scored = candidates
             .map((a) => ({
                 name: a.name,
                 mbid: a.id,
+                exact: normalizeArtistName(a.name) === wanted,
                 score: fuzzyScore(cleaned, a.name),
             }))
-            .filter((c) => c.score >= 90)
-            .sort((a, b) => b.score - a.score);
+            .filter((c) => c.exact || c.score >= 90)
+            .sort((a, b) => Number(b.exact) - Number(a.exact) || b.score - a.score);
 
         const best = scored[0];
         if (!best) {

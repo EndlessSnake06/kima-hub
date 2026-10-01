@@ -5,7 +5,7 @@
  */
 
 jest.mock("../../utils/db", () => ({ prisma: {} }));
-jest.mock("../../utils/redis", () => ({ redisClient: { get: jest.fn(), setEx: jest.fn() } }));
+jest.mock("../../utils/redis", () => ({ redisClient: { get: jest.fn(), setex: jest.fn() } }));
 jest.mock("../../utils/logger", () => ({
     logger: { warn: jest.fn(), debug: jest.fn(), error: jest.fn(), info: jest.fn() },
 }));
@@ -20,7 +20,7 @@ jest.mock("../musicbrainz", () => ({
     },
 }));
 
-import { resolveArtistMbid } from "../artistCorrection";
+import { getArtistCorrection, resolveArtistMbid } from "../artistCorrection";
 
 const answered = (value: unknown) => ({ kind: "answered", value, evidence: {} });
 const LOW = { id: "low-mbid", name: "Low" };
@@ -113,5 +113,19 @@ describe("resolveArtistMbid", () => {
         const found = await resolveArtistMbid("Low", ["Things We Lost in the Fire"]);
 
         expect(found.kind).toBe("rateLimited");
+    });
+});
+
+describe("getArtistCorrection", () => {
+    it("keeps an exact name even when a longer name containing it ranks first", async () => {
+        mockSearchArtist.mockResolvedValue(answered([LOW_ROAR, LOW]));
+
+        expect(await getArtistCorrection("low")).toMatchObject({ corrected: false, canonicalName: "Low", mbid: "low-mbid" });
+    });
+
+    it("completes a partial name when nothing matches exactly", async () => {
+        mockSearchArtist.mockResolvedValue(answered([{ id: "omam", name: "Of Mice & Men" }]));
+
+        expect(await getArtistCorrection("of mice")).toMatchObject({ corrected: true, canonicalName: "Of Mice & Men" });
     });
 });
