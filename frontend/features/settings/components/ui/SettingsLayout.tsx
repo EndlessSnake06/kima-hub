@@ -2,7 +2,7 @@
 
 import { ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { SettingsSidebar, SidebarItem } from "./SettingsSidebar";
-import { Settings } from "lucide-react";
+import { PageHeader } from "@/components/layout/PageHeader";
 
 interface SettingsLayoutProps {
     children: ReactNode;
@@ -14,7 +14,6 @@ export function SettingsLayout({ children, sidebarItems, isAdmin }: SettingsLayo
     const [activeSection, setActiveSection] = useState(sidebarItems[0]?.id || "");
     const mainContentRef = useRef<HTMLDivElement>(null);
 
-    // Handle sidebar click - scroll to section
     const handleSectionClick = useCallback((id: string) => {
         const element = document.getElementById(id);
         if (element) {
@@ -23,7 +22,6 @@ export function SettingsLayout({ children, sidebarItems, isAdmin }: SettingsLayo
         }
     }, []);
 
-    // Track active section based on scroll position
     useEffect(() => {
         const visibleItems = sidebarItems.filter(item => !item.adminOnly || isAdmin);
 
@@ -86,41 +84,18 @@ export function SettingsLayout({ children, sidebarItems, isAdmin }: SettingsLayo
     }, [sidebarItems, isAdmin]);
 
     return (
-        <div className="min-h-screen bg-[var(--bg-primary)] relative">
-            <div className="relative page-shell pt-8 pb-8">
-                {/* Editorial Header */}
-                <div className="mb-10">
-                    <div className="flex items-center gap-2 mb-4">
-                        <div className="w-1.5 h-1.5 bg-brand rounded-full" />
-                        <span className="t-eyebrow">
-                            System Configuration
-                        </span>
-                    </div>
+        <div className="min-h-screen bg-[var(--bg-primary)]">
+            <PageHeader eyebrow="System configuration" title="Settings" />
+            <div className="page-shell pb-8 flex gap-12">
+                <SettingsSidebar
+                    items={sidebarItems}
+                    activeSection={activeSection}
+                    onSectionClick={handleSectionClick}
+                    isAdmin={isAdmin}
+                />
 
-                    <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center">
-                            <Settings className="w-6 h-6 text-brand" />
-                        </div>
-                        <div>
-                            <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-white leading-none">
-                                Settings
-                            </h1>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Layout */}
-                <div className="flex gap-12">
-                    <SettingsSidebar
-                        items={sidebarItems}
-                        activeSection={activeSection}
-                        onSectionClick={handleSectionClick}
-                        isAdmin={isAdmin}
-                    />
-
-                    <main ref={mainContentRef} className="flex-1 min-w-0">
-                        {children}
-                    </main>
+                <div ref={mainContentRef} className="flex-1 min-w-0">
+                    {children}
                 </div>
             </div>
         </div>
