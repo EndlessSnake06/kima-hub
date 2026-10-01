@@ -408,15 +408,15 @@ describe("POST /audiobooks/sync", () => {
         expect(res.body.error).toContain("Audiobookshelf returned status 502");
     });
 
-    it("returns 500 for genuine internal errors (no response.status)", async () => {
+    it("returns 500 without internal details for genuine internal errors", async () => {
         (audiobookCacheService.syncAll as jest.Mock).mockRejectedValue(
-            new Error("Database connection failed"),
+            new Error("EACCES: permission denied, mkdir '/data/covers/audiobooks'"),
         );
 
         const res = await request(app).post("/audiobooks/sync");
 
         expect(res.status).toBe(500);
         expect(res.body.success).toBe(false);
-        expect(res.body.error).toBe("Database connection failed");
+        expect(res.body.error).toBe("Audiobook sync failed");
     });
 });

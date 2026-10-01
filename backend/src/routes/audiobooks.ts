@@ -162,13 +162,13 @@ router.post("/sync", requireAuthOrToken, apiLimiter, async (req, res) => {
         if (upstreamStatus != null) {
             return res.status(502).json({
                 success: false,
-                error: `Audiobookshelf returned status ${upstreamStatus}: ${errMsg}`,
+                error: `Audiobookshelf returned status ${upstreamStatus}`,
             });
         }
-        // Genuine internal error — keep as 500.
+        // Internal details (file paths, SQL) stay in the server log.
         res.status(500).json({
             success: false,
-            error: errMsg || "Audiobook sync failed",
+            error: "Audiobook sync failed",
         });
     }
 });
