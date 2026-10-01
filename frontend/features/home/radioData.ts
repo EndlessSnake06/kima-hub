@@ -4,6 +4,7 @@ import { Track } from "@/lib/audio-state-context";
 import { shuffleArray } from "@/lib/shuffle";
 import { useToast } from "@/lib/toast-context";
 import { useState } from "react";
+import { plural } from "@/lib/format";
 
 export interface RadioStation {
     id: string;
@@ -180,7 +181,7 @@ export function buildGenreStations(genres: GenreCount[]): RadioStation[] {
         return {
             id: `genre-${g.genre}`,
             name: g.genre,
-            description: `${g.count} tracks`,
+            description: plural(g.count, "track"),
             ...style,
             filter: { type: "genre" as const, value: g.genre },
             minTracks: 15,
@@ -194,7 +195,7 @@ export function buildDecadeStations(decades: DecadeCount[]): RadioStation[] {
         return {
             id: `decade-${d.decade}`,
             name: getDecadeName(d.decade),
-            description: `${d.count} tracks`,
+            description: plural(d.count, "track"),
             ...style,
             filter: { type: "decade" as const, value: d.decade.toString() },
             minTracks: 15,

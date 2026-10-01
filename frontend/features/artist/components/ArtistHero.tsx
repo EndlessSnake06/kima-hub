@@ -7,6 +7,7 @@ import { useArtistDisplayData } from "@/hooks/useMetadataDisplay";
 import type { ColorPalette } from "@/hooks/useImageColor";
 import { HeroBackdrop } from "@/components/ui/HeroBackdrop";
 import { CachedImage } from "@/components/ui/CachedImage";
+import { plural } from "@/lib/format";
 
 // Lazy load MetadataEditor - modal component opened on user action
 const MetadataEditor = lazy(() => import("@/components/MetadataEditor").then(mod => ({ default: mod.MetadataEditor })));
@@ -124,7 +125,7 @@ export function ArtistHero({
                             )}
                             {albums.length > 0 && (
                                 <>
-                                    <span>{albums.length} albums</span>
+                                    <span>{plural(albums.length, "album")}</span>
                                     {ownedAlbums.length > 0 && (
                                         <>
                                             <span className="mx-1">•</span>

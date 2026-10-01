@@ -20,6 +20,7 @@ import { DiscoverSettingsTab } from "@/components/activity/DiscoverSettingsTab";
 import { api } from "@/lib/api";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { Button } from "@/components/ui/Button";
+import { plural } from "@/lib/format";
 
 export default function DiscoverWeeklyPage() {
     // Use split hooks to avoid re-renders from currentTime updates
@@ -207,7 +208,7 @@ export default function DiscoverWeeklyPage() {
                             <div className="section-stack">
                                 {/* Section header */}
                                 <section>
-                                    <SectionHeader type="track" title="Playlist" count={`${playlist?.totalCount || 0} tracks`} className="mb-4" />
+                                    <SectionHeader type="track" title="Playlist" count={plural(playlist?.totalCount || 0, "track")} className="mb-4" />
                                     <TrackList
                                         tracks={playlist.tracks}
                                         currentTrack={currentTrack}

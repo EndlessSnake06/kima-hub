@@ -355,7 +355,7 @@ export default function QueuePage() {
                 onClose={() => setConfirmClear(false)}
                 onConfirm={handleClearQueue}
                 title="Clear the queue?"
-                message={`This removes all ${queue.length} tracks from the queue.`}
+                message={`This removes ${queue.length === 1 ? "the only track" : `all ${queue.length} tracks`} from the queue.`}
                 confirmText="Clear queue"
                 variant="danger"
             />

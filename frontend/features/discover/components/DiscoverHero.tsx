@@ -3,6 +3,7 @@ import { Settings } from "lucide-react";
 import { DiscoverPlaylist, DiscoverConfig } from "../types";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
+import { plural } from "@/lib/format";
 
 interface DiscoverHeroProps {
     playlist: DiscoverPlaylist | null;
@@ -47,7 +48,7 @@ export function DiscoverHero({ playlist, config, onOpenSettings }: DiscoverHeroP
                     <div className="flex items-center gap-2">
                         <span className="w-1 h-1 bg-type-track rounded-full" />
                         <span className="text-[var(--text-secondary)]">
-                            {playlist.totalCount} tracks
+                            {plural(playlist.totalCount, "track")}
                         </span>
                     </div>
                     {totalDuration > 0 && (

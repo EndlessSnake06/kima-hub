@@ -9,7 +9,7 @@ import { useAudioState, useAudioPlayback, useAudioControls, Track as AudioTrack 
 import { useAudioController } from "@/lib/audio-controller-context";
 import { cn } from "@/lib/cn";
 import { shuffleArray } from "@/lib/shuffle";
-import { formatTime } from "@/lib/format";
+import { formatTime, plural } from "@/lib/format";
 import { queryKeys, usePlaylistQuery, useRemoveFromPlaylistMutation, useDeletePlaylistMutation, useUpdatePlaylistMutation, useMoveTrackInPlaylistMutation } from "@/hooks/useQueries";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/lib/toast-context";
@@ -1062,7 +1062,7 @@ export default function PlaylistDetailPage() {
                                             <span className="text-[var(--text-muted)]">|</span>
                                         </>
                                     )}
-                                    <span>{playlist.items?.length || 0} songs</span>
+                                    <span>{plural(playlist.items?.length || 0, "song")}</span>
                                     {totalDuration > 0 && (
                                         <>
                                             <span className="text-[var(--text-muted)]">|</span>

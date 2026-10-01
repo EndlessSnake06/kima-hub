@@ -79,3 +79,7 @@ export function formatListeners(count: number | undefined): string {
 export function normalizeNFC(str: string): string {
     return str.normalize("NFC");
 }
+
+export function plural(n: number, word: string): string {
+    return `${n.toLocaleString()} ${word}${n === 1 ? "" : "s"}`;
+}

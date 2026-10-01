@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import type { Album } from "../types";
 import type { ColorPalette } from "@/hooks/useImageColor";
 import { SectionHeader } from "@/components/ui/SectionHeader";
+import { plural } from "@/lib/format";
 
 interface DiscographyProps {
     albums: Album[];
@@ -51,7 +52,7 @@ export function Discography({
                 {albums.map((album, index) => {
                     const subtitle = [
                         album.year,
-                        album.trackCount && `${album.trackCount} tracks`,
+                        album.trackCount && plural(album.trackCount, "track"),
                     ]
                         .filter(Boolean)
                         .join(" • ");

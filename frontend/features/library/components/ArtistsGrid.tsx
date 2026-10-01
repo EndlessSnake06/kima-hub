@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { MediaCard } from "@/components/cards/MediaCard";
 import { cascadeStyle } from "@/lib/motion";
+import { plural } from "@/lib/format";
 
 interface ArtistsGridProps {
     artists: Artist[];
@@ -33,7 +34,7 @@ const ArtistCardItem = memo(
             <MediaCard
                 href={`/artist/${artist.id}`}
                 title={artist.name}
-                subtitle={`${artist.albumCount || 0} albums`}
+                subtitle={plural(artist.albumCount || 0, "album")}
                 imageUrl={artist.coverArt ? api.getCoverArtUrl(artist.coverArt, 200) : null}
                 fallbackIcon={Music}
                 type="artist"

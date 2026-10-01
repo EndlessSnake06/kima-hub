@@ -7,7 +7,7 @@ import { useAudioState, useAudioPlayback, useAudioControls } from "@/lib/audio-c
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { Play, Pause, Music, Shuffle, Save, ListPlus } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { formatTime } from "@/lib/format";
+import { formatTime, plural } from "@/lib/format";
 import { shuffleArray } from "@/lib/shuffle";
 import { useToast } from "@/lib/toast-context";
 import { useMixQuery } from "@/hooks/useQueries";
@@ -244,7 +244,7 @@ export default function MixPage() {
                                 </p>
                             )}
                             <div className="flex items-center gap-1 text-sm text-[var(--text-secondary)]">
-                                <span>{mix.trackCount || mix.tracks?.length || 0} songs</span>
+                                <span>{plural(mix.trackCount || mix.tracks?.length || 0, "song")}</span>
                                 {totalDuration > 0 && (
                                     <span>, {formatTotalDuration(totalDuration)}</span>
                                 )}

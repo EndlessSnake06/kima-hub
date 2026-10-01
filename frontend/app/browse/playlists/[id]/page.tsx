@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { formatTime } from "@/lib/format";
+import { formatTime, plural } from "@/lib/format";
 import { useParams, useRouter } from "next/navigation";
 import {
     ArrowLeft,
@@ -313,7 +313,7 @@ export default function DeezerPlaylistDetailPage() {
                                         {playlist.creator}
                                     </span>
                                     <span className="text-[var(--text-muted)]">|</span>
-                                    <span>{playlist.trackCount} songs</span>
+                                    <span>{plural(playlist.trackCount, "song")}</span>
                                     {totalDuration > 0 && (
                                         <>
                                             <span className="text-[var(--text-muted)]">|</span>

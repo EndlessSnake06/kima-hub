@@ -20,6 +20,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { useDialog } from "@/hooks/useDialog";
 import { CachedImage } from "@/components/ui/CachedImage";
+import { plural } from "@/lib/format";
 
 interface PlaylistPreview {
     id: string;
@@ -211,7 +212,7 @@ export default function BrowsePlaylistsPage() {
                 {item.title}
             </h3>
             <p className="text-xs tabular-nums text-[var(--text-muted)] truncate mt-0.5">
-                {item.trackCount} songs -- {item.creator}
+                {plural(item.trackCount, "song")} · {item.creator}
             </p>
         </button>
     );

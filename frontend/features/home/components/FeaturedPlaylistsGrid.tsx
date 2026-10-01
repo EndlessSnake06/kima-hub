@@ -6,6 +6,7 @@ import { cascadeStyle } from "@/lib/motion";
 import { memo } from "react";
 import { PlaylistPreview } from "../types";
 import { MediaCard } from "@/components/cards/MediaCard";
+import { plural } from "@/lib/format";
 
 interface FeaturedPlaylistsGridProps {
     playlists: PlaylistPreview[];
@@ -49,7 +50,7 @@ export const FeaturedPlaylistsGrid = memo(function FeaturedPlaylistsGrid({
                     <MediaCard
                         href={`/browse/playlists/${playlist.id}`}
                         title={playlist.title}
-                        subtitle={`${playlist.trackCount} tracks`}
+                        subtitle={plural(playlist.trackCount, "track")}
                         imageUrl={playlist.imageUrl || null}
                         fallbackIcon={Music2}
                         type="track"

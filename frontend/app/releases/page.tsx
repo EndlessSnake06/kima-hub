@@ -8,6 +8,7 @@ import { api } from "@/lib/api";
 import Link from "next/link";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { CachedImage } from "@/components/ui/CachedImage";
+import { plural } from "@/lib/format";
 
 interface ReleaseItem {
     id: number | string;
@@ -28,10 +29,6 @@ interface ReleaseRadarData {
     recent: ReleaseItem[];
     monitoredArtistCount: number;
     similarArtistCount: number;
-}
-
-function plural(n: number, word: string) {
-    return `${n} ${word}${n === 1 ? "" : "s"}`;
 }
 
 export default function ReleasesPage() {

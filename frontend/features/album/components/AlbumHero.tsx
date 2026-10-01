@@ -6,7 +6,7 @@ import { Album, AlbumSource } from "../types";
 import { ReactNode, lazy, Suspense } from "react";
 import { useAlbumDisplayData } from "@/hooks/useMetadataDisplay";
 import type { ColorPalette } from "@/hooks/useImageColor";
-import { formatDuration } from "@/lib/format";
+import { formatDuration, plural } from "@/lib/format";
 import { HeroBackdrop } from "@/components/ui/HeroBackdrop";
 import { CachedImage } from "@/components/ui/CachedImage";
 
@@ -123,7 +123,7 @@ export function AlbumHero({
                             {album.trackCount && album.trackCount > 0 && (
                                 <>
                                     <span className="mx-1">•</span>
-                                    <span>{album.trackCount} songs</span>
+                                    <span>{plural(album.trackCount, "song")}</span>
                                 </>
                             )}
                             {totalDuration && <span>, {totalDuration}</span>}
