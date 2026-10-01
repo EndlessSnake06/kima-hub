@@ -947,7 +947,6 @@ export default function PlaylistDetailPage() {
                             Playlists
                         </button>
 
-                        {/* System status */}
                         <div className="flex items-center gap-2 mb-4">
                             <div className="w-1.5 h-1.5 bg-brand rounded-full" />
                             <span className="t-eyebrow">
