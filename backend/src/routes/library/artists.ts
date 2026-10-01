@@ -23,7 +23,7 @@ import { failureCause } from "../../utils/outcome";
 import pLimit from "p-limit";
 import { toAudioFeaturesDTO } from "../../utils/audioFeatures";
 import { resolveWithinMusicRoot } from "./trackPath";
-import { findArtistArtwork } from "../../services/artwork";
+import { findArtistArtwork, withAlbumArtwork } from "../../services/artwork";
 import { LIBRARY_LOCATION } from "../../services/libraryFilters";
 
 // Alphabetical sorts use `sortName` (article-stripped, unaccented,
@@ -444,44 +444,30 @@ router.get("/artists/:id", async (req, res) => {
           `  Filtered to ${filteredReleaseGroups.length} studio albums/EPs`,
         );
 
-        const mbAlbums = await Promise.all(
-          filteredReleaseGroups.map(async (rg: any) => {
-            let coverUrl = null;
-
-            const cacheKey = `caa:${rg.id}`;
-            try {
-              const cached = await redisClient.get(cacheKey);
-              if (cached && cached !== "NOT_FOUND") {
-                coverUrl = cached;
-              }
-            } catch (err) {
-              // Redis error, continue without cover
-            }
-
-            return {
-              id: rg.id,
-              rgMbid: rg.id,
-              title: rg.title,
-              year: rg["first-release-date"]
-                ? parseInt(rg["first-release-date"].substring(0, 4))
-                : null,
-              type: rg["primary-type"],
-              coverUrl,
-              coverArt: coverUrl,
-              artistId: artist.id,
-              owned: ownedRgMbids.has(rg.id),
-              trackCount: 0,
-              tracks: [],
-              source: "musicbrainz" as const,
-            };
-          }),
-        );
+        const mbAlbums = filteredReleaseGroups.map((rg: any) => ({
+          id: rg.id,
+          rgMbid: rg.id,
+          title: rg.title,
+          year: rg["first-release-date"]
+            ? parseInt(rg["first-release-date"].substring(0, 4))
+            : null,
+          type: rg["primary-type"],
+          coverUrl: null as string | null,
+          coverArt: null as string | null,
+          artistId: artist.id,
+          owned: ownedRgMbids.has(rg.id),
+          trackCount: 0,
+          tracks: [],
+          source: "musicbrainz" as const,
+        }));
 
         const dbAlbumTitles = new Set(
           dbAlbums.map((a) => a.title.toLowerCase()),
         );
-        const mbAlbumsFiltered = mbAlbums.filter(
-          (a) => !dbAlbumTitles.has(a.title.toLowerCase()),
+        const mbAlbumsFiltered = await withAlbumArtwork(
+          mbAlbums.filter((a) => !dbAlbumTitles.has(a.title.toLowerCase())),
+          (album) => ({ rgMbid: album.rgMbid, artistName: artist.name, albumTitle: album.title }),
+          (album, coverUrl) => ({ ...album, coverUrl, coverArt: coverUrl }),
         );
 
         albumsWithOwnership = [...dbAlbums, ...mbAlbumsFiltered];

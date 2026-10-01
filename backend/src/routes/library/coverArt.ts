@@ -5,6 +5,7 @@ import { logger } from "../../utils/logger";
 import { imageLimiter } from "../../middleware/rateLimiter";
 import { config, USER_AGENT } from "../../config";
 import { findAlbumArtwork } from "../../services/artwork";
+import { musicBrainzService } from "../../services/musicbrainz";
 import { getSystemSettings } from "../../utils/systemSettings";
 import { validateUrlForFetch } from "../../utils/ssrf";
 import { extractColorsFromImage } from "../../utils/colorExtractor";
@@ -453,18 +454,21 @@ router.get("/album-cover/:mbid", imageLimiter, async (req, res) => {
       return res.status(400).json({ error: "Valid MBID required" });
     }
 
-    // Asked the Cover Art Archive alone. The archive has art for about half
-    // the release groups people ask about; the other sources cover most of
-    // the rest.
+    // Albums the library lacks are named from MusicBrainz, since every source but the archive searches by name.
     const album = await prisma.album.findFirst({
       where: { rgMbid: mbid },
       select: { title: true, artist: { select: { name: true } } },
     });
-    const found = await findAlbumArtwork({
-      rgMbid: mbid,
-      artistName: album?.artist?.name ?? "",
-      albumTitle: album?.title ?? "",
-    });
+    let artistName = album?.artist?.name ?? "";
+    let albumTitle = album?.title ?? "";
+    if (!album) {
+      const group = await musicBrainzService.getReleaseGroup(mbid);
+      if (group.kind === "answered") {
+        artistName = group.value?.["artist-credit"]?.[0]?.artist?.name ?? "";
+        albumTitle = group.value?.title ?? "";
+      }
+    }
+    const found = await findAlbumArtwork({ rgMbid: mbid, artistName, albumTitle });
     const coverUrl = found?.url ?? null;
 
     if (!coverUrl) {
