@@ -71,7 +71,7 @@ describe("enrichment failure alert", () => {
         const admin = await rows(id("admin"));
         expect(admin).toHaveLength(1);
         expect(admin[0]).toMatchObject({ type: "error", title: "Enrichment failures" });
-        expect(admin[0].message).toContain("1 items");
+        expect(admin[0].message).toContain("1 item could not be enriched: 1 artist.");
         expect(await rows(id("plain"))).toHaveLength(0);
     });
 

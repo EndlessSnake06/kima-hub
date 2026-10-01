@@ -1305,13 +1305,15 @@ export async function syncEnrichmentFailureAlert(): Promise<void> {
         return;
     }
 
-    const parts: string[] = [];
-    if (failureCounts.artist > 0) parts.push(`${failureCounts.artist} artist(s)`);
-    if (failureCounts.track > 0) parts.push(`${failureCounts.track} track(s)`);
-    if (failureCounts.audio > 0) parts.push(`${failureCounts.audio} audio analysis`);
-    if (failureCounts.vibe > 0) parts.push(`${failureCounts.vibe} vibe embedding(s)`);
-    if (failureCounts.scan > 0) parts.push(`${failureCounts.scan} fingerprint(s)`);
-    if (failureCounts.podcast > 0) parts.push(`${failureCounts.podcast} podcast(s)`);
+    const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+    const parts = [
+        failureCounts.artist > 0 && count(failureCounts.artist, "artist", "artists"),
+        failureCounts.track > 0 && count(failureCounts.track, "track", "tracks"),
+        failureCounts.audio > 0 && count(failureCounts.audio, "audio analysis", "audio analyses"),
+        failureCounts.vibe > 0 && count(failureCounts.vibe, "vibe embedding", "vibe embeddings"),
+        failureCounts.scan > 0 && count(failureCounts.scan, "fingerprint", "fingerprints"),
+        failureCounts.podcast > 0 && count(failureCounts.podcast, "podcast", "podcasts"),
+    ].filter(Boolean);
 
     const admins = await prisma.user.findMany({ where: { role: "admin" }, select: { id: true } });
     for (const admin of admins) {
@@ -1319,7 +1321,7 @@ export async function syncEnrichmentFailureAlert(): Promise<void> {
             userId: admin.id,
             type: "error",
             title: "Enrichment failures",
-            message: `${failureCounts.total} items could not be enriched: ${parts.join(", ")}.`,
+            message: `${count(failureCounts.total, "item", "items")} could not be enriched: ${parts.join(", ")}.`,
             metadata: { href: "/settings#enrichment-failures" },
             groupKey: ENRICHMENT_FAILURES_KEY,
         });
