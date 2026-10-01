@@ -29,20 +29,17 @@ import type { LidarrAlbum } from "../types/lidarr";
 
 const LIDARR_RETRY_DELAYS_MS = [5_000, 20_000];
 
-// Type for transactional prisma client
 type TransactionClient = Omit<
     PrismaClient,
     "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends"
 >;
 
-// Generate a UUID v4 without external dependency
 function generateCorrelationId(): string {
     return crypto.randomUUID();
 }
 
 class SimpleDownloadManager {
     private readonly DEFAULT_MAX_ATTEMPTS = 3;
-    // Reduced timeouts for faster failure detection
     private readonly IMPORT_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes for imports
     private readonly PENDING_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes for pending
     private readonly NO_SOURCE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes for no sources found
@@ -102,7 +99,6 @@ class SimpleDownloadManager {
                     timeout: 10000,
                 });
             } catch (error: any) {
-                // Check for serialization failure
                 const isSerializationError =
                     error.code === "P2034" ||
                     error.message?.includes("could not serialize") ||
@@ -145,15 +141,12 @@ class SimpleDownloadManager {
         logger.debug(`   Job ID: ${jobId}`);
         logger.debug(`   Album MBID: ${albumMbid}`);
 
-        // Generate correlation ID for webhook matching
         const correlationId = generateCorrelationId();
 
         try {
-            // Get music path from settings with fallback to config
             const settings = await getSystemSettings();
             const musicPath = settings?.musicPath || config.music.musicPath;
 
-            // Fetch artist MBID from MusicBrainz using the album MBID
             let artistMbid: string | undefined;
             logger.debug(`   Fetching artist MBID from MusicBrainz...`);
             const rgOutcome = await musicBrainzService.getReleaseGroup(
@@ -202,8 +195,7 @@ class SimpleDownloadManager {
                 );
             }
 
-            // Update job with all tracking information
-            // IMPORTANT: Preserve existing metadata (especially tier/similarity from discovery jobs)
+            // Keep existing metadata: Discover jobs carry their tier and similarity in it.
             const now = new Date();
             const existingJob = await prisma.downloadJob.findUnique({
                 where: { id: jobId },
@@ -240,7 +232,6 @@ class SimpleDownloadManager {
                 `   Download started with correlation ID: ${correlationId}`
             );
 
-            // Update active downloads metric
             this.updateActiveDownloadsMetric().catch(() => {});
 
             return { success: true, correlationId };
@@ -268,13 +259,11 @@ class SimpleDownloadManager {
             if (errorType === AcquisitionErrorType.NO_RELEASES_AVAILABLE) {
                 logger.debug(`   No sources found - handling immediate failure`);
 
-                // For discovery jobs, skip same-artist fallback
                 if (job?.discoveryBatchId) {
                     logger.debug(
                         `   Discovery job - skipping same-artist fallback (diversity enforced)`
                     );
                 } else if (job && !job.discoveryBatchId) {
-                    // For library downloads, try same-artist fallback
                     logger.debug(
                         `   Library download - trying same-artist fallback...`
                     );
@@ -295,7 +284,6 @@ class SimpleDownloadManager {
                     }
                 }
 
-                // Mark as failed with proper status text
                 await prisma.downloadJob.update({
                     where: { id: jobId },
                     data: {
@@ -320,7 +308,6 @@ class SimpleDownloadManager {
                 }
                 if (job) await this.notifyFailure(job, error.message || "No sources available");
 
-                // Check batch completion for discovery jobs
                 if (job?.discoveryBatchId) {
                     const { discoverWeeklyService } = await import(
                         "./discoverWeekly"
@@ -365,7 +352,6 @@ class SimpleDownloadManager {
                 }
             }
 
-            // No replacement found - mark as failed
             await prisma.downloadJob.update({
                 where: { id: jobId },
                 data: {
@@ -390,7 +376,6 @@ class SimpleDownloadManager {
             }
             if (job) await this.notifyFailure(job, error.message || "Failed to add album to Lidarr");
 
-            // Check batch completion for discovery jobs
             if (job?.discoveryBatchId) {
                 const { discoverWeeklyService } = await import(
                     "./discoverWeekly"
@@ -529,7 +514,6 @@ class SimpleDownloadManager {
             payload: { jobId: result.jobId, subject: result.subject },
         });
 
-        // Send notification
         try {
             const decision =
                 await notificationPolicyService.evaluateNotification(
@@ -569,7 +553,6 @@ class SimpleDownloadManager {
             );
         }
 
-        // Check batch completion
         if (result.batchId) {
             const { discoverWeeklyService } = await import(
                 "./discoverWeekly"
@@ -994,9 +977,7 @@ class SimpleDownloadManager {
         const artistMbid = job.artistMbid || metadata.artistMbid;
         const artistName = metadata.artistName;
 
-        // CRITICAL: For Discovery Weekly, DON'T try same-artist fallback
-        // Discovery should prioritize ARTIST DIVERSITY - let the discovery system
-        // find a completely different artist instead
+        // Discover finds a different artist rather than another album by this one.
         if (job.discoveryBatchId) {
             logger.debug(
                 `[RETRY] Discovery job - skipping same-artist fallback (diversity enforced)`
@@ -1007,8 +988,7 @@ class SimpleDownloadManager {
             return await this.markJobExhausted(job, reason);
         }
 
-        // CRITICAL: For Spotify Import, DON'T try same-artist fallback
-        // User wants the EXACT playlist, not substitutes from same artist
+        // A Spotify import wants the exact playlist, not another album by the artist.
         if (
             metadata.spotifyImportJobId ||
             metadata.downloadType === "spotify_import" ||
@@ -1019,10 +999,8 @@ class SimpleDownloadManager {
             );
             logger.debug(`   User wants exact album: ${job.subject}`);
 
-            // Mark as failed and trigger completion check
             const result = await this.markJobExhausted(job, reason);
 
-            // Check if import is complete
             if (metadata.spotifyImportJobId) {
                 const { spotifyImportService } = await import(
                     "./spotifyImport"
@@ -1078,7 +1056,6 @@ class SimpleDownloadManager {
 
             logger.debug(`   Created fallback job: ${newJob.id}`);
 
-            // Start the download
             const result = await this.startDownload(
                 newJob.id,
                 artistName || "Unknown Artist",
@@ -1194,7 +1171,6 @@ class SimpleDownloadManager {
             payload: { jobId: job.id, subject: job.subject, error: `All releases and albums exhausted: ${reason}` },
         });
 
-        // Check batch completion for discovery jobs
         if (job.discoveryBatchId) {
             const { discoverWeeklyService } = await import("./discoverWeekly");
             await discoverWeeklyService.checkBatchCompletion(
@@ -1220,12 +1196,10 @@ class SimpleDownloadManager {
         const noSourceCutoff = new Date(Date.now() - this.NO_SOURCE_TIMEOUT_MS);
         const importCutoff = new Date(Date.now() - this.IMPORT_TIMEOUT_MS);
 
-        // Find all pending and processing jobs
         const activeJobs = await prisma.downloadJob.findMany({
             where: { status: { in: ["pending", "processing"] } },
         });
 
-        // Log to session for debugging Spotify imports
         if (activeJobs.length > 0) {
             const spotifyJobs = activeJobs.filter((j) =>
                 j.id.startsWith("spotify_")
@@ -1238,13 +1212,11 @@ class SimpleDownloadManager {
             }
         }
 
-        // Separate pending from processing
         const pendingJobs = activeJobs.filter((j) => j.status === "pending");
         const processingJobs = activeJobs.filter(
             (j) => j.status === "processing"
         );
 
-        // Handle old pending jobs - batch update instead of individual updates
         const stalePendingJobs = pendingJobs.filter(
             (job) => job.createdAt < pendingCutoff && !(job.metadata as any)?.waitingForLidarr
         );
@@ -1260,14 +1232,12 @@ class SimpleDownloadManager {
                 `Found ${stalePendingJobs.length} stuck PENDING jobs`
             );
 
-            // Collect discovery batch IDs before batch update
             for (const job of stalePendingJobs) {
                 if (job.discoveryBatchId) {
                     pendingDiscoveryBatchIds.add(job.discoveryBatchId);
                 }
             }
 
-            // Batch update all stale pending jobs at once
             await prisma.downloadJob.updateMany({
                 where: { id: { in: stalePendingJobs.map((j) => j.id) } },
                 data: {
@@ -1289,7 +1259,6 @@ class SimpleDownloadManager {
             logger.debug(`   Batch updated ${stalePendingJobs.length} pending jobs to failed`);
         }
 
-        // Check discovery batch completions for pending jobs (with yielding)
         if (pendingDiscoveryBatchIds.size > 0) {
             const { discoverWeeklyService } = await import("./discoverWeekly");
             for (const batchId of pendingDiscoveryBatchIds) {
@@ -1323,14 +1292,12 @@ class SimpleDownloadManager {
                 // Jobs with lidarrRef = grabbed but potentially still downloading
                 // Only check if we have a snapshot (Lidarr is available)
                 if (startedAt < importCutoff) {
-                    // Check using snapshot (O(1) lookup, no API call)
                     const downloadStatus = lidarrService.isDownloadActiveInSnapshot(
                         snapshot,
                         job.lidarrRef
                     );
 
                     if (downloadStatus.active) {
-                        // Still downloading - collect for batch update
                         jobsToExtend.push({
                             id: job.id,
                             metadata: {
@@ -1343,7 +1310,6 @@ class SimpleDownloadManager {
                             `   ${job.subject}: Still downloading (${downloadStatus.progress || 0}%), extending timeout`
                         );
                     } else {
-                        // Not actively downloading - mark as stale
                         staleJobs.push(job);
                     }
                 }
@@ -1351,9 +1317,7 @@ class SimpleDownloadManager {
             // Without a snapshot Lidarr's state is unknown, so grabbed jobs wait for the next cycle.
         }
 
-        // Batch update jobs that need timeout extension
-        // Note: updateMany can't set different metadata per job, so we still need individual updates here
-        // But we collected them to log once and process efficiently
+        // Each job gets its own metadata, so these updates run one at a time.
         for (const { id, metadata } of jobsToExtend) {
             await prisma.downloadJob.update({
                 where: { id },
@@ -1374,14 +1338,12 @@ class SimpleDownloadManager {
             `Found ${staleJobs.length} stale jobs to mark as failed`
         );
 
-        // Track unique batch IDs to check
         const batchIds = new Set<string>();
         const downloadBatchIds = new Set<string>();
 
         for (const job of staleJobs) {
             const metadata = (job.metadata as any) || {};
 
-            // Before marking as failed, check if still in retry window using policy service
             try {
                 const policyDecision =
                     await notificationPolicyService.evaluateNotification(
@@ -1389,7 +1351,6 @@ class SimpleDownloadManager {
                         "timeout"
                     );
 
-                // If policy says to extend timeout (still in retry window), do so
                 if (
                     policyDecision.reason.includes("retry window") ||
                     policyDecision.reason.includes("extending timeout")
@@ -1414,7 +1375,6 @@ class SimpleDownloadManager {
                     `   Failed to evaluate policy for ${job.id}:`,
                     policyError
                 );
-                // Continue with failure handling if policy check fails
             }
 
             const hasLidarrRef = !!job.lidarrRef;
@@ -1489,13 +1449,11 @@ class SimpleDownloadManager {
                 batchIds.add(job.discoveryBatchId);
             }
 
-            // Track download batch IDs for artist downloads
             if (metadata?.batchId) {
                 downloadBatchIds.add(metadata.batchId);
             }
         }
 
-        // Check discovery batch completion for affected batches (with yielding)
         if (batchIds.size > 0) {
             const { discoverWeeklyService } = await import("./discoverWeekly");
             for (const batchId of batchIds) {
@@ -1526,7 +1484,6 @@ class SimpleDownloadManager {
             prisma.downloadJob.count({ where: { status: "failed" } }),
         ]);
 
-        // Update active downloads metric
         this.updateActiveDownloadsMetric().catch(() => {});
 
         return { pending, processing, completed, failed };
@@ -1572,7 +1529,6 @@ class SimpleDownloadManager {
         }
         const snapshot = existingSnapshot;
 
-        // Collect jobs to complete and discovery batches to check
         const toComplete: string[] = [];
         const discoveryBatchIds = new Set<string>();
 
@@ -1582,7 +1538,6 @@ class SimpleDownloadManager {
             const artistName = metadata?.artistName;
             const albumTitle = metadata?.albumTitle;
 
-            // Check using snapshot (O(1) lookups, no API calls)
             let isAvailable = lidarrService.isAlbumAvailableInSnapshot(
                 snapshot,
                 albumMbid,
@@ -1590,7 +1545,6 @@ class SimpleDownloadManager {
                 albumTitle
             );
 
-            // Also try lidarrMbid if different
             if (!isAvailable && metadata?.lidarrMbid && metadata.lidarrMbid !== albumMbid) {
                 isAvailable = lidarrService.isAlbumAvailableInSnapshot(
                     snapshot,
@@ -1600,7 +1554,7 @@ class SimpleDownloadManager {
                 );
             }
 
-            // Strategy 3: Parse subject if no metadata (format: "Artist - Album")
+            // Jobs without metadata names carry them in the "Artist - Album" subject.
             if (!isAvailable && !artistName && job.subject) {
                 const parts = job.subject.split(" - ");
                 if (parts.length >= 2) {
@@ -1632,7 +1586,6 @@ class SimpleDownloadManager {
             }
         }
 
-        // Batch update all completed jobs
         if (toComplete.length > 0) {
             await prisma.downloadJob.updateMany({
                 where: { id: { in: toComplete } },
@@ -1657,7 +1610,6 @@ class SimpleDownloadManager {
             logger.debug(`   Batch updated ${toComplete.length} job(s) to completed`);
         }
 
-        // Check discovery batch completions (deduplicated, with yielding)
         if (discoveryBatchIds.size > 0) {
             const { discoverWeeklyService } = await import("./discoverWeekly");
             for (const batchId of discoveryBatchIds) {
@@ -1709,7 +1661,6 @@ class SimpleDownloadManager {
         try {
             const snapshot = existingSnapshot;
 
-            // Build arrays for collecting downloadIds from snapshot queue
             const queueDownloadIds = new Set(snapshot.queue.keys());
             const queueItems = Array.from(snapshot.queue.values());
 
@@ -1719,14 +1670,12 @@ class SimpleDownloadManager {
             const errors: string[] = [];
             const discoveryBatchIds = new Set<string>();
 
-            // Collect jobs that need metadata updates (to batch where possible)
             const jobsToResetCounter: { id: string; metadata: any }[] = [];
             const jobsToIncrementCounter: { id: string; metadata: any; count: number }[] = [];
             const jobsToUpdateDownloadId: { id: string; metadata: any; newDownloadId: string; oldDownloadId: string }[] = [];
             const jobsToComplete: { id: string; metadata: any }[] = [];
             const jobsToFail: { id: string; metadata: any; missingCount: number }[] = [];
 
-            // Check each processing job against snapshot
             for (const job of processingJobs) {
                 if (!job.lidarrRef) continue;
 
@@ -1734,7 +1683,6 @@ class SimpleDownloadManager {
                 const artistName = metadata?.artistName;
                 const albumTitle = metadata?.albumTitle;
 
-                // If download is found in queue, reset its missing counter
                 if (queueDownloadIds.has(job.lidarrRef)) {
                     if (metadata?.queueSyncMissingCount && metadata.queueSyncMissingCount > 0) {
                         jobsToResetCounter.push({ id: job.id, metadata });
@@ -1893,7 +1841,6 @@ class SimpleDownloadManager {
                 }
             }
 
-            // Check discovery batch completions (deduplicated, with yielding)
             if (discoveryBatchIds.size > 0) {
                 const { discoverWeeklyService } = await import("./discoverWeekly");
                 for (const batchId of discoveryBatchIds) {
@@ -1914,5 +1861,4 @@ class SimpleDownloadManager {
     }
 }
 
-// Singleton instance
 export const simpleDownloadManager = new SimpleDownloadManager();
