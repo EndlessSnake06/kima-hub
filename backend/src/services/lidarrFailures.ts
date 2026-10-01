@@ -89,7 +89,10 @@ async function ownedDownloadIds(): Promise<Set<string>> {
     return ids;
 }
 
-/** Remove Kima's failed downloads from the queue and count each against its job. */
+/**
+ * Count each of Kima's failed downloads against its job, then remove it from the
+ * queue; Lidarr searches again only while the job is under its retry limit.
+ */
 export async function sweepFailedDownloads(): Promise<{ removed: number }> {
     const owned = await ownedDownloadIds();
     if (owned.size === 0) return { removed: 0 };
@@ -99,10 +102,8 @@ export async function sweepFailedDownloads(): Promise<{ removed: number }> {
         if (!owned.has(item.downloadId)) continue;
         const reason = failureReason(item);
         if (!reason) continue;
-        if (await removeFailedDownload(item.downloadId, reason, { searchAgain: true, item })) {
-            removed++;
-            await simpleDownloadManager.onImportFailed(item.downloadId, reason);
-        }
+        const { searchAgain } = await simpleDownloadManager.onImportFailed(item.downloadId, reason);
+        if (await removeFailedDownload(item.downloadId, reason, { searchAgain, item })) removed++;
     }
     return { removed };
 }

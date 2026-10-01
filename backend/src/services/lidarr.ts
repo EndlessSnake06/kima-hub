@@ -2421,6 +2421,20 @@ class LidarrService {
     }
 
     /**
+     * Stop Lidarr's background searches (RSS, missing albums) grabbing an album.
+     * Its own re-search after a failed download ignores monitoring.
+     */
+    async unmonitorAlbum(albumId: number): Promise<void> {
+        await this.ensureInitialized();
+        if (!this.enabled || !this.client) return;
+        try {
+            await this.client.put("/api/v1/album/monitor", { albumIds: [albumId], monitored: false });
+        } catch (error: any) {
+            logger.warn(`[LIDARR] Could not unmonitor album ${albumId}: ${error.message}`);
+        }
+    }
+
+    /**
      * Delete a queue item and blocklist its release so Lidarr searches for another.
      * A 404 counts as success. Callers go through lidarrFailures.removeFailedDownload.
      */

@@ -70,9 +70,13 @@ class SimpleDownloadManager {
         }
     }
 
-    /**
-     * Get max retry attempts from user's discover config, fallback to default
-     */
+    private async maxAttempts(userId: string): Promise<number> {
+        const config = await prisma.userDiscoverConfig.findUnique({
+            where: { userId },
+            select: { maxRetryAttempts: true },
+        });
+        return config?.maxRetryAttempts ?? this.DEFAULT_MAX_ATTEMPTS;
+    }
 
     /**
      * Transaction wrapper with retry logic for serialization conflicts
@@ -205,9 +209,6 @@ class SimpleDownloadManager {
                 select: { metadata: true },
             });
             const existingMetadata = (existingJob?.metadata as any) || {};
-            // Initialize status tracking for Lidarr download
-            const lidarrAttempts = (existingMetadata.lidarrAttempts || 0) + 1;
-            const statusText = `Lidarr #${lidarrAttempts}`;
 
             await prisma.downloadJob.update({
                 where: { id: jobId },
@@ -229,8 +230,7 @@ class SimpleDownloadManager {
                             existingMetadata.downloadType || "library",
                         startedAt: now.toISOString(), // Backup in metadata for timeout tracking
                         currentSource: "lidarr" as const,
-                        lidarrAttempts,
-                        statusText,
+                        statusText: "Lidarr #1",
                     },
                 },
             });
@@ -890,34 +890,24 @@ class SimpleDownloadManager {
     }
 
     /**
-     * Count a failed download against its job, once per download id. Removing the
-     * download from Lidarr is lidarrFailures' job; Lidarr then searches again.
+     * Count a failed download against its job, once per download id. Below the
+     * user's retry limit the job waits for Lidarr's next release (searchAgain);
+     * at the limit Lidarr stops looking and the job moves on or fails.
      */
     async onImportFailed(
         downloadId: string,
         reason: string,
         albumMbid?: string
-    ): Promise<{ retried: boolean; failed: boolean; jobId?: string }> {
-        logger.debug(`\n[RETRY] Import failed: ${downloadId}`);
-        logger.debug(`   Reason: ${reason}`);
+    ): Promise<{ jobId?: string; searchAgain: boolean }> {
+        logger.debug(`[RETRY] Import failed: ${downloadId} (${reason})`);
 
-        // A rate limit is the source's weather, not bad work: pause ONLY
-        // the source that refused us and do NOT count this against the
-        // job's failure ladder — the download can be retried once the
-        // pause lifts.
         if (isRateLimited({ message: reason })) {
             await sourcePauseController.handleRateLimit("lidarr", { message: reason });
-            logger.debug(
-                `   Rate-limit-shaped failure — 'lidarr' paused, failureCount NOT incremented`,
-            );
-            return { retried: false, failed: false, jobId: undefined };
+            return { searchAgain: false };
         }
 
-        const result = await this.withTransaction(
+        const counted = await this.withTransaction(
             async (tx) => {
-                // ═══════════════════════════════════════════════════════════════
-                // STEP 1: Find the job; each download id counts as one failure
-                // ═══════════════════════════════════════════════════════════════
                 const job = await tx.downloadJob.findFirst({
                     where: {
                         OR: [
@@ -933,56 +923,40 @@ class SimpleDownloadManager {
                         status: "processing",
                     },
                 });
-
-                if (!job) {
-                    logger.debug(`   No matching job found`);
-                    return { retried: false, failed: false };
-                }
+                if (!job) return null;
 
                 const metadata = (job.metadata as any) || {};
                 if (metadata.previousDownloadIds?.includes(downloadId)) {
-                    logger.debug(`   Download already counted as failed, skipping`);
-                    return { retried: false, failed: false, jobId: job.id };
+                    return { job, metadata, exhausted: false };
                 }
 
-                logger.debug(`   Found job: ${job.id}`);
-
-                // ═══════════════════════════════════════════════════════════════
-                // STEP 2: Update failure tracking
-                // ═══════════════════════════════════════════════════════════════
-                const failureCount = (metadata.failureCount || 0) + 1;
-                const previousDownloadIds = [
-                    ...(metadata.previousDownloadIds || []),
-                    downloadId,
-                ];
-
-                // Update status text for retry attempts
-                const lidarrAttempts = (metadata.lidarrAttempts || 1) + 1;
-                const statusText = `Lidarr #${lidarrAttempts}`;
-
+                const exhausted = job.attempts >= (await this.maxAttempts(job.userId));
+                const attempts = exhausted ? job.attempts : job.attempts + 1;
+                const updated = {
+                    ...metadata,
+                    lastError: reason,
+                    previousDownloadIds: [...(metadata.previousDownloadIds || []), downloadId],
+                    statusText: `Lidarr #${attempts}`,
+                };
                 await tx.downloadJob.update({
                     where: { id: job.id },
-                    data: {
-                        lidarrRef: null, // Clear for next grab
-                        metadata: {
-                            ...metadata,
-                            failureCount,
-                            lastError: reason,
-                            previousDownloadIds,
-                            lidarrAttempts,
-                            statusText,
-                        },
-                    },
+                    data: { lidarrRef: null, attempts, metadata: updated },
                 });
-
-                logger.debug(`   Failure #${failureCount} recorded`);
-
-                return { retried: true, failed: false, jobId: job.id };
+                return { job, metadata: updated, exhausted };
             },
             { logPrefix: "[FAIL-TX]" }
         );
 
-        return result;
+        if (!counted) return { searchAgain: false };
+        const { job, metadata, exhausted } = counted;
+        if (!exhausted) return { jobId: job.id, searchAgain: true };
+
+        logger.debug(`[RETRY] ${job.subject}: retry limit reached after ${job.attempts} releases`);
+        if (job.lidarrAlbumId) {
+            await lidarrService.unmonitorAlbum(job.lidarrAlbumId);
+        }
+        await this.tryNextAlbumFromArtist({ ...job, metadata }, reason);
+        return { jobId: job.id, searchAgain: false };
     }
 
     /**

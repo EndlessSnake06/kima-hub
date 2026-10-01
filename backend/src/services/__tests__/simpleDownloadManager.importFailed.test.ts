@@ -1,9 +1,14 @@
 /**
  * A Lidarr failure event changes only the job it names, by download id or album MBID,
- * and each download id counts as one failure however often Lidarr reports it.
+ * each download id counts once, and the user's retry limit ends the job.
  */
 
+jest.mock("../lidarr", () => ({
+    lidarrService: { unmonitorAlbum: jest.fn() },
+}));
+
 import { prisma } from "../../utils/db";
+import { lidarrService } from "../lidarr";
 import { simpleDownloadManager } from "../simpleDownloadManager";
 import { closeEngineConnections } from "../../__tests__/helpers/engineConnections";
 
@@ -11,7 +16,7 @@ const USER = "sdm_fail_user";
 
 const job = (id: string, data: Record<string, unknown> = {}) =>
     prisma.downloadJob.create({
-        data: { id, userId: USER, subject: id, type: "album", status: "processing", ...data },
+        data: { id, userId: USER, subject: id, type: "album", status: "processing", attempts: 1, ...data },
     });
 
 const meta = async (id: string) =>
@@ -26,6 +31,8 @@ beforeAll(async () => {
 
 afterEach(async () => {
     await prisma.downloadJob.deleteMany({ where: { userId: USER } });
+    await prisma.userDiscoverConfig.deleteMany({ where: { userId: USER } });
+    (lidarrService.unmonitorAlbum as jest.Mock).mockReset();
 });
 
 afterAll(async () => {
@@ -51,8 +58,9 @@ describe("onImportFailed", () => {
 
         const result = await simpleDownloadManager.onImportFailed("dl-b", "missing tracks");
 
-        expect(result).toMatchObject({ retried: true, jobId: "sdm_b" });
-        expect(await meta("sdm_b")).toMatchObject({ failureCount: 1, previousDownloadIds: ["dl-b"] });
+        expect(result).toEqual({ searchAgain: true, jobId: "sdm_b" });
+        expect(await meta("sdm_b")).toMatchObject({ previousDownloadIds: ["dl-b"] });
+        expect((await prisma.downloadJob.findUniqueOrThrow({ where: { id: "sdm_b" } })).attempts).toBe(2);
         expect(await meta("sdm_a")).toEqual({});
     });
 
@@ -64,9 +72,10 @@ describe("onImportFailed", () => {
         const repeat = await simpleDownloadManager.onImportFailed("dl-1", "Manually marked as failed");
         const next = await simpleDownloadManager.onImportFailed("dl-2", "Import failed");
 
-        expect(repeat).toMatchObject({ retried: false, jobId: "sdm_a" });
-        expect(next).toMatchObject({ retried: true, jobId: "sdm_a" });
-        expect(await meta("sdm_a")).toMatchObject({ failureCount: 2, previousDownloadIds: ["dl-1", "dl-2"] });
+        expect(repeat).toEqual({ searchAgain: true, jobId: "sdm_a" });
+        expect(next).toEqual({ searchAgain: true, jobId: "sdm_a" });
+        expect(await meta("sdm_a")).toMatchObject({ previousDownloadIds: ["dl-1", "dl-2"] });
+        expect((await prisma.downloadJob.findUniqueOrThrow({ where: { id: "sdm_a" } })).attempts).toBe(3);
     });
 
     it("matches by album MBID when the download id is new", async () => {
@@ -74,6 +83,28 @@ describe("onImportFailed", () => {
 
         const result = await simpleDownloadManager.onImportFailed("dl-x", "Import failed", "mbid-a");
 
-        expect(result).toMatchObject({ retried: true, jobId: "sdm_a" });
+        expect(result).toEqual({ searchAgain: true, jobId: "sdm_a" });
+    });
+
+    it("stops Lidarr and fails the job at the default limit of three releases", async () => {
+        await job("sdm_a", { lidarrRef: "dl-3", attempts: 3, lidarrAlbumId: 42, metadata: { noFallback: true } });
+
+        const result = await simpleDownloadManager.onImportFailed("dl-3", "Import failed");
+
+        expect(result).toEqual({ searchAgain: false, jobId: "sdm_a" });
+        expect(lidarrService.unmonitorAlbum).toHaveBeenCalledWith(42);
+        const row = await prisma.downloadJob.findUniqueOrThrow({ where: { id: "sdm_a" } });
+        expect(row.status).toBe("failed");
+        expect(row.attempts).toBe(3);
+    });
+
+    it("uses the user's own retry limit", async () => {
+        await prisma.userDiscoverConfig.create({ data: { userId: USER, maxRetryAttempts: 1 } });
+        await job("sdm_a", { lidarrRef: "dl-1", attempts: 1, metadata: { noFallback: true } });
+
+        const result = await simpleDownloadManager.onImportFailed("dl-1", "Import failed");
+
+        expect(result.searchAgain).toBe(false);
+        expect((await prisma.downloadJob.findUniqueOrThrow({ where: { id: "sdm_a" } })).status).toBe("failed");
     });
 });

@@ -4,7 +4,7 @@
  */
 
 jest.mock("../lidarr", () => ({
-    lidarrService: { getQueueItems: jest.fn(), removeItemAndBlocklist: jest.fn() },
+    lidarrService: { getQueueItems: jest.fn(), removeItemAndBlocklist: jest.fn(), unmonitorAlbum: jest.fn() },
 }));
 
 import { prisma } from "../../utils/db";
@@ -82,7 +82,7 @@ describe("removeFailedDownload", () => {
 describe("sweepFailedDownloads", () => {
     it("removes only Kima's failed downloads and counts each against its job", async () => {
         await prisma.downloadJob.create({
-            data: { id: "lf_job", userId: USER, subject: "s", type: "album", status: "processing", lidarrRef: "dl-mine" },
+            data: { id: "lf_job", userId: USER, subject: "s", type: "album", status: "processing", lidarrRef: "dl-mine", attempts: 1 },
         });
         await prisma.downloadJob.create({
             data: { id: "lf_job2", userId: USER, subject: "s2", type: "album", status: "processing", lidarrRef: "dl-info" },
@@ -103,10 +103,24 @@ describe("sweepFailedDownloads", () => {
         expect(first.removed).toBe(1);
         expect(second.removed).toBe(0);
         expect(removeItem).toHaveBeenCalledTimes(1);
-        expect(removeItem.mock.calls[0][0].downloadId).toBe("dl-mine");
+        expect(removeItem.mock.calls[0]).toEqual([expect.objectContaining({ downloadId: "dl-mine" }), { skipRedownload: false }]);
         const job = await prisma.downloadJob.findUniqueOrThrow({ where: { id: "lf_job" } });
         expect(job.lidarrRef).toBeNull();
         expect((job.metadata as any).previousDownloadIds).toEqual(["dl-mine"]);
+    });
+
+    it("tells Lidarr to stop searching once the job reaches its retry limit", async () => {
+        await prisma.downloadJob.create({
+            data: {
+                id: "lf_job", userId: USER, subject: "s", type: "album", status: "processing",
+                lidarrRef: "dl-mine", attempts: 3, metadata: { noFallback: true },
+            },
+        });
+        getQueueItems.mockResolvedValue([item(1, "dl-mine", { trackedDownloadState: "importFailed" })]);
+
+        expect((await sweepFailedDownloads()).removed).toBe(1);
+        expect(removeItem.mock.calls[0][1]).toEqual({ skipRedownload: true });
+        expect((await prisma.downloadJob.findUniqueOrThrow({ where: { id: "lf_job" } })).status).toBe("failed");
     });
 });
 
