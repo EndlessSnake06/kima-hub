@@ -118,13 +118,13 @@ export function LidarrSection({ settings, onUpdate, onTest, isTesting }: LidarrS
                         <>
                             <SettingsRow
                                 label="Quality Profile"
-                                description="Audio quality profile used when adding artists"
+                                description="Audio quality for artists Kima adds. Required before downloading"
                             >
                                 <SettingsSelect
                                     value={String(settings.lidarrQualityProfileId ?? "")}
                                     onChange={(v) => onUpdate({ lidarrQualityProfileId: v ? Number(v) : null })}
                                     options={[
-                                        { value: "", label: "Default" },
+                                        { value: "", label: "Not chosen" },
                                         ...qualityProfiles.map((p) => ({ value: String(p.id), label: p.name })),
                                     ]}
                                 />
@@ -132,13 +132,13 @@ export function LidarrSection({ settings, onUpdate, onTest, isTesting }: LidarrS
 
                             <SettingsRow
                                 label="Metadata Profile"
-                                description="Metadata profile used when adding artists"
+                                description="Which releases Lidarr lists for artists Kima adds. Required before downloading"
                             >
                                 <SettingsSelect
                                     value={String(settings.lidarrMetadataProfileId ?? "")}
                                     onChange={(v) => onUpdate({ lidarrMetadataProfileId: v ? Number(v) : null })}
                                     options={[
-                                        { value: "", label: "Default" },
+                                        { value: "", label: "Not chosen" },
                                         ...metadataProfiles.map((p) => ({ value: String(p.id), label: p.name })),
                                     ]}
                                 />

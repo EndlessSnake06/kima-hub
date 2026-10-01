@@ -9,6 +9,7 @@ import { lidarrApiCallsTotal, lidarrApiDuration } from "../utils/metrics";
 import { sourcePauseController } from "./sourcePauseController";
 import { lidarrHealthMonitor } from "./lidarrHealth";
 import { failureCause } from "../utils/outcome";
+import { UserFacingError } from "../utils/errors";
 import type {
     LidarrAlbum,
     LidarrArtist,
@@ -71,19 +72,12 @@ function isTransient(error: any): boolean {
     return error?.isAxiosError === true || /database is locked/i.test(error?.message ?? "");
 }
 
-// Simple interface for MusicBrainz artist data (from external service)
-interface MusicBrainzArtist {
-    id: string;
-    name: string;
-    type?: string;
-}
-
 class LidarrService {
     private client: AxiosInstance | null = null;
     private enabled: boolean;
     private initialized: boolean = false;
-    private qualityProfileId: number = 1;
-    private metadataProfileId: number = 1;
+    private qualityProfileId: number | null = null;
+    private metadataProfileId: number | null = null;
 
     // API timeouts
     private readonly API_TIMEOUT_DEFAULT = 30000;
@@ -132,6 +126,8 @@ class LidarrService {
         try {
             // Try to load from database
             const settings = await getSystemSettings();
+            this.qualityProfileId = settings?.lidarrQualityProfileId ?? null;
+            this.metadataProfileId = settings?.lidarrMetadataProfileId ?? null;
 
             if (settings && settings.lidarrEnabled) {
                 const url = settings.lidarrUrl || config.lidarr?.url;
@@ -140,8 +136,6 @@ class LidarrService {
                 if (url && apiKey) {
                     logger.debug("Lidarr configured from database");
                     this.client = this.createClient(url, apiKey);
-                    this.qualityProfileId = settings.lidarrQualityProfileId ?? 1;
-                    this.metadataProfileId = settings.lidarrMetadataProfileId ?? 1;
                     this.enabled = true;
                 } else {
                     logger.warn("  Lidarr enabled but missing URL or API key");
@@ -274,533 +268,80 @@ class LidarrService {
         }
     }
 
-    async searchArtist(
-        artistName: string,
-        mbid?: string
-    ): Promise<LidarrArtist[]> {
-        await this.ensureInitialized();
-
-        logger.debug(
-            `[LIDARR_SEARCH_ARTIST] artistName="${artistName}", mbid="${mbid}"`
-        );
-
-        if (!this.enabled || !this.client) {
-            throw new Error("Lidarr not enabled");
+    /** Lidarr profiles are chosen by the user; Kima never guesses one. */
+    private chosenProfiles(): { qualityProfileId: number; metadataProfileId: number } {
+        if (this.qualityProfileId === null || this.metadataProfileId === null) {
+            throw new UserFacingError(
+                "Choose a Lidarr quality and metadata profile in Settings before downloading",
+                409
+            );
         }
-
-        try {
-            const response = await this.client.get("/api/v1/artist/lookup", {
-                params: {
-                    term: mbid ? `lidarr:${mbid}` : artistName,
-                },
-            });
-
-            // If Lidarr's lookup returned results, use them
-            if (response.data && response.data.length > 0) {
-                return response.data;
-            }
-
-            // FALLBACK: Lidarr's metadata server may be having issues
-            // If we have an MBID, create a minimal artist object from our own MusicBrainz data
-            if (mbid) {
-                logger.debug(
-                    `   [FALLBACK] Lidarr lookup failed, using direct MusicBrainz data for MBID: ${mbid}`
-                );
-
-                try {
-                    // Import MusicBrainz service dynamically to avoid circular deps
-                    const { musicBrainzService } = await import(
-                        "./musicbrainz"
-                    );
-
-                    // Get artist info from MusicBrainz directly
-                    const found = await musicBrainzService.searchArtist(
-                        artistName,
-                        5
-                    );
-                    const mbArtist =
-                        found.kind === "answered"
-                            ? found.value.find((a: MusicBrainzArtist) => a.id === mbid) ??
-                              found.value[0]
-                            : undefined;
-
-                    if (!mbArtist) {
-                        logger.debug(
-                            `   [FALLBACK] no artist answer for ${artistName}: ${
-                                found.kind === "answered" || found.kind === "absent"
-                                    ? "MusicBrainz has nothing"
-                                    : failureCause(found)
-                            }`
-                        );
-                    }
-
-                    if (mbArtist) {
-                        // Create a minimal Lidarr-compatible artist object
-                        const fallbackArtist: LidarrArtist = {
-                            id: 0, // Will be assigned when added
-                            artistName: mbArtist.name || artistName,
-                            foreignArtistId: mbid,
-                            nameSlug: "",
-                            genres: [],
-                            links: [],
-                            artistType: mbArtist.type || "Person",
-                            monitored: false,
-                            qualityProfileId: this.qualityProfileId,
-                            metadataProfileId: this.metadataProfileId,
-                            rootFolderPath: "/music",
-                            tags: [],
-                            statistics: {
-                                albumCount: 0,
-                                trackFileCount: 0,
-                                trackCount: 0,
-                                totalTrackCount: 0,
-                                sizeOnDisk: 0,
-                                percentOfTracks: 0
-                            },
-                        };
-
-                        logger.debug(
-                            `   [FALLBACK] Created artist from MusicBrainz: ${fallbackArtist.artistName}`
-                        );
-                        return [fallbackArtist];
-                    }
-                } catch (mbError: any) {
-                    logger.error(
-                        `   [FALLBACK] MusicBrainz lookup also failed:`,
-                        mbError.message
-                    );
-                }
-            }
-
-            return response.data || [];
-        } catch (error) {
-            logger.error("Lidarr artist search error:", error);
-
-            // FALLBACK on error too
-            if (mbid) {
-                logger.debug(
-                    `   [FALLBACK] Lidarr error, trying MusicBrainz for MBID: ${mbid}`
-                );
-                try {
-                    const { musicBrainzService } = await import(
-                        "./musicbrainz"
-                    );
-                    const found = await musicBrainzService.searchArtist(
-                        artistName,
-                        5
-                    );
-                    const mbArtist =
-                        found.kind === "answered"
-                            ? found.value.find((a: MusicBrainzArtist) => a.id === mbid) ??
-                              found.value[0]
-                            : undefined;
-
-                    if (!mbArtist) {
-                        logger.debug(
-                            `   [FALLBACK] no artist answer for ${artistName}: ${
-                                found.kind === "answered" || found.kind === "absent"
-                                    ? "MusicBrainz has nothing"
-                                    : failureCause(found)
-                            }`
-                        );
-                    }
-
-                    if (mbArtist) {
-                        const fallbackArtist: LidarrArtist = {
-                            id: 0,
-                            artistName: mbArtist.name || artistName,
-                            foreignArtistId: mbid,
-                            nameSlug: "",
-                            genres: [],
-                            links: [],
-                            artistType: mbArtist.type || "Person",
-                            monitored: false,
-                            qualityProfileId: this.qualityProfileId,
-                            metadataProfileId: this.metadataProfileId,
-                            rootFolderPath: "/music",
-                            tags: [],
-                            statistics: {
-                                albumCount: 0,
-                                trackFileCount: 0,
-                                trackCount: 0,
-                                totalTrackCount: 0,
-                                sizeOnDisk: 0,
-                                percentOfTracks: 0
-                            },
-                        };
-                        logger.debug(
-                            `   [FALLBACK] Created artist from MusicBrainz: ${fallbackArtist.artistName}`
-                        );
-                        return [fallbackArtist];
-                    }
-                } catch (mbError: any) {
-                    logger.error(
-                        `   [FALLBACK] MusicBrainz also failed:`,
-                        mbError.message
-                    );
-                }
-            }
-
-            return [];
-        }
+        return { qualityProfileId: this.qualityProfileId, metadataProfileId: this.metadataProfileId };
     }
 
+    /**
+     * Adds the artist with this MusicBrainz id, monitoring nothing on its own:
+     * each album Kima asks for is monitored when it is added. Returns null when
+     * Lidarr does not know the id; Lidarr errors are thrown.
+     */
     async addArtist(
         mbid: string,
         artistName: string,
         rootFolderPath: string = "/music",
-        searchForMissingAlbums: boolean = true,
-        monitorAllAlbums: boolean = true,
         isDiscovery: boolean = false
     ): Promise<LidarrArtist | null> {
         await this.ensureInitialized();
 
-        logger.debug(
-            `[LIDARR_ADD_ARTIST] artistName="${artistName}", mbid="${mbid}"`
-        );
-
         if (!this.enabled || !this.client) {
             throw new Error("Lidarr not enabled");
         }
+        const existing = (await this.getArtistList()).find((a) => a.foreignArtistId === mbid);
+        if (existing) return existing;
+        const profiles = this.chosenProfiles();
 
-        // Get discovery tag ID if this is a discovery add
-        let discoveryTagId: number | null = null;
-        if (isDiscovery) {
-            discoveryTagId = await this.getOrCreateDiscoveryTag();
-            if (discoveryTagId) {
-                logger.debug(
-                    `[LIDARR] Will apply discovery tag (ID: ${discoveryTagId}) to artist`
-                );
-            }
-        }
-
-        try {
-            // Ensure root folder exists, fallback to default if not
-            const validRootFolder = await this.ensureRootFolderExists(
-                rootFolderPath
-            );
-
-            logger.debug(
-                ` Searching Lidarr for artist: "${artistName}"${
-                    mbid ? ` (MBID: ${mbid})` : " (no MBID - using name search)"
-                }`
-            );
-            logger.debug(`   Root folder: ${validRootFolder}`);
-
-            // Search for artist (by MBID if available, otherwise by name)
-            const searchResults = await this.searchArtist(artistName, mbid);
-
-            if (searchResults.length === 0) {
-                logger.error(` Artist not found in Lidarr: ${artistName}`);
-                return null;
-            }
-
-            logger.debug(`   Found ${searchResults.length} results from Lidarr`);
-
-            let artistData: LidarrArtist;
-
-            if (mbid) {
-                // STRICT MBID FILTERING - Only use exact MBID match
-                const exactMatch = searchResults.find(
-                    (artist) => artist.foreignArtistId === mbid
-                );
-
-                if (!exactMatch) {
-                    logger.error(
-                        ` No exact MBID match found for: ${artistName} (${mbid})`
-                    );
-                    logger.debug(
-                        "   Available results:",
-                        searchResults.map((a) => ({
-                            name: a.artistName,
-                            mbid: a.foreignArtistId,
-                            type: a.artistType,
-                        }))
-                    );
-                    return null;
-                }
-
-                // ADDITIONAL CHECK: If exact match is a "Group" with 0 albums,
-                // look for a better match with same name but different type
-                if (
-                    exactMatch.artistType === "Group" &&
-                    (exactMatch.statistics?.albumCount || 0) === 0
-                ) {
-                    logger.debug(
-                        ` Exact MBID match is a Group with 0 albums - checking for better match...`
-                    );
-
-                    // Look for same artist name but different type with albums
-                    const betterMatch = searchResults.find(
-                        (artist) =>
-                            artist.artistName.toLowerCase() ===
-                                exactMatch.artistName.toLowerCase() &&
-                            artist.foreignArtistId !== mbid &&
-                            (artist.statistics?.albumCount || 0) > 0 &&
-                            (artist.artistType === "Person" ||
-                                artist.artistType === "Artist")
-                    );
-
-                    if (betterMatch) {
-                        logger.debug(
-                            `   Found better match: "${
-                                betterMatch.artistName
-                            }" (Type: ${betterMatch.artistType}, Albums: ${
-                                betterMatch.statistics?.albumCount || 0
-                            })`
-                        );
-                        artistData = betterMatch;
-                    } else {
-                        logger.debug(
-                            ` No better match found, using Group entry`
-                        );
-                        artistData = exactMatch;
-                    }
-                } else {
-                    logger.debug(
-                        `Exact match found: "${exactMatch.artistName}" (Type: ${
-                            exactMatch.artistType
-                        }, Albums: ${exactMatch.statistics?.albumCount || 0})`
-                    );
-                    artistData = exactMatch;
-                }
-            } else {
-                // FALLBACK: No MBID - Use smart filtering for best match
-                logger.debug(" No MBID available - using smart selection...");
-
-                // Filter and score results
-                const scoredResults = searchResults.map((artist) => {
-                    let score = 0;
-
-                    // Prefer "Person" or "Group" types for actual artists
-                    const type = (artist.artistType || "").toLowerCase();
-                    if (type === "person") score += 1000;
-                    else if (type === "group") score += 900;
-                    else if (type === "artist") score += 800;
-
-                    // Album count (more albums = more likely correct)
-                    const albumCount = artist.statistics?.albumCount || 0;
-                    score += albumCount * 10;
-
-                    // Exact name match bonus (case-insensitive)
-                    const artistNameNormalized = (artist.artistName || "")
-                        .toLowerCase()
-                        .trim();
-                    const searchNameNormalized = artistName
-                        .toLowerCase()
-                        .trim();
-
-                    if (artistNameNormalized === searchNameNormalized) {
-                        score += 500;
-                    } else if (
-                        artistNameNormalized.includes(searchNameNormalized) ||
-                        searchNameNormalized.includes(artistNameNormalized)
-                    ) {
-                        score += 250; // Partial match
-                    }
-
-                    // Popularity
-                    if (artist.ratings?.votes && artist.ratings?.votes > 0) {
-                        score += Math.min(artist.ratings.votes / 10, 100);
-                    }
-
-                    // Penalize "Various Artists" entries
-                    if (
-                        artistNameNormalized.includes("various") ||
-                        artistNameNormalized.includes("compilation")
-                    ) {
-                        score -= 1000;
-                    }
-
-                    return { artist, score };
-                });
-
-                // Sort by score
-                scoredResults.sort((a, b) => b.score - a.score);
-
-                // Log candidates for debugging
-                logger.debug("   Candidates:");
-                scoredResults.slice(0, 3).forEach((item, i) => {
-                    logger.debug(
-                        `     ${i + 1}. "${item.artist.artistName}" - Type: ${
-                            item.artist.artistType || "Unknown"
-                        } - Albums: ${
-                            item.artist.statistics?.albumCount || 0
-                        } - Score: ${item.score}${i === 0 ? " ← SELECTED" : ""}`
-                    );
-                });
-
-                artistData = scoredResults[0].artist;
-            }
-
-            // Check if already exists
-            const existingArtistsList = await this.getArtistList();
-            const exists = existingArtistsList.find(
-                (a: LidarrArtist) =>
-                    a.foreignArtistId === artistData.foreignArtistId ||
-                    (mbid && a.foreignArtistId === mbid)
-            );
-
-            if (exists) {
-                logger.debug(`Artist already in Lidarr: ${artistName}`);
-
-                // If monitorAllAlbums is true, update the artist to monitor all albums
-                if (monitorAllAlbums) {
-                    logger.debug(`   Updating artist to monitor all albums...`);
-                    try {
-                        // Update artist settings
-                        const updated = await this.client.put(
-                            `/api/v1/artist/${exists.id}`,
-                            {
-                                ...exists,
-                                monitored: true,
-                                monitorNewItems: "all",
-                            }
-                        );
-
-                        // Get all albums for this artist and monitor them
-                        const albumsResponse = await this.client.get(
-                            `/api/v1/album?artistId=${exists.id}`
-                        );
-                        const albums = albumsResponse.data as LidarrAlbum[];
-
-                        logger.debug(
-                            `   Found ${albums.length} albums to monitor`
-                        );
-
-                        // Monitor all albums - batch via Lidarr's bulk endpoint,
-                        // falling back to a small concurrent pool if it's unavailable
-                        const unmonitoredAlbums = albums.filter(
-                            (album) => !album.monitored
-                        );
-                        if (unmonitoredAlbums.length > 0) {
-                            try {
-                                await this.client.put("/api/v1/album/monitor", {
-                                    albumIds: unmonitoredAlbums.map((a) => a.id),
-                                    monitored: true,
-                                });
-                            } catch (bulkMonitorError: any) {
-                                logger.debug(
-                                    `   Bulk album monitor failed, falling back to per-album updates: ${bulkMonitorError.message}`
-                                );
-                                const albumLimit = pLimit(5);
-                                await Promise.all(
-                                    unmonitoredAlbums.map((album) =>
-                                        albumLimit(() =>
-                                            this.client!.put(
-                                                `/api/v1/album/${album.id}`,
-                                                {
-                                                    ...album,
-                                                    monitored: true,
-                                                }
-                                            )
-                                        )
-                                    )
-                                );
-                            }
-                        }
-
-                        // Trigger search for all albums if requested
-                        if (searchForMissingAlbums && albums.length > 0) {
-                            logger.debug(
-                                `   Triggering search for ${albums.length} albums...`
-                            );
-                            await this.client.post("/api/v1/command", {
-                                name: "AlbumSearch",
-                                albumIds: albums.map((a) => a.id),
-                            });
-                        }
-
-                        logger.debug(
-                            `   Updated existing artist and monitored all albums`
-                        );
-                        return updated.data;
-                    } catch (error: any) {
-                        logger.error(
-                            `   Failed to update artist:`,
-                            error.message
-                        );
-                        // Return original artist if update fails
-                        return exists;
-                    }
-                }
-
-                return exists;
-            }
-
-            // Add artist - use "existing" monitor option to ensure album catalog is fetched
-            // even if we don't want to download all albums
-            const artistPayload: LidarrAddArtistRequest = {
-                foreignArtistId: artistData.foreignArtistId,
-                artistName: artistData.artistName,
-                rootFolderPath: validRootFolder,
-                qualityProfileId: this.qualityProfileId,
-                metadataProfileId: this.metadataProfileId,
-                monitored: true,
-                monitorNewItems: monitorAllAlbums ? "all" : "none",
-                addOptions: {
-                    monitor: "existing", // Always fetch album catalog, but don't monitor unless requested
-                    searchForMissingAlbums,
-                },
-            };
-
-            // Apply discovery tag if this is a discovery add
-            if (discoveryTagId) {
-                artistPayload.tags = [discoveryTagId];
-            }
-
-            let response;
-            try {
-                response = await this.client.post("/api/v1/artist", artistPayload);
-            } catch (postError: any) {
-                // Handle race condition where artist was added between our check and post
-                const errorMsg = postError.response?.data?.[0]?.errorMessage || postError.message || "";
-                if (errorMsg.includes("already exists") || errorMsg.includes("UNIQUE constraint failed")) {
-                    logger.debug(`   Artist added by another process, fetching existing...`);
-                    this.invalidateArtistCache();
-                    const existingArtistsFallback = await this.getArtistList();
-                    const existing = existingArtistsFallback.find(
-                        (a: LidarrArtist) => a.foreignArtistId === artistData.foreignArtistId
-                    );
-                    if (existing) return existing;
-                }
-                throw postError;
-            }
-
-            this.invalidateArtistCache();
-
-            logger.debug(
-                `Added artist to Lidarr: ${artistName}${
-                    isDiscovery ? " (tagged as discovery)" : ""
-                }`
-            );
-
-            // Trigger metadata refresh to ensure album catalog is populated
-            if (!searchForMissingAlbums) {
-                // Add a small delay to let Lidarr's internal state settle
-                await new Promise((resolve) => setTimeout(resolve, this.ROOT_FOLDER_CREATE_DELAY));
-                
-                logger.debug(`   Triggering metadata refresh for new artist...`);
-                try {
-                    await this.client.post("/api/v1/command", {
-                        name: "RefreshArtist",
-                        artistId: response.data.id,
-                    });
-                } catch (refreshError) {
-                    logger.warn(
-                        `   Metadata refresh command failed (non-blocking)`
-                    );
-                }
-            }
-
-            return response.data;
-        } catch (error: any) {
-            logger.error(
-                "Lidarr add artist error:",
-                error.response?.data || error.message
-            );
+        const lookup = await this.client.get<LidarrArtist[]>("/api/v1/artist/lookup", {
+            params: { term: `lidarr:${mbid}` },
+        });
+        const artistData = (lookup.data ?? []).find((a) => a.foreignArtistId === mbid);
+        if (!artistData) {
+            logger.error(` Lidarr does not know artist ${artistName} (${mbid})`);
             return null;
         }
+
+        const discoveryTagId = isDiscovery ? await this.getOrCreateDiscoveryTag() : null;
+        const artistPayload: LidarrAddArtistRequest = {
+            foreignArtistId: artistData.foreignArtistId,
+            artistName: artistData.artistName,
+            rootFolderPath: await this.ensureRootFolderExists(rootFolderPath),
+            ...profiles,
+            monitored: true,
+            monitorNewItems: "none",
+            addOptions: { monitor: "existing", searchForMissingAlbums: false },
+            ...(discoveryTagId ? { tags: [discoveryTagId] } : {}),
+        };
+
+        let added: LidarrArtist;
+        try {
+            added = (await this.client.post("/api/v1/artist", artistPayload)).data;
+        } catch (postError: any) {
+            const errorMsg = postError.response?.data?.[0]?.errorMessage || postError.message || "";
+            if (errorMsg.includes("already exists") || errorMsg.includes("UNIQUE constraint failed")) {
+                this.invalidateArtistCache();
+                const raced = (await this.getArtistList()).find((a) => a.foreignArtistId === mbid);
+                if (raced) return raced;
+            }
+            throw postError;
+        }
+        this.invalidateArtistCache();
+        logger.debug(`Added artist to Lidarr: ${artistName}${isDiscovery ? " (tagged as discovery)" : ""}`);
+
+        await new Promise((resolve) => setTimeout(resolve, this.ROOT_FOLDER_CREATE_DELAY));
+        try {
+            await this.client.post("/api/v1/command", { name: "RefreshArtist", artistId: added.id });
+        } catch (refreshError: any) {
+            logger.warn(`   Metadata refresh for ${artistName} failed: ${refreshError.message}`);
+        }
+        return added;
     }
 
     async searchAlbum(
@@ -990,8 +531,6 @@ class LidarrService {
                         artistMbid,
                         artistName,
                         rootFolderPath,
-                        false,
-                        false,
                         isDiscovery
                     ).finally(() => this.artistAddInFlight.delete(artistMbid));
                     this.artistAddInFlight.set(artistMbid, addPromise);

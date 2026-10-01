@@ -6,11 +6,10 @@ import { config } from "../config";
 import { getSystemSettings } from "../utils/systemSettings";
 import { lidarrService } from "../services/lidarr";
 import { musicBrainzService } from "../services/musicbrainz";
-import { getArtistCorrection } from "../services/artistCorrection";
 import { simpleDownloadManager } from "../services/simpleDownloadManager";
 import { sweepFailedDownloads } from "../services/lidarrFailures";
 import crypto from "crypto";
-import { safeError } from "../utils/errors";
+import { safeError, UserFacingError } from "../utils/errors";
 import { failureCause } from "../utils/outcome";
 import { isMbid } from "../services/artistIdentity";
 
@@ -201,6 +200,9 @@ router.post("/", async (req, res) => {
                 });
             }
         }
+        if (error instanceof UserFacingError) {
+            return res.status(error.statusCode).json({ error: error.message });
+        }
         logger.error("Create download job error:", error);
         res.status(500).json({ error: "Failed to create download job" });
     }
@@ -220,50 +222,20 @@ async function processArtistDownload(
     const batchId = crypto.randomUUID();
     logger.debug(`   Batch ID: ${batchId}`);
 
-    // Lidarr needs MusicBrainz's name for the artist, not an alias such as "blink".
-    let canonicalArtistName = artistName;
-    logger.debug(`   Resolving canonical artist name from MusicBrainz...`);
     const mbArtist = await musicBrainzService.getArtist(artistMbid);
+    if (mbArtist.kind === "absent" || mbArtist.kind === "permanent") {
+        throw new UserFacingError("No such artist on MusicBrainz", 404);
+    }
     if (mbArtist.kind === "answered") {
-        canonicalArtistName = mbArtist.value.name;
-        if (canonicalArtistName !== artistName) {
-            logger.debug(
-                `   ✓ Canonical name resolved: "${artistName}" → "${canonicalArtistName}"`
-            );
-        } else {
-            logger.debug(
-                `   ✓ Name matches canonical: "${canonicalArtistName}"`
-            );
-        }
+        artistName = mbArtist.value.name;
     } else {
-        logger.warn(
-            `   MusicBrainz lookup for ${artistMbid}: ${
-                mbArtist.kind === "absent"
-                    ? "no such artist"
-                    : failureCause(mbArtist)
-            }`
-        );
-        try {
-            const correction = await getArtistCorrection(
-                artistName
-            );
-            if (correction?.canonicalName) {
-                canonicalArtistName = correction.canonicalName;
-                logger.debug(
-                    `   ✓ Name resolved via MusicBrainz: "${artistName}" → "${canonicalArtistName}"`
-                );
-            }
-        } catch (correctionError) {
-            logger.warn(
-                `   ⚠ MB correction also failed, using original name`
-            );
-        }
+        logger.warn(`   MusicBrainz lookup for ${artistMbid}: ${failureCause(mbArtist)}`);
     }
 
     try {
         const lidarrArtist = await lidarrService.addArtist(
             artistMbid,
-            canonicalArtistName,
+            artistName,
             rootFolderPath
         );
 

@@ -1,6 +1,7 @@
 /**
  * POST /downloads takes only a MusicBrainz id, refuses one MusicBrainz does not
- * know, and files an album under the artist its release group credits.
+ * know, and files an album under the artist its release group credits. An
+ * artist download explains a refusal instead of failing with a server error.
  */
 
 const mockJobCreate = jest.fn();
@@ -28,14 +29,21 @@ jest.mock("../../utils/systemSettings", () => ({
     getSystemSettings: jest.fn().mockResolvedValue({ musicPath: "/music" }),
 }));
 jest.mock("../../config", () => ({ config: { music: { musicPath: "/music" } } }));
+const mockAddArtist = jest.fn();
 jest.mock("../../services/lidarr", () => ({
-    lidarrService: { isEnabled: jest.fn().mockResolvedValue(true) },
+    lidarrService: {
+        isEnabled: jest.fn().mockResolvedValue(true),
+        addArtist: (...a: unknown[]) => mockAddArtist(...a),
+    },
 }));
 const mockGetReleaseGroup = jest.fn();
+const mockGetArtist = jest.fn();
 jest.mock("../../services/musicbrainz", () => ({
-    musicBrainzService: { getReleaseGroup: (...a: unknown[]) => mockGetReleaseGroup(...a) },
+    musicBrainzService: {
+        getReleaseGroup: (...a: unknown[]) => mockGetReleaseGroup(...a),
+        getArtist: (...a: unknown[]) => mockGetArtist(...a),
+    },
 }));
-jest.mock("../../services/artistCorrection", () => ({ getArtistCorrection: jest.fn() }));
 jest.mock("../../services/simpleDownloadManager", () => ({
     simpleDownloadManager: { startDownload: jest.fn().mockResolvedValue({ success: true }) },
 }));
@@ -44,6 +52,7 @@ jest.mock("../../services/lidarrFailures", () => ({ sweepFailedDownloads: jest.f
 import express from "express";
 import request from "supertest";
 import downloadsRouter from "../downloads";
+import { UserFacingError } from "../../utils/errors";
 
 const app = express();
 app.use(express.json());
@@ -66,6 +75,8 @@ beforeEach(() => {
         ...data,
     }));
     mockGetReleaseGroup.mockReset();
+    mockGetArtist.mockReset();
+    mockAddArtist.mockReset();
 });
 
 describe("POST /downloads", () => {
@@ -111,5 +122,32 @@ describe("POST /downloads", () => {
 
         expect(res.status).toBe(200);
         expect(mockJobCreate.mock.calls[0][0].data.metadata.artistName).toBe("Low");
+    });
+
+    describe("artist", () => {
+        const postArtist = () =>
+            request(app).post("/downloads").send({ type: "artist", mbid: RG, subject: "low" });
+
+        it("refuses an artist id MusicBrainz does not know", async () => {
+            mockGetArtist.mockResolvedValue({ kind: "absent", evidence: {} });
+
+            const res = await postArtist();
+
+            expect(res.status).toBe(404);
+            expect(mockAddArtist).not.toHaveBeenCalled();
+        });
+
+        it("tells the user to choose Lidarr profiles", async () => {
+            mockGetArtist.mockResolvedValue({ kind: "answered", value: { name: "Low" } });
+            mockAddArtist.mockRejectedValue(
+                new UserFacingError("Choose a Lidarr quality and metadata profile in Settings before downloading", 409)
+            );
+
+            const res = await postArtist();
+
+            expect(res.status).toBe(409);
+            expect(res.body.error).toMatch(/Choose a Lidarr quality/);
+            expect(mockAddArtist).toHaveBeenCalledWith(RG, "Low", "/music");
+        });
     });
 });
