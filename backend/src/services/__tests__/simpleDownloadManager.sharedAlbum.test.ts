@@ -118,3 +118,16 @@ it("unmonitors the album once no job wants it", async () => {
     expect(lidarrService.unmonitorAlbum).toHaveBeenCalledTimes(1);
     expect(lidarrService.unmonitorAlbum).toHaveBeenCalledWith(ALBUM);
 });
+
+it("restarts the clock on a job that searches again", async () => {
+    const started = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    await job("sdm_a", ALICE, {
+        lidarrRef: "dl-1",
+        metadata: { artistName: "Interpol", albumTitle: "Antics", noFallback: true, startedAt: started },
+    });
+
+    await simpleDownloadManager.onImportFailed("dl-1", "Import failed");
+
+    const restarted = Date.parse((await row("sdm_a")).metadata!["startedAt" as never]);
+    expect(restarted).toBeGreaterThan(Date.now() - 60_000);
+});

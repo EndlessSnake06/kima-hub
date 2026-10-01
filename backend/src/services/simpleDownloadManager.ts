@@ -453,7 +453,8 @@ class SimpleDownloadManager {
         let resumed = 0;
         for (const job of held) {
             if (await sourcePauseController.isPaused("lidarr")) break;
-            const { waitingForLidarr: _, ...metadata } = job.metadata as any;
+            const { waitingForLidarr: _, ...held } = job.metadata as any;
+            const metadata = { ...held, pendingSince: new Date().toISOString() };
             const claimed = await prisma.downloadJob.updateMany({
                 where: { id: job.id, status: "pending", metadata: { path: ["waitingForLidarr"], equals: true } },
                 data: { metadata },
@@ -830,6 +831,7 @@ class SimpleDownloadManager {
                     const attempts = exhausted ? job.attempts : job.attempts + 1;
                     const updated = {
                         ...metadata,
+                        ...(exhausted ? {} : { startedAt: new Date().toISOString() }),
                         lastError: reason,
                         previousDownloadIds: [...(metadata.previousDownloadIds || []), downloadId],
                         statusText: `Lidarr #${attempts}`,
@@ -1184,7 +1186,7 @@ class SimpleDownloadManager {
     }
 
     /**
-     * Fail stale jobs: pending over 10 min (never started), processing without a
+     * Fail stale jobs: pending over 10 min since created or resumed, processing without a
      * Lidarr ref over 5 min (no sources), with one over 15 min and not downloading.
      * Jobs waiting for Lidarr are spared, and nothing is judged against a paused Lidarr.
      * Accepts a prefetched snapshot to avoid repeat API calls.
@@ -1217,9 +1219,11 @@ class SimpleDownloadManager {
             (j) => j.status === "processing"
         );
 
-        const stalePendingJobs = pendingJobs.filter(
-            (job) => job.createdAt < pendingCutoff && !(job.metadata as any)?.waitingForLidarr
-        );
+        const stalePendingJobs = pendingJobs.filter((job) => {
+            const metadata = job.metadata as any;
+            const since = metadata?.pendingSince ? new Date(metadata.pendingSince) : job.createdAt;
+            return since < pendingCutoff && !metadata?.waitingForLidarr;
+        });
 
         const pendingDiscoveryBatchIds = new Set<string>();
 
@@ -1490,18 +1494,9 @@ class SimpleDownloadManager {
     }
 
     /**
-     * Reconcile processing jobs with Lidarr
-     * Checks if albums in "processing" state are already available in Lidarr
-     * and marks them as completed if so (fixes missed webhook completion events)
-     *
-     * IMPORTANT: Checks by both MBID and artist+album name to handle MBID mismatches
-     */
-    /**
-     * Reconcile processing jobs with Lidarr using batch snapshot approach.
-     * Fetches all Lidarr data once, then checks jobs against in-memory data.
-     *
-     * Optionally accepts a pre-fetched snapshot to avoid duplicate API calls
-     * when called alongside other reconciliation methods.
+     * Complete processing jobs whose album Lidarr already has, matched by MBID or
+     * by artist and title, catching imports whose webhook never arrived. Uses the
+     * caller's snapshot of Lidarr and skips the pass without one.
      */
     async reconcileWithLidarr(
         existingSnapshot?: ReconciliationSnapshot | null
@@ -1530,7 +1525,6 @@ class SimpleDownloadManager {
         const snapshot = existingSnapshot;
 
         const toComplete: string[] = [];
-        const discoveryBatchIds = new Set<string>();
 
         for (const job of processingJobs) {
             const metadata = job.metadata as any;
@@ -1572,9 +1566,6 @@ class SimpleDownloadManager {
             if (isAvailable) {
                 logger.debug(`   Job ${job.id}: Album "${job.subject}" found in Lidarr`);
                 toComplete.push(job.id);
-                if (job.discoveryBatchId) {
-                    discoveryBatchIds.add(job.discoveryBatchId);
-                }
             } else {
                 // Only log for jobs older than 5 minutes
                 const jobAge = Date.now() - (job.createdAt?.getTime() || 0);
@@ -1598,24 +1589,20 @@ class SimpleDownloadManager {
 
             const completedSet = new Set(toComplete);
             for (const job of processingJobs) {
-                if (completedSet.has(job.id)) {
-                    eventBus.emit({
-                        type: "download:complete",
-                        userId: job.userId,
-                        payload: { jobId: job.id, subject: job.subject },
-                    });
-                }
+                if (!completedSet.has(job.id)) continue;
+                const metadata = job.metadata as any;
+                await this.announceCompletion({
+                    jobId: job.id,
+                    userId: job.userId,
+                    subject: job.subject,
+                    metadata,
+                    batchId: job.discoveryBatchId ?? undefined,
+                    spotifyImportJobId: metadata?.spotifyImportJobId,
+                });
+                await yieldToEventLoop();
             }
 
             logger.debug(`   Batch updated ${toComplete.length} job(s) to completed`);
-        }
-
-        if (discoveryBatchIds.size > 0) {
-            const { discoverWeeklyService } = await import("./discoverWeekly");
-            for (const batchId of discoveryBatchIds) {
-                await discoverWeeklyService.checkBatchCompletion(batchId);
-                await yieldToEventLoop();
-            }
         }
 
         logger.debug(`[RECONCILE] Reconciled ${toComplete.length} job(s)`);
@@ -1779,7 +1766,7 @@ class SimpleDownloadManager {
                         error: null,
                         metadata: {
                             ...metadata,
-                            previousDownloadId: oldDownloadId,
+                            previousDownloadIds: [...(metadata?.previousDownloadIds ?? []), oldDownloadId],
                             replacementDetected: true,
                             replacementDetectedAt: new Date().toISOString(),
                             queueSyncMissingCount: 0,
@@ -1806,10 +1793,13 @@ class SimpleDownloadManager {
                 });
                 const srcJob = jobLookup.get(id);
                 if (srcJob) {
-                    eventBus.emit({
-                        type: "download:complete",
+                    await this.announceCompletion({
+                        jobId: id,
                         userId: srcJob.userId,
-                        payload: { jobId: id, subject: srcJob.subject },
+                        subject: srcJob.subject,
+                        metadata,
+                        batchId: srcJob.discoveryBatchId ?? undefined,
+                        spotifyImportJobId: metadata?.spotifyImportJobId,
                     });
                 }
             }
@@ -1838,6 +1828,7 @@ class SimpleDownloadManager {
                         userId: srcJob.userId,
                         payload: { jobId: id, subject: srcJob.subject, error: "Lidarr queue sync: Download not found after 90s (3 checks)." },
                     });
+                    await this.notifyFailure(srcJob, "Lidarr dropped the download");
                 }
             }
 
