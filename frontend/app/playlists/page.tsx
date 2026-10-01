@@ -27,6 +27,7 @@ import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { SectionHeader } from "@/components/ui/SectionHeader";
+import { Button } from "@/components/ui/Button";
 
 type ActionPanel = "create" | "importUrl" | "importFile" | null;
 
@@ -307,14 +308,15 @@ function CreatePanel({ onClose }: { onClose: () => void }) {
             >
                 {isPublic ? "Public" : "Private"}
             </button>
-            <button
+            <Button
+                variant="primary"
+                size="sm"
                 type="submit"
                 disabled={!name.trim() || isSubmitting}
-                className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand text-black hover:bg-brand-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
             >
                 {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
                 Create
-            </button>
+            </Button>
             <button
                 type="button"
                 onClick={onClose}
@@ -383,14 +385,15 @@ function ImportUrlPanel({ onClose }: { onClose: () => void }) {
                 className="flex-1 min-w-[220px] px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm text-white placeholder:text-[var(--text-muted)] focus:outline-none focus:border-brand/50 focus:ring-1 focus:ring-brand/30"
                 disabled={isSubmitting}
             />
-            <button
+            <Button
+                variant="primary"
+                size="sm"
                 type="submit"
                 disabled={!url.trim() || isSubmitting}
-                className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand text-black hover:bg-brand-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
             >
                 {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Link2 className="w-3.5 h-3.5" />}
                 Import
-            </button>
+            </Button>
             <button
                 type="button"
                 onClick={onClose}
@@ -503,14 +506,15 @@ function ImportM3UPanel({ onClose }: { onClose: () => void }) {
                         className="flex-1 min-w-[180px] px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm text-white placeholder:text-[var(--text-muted)] focus:outline-none focus:border-brand/50 focus:ring-1 focus:ring-brand/30"
                         disabled={isSubmitting}
                     />
-                    <button
+                    <Button
+                        variant="primary"
+                        size="sm"
                         type="submit"
                         disabled={!playlistName.trim() || isSubmitting}
-                className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand text-black hover:bg-brand-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
                     >
                         {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
                         Create Playlist
-                    </button>
+                    </Button>
                     <button
                         type="button"
                         onClick={onClose}

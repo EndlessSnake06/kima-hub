@@ -15,6 +15,7 @@ import { useToast } from "@/lib/toast-context";
 import { useFeatures } from "@/lib/features-context";
 import Image from "next/image";
 import { MobileSidebar } from "./MobileSidebar";
+import { Button } from "@/components/ui/Button";
 
 const allNavigation = [
     { name: "Collection", href: "/collection", feature: null },
@@ -381,15 +382,17 @@ export function Sidebar() {
                                     autoFocus
                                     className="w-full bg-[var(--bg-primary)] border border-white/10 rounded px-2.5 py-1.5 text-xs text-white placeholder-gray-600 outline-none focus:border-brand/50 transition-colors"
                                 />
-                                <button
+                                <Button
+                                    variant="primary"
+                                    size="sm"
                                     onClick={handleCreatePlaylist}
                                     disabled={
                                         !newPlaylistName.trim() || isCreating
                                     }
-                                    className="mt-2 w-full py-1.5 bg-brand hover:bg-brand-hover disabled:opacity-40 disabled:cursor-not-allowed text-black text-xs font-semibold rounded transition-colors"
+                                    className="mt-2 w-full"
                                 >
                                     {isCreating ? "Creating..." : "Create"}
-                                </button>
+                                </Button>
                             </div>
                         )}
                     </div>

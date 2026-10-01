@@ -22,6 +22,7 @@ import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { useAudioState } from "@/lib/audio-state-context";
 import { useAudioControls } from "@/lib/audio-controls-context";
 import { SectionHeader } from "@/components/ui/SectionHeader";
+import { Button } from "@/components/ui/Button";
 
 const DeezerIcon = ({ className }: { className?: string }) => (
     <svg viewBox="0 0 24 24" className={className} fill="currentColor">
@@ -333,10 +334,10 @@ export default function DeezerPlaylistDetailPage() {
                 <div className="max-w-[1800px] mx-auto">
                     <div className="flex items-center gap-3">
                         {/* Download/Import Button */}
-                        <button
+                        <Button
+                            variant="primary"
                             onClick={handleImport}
                             disabled={isImporting}
-                            className="h-10 px-5 rounded-lg bg-brand hover:bg-brand-hover transition-all flex items-center gap-2 font-bold text-sm text-black disabled:opacity-50 hover:scale-[1.02] active:scale-[0.98]"
                         >
                             {isImporting ? (
                                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -344,7 +345,7 @@ export default function DeezerPlaylistDetailPage() {
                                 <Download className="w-4 h-4" />
                             )}
                             <span>{isImporting ? "Importing" : "Import Playlist"}</span>
-                        </button>
+                        </Button>
 
                         {/* Volume Control */}
                         {playingTrackId && (

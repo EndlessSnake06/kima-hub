@@ -13,6 +13,7 @@ import { usePodcastsQuery, useTopPodcastsQuery, queryKeys } from "@/hooks/useQue
 import Image from "next/image";
 import { cn } from "@/lib/cn";
 import { SectionHeader } from "@/components/ui/SectionHeader";
+import { Button } from "@/components/ui/Button";
 
 const getProxiedImageUrl = (imageUrl: string | undefined): string | null => {
     if (!imageUrl) return null;
@@ -288,14 +289,15 @@ export default function PodcastsPage() {
                                                         className="flex-1 px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-brand text-sm"
                                                         autoFocus
                                                     />
-                                                    <button
+                                                    <Button
+                                                        variant="primary"
                                                         onClick={handleRssSubscribe}
                                                         disabled={isSubscribingRss || !rssUrl.trim()}
-                                                        className="px-4 py-2.5 rounded-lg bg-brand hover:bg-brand-hover text-black text-sm font-semibold disabled:opacity-50 flex items-center gap-2 transition-all whitespace-nowrap"
+                                                        className="whitespace-nowrap"
                                                     >
                                                         {isSubscribingRss ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                                                         Subscribe
-                                                    </button>
+                                                    </Button>
                                                     <button
                                                         onClick={() => { setShowRssInput(false); setRssUrl(""); setRssError(null); }}
                                                         aria-label="Cancel RSS input"

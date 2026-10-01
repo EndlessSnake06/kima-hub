@@ -12,6 +12,7 @@ import type {
     SoulseekViewMode,
     SoulseekFormatFilter,
 } from "../types";
+import { Button } from "@/components/ui/Button";
 
 interface SoulseekBrowserProps {
     results: SoulseekResult[];
@@ -281,13 +282,14 @@ export function SoulseekBrowser({
 
                 {/* Bulk download */}
                 {selectedKeys.size > 0 && (
-                    <button
+                    <Button
+                        variant="primary"
                         onClick={handleBulkDownloadClick}
-                        className="ml-auto px-4 py-1.5 text-sm font-bold rounded-full bg-brand text-black hover:bg-brand-hover transition-colors flex items-center gap-2"
+                        className="ml-auto"
                     >
                         <Download className="w-4 h-4" />
                         Download {selectedKeys.size} selected
-                    </button>
+                    </Button>
                 )}
             </div>
 

@@ -5,6 +5,7 @@ import { SettingsSection, SettingsRow } from "../ui";
 import { useAuth } from "@/lib/auth-context";
 import { api } from "@/lib/api";
 import { InlineStatus, StatusType } from "@/components/ui/InlineStatus";
+import { Button } from "@/components/ui/Button";
 
 interface ApiKey {
     id: string;
@@ -139,14 +140,14 @@ export function SubsonicSection() {
                             placeholder:text-[var(--text-muted)] focus:outline-none focus:border-white/20 w-full"
                     />
                     <div className="inline-flex items-center gap-3">
-                        <button
+                        <Button
+                            variant="primary"
+                            size="sm"
                             onClick={handleGenerate}
                             disabled={generating}
-                            className="px-4 py-2 bg-brand text-black text-xs font-semibold rounded-lg
-                                hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                             {generating ? "Generating..." : "Generate Token"}
-                        </button>
+                        </Button>
                         <InlineStatus
                             status={status}
                             message={message}

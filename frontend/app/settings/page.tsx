@@ -25,6 +25,7 @@ import { StoragePathsSection } from "@/features/settings/components/sections/Sto
 import { CacheSection } from "@/features/settings/components/sections/CacheSection";
 import { UserManagementSection } from "@/features/settings/components/sections/UserManagementSection";
 import { CorruptTracksSection } from "@/features/settings/components/sections/CorruptTracksSection";
+import { Button } from "@/components/ui/Button";
 
 // Define sidebar items
 const sidebarItems: SidebarItem[] = [
@@ -159,12 +160,13 @@ export default function SettingsPage() {
                         Settings stay hidden until they load, so nothing can be saved over them.
                     </p>
                     <p className="mt-1 text-xs text-[var(--text-muted)]">{loadError}</p>
-                    <button
+                    <Button
+                        variant="primary"
                         onClick={retryLoad}
-                        className="mt-4 min-h-[44px] px-5 rounded-lg bg-brand text-black font-semibold hover:bg-brand-hover transition-colors"
+                        className="mt-4"
                     >
                         Try again
-                    </button>
+                    </Button>
                 </div>
             </SettingsLayout>
         );
@@ -276,15 +278,15 @@ export default function SettingsPage() {
                 {/* Save Button - Fixed at bottom */}
                 <div className="sticky bottom-0 pt-8 pb-8 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a] to-[#0a0a0a]/80">
                     <div className="relative">
-                        <button
+                        <Button
+                            variant="primary"
+                            size="lg"
                             onClick={handleSaveAll}
                             disabled={isSaving}
-                            className="w-full bg-brand text-black font-bold py-3 px-4 rounded-lg
-                                hover:bg-brand-hover active:scale-[0.98] transition-all
-                                disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="w-full"
                         >
                             {isSaving ? "Saving..." : "Save Changes"}
-                        </button>
+                        </Button>
                         <div className="absolute -bottom-6 left-1/2 -translate-x-1/2">
                             <InlineStatus {...saveStatus.props} />
                         </div>

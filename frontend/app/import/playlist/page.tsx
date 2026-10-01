@@ -19,6 +19,7 @@ import {
 import { api } from "@/lib/api";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/lib/toast-context";
+import { Button } from "@/components/ui/Button";
 
 // Types for Spotify Import
 interface SpotifyTrack {
@@ -518,10 +519,11 @@ function ImportPlaylistPageContent() {
                                     "Preview First"
                                 )}
                             </button>
-                            <button
+                            <Button
+                                variant="primary"
                                 onClick={handleQuickImport}
                                 disabled={isLoading || !url.trim()}
-                                className="flex-1 py-3 rounded-full font-medium bg-brand text-black hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                                className="flex-1"
                             >
                                 {isLoading ? (
                                     <>
@@ -534,7 +536,7 @@ function ImportPlaylistPageContent() {
                                         Import Now
                                     </>
                                 )}
-                            </button>
+                            </Button>
                         </div>
                     </div>
                 )}

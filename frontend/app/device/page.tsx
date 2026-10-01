@@ -19,6 +19,7 @@ import {
     AlertCircle
 } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { Button } from "@/components/ui/Button";
 
 interface DeviceLinkCode {
     code: string;
@@ -204,12 +205,12 @@ export default function DeviceLinkPage() {
                                 <p className="text-[var(--text-secondary)] mb-4">
                                     Generate a one-time code to link your mobile device
                                 </p>
-                                <button
+                                <Button
+                                    variant="primary"
                                     onClick={generateCode}
-                                    className="px-6 py-3 bg-brand hover:bg-brand-hover text-black font-medium rounded-full transition-all hover:scale-105"
                                 >
                                     Generate Code
-                                </button>
+                                </Button>
                             </div>
                         )}
 
@@ -250,13 +251,13 @@ export default function DeviceLinkPage() {
                                         <p className="text-[var(--text-secondary)] mb-4">
                                             Generate a new code to continue
                                         </p>
-                                        <button
+                                        <Button
+                                            variant="primary"
                                             onClick={generateCode}
-                                            className="px-4 py-2 bg-brand hover:bg-brand-hover text-black font-medium rounded-full transition-all"
                                         >
                                             <RefreshCw className="w-4 h-4 inline mr-2" />
                                             Generate New Code
-                                        </button>
+                                        </Button>
                                     </div>
                                 ) : (
                                     <>

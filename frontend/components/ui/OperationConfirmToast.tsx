@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
+import { Button } from "@/components/ui/Button";
 
 interface OperationConfirmToastProps {
     currentOpName: string;
@@ -66,12 +67,12 @@ export function OperationConfirmToast({
                 Replace {getOperationName(currentOpName)} with{" "}
                 {getOperationName(newOpName)}?
             </span>
-            <button
+            <Button
+                variant="primary"
                 onClick={onConfirm}
-                className="px-3 py-1 bg-brand text-black text-sm font-medium rounded hover:bg-[var(--color-brand)]/90 transition-colors"
             >
                 Replace
-            </button>
+            </Button>
             <button
                 onClick={onCancel}
                 className="px-3 py-1 text-[var(--text-secondary)] text-sm hover:text-white transition-colors"

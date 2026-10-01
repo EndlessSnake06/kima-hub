@@ -46,6 +46,7 @@ import { useTrackFormat } from "@/hooks/useTrackFormat";
 import { formatTrackDisplay } from "@/lib/track-format";
 import { useDoubleTapList } from "@/hooks/useDoubleTap";
 import { SectionHeader } from "@/components/ui/SectionHeader";
+import { Button } from "@/components/ui/Button";
 
 interface Track {
     id: string;
@@ -1175,9 +1176,11 @@ export default function PlaylistDetailPage() {
                                             className="flex-1 bg-black/40 border border-white/10 rounded px-2.5 py-1.5 text-xs tabular-nums text-[var(--text-secondary)] outline-none select-all"
                                             onClick={(e) => (e.target as HTMLInputElement).select()}
                                         />
-                                        <button
+                                        <Button
+                                            variant="primary"
+                                            size="sm"
                                             onClick={handleCopyShareUrl}
-                                            className="h-8 px-3 rounded bg-brand hover:bg-brand-hover text-black text-xs font-semibold flex items-center gap-1.5 transition-colors flex-shrink-0"
+                                            className="flex-shrink-0"
                                         >
                                             {shareCopied ? (
                                                 <Check className="w-3.5 h-3.5" />
@@ -1185,7 +1188,7 @@ export default function PlaylistDetailPage() {
                                                 <Copy className="w-3.5 h-3.5" />
                                             )}
                                             {shareCopied ? "Copied" : "Copy"}
-                                        </button>
+                                        </Button>
                                     </div>
                                     <button
                                         onClick={async () => {

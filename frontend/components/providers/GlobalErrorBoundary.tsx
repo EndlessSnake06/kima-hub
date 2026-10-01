@@ -1,6 +1,7 @@
 "use client";
 
 import React, { Component, ReactNode } from "react";
+import { Button } from "@/components/ui/Button";
 
 interface Props {
     children: ReactNode;
@@ -58,12 +59,14 @@ export class GlobalErrorBoundary extends Component<Props, State> {
                                 </p>
                             </div>
                         )}
-                        <button
+                        <Button
+                            variant="primary"
+                            size="lg"
                             onClick={this.handleReload}
-                            className="w-full bg-brand hover:bg-brand-hover text-black text-white font-medium py-3 px-6 rounded-lg transition-colors"
+                            className="w-full"
                         >
                             Reload Page
-                        </button>
+                        </Button>
                     </div>
                 </div>
             );

@@ -31,6 +31,7 @@ import {
     ChevronDown,
     type LucideIcon,
 } from "lucide-react";
+import { Button } from "@/components/ui/Button";
 
 interface CacheSectionProps {
     settings: SystemSettings;
@@ -771,16 +772,16 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
 
                         {/* Control Buttons */}
                         <div className="flex flex-wrap gap-2 mt-4 pt-3 border-t border-white/10">
-                            <button
+                            <Button
+                                variant="primary"
+                                size="sm"
                                 onClick={handleSyncAndEnrich}
                                 disabled={
                                     syncing || isEnrichmentActive
                                 }
-                                className="px-3 py-2.5 min-h-[44px] text-xs font-semibold bg-brand text-black rounded-lg
-                                hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             >
                                 {syncing ? "Syncing..." : "Sync New"}
-                            </button>
+                            </Button>
                             <button
                                 onClick={() => setConfirmTarget("retryFailedAndBlocked")}
                                 disabled={

@@ -22,6 +22,7 @@ import {
 import { shuffleArray } from "@/lib/shuffle";
 import { Pagination } from "@/components/ui/Pagination";
 import { SectionHeader } from "@/components/ui/SectionHeader";
+import { Button } from "@/components/ui/Button";
 
 interface Audiobook {
     id: string;
@@ -412,13 +413,14 @@ export default function AudiobooksPage() {
                                 </button>
                             ))}
 
-                            <button
+                            <Button
+                                variant="primary"
+                                size="sm"
                                 onClick={handleShuffleAudiobooks}
-                                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand hover:bg-brand-hover text-black font-semibold text-xs transition-all hover:scale-[1.02] active:scale-[0.98]"
                             >
                                 <Shuffle className="w-3.5 h-3.5" />
                                 <span className="hidden sm:inline">Random</span>
-                            </button>
+                            </Button>
 
                             <button
                                 onClick={handleSync}

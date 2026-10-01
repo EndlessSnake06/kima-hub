@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import Image from "next/image";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { useAuth } from "@/lib/auth-context";
+import { Button } from "@/components/ui/Button";
 
 type IntegrationKey = "lidarr" | "audiobookshelf" | "soulseek";
 type IntegrationResult = { ok: boolean; message: string };
@@ -395,10 +396,12 @@ export default function OnboardingPage() {
                                                 </div>
                                             )}
 
-                                            <button
+                                            <Button
+                                                variant="primary"
+                                                size="lg"
                                                 type="submit"
                                                 disabled={submitting}
-                                                className="w-full py-3.5 bg-brand text-black font-bold rounded-lg hover:bg-brand-hover transition-all disabled:opacity-50 disabled:cursor-not-allowed relative group overflow-hidden mt-8 focus:outline-none focus:ring-2 focus:ring-brand/30"
+                                                className="w-full relative group overflow-hidden mt-8"
                                             >
                                                 <span className="relative z-(--z-raised) flex items-center justify-center gap-2">
                                                     {submitting ?
@@ -408,7 +411,7 @@ export default function OnboardingPage() {
                                                         </>
                                                     : "Continue"}
                                                 </span>
-                                            </button>
+                                            </Button>
                                         </form>
                                     </div>
                                 )}

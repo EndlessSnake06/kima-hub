@@ -17,6 +17,7 @@ import { api } from "@/lib/api";
 import { useToast } from "@/lib/toast-context";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { SectionHeader } from "@/components/ui/SectionHeader";
+import { Button } from "@/components/ui/Button";
 
 interface PlaylistPreview {
     id: string;
@@ -399,12 +400,13 @@ export default function BrowsePlaylistsPage() {
                             <p className="text-xs tabular-nums text-[var(--text-muted)] mb-6 max-w-sm">
                                 {loadError}
                             </p>
-                            <button
+                            <Button
+                                variant="primary"
+                                size="sm"
                                 onClick={fetchAllContent}
-                                className="px-6 py-2.5 rounded-lg bg-brand hover:bg-brand-hover text-black text-xs font-semibold transition-all hover:scale-[1.02] active:scale-[0.98]"
                             >
                                 Try again
-                            </button>
+                            </Button>
                         </div>
                     )}
 
@@ -635,10 +637,12 @@ export default function BrowsePlaylistsPage() {
                             >
                                 Cancel
                             </button>
-                            <button
+                            <Button
+                                variant="primary"
+                                size="sm"
                                 onClick={handleUrlSubmit}
                                 disabled={isParsing || !urlInput.trim()}
-                                className="flex-1 py-3 rounded-lg bg-brand hover:bg-brand-hover text-black text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                                className="flex-1"
                             >
                                 {isParsing ?
                                     <>
@@ -650,7 +654,7 @@ export default function BrowsePlaylistsPage() {
                                         <span>Continue</span>
                                     </>
                                 }
-                            </button>
+                            </Button>
                         </div>
                     </div>
                 </div>

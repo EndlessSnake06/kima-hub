@@ -7,6 +7,7 @@ import { Modal } from "@/components/ui/Modal";
 import { useAuth } from "@/lib/auth-context";
 import { api } from "@/lib/api";
 import { InlineStatus, StatusType } from "@/components/ui/InlineStatus";
+import { Button } from "@/components/ui/Button";
 
 interface User {
     id: string;
@@ -128,14 +129,14 @@ export function UserManagementSection() {
                                     { value: "admin", label: "Admin" },
                                 ]}
                             />
-                            <button
+                            <Button
+                                variant="primary"
+                                size="sm"
                                 onClick={handleCreate}
                                 disabled={creating || !newUsername.trim() || newPassword.length < 6}
-                                className="px-4 py-1.5 text-xs font-semibold bg-brand text-black rounded-lg
-                                    hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             >
                                 {creating ? "Creating..." : "Create"}
-                            </button>
+                            </Button>
                             <InlineStatus
                                 status={createStatus}
                                 message={createMessage}

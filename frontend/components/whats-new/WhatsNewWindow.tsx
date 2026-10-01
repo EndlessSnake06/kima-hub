@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { X, Check, Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
+import { Button } from "@/components/ui/Button";
 
 type ReleaseItem =
     | { kind: "note"; key: string; title: string; body: string; label?: string }
@@ -263,15 +264,16 @@ export function WhatsNewWindow({
                                   : "You can change your mind in Settings whenever."}
                         </p>
                     </div>
-                    <button
+                    <Button
+                        variant="primary"
                         onClick={close}
                         disabled={closing}
                         data-autofocus
                         data-testid="whatsnew-done"
-                        className="shrink-0 h-11 px-5 rounded-lg bg-brand hover:bg-brand-hover text-black text-sm font-semibold transition-colors disabled:opacity-60"
+                        className="shrink-0"
                     >
                         {closing ? "Saving..." : unanswered > 0 && asks.length > 0 ? "Close" : "Done"}
-                    </button>
+                    </Button>
                 </footer>
             </div>
         </div>

@@ -8,6 +8,7 @@ import { useTwoFactor } from "../../hooks/useTwoFactor";
 import { Modal } from "@/components/ui/Modal";
 import { InlineStatus, StatusType } from "@/components/ui/InlineStatus";
 import Image from "next/image";
+import { Button } from "@/components/ui/Button";
 
 export function AccountSection() {
     const { user } = useAuth();
@@ -165,14 +166,14 @@ export function AccountSection() {
                             placeholder="Confirm new password"
                         />
                         <div className="inline-flex items-center gap-3">
-                            <button
+                            <Button
+                                variant="primary"
+                                size="sm"
                                 onClick={handleChangePassword}
                                 disabled={changingPassword || !currentPassword || !newPassword || newPassword !== confirmPassword}
-                                className="px-4 py-2 bg-brand text-black text-xs font-semibold rounded-lg
-                                    hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             >
                                 {changingPassword ? "Changing..." : "Change Password"}
-                            </button>
+                            </Button>
                             <InlineStatus
                                 status={passwordStatus}
                                 message={passwordMessage}
@@ -238,14 +239,14 @@ export function AccountSection() {
                         />
 
                         <div className="inline-flex items-center gap-3">
-                            <button
+                            <Button
+                                variant="primary"
+                                size="sm"
                                 onClick={handleVerify2FA}
                                 disabled={twoFactorToken.length !== 6}
-                                className="px-4 py-2 bg-brand text-black text-xs font-semibold rounded-lg
-                                    hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             >
                                 Verify
-                            </button>
+                            </Button>
                             <button
                                 onClick={() => { cancel2FASetup(); setTwoFactorToken(""); }}
                                 className="px-4 py-2 text-xs text-[var(--text-muted)] hover:text-white/70 transition-colors"
@@ -326,12 +327,13 @@ export function AccountSection() {
                         >
                             Copy
                         </button>
-                        <button
+                        <Button
+                            variant="primary"
+                            size="sm"
                             onClick={closeRecoveryCodes}
-                            className="px-4 py-2 bg-brand text-black text-xs font-semibold rounded-lg hover:bg-brand-hover transition-colors"
                         >
                             Done
-                        </button>
+                        </Button>
                     </div>
                 </div>
             </Modal>

@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import Image from "next/image";
 import { Loader2 } from "lucide-react";
 import { GalaxyBackground } from "@/components/ui/GalaxyBackground";
+import { Button } from "@/components/ui/Button";
 
 const LOGIN_ERROR_MESSAGES: Record<string, string> = {
     "session_expired": "Your session has expired. Please sign in again.",
@@ -308,10 +309,12 @@ export default function LoginPage() {
                                 </div>
                             )}
 
-                            <button
+                            <Button
+                                variant="primary"
+                                size="lg"
                                 type="submit"
                                 disabled={isLoading}
-                                className="w-full py-3 bg-brand text-black font-bold rounded-lg hover:bg-brand-hover transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="w-full"
                             >
                                 <span className="flex items-center justify-center gap-2">
                                     {isLoading ? (
@@ -323,7 +326,7 @@ export default function LoginPage() {
                                         "Sign In"
                                     )}
                                 </span>
-                            </button>
+                            </Button>
 
                             {requires2FA && (
                                 <button
