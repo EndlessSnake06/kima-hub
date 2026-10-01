@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentRef, type MutableRefObject } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { AdaptiveDpr, Billboard, Html, Line, OrbitControls } from "@react-three/drei";
+import { Billboard, Html, Line, OrbitControls } from "@react-three/drei";
 import { EffectComposer, Bloom, Noise, Vignette } from "@react-three/postprocessing";
 import { BlendFunction } from "postprocessing";
 import * as THREE from "three";
@@ -341,8 +341,7 @@ function Scene(props: VibeMapSceneProps & { apiRef: MutableRefObject<SceneApi | 
         if (revealStart.current === null) revealStart.current = clock.elapsedTime;
         const reveal = still ? 1e6 : clock.elapsedTime - revealStart.current;
         focusMix.current += ((focusOn ? 1 : 0) - focusMix.current) * Math.min(1, delta * 8);
-        // AdaptiveDpr lowers the canvas resolution while the camera moves; star
-        // sizes are in device pixels, so they must follow it or they swell.
+        // Star sizes are in device pixels, so they follow the canvas pixel ratio.
         const pixelRatio = state.gl.getPixelRatio();
         for (const u of materials) tickStars(u, still ? null : clock.elapsedTime, reveal, focusMix.current, pixelRatio);
         if (!emphasisSettled.current) {
@@ -472,7 +471,6 @@ function Scene(props: VibeMapSceneProps & { apiRef: MutableRefObject<SceneApi | 
             <OrbitControls
                 ref={controls}
                 makeDefault
-                regress
                 enableDamping
                 dampingFactor={0.08}
                 screenSpacePanning
@@ -482,7 +480,6 @@ function Scene(props: VibeMapSceneProps & { apiRef: MutableRefObject<SceneApi | 
                 minDistance={field.baseSize * 3}
                 maxDistance={field.radius * 3.2}
             />
-            <AdaptiveDpr pixelated={false} />
 
             <EffectComposer>
                 <Bloom mipmapBlur luminanceThreshold={0.62} luminanceSmoothing={0.35} intensity={0.32} />
@@ -615,7 +612,6 @@ export function VibeMapScene(props: VibeMapSceneProps) {
                 camera={{ position: [0, 40, 100], fov: 50, near: 0.1, far: 1200 }}
                 gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
                 dpr={[1, 2]}
-                performance={{ min: 0.6 }}
             >
                 <Scene {...props} apiRef={apiRef} hoverId={hoverId} />
             </Canvas>
