@@ -483,21 +483,14 @@ export async function recordStageFailure(
             waitEvidence.waitingAlerted !== true
         ) {
             waitEvidence.waitingAlerted = true;
-            const admin = await prisma.user.findFirst({
-                where: { role: "admin" },
-                select: { id: true },
-            });
-            if (admin) {
-                const { notificationService } = await import("../services/notificationService");
-                await notificationService
-                    .create({
-                        userId: admin.id,
-                        type: "system",
-                        title: `Enrichment waiting on ${source}`,
-                        message: `${stage} for ${trackId} has been waiting on ${source} for over 24 h; the record stays pending until the pause lifts.`,
-                    })
-                    .catch(() => undefined);
-            }
+            const { notificationService } = await import("../services/notificationService");
+            await notificationService
+                .notifyAdmins({
+                    type: "system",
+                    title: `Enrichment waiting on ${source}`,
+                    message: `${stage} for ${trackId} has been waiting on ${source} for over 24 h; the record stays pending until the pause lifts.`,
+                })
+                .catch(() => undefined);
         }
 
         await prisma.$executeRawUnsafe(
@@ -1315,17 +1308,13 @@ export async function syncEnrichmentFailureAlert(): Promise<void> {
         failureCounts.podcast > 0 && count(failureCounts.podcast, "podcast", "podcasts"),
     ].filter(Boolean);
 
-    const admins = await prisma.user.findMany({ where: { role: "admin" }, select: { id: true } });
-    for (const admin of admins) {
-        await notificationService.create({
-            userId: admin.id,
-            type: "error",
-            title: "Enrichment failures",
-            message: `${count(failureCounts.total, "item", "items")} could not be enriched: ${parts.join(", ")}.`,
-            metadata: { href: "/settings#enrichment-failures" },
-            groupKey: ENRICHMENT_FAILURES_KEY,
-        });
-    }
+    await notificationService.notifyAdmins({
+        type: "error",
+        title: "Enrichment failures",
+        message: `${count(failureCounts.total, "item", "items")} could not be enriched: ${parts.join(", ")}.`,
+        metadata: { href: "/settings#enrichment-failures" },
+        groupKey: ENRICHMENT_FAILURES_KEY,
+    });
 }
 
 async function runEnrichmentCycle(fullMode: boolean): Promise<{
@@ -2557,21 +2546,14 @@ async function dispatchStageWork(
                     logger.warn(
                         `[Enrichment] ${stage}: ${item.title} lost its worker ${STAGE_REDELIVERY_CAP} times — record closed until a human re-decides`,
                     );
-                    const admin = await prisma.user.findFirst({
-                        where: { role: "admin" },
-                        select: { id: true },
-                    });
-                    if (admin) {
-                        const { notificationService } = await import("../services/notificationService");
-                        await notificationService
-                            .create({
-                                userId: admin.id,
-                                type: "error",
-                                title: `Enrichment: ${item.title} kept losing its worker`,
-                                message: `${stage} was re-offered ${STAGE_REDELIVERY_CAP} times without an answer and stayed un-attempted; the record is closed until reopened from Settings > Enrichment.`,
-                            })
-                            .catch(() => undefined);
-                    }
+                    const { notificationService } = await import("../services/notificationService");
+                    await notificationService
+                        .notifyAdmins({
+                            type: "error",
+                            title: `Enrichment: ${item.title} kept losing its worker`,
+                            message: `${stage} was re-offered ${STAGE_REDELIVERY_CAP} times without an answer and stayed un-attempted; the record is closed until reopened from Settings > Enrichment.`,
+                        })
+                        .catch(() => undefined);
                 }
                 continue;
             }

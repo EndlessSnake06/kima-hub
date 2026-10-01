@@ -1,34 +1,21 @@
 /**
- * The encrypted-settings ladder at its failure edges.
- *
- * Before the single `ENCRYPTED_FIELDS` map, the settings route encrypted
- * `fanartApiKey`, `slskdApiKey` and `spotifyClientSecret` while the getter
- * decrypted only the other seven: those three integrations were handed
- * ciphertext where they expected a key. And values written by the old paths
- * (double-encrypted, or encrypted under since-rotated keys) came back as
- * unreadable strings or as the ciphertext itself.
- *
- * This test runs the REAL cipher (no mock of encryption.ts) over four
- * kinds of stored values: correct ciphertext, double-encrypted, garbage,
- * and legacy AES — and requires that broken ones are re-seeded to null
- * with a "needs re-entry" notification, good ones resolve, and the
- * notification for a field is sent once per process.
+ * Encrypted settings, with the real cipher: correct and legacy AES values
+ * decrypt; double-encrypted, garbage and other-key values are cleared to null
+ * with one "needs re-entry" alert per field per process.
  */
 
 const mockUpdate = jest.fn().mockResolvedValue({});
-const mockFindAdmins = jest.fn().mockResolvedValue([{ id: "admin1" }]);
 const mockNotify = jest.fn().mockResolvedValue(undefined);
 
 jest.mock("../db", () => ({
     prisma: {
         systemSettings: { update: (...a: unknown[]) => mockUpdate(...a) },
-        user: { findMany: (...a: unknown[]) => mockFindAdmins(...a) },
     },
 }));
 
 jest.mock("../../services/notificationService", () => ({
     notificationService: {
-        notifySystem: (...a: unknown[]) => mockNotify(...a),
+        notifyAdmins: (...a: unknown[]) => mockNotify(...a),
     },
 }));
 
@@ -104,9 +91,7 @@ describe("the three fields the old lists disagreed about", () => {
 
 describe("broken stored values re-seed to \"needs re-entry\"", () => {
     it("re-seeds a double-encrypted value and notifies admins", async () => {
-        // The M5 case verbatim: an old path encrypted an already-encrypted
-        // value; decrypting once yields another ciphertext, which is not a
-        // key and must never be handed to a client as one.
+        // Decrypting once yields another ciphertext, which is not a key.
         const settings = { lidarrApiKey: encrypt(encrypt("lidarr-key-from-2024")) };
 
         const resolved = await resolveEncryptedSettings(settings);
@@ -119,9 +104,10 @@ describe("broken stored values re-seed to \"needs re-entry\"", () => {
             }),
         );
         expect(mockNotify).toHaveBeenCalledWith(
-            "admin1",
-            "Lidarr API key needs re-entry",
-            expect.stringContaining("could not be decrypted"),
+            expect.objectContaining({
+                title: "Lidarr API key needs re-entry",
+                message: expect.stringContaining("could not be decrypted"),
+            }),
         );
     });
 
@@ -163,7 +149,7 @@ describe("broken stored values re-seed to \"needs re-entry\"", () => {
         await resolveEncryptedSettings(settings);
 
         const soulseekNotices = mockNotify.mock.calls.filter(
-            ([, title]) => title === "Soulseek password needs re-entry",
+            ([alert]) => alert.title === "Soulseek password needs re-entry",
         );
         expect(soulseekNotices).toHaveLength(1);
     });

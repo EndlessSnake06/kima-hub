@@ -119,20 +119,11 @@ async function reseedUnreadableField(field: EncryptedField): Promise<void> {
     if (notifiedReEntry.has(field)) return;
     notifiedReEntry.add(field);
     try {
-        const admins = await prisma.user.findMany({
-            where: { role: "admin" },
-            select: { id: true },
+        await notificationService.notifyAdmins({
+            type: "system",
+            title: `${ENCRYPTED_FIELDS[field]} needs re-entry`,
+            message: "The stored value could not be decrypted, so it has been cleared; enter it again in Settings.",
         });
-        await Promise.all(
-            admins.map((admin) =>
-                notificationService.notifySystem(
-                    admin.id,
-                    `${ENCRYPTED_FIELDS[field]} needs re-entry`,
-                    "The stored value could not be decrypted, so it has been " +
-                        "cleared; enter it again in Settings.",
-                ),
-            ),
-        );
     } catch (error) {
         logger.warn(`[Settings] Could not notify admins about ${field}:`, error);
     }

@@ -67,6 +67,14 @@ class NotificationService {
         return notification;
     }
 
+    /** The same alert for every admin. */
+    async notifyAdmins(params: Omit<CreateNotificationParams, "userId">) {
+        const admins = await prisma.user.findMany({ where: { role: "admin" }, select: { id: true } });
+        for (const admin of admins) {
+            await this.create({ ...params, userId: admin.id });
+        }
+    }
+
     /**
      * Delete every user's alert under a group key, once its cause is gone
      */

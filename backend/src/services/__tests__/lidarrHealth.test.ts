@@ -6,9 +6,6 @@
 
 const lidarr = { get: jest.fn() };
 jest.mock("axios", () => ({ __esModule: true, default: { create: () => lidarr } }));
-jest.mock("../../utils/db", () => ({
-    prisma: { user: { findMany: jest.fn().mockResolvedValue([{ id: "admin-1" }]) } },
-}));
 jest.mock("../../utils/systemSettings", () => ({
     getSystemSettings: jest.fn().mockResolvedValue({ lidarrEnabled: true, lidarrUrl: "http://lidarr", lidarrApiKey: "key" }),
 }));
@@ -16,7 +13,7 @@ jest.mock("../sourcePauseController", () => ({
     sourcePauseController: { pause: jest.fn(), release: jest.fn() },
 }));
 jest.mock("../notificationService", () => ({
-    notificationService: { create: jest.fn(), resolve: jest.fn() },
+    notificationService: { notifyAdmins: jest.fn(), resolve: jest.fn() },
 }));
 jest.mock("../simpleDownloadManager", () => ({
     simpleDownloadManager: { resumeHeldDownloads: jest.fn().mockResolvedValue(0) },
@@ -27,7 +24,7 @@ import type * as Health from "../lidarrHealth";
 const LIDARR_UNHEALTHY = "LIDARR_UNHEALTHY";
 let lidarrHealthMonitor: typeof Health.lidarrHealthMonitor;
 let sourcePauseController: { pause: jest.Mock; release: jest.Mock };
-let notificationService: { create: jest.Mock; resolve: jest.Mock };
+let notificationService: { notifyAdmins: jest.Mock; resolve: jest.Mock };
 let simpleDownloadManager: { resumeHeldDownloads: jest.Mock };
 
 const minutes = (n: number) => n * 60_000;
@@ -60,9 +57,9 @@ it("pauses Lidarr with backoff and alerts admins once while it is down", async (
     expect(delays).toEqual([1, 2, 5, 15, 15].map(minutes));
     expect(sourcePauseController.pause).toHaveBeenCalledTimes(5);
     expect(sourcePauseController.pause).toHaveBeenLastCalledWith("lidarr", expect.objectContaining({ code: LIDARR_UNHEALTHY }));
-    expect(notificationService.create).toHaveBeenCalledTimes(1);
-    expect(notificationService.create).toHaveBeenCalledWith(
-        expect.objectContaining({ userId: "admin-1", title: "Lidarr is unhealthy", groupKey: "lidarr-health" })
+    expect(notificationService.notifyAdmins).toHaveBeenCalledTimes(1);
+    expect(notificationService.notifyAdmins).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "Lidarr is unhealthy", groupKey: "lidarr-health" })
     );
     expect(lidarrHealthMonitor.getState()).toMatchObject({ status: "unhealthy", reason: "Lidarr did not answer: connect ECONNREFUSED" });
     expect(simpleDownloadManager.resumeHeldDownloads).not.toHaveBeenCalled();

@@ -6,7 +6,6 @@
  */
 
 import axios from "axios";
-import { prisma } from "../utils/db";
 import { logger } from "../utils/logger";
 import { getSystemSettings } from "../utils/systemSettings";
 import { sourcePauseController } from "./sourcePauseController";
@@ -141,17 +140,13 @@ class LidarrHealthMonitor {
     }
 
     private async alertAdmins(reason: string): Promise<void> {
-        const admins = await prisma.user.findMany({ where: { role: "admin" }, select: { id: true } });
-        for (const admin of admins) {
-            await notificationService.create({
-                userId: admin.id,
-                type: "error",
-                title: "Lidarr is unhealthy",
-                message: `${reason}. Downloads are paused and resume when Lidarr recovers.`,
-                metadata: { href: "/settings#lidarr" },
-                groupKey: ALERT_KEY,
-            });
-        }
+        await notificationService.notifyAdmins({
+            type: "error",
+            title: "Lidarr is unhealthy",
+            message: `${reason}. Downloads are paused and resume when Lidarr recovers.`,
+            metadata: { href: "/settings#lidarr" },
+            groupKey: ALERT_KEY,
+        });
     }
 
     private schedule(delayMs: number): void {
