@@ -82,11 +82,9 @@ export default function SearchPage() {
 
     return (
         <div className="min-h-screen relative overflow-hidden">
-            {/* Main content */}
             <div className="relative z-(--z-raised) page-shell py-8 animate-rise">
                 <TVSearchInput initialQuery={query} onSearch={handleTVSearch} />
 
-                {/* Hero Header - Only show when no search */}
                 {!hasSearched && (
                     <div className="mb-12 text-center animate-rise">
                         <div className="inline-flex items-center gap-3 mb-4 text-brand">
@@ -104,7 +102,6 @@ export default function SearchPage() {
                     </div>
                 )}
 
-                {/* Search state indicator bar */}
                 {hasSearched && (
                     <div className="mb-8">
                         <div className="flex items-center justify-between mb-6">
@@ -141,7 +138,6 @@ export default function SearchPage() {
 
                 <EmptyState hasSearched={hasSearched} isLoading={isLoading} />
 
-                {/* Loading state - only when no results yet */}
                 {hasSearched &&
                     filterTab !== "soulseek" &&
                     (isLibrarySearching ||
@@ -160,7 +156,6 @@ export default function SearchPage() {
                         </div>
                     )}
 
-                {/* Soulseek Tab */}
                 {filterTab === "soulseek" && hasSearched && (
                     <div className="animate-fade-soft">
                         <SoulseekBrowser
@@ -180,7 +175,6 @@ export default function SearchPage() {
                     <div className="section-stack">
                         {show2ColumnLayout ?
                             <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.5fr] gap-8 animate-fade-soft">
-                                {/* Featured Result - Larger card */}
                                 <div className="space-y-4">
                                     <SectionHeader title="Top Match" className="mb-0" />
                                     <TopResult
@@ -191,7 +185,6 @@ export default function SearchPage() {
                                     />
                                 </div>
 
-                                {/* Songs list - More prominent */}
                                 <div className="space-y-4">
                                     <SectionHeader type="track" title="Tracks" className="mb-0" />
                                     {filterTab === "all" ?
@@ -255,7 +248,6 @@ export default function SearchPage() {
                             </>
                         }
 
-                        {/* Albums Grid */}
                         {hasSearched &&
                             showLibrary &&
                             (libraryResults?.albums?.length ?? 0) > 0 && (
@@ -267,7 +259,6 @@ export default function SearchPage() {
                                 </section>
                             )}
 
-                        {/* Podcasts Grid */}
                         {hasSearched &&
                             showLibrary &&
                             (libraryResults?.podcasts?.length ?? 0) > 0 && (
@@ -279,7 +270,6 @@ export default function SearchPage() {
                                 </section>
                             )}
 
-                        {/* Audiobooks Grid */}
                         {hasSearched &&
                             showLibrary &&
                             (libraryResults?.audiobooks?.length ?? 0) > 0 && (
@@ -291,7 +281,6 @@ export default function SearchPage() {
                                 </section>
                             )}
 
-                        {/* Related Artists */}
                         {hasSearched &&
                             showDiscover &&
                             similarArtists.length > 0 && (
@@ -305,7 +294,6 @@ export default function SearchPage() {
                     </div>
                 )}
 
-                {/* No Results */}
                 {hasSearched &&
                     !isLoading &&
                     !topArtist &&
