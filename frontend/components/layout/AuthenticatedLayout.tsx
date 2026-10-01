@@ -24,7 +24,7 @@ import { useImportToasts } from "@/hooks/useImportToasts";
 // Paths that render without the sidebar, top bar and player. Not the same list
 // as auth-context's (no login) or ConditionalAudioProvider's (no audio): /share
 // needs audio but no chrome, and /setup must be here because the sidebar needs audio.
-const publicPaths = ["/login", "/register", "/onboarding", "/setup", "/sync", "/share"];
+const publicPaths = ["/login", "/onboarding", "/setup", "/sync", "/share"];
 
 export function AuthenticatedLayout({ children }: { children: ReactNode }) {
     const { isAuthenticated, isLoading } = useAuth();
@@ -82,7 +82,7 @@ export function AuthenticatedLayout({ children }: { children: ReactNode }) {
         );
     }
 
-    // On public pages (login/register), don't show sidebar/player/topbar
+    // Public pages render without the sidebar, player and top bar
     if (isPublicPage) {
         return <>{children}</>;
     }

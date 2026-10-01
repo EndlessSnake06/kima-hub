@@ -156,9 +156,7 @@ export function Sidebar() {
         }
     };
 
-    // Don't show sidebar on login/register pages
-    // (Check after all hooks to comply with Rules of Hooks)
-    if (pathname === "/login" || pathname === "/register") {
+    if (pathname === "/login") {
         return null;
     }
 

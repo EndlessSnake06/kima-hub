@@ -588,18 +588,6 @@ class ApiClient {
         };
     }
 
-    async register(username: string, password: string, email?: string) {
-        const data = await this.request<{
-            id: string;
-            username: string;
-            role: string;
-        }>("/auth/register", {
-            method: "POST",
-            body: JSON.stringify({ username, password, email }),
-        });
-        return data;
-    }
-
     async logout() {
         await this.request<void>("/auth/logout", {
             method: "POST",
