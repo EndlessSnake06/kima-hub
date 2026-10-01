@@ -705,19 +705,6 @@ class SpotifyImportService {
       tracks.map((track) => matchLimit(() => this.matchTrack(track))),
     );
 
-    // Fire-and-forget: store ISRCs on matched tracks
-    for (let i = 0; i < tracks.length; i++) {
-      const track = tracks[i];
-      const matched = matchedTracks[i];
-      if (track.isrc && matched.localTrack) {
-        trackIdentityService.storeIsrc(
-          matched.localTrack.id,
-          track.isrc,
-          "spotify",
-        ).catch(() => {});
-      }
-    }
-
     // Second pass: build unmatchedByAlbum from ordered results
     const unmatchedByAlbum = new Map<string, SpotifyTrack[]>();
     for (let i = 0; i < tracks.length; i++) {
