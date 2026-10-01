@@ -26,7 +26,7 @@ const Button = memo(forwardRef<HTMLButtonElement, ButtonProps>(
 
         const variantStyles = {
             primary: "bg-brand hover:bg-brand-hover text-black",
-            secondary: "bg-[var(--bg-hover)] hover:bg-white/10 text-white border border-[var(--border-interactive)]",
+            secondary: "bg-white/5 hover:bg-white/10 text-[var(--text-secondary)] hover:text-white border border-white/10 hover:border-white/20",
             ghost: "text-[var(--text-secondary)] hover:text-white hover:bg-[var(--bg-hover)]",
             danger: "text-danger hover:bg-danger/10 border border-danger/20 hover:border-danger/40",
             ai: "bg-[var(--bg-hover)] hover:bg-brand/10 text-brand border border-[var(--border-subtle)] hover:border-brand/30",

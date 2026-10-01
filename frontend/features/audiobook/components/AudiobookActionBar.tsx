@@ -2,6 +2,7 @@
 
 import { Play, Pause, RotateCcw, CheckCircle } from "lucide-react";
 import type { Audiobook } from "../types";
+import { Button } from "@/components/ui/Button";
 
 interface AudiobookActionBarProps {
     audiobook: Audiobook;
@@ -90,14 +91,15 @@ export function AudiobookActionBar({
                 )}
 
                 {isFinished && (
-                    <button
+                    <Button
+                        variant="secondary"
+                        size="sm"
                         onClick={onResetProgress}
-                        className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs bg-white/5 text-[var(--text-secondary)] hover:bg-white/10 hover:text-white border border-white/10 hover:border-white/20 transition-all"
                         title="Listen again"
                     >
                         <RotateCcw className="w-3.5 h-3.5" />
                         <span>Listen Again</span>
-                    </button>
+                    </Button>
                 )}
             </div>
         </div>

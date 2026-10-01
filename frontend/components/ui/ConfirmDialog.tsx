@@ -2,6 +2,8 @@
 
 import { useEffect, useRef } from "react";
 import { AlertTriangle, X } from "lucide-react";
+import { Button } from "@/components/ui/Button";
+import { cn } from "@/lib/cn";
 
 interface ConfirmDialogProps {
     isOpen: boolean;
@@ -136,19 +138,21 @@ export function ConfirmDialog({
 
                 {/* Actions */}
                 <div className="flex gap-3 p-6 bg-[var(--bg-primary)]/50">
-                    <button
+                    <Button
+                        variant="secondary"
                         ref={cancelRef}
                         onClick={onClose}
-                        className="flex-1 px-4 py-3 bg-white/5 hover:bg-white/10 text-white font-semibold rounded-lg transition-colors duration-150 border border-white/10"
+                        className="flex-1"
                     >
                         {cancelText}
-                    </button>
-                    <button
+                    </Button>
+                    <Button
+                        variant="primary"
                         onClick={handleConfirm}
-                        className={`flex-1 px-4 py-3 font-semibold rounded-lg transition-colors duration-150 ${styles.confirmButton}`}
+                        className={cn("flex-1", styles.confirmButton)}
                     >
                         {confirmText}
-                    </button>
+                    </Button>
                 </div>
             </div>
         </div>

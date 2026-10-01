@@ -1003,10 +1003,11 @@ function ImportPlaylistPageContent() {
                             in the background
                         </p>
                         {/* Cancel button */}
-                        <button
+                        <Button
+                            variant="secondary"
                             onClick={handleCancelImport}
                             disabled={isCancelling}
-                            className="mt-6 px-5 py-2 rounded-full text-sm font-medium text-[var(--text-secondary)] hover:text-white hover:bg-white/10 border border-white/10 transition-colors disabled:opacity-50"
+                            className="mt-6"
                         >
                             {isCancelling ? (
                                 <>
@@ -1016,7 +1017,7 @@ function ImportPlaylistPageContent() {
                             ) : (
                                 "Cancel Import"
                             )}
-                        </button>
+                        </Button>
                         <p className="text-xs text-[var(--text-muted)] mt-2">
                             Playlist will be created with tracks downloaded so
                             far

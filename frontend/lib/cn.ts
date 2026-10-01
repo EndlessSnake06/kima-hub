@@ -1,11 +1,9 @@
 import { type ClassValue, clsx } from "clsx";
 import { extendTailwindMerge } from "tailwind-merge";
 
-/* text-micro is a custom @theme font-size token (10px, globals.css). Tailwind's
- * own scale ends at text-xs, so tailwind-merge has no record of it and files it
- * under text colors — any later text-* color in the same cn() call then strips
- * it, and the element inherits the parent font size. Register it as a font-size
- * so size and color coexist. */
+/* text-micro is a custom @theme font size tailwind-merge does not know, so it
+ * would file it as a text colour and drop it when a colour follows. Registering
+ * it as a font size lets size and colour coexist. */
 const twMerge = extendTailwindMerge({
     extend: {
         classGroups: {

@@ -14,6 +14,7 @@ import { PodcastsGrid } from "@/features/home/components/PodcastsGrid";
 import { AudiobooksGrid } from "@/features/home/components/AudiobooksGrid";
 import { FeaturedPlaylistsGrid, FeaturedPlaylistsSkeleton } from "@/features/home/components/FeaturedPlaylistsGrid";
 import { LibraryRadioStations } from "@/features/home/components/LibraryRadioStations";
+import { Button } from "@/components/ui/Button";
 
 const MoodMixer = lazy(() => import("@/components/MoodMixer").then(mod => ({ default: mod.MoodMixer })));
 
@@ -85,11 +86,12 @@ export default function HomePage() {
                                                 <AudioWaveform className="w-3.5 h-3.5" />
                                                 <span className="hidden sm:inline">Mood Mixer</span>
                                             </button>
-                                            <button
+                                            <Button
+                                                variant="secondary"
+                                                size="sm"
                                                 onClick={handleRefreshMixes}
                                                 disabled={isRefreshingMixes}
                                                 aria-label="Refresh mixes"
-                                                className="flex items-center gap-2 px-4 py-2 text-xs tabular-nums text-[var(--text-secondary)] hover:text-white transition-colors bg-white/5 hover:bg-white/10 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed border border-white/10 hover:border-white/20"
                                             >
                                                 {isRefreshingMixes ? (
                                                     <GradientSpinner size="sm" />
@@ -99,7 +101,7 @@ export default function HomePage() {
                                                 <span className="hidden sm:inline">
                                                     {isRefreshingMixes ? "Refreshing..." : "Refresh"}
                                                 </span>
-                                            </button>
+                                            </Button>
                                         </div>
                                     }
                                 />

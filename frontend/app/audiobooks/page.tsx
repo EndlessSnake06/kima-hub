@@ -422,15 +422,16 @@ export default function AudiobooksPage() {
                                 <span className="hidden sm:inline">Random</span>
                             </Button>
 
-                            <button
+                            <Button
+                                variant="secondary"
+                                size="sm"
                                 onClick={handleSync}
                                 disabled={isSyncing}
-                                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 text-[var(--text-secondary)] hover:bg-white/10 hover:text-white border border-white/10 hover:border-white/20 font-semibold text-xs transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                 title="Sync audiobooks from Audiobookshelf"
                             >
                                 <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? "animate-spin" : ""}`} />
                                 <span className="hidden sm:inline">{isSyncing ? "Syncing..." : "Sync"}</span>
-                            </button>
+                            </Button>
 
                             <span className="hidden md:inline text-xs tabular-nums text-[var(--text-muted)] ml-auto">
                                 {filteredBooks.length} {filteredBooks.length === 1 ? "book" : "books"}

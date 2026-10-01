@@ -5,6 +5,7 @@ import { SettingsSection, SettingsRow, SettingsInput, SettingsToggle, SettingsSe
 import { SystemSettings } from "../../types";
 import { InlineStatus, StatusType } from "@/components/ui/InlineStatus";
 import { api } from "@/lib/api";
+import { Button } from "@/components/ui/Button";
 
 interface LidarrProfile {
     id: number;
@@ -97,14 +98,14 @@ export function LidarrSection({ settings, onUpdate, onTest, isTesting }: LidarrS
 
                     <div className="pt-2">
                         <div className="inline-flex items-center gap-3">
-                            <button
+                            <Button
+                                variant="secondary"
+                                size="sm"
                                 onClick={handleTest}
                                 disabled={isTesting || !settings.lidarrUrl || !settings.lidarrApiKey}
-                                className="px-4 py-1.5 text-xs tabular-nums bg-white/5 border border-white/10 text-[var(--text-secondary)] rounded-lg
-                                    hover:bg-white/10 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                             >
                                 {testStatus === "loading" ? "Testing..." : "Test Connection"}
-                            </button>
+                            </Button>
                             <InlineStatus
                                 status={testStatus}
                                 message={testMessage}

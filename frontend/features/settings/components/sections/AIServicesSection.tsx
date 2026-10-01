@@ -4,6 +4,7 @@ import { useState } from "react";
 import { SettingsSection, SettingsRow, SettingsInput, SettingsToggle } from "../ui";
 import { SystemSettings } from "../../types";
 import { InlineStatus, StatusType } from "@/components/ui/InlineStatus";
+import { Button } from "@/components/ui/Button";
 
 interface AIServicesSectionProps {
     settings: SystemSettings;
@@ -62,14 +63,14 @@ export function AIServicesSection({ settings, onUpdate, onTest, isTesting }: AIS
 
                     <div className="pt-2">
                         <div className="inline-flex items-center gap-3">
-                            <button
+                            <Button
+                                variant="secondary"
+                                size="sm"
                                 onClick={handleFanartTest}
                                 disabled={isTesting || !settings.fanartApiKey}
-                                className="px-4 py-1.5 text-xs tabular-nums bg-white/5 border border-white/10 text-[var(--text-secondary)] rounded-lg
-                                    hover:bg-white/10 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                             >
                                 {fanartTestStatus === "loading" ? "Testing..." : "Test Connection"}
-                            </button>
+                            </Button>
                             <InlineStatus
                                 status={fanartTestStatus}
                                 message={fanartTestMessage}

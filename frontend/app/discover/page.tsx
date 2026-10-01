@@ -19,6 +19,7 @@ import { useActivityPanelSettings } from "@/lib/activity-panel-settings-context"
 import { DiscoverSettingsTab } from "@/components/activity/DiscoverSettingsTab";
 import { api } from "@/lib/api";
 import { SectionHeader } from "@/components/ui/SectionHeader";
+import { Button } from "@/components/ui/Button";
 
 export default function DiscoverWeeklyPage() {
     // Use split hooks to avoid re-renders from currentTime updates
@@ -172,13 +173,13 @@ export default function DiscoverWeeklyPage() {
         return (
             <div className="flex flex-col items-center justify-center min-h-screen gap-4">
                 <p className="text-sm text-[var(--text-muted)]">Could not load discovery data.</p>
-                <button
+                <Button
+                    variant="secondary"
                     onClick={reloadData}
-                    className="flex items-center gap-2 px-4 py-2 border border-white/10 rounded-lg text-sm font-bold text-[var(--text-secondary)] hover:border-[var(--color-brand)] hover:text-white transition-all duration-300 min-h-[44px] focus-visible:outline-2 focus-visible:outline-[var(--color-brand)] focus-visible:outline-offset-2"
                 >
                     <RefreshCw className="w-4 h-4" />
                     Retry
-                </button>
+                </Button>
             </div>
         );
     }

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { SettingsSection, SettingsRow, SettingsInput } from "../ui";
 import { InlineStatus, StatusType } from "@/components/ui/InlineStatus";
 import { api } from "@/lib/api";
+import { Button } from "@/components/ui/Button";
 
 interface ScrobblingSectionProps {
     /** Whether a token is already saved (the value itself is never returned). */
@@ -88,18 +89,18 @@ export function ScrobblingSection({
 
             <div className="pt-2">
                 <div className="inline-flex items-center gap-3">
-                    <button
+                    <Button
+                        variant="secondary"
+                        size="sm"
                         onClick={handleSave}
                         disabled={!dirty || status === "loading"}
-                        className="px-4 py-1.5 text-xs tabular-nums bg-white/5 border border-white/10 text-[var(--text-secondary)] rounded-lg
-                            hover:bg-white/10 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                     >
                         {status === "loading"
                             ? "Saving..."
                             : clearRequested
                               ? "Remove token"
                               : "Save token"}
-                    </button>
+                    </Button>
                     <InlineStatus
                         status={status}
                         message={message}

@@ -356,12 +356,13 @@ export default function DeezerPlaylistDetailPage() {
                                 >
                                     {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
                                 </button>
-                                <button
+                                <Button
+                                    variant="secondary"
+                                    size="sm"
                                     onClick={stopPreview}
-                                    className="px-3 py-1.5 rounded-lg text-xs bg-white/5 text-[var(--text-secondary)] hover:bg-white/10 hover:text-white border border-white/10 transition-all"
                                 >
                                     Stop Preview
-                                </button>
+                                </Button>
                             </div>
                         )}
 

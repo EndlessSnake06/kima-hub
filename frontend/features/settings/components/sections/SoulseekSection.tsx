@@ -5,6 +5,7 @@ import { SettingsSection, SettingsRow, SettingsInput, SettingsSelect } from "../
 import { SystemSettings } from "../../types";
 import { ExternalLink } from "lucide-react";
 import { InlineStatus, StatusType } from "@/components/ui/InlineStatus";
+import { Button } from "@/components/ui/Button";
 
 interface SoulseekSectionProps {
     settings: SystemSettings;
@@ -135,14 +136,14 @@ export function SoulseekSection({ settings, onUpdate, onTest, isTesting }: Souls
 
             <div className="pt-2 space-y-2">
                 <div className="inline-flex items-center gap-3">
-                    <button
+                    <Button
+                        variant="secondary"
+                        size="sm"
                         onClick={handleTest}
                         disabled={isTesting || !canTest}
-                        className="px-4 py-1.5 text-xs tabular-nums bg-white/5 border border-white/10 text-[var(--text-secondary)] rounded-lg
-                            hover:bg-white/10 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                     >
                         {testStatus === "loading" ? "Connecting..." : "Test Connection"}
-                    </button>
+                    </Button>
                     <InlineStatus
                         status={testStatus}
                         message={testMessage}
