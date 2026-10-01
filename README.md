@@ -681,16 +681,16 @@ Kima will automatically configure a webhook in Lidarr to receive notifications w
 
 **Networking Note:**
 
-The webhook requires Lidarr to be able to reach Kima. By default, Kima uses `host.docker.internal:3030` which works automatically when using the provided docker-compose files (they include `extra_hosts` to enable this on Linux).
+The webhook requires Lidarr to be able to reach Kima. By default Kima gives Lidarr `http://host.docker.internal:3030`. Lidarr resolves that name inside its own container: Docker Desktop provides it, and on Linux Lidarr's container needs `extra_hosts: ["host.docker.internal:host-gateway"]`.
 
-If you're using **custom Docker networks** with static IPs, set the callback URL so Lidarr knows how to reach Kima:
+Otherwise, set the address Lidarr can reach Kima at:
 
 ```yaml
 environment:
     - KIMA_CALLBACK_URL=http://YOUR_KIMA_IP:3030
 ```
 
-Use the IP address that Lidarr can reach. If both containers are on the same Docker network, use Kima's container IP.
+Saving the Lidarr settings sends Lidarr's test event. If it cannot reach Kima, admins get a "Lidarr cannot reach Kima" notification naming the address and Lidarr's error.
 
 ### Audiobookshelf
 

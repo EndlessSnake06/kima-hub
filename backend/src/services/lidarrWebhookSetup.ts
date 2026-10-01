@@ -1,17 +1,21 @@
 /**
  * Points Lidarr's "Kima" webhook connection at this server and gives it the
  * shared secret as a header. The secret is saved only once Lidarr has kept the
- * header, so Kima never starts requiring a secret Lidarr cannot send.
+ * header, so Kima never starts requiring a secret Lidarr cannot send. Lidarr
+ * then sends its test event, and admins are told when it cannot reach Kima.
  */
 
-import axios from "axios";
+import axios, { AxiosInstance } from "axios";
 import crypto from "crypto";
 import { prisma } from "../utils/db";
 import { logger } from "../utils/logger";
 import { encryptSettings } from "../utils/encryptedFields";
 import { getSystemSettings, invalidateSystemSettingsCache } from "../utils/systemSettings";
+import { notificationService } from "./notificationService";
 
 export const WEBHOOK_SECRET_HEADER = "X-Webhook-Secret";
+export const DEFAULT_CALLBACK_URL = "http://host.docker.internal:3030";
+const UNREACHABLE_KEY = "lidarr-callback";
 
 const EVENTS = {
     onGrab: true,
@@ -41,7 +45,7 @@ export async function configureLidarrWebhook(lidarrUrl: string, apiKey: string):
         headers: { "X-Api-Key": apiKey },
         timeout: 10_000,
     });
-    const callbackHost = process.env.KIMA_CALLBACK_URL || "http://backend:3006";
+    const callbackHost = process.env.KIMA_CALLBACK_URL || DEFAULT_CALLBACK_URL;
     const webhookUrl = `${callbackHost}/api/webhooks/lidarr`;
 
     const { data } = await lidarr.get("/api/v1/notification");
@@ -96,13 +100,35 @@ export async function configureLidarrWebhook(lidarrUrl: string, apiKey: string):
             `[LIDARR] Lidarr did not keep the ${WEBHOOK_SECRET_HEADER} header (webhook headers need a newer Lidarr), so its webhooks stay rate-limited` +
                 (storedSecret ? " and are refused until it sends the secret" : "")
         );
-        return;
-    }
-    if (secret !== storedSecret) {
+    } else if (secret !== storedSecret) {
         await prisma.systemSettings.update({
             where: { id: "default" },
             data: encryptSettings({ lidarrWebhookSecret: secret }),
         });
         invalidateSystemSettingsCache();
     }
+
+    await checkLidarrReachesKima(lidarr, saved, webhookUrl);
+}
+
+async function checkLidarrReachesKima(lidarr: AxiosInstance, webhook: unknown, webhookUrl: string): Promise<void> {
+    try {
+        await lidarr.post("/api/v1/notification/test", webhook);
+    } catch (error: any) {
+        const failures = error.response?.data;
+        const said = Array.isArray(failures)
+            ? failures.map((f: any) => f.errorMessage).filter(Boolean).join("; ")
+            : failures?.message;
+        const reason = said || error.message;
+        logger.warn(`[LIDARR] Lidarr cannot reach Kima at ${webhookUrl}: ${reason}`);
+        await notificationService.notifyAdmins({
+            type: "error",
+            title: "Lidarr cannot reach Kima",
+            message: `Lidarr could not send its test event to ${webhookUrl} (${reason}). Until it can, Kima only notices finished downloads on its two-minute check. Set KIMA_CALLBACK_URL to an address Lidarr can reach, restart Kima and save the Lidarr settings again.`,
+            metadata: { href: "/settings#lidarr" },
+            groupKey: UNREACHABLE_KEY,
+        });
+        return;
+    }
+    await notificationService.resolve(UNREACHABLE_KEY);
 }

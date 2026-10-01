@@ -1,6 +1,7 @@
 /**
  * The Lidarr webhook gets Kima's secret as a header, and Kima saves the
- * secret only when Lidarr kept that header.
+ * secret only when Lidarr kept that header. Lidarr's test event then tells
+ * admins whether Lidarr can reach Kima.
  */
 
 const lidarr = { get: jest.fn(), put: jest.fn(), post: jest.fn() };
@@ -10,6 +11,9 @@ jest.mock("../../utils/systemSettings", () => ({
     getSystemSettings: jest.fn(),
     invalidateSystemSettingsCache: jest.fn(),
 }));
+const notifyAdmins = jest.fn();
+const resolve = jest.fn();
+jest.mock("../notificationService", () => ({ notificationService: { notifyAdmins, resolve } }));
 jest.mock("../../utils/encryptedFields", () => ({
     encryptSettings: (s: Record<string, string>) => ({ lidarrWebhookSecret: `enc:${s.lidarrWebhookSecret}` }),
 }));
@@ -63,4 +67,47 @@ it("does not save a secret Lidarr dropped", async () => {
     await configureLidarrWebhook("http://lidarr", "key");
 
     expect(update).not.toHaveBeenCalled();
+});
+
+describe("Lidarr's test event", () => {
+    beforeEach(() => {
+        (getSystemSettings as jest.Mock).mockResolvedValue({ lidarrWebhookSecret: "kept" });
+    });
+
+    it("is sent with the saved webhook and clears the alert when it arrives", async () => {
+        lidarr.post.mockImplementation((url: string, body: any) =>
+            Promise.resolve({ data: url.startsWith("/api/v1/notification/test") ? "{}" : { ...body, id: 7 } })
+        );
+
+        await configureLidarrWebhook("http://lidarr", "key");
+
+        const [url, body] = lidarr.post.mock.calls[1];
+        expect(url).toBe("/api/v1/notification/test");
+        expect(body.id).toBe(7);
+        expect(resolve).toHaveBeenCalledWith("lidarr-callback");
+        expect(notifyAdmins).not.toHaveBeenCalled();
+    });
+
+    it("tells admins what Lidarr said when it cannot reach Kima", async () => {
+        lidarr.post.mockImplementation((url: string, body: any) =>
+            url.startsWith("/api/v1/notification/test")
+                ? Promise.reject({
+                      message: "Request failed with status code 400",
+                      response: { data: [{ propertyName: "Url", errorMessage: "Unable to post to webhook: Name does not resolve" }] },
+                  })
+                : Promise.resolve({ data: body })
+        );
+
+        await configureLidarrWebhook("http://lidarr", "key");
+
+        expect(notifyAdmins).toHaveBeenCalledWith(
+            expect.objectContaining({
+                title: "Lidarr cannot reach Kima",
+                groupKey: "lidarr-callback",
+                message: expect.stringContaining("Name does not resolve"),
+            })
+        );
+        expect(notifyAdmins.mock.calls[0][0].message).toContain("http://host.docker.internal:3030/api/webhooks/lidarr");
+        expect(resolve).not.toHaveBeenCalled();
+    });
 });
