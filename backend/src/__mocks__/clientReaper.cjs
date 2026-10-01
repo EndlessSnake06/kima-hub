@@ -87,15 +87,24 @@ async function reap(client) {
         ]);
         realClearTimeout(guard);
     }
+    // 'end' follows the socket's 'close', whose listeners log; waiting for it
+    // keeps those logs inside the teardown instead of after "tests are done".
+    const ended = client.status === 'end' ? Promise.resolve() : new Promise((resolve) => client.once('end', resolve));
     if (client.status !== 'end') {
         // disconnect() arms a 2s force-destroy timer on a half-open stream;
         // disarm it so the client dies inside the teardown, not after it.
         zeroDisconnectTimeout(client);
         client.disconnect();
     }
-    // ioredis emits its closing status events on process.nextTick; flushing a
-    // macrotask here keeps those events (and their logger calls) inside the
-    // teardown instead of leaking past "tests are done".
+    let guard;
+    await Promise.race([
+        ended,
+        new Promise((resolve) => {
+            guard = realSetTimeout(resolve, 2000);
+            guard.unref();
+        }),
+    ]);
+    realClearTimeout(guard);
     await new Promise((resolve) => realSetImmediate(resolve));
 }
 

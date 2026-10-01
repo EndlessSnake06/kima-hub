@@ -6,8 +6,6 @@
  */
 
 import { AcquisitionErrorType, lidarrService } from "../lidarr";
-import { redisClient } from "../../utils/redis";
-import { closeClient } from "../../utils/closeRedisClient";
 
 const TAG = 22;
 const ARTIST_MBID = "artist-mbid";
@@ -41,12 +39,6 @@ beforeEach(() => {
     service.enabled = true;
     service.client = client;
     jest.spyOn(service, "getOrCreateDiscoveryTag").mockResolvedValue(TAG);
-});
-
-afterAll(async () => {
-    const ended = new Promise((resolve) => redisClient.once("end", resolve));
-    await closeClient(redisClient);
-    await ended;
 });
 
 const addForDiscover = (rgMbid: string, title: string) =>
