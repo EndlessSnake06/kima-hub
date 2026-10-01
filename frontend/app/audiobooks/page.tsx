@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
+import { STORAGE_KEYS } from "@/lib/storage-keys";
 import { useRouter } from "next/navigation";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
@@ -68,7 +69,7 @@ export default function AudiobooksPage() {
     const { pause } = useAudioControls();
 
     const queryClient = useQueryClient();
-    const { data: audiobooksData, isLoading, error } = useAudiobooksQuery();
+    const { data: audiobooksData, isLoading, error, refetch } = useAudiobooksQuery();
     const [isSyncing, setIsSyncing] = useState(false);
 
     const [filter, setFilter] = useState<FilterType>("all");
@@ -78,11 +79,11 @@ export default function AudiobooksPage() {
     const [itemsPerPage, setItemsPerPage] = useState<number>(50);
     const [currentPage, setCurrentPage] = useState(1);
 
-    const isConfigured =
-        !error &&
-        (!audiobooksData ||
-            !("configured" in audiobooksData) ||
-            audiobooksData.configured !== false);
+    const isConfigured = !(
+        audiobooksData &&
+        "configured" in audiobooksData &&
+        audiobooksData.configured === false
+    );
     const audiobooks: Audiobook[] = useMemo(
         () => (Array.isArray(audiobooksData) ? audiobooksData : []),
         [audiobooksData]
@@ -92,8 +93,8 @@ export default function AudiobooksPage() {
         if (!isConfigured && currentAudiobook) {
             pause();
             if (typeof window !== "undefined") {
-                localStorage.removeItem("kima_current_audiobook");
-                localStorage.removeItem("kima_playback_type");
+                localStorage.removeItem(STORAGE_KEYS.CURRENT_AUDIOBOOK);
+                localStorage.removeItem(STORAGE_KEYS.PLAYBACK_TYPE);
             }
         }
     }, [isConfigured, currentAudiobook, pause]);
@@ -269,6 +270,28 @@ export default function AudiobooksPage() {
         return (
             <div className="flex items-center justify-center min-h-screen bg-[var(--bg-primary)]">
                 <GradientSpinner size="md" />
+            </div>
+        );
+    }
+
+    if (error && isConfigured) {
+        return (
+            <div className="px-4 md:px-8 pt-8 max-w-[1800px] mx-auto">
+                <div role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 p-6 max-w-xl">
+                    <h1 className="text-lg font-semibold text-[var(--text-primary)]">
+                        Couldn&apos;t load audiobooks
+                    </h1>
+                    <p className="mt-2 text-sm text-[var(--text-secondary)]">
+                        The library request failed. Your listening progress is kept.
+                    </p>
+                    <p className="mt-1 text-xs text-[var(--text-muted)]">{(error as Error).message}</p>
+                    <button
+                        onClick={() => refetch()}
+                        className="mt-4 min-h-[44px] px-5 rounded-lg bg-brand text-black font-semibold hover:bg-brand-hover transition-colors"
+                    >
+                        Try again
+                    </button>
+                </div>
             </div>
         );
     }

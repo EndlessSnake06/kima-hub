@@ -1,6 +1,4 @@
-// Single definition of every localStorage key the audio stack uses. Writers
-// and readers must import from here — inline key strings in
-// audio-controller.ts drifted from this table until now.
+// Every localStorage key the audio stack uses. Writers and readers import from here.
 export const STORAGE_KEYS = {
     CURRENT_TRACK: "kima_current_track",
     CURRENT_AUDIOBOOK: "kima_current_audiobook",
