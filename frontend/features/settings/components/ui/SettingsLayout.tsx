@@ -85,7 +85,24 @@ export function SettingsLayout({ children, sidebarItems, isAdmin }: SettingsLayo
 
     return (
         <div className="min-h-screen bg-[var(--bg-primary)]">
-            <PageHeader eyebrow="System configuration" title="Settings" />
+            <PageHeader eyebrow="System configuration" title="Settings">
+                <label className="mt-6 block md:hidden">
+                    <span className="sr-only">Jump to section</span>
+                    <select
+                        value={activeSection}
+                        onChange={(e) => handleSectionClick(e.target.value)}
+                        className="w-full h-11 rounded-lg border border-white/10 bg-[#111] px-3 text-sm text-white"
+                    >
+                        {sidebarItems
+                            .filter((item) => !item.adminOnly || isAdmin)
+                            .map((item) => (
+                                <option key={item.id} value={item.id}>
+                                    {item.label}
+                                </option>
+                            ))}
+                    </select>
+                </label>
+            </PageHeader>
             <div className="page-shell pb-8 flex gap-12">
                 <SettingsSidebar
                     items={sidebarItems}
