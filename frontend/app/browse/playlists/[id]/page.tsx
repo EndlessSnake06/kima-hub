@@ -18,6 +18,7 @@ import { api } from "@/lib/api";
 import { useToast } from "@/lib/toast-context";
 import { cn } from "@/lib/cn";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
+import { PageMessage } from "@/components/ui/PageMessage";
 import { useAudioState } from "@/lib/audio-state-context";
 import { useAudioControls } from "@/lib/audio-controls-context";
 import { SectionHeader } from "@/components/ui/SectionHeader";
@@ -210,34 +211,12 @@ export default function DeezerPlaylistDetailPage() {
 
     if (error || !playlist) {
         return (
-            <div className="min-h-screen bg-gradient-to-b from-[#0a0a0a] to-black">
-                <div className="relative page-shell pt-8">
-                    <div>
-                        <button
-                            onClick={() => router.push("/browse/playlists")}
-                            className="flex items-center gap-2 text-xs tabular-nums text-[var(--text-muted)] hover:text-white transition-colors mb-8"
-                        >
-                            <ArrowLeft className="w-3.5 h-3.5" />
-                            Browse
-                        </button>
-                        <div className="flex flex-col items-center justify-center py-20 text-center">
-                            <Music2 className="w-12 h-12 text-white/10 mb-4" />
-                            <h3 className="text-lg font-bold text-white mb-2 tracking-tight">
-                                Playlist not found
-                            </h3>
-                            <p className="text-xs tabular-nums text-[var(--text-muted)] mb-6 max-w-sm">
-                                {error || "This playlist may be private or no longer available."}
-                            </p>
-                            <button
-                                onClick={() => router.push("/browse/playlists")}
-                                className="px-6 py-2.5 rounded-lg bg-brand hover:bg-brand-hover text-black text-xs font-semibold transition-all"
-                            >
-                                Browse playlists
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            <PageMessage
+                icon={<Music2 />}
+                title="Playlist not found"
+                description="This playlist may be private or no longer available."
+                action={{ label: "Browse playlists", href: "/browse/playlists" }}
+            />
         );
     }
 

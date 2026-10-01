@@ -271,15 +271,15 @@ export default function SharePageClient() {
                     <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-white/[0.03] border border-white/[0.06] flex items-center justify-center">
                         <Music className="w-5 h-5 text-[var(--text-muted)]" />
                     </div>
-                    <p className="text-sm font-medium text-[var(--text-secondary)] mb-1">
+                    <h1 className="text-xl font-bold tracking-tight text-white">
                         {error?.includes("expired")
-                            ? "Link expired"
+                            ? "This link has expired"
                             : error?.includes("limit")
-                              ? "Play limit reached"
-                              : "Not found"}
-                    </p>
-                    <p className="text-xs text-[var(--text-muted)]">
-                        {error || "This share link is no longer available."}
+                              ? "This link has reached its play limit"
+                              : "Share link not found"}
+                    </h1>
+                    <p className="mt-2 text-sm text-[var(--text-muted)]">
+                        Ask whoever shared it for a new link.
                     </p>
                 </div>
             </div>
