@@ -182,11 +182,10 @@ app.use("/api/browse", apiLimiter, browseRoutes);
 app.use("/api/analysis", apiLimiter, analysisRoutes);
 app.use("/api/releases", apiLimiter, releasesRoutes);
 app.use("/api/vibe", apiLimiter, vibeRoutes);
-// Public vibe surface: read-only, unauthenticated, rate-limited (apiLimiter,
-// per-IP like the rest of /api). Mounted before /api/events so the long-lived
-// /stream SSE connection registers first. Every route 404s until the operator
-// enables the surface in SystemSettings.
-app.use("/api/public/vibe", apiLimiter, publicVibeRoutes);
+// chevron7.io's read-only surface; it does not exist unless KIMA_PUBLIC_VIBE=true.
+if (config.publicVibe) {
+    app.use("/api/public/vibe", apiLimiter, publicVibeRoutes);
+}
 app.use("/api/system", apiLimiter, systemRoutes);
 // SSE ticket endpoint (must be registered before /api/events)
 app.use("/api/events/ticket", apiLimiter, eventsTicketRoutes);

@@ -2,6 +2,8 @@ import express from "express";
 import { logger } from "../utils/logger";
 import { prisma, Prisma } from "../utils/db";
 import { requireAuth } from "../middleware/auth";
+import { config } from "../config";
+import { LiveQueueEntry, publicUserId, reportLive } from "../services/liveListening";
 
 const router = express.Router();
 
@@ -177,6 +179,35 @@ router.post("/", requireAuth, async (req, res) => {
             details: error?.message || "Unknown error"
         });
     }
+});
+
+const LIVE_STATUSES = new Set(["playing", "paused", "stopped"]);
+
+function millis(value: unknown): number | null {
+    const n = Number(value);
+    return Number.isFinite(n) && n >= 0 ? Math.round(n) : null;
+}
+
+// The web player's play/pause/seek/track changes, for the public live trip.
+// 404 for everyone but the public user, so other players stop reporting.
+router.post("/live", requireAuth, async (req, res) => {
+    if (!config.publicVibe || req.user!.id !== (await publicUserId())) {
+        return res.status(404).json({ error: "Not available" });
+    }
+    const { status, trackId, position, duration, queue } = req.body ?? {};
+    const positionMs = millis(position);
+    const durationMs = millis(duration);
+    if (!LIVE_STATUSES.has(status) || typeof trackId !== "string" || !trackId || positionMs === null || durationMs === null) {
+        return res.status(400).json({ error: "status, trackId, position and duration are required" });
+    }
+    let upNext: LiveQueueEntry[] | undefined;
+    if (Array.isArray(queue)) {
+        upNext = queue
+            .filter((e: any) => e && typeof e.trackId === "string" && millis(e.duration) !== null)
+            .map((e: any) => ({ trackId: e.trackId, duration: millis(e.duration)! }));
+    }
+    reportLive({ status, trackId, position: positionMs, duration: durationMs, queue: upNext });
+    res.json({ ok: true });
 });
 
 // Clear playback state (when user stops playback completely)

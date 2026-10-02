@@ -20,6 +20,12 @@ jest.mock('../../../utils/logger', () => ({
     logger: { error: jest.fn(), warn: jest.fn(), info: jest.fn(), debug: jest.fn() },
 }));
 
+jest.mock('../../../services/liveListening', () => ({
+    publicUserId: jest.fn().mockResolvedValue('user-1'),
+    getLiveState: jest.fn().mockReturnValue({ status: 'stopped', trackId: null, position: 0 }),
+    reportLive: jest.fn(),
+}));
+
 jest.mock('../../../services/listenBrainz', () => ({
     listenBrainzService: { submitListens: jest.fn().mockResolvedValue(false) },
 }));
@@ -29,6 +35,8 @@ import request from 'supertest';
 import { ListenSource } from '@prisma/client';
 import { playbackRouter } from '../playback';
 import { prisma } from '../../../utils/db';
+import { config } from '../../../config';
+import { getLiveState, reportLive } from '../../../services/liveListening';
 
 function makeApp() {
     const app = express();
@@ -77,5 +85,44 @@ describe('scrobble.view records plays', () => {
         const res = await request(app).get('/rest/scrobble.view?id=tr-1&submission=true');
         expect(res.status).toBe(200);
         expect(prisma.play.create).not.toHaveBeenCalled();
+    });
+});
+
+describe('scrobble.view now-playing and the public live trip', () => {
+    const app = makeApp();
+    const original = config.publicVibe;
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+        (prisma.track.findUnique as jest.Mock).mockResolvedValue({ duration: 200 });
+        (getLiveState as jest.Mock).mockReturnValue({ status: 'stopped', trackId: null, position: 0 });
+        config.publicVibe = { token: 'x'.repeat(32), username: 'tester' };
+    });
+
+    afterAll(() => {
+        config.publicVibe = original;
+    });
+
+    it('starts the trip at the top of the track for the public user', async () => {
+        await request(app).get('/rest/scrobble.view?id=tr-1&submission=false');
+        expect(reportLive).toHaveBeenCalledWith({ status: 'playing', trackId: 'tr-1', position: 0, duration: 200_000 });
+        expect(prisma.play.create).not.toHaveBeenCalled();
+    });
+
+    it('keeps the position when the same track is announced again', async () => {
+        (getLiveState as jest.Mock).mockReturnValue({ status: 'paused', trackId: 'tr-1', position: 42_000 });
+        await request(app).get('/rest/scrobble.view?id=tr-1&submission=false');
+        expect(reportLive).toHaveBeenCalledWith({ status: 'playing', trackId: 'tr-1', position: 42_000, duration: 200_000 });
+    });
+
+    it('reports nothing when the public routes are off', async () => {
+        config.publicVibe = null;
+        await request(app).get('/rest/scrobble.view?id=tr-1&submission=false');
+        expect(reportLive).not.toHaveBeenCalled();
+    });
+
+    it('reports nothing for a completed play', async () => {
+        await request(app).get('/rest/scrobble.view?id=tr-1&submission=true');
+        expect(reportLive).not.toHaveBeenCalled();
     });
 });

@@ -19,7 +19,7 @@ const STANDOUT_SHARE = 0.2;
 // least-gloomy fifth "Upbeat" anyway.
 const HEAD_DECISION = 0.5;
 
-const MOODS = [
+export const MOODS = [
     { id: "happy", field: "moodHappy", name: "Upbeat", color: "from-yellow-400 to-orange-500", icon: "Smile" },
     { id: "sad", field: "moodSad", name: "Melancholic", color: "from-blue-600 to-indigo-700", icon: "CloudRain" },
     { id: "chill", field: "moodRelaxed", name: "Calm", color: "from-teal-400 to-cyan-500", icon: "Wind" },

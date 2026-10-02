@@ -11,8 +11,7 @@ jest.mock("../../utils/logger", () => ({
     logger: { warn: jest.fn(), debug: jest.fn(), error: jest.fn(), info: jest.fn() },
 }));
 
-// The Proxy mirrors the prismaMock trick in publicVibeRouter.smoke.test.ts:
-// any other export the routers' transitive imports reach for degrades to the
+// Any other export the routers' transitive imports reach for degrades to the
 // same authenticated passthrough instead of blowing up the mount.
 jest.mock("../../middleware/auth", () => {
     const passthrough = (req: any, _res: any, next: any) => {
@@ -49,11 +48,8 @@ jest.mock("../../services/featureDetection", () => ({
 
 import { prisma } from "../../utils/db";
 import vibeRouter from "../vibe";
-import publicVibeRouter, { __resetPublicAccess } from "../publicVibe";
 import recommendationsRouter from "../recommendations";
 
-// All ids satisfy the public surface's /^c[a-z0-9]{16,30}$/ so the public
-// route exercises the service instead of its format guard.
 const UNANALYSED_ID = "ctrkuna000000000000000001"; // Track row, NO embedding
 const SEED_ID = "ctrkemb000000000000000001"; // embedded, drives the happy path
 const NEIGHBOUR_ID = "ctrkemb000000000000000002"; // embedded, nearest to SEED
@@ -105,9 +101,6 @@ const UNIT_VECTOR = `[${["1", ...Array(511).fill("0")].join(",")}]`;
 const vibeApp = express();
 vibeApp.use("/api/vibe", vibeRouter);
 
-const publicApp = express();
-publicApp.use("/api/public/vibe", publicVibeRouter);
-
 const recApp = express();
 recApp.use("/api/recommendations", recommendationsRouter);
 
@@ -117,26 +110,9 @@ beforeAll(async () => {
     await seedTrack(NEIGHBOUR_ID);
     await seedEmbedding(SEED_ID, UNIT_VECTOR);
     await seedEmbedding(NEIGHBOUR_ID, UNIT_VECTOR);
-
-    // The public gate reads SystemSettings and caches it for 5s; enable the
-    // surface the same way an operator would, and reset the cache per case.
-    await prisma.systemSettings.upsert({
-        where: { id: "default" },
-        create: { id: "default", publicVibeEnabled: true },
-        update: { publicVibeEnabled: true },
-    });
-});
-
-beforeEach(() => {
-    __resetPublicAccess();
 });
 
 afterAll(async () => {
-    await prisma.systemSettings.upsert({
-        where: { id: "default" },
-        create: { id: "default" },
-        update: { publicVibeEnabled: false },
-    });
     await prisma.track.deleteMany({ where: { id: { in: ALL_TRACK_IDS } } });
     await prisma.album.deleteMany({
         where: { id: { in: ALL_TRACK_IDS.map((id) => `calb_${id}`) } },
@@ -163,15 +139,6 @@ describe("similar tracks for an unanalysed seed (S2)", () => {
         expect(res.body).toEqual({
             error: "No similar tracks found",
             message: "This track may not have been analyzed yet, or no analyzer is running",
-        });
-    });
-
-    it("GET /api/public/vibe/similar/:trackId answers 404 with the public body", async () => {
-        const res = await request(publicApp).get(`/api/public/vibe/similar/${UNANALYSED_ID}`);
-        expect(res.status).toBe(404);
-        expect(res.body).toEqual({
-            error: "No similar tracks found",
-            message: "This track was not found among analysed tracks.",
         });
     });
 

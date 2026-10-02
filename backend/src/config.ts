@@ -58,6 +58,23 @@ export async function initializeMusicConfig() {
     }
 }
 
+const PUBLIC_VIBE_TOKEN_MIN = 32;
+
+// The /api/public/vibe surface exists only when KIMA_PUBLIC_VIBE=true and both
+// its token and its user are set; otherwise the routes are never mounted.
+function readPublicVibe(): { token: string; username: string } | null {
+    if (process.env.KIMA_PUBLIC_VIBE !== "true") return null;
+    const token = process.env.KIMA_PUBLIC_VIBE_TOKEN ?? "";
+    const username = process.env.KIMA_PUBLIC_VIBE_USER?.trim() ?? "";
+    if (token.length < PUBLIC_VIBE_TOKEN_MIN || !username) {
+        logger.error(
+            `KIMA_PUBLIC_VIBE is true but KIMA_PUBLIC_VIBE_TOKEN (at least ${PUBLIC_VIBE_TOKEN_MIN} characters) or KIMA_PUBLIC_VIBE_USER is missing; the public vibe routes stay off`
+        );
+        return null;
+    }
+    return { token, username };
+}
+
 export const APP_VERSION = packageJson.version;
 export const USER_AGENT = `Kima/${APP_VERSION} (https://github.com/Chevron7Locked/kima-hub)`;
 
@@ -93,6 +110,8 @@ export const config = {
     acoustid: {
         clientKey: process.env.ACOUSTID_CLIENT_KEY || "JaLCkK9Xvt",
     },
+
+    publicVibe: readPublicVibe(),
 
     allowedOrigins:
         process.env.ALLOWED_ORIGINS?.split(",").map((o) => o.trim()) ||

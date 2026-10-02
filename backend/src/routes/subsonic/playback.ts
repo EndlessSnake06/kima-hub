@@ -11,6 +11,7 @@ import { bitrateToQuality, firstArtistGenre, mapSong, wrap } from "./mappers";
 import { normalizeArtistName } from "../../services/artistIdentity";
 import { resolveTrackFilePath } from "../library/trackPath";
 import { recordPlay } from "../../services/playRecording";
+import { getLiveState, publicUserId, reportLive } from "../../services/liveListening";
 
 export const playbackRouter = Router();
 
@@ -312,8 +313,16 @@ playbackRouter.all("/scrobble.view", wrap(async (req, res) => {
     if (!id) return subsonicError(req, res, SubsonicError.MISSING_PARAM, "Required parameter is missing: id");
 
     const userId = req.user!.id;
-    // submission=false means "now playing" notification — skip, we only record completed plays
+    // submission=false is "now playing": it starts the public live trip, never a play.
     const submission = req.query.submission !== "false";
+
+    if (!submission && config.publicVibe && userId === (await publicUserId())) {
+        const track = await prisma.track.findUnique({ where: { id }, select: { duration: true } });
+        // A repeat "now playing" for the current track is a resume, not a restart.
+        const live = getLiveState();
+        const position = live.trackId === id && live.status !== "stopped" ? live.position : 0;
+        if (track) reportLive({ status: "playing", trackId: id, position, duration: track.duration * 1000 });
+    }
 
     if (submission) {
         // A client's scrobble counts as played (client-attested); the 30-second

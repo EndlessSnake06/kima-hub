@@ -1,0 +1,153 @@
+/**
+ * The live trip's event sequence: what each player report turns into, and the
+ * stopped event that ends a trip nobody reports on any more.
+ */
+jest.mock("../../utils/logger", () => ({
+    logger: { warn: jest.fn(), info: jest.fn(), error: jest.fn(), debug: jest.fn() },
+}));
+jest.mock("../../config", () => ({
+    config: { publicVibe: { token: "t".repeat(32), username: "listener" } },
+}));
+const findUnique = jest.fn();
+jest.mock("../../utils/db", () => ({ prisma: { user: { findUnique: (...a: unknown[]) => findUnique(...a) } } }));
+
+import {
+    LiveEvent,
+    getLiveState,
+    publicUserId,
+    reportLive,
+    resetLive,
+    subscribeLive,
+} from "../liveListening";
+
+const A = "ctrackaaaaaaaaaaaaaaaaaa1";
+const B = "ctrackbbbbbbbbbbbbbbbbbb1";
+
+let events: LiveEvent[];
+
+beforeEach(() => {
+    jest.useFakeTimers({ now: new Date("2026-10-02T12:00:00Z") });
+    resetLive();
+    events = [];
+    subscribeLive((e) => events.push(e));
+    findUnique.mockReset();
+});
+
+afterEach(() => {
+    jest.useRealTimers();
+});
+
+const types = () => events.map((e) => e.type);
+
+describe("live listening", () => {
+    it("a first play starts the trip with its start time, length and queue", () => {
+        reportLive({ status: "playing", trackId: A, position: 2_000, duration: 180_000, queue: [{ trackId: B, duration: 200_000 }] });
+        expect(events).toEqual([
+            {
+                type: "started",
+                at: Date.now(),
+                trackId: A,
+                startedAt: Date.now() - 2_000,
+                duration: 180_000,
+                queue: [{ trackId: B, duration: 200_000 }],
+            },
+        ]);
+    });
+
+    it("pause and resume carry the position", () => {
+        reportLive({ status: "playing", trackId: A, position: 0, duration: 180_000 });
+        jest.advanceTimersByTime(10_000);
+        reportLive({ status: "paused", trackId: A, position: 10_000, duration: 180_000 });
+        reportLive({ status: "playing", trackId: A, position: 10_000, duration: 180_000 });
+        expect(types()).toEqual(["started", "paused", "resumed"]);
+        expect(events[1]).toMatchObject({ position: 10_000 });
+    });
+
+    it("a position away from where the clock says is a seek; one on time is not", () => {
+        reportLive({ status: "playing", trackId: A, position: 0, duration: 180_000 });
+        jest.advanceTimersByTime(20_000);
+        reportLive({ status: "playing", trackId: A, position: 20_500, duration: 180_000 });
+        reportLive({ status: "playing", trackId: A, position: 90_000, duration: 180_000 });
+        expect(types()).toEqual(["started", "seeked"]);
+        expect(events[1]).toMatchObject({ position: 90_000 });
+    });
+
+    it("a new track well before the old one ends is a skip, then a start", () => {
+        reportLive({ status: "playing", trackId: A, position: 0, duration: 180_000 });
+        jest.advanceTimersByTime(30_000);
+        reportLive({ status: "playing", trackId: B, position: 0, duration: 200_000 });
+        expect(types()).toEqual(["started", "skipped", "started"]);
+        expect(events[1]).toMatchObject({ trackId: B });
+    });
+
+    it("leaving a paused track for another is a skip", () => {
+        reportLive({ status: "playing", trackId: A, position: 0, duration: 180_000 });
+        reportLive({ status: "paused", trackId: A, position: 2_000, duration: 180_000 });
+        reportLive({ status: "playing", trackId: B, position: 0, duration: 200_000 });
+        expect(types()).toEqual(["started", "paused", "skipped", "started"]);
+    });
+
+    it("a new track after a stop is not a skip", () => {
+        reportLive({ status: "playing", trackId: A, position: 0, duration: 180_000 });
+        reportLive({ status: "stopped", trackId: A, position: 2_000, duration: 180_000 });
+        reportLive({ status: "playing", trackId: B, position: 0, duration: 200_000 });
+        expect(types()).toEqual(["started", "stopped", "started"]);
+    });
+
+    it("a new track at the old one's end is just a start", () => {
+        reportLive({ status: "playing", trackId: A, position: 0, duration: 180_000 });
+        jest.advanceTimersByTime(179_000);
+        reportLive({ status: "playing", trackId: B, position: 0, duration: 200_000 });
+        expect(types()).toEqual(["started", "started"]);
+    });
+
+    it("a changed queue on the same track is reported once", () => {
+        reportLive({ status: "playing", trackId: A, position: 0, duration: 180_000, queue: [] });
+        reportLive({ status: "playing", trackId: A, position: 0, duration: 180_000, queue: [{ trackId: B, duration: 1 }] });
+        reportLive({ status: "playing", trackId: A, position: 0, duration: 180_000, queue: [{ trackId: B, duration: 1 }] });
+        expect(types()).toEqual(["started", "queue_changed"]);
+    });
+
+    it("a track that runs out with nothing after it stops the trip at its end", () => {
+        reportLive({ status: "playing", trackId: A, position: 0, duration: 180_000 });
+        jest.advanceTimersByTime(180_000 + 29_000);
+        expect(types()).toEqual(["started"]);
+        jest.advanceTimersByTime(2_000);
+        expect(types()).toEqual(["started", "stopped"]);
+        expect(events[1]).toMatchObject({ trackId: A, position: 180_000 });
+        expect(getLiveState()).toMatchObject({ status: "stopped", trackId: A, position: 180_000 });
+    });
+
+    it("a pause nobody returns to stops the trip after half an hour", () => {
+        reportLive({ status: "playing", trackId: A, position: 0, duration: 180_000 });
+        reportLive({ status: "paused", trackId: A, position: 5_000, duration: 180_000 });
+        jest.advanceTimersByTime(30 * 60_000 - 1);
+        expect(types()).toEqual(["started", "paused"]);
+        jest.advanceTimersByTime(1);
+        expect(types()).toEqual(["started", "paused", "stopped"]);
+    });
+
+    it("playing again after a stop starts a new trip", () => {
+        reportLive({ status: "playing", trackId: A, position: 0, duration: 180_000 });
+        reportLive({ status: "stopped", trackId: A, position: 1_000, duration: 180_000 });
+        reportLive({ status: "playing", trackId: A, position: 1_000, duration: 180_000 });
+        expect(types()).toEqual(["started", "stopped", "started"]);
+    });
+
+    it("the state advances a playing track's position with the clock", () => {
+        reportLive({ status: "playing", trackId: A, position: 1_000, duration: 180_000 });
+        jest.advanceTimersByTime(4_000);
+        expect(getLiveState()).toMatchObject({ status: "playing", trackId: A, position: 5_000 });
+    });
+
+    it("looks the public user up by name, and again a minute after a miss", async () => {
+        findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: "u1" });
+        expect(await publicUserId()).toBeNull();
+        expect(await publicUserId()).toBeNull();
+        jest.advanceTimersByTime(60_000);
+        expect(await publicUserId()).toBe("u1");
+        expect(await publicUserId()).toBe("u1");
+        expect(findUnique).toHaveBeenCalledTimes(2);
+        expect(findUnique).toHaveBeenCalledWith({ where: { username: "listener" }, select: { id: true } });
+    });
+});
