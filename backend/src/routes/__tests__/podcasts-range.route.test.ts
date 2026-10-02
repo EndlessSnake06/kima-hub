@@ -49,9 +49,6 @@ jest.mock('../../services/rss-parser', () => ({
     rssParserService: { parseFeed: jest.fn() },
 }));
 
-jest.mock('../../services/podcastCache', () => ({
-    podcastCacheService: { getPodcasts: jest.fn(), searchPodcasts: jest.fn() },
-}));
 
 jest.mock('../../services/deezer', () => ({
     deezerService: { searchPodcasts: jest.fn() },

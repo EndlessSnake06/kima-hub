@@ -4,7 +4,6 @@ import { withTimeout } from "../utils/timeout";
 import { requireAuth, requireAuthOrToken } from "../middleware/auth";
 import { prisma } from "../utils/db";
 import { rssParserService } from "../services/rss-parser";
-import { podcastCacheService } from "../services/podcastCache";
 import { parseRangeHeader } from "../utils/rangeParser";
 import { safeError } from "../utils/errors";
 import { validateUrlForFetch } from "../utils/ssrf";
@@ -21,28 +20,6 @@ const router = Router();
 // (#168). The feed is non-critical for a preview; core data comes from
 // iTunes/Deezer, and both call sites already fall through to partial data.
 const PREVIEW_RSS_TIMEOUT_MS = 8000;
-
-/**
- * POST /podcasts/sync-covers
- * Manually trigger podcast cover caching
- * Downloads and caches all podcast/episode covers locally
- */
-router.post("/sync-covers", requireAuth, async (req, res) => {
-    try {
-        logger.debug(" Starting podcast cover sync...");
-
-        const podcastResult = await podcastCacheService.syncAllCovers();
-        const episodeResult = await podcastCacheService.syncEpisodeCovers();
-
-        res.json({
-            success: true,
-            podcasts: podcastResult,
-            episodes: episodeResult,
-        });
-    } catch (error) {
-        safeError(res, "Podcast cover sync failed", error);
-    }
-});
 
 router.use(requireAuthOrToken);
 

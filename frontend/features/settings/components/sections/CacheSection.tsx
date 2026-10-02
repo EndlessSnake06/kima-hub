@@ -504,7 +504,6 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
             if (settings.audiobookshelfEnabled) {
                 await api.post("/audiobooks/sync", {});
             }
-            await api.post("/podcasts/sync-covers", {});
             await api.syncLibraryEnrichment();
             refetchProgress();
         } catch (err) {
