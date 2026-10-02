@@ -25,6 +25,7 @@ import { sourcePauseController } from "../sourcePauseController";
 import { closeEngineConnections } from "../../__tests__/helpers/engineConnections";
 
 const USER = "sdm_start_user";
+const OTHER = "sdm_start_other";
 const addAlbum = lidarrService.addAlbum as jest.Mock;
 const getArtistAlbums = lidarrService.getArtistAlbums as jest.Mock;
 const lidarrAlbum = (foreignAlbumId: string, title: string, percentOfTracks = 0) => ({
@@ -40,10 +41,10 @@ const start = () =>
 const row = () => prisma.downloadJob.findUniqueOrThrow({ where: { id: "sdm_start" } });
 
 beforeAll(async () => {
-    await prisma.user.deleteMany({ where: { id: USER } });
-    await prisma.user.create({
-        data: { id: USER, username: USER, passwordHash: "x", role: "user", tokenVersion: 0 },
-    });
+    await prisma.user.deleteMany({ where: { id: { in: [USER, OTHER] } } });
+    for (const id of [USER, OTHER]) {
+        await prisma.user.create({ data: { id, username: id, passwordHash: "x", role: "user", tokenVersion: 0 } });
+    }
 });
 
 beforeEach(async () => {
@@ -57,12 +58,12 @@ beforeEach(async () => {
 afterEach(async () => {
     jest.restoreAllMocks();
     await prisma.sourceAttempt.deleteMany({ where: { source: "lidarr" } });
-    await prisma.downloadJob.deleteMany({ where: { userId: USER } });
+    await prisma.downloadJob.deleteMany({ where: { userId: { in: [USER, OTHER] } } });
     await prisma.notification.deleteMany({ where: { userId: USER } });
 });
 
 afterAll(async () => {
-    await prisma.user.deleteMany({ where: { id: USER } });
+    await prisma.user.deleteMany({ where: { id: { in: [USER, OTHER] } } });
     await closeEngineConnections();
 });
 
@@ -201,4 +202,18 @@ it.each([
     expect((await row()).status).toBe("failed");
     const [note] = await prisma.notification.findMany({ where: { userId: USER } });
     expect(note?.message).toMatch(message);
+});
+
+it("takes the download another user's job already has running", async () => {
+    await prisma.downloadJob.create({
+        data: {
+            id: "sdm_start_other_job", userId: OTHER, subject: "Interpol - Antics", type: "album",
+            status: "processing", targetMbid: "rg-asked", lidarrAlbumId: 9, lidarrRef: "dl-9",
+        },
+    });
+
+    expect((await start()).success).toBe(true);
+
+    expect(addAlbum).not.toHaveBeenCalled();
+    expect(await row()).toMatchObject({ status: "processing", lidarrAlbumId: 9, lidarrRef: "dl-9" });
 });

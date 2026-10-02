@@ -144,6 +144,10 @@ class SimpleDownloadManager {
         const correlationId = generateCorrelationId();
 
         try {
+            if (await this.joinActiveDownload(jobId, correlationId, albumMbid, artistName, albumTitle)) {
+                return { success: true, correlationId };
+            }
+
             const settings = await getSystemSettings();
             const musicPath = settings?.musicPath || config.music.musicPath;
 
@@ -571,6 +575,54 @@ class SimpleDownloadManager {
                 result.spotifyImportJobId
             );
         }
+    }
+
+    /**
+     * Another job already has Lidarr fetching this album, so this one takes the
+     * same download instead of starting a second search, which Lidarr would turn
+     * away because the album is already in its queue.
+     */
+    private async joinActiveDownload(
+        jobId: string,
+        correlationId: string,
+        albumMbid: string,
+        artistName: string,
+        albumTitle: string
+    ): Promise<boolean> {
+        const active = await prisma.downloadJob.findFirst({
+            where: { id: { not: jobId }, targetMbid: albumMbid, status: "processing", lidarrAlbumId: { not: null } },
+            select: { lidarrAlbumId: true, lidarrRef: true, artistMbid: true, metadata: true },
+        });
+        if (!active) return false;
+
+        const job = await prisma.downloadJob.findUnique({ where: { id: jobId }, select: { metadata: true } });
+        const existing = (job?.metadata as any) || {};
+        const now = new Date();
+        await prisma.downloadJob.update({
+            where: { id: jobId },
+            data: {
+                correlationId,
+                status: "processing",
+                startedAt: now,
+                lidarrAlbumId: active.lidarrAlbumId,
+                lidarrRef: active.lidarrRef,
+                artistMbid: active.artistMbid,
+                attempts: 1,
+                metadata: {
+                    ...existing,
+                    albumTitle,
+                    artistName,
+                    albumMbid,
+                    lidarrMbid: (active.metadata as any)?.lidarrMbid,
+                    downloadType: existing.downloadType || "library",
+                    startedAt: now.toISOString(),
+                    currentSource: "lidarr" as const,
+                    statusText: "Lidarr #1",
+                },
+            },
+        });
+        logger.debug(`   Joined the download already running for ${albumMbid}`);
+        return true;
     }
 
     /**

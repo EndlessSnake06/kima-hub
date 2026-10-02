@@ -1,15 +1,17 @@
 /**
  * POST /downloads takes only a MusicBrainz id, refuses one MusicBrainz does not
- * know, and files an album under the artist its release group credits. An
- * artist download explains a refusal instead of failing with a server error.
+ * know, and files an album under the artist its release group credits. Another
+ * user's download of the same album is not a duplicate. An artist download
+ * explains a refusal instead of failing with a server error.
  */
 
 const mockJobCreate = jest.fn();
+const mockQueryRaw = jest.fn();
 jest.mock("../../utils/db", () => ({
     prisma: {
         $transaction: (fn: (tx: unknown) => unknown) =>
             fn({
-                $queryRaw: jest.fn().mockResolvedValue([]),
+                $queryRaw: (...a: unknown[]) => mockQueryRaw(...a),
                 downloadJob: { create: (...a: unknown[]) => mockJobCreate(...a) },
             }),
         downloadJob: { findUnique: jest.fn().mockResolvedValue(null) },
@@ -74,6 +76,7 @@ beforeEach(() => {
         status: "pending",
         ...data,
     }));
+    mockQueryRaw.mockReset().mockResolvedValue([]);
     mockGetReleaseGroup.mockReset();
     mockGetArtist.mockReset();
     mockAddArtist.mockReset();
@@ -97,6 +100,16 @@ describe("POST /downloads", () => {
 
         expect(res.status).toBe(404);
         expect(mockJobCreate).not.toHaveBeenCalled();
+    });
+
+    it("treats only the caller's own active job as a duplicate", async () => {
+        mockGetReleaseGroup.mockResolvedValue({ kind: "answered", value: {} });
+
+        await post(RG);
+
+        const [sql, ...values] = mockQueryRaw.mock.calls[0];
+        expect(sql.join("?")).toContain('"userId" =');
+        expect(values).toEqual(expect.arrayContaining([RG, "user-1"]));
     });
 
     it("keeps the requested name when MusicBrainz is down", async () => {

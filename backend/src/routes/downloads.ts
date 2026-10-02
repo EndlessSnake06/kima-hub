@@ -99,7 +99,7 @@ router.post("/", async (req, res) => {
             logger.warn(`[DOWNLOAD] Release group ${mbid}: ${failureCause(group)}`);
         }
 
-        // One active job per album: concurrent requests lock and re-check inside the transaction.
+        // One active job per user per album: concurrent requests lock and re-check inside the transaction.
         const jobResult = await prisma.$transaction(async (tx) => {
             const existingJobs = await tx.$queryRaw<
                 Array<{
@@ -112,6 +112,8 @@ router.post("/", async (req, res) => {
                 SELECT id, status, subject, "createdAt"
                 FROM "DownloadJob"
                 WHERE "targetMbid" = ${mbid}
+                AND "userId" = ${userId}
+                AND "discoveryBatchId" IS NULL
                 AND status IN ('pending', 'processing')
                 FOR UPDATE SKIP LOCKED
             `;
@@ -187,7 +189,9 @@ router.post("/", async (req, res) => {
             const { mbid } = req.body;
             const existingJob = await prisma.downloadJob.findFirst({
                 where: {
+                    userId: req.user!.id,
                     targetMbid: mbid,
+                    discoveryBatchId: null,
                     status: { in: ["pending", "processing"] },
                 },
             });
@@ -301,6 +305,8 @@ async function processArtistDownload(
                     SELECT id, status, subject, "createdAt"
                     FROM "DownloadJob"
                     WHERE "targetMbid" = ${albumMbid}
+                    AND "userId" = ${userId}
+                    AND "discoveryBatchId" IS NULL
                     AND status IN ('pending', 'processing')
                     FOR UPDATE SKIP LOCKED
                 `;
@@ -324,6 +330,7 @@ async function processArtistDownload(
                     SELECT id, status, "completedAt"
                     FROM "DownloadJob"
                     WHERE "targetMbid" = ${albumMbid}
+                    AND "userId" = ${userId}
                     AND status = 'failed'
                     AND "completedAt" >= ${new Date(Date.now() - 30000)}
                     FOR UPDATE SKIP LOCKED
