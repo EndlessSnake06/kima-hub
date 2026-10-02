@@ -13,7 +13,7 @@ import { createApiKey, hashApiKey } from "../../services/users/apiKeyStore";
 import { queues } from "../../workers/queues";
 import { redisClient } from "../../utils/redis";
 import { closeClient } from "../../utils/closeRedisClient";
-import { closeQueue } from "../../utils/closeQueue";
+import { closeQueue } from "../../__tests__/helpers/closeQueue";
 
 jest.setTimeout(30_000);
 

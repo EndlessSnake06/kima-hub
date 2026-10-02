@@ -42,7 +42,7 @@ import { prisma } from "../../utils/db";
 import { queues } from "../../workers/queues";
 import { redisClient } from "../../utils/redis";
 import { closeClient } from "../../utils/closeRedisClient";
-import { closeQueue } from "../../utils/closeQueue";
+import { closeQueue } from "../../__tests__/helpers/closeQueue";
 
 afterAll(async () => {
     // The router reaches jobs/queueCleaner, which enqueues through the real

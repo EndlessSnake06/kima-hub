@@ -7,7 +7,7 @@ import {
 import { enrichmentStateService } from "../../services/enrichmentState";
 import { redisClient } from "../../utils/redis";
 import { closeClient } from "../../utils/closeRedisClient";
-import { closeQueue } from "../../utils/closeQueue";
+import { closeQueue } from "./closeQueue";
 
 /**
  * Close what a bare import of the enrichment modules opens: the four BullMQ
