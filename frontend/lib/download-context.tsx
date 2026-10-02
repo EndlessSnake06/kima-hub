@@ -9,6 +9,7 @@ import {
     useMemo,
     useCallback,
     useRef,
+    useLayoutEffect,
 } from "react";
 import { useActiveDownloads, DownloadHistoryItem } from "@/hooks/useNotifications";
 import { useEventSource } from "@/hooks/useEventSource";
@@ -48,6 +49,9 @@ export function DownloadProvider({ children }: { children: ReactNode }) {
         []
     );
     const pendingDownloadsRef = useRef<PendingDownload[]>([]);
+    useLayoutEffect(() => {
+        pendingDownloadsRef.current = pendingDownloads;
+    }, [pendingDownloads]);
     useEventSource();
     const { downloads: activeDownloads } = useActiveDownloads();
 
@@ -56,7 +60,7 @@ export function DownloadProvider({ children }: { children: ReactNode }) {
         hasActiveDownloads: activeDownloads.some((d: DownloadHistoryItem) => d.status === "pending" || d.status === "processing"),
     }), [activeDownloads]);
 
-    // Render-time adjustment: remove stale pending downloads when they appear in active downloads
+    // A pending entry is dropped once its job shows up among the active downloads.
     const [prevActiveDownloads, setPrevActiveDownloads] = useState(downloadStatus.activeDownloads);
     if (prevActiveDownloads !== downloadStatus.activeDownloads) {
         setPrevActiveDownloads(downloadStatus.activeDownloads);
@@ -70,24 +74,17 @@ export function DownloadProvider({ children }: { children: ReactNode }) {
         });
     }
 
-    // Cleanup pending downloads older than 2 minutes
-    // This handles cases where jobs fail immediately and don't appear in any API response
+    // A job that fails at once never appears in any response, so entries expire after 2 minutes.
     useEffect(() => {
-        const STALE_THRESHOLD = 2 * 60 * 1000; // 2 minutes
+        const STALE_THRESHOLD = 2 * 60 * 1000;
 
         const cleanup = setInterval(() => {
             setPendingDownloads((prev) => {
                 const now = Date.now();
-                const filtered = prev.filter((pending) => {
-                    const age = now - pending.timestamp;
-                    if (age > STALE_THRESHOLD) {
-                        return false;
-                    }
-                    return true;
-                });
-                return filtered;
+                const next = prev.filter((pending) => now - pending.timestamp <= STALE_THRESHOLD);
+                return next.length === prev.length ? prev : next;
             });
-        }, 30000); // Check every 30 seconds
+        }, 30000);
 
         return () => clearInterval(cleanup);
     }, []);
@@ -97,7 +94,7 @@ export function DownloadProvider({ children }: { children: ReactNode }) {
         subject: string,
         mbid: string
     ): string | null => {
-        // Check for duplicates synchronously via ref to avoid concurrent mode races
+        // The ref, written here before the state commits, catches a second click in the same tick.
         if (pendingDownloadsRef.current.some((d) => d.mbid === mbid)) {
             return null;
         }
@@ -111,36 +108,18 @@ export function DownloadProvider({ children }: { children: ReactNode }) {
             timestamp: Date.now(),
         };
 
-        // Eagerly update ref so rapid successive calls see the new entry
         pendingDownloadsRef.current = [...pendingDownloadsRef.current, download];
-
-        setPendingDownloads((prev) => {
-            // Double-check inside updater in case of rapid concurrent calls
-            if (prev.some((d) => d.mbid === mbid)) {
-                return prev;
-            }
-            const next = [...prev, download];
-            pendingDownloadsRef.current = next;
-            return next;
-        });
+        setPendingDownloads((prev) => (prev.some((d) => d.mbid === mbid) ? prev : [...prev, download]));
 
         return id;
     }, []);
 
     const removePendingDownload = useCallback((id: string) => {
-        setPendingDownloads((prev) => {
-            const next = prev.filter((d) => d.id !== id);
-            pendingDownloadsRef.current = next;
-            return next;
-        });
+        setPendingDownloads((prev) => prev.filter((d) => d.id !== id));
     }, []);
 
     const removePendingByMbid = useCallback((mbid: string) => {
-        setPendingDownloads((prev) => {
-            const next = prev.filter((d) => d.mbid !== mbid);
-            pendingDownloadsRef.current = next;
-            return next;
-        });
+        setPendingDownloads((prev) => prev.filter((d) => d.mbid !== mbid));
     }, []);
 
     const isPending = useCallback((subject: string): boolean => {
@@ -148,7 +127,6 @@ export function DownloadProvider({ children }: { children: ReactNode }) {
     }, [pendingDownloads]);
 
     const isPendingByMbid = useCallback((mbid: string): boolean => {
-        // Check both pending downloads AND active download jobs
         const isPendingLocal = pendingDownloads.some((d) => d.mbid === mbid);
         const hasActiveJob = downloadStatus.activeDownloads.some(
             (job) => job.targetMbid === mbid
@@ -161,7 +139,6 @@ export function DownloadProvider({ children }: { children: ReactNode }) {
         return pendingDownloads.length > 0;
     }, [pendingDownloads]);
 
-    // Memoize context value to prevent unnecessary re-renders
     const contextValue = useMemo(() => ({
         pendingDownloads,
         downloadStatus,
