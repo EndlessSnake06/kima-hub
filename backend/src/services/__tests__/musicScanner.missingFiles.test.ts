@@ -1,7 +1,8 @@
 /**
  * A scan never deletes a track whose file vanished: the row, its plays, likes,
  * stage answers and embedding stay, the missing flag is set with a time, and a
- * later scan clears it. Real scanner, temp directory and test database.
+ * later scan clears it. A file that cannot be read is an error, never an added
+ * track. Real scanner, temp directory and test database.
  */
 
 jest.mock("../../utils/logger", () => ({
@@ -374,5 +375,20 @@ describe("stage records follow the file", () => {
         expect(rec?.status).toBe("failed");
         expect(rec?.retryable).toBe(false);
         expect(rec?.failureClass).toBe("FILE_MISSING");
+    });
+});
+
+describe("scan with an unreadable file", () => {
+    it("reports the file as an error, not an added track, on every scan", async () => {
+        (parseFile as jest.Mock).mockRejectedValue(new Error("FourCC contains invalid characters"));
+        const scanner = new MusicScannerService();
+
+        for (let run = 0; run < 2; run++) {
+            const result = await scanner.scanLibrary(musicDir);
+            expect(result.tracksAdded).toBe(0);
+            expect(result.tracksUpdated).toBe(0);
+            expect(result.errors).toHaveLength(1);
+        }
+        expect(await findTrack()).toBeNull();
     });
 });

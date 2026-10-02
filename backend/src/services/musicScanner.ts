@@ -268,18 +268,15 @@ export class MusicScannerService {
                         // from the old content, so reopen the whole stage
                         // set before re-processing the row.
                         await reopenStagesForChangedFile(existingTrack.id);
-                        result.tracksUpdated++;
-                    } else {
-                        // New file
-                        result.tracksAdded++;
                     }
 
-                    // Extract metadata and update database
                     await this.processAudioFile(
                         audioFile,
                         relativePath,
                         musicPath
                     );
+                    if (existingTrack) result.tracksUpdated++;
+                    else result.tracksAdded++;
                 } catch (err: any) {
                     const error = {
                         file: audioFile,
