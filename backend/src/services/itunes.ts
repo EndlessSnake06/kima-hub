@@ -230,27 +230,19 @@ class ItunesService {
             ` Searching for similar podcasts using keywords: ${keywords.join(", ")}`
         );
 
-        // Search using the top keyword (most relevant)
-        const searchTerm = keywords[0];
-        const cacheKey = `itunes:similar:${searchTerm}:${limit}`;
+        // searchPodcasts holds the iTunes limiter slot and caches the search, so
+        // it must not run inside another cachedRequest: the limiter runs one
+        // request at a time and the nested call would wait on its own caller.
+        const results = await this.searchPodcasts(keywords[0], limit * 2);
 
-        return this.cachedRequest(
-            cacheKey,
-            async () => {
-                const results = await this.searchPodcasts(searchTerm, limit * 2);
-
-                // Filter out the original podcast (by title similarity)
-                const titleLower = title.toLowerCase();
-                const filtered = results.filter((podcast) => {
-                    const podcastTitleLower = podcast.collectionName.toLowerCase();
-                    // Exclude if titles are very similar (likely same podcast)
-                    return !podcastTitleLower.includes(titleLower.slice(0, 20));
-                });
-
-                return filtered.slice(0, limit);
-            },
-            2592000 // 30 days
-        );
+        // Drop the original podcast (titles that share its opening).
+        const titleLower = title.toLowerCase();
+        return results
+            .filter(
+                (podcast) =>
+                    !podcast.collectionName.toLowerCase().includes(titleLower.slice(0, 20))
+            )
+            .slice(0, limit);
     }
 
     /**
