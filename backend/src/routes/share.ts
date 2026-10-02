@@ -3,7 +3,7 @@ import { createShareLink, ShareError } from "../services/shareService";
 import { prisma } from "../utils/db";
 import { logger } from "../utils/logger";
 import { requireAuth } from "../middleware/auth";
-import rateLimit from "express-rate-limit";
+import { createRateLimiter } from "../middleware/rateLimiter";
 import path from "path";
 import fs from "fs";
 import { getLocalImagePath, getResizedImagePath } from "../services/imageStorage";
@@ -22,21 +22,9 @@ setInterval(() => {
     }
 }, 60_000).unref();
 
-const shareResolveLimiter = rateLimit({
-    windowMs: 60 * 1000,
-    max: 60,
-    standardHeaders: true,
-    legacyHeaders: false,
-    validate: { trustProxy: false },
-});
+const shareResolveLimiter = createRateLimiter({ windowMs: 60 * 1000, max: 60 });
 
-const shareStreamLimiter = rateLimit({
-    windowMs: 60 * 1000,
-    max: 300,
-    standardHeaders: true,
-    legacyHeaders: false,
-    validate: { trustProxy: false },
-});
+const shareStreamLimiter = createRateLimiter({ windowMs: 60 * 1000, max: 300 });
 
 function getMimeType(filePath: string): string {
     const ext = path.extname(filePath).toLowerCase();

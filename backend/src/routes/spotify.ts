@@ -1,7 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
 import path from "path";
-import rateLimit from "express-rate-limit";
+import { createRateLimiter } from "../middleware/rateLimiter";
 import { withRetry } from "../utils/async";
 import { logger } from "../utils/logger";
 import { requireAuthOrToken } from "../middleware/auth";
@@ -377,12 +377,9 @@ router.post("/import/:jobId/cancel", async (req, res) => {
     }
 });
 
-const m3uImportLimiter = rateLimit({
+const m3uImportLimiter = createRateLimiter({
     windowMs: 60 * 1000,
     max: 5,
-    standardHeaders: true,
-    legacyHeaders: false,
-    validate: { trustProxy: false },
     message: { error: "Too many M3U imports, please wait a minute" },
 });
 

@@ -1,20 +1,22 @@
-import rateLimit from "express-rate-limit";
+import rateLimit, { Options } from "express-rate-limit";
 
-// Trust proxy validation is disabled because this is a self-hosted app
-// running behind a reverse proxy (nginx/traefik in Docker). The app.set("trust proxy", true)
-// setting is required for proper IP detection and session cookies to work.
-// Since this is self-hosted (not a public API), IP spoofing to bypass rate limiting is not a concern.
-const trustProxyValidation = { validate: { trustProxy: false } };
+// Every limiter is built here. The app trusts its proxy chain
+// (app.set("trust proxy", true)) because it runs behind Next.js and usually a
+// reverse proxy, so express-rate-limit's warning about that setting is off.
+export function createRateLimiter(options: Partial<Options>) {
+    return rateLimit({
+        standardHeaders: true,
+        legacyHeaders: false,
+        validate: { trustProxy: false },
+        ...options,
+    });
+}
 
-// General API rate limiter (5000 req/minute per IP)
-// This is for a single-user self-hosted app, so limits should be VERY high
-// Only exists to prevent infinite loops or bugs from DOS'ing the server
-export const apiLimiter = rateLimit({
-    windowMs: 1 * 60 * 1000, // 1 minute
-    max: 5000, // Very high limit - personal app, not a public API
+// 5000 requests a minute per IP: only stops a runaway client loop.
+export const apiLimiter = createRateLimiter({
+    windowMs: 60 * 1000,
+    max: 5000,
     message: "Too many requests from this IP, please try again later.",
-    standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-    legacyHeaders: false, // Disable the `X-RateLimit-*` headers
     skip: (req) => {
         // Never rate limit streaming, status polling, or health endpoints.
         // Use req.baseUrl + req.path (not req.path alone, which is relative to
@@ -34,45 +36,30 @@ export const apiLimiter = rateLimit({
             /^\/api\/spotify\/import\/[a-zA-Z0-9_-]+\/status$/.test(fullPath)
         );
     },
-    ...trustProxyValidation,
 });
 
-// Auth limiter for login endpoints (20 attempts/15min per IP)
-// More lenient for self-hosted apps where users may have password manager issues
-export const authLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 20, // Increased from 5 for self-hosted environments
-    skipSuccessfulRequests: true, // Don't count successful requests
+// 20 failed logins per 15 minutes per IP; successful logins are not counted.
+export const authLimiter = createRateLimiter({
+    windowMs: 15 * 60 * 1000,
+    max: 20,
+    skipSuccessfulRequests: true,
     message: "Too many login attempts, please try again in 15 minutes.",
-    standardHeaders: true,
-    legacyHeaders: false,
-    ...trustProxyValidation,
 });
-
 
 // Webhook limiter (120 req/minute per IP). Requests carrying the configured
 // Lidarr secret skip it (routes/webhooks.ts marks them), so only unauthenticated
 // traffic is bounded.
-export const webhookLimiter = rateLimit({
-    windowMs: 1 * 60 * 1000, // 1 minute
+export const webhookLimiter = createRateLimiter({
+    windowMs: 60 * 1000,
     max: 120,
     message: "Too many webhook requests, please slow down.",
     skip: (_req, res) => res.locals.webhookVerified === true,
-    standardHeaders: true,
-    legacyHeaders: false,
-    ...trustProxyValidation,
 });
 
-
-// Image/Cover art limiter (very high limit: 500 req/minute)
-// This is for image proxying - not a security risk, just bandwidth
-export const imageLimiter = rateLimit({
-    windowMs: 1 * 60 * 1000, // 1 minute
-    max: 500, // Allow 500 image requests per minute (high volume pages need this)
+// 500 image requests a minute per IP: art-heavy pages load hundreds at once.
+export const imageLimiter = createRateLimiter({
+    windowMs: 60 * 1000,
+    max: 500,
     message: "Too many image requests, please slow down.",
-    standardHeaders: true,
-    legacyHeaders: false,
-    ...trustProxyValidation,
 });
-
 

@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import rateLimit from "express-rate-limit";
+import { createRateLimiter } from "../../middleware/rateLimiter";
 import { subsonicAuth } from "../../middleware/subsonicAuth";
 import { subsonicOk, subsonicError, SubsonicError } from "../../utils/subsonicResponse";
 import { scanQueue } from "../../workers/queues";
@@ -46,13 +46,9 @@ import { podcastRouter } from "./podcasts";
 
 export const subsonicRouter = Router();
 
-// Rate limit the Subsonic API separately: auth does a DB query on every request
-const subsonicLimiter = rateLimit({
-    windowMs: 60 * 1000,
-    max: 1500, // 1500 req/min per IP — Symfonium fires per-album requests during sync
-    standardHeaders: true,
-    legacyHeaders: false,
-});
+// Subsonic auth queries the database on every request. 1500 a minute per IP
+// leaves room for clients such as Symfonium that sync one album per request.
+const subsonicLimiter = createRateLimiter({ windowMs: 60 * 1000, max: 1500 });
 subsonicRouter.use(subsonicLimiter);
 
 // Normalize paths: append .view suffix if missing for client compatibility.

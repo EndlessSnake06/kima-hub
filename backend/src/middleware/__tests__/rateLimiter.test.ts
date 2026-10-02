@@ -143,3 +143,22 @@ describe('skip predicate logic -- B7 regression prevention', () => {
         expect(skip(req)).toBe(true);
     });
 });
+
+describe('createRateLimiter', () => {
+    it('raises no proxy-trust warning behind the trusted proxy chain', async () => {
+        const { createRateLimiter } = await import('../rateLimiter');
+        const errors = jest.spyOn(console, 'error').mockImplementation(() => {});
+        const app = express();
+        app.set('trust proxy', true);
+        app.use(createRateLimiter({ windowMs: 60 * 1000, max: 10 }));
+        app.get('*', (_req, res) => res.status(200).json({ ok: true }));
+
+        await request(app).get('/rest/ping.view').set('X-Forwarded-For', '10.0.0.5').expect(200);
+
+        const warned = errors.mock.calls.some((args) =>
+            args.some((a) => String((a as Error)?.message ?? a).includes('ERR_ERL_PERMISSIVE_TRUST_PROXY') ||
+                (a as { code?: string })?.code === 'ERR_ERL_PERMISSIVE_TRUST_PROXY'));
+        errors.mockRestore();
+        expect(warned).toBe(false);
+    });
+});
