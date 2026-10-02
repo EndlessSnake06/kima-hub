@@ -18,6 +18,10 @@ jest.mock("../../utils/logger", () => ({
     logger: { error: jest.fn(), warn: jest.fn(), info: jest.fn(), debug: jest.fn() },
 }));
 
+jest.mock("../../config", () => ({
+    config: { music: { musicPath: "/music" } },
+}));
+
 jest.mock("../audiobookshelf", () => ({
     audiobookshelfService: { getAllAudiobooks: jest.fn() },
 }));
@@ -25,6 +29,12 @@ jest.mock("../audiobookshelf", () => ({
 import { audiobookCacheService } from "../audiobookCache";
 import { audiobookshelfService } from "../audiobookshelf";
 import { prisma } from "../../utils/db";
+
+// No cover data on the fixture books below, so getFullCoverUrl/downloadCover
+// are never reached -- only ensureCoverCacheDir needs stubbing.
+beforeEach(() => {
+    jest.spyOn(audiobookCacheService as any, "ensureCoverCacheDir").mockResolvedValue(false);
+});
 
 afterEach(() => jest.restoreAllMocks());
 

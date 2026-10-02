@@ -16,6 +16,10 @@ jest.mock("../../utils/logger", () => ({
     logger: { error: jest.fn(), warn: jest.fn(), info: jest.fn(), debug: jest.fn() },
 }));
 
+jest.mock("../../config", () => ({
+    config: { music: { musicPath: "/music" } },
+}));
+
 jest.mock("../audiobookshelf", () => ({
     audiobookshelfService: { getAllAudiobooks: jest.fn() },
 }));
@@ -26,6 +30,7 @@ import { prisma } from "../../utils/db";
 
 beforeEach(() => {
     jest.clearAllMocks();
+    jest.spyOn(audiobookCacheService as any, "ensureCoverCacheDir").mockResolvedValue(false);
 });
 
 afterEach(() => jest.restoreAllMocks());

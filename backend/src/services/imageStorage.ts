@@ -10,11 +10,8 @@ import path from "path";
 import { logger } from "../utils/logger";
 import { config, USER_AGENT } from "../config";
 
-const IMAGE_DIRS = {
-    artist: "artists",
-    album: "albums",
-    audiobook: "audiobooks",
-} as const;
+const ARTIST_IMAGES_DIR = "artists";
+const ALBUM_IMAGES_DIR = "albums";
 
 /**
  * Get the base covers directory path
@@ -42,12 +39,11 @@ function ensureCoversDir(subdir: string): string {
 export async function downloadAndStoreImage(
     url: string,
     id: string,
-    type: keyof typeof IMAGE_DIRS,
-    headers: Record<string, string> = {}
+    type: "artist" | "album"
 ): Promise<string | null> {
     if (!url) return null;
 
-    const subdir = IMAGE_DIRS[type];
+    const subdir = type === "artist" ? ARTIST_IMAGES_DIR : ALBUM_IMAGES_DIR;
     const dirPath = ensureCoversDir(subdir);
     const filename = `${id}.jpg`;
     const filePath = path.join(dirPath, filename);
@@ -58,7 +54,6 @@ export async function downloadAndStoreImage(
         const response = await fetch(url, {
             headers: {
                 "User-Agent": USER_AGENT,
-                ...headers,
             },
             signal: AbortSignal.timeout(30000),
         });
@@ -158,12 +153,12 @@ export async function checkLocalArtistImage(
             const lstat = await fs.promises.lstat(filePath);
             if (lstat.isSymbolicLink()) continue;
             if (lstat.isFile() && lstat.size > 1000) {
-                const dirPath = ensureCoversDir(IMAGE_DIRS.artist);
+                const dirPath = ensureCoversDir(ARTIST_IMAGES_DIR);
                 const ext = path.extname(filename);
                 const cachePath = path.join(dirPath, `${artistId}${ext}`);
                 await fs.promises.copyFile(filePath, cachePath);
                 logger.debug(`[ImageStorage] Local artist image found: ${filePath}`);
-                return `native:${IMAGE_DIRS.artist}/${artistId}${ext}`;
+                return `native:${ARTIST_IMAGES_DIR}/${artistId}${ext}`;
             }
         } catch {}
     }
