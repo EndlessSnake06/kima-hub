@@ -79,8 +79,11 @@ class TestOnxParity(unittest.TestCase):
         cls.backend = OnnxCLAPBackend(model_path=ONNX_MODEL_PATH)
 
     def _load(self, path):
+        # One 10 s window, as the analyzer feeds it. Longer audio would make the
+        # reference processor take a random crop on every run.
         import librosa
-        return librosa.load(path, sr=48000, mono=True, res_type='soxr_vhq')[0]
+        return librosa.load(path, sr=48000, mono=True, res_type='soxr_vhq',
+                            duration=10.0)[0]
 
     def _torch_reference(self, audio):
         """HF torch reference: ClapProcessor + ClapAudioModelWithProjection."""
