@@ -1,17 +1,7 @@
 /**
- * GET /audiobooks/:id/cover -- the unauthenticated file read.
- *
- * The route built `${req.params.id}.jpg` onto the music root and sendFile'd the
- * result. Express decodes %2F in a route param AFTER matching, so an id of
- * "..%2F..%2F..%2Fetc%2Fx" is real traversal by the time the handler sees it.
- * This route carries no auth -- auth in audiobooks.ts is applied per-route and
- * this is not one of them, and nothing authenticates ahead of the
- * /api/audiobooks mount -- so it was an unauthenticated read of any .jpg the
- * process could reach.
- *
- * This test writes a real file outside the music root and asks for it through
- * the route. No filesystem mocking: the point is whether the process will
- * actually hand over a file it should not, so the file is really there.
+ * GET /audiobooks/:id/cover is unauthenticated and must not serve a file outside
+ * the covers folder; Express decodes %2F in a param after matching. A real file
+ * outside the root is planted and requested.
  */
 
 jest.mock("../../utils/db", () => ({

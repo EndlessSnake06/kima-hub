@@ -1,12 +1,6 @@
 /**
- * GET /albums ordering.
- *
- * Same defect family as artists.sort.route.test.ts, on Album this time:
- * `ALBUM_SORT_MAP`'s `name`/`name-desc` entries ordered on the raw `title`,
- * so "The Dark Side of the Moon" filed under T. Unlike
- * routes/library/artists.ts, there is no raw-SQL branch here bypassing the
- * map for the default sortBy -- checked directly against the source, not
- * assumed from the artist file's shape.
+ * GET /albums sorts by name on `sortName`, so "The Dark Side of the Moon" files
+ * under D.
  */
 
 jest.mock('../../../middleware/auth', () => ({

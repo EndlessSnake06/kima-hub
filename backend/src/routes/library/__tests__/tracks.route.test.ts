@@ -1,11 +1,6 @@
 /**
- * Tracks route tests -- GET /tracks/:id + toAudioFeaturesDTO field mapping.
- *
- * Tests:
- *   - GET /tracks/:id with analyzed track returns 200 with all 15 audio feature fields
- *   - GET /tracks/:id with un-analyzed track returns 200 with null audio features
- *   - GET /tracks/:id with unknown id returns 404
- *   - List transform at :1770 yields identical shape as toAudioFeaturesDTO
+ * GET /tracks/:id with all 15 audio feature fields, with null features when
+ * unanalysed, 404 for an unknown id, and the list transform's matching shape.
  */
 
 // All mocks must be before imports

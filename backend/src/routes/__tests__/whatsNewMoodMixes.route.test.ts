@@ -1,14 +1,7 @@
 /**
- * The 1.11 release window's mood-mix question: rebuild, keep, save as playlist.
- *
- * Mood mixes saved before 1.11 were picked from inverted mood heads. Nothing
- * may be wiped until the user chooses, every endpoint must be safe to repeat,
- * and a bad mix id is a 404, never a 500.
- *
- * Runs against the real per-worker database: the behaviour under test is which
- * rows exist afterwards (the mix, the playlist, its ranked items, the recorded
- * choice), which a mocked prisma could only re-assert. Only auth and Redis are
- * stubbed.
+ * The release window's mood-mix choice (rebuild, keep, save as playlist): nothing
+ * is wiped before the user chooses, every endpoint is safe to repeat, and a bad
+ * mix id is 404. Real database; auth and Redis are stubbed.
  */
 
 jest.mock("../../middleware/auth", () => ({

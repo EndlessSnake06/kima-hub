@@ -1,17 +1,6 @@
 /**
- * Playlist Route IDOR and Ownership Tests
- *
- * The core security property under test: playlist mutations (PUT, DELETE,
- * add/remove tracks) enforce ownership. A user must not be able to modify
- * or delete a playlist they don't own.
- *
- * Each test verifies TWO things:
- *   1. The correct HTTP status code (403)
- *   2. That the database write (update/delete) was NOT called -- the ownership
- *      check must reject BEFORE the DB mutation, not after.
- *
- * The second assertion is the critical one. A test that only checks status
- * codes would pass even if the DB write happened before the 403 was returned.
+ * Playlist mutations check ownership: a non-owner gets 403, and the update or
+ * delete is never called.
  */
 
 jest.mock('../../utils/db', () => ({

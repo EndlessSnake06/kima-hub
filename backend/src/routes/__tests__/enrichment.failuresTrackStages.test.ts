@@ -1,14 +1,6 @@
 /**
- * /enrichment/failures routes surface track-stage failures from TrackStage.
- *
- * The list and the counts used to read only the older EnrichmentFailure
- * ledger, while the engine wrote track-stage failures to TrackStage — the
- * record the queue actually decides from. One record per fact: the routes go
- * through the TrackStage-backed service, and the response shape the settings
- * UI consumes is unchanged.
- *
- * Run with:
- *   npx jest src/routes/__tests__/enrichment.failuresTrackStages.test.ts --forceExit --maxWorkers=1
+ * The /enrichment/failures routes read track-stage failures from TrackStage,
+ * in the response shape the settings UI uses.
  */
 
 jest.mock("../../middleware/auth", () => ({

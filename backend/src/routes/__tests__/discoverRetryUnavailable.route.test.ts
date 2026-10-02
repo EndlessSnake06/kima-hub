@@ -1,33 +1,8 @@
 /**
- * Task 6 adversarial route tests -- POST /discover/retry-unavailable must route
- * its background processing through the PROVEN completion flow
- * (discoverWeeklyService.checkBatchCompletion), NOT the broken force-complete
- * subset it currently reimplements.
- *
- * Doctrine: failure / edge / boundary paths FIRST, happy path LAST.
- *
- * The confirmed production defect (plan Task 6):
- *   The retry IIFE downloads albums, then (a) queues a scan with
- *   source:"discover-retry-unavailable" -- but scanProcessor only builds the
- *   playlist for source==="discover-weekly-completion" -- and (b) force-sets the
- *   batch status to "completed" itself. buildFinalPlaylist reads
- *   downloadJob.findMany({status:"completed"}); Lidarr jobs finish ASYNC after
- *   the scan, so a bare force-complete ships an EMPTY playlist and marks the
- *   batch done while imports are still in flight. checkBatchCompletion is the one
- *   path that owns the Lidarr wait + the completion-source scan + reconcile.
- *
- * The fix also adds a top-level `.catch` to the previously unguarded
- * fire-and-forget IIFE so a crash in background processing marks the batch
- * `failed` ("Retry processing crashed") instead of leaving it stuck.
- *
- * Each assertion targets a SPECIFIC discriminator that can ONLY be produced by
- * the Task-6 code path, so the test cannot pass against the unmodified handler:
- *   - checkBatchCompletion(batch.id) MUST be invoked (the unmodified handler
- *     never imports discoverWeeklyService at all).
- *   - The handler MUST NOT force-set status:"completed" itself, and MUST NOT
- *     enqueue the dead-end "discover-retry-unavailable" scan.
- *   - On a background crash, the IIFE's .catch MUST write
- *     status:"failed" + errorMessage:"Retry processing crashed".
+ * POST /discover/retry-unavailable downloads the albums, saves the counts, then
+ * hands the batch to checkBatchCompletion, which waits for Lidarr imports. It
+ * never marks the batch completed itself, and any crash in the background work
+ * marks it failed ("Retry processing crashed"). Failure and edge paths first.
  */
 
 // All mocks before imports.
@@ -150,11 +125,8 @@ const RETRY_JOB = {
 };
 
 /**
- * The IIFE runs fire-and-forget AFTER res.json(); supertest resolves on response
- * end, before the background work settles. Poll until a `predicate` observes the
- * mock state the IIFE produces, advancing timers so any internal awaits flush.
- * Throws (rather than hanging) if the predicate never holds, so a regression
- * reads as an explicit timeout, not a silent pass.
+ * The background work runs after the response, so poll until `predicate` holds,
+ * advancing timers. Throws when it never does.
  */
 async function waitFor(predicate: () => boolean, label: string): Promise<void> {
     for (let i = 0; i < 50; i++) {
@@ -209,11 +181,7 @@ describe('POST /discover/retry-unavailable -- routes through checkBatchCompletio
     });
 
     it('CRASH PATH: a rejected checkBatchCompletion is caught and marks the batch failed', async () => {
-        // The IIFE was previously unguarded fire-and-forget. The Task-6 top-level
-        // .catch must convert ANY background crash into status:"failed" with the
-        // distinguishing errorMessage "Retry processing crashed". We force the
-        // handoff itself to reject (the deepest background await) to prove the
-        // catch wraps the WHOLE IIFE, not just the acquire loop.
+        // The handoff rejects, the last await, and the batch is marked failed.
         primeHandlerPreResponse();
         mockAcquireAlbum.mockResolvedValue({ success: true });
         mockCheckBatchCompletion.mockRejectedValue(new Error('reconcile exploded'));
@@ -242,11 +210,8 @@ describe('POST /discover/retry-unavailable -- routes through checkBatchCompletio
     });
 
     it('NO FORCE-COMPLETE: the handler never self-sets status:"completed" (that is checkBatchCompletion\'s job)', async () => {
-        // The core defect: the old IIFE force-set the batch to "completed" itself,
-        // shipping an empty playlist before async Lidarr imports landed. After the
-        // fix, the handler must hand off and let checkBatchCompletion own the
-        // terminal transition -- so NO discoveryBatch.update with
-        // status:"completed" may originate from this handler.
+        // checkBatchCompletion owns the terminal transition; this handler never
+        // writes status "completed".
         primeHandlerPreResponse();
         mockAcquireAlbum.mockResolvedValue({ success: true });
         mockCheckBatchCompletion.mockResolvedValue(undefined);
@@ -365,27 +330,12 @@ describe('POST /discover/retry-unavailable -- routes through checkBatchCompletio
         expect(mockAcquireAlbum).toHaveBeenCalledTimes(1);
     });
 
-    // ---------------------------------------------------------------------
-    // CRITIC ADDITIONS (gap closure). The five tests above pin the handoff,
-    // the no-self-complete, the no-dead-end-scan, and one crash shape. They do
-    // NOT pin: (a) that the completed/failed COUNTS are actually persisted to
-    // the batch before the handoff -- Step 1's update at plan lines 559-563 --
-    // so a handoff that ships uncounted progress still passes; (b) that the
-    // acquire loop runs BEFORE the handoff -- a broken impl calling
-    // checkBatchCompletion first (empty batch) still passes the happy path;
-    // (c) that the Step-2 .catch wraps the WHOLE IIFE -- the crash test only
-    // rejects checkBatchCompletion (the deepest await), so a narrow local
-    // try/catch around just that call would pass while a PRE-handoff crash
-    // (downloadJob.findMany / the count update) leaks unhandled and never
-    // marks the batch failed; (d) that the handoff happens exactly once.
-    // ---------------------------------------------------------------------
+    // Counts are saved before the handoff, the downloads run before it, the
+    // crash handler covers the whole background job, and the handoff runs once.
 
     it('COUNTS PERSISTED: the completed/failed tally is written to the batch BEFORE handing off', async () => {
-        // Plan Step 1: the fix must
-        //   prisma.discoveryBatch.update({ data:{ completedAlbums, failedAlbums }})
-        // and THEN call checkBatchCompletion. A broken impl that hands off without
-        // persisting the tally would ship a batch whose progress is wrong/zero.
-        // One success + one failure => completedAlbums:1, failedAlbums:1.
+        // One success and one failure: completedAlbums 1, failedAlbums 1, saved
+        // before checkBatchCompletion.
         (prisma.discoveryBatch.findFirst as jest.Mock)
             .mockResolvedValueOnce({ weekStart: new Date('2026-05-18T00:00:00.000Z') })
             .mockResolvedValueOnce(null);
@@ -472,17 +422,8 @@ describe('POST /discover/retry-unavailable -- routes through checkBatchCompletio
     });
 
     it('PRE-HANDOFF CRASH: a failure BEFORE the handoff still marks the batch failed (catch wraps the whole IIFE)', async () => {
-        // The existing crash test rejects checkBatchCompletion -- effectively the
-        // LAST await in the IIFE. That passes even if the .catch only wraps the
-        // handoff call. Step 2 requires the .catch to wrap the ENTIRE IIFE. Force
-        // a crash in an await that runs INSIDE the IIFE but BEFORE the handoff:
-        // the post-loop count update (Step 1's
-        //   discoveryBatch.update({ data:{ completedAlbums, failedAlbums }})).
-        // We make THAT update reject while the later failed-status update (driven
-        // by the .catch) resolves. A narrow local catch around only
-        // checkBatchCompletion leaves this crash unhandled and the test times out
-        // -- the correct failure signal. The whole-IIFE .catch must still write
-        // status:"failed" / "Retry processing crashed".
+        // The count update, before the handoff, rejects; the batch is still
+        // marked failed.
         primeHandlerPreResponse();
         mockAcquireAlbum.mockResolvedValue({ success: true });
         mockCheckBatchCompletion.mockResolvedValue(undefined);

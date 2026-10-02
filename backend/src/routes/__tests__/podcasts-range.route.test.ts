@@ -1,9 +1,5 @@
-// Podcast range policy tests -- spec 1.7 / B8 / B11 (podcasts half).
-//
-// Covers the cached-path range handling:
-//   - unsatisfiable range  -> 416 with Content-Range: bytes */{fileSize}
-//   - multi-range          -> 200 full body
-//   - valid range          -> 206 with the requested slice
+// Range handling on cached podcast files: unsatisfiable → 416 with
+// Content-Range, multi-range → 200 full body, valid → 206 slice.
 
 // Dynamic import of podcastDownload inside the route handler -- mock it.
 jest.mock('../../services/podcastDownload', () => ({

@@ -1,26 +1,7 @@
 /**
- * No Subsonic path may be registered twice.
- *
- * Nine were. Express dispatches in registration order, so the first router to
- * mount won and the later one was dead code that looked live -- and it picked
- * the worse implementation nearly every time:
- *
- *   - createBookmark / deleteBookmark / getBookmarks: empty stubs in compat.ts
- *     shadowed the real implementation in playback.ts, so Symfonium and DSub got
- *     "ok" for every save and an empty list back. Bookmarks silently vanished.
- *   - getTopSongs: the live copy derived from play.groupBy, so a library with no
- *     Play rows returned nothing forever; the shadowed one LEFT JOINs Play.
- *   - getSimilarSongs / getSimilarSongs2: the live copy took an UNORDERED slice
- *     and shuffled it, which returns the same physical rows every call.
- *   - getLyrics: the live copy emitted the correct XML attribute shape, the
- *     shadowed one emitted child elements.
- *   - savePlayQueue / getPlayQueue: the two copies used DIFFERENT TABLES, and
- *     indexBasedQueue is advertised, so a client saved into one and read from
- *     the other.
- *
- * A shadowed route is invisible: it type-checks, it is covered by tests that
- * import it directly, and nothing at runtime says the request never reached it.
- * This asserts the property instead of relying on someone noticing.
+ * No Subsonic path is registered twice. Express runs the first match, so a
+ * second registration is dead code that looks live, and the shadowed one was
+ * often the working implementation.
  */
 
 import fs from "fs";

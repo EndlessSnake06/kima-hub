@@ -1,24 +1,7 @@
 /**
- * Task 7 Step 5 adversarial route tests -- POST /discover/like must be SYMMETRIC
- * to the cleanup claim guard. The find-then-update /like was a non-atomic race:
- * it `findFirst({status:"ACTIVE"})` then bare `update({where:{id}})` with no
- * status condition, so an interleaved cleanup that flipped the row to DELETED
- * (and deleted its files) could be RESURRECTED to LIKED by the bare update,
- * leaving a liked album whose tracks were already gone.
- *
- * The fix (discover.ts:612-624) replaces the bare update with a CONDITIONAL
- * claim -- updateMany({where:{id,status:"ACTIVE"},data:{status:"LIKED",...}}) --
- * and returns 409 / code:"ALBUM_GONE" when the claim matches 0 rows (the row was
- * concurrently removed). This is the most important behavioral change of the
- * task and previously had ZERO test coverage.
- *
- * Doctrine: failure / boundary path FIRST, happy path LAST. Each assertion
- * targets a discriminator that can ONLY be produced by the conditional-claim
- * code path, so the test cannot pass against the legacy bare-update handler:
- *   - count 0 -> HTTP 409 with code "ALBUM_GONE" (the bare update returns 200).
- *   - count 0 -> NO Lidarr tag-removal runs (the guard returns before it).
- *   - count 1 -> HTTP 200 and the claim where-clause was {id,status:"ACTIVE"}
- *     (the bare update used {id} only -- the missing status condition is the bug).
+ * POST /discover/like claims the album only while it is still ACTIVE, so a
+ * concurrent cleanup cannot be undone. A lost claim answers 409 ALBUM_GONE and
+ * skips the Lidarr tag removal. Failure path first.
  */
 
 // All mocks before imports.

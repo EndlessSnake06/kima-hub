@@ -1,19 +1,7 @@
 /**
- * Router-level smoke for /api/public/vibe — mounted EXACTLY as index.ts does it,
- * so this proves the wiring end to end: a disabled feature 404s, an enabled
- * feature serves 200, the SSE /stream opens and emits a data frame, and /map
- * carries an ETag.
- *
- * This exercises the REAL publicVibe router (withPublic gate + handlers), not a
- * re-implementation. prisma, the service layer, the embedding path, and remote
- * artwork lookups are mocked at their boundaries, so the assertions sit
- * on the routing/gate/response-shape logic — the mount + gate that a plain DB
- * run cannot reach. /cover additionally walks the REAL filesystem under a
- * per-run temp covers root (see smokeRoot), so its resolution/ETag/304/escape
- * contract is asserted against actual bytes, not a stand-in. The disabled
- * surface 404s from the gate (not a missing
- * route), and every enabled path is asserted against the full
- * /api/public/vibe mount path, just like chevron7.io.
+ * /api/public/vibe mounted as index.ts mounts it: disabled → 404 from the gate,
+ * enabled → 200, /stream sends a data frame, /map carries an ETag, and /cover
+ * reads real files under a temp root. Prisma and services are mocked.
  */
 
 const enabledPayload = {

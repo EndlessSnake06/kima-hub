@@ -1,14 +1,7 @@
 /**
- * The GPU question in the release window.
- *
- * The window records a decision; the route is what turns that decision into a
- * system setting, through the same service the Settings toggle uses. That makes
- * a per-user endpoint a door into a system-wide one, so the admin check and the
- * "apply before you record" order are the behaviour under test. Dismissal must
- * never touch the toggle: closing a window is not a retraction.
- *
- * Runs against the real per-worker database (the claim is which rows exist
- * afterwards). Only auth, Redis and the GPU service itself are stubbed.
+ * The release window's GPU choice: admin only, applied through the Settings
+ * service before it is recorded, and dismissing never changes the toggle. Real
+ * database; auth, Redis and the GPU service are stubbed.
  */
 
 jest.mock("../../middleware/auth", () => ({

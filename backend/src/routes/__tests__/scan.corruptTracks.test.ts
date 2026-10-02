@@ -1,16 +1,5 @@
 /**
- * `DELETE /library/corrupt-tracks` must never delete Track rows
- * ("a track whose file
- * is missing is never deleted — its flag is set and its true state shown").
- *
- * The old handler ran `deleteMany({ where: { corrupt: true } })`, which
- * deleted real state: the file still exists, the next scan would only
- * re-create the row, and every stage answer recorded against it was lost
- * with it. The current handler clears the flag and keeps the row; this
- * proves the row persists through the clear and that the true state is
- * shown before and after.
- *
- * Run: cd backend && npx jest src/routes/__tests__/scan.corruptTracks.test.ts --forceExit --maxWorkers=1
+ * DELETE /library/corrupt-tracks clears the corrupt flag and keeps the rows.
  */
 
 const mockScanAdd = jest.fn().mockResolvedValue({ id: "scan-1" });

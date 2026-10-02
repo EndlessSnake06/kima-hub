@@ -1,15 +1,6 @@
 /**
- * The track and artist DELETE routes must not act on a path outside the music
- * root.
- *
- * The guard itself is unit-tested in trackPath.test.ts, but a helper test stays
- * green if a route stops calling the helper -- which is exactly how this class
- * of bug arrived in the first place (an unguarded join carried along when code
- * moved). These are route-level: they plant a traversing value in the data the
- * route reads and assert nothing outside the root is touched.
- *
- * Artist deletion is the sharp one: it is the path with two
- * rmSync(recursive, force) calls, and `artist.name` is an ID3 tag value.
+ * The track and artist DELETE routes touch nothing outside the music root, even
+ * when the stored path or artist name (an ID3 tag) traverses.
  */
 
 jest.mock('../../../utils/db', () => ({

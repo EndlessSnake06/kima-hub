@@ -1,16 +1,7 @@
 /**
- * S2 route regression: "similar tracks" for a seed with no CLAP fingerprint
- * must not answer 200 with ~`limit` arbitrary tracks.
- *
- * The service-level contract (empty seed => []) lives in
- * services/__tests__/hybridSimilarity.nullhandling.test.ts; this file proves
- * what a client actually receives: the two vibe routers already carried an
- * empty-result => 404 branch (dead until the service started returning []),
- * and recommendations learns the same branch. Everything here is REAL -- the
- * routers, the hybridSimilarity service and the test DB -- with only auth,
- * redis, the logger and featureDetection's mode pin mocked at the boundary
- * (the DB-backed CLAP mode must not depend on whatever flags the test DB
- * happens to carry).
+ * "Similar tracks" for a seed with no embedding answers 404, not arbitrary
+ * tracks, on the vibe and recommendations routes. Real routers, service and
+ * database; auth, redis, logger and featureDetection are mocked.
  */
 
 import express from "express";

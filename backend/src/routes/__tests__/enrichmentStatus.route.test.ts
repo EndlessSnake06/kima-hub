@@ -1,11 +1,6 @@
 /**
- * GET /enrichment/status -- surfaces the hang class the operator's
- * sweep monitoring needs.
- *
- * status=running + nothing moved (honest lastActivity) for >15 min must
- * read `hung: true` so the settings UI can show the stall instead of a
- * forever-spinner. This is the observable contract of the heartbeat-honesty
- * fix: a wedged loop can no longer claim "running" with a fresh heartbeat.
+ * GET /enrichment/status reports `hung: true` when it has been running for over
+ * 15 minutes with no activity.
  */
 jest.mock("../../middleware/auth", () => ({
     requireAuth: (req: any, _res: any, next: any) => {

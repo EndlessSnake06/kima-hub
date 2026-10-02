@@ -1,18 +1,6 @@
 /**
- * Artist list ordering.
- *
- * `GET /artists` had no coverage, which is how the defect this pins survived:
- * `sortBy=name` and `name-desc` -- the alphabetical path, and the default --
- * do NOT use `ARTIST_SORT_MAP`. They take a raw-SQL branch that computed its
- * own order with `REGEXP_REPLACE(TRIM(a.name), '^the\s+', ...)`, stripping one
- * English article where the rest of the system strips eleven across four
- * languages, and skipping the unaccent that `sortName` carries. Changing the
- * Prisma sort map alone left that path untouched.
- *
- * These assert the SQL TEXT, which is what they can honestly prove: that the
- * query orders on the canonical stored column rather than recomputing a weaker
- * key inline. That the column then sorts correctly in Postgres is a separate
- * fact, verified directly against the database rather than here.
+ * GET /artists orders by name on the stored `sortName`, not on an article
+ * stripped inline. The tests check the SQL text.
  */
 
 jest.mock('p-limit', () => () => (fn: (...args: any[]) => any) => fn());

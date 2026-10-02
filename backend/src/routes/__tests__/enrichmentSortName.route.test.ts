@@ -1,20 +1,7 @@
 /**
- * sortName write-time sync, for both artist and album overrides:
- * PUT/POST /enrichment/artists/:id/{metadata,reset} and the same pair for
- * /albums.
- *
- * `sortName` means "where this row files alphabetically", and every listing
- * in the codebase now reads it directly (see
- * routes/subsonic/__tests__/library.sort.route.test.ts and
- * routes/library/__tests__/{artists,albums}.sort.route.test.ts). But it is
- * computed from the canonical field alone (`name` / `title`) -- an admin
- * override to `displayName` / `displayTitle` used to leave it untouched, so
- * a renamed row would keep filing under the name the override was meant to
- * replace, in every listing at once. These four handlers are the only
- * writers of `displayName`/`displayTitle`, so they are the only places that
- * can keep `sortName` in sync with them. The album half repeats the exact
- * defect shipped for artists in be01529 and fixed in 23a2283 -- see that
- * commit and routes/enrichment.ts's own comments at each site for why.
+ * The artist and album metadata override and reset handlers keep `sortName` in
+ * step with displayName / displayTitle. They are its only writers, and every
+ * listing orders on it.
  */
 
 jest.mock('../../middleware/auth', () => ({

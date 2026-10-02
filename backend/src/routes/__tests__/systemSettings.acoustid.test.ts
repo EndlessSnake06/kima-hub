@@ -1,15 +1,6 @@
 /**
- * AcoustID settings round-trip.
- *
- * Singleton-row lesson: asserting the
- * WRITE side proves nothing if the READ path selects different columns.
- * This test writes an acoustidApiKey through POST /system-settings and
- * asserts GET / returns the stored plaintext — the full write->encrypt->
- * store->read->decrypt loop.
- *
- * The route imports real encrypt/safeDecrypt (utils/encryption), so the
- * AES round-trip itself is exercised. Prisma is mocked at the boundary:
- * POST encrypts and upserts; GET reads what the upsert stored.
+ * An acoustidApiKey saved through POST /system-settings comes back from GET as
+ * the plaintext, through the real encryption. Prisma is mocked.
  */
 
 jest.mock("../../utils/db", () => ({

@@ -154,13 +154,7 @@ describe('GET /tracks/:id/stream -- no per-user eviction (spec 1.1)', () => {
 });
 
 // ── A stream request is not a listen ──────────────────────────────────────────
-//
-// This replaces "play-log claim release on failure (spec 1.9)", which tested a
-// background insert on the stream endpoint plus the in-process claim that kept
-// concurrent requests from double-writing it. All of that is gone: requesting
-// bytes was never evidence anyone listened, so skipping an album wrote a play
-// per track. The judgement now lives in services/playRecording.ts, fed by
-// whoever knows how much was actually heard.
+// Plays are recorded by services/playRecording.ts from what was actually heard.
 
 describe('the stream endpoint records no plays', () => {
     let app: express.Application;
@@ -215,10 +209,7 @@ describe('the stream endpoint records no plays', () => {
 });
 
 // ── A track the scan flagged missing is not streamable ───────────────────────
-//
-// The scan never deletes a vanished file's row (its flag is
-// set and its true state shown). Streaming that row used to fall through to the
-// file open and answer a generic 500; the flag deserves a clear not-found.
+// It answers not-found instead of failing on the file open.
 
 describe('a track flagged missing from disk', () => {
     let app: express.Application;

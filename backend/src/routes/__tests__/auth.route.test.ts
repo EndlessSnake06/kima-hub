@@ -1,15 +1,7 @@
 /**
- * Auth Route Integration Tests
- *
- * Uses supertest against a minimal Express app (no Redis, no session store)
- * with mocked Prisma. Tests the observable behavior of each auth route:
- * correct status codes, response shapes, and -- crucially -- that the routes
- * behave identically for "wrong password" and "nonexistent user" to prevent
- * username enumeration.
- *
- * Does NOT test JWT library internals (that's jsonwebtoken's job). Tests that
- * the routes react correctly when given invalid tokens, expired tokens, and
- * tokens with mismatched tokenVersion.
+ * Auth routes on a minimal app with mocked Prisma: status codes, response
+ * shapes, identical answers for a wrong password and an unknown user, and
+ * invalid, expired or revoked tokens.
  */
 
 // All mocks must be before imports -- jest.mock is hoisted
@@ -348,14 +340,8 @@ describe('DELETE /auth/account', () => {
     });
 
     it('stops the deleted account authenticating immediately, not 30 seconds later', async () => {
-        // The defect this pins: `loadUser` caches the user row for 30s and never
-        // re-checks existence, so deleting the row is not enough -- the token of
-        // the account just deleted keeps working until the TTL lapses. The admin
-        // delete route fixes it by invalidating the cache and says so in a
-        // comment; the self-delete route added below it did not.
-        //
-        // Written as a sequence rather than a spy because the observable that
-        // matters is "does this token still work", not "was a function called".
+        // loadUser caches the user for 30s, so self-delete must clear the cache
+        // or the deleted account's token keeps working.
         const token = tokenFor('user');
         (prisma.user.findUnique as jest.Mock).mockResolvedValue(BASE_USER);
         (prisma.user.delete as jest.Mock).mockResolvedValue({});
@@ -363,11 +349,8 @@ describe('DELETE /auth/account', () => {
             async (fn: (tx: unknown) => Promise<unknown>) =>
                 fn({
                     user: { count: jest.fn().mockResolvedValue(2), delete: prisma.user.delete },
-                    // v1 still has UserMoodMix and DiscoveryBatch, and the route
-                    // clears both by hand before deleting the user because
-                    // neither declares a cascading relation. Upstream's version
-                    // of this test omits them because upstream removed both
-                    // tables with the mood-mix and discovery tear-outs.
+                    // UserMoodMix and DiscoveryBatch have no cascade, so the route
+                    // clears them before deleting the user.
                     userMoodMix: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
                     discoveryBatch: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
                 })

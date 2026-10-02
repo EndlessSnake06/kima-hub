@@ -1,15 +1,6 @@
 /**
- * POST /mixes/:id/save -- every PlaylistItem it writes must carry a distinct
- * `rank`.
- *
- * `rank` is UNIQUE per playlist with an empty-string default. An insert that
- * omits it leaves every row at "" and the unique index rejects all but the
- * first -- silently, because createMany's skipDuplicates behaviour swallows the
- * rejection. Saving a 12-track mix would answer `trackCount: 12` while storing
- * one track.
- *
- * The upstream rebuild never hit this because it deleted this endpoint. This
- * line keeps it, so the endpoint has to assign ranks itself.
+ * POST /mixes/:id/save gives every PlaylistItem a distinct `rank`. The column is
+ * unique per playlist, and createMany's skipDuplicates would drop the rest.
  */
 
 jest.mock('../../utils/db', () => ({

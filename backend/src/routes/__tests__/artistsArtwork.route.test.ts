@@ -1,23 +1,7 @@
 /**
- * The two discovery routes had four places that went looking for a picture, and
- * not one of them asked more than a couple of sources.
- *
- * The artist image and the similar-artist images each spelled out their own
- * Fanart-then-Deezer-then-Last.fm chain. The discography built
- * `coverartarchive.org/release-group/<id>/front-500` as a string per album and
- * shipped it without ever asking whether that picture existed -- measured on 39
- * real albums, that address loads for 21 of them. The album route did the same
- * and then, when both the archive and Deezer came up empty, sent the archive
- * address anyway under a comment reading "might 404, but better than nothing".
- *
- * It is not better than nothing: the browser takes the 404, the page shows a
- * broken box, and because that request goes to coverartarchive.org rather than
- * to this server, nothing is ever logged here.
- *
- * All four go through `artwork.ts` now. This file proves the wiring at each,
- * and that no response from either route still carries a guessed address.
- *
- * Doctrine: the failure and boundary paths first, the happy path last.
+ * The artist image, similar-artist images, discography and album routes all get
+ * artwork through `artwork.ts`, and no response carries a guessed Cover Art
+ * Archive address. Failure and boundary paths first, happy path last.
  */
 
 jest.mock("../../utils/logger", () => ({

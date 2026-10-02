@@ -1,17 +1,7 @@
 /**
- * The cover-art route had two places that asked one provider and gave up.
- *
- * `/cover-art/native:<id>.jpg` falls here when the stored file has gone missing
- * from disk; it asked Deezer and nothing else. `/album-cover/:mbid` asked the
- * Cover Art Archive and nothing else -- and the archive has art for about half
- * the release groups people ask about (21 of 39, measured on a real library).
- *
- * Both go through `artwork.ts` now. What is proved here is the wiring, and the
- * detail the change turned on: `/album-cover/:mbid` looks the album up so the
- * sources have an artist and a title to search Deezer with. Without those two
- * fields that endpoint can still only ask the archive, which is the bug.
- *
- * Doctrine: the failure and boundary paths first, the happy path last.
+ * `/cover-art/native:<id>.jpg` (file missing on disk) and `/album-cover/:mbid`
+ * go through `artwork.ts`; the latter looks up the album so Deezer can be
+ * searched by artist and title. Failure and boundary paths first.
  */
 
 jest.mock("../../utils/db", () => ({

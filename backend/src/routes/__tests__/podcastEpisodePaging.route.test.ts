@@ -1,15 +1,6 @@
 /**
- * GET /podcasts/:id must not return a show's entire back catalogue.
- *
- * The detail query had an orderBy and no take, while the subscription list
- * beside it was already bounded. Measured upstream against a real feed: The
- * Daily returned 2,944 episodes and 6.27 MB in one response, every time the
- * screen opened, because the payload grew with the show's AGE rather than with
- * what anyone reads.
- *
- * `episodes` keeps its name and stays newest-first so a client that predates
- * paging still renders; these tests pin that, the cap, and the companion
- * endpoint that serves the rest.
+ * GET /podcasts/:id caps `episodes`, newest first, so old clients still render;
+ * the paging endpoint serves the rest.
  */
 
 jest.mock('../../utils/db', () => ({

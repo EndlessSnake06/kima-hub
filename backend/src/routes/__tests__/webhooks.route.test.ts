@@ -1,13 +1,7 @@
 /**
- * Webhook Route Tests
- *
- * Tests the Lidarr webhook endpoint (/webhooks/lidarr) using supertest.
- * Covers: Lidarr-disabled guard, webhook secret validation, accepted event
- * types, unknown event types, and missing fields.
- *
- * Event processing is asynchronous (fire-and-forget after the 200 response),
- * so we test the HTTP surface only and verify the downstream services are
- * called via mocks on the happy paths.
+ * POST /webhooks/lidarr: the Lidarr-disabled guard, secret check, event types
+ * and missing fields. Processing runs after the 200, so only the HTTP surface
+ * and the calls into mocked services are checked.
  */
 
 // All mocks must be before imports

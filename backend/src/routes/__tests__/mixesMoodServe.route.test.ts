@@ -1,12 +1,6 @@
 /**
- * GET /mixes/mood/buckets/:mood remembers what it served.
- *
- * The route hands the caller the exact ids it drew, so it owns the
- * remember-what-was-served contract: each serving is stored on the caller's
- * UserMoodMix row (`servedTrackIds`), and the next serving for the same mood
- * excludes the remembered ids, so regenerating never replays the same mix.
- *
- * Run with: npx jest mixesMoodServe.route.test.ts
+ * GET /mixes/mood/buckets/:mood stores the ids it served on the caller's
+ * UserMoodMix and excludes them from the next serving.
  */
 
 const store = new Map<string, string>();

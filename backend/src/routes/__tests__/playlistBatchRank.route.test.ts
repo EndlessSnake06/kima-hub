@@ -1,15 +1,7 @@
 /**
- * POST /playlists/:id/items/batch must insert through the shared rank
- * allocator, not with its own createMany.
- *
- * `rank` is UNIQUE per playlist with an empty-string default. This endpoint
- * used to write only `sort`, so every row landed on the single "" slot and
- * createMany({ skipDuplicates: true }) silently dropped all but the first: a
- * 50-track request answered `added: 1` while storing one track, and every later
- * batch into the same playlist stored nothing.
- *
- * The regression this pins is someone reintroducing a local insert here. The
- * allocator's own correctness lives in playlistService + lexoRank tests.
+ * POST /playlists/:id/items/batch inserts through the shared rank allocator.
+ * `rank` is unique per playlist, and a local createMany with skipDuplicates
+ * would keep only the first track.
  */
 
 jest.mock('../../utils/db', () => ({

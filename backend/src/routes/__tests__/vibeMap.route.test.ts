@@ -1,13 +1,7 @@
 /**
- * GET /api/vibe/map answers at once, whatever state the layout is in.
- *
- * The first 3-D layout of a large library takes minutes, and the Next.js
- * proxy in front of the API drops any request after 30 seconds. So the route
- * never waits for a computation: it serves the map, says "still computing"
- * (202) for the client to poll, or reports a failed computation (500). A ready
- * map is gzipped when the client accepts it.
- *
- * Doctrine: the failure and boundary paths first, the happy path last.
+ * GET /api/vibe/map never waits on a computation: it serves the map (gzipped when
+ * accepted), answers 202 while computing, or 500 after a failure. Failure and
+ * boundary paths first.
  */
 
 import express from "express";

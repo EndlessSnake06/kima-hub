@@ -1,15 +1,7 @@
 /**
- * HTTP-level tests for the Subsonic 2FA bypass fix, real Postgres + the real
- * Express router, not service functions -- the bug itself was only visible
- * at the literal HTTP response (a 2FA-enabled account getting a full session
- * back from `p=` with no code ever asked for), so that's the altitude these
- * tests run at.
- *
- * Also covers the two fixes that landed in the same pass: `startScan.view`'s
- * missing admin check, and `changePassword.view` refusing a self-change made
- * with an API key.
- *
- *   DATABASE_URL=postgresql://test:test@localhost:5433/kima_v1_test npx jest subsonicAuth2fa
+ * Subsonic auth over real HTTP and Postgres: a 2FA account cannot log in with
+ * `p=` alone, startScan.view needs an admin, and changePassword.view refuses a
+ * change made with an API key.
  */
 import express from "express";
 import request from "supertest";
@@ -17,14 +9,8 @@ import bcrypt from "bcrypt";
 import { prisma } from "../../../utils/db";
 import { createApiKey } from "../../../services/users/apiKeyStore";
 
-// `startScan.view` (via `scanQueue.add`/`getJobCounts`) is the one route
-// under test that talks to BullMQ, which wants more from its Redis
-// connection than the shared `ioredis` mock (jest.config.js) gives it --
-// real queues hung indefinitely here rather than erroring, confirmed by
-// running this file without the mock below and watching it time out. Mocked
-// at the module level, not stubbed inside the test, so `startScan.view`'s
-// own import of `scanQueue` picks this up transparently; the admin-check
-// fix being tested here runs entirely BEFORE either of these calls anyway.
+// BullMQ hangs on the shared ioredis mock, so the queues startScan.view uses
+// are mocked.
 jest.mock("../../../workers/queues", () => ({
     scanQueue: {
         add: jest.fn().mockResolvedValue(undefined),
@@ -49,12 +35,7 @@ async function mkUser(tag: string, opts: { twoFactorEnabled?: boolean } = {}) {
             username: `subauth_${tag}_${seq}`,
             passwordHash: await bcrypt.hash(PLAIN_PASSWORD, 10),
             twoFactorEnabled: opts.twoFactorEnabled ?? false,
-            // A real secret isn't needed anywhere below -- every test here
-            // exercises the PASSWORD path's 2FA gate, never the TOTP
-            // verification `POST /auth/login` itself does, so a secret is
-            // deliberately not set up. The column would otherwise carry a
-            // NULL that reads as "somehow enabled with nothing to verify
-            // against", worth naming so it isn't mistaken for an oversight.
+            // No TOTP secret: these tests only reach the password path's 2FA gate.
         },
     });
 }
@@ -118,11 +99,7 @@ describe("subsonicAuth -- 2FA on the password path", () => {
         expect(res.body["subsonic-response"].status).toBe("ok");
     });
 
-    // The README has always told native clients (Amperfy, Symfonium, DSub)
-    // to paste their API token into the PASSWORD field -- most of them have
-    // no separate token field, `apiKey=` only helps the ones that speak
-    // OpenSubsonic specifically. Removing MD5 token auth without teaching
-    // `p=` to accept a key too would have silently broken every one of them.
+    // Native clients are told to paste their API key into the password field.
     it("an API key sent through p= (not apiKey=) authenticates a NON-2FA account", async () => {
         const user = await mkUser("keyViaP");
         const { key } = await createApiKey(user.id, "test device");
@@ -229,13 +206,7 @@ describe("changePassword.view -- an API key can't silently take over the login p
         expect(stillOldPassword).toBe(true);
     });
 
-    // The SAME key, presented through p= instead of apiKey=, has to hit the
-    // SAME restriction -- it's the identical credential, subsonicAuth just
-    // found it in a different query parameter. If `subsonicAuthMethod` were
-    // ever mislabelled "password" for a key that arrived via p=, this is the
-    // one test that would notice: everything else about a key-via-p=
-    // session (ping, streaming) looks identical whether the label is right
-    // or wrong, only this route branches on it.
+    // A key sent through p= is still a key, and gets the same restriction.
     it("a self-change made with an API key sent through p= is ALSO refused -- same restriction, same credential, different query param", async () => {
         const user = await mkUser("selfApiKeyViaP");
         const { key } = await createApiKey(user.id, "test device");

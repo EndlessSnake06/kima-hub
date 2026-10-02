@@ -1,27 +1,8 @@
 /**
- * Task 3 adversarial route tests -- bounded defensive GET /discover/current and
- * GET /discover/batch-status terminal-state reporting.
- *
- * Doctrine: failure / edge / boundary paths FIRST, happy path LAST.
- *
- * The confirmed production defect: ACTIVE DiscoveryAlbum rows get tagged with a
- * PRIOR week (the Sunday off-by-one). GET /current queries
- * `weekStartDate = thisCalendarMonday` EXACTLY, so it returns zero rows and the
- * playlist is invisible. Task 3 makes /current resolve the display week against
- * the latest COMPLETED DiscoveryBatch (bounded, with a `stale` flag) so those
- * orphaned rows become visible, and makes /batch-status surface the latest
- * terminal batch (lastBatchId/lastBatchStatus) so a client that missed the SSE
- * completion can detect it.
- *
- * These tests target the SPECIFIC discriminators introduced by Task 3:
- *   - /current must query DiscoveryAlbum at the BATCH's older week, not the empty
- *     calendar week (data-loss path), and echo that week back as `weekStart`.
- *   - /current must include a `stale` boolean (true for an older batch).
- *   - /batch-status's no-active branch must return `lastBatchId` /
- *     `lastBatchStatus` sourced from a TERMINAL-only ({completed,failed}) lookup.
- *
- * Each assertion picks a value that can ONLY be produced by the Task-3 code
- * path, so the test cannot pass via the existing unmodified handler.
+ * GET /discover/current shows the latest completed batch's week, with a `stale`
+ * flag when it is older than this week. GET /discover/batch-status reports the
+ * latest finished batch (lastBatchId, lastBatchStatus) for a client that missed
+ * the SSE. Failure and edge paths first.
  */
 
 // All mocks before imports.
@@ -84,12 +65,8 @@ import { prisma } from '../../utils/db';
 import { redisClient } from '../../utils/redis';
 import { closeClient } from '../../utils/closeRedisClient';
 
-// Pin the wall clock. /current computes its calendar week from real `new Date()`
-// (discover.ts:330), so without this the hardcoded CALENDAR_MONDAY='2026-05-25'
-// / BATCH_MONDAY='2026-05-18' fixtures only line up on weeks where
-// startOfWeek(now) === 2026-05-25. Setting the clock to noon on that Monday makes
-// every same-week / older / future boundary deterministic regardless of when CI
-// runs. Timestamp-based DB writes are all mocked, so freezing time is safe here.
+// /current computes its week from the clock, so pin it to noon on the fixture
+// Monday.
 beforeAll(() => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date('2026-05-25T12:00:00.000Z'));
@@ -227,13 +204,7 @@ describe('GET /discover/current -- bounded latest-completed-batch fallback (Task
     });
 
     it('LATEST-BATCH ORDERING: the completed-batch lookup is ordered newest-first (createdAt desc)', async () => {
-        // GAP CLOSED: every other test mocks a single batch, so an impl that
-        // ordered ASC (oldest) or omitted orderBy would still pass them while,
-        // against a real multi-week DB, resolving the display week to an OLD
-        // batch -- re-opening the exact data-loss bug Task 3 fixes (a stale
-        // week wins over the genuine latest). The latest completed batch is the
-        // one whose week albums still exist (cleanup protects only the newest),
-        // so the lookup MUST take the most recent.
+        // The latest completed batch wins, not an older one.
         (prisma.discoveryBatch.findFirst as jest.Mock).mockResolvedValue({
             weekStart: new Date(BATCH_MONDAY_ISO),
         });
@@ -255,13 +226,7 @@ describe('GET /discover/current -- bounded latest-completed-batch fallback (Task
     });
 
     it('WEEK COHERENCE: weekEnd and the unavailable-albums query use the RESOLVED week, not the calendar week', async () => {
-        // GAP CLOSED: the handler keeps two more week-derived values besides the
-        // DiscoveryAlbum query -- weekEnd (in the response) and the
-        // unavailableAlbum lookup. An impl that wires resolveViewWeek into only
-        // the DiscoveryAlbum query leaves weekEnd at the calendar Sunday and the
-        // unavailable query at the calendar Monday, producing an incoherent
-        // 05-18..05-31 range and unavailables from the wrong week. Both must
-        // track the resolved (05-18) week.
+        // weekEnd and the unavailable-albums lookup follow the resolved week too.
         (prisma.discoveryBatch.findFirst as jest.Mock).mockResolvedValue({
             weekStart: new Date(BATCH_MONDAY_ISO),
         });
@@ -281,11 +246,7 @@ describe('GET /discover/current -- bounded latest-completed-batch fallback (Task
     });
 
     it('FUTURE-BATCH FRESH: an early-generated upcoming-week batch is served NOT stale', async () => {
-        // GAP CLOSED: the route never exercises a future-dated batch. An impl
-        // using `stale = !isSameDay(batchWeek, calendarWeek)` (instead of
-        // `isBefore`) passes the older (true) and same-week (false) cases but
-        // wrongly flags a batch generated early for the UPCOMING week as stale.
-        // Per the helper contract a future week is fresh.
+        // A batch for the upcoming week is fresh, not stale.
         const futureMondayIso = '2026-06-01T00:00:00.000Z'; // next week
         const futureMonday = new Date(futureMondayIso);
         (prisma.discoveryBatch.findFirst as jest.Mock).mockResolvedValue({
@@ -370,12 +331,7 @@ describe('GET /discover/batch-status -- latest terminal batch on the no-active b
     });
 
     it('TERMINAL LOOKUP SCOPE+ORDER: scoped to this user and ordered most-recently-completed first', async () => {
-        // GAP CLOSED: the existing terminal test asserts only where.status. An
-        // impl that (a) omits userId would surface ANOTHER user's finished batch
-        // to this client, and (b) one that omitted/inverted the order would
-        // report a stale (older) terminal batch as "the latest completion,"
-        // defeating the missed-SSE recovery this field exists for. Both the
-        // user scope and the completedAt-desc ordering must hold.
+        // The finished-batch lookup is scoped to the user and takes the newest.
         (prisma.discoveryBatch.findFirst as jest.Mock)
             .mockResolvedValueOnce(null)
             .mockResolvedValueOnce({ id: 'batch-done-2', status: 'failed' });
@@ -398,11 +354,7 @@ describe('GET /discover/batch-status -- latest terminal batch on the no-active b
     });
 
     it('ACTIVE-SCOPE: the active-batch lookup only counts in-flight statuses, never a terminal one', async () => {
-        // GAP CLOSED: nothing pins WHICH statuses count as "active." An impl
-        // that widened the active query to include completed/failed would report
-        // a finished batch as active:true forever (UI spins). The active lookup
-        // must match only in-flight statuses; completed/failed belong to the
-        // terminal branch. Assert the first (active) lookup excludes terminals.
+        // The active lookup matches only in-flight statuses.
         (prisma.discoveryBatch.findFirst as jest.Mock)
             .mockResolvedValueOnce(null)
             .mockResolvedValueOnce(null);

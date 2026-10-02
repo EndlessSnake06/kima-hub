@@ -1,11 +1,6 @@
 /**
- * scrobble.view must record a play.
- *
- * The route used to pass `secondsListened: Infinity` as a stand-in for "the
- * client says this was played", and playRecording's finite-number guard
- * rejected it as not-enough-listened -- so no Subsonic play was ever written.
- * These tests go through the real route AND the real recordPlay; only Prisma is
- * mocked.
+ * scrobble.view records a play, through the real route and real recordPlay.
+ * Only Prisma is mocked.
  */
 
 jest.mock('../../../utils/db', () => {

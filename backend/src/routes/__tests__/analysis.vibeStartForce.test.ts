@@ -1,20 +1,7 @@
 /**
- * GAP 2 (2026-09-26): force re-decide must never delete data.
- *
- * Step 2's rule: nothing ever overwrites good data with nothing. POST
- * /api/analysis/vibe/start with force=true used to `DELETE FROM
- * track_embeddings`, clear every EnrichmentFailure, null every Track's
- * vibeAnalysisStatus and DELETE every embedding TrackStage record — leaving
- * the library with NO embeddings (vibe search dead) until the whole re-embed
- * finished.
- *
- * The fix: force re-OPENS every embedding question (status pending, fresh
- * attempt, finishedAt cleared). The existing embeddings stay readable and the
- * vibe map keeps working; the embedding worker overwrites each track's row as
- * its new embedding lands. No failures are cleared, no statuses are nulled,
- * and no rows are deleted first.
- *
- * Run: cd backend && npx jest analysis.vibeStartForce --forceExit --maxWorkers=1
+ * POST /api/analysis/vibe/start with force=true reopens every embedding question
+ * and deletes nothing: existing embeddings stay readable until each new one
+ * replaces them, and no failures or statuses are cleared.
  */
 
 jest.mock("../../middleware/auth", () => ({

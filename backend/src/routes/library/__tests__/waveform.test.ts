@@ -2,12 +2,8 @@
  * Waveform route tests -- peak math (computeWaveformPeaks) and route contract.
  */
 
-/* ---------------------------------------------------------------------------
- * Mocks — order matters because they are hoisted above the imports below.
- * (waveform.ts's module-level `inFlight` map self-clears in a `finally` block
- * after each computation completes, so there is no cross-test leak — and no
- * beforeEach reset of it is possible, since it isn't exported.)
- * --------------------------------------------------------------------------- */
+/* Mocks are hoisted above the imports. waveform.ts clears its `inFlight` map
+ * in a `finally`, so nothing leaks between tests. */
 
 // -- child_process (spawn) --
 jest.mock("child_process", () => ({
@@ -82,13 +78,7 @@ function makePcm(samples: number[], byteOffset = 0): Buffer {
     return buf;
 }
 
-/**
- * Independent reference implementation of the peak algorithm, computed directly
- * from the sample array (no PCM streaming / carry logic). Used as an ORACLE:
- * any mutation of computeWaveformPeaks's mini-block aggregation, bucket
- * boundary (ceil/floor), or normalisation makes its output diverge from this,
- * so an exact `toEqual` assertion catches it — unlike shape-only checks.
- */
+/** Reference peaks computed straight from the samples, used as the exact expected output. */
 function expectedPeaks(samples: number[]): number[] {
     const MINI_BLOCK = 100;
     const miniBlocks: number[] = [];
@@ -117,18 +107,7 @@ function expectedPeaks(samples: number[]): number[] {
     return peaks;
 }
 
-/**
- * Create a fake process whose stdout emits data chunks and then emits
- * 'close' with the given exit code.  This mirrors what the real ffmpeg
- * process does.
- *
- * The fake process object has `stdout` and `stderr` properties (EventEmitters)
- * so that the handler's `ff.stdout.on(...)` and `ff.stderr.on(...)` calls
- * work correctly.
- *
- * @param dataChunks  Buffers emitted via stdout 'data' events.
- * @param exitCode    The code passed to the 'close' event.
- */
+/** A fake ffmpeg process: stdout emits `dataChunks`, then 'close' with `exitCode`. */
 function makeFakeProcess(
     dataChunks: Buffer[],
     exitCode = 0,

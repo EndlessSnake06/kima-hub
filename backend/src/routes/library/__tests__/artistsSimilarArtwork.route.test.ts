@@ -1,22 +1,7 @@
 /**
- * The pictures on an artist's "similar artists" strip.
- *
- * `GET /artists/:id` builds that strip along two different paths -- from the
- * artist's own enriched JSON when it has any, and from a live Last.fm lookup
- * when it does not -- and both went looking for a picture the same wrong way.
- * Each asked Deezer, and only Deezer. One of them wrapped that in its own
- * ad-hoc Redis key on top, a sixth cache for a job that already had one.
- *
- * Measured on real data, Deezer alone is a good first guess and a poor only
- * guess. Both paths now go through `artwork.ts`, which tries Fanart, then
- * Deezer, then Last.fm, behind a single cache.
- *
- * The rule both paths share and which is asserted here: an artist already in
- * the library keeps the picture the library holds. That one is local, already
- * downloaded, and chosen deliberately -- going out to a provider to replace it
- * would be slower and worse.
- *
- * Doctrine: the failure and boundary paths first, the happy path last.
+ * The similar-artists strip on GET /artists/:id gets images through
+ * `artwork.ts` on both its paths, and an artist already in the library keeps the
+ * library's picture. Failure and boundary paths first.
  */
 
 jest.mock("p-limit", () => () => (fn: (...args: any[]) => any) => fn());

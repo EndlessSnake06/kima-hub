@@ -1,18 +1,7 @@
 /**
- * Subsonic artist ordering + index bucketing, and album ordering.
- *
- * These endpoints had no coverage at all. Written to pin the ordering
- * behaviour BEFORE it changed, including the defect: `getArtists` bucketed
- * artists into A-Z indexes using an article-stripped key but ordered the
- * underlying query by the raw `name`, so "The Beatles" landed in the "B"
- * bucket and then sorted to the BOTTOM of it, after every genuine B artist.
- * `getAlbumList`'s `alphabeticalByName`, `byGenre`, and `starred` types had
- * the same shape of defect on `Album.title` -- see 20260807190000_album_sort_name.
- *
- * `Artist.sortName` / `Album.sortName` are the canonical article-stripped
- * values -- populated on write, backfilled by migration, NOT NULL, and
- * indexed. They are what both the ordering and the bucketing now use, so the
- * two cannot disagree again.
+ * Subsonic getArtists buckets and orders artists on `sortName`, so the two always
+ * agree ("The Beatles" sorts within B). getAlbumList's alphabetical, genre and
+ * starred lists order albums on `sortName` too.
  */
 
 jest.mock('../../../utils/db', () => ({
@@ -46,12 +35,8 @@ function makeApp() {
     return app;
 }
 
-// Deliberately includes an artist whose article-stripped name sorts into a
-// different bucket than its raw name would ("The Beatles" -> B, not T).
-// "La Roux" is the load-bearing fixture: the English-only stripper leaves it
-// as "La Roux" and files it under L, while the canonical multi-language one
-// yields "roux" and files it under R. "Los Lobos" would NOT prove this -- it
-// buckets to L either way, since "Lobos" also starts with L.
+// "The Beatles" buckets under B. "La Roux" buckets under R only with the
+// multi-language article list.
 const ARTISTS = [
     { id: 'a1', name: 'Bon Iver', displayName: null, heroUrl: null, libraryAlbumCount: 2, sortName: 'bon iver' },
     { id: 'a2', name: 'The Beatles', displayName: null, heroUrl: null, libraryAlbumCount: 5, sortName: 'beatles' },
@@ -98,11 +83,8 @@ describe('subsonic getArtists / getIndexes ordering', () => {
         expect(res.text).not.toContain('<index name="L">');
     });
 
-    // sortName is kept in sync with displayName at WRITE time (see
-    // routes/__tests__/enrichmentArtistSortName.route.test.ts), so this
-    // endpoint needs no override-aware logic of its own -- it just has to
-    // trust the stored column unconditionally, including when it disagrees
-    // with what the canonical `name` alone would produce.
+    // sortName follows displayName at write time (enrichmentSortName.route.test.ts),
+    // so this endpoint trusts the stored column.
     it('buckets and displays an artist under its displayName override, not its canonical name', async () => {
         (prisma.artist.findMany as jest.Mock).mockResolvedValue([
             {

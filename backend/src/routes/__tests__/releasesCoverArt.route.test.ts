@@ -1,23 +1,6 @@
 /**
- * The Release Radar must go through the library's artwork providers.
- *
- * The bug this guards: Lidarr's calendar carries one `remoteUrl` per release,
- * pointing at the Cover Art Archive, and for albums nobody owns yet the archive
- * usually has nothing there. The route passed it straight through, the page put
- * it in an <Image src>, and the BROWSER took the 404 -- a request that went to
- * coverartarchive.org and never to this server, so nothing was logged here and
- * the fault looked fixed from the inside for a long time.
- *
- * Checking that address and drawing a placeholder when it fails is not the fix;
- * it just makes not having the picture look tidier. Measured on 39 real albums,
- * the Lidarr address loads for 21 of them and the providers find artwork for
- * 34. So what is proved here is that the route ASKS -- and prefers what the
- * providers return over the address it was handed.
- *
- * The resolver is unit-tested next door. What is proved here is the wiring:
- * all three release endpoints go through it, on every response.
- *
- * Doctrine: the failure path first, the happy path last.
+ * All three Release Radar endpoints resolve artwork through the providers and
+ * prefer it over Lidarr's unchecked Cover Art Archive address. Failure path first.
  */
 
 // All mocks before imports.

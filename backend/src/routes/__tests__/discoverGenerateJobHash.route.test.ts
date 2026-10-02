@@ -1,16 +1,7 @@
 /**
- * Task 9 GATE 1 (part A) -- POST /discover/generate must drop a stale BullMQ
- * job hash before re-enqueuing.
- *
- * The defect: discoverQueue retains completed/failed job hashes
- * (queues.ts removeOnComplete: 100). Re-adding the SAME jobId returns the
- * existing (already-terminal) job WITHOUT enqueuing anything -- a silent no-op
- * (cf. podcast #81). The user clicks "generate", gets a 200 with the old job's
- * id, and nothing ever runs.
- *
- * Doctrine: FAILURE/EDGE paths FIRST, happy path LAST. Each assertion targets the
- * specific discriminator (getJob -> getState -> remove BEFORE add, only on a
- * TERMINAL state) so it cannot pass via a different code path.
+ * POST /discover/generate removes a finished job with the same id before
+ * re-adding, since BullMQ silently ignores a re-add. A running job is left alone.
+ * Failure and edge paths first.
  */
 
 jest.mock('../../utils/db', () => ({
@@ -105,11 +96,7 @@ describe('POST /discover/generate -- drop stale job hash before re-enqueue (Task
         (discoverQueue.add as jest.Mock).mockResolvedValue({ id: 'new-job-id' });
     });
 
-    // FAILURE PATH (the bug this task exists for): a COMPLETED job hash is still
-    // in Redis. Re-adding the same jobId is a silent no-op unless the stale hash
-    // is removed first. Discriminator: remove() must be called on the existing
-    // job BEFORE add() runs. A handler that skips the removal (the legacy bug)
-    // never calls getJob().remove(), so this fails on the un-fixed code.
+    // A completed job is removed before add().
     it('FAILURE PATH: removes a stale COMPLETED job hash before re-enqueuing', async () => {
         const stale = fakeJob('completed');
         (discoverQueue.getJob as jest.Mock).mockResolvedValue(stale);
@@ -139,11 +126,7 @@ describe('POST /discover/generate -- drop stale job hash before re-enqueue (Task
         expect(discoverQueue.add).toHaveBeenCalledTimes(1);
     });
 
-    // EDGE / SAFETY: a NON-terminal (active) job with the same id means a run is
-    // already in flight. removing it would orphan a live generation. The guard
-    // must only remove on completed|failed. Discriminator: remove() NOT called
-    // for an active job. (A naive "remove whatever getJob returns" impl -- the
-    // over-correction -- would wrongly kill the live job and fail here.)
+    // An active job is a run in flight: not removed, not enqueued again.
     it('EDGE: does NOT remove a non-terminal (active) job and does NOT double-enqueue over it', async () => {
         const live = fakeJob('active');
         (discoverQueue.getJob as jest.Mock).mockResolvedValue(live);
@@ -165,13 +148,7 @@ describe('POST /discover/generate -- drop stale job hash before re-enqueue (Task
         expect(queued.remove).not.toHaveBeenCalled();
     });
 
-    // CRITIC GAP A: the removal only fixes the no-op if it looks up the SAME
-    // jobId it is about to add. A broken impl that does getJob(<some other id>)
-    // -> remove(), then add(<the real week-keyed id>) would remove the WRONG
-    // hash and re-add the still-present real one -- the production no-op bug
-    // survives, yet every existing assertion (remove called, add called, order)
-    // passes because getJob is mocked to return the stale job regardless of arg.
-    // Pin the contract: the id passed to getJob equals the id passed to add.
+    // getJob looks up the same id add() enqueues.
     it('CRITIC GAP A: getJob is looked up with the SAME jobId that add() enqueues', async () => {
         const stale = fakeJob('completed');
         (discoverQueue.getJob as jest.Mock).mockResolvedValue(stale);

@@ -1,16 +1,6 @@
-// Server connection-reaping config -- spec 1.2 (B3), revised.
-//
-// A blunt server.timeout was found to destroy a PAUSED audio stream's socket
-// (a paused stream is inactive -- no bytes flow -- so the inactivity timeout
-// fires), forcing a reconnect on resume after a multi-minute pause. Dead/half-
-// open peers are now reaped via TCP keepalive instead, which leaves a paused-
-// but-alive stream connected. index.ts sets server.timeout = 0 and enables
-// keepalive on each connection with config.socketKeepAliveDelayMs.
-//
-// The wiring (a few lines on the server returned by app.listen) is visually
-// inspectable; here we unit-test the config value those lines consume. A live
-// socket test is intentionally omitted -- it must bind a port, open a TCP
-// socket, and wait on real timers, which is slow and flaky under CI load.
+// index.ts sets server.timeout = 0 so a paused stream is never cut, and reaps
+// dead peers with TCP keepalive at config.socketKeepAliveDelayMs. This checks
+// that config value.
 
 import { config } from '../../../config';
 

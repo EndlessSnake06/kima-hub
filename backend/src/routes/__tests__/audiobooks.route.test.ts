@@ -1,11 +1,7 @@
 /**
- * Audiobooks Route Tests -- spec 1.10 + sections remediation
- *
- * Covers:
- * - List (GET /) and series (GET /series/:name): tracks + trackCount present
- *   when DB row has tracksJson; NULL numTracks -> trackCount absent, never 0/1.
- * - Detail (GET /:id): cache-only response with sections + tracks from DB;
- *   null sectionsJson triggers audiobookCacheService resync.
+ * The audiobook list and series carry tracks and trackCount (absent, never 0,
+ * when numTracks is null). Detail is served from the cache with sections and
+ * tracks, and resyncs when sectionsJson is null.
  */
 
 // All mocks before imports.
@@ -160,11 +156,8 @@ describe("GET /audiobooks", () => {
         );
     });
 
-    // The query being ordered on sortName (above) proves nothing about the
-    // response body -- the DTO is a hand-built object literal, not a spread,
-    // so a field the query fetches is not automatically one the client
-    // receives. The client-side series-mode fallback (see
-    // useAudiobookLibrary.test.tsx) depends on this actually being present.
+    // The DTO is built by hand, so a field the query reads is not automatically
+    // in the response; the client's series fallback needs sortName.
     it("includes sortName in the response body", async () => {
         (prisma.audiobook.findMany as jest.Mock).mockResolvedValue([bookRow]);
 

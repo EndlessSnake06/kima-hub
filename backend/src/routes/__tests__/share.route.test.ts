@@ -1,10 +1,6 @@
 /**
- * Share Routes Integration Tests
- *
- * Tests the public (unauthenticated) GET /share/:token resolve endpoint
- * and the authenticated POST /share create endpoint using supertest.
- * Streaming and cover-art routes require real files on disk and are
- * excluded -- their path-traversal guard is tested directly.
+ * GET /share/:token (public) and POST /share (authenticated). Streaming and cover
+ * routes need real files and are left out; their path guard is tested directly.
  */
 
 // All mocks must be before imports

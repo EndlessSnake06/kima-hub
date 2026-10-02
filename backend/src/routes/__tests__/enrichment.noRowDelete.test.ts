@@ -1,21 +1,6 @@
 /**
- * The enrichment "row-deleting path" is gone.
- *
- * The old controls deleted rows or wiped answers: `runFullEnrichment`
- * deleted every `track_embeddings` row and cleared every track's
- * `enrichmentTags`; `reRunAudioAnalysisOnly` deleted every `analysis`
- * stage record; `resetAllEnrichmentData` TRUNCATEd `track_embeddings`.
- * All of those endpoints are deleted — a request to any of them now
- * matches no route and 404s, which is the point: the UI must see "no such
- * control", not "log in", and nothing behind the old buttons may still
- * fire.
- *
- * This proves: (a) every removed endpoint 404s even for an admin, and
- * (b) invoking the controls that DO remain never deletes a Track row —
- * the true state is reflected instead (the record stays, owed or answered,
- * and the row persists).
- *
- * Run: cd backend && npx jest src/routes/__tests__/enrichment.noRowDelete.test.ts --forceExit --maxWorkers=1
+ * The removed destructive enrichment endpoints 404, even for an admin, and the
+ * controls that remain never delete a Track row.
  */
 
 const mockQueueAdd = jest.fn().mockResolvedValue({ id: "job-1" });
@@ -329,12 +314,8 @@ describe("the controls that remain never delete Track rows", () => {
             .set("Authorization", `Bearer ${token}`);
 
         expect(res.status).toBe(200);
-        // The track's never-asked fingerprint question is prerequisite-free,
-        // and — under the real dependency graph — analysis is too: two
-        // records handed out. The recording question (failed, retryable,
-        // due) WAITS behind the fingerprint → recording gate until the
-        // fingerprint question settles — it is neither deleted nor claimed.
-        // Only embedding waits (on analysis).
+        // Fingerprint and analysis are handed out. Recording waits behind the
+        // fingerprint gate, embedding behind analysis; nothing is deleted.
         expect(res.body.queued).toBe(2);
 
         // The Track row persists, with its true state reflected: the due

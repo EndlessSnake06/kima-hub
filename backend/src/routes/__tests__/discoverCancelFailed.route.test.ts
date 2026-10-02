@@ -1,11 +1,6 @@
 /**
- * Task 8 GATE 4 -- DELETE /discover/batch marks a cancelled batch `failed`,
- * not `completed`, so the Task-3 /current fallback (which queries
- * status="completed") skips it instead of reading it as a successful empty week.
- *
- * Failure path FIRST: prove the cancelled batch is written failed+completedAt+
- * errorMessage, and prove that a batch in that state is invisible to the
- * completed-only lookup that drives /current.
+ * DELETE /discover/batch marks the cancelled batch failed with completedAt and a
+ * message, so the completed-only lookup behind /current skips it.
  */
 
 jest.mock('../../utils/db', () => ({
