@@ -1,14 +1,6 @@
 /**
- * The library re-rank tier against the real artist_embeddings table.
- *
- * The tier tests mock $queryRaw, so the pgvector column itself is invisible
- * to them: a raw query that selects `embedding` without `::text` only fails
- * where Postgres hands the value to Prisma's deserializer. This drives the
- * real function on the real database — HTTP tiers mocked at the module
- * boundary, centroids seeded as real vector(512) rows — and asserts the
- * score actually moved, which only happens if the centroid round-trip works.
- *
- * Run: cd backend && npx jest src/services/__tests__/artistSimilarity.rerank.test.ts --maxWorkers=1
+ * The library re-rank tier on the real artist_embeddings table, so the pgvector
+ * centroid round-trip is exercised. HTTP tiers are mocked; the score must move.
  */
 
 const mockLb = { getSimilarArtists: jest.fn() };

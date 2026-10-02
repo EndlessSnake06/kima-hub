@@ -1,13 +1,6 @@
 /**
- * Album identity.
- *
- * Regressions locked down here:
- *  - Only true duplicates merge: case/punctuation/accent/unicode-variant.
- *    Edition markers (remaster, deluxe, anniversary, remix, live, etc.) are
- *    NOT stripped -- they produce distinct album rows.
- *  - A cross-artist fallback matched title+year across EVERY artist, guarded
- *    only against the literal strings "Unknown Album"/"Unknown", so one
- *    artist's 1995 "Greatest Hits" absorbed another's.
+ * Only true duplicates merge (case, punctuation, accents, unicode variants);
+ * edition markers keep albums apart, and no fallback matches across artists.
  */
 
 import { albumIdentityKey, isGenericAlbumTitle, resolveAlbum } from "../albumIdentity";

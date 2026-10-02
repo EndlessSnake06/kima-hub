@@ -1,15 +1,7 @@
 /**
- * Mood sorting, against the migrated test database.
- *
- * Moods are ranked within the library (moodBucketService): a track carries a
- * mood only when its head says yes (>= 0.5) AND it sits in the library's top
- * STANDOUT_SHARE on that mood. These tests pin that rule, that buckets are only
- * filled once BOTH audio analysis and CLAP are done, that the worker re-sorts
- * everything when the library changes (and only then), that the vibe map
- * serves the same decision, and that the inverted-heads migration re-queues
- * exactly the rows the broken analyzer wrote.
- *
- * Run with: npx jest moodBuckets.integration.test.ts
+ * A track carries a mood when its head says yes (>= 0.5) and it is in the
+ * library's top STANDOUT_SHARE for it. Buckets fill only after analysis and CLAP
+ * both finish, re-sort when the library changes, and match the vibe map.
  */
 
 const store = new Map<string, string>();

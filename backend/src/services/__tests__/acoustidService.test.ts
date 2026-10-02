@@ -1,39 +1,8 @@
 /**
- * AcoustID service tests — mocked HTTP (no live calls; AcoustID is a
- * rate-limited public API and the contract is that every outcome reaches
- * the caller as a typed Outcome kind: "the source answered nothing"
- * (absent) stays distinct from "the source did not answer"
- * (transient/permanent).
- *
- * The mocked wire shape here is NOT invented: it is copied from a live
- * lookup against api.acoustid.org/v2/lookup (2026-09-10, Carpenter Brut
- * track, score 0.9986) —
- *   {status: "ok", results: [{id, score, recordings:
- *     [{id, title, artists: [{id, name}], releasegroups: [{id, title}]}]}]}
- * Results WITHOUT a "recordings" array occur in the wild (bare fingerprint
- * match) and must be skipped — covered below.
- *
- * Proves:
- *  - happy path: confident match with release-group answers with the full
- *    AcoustIDResult shape and the live score in evidence;
- *  - low-score results are skipped; a result below the 0.5 floor is
- *    reported absent, not answered;
- *  - duration-sanity guard: a match whose canonical length is less than
- *    half the queried duration (or under 30s) is rejected — the
- *    "matched a 12-second sample" false-positive class;
- *  - a bare result (no recordings attached) never answers;
- *  - network error / non-ok status answer `transient` WITHOUT throwing;
- *  - missing fingerprint or non-finite duration short-circuit to
- *    `permanent` without any HTTP call at all;
- *  - key precedence (pattern of the retired Last.fm key): the operator's key
- *    from the encrypted SystemSettings row wins over the baked config
- *    default, an explicitly passed key wins over both, and a failed or
- *    empty settings read degrades to the config default without throwing;
- *  - the request body is form-encoded with meta=recordings%20releasegroups
- *    (the server does not form-decode a literal '+' back to a space, so
- *    %20 is the form we send), the duration parameter
- *    is named "duration" (not "track"), and the content type is
- *    application/x-www-form-urlencoded.
+ * AcoustID lookups over mocked HTTP shaped like a live api.acoustid.org/v2
+ * response. Every outcome is a typed Outcome: low scores, short or bare
+ * matches are `absent`, network errors `transient`, bad input `permanent`
+ * with no call. The settings key beats config; a passed key beats both.
  */
 
 import { acoustidService } from "../acoustidService";

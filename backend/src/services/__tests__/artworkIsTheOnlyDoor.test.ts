@@ -1,22 +1,6 @@
 /**
- * Artwork has one door, and this test is what keeps it that way.
- *
- * Before `artwork.ts`, fifteen places in this backend went looking for a
- * picture and twelve of them asked a single provider and gave up. Deezer alone
- * in nine places, the Cover Art Archive alone in three, and two routes that
- * asked nobody -- they built `coverartarchive.org/release-group/<mbid>
- * /front-500` as a string and handed it to the browser, which took the 404 in
- * silence because that request never reached this server.
- *
- * That did not happen because anyone decided it should. It happened one call
- * site at a time, each one reasonable on its own, until "why is there a
- * placeholder here" had six different answers. Nothing in the type system
- * stops the sixteenth.
- *
- * So this is the rule, enforced rather than written down: only `artwork.ts`
- * calls an artwork source, and nobody builds a Cover Art Archive address by
- * hand. If you are adding a provider, add it to the list in `artwork.ts` --
- * that is the whole point of the list.
+ * Only `artwork.ts` calls an artwork source, and nothing builds a Cover Art
+ * Archive address by hand. New providers go in the list in `artwork.ts`.
  */
 
 import fs from "fs";

@@ -1,20 +1,6 @@
 /**
- * When a scanned file carries no artwork, where does the scanner look?
- *
- * It asked Deezer, and only Deezer. Measured on 39 real albums that finds 31;
- * asking every source in turn finds 34. So an album whose art only the Cover
- * Art Archive or Fanart had came out of a scan with no cover at all, and stayed
- * that way until something else happened to enrich it.
- *
- * The lookup was buried inline in `processAudioFile`, a method that needs a
- * whole scan standing up around it before a single line runs -- which is why it
- * had no test. It is `ensureAlbumCover` now, and this exercises it directly.
- *
- * The order matters and is asserted here: art embedded in the file always wins.
- * It is already on disk, it is the right art for this exact release, and
- * reading it costs nothing. Going outside is the fallback, not the default.
- *
- * Doctrine: the failure and boundary paths first, the happy path last.
+ * ensureAlbumCover uses art embedded in the file first, then asks every source
+ * through `artwork.ts`. Failure and boundary paths first, happy path last.
  */
 
 const mockAlbumUpdate = jest.fn();

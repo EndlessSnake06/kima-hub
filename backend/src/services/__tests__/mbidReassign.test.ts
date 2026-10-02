@@ -1,16 +1,6 @@
 /**
- * mbidReassign Tests
- *
- * Verifies the shared MBID reassignment helper used by BOTH the editor routes
- * AND the enrichment service:
- * - reassignAlbumRgMbid: Album.rgMbid update + OwnedAlbum migration
- *   + DiscoveryAlbum string migration (collision rows stay + logged)
- * - reassignArtistMbid: Artist.mbid update
- * - DuplicateMbidError translation (P2002 -> 409)
- * - No-op on unchanged value or missing entity
- * - No orphaned OwnedAlbum rows after migration
- *
- * Run with: npx jest mbidReassign.test.ts
+ * The shared MBID reassignment helper: album rgMbid with its OwnedAlbum and
+ * DiscoveryAlbum rows, artist mbid, P2002 → DuplicateMbidError, and no-ops.
  */
 
 import { prisma } from "../../utils/db";

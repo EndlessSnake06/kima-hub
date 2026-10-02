@@ -1,21 +1,7 @@
 /**
- * TrackStage is the only record of per-track stage failures.
- *
- * The engine used to write every track-stage failure to TWO ledgers —
- * TrackStage (the record the queue decides from) and the older EnrichmentFailure
- * table — and only one of them ever got resolved on success, so the failures
- * list drifted: 757 identified tracks still showed open failures. One record
- * per fact: the failures API reads TrackStage for track stages (recording,
- * analysis, embedding, fingerprint) and keeps EnrichmentFailure only for
- * entities that have no TrackStage (artist, podcast).
- *
- * The mapped entry keeps the exact EnrichmentFailure response shape the
- * frontend already consumes (id, entityType, entityId, entityName,
- * errorMessage, errorCode, retryCount, maxRetries, firstFailedAt,
- * lastFailedAt, skipped, resolved, resolvedAt, metadata).
- *
- * Run with:
- *   npx jest src/services/__tests__/enrichmentFailureService.trackStages.test.ts --forceExit --maxWorkers=1
+ * The failures API reads track-stage failures from TrackStage and keeps
+ * EnrichmentFailure for artists and podcasts only, in the same response shape
+ * the frontend reads.
  */
 
 const mockRedis = {

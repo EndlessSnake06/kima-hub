@@ -1,22 +1,8 @@
 /**
- * S1: pgvector's HNSW index answers a nearest-neighbour query from a candidate
- * list of hnsw.ef_search tuples (default 40), so a request for 50 or 100 rows
- * silently returns ~40, and WHERE-clause exclusions (alchemy's 20 input
- * tracks, the song path's visited set) eat into the same 40. The shipped
- * index-using queries must size ef_search from the requested limit inside the
- * transaction that runs them (utils/knn.ts).
- *
- * The EXPLAIN guard runs FIRST on purpose: on a small table Postgres
- * seq-scans, the results are exact, and the row-count assertions below would
- * pass with the bug still present. The worker DB starts empty every run
- * (test-global-setup.cjs wipes it), so this file seeds its own library and
- * ANALYZEs it, then refuses to score the rest of the suite unless the planner
- * answers the probe through track_embeddings_embedding_idx.
- *
- * Everything drives the SHIPPED code (findSimilarTracks,
- * searchTracksByEmbedding, the /alchemy route) -- not re-typed SQL.
- * Embeddings are seeded via raw SQL because Prisma cannot write
- * Unsupported("vector") columns.
+ * HNSW answers from hnsw.ef_search candidates (default 40), so the index queries
+ * widen it to the requested limit inside their transaction (utils/knn.ts). The
+ * EXPLAIN guard runs first: on a small table Postgres seq-scans and the count
+ * checks would pass with the bug.
  */
 import fs from "fs";
 import path from "path";
@@ -78,12 +64,8 @@ const TRACK_COUNT = 4000;
 const trackId = (i: number) => `cknn${String(i).padStart(18, "0")}`;
 const ALL_IDS = Array.from({ length: TRACK_COUNT }, (_, i) => trackId(i));
 
-// A unit 512-dim vector from a deterministic PRNG (seeded per track, so the
-// library is reproducible run to run). Random vectors are essential here:
-// structured seeds (mutually orthogonal axes, clustered points) create mass
-// ties in the cosine distances, and a global tie defeats pgvector's search
-// stopping rule -- the index then scans past hnsw.ef_search until LIMIT is
-// satisfied and the 40-row cap this suite exists to catch never reproduces.
+// Random unit vectors from a seeded PRNG. Structured vectors tie, and ties make
+// pgvector scan past ef_search, hiding the 40-row cap.
 function lcg(seed: number): () => number {
     let s = seed % 2147483647;
     if (s <= 0) s += 2147483646;
@@ -187,12 +169,8 @@ afterAll(async () => {
     await prisma.track.deleteMany({ where: { id: { startsWith: "cknn" } } });
     await prisma.album.deleteMany({ where: { id: "calb_knn_1" } });
     await prisma.artist.deleteMany({ where: { id: "cart_knn_1" } });
-    // Deleting the rows does not undo the ANALYZE above: later suites in this
-    // worker DB would plan against the 4000-row peak, get an index scan their
-    // tiny live sets never see on a fresh table, and starve inside the
-    // ef_search window among thousands of dead index entries. VACUUM
-    // (ANALYZE) restores both the statistics and the dead index entries, so
-    // this file leaves the DB the way it found it.
+    // VACUUM ANALYZE so later suites in this worker plan against their own row
+    // counts, not this file's 4000-row peak.
     for (const table of ['"track_embeddings"', '"Track"', '"Album"', '"Artist"']) {
         await prisma.$executeRawUnsafe(`VACUUM (ANALYZE) ${table}`);
     }
@@ -229,12 +207,8 @@ describe("HNSW index-scan guard (the row counts below are only meaningful throug
 
 describe("vector searches return the requested row count (S1)", () => {
     it("findSimilarTracks(seed, 50) ranks past the 40-row index default", async () => {
-        // S3 changes what this fixture can return, not the search width: all
-        // 4000 tracks live in ONE album by ONE artist, so the diversification
-        // caps (2 per album / 4 per artist, seed counted) cut the list to 1.
-        // The whole-library ranking still reaches past the default 40-candidate
-        // window -- proved by the EXPLAIN guard above plus the multi-album
-        // full-length cases in hybridSimilarity.caps.test.ts.
+        // One album by one artist, so the diversity caps cut the list to 1.
+        // The wide search itself is covered by the EXPLAIN guard.
         const rows = await findSimilarTracks(trackId(0), 50);
         expect(rows).toHaveLength(1);
         expect(rows.every((r) => r.id !== trackId(0))).toBe(true);
@@ -249,11 +223,8 @@ describe("vector searches return the requested row count (S1)", () => {
     });
 
     it("alchemy with 10 add + 10 subtract at limit 100 returns 100 rows, not the 40-candidate cap", async () => {
-        // Geometry: the subtract fingerprint is the exact negation of the add
-        // one, so the blend (mean(add) - mean(subtract)) lands right on the add
-        // fingerprint -- the 10 adds are the blend's distance-0 nearest
-        // neighbours, i.e. the real feature's "inputs you blended from crowd
-        // the result", with no tie-group ambiguity.
+        // The subtract fingerprint negates the add one, so the blend lands on
+        // the add fingerprint and its 10 inputs are the nearest neighbours.
         const res = await request(vibeApp)
             .post("/api/vibe/alchemy")
             .send({

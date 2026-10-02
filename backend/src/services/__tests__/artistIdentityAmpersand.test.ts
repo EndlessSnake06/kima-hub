@@ -1,21 +1,8 @@
 /**
- * artistIdentityKey and the SQL backfill must produce the SAME key.
- *
- * identityKey is UNIQUE on Artist and is how resolveArtist finds an existing
- * artist instead of inserting a duplicate. It is written from two places: this
- * TypeScript at runtime, and the artist_identity migration's SQL backfill.
- *
- * They disagreed. The TypeScript replaces "&" with " and " before stripping
- * non-alphanumerics; the migration stripped the ampersand instead. So the
- * migration wrote "simongarfunkel" while the app looked up
- * "simonandgarfunkel", missed, and would have inserted a second row -- the
- * duplicate this whole mechanism exists to prevent, for every band with an
- * ampersand in its name.
- *
- * The expectations below are the values the FIXED migration produces, verified
- * by running its own UPDATE statement against Postgres 16 and diffing the rows
- * against this function. Changing either side without the other reopens the
- * bug, so this test is the tripwire for the TypeScript half.
+ * artistIdentityKey must match the artist_identity migration's SQL backfill,
+ * since identityKey is unique and resolveArtist looks artists up by it. "&"
+ * becomes "and" on both sides. Expectations come from running the migration's
+ * UPDATE on Postgres 16.
  */
 
 import { artistIdentityKey } from "../artistIdentity";

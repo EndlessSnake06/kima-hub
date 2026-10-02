@@ -1,15 +1,7 @@
 /**
- * getMoodMix draws from the WHOLE mood bucket, and remembers what it served.
- *
- * The mix used to `take: 100` ordered by score, so a mood bucket holding
- * ~1,785 tracks only ever sampled its top 100 — and the top of Calm is a
- * single 1,339-row score tie, where that cutoff is arbitrary row order. Now
- * the draw is a uniform random sample of the whole bucket (shuffleArray is an
- * unbiased Fisher–Yates, so tied scores are picked as often as any other row),
- * and the ids a user was actually served are stored on their UserMoodMix row
- * so the next mix can skip them.
- *
- * Run with: npx jest moodBucketMixPool.integration.test.ts
+ * getMoodMix samples uniformly from the whole mood bucket (tied scores are as
+ * likely as any) and stores what it served on UserMoodMix so the next mix
+ * can skip it.
  */
 
 const store = new Map<string, string>();

@@ -1,13 +1,5 @@
 /**
- * Grouping rows into listens, against history whose right answer is known.
- *
- * This replaces a suite that tested `analysePlayHistory` and
- * `repairPlayHistory`, the pair the What's New upgrade window used before the
- * review moved onto the stats page. Those are gone; `listensOf` is what the
- * stats page, the audit and the collapse all read through now, and it had no
- * test at all while its boundary rule was changed twice.
- *
- * Every case is built so the correct answer is not a matter of opinion.
+ * listensOf groups play rows into listens. Every case has an unambiguous answer.
  */
 
 import { listensOf, collapseCandidates } from "../playHistoryRepair";
@@ -50,11 +42,8 @@ describe("listensOf", () => {
     });
 
     it("measures the window from where the listen began, not from the previous row", async () => {
-        // GUNGHO, from the library this rule was corrected against: a 214s
-        // track with rows at +0, +44, +126, +173 and +230. The row at +230 sits
-        // only 57s after the one before it, so a rule that chained off the
-        // previous row swallowed it — but the track ended at 214, so it is a
-        // real replay.
+        // A 214s track with rows at +0, +44, +126, +173, +230: the last starts
+        // after the track ended, so it is a replay.
         given([
             play("a", 0, 214), play("b", 44, 214), play("c", 126, 214),
             play("d", 173, 214), play("e", 230, 214),

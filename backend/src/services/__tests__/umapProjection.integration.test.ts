@@ -1,15 +1,7 @@
 /**
- * The 3D vibe map, computed against the migrated test database.
- *
- * Two groups of tracks are seeded with embeddings around two distinct
- * directions. The map must keep each group together in all three axes, use the
- * third axis at all, persist map_z, and -- when UMAP is only fitted on a sample
- * (VIBE_MAP_MAX_FIT) -- still place every other track next to its neighbours.
- *
- * Redis is replaced by an in-memory stub so the test never touches a shared
- * cache.
- *
- * Run with: npx jest umapProjection.integration.test.ts
+ * The 3D vibe map keeps two seeded clusters apart on all three axes, persists
+ * map_z, and places tracks outside the UMAP fit sample next to their
+ * neighbours. Redis is an in-memory stub.
  */
 
 const store = new Map<string, string>();

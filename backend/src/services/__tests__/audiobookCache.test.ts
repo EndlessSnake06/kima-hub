@@ -1,14 +1,6 @@
 /**
- * AudiobookCacheService.syncAll -- sortName.
- *
- * `GET /audiobooks` now orders on `sortName`, not `title` (see
- * routes/__tests__/audiobooks.route.test.ts), so it has to be kept in sync at
- * write time -- Audiobook has no displayTitle/hasUserOverrides equivalent, so
- * unlike Album this is a straight derivation from `title` alone, but `title`
- * itself is refreshed unconditionally on every sync (both the create AND the
- * update branch of the upsert set it from freshly fetched metadata), so
- * sortName has to refresh the same way or it goes stale the moment a synced
- * book's title changes upstream.
+ * syncAll refreshes `sortName` from `title` on both create and update, since
+ * `GET /audiobooks` orders on it and titles can change upstream.
  */
 
 jest.mock("../../utils/db", () => ({

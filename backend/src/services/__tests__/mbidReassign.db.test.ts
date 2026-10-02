@@ -1,11 +1,6 @@
 /**
- * On the real database: reassignAlbumRgMbid must move DiscoveryAlbum
- * rows off the old rgMbid string, and a row whose (userId, weekStartDate,
- * newRgMbid) slot is already taken must stay on the old string — the unique
- * index must not abort the reassignment. Mocked tests cannot prove either:
- * the constraint lives in Postgres.
- *
- * Run: cd backend && npx jest src/services/__tests__/mbidReassign.db.test.ts --forceExit --maxWorkers=1
+ * reassignAlbumRgMbid moves DiscoveryAlbum rows to the new rgMbid on the real
+ * database, leaving a row on the old one when its unique slot is taken.
  */
 
 import { prisma } from "../../utils/db";

@@ -1,11 +1,5 @@
 /**
- * SearchService -- queryToTsquery() unit tests
- *
- * queryToTsquery is private on SearchService, but its behavior is fully
- * observable through the public search methods which call it and fall back
- * to LIKE search when it returns an empty string.  We test the function
- * indirectly via a small subclass that exposes it, which avoids coupling
- * to the private implementation while still testing every branch.
+ * SearchService.queryToTsquery, through a subclass that exposes it.
  */
 
 // All mocks must be before imports

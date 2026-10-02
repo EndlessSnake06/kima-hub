@@ -1,27 +1,7 @@
 /**
- * a library scan whose file has vanished must never delete the
- * Track row ("a track whose file is missing
- * is never deleted — its flag is set and its true state shown").
- *
- * The old Step 4 ran `prisma.track.deleteMany` over every track whose file
- * did not come back in the walk. A NAS hiccup therefore erased listens
- * (Play), likes (LikedTrack), every stage answer (TrackStage) and the
- * embedding (track_embeddings) through the cascade — and the next scan
- * re-created the row as if the library had never heard the file.
- *
- * These tests run the REAL scanner against a REAL temp directory and the
- * REAL test database: the point is that the row and everything recorded
- * against it survive a vanished file, that the missing flag is set with the
- * time the file was found missing, and that a later scan with the file back
- * clears the flag again.
- *
- * Externals that do not belong to this contract are mocked at the boundary:
- * tag parsing (music-metadata is pure ESM; the jest map provides a stub we
- * program per test), the fpcalc/acoustid stack (the seeded MBID tag takes
- * the identification path away from them), cover art, and the artist-count
- * backfill (a whole-library job).
- *
- * Run: cd backend && npx jest src/services/__tests__/musicScanner.missingFiles.test.ts --forceExit --maxWorkers=1
+ * A scan never deletes a track whose file vanished: the row, its plays, likes,
+ * stage answers and embedding stay, the missing flag is set with a time, and a
+ * later scan clears it. Real scanner, temp directory and test database.
  */
 
 jest.mock("../../utils/logger", () => ({

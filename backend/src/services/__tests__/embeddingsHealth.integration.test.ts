@@ -1,15 +1,6 @@
 /**
- * Embedding write-path probe, against a real migrated database.
- *
- * The unit tests (embeddingsHealth.test.ts) mock the database and cover the
- * classification branches. This file runs the probe against the schema the Jest
- * harness builds from the migrations, which is what makes it a regression guard:
- * if a future migration drops the primary key, foreign key or uniqueness on
- * track_embeddings, the probe stops reporting ok and this test fails -- instead
- * of the failure reaching a user as "the vibe map stopped updating" with nothing
- * in the logs.
- *
- * Run with: npx jest embeddingsHealth.integration.test.ts
+ * The embedding write probe on the migrated schema: it fails if a migration
+ * drops track_embeddings' primary key, foreign key or uniqueness.
  */
 
 import { prisma } from "../../utils/db";

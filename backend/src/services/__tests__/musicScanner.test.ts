@@ -1,12 +1,6 @@
 /**
- * MusicScannerService -- pure logic unit tests
- *
- * Tests the private helper methods on MusicScannerService via a thin
- * subclass that exposes them, and the exported pure utility functions
- * from artistNormalization that the scanner uses heavily.
- *
- * We do NOT test scanLibrary or processAudioFile -- those require real
- * files and a database; they belong to integration tests.
+ * MusicScannerService's helpers, through a subclass that exposes them, and the
+ * artistNormalization utilities it uses.
  */
 
 // All mocks must be before imports

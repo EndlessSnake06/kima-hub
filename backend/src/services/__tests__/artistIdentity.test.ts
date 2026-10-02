@@ -1,16 +1,7 @@
 /**
- * Artist identity.
- *
- * The regression these lock down: `extractPrimaryArtist` split artist tags on
- * " & ", " and ", " with " and ", " to guess a "primary" artist, and truncated
- * real band names doing it. Executed against the shipped code it produced
- * "Dance With the Dead" -> "Dance", "Nick Cave & The Bad Seeds" -> "Nick Cave",
- * "Florence and the Machine" -> "Florence". Separately, "deadmau5" and
- * "dead mau5" resolved to two different artist rows because the dedupe pass
- * keyed its candidate lookup on the un-collapsed name and the fuzzy backstop
- * scored 94 against a threshold of 95.
- *
- * Every case below fails against that implementation.
+ * Artist names are never split on "&", "and", "with" or ",", so "Nick Cave & The
+ * Bad Seeds" stays whole, and spacing variants ("deadmau5" / "dead mau5") resolve
+ * to one artist.
  */
 
 import {
@@ -149,14 +140,8 @@ describe("artistSortName", () => {
         expect(artistSortName("Andrew Bird")).toBe("andrew bird");
     });
 
-    // A reviewer read the alternation in PG_LEADING_ARTICLE -- "the|a|an|..."
-    // -- and reported that "a" preceding "an" must break "An Horse", since
-    // regex alternation prefers the earlier branch. It does prefer it, but the
-    // branch alone is not a match: the pattern demands whitespace after the
-    // article, "An Horse" offers "n", so the engine backtracks into "an" and
-    // succeeds. The behaviour is correct and the reasoning against it is
-    // plausible, which is exactly why it is pinned here rather than argued
-    // about. Reordering the array to put "an" first must keep these passing.
+    // "a" comes before "an" in the article alternation, but needs whitespace
+    // after it, so "An Horse" backtracks into "an". Holds in either order.
     it.each([
         ["An Horse", "horse"],
         ["An Emotional Fish", "emotional fish"],

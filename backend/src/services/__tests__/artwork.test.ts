@@ -1,22 +1,6 @@
 /**
- * One door for artwork, and the rules that make it worth having.
- *
- * Fifteen call sites in this backend wanted a picture. Twelve of them used a
- * door that asks one provider and gives up: `coverArtService` asked only the
- * Cover Art Archive, `deezerService` asked only Deezer, and two routes did not
- * ask anyone -- they built `coverartarchive.org/release-group/<mbid>/front-500`
- * as a string and handed it to the browser, which took the 404 in silence.
- *
- * Measured on 39 real albums from a live library:
- *
- *     the guessed archive address loads     21 / 39
- *     Deezer has it                         31 / 39
- *     asking every source in turn           34 / 39
- *
- * So the rule this file exists to hold down is: keep asking until something
- * answers. A placeholder is only ever correct once every source has said no.
- *
- * Doctrine: the failure and boundary paths first, the happy path last.
+ * `artwork.ts` asks every source in turn until one answers; a placeholder only
+ * when all say no. Failure and boundary paths first, happy path last.
  */
 
 const mockGet = jest.fn();
@@ -455,11 +439,8 @@ describe("the one door for artwork", () => {
         });
 
         it("never falls back to the unchecked address when it runs out of time", async () => {
-            // This is where the original bug would come back. The only caller
-            // carrying a candidate is the Release Radar, and its candidate is
-            // Lidarr's unchecked archive address -- so passing it through on a
-            // slow load would send the browser after exactly the picture this
-            // module exists to stop promising. A placeholder is honest.
+            // A slow load must not pass an unchecked candidate address through;
+            // the placeholder is returned instead.
             deezerAlbum.mockImplementation(
                 () => new Promise((resolve) => setTimeout(() => resolve(null), 60)),
             );

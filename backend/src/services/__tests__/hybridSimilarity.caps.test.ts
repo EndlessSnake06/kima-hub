@@ -1,31 +1,8 @@
 /**
- * S3 — "more like this" must not be dominated by one album or one artist.
- *
- * The shipped ranking ordered purely by sound, so a seed taken from a big
- * album (or from an artist with several similar albums) answered with 20
- * tracks from the same album / nearly all from the same artist: over 20 real
- * seeds at L=20 the lists were 20.3% the seed's own album and 49.2% the
- * seed's own artist (fixplan-work/S3.md).
- *
- * The contract asserted here:
- *  - at most 2 tracks per album and at most 4 per artist in the RETURNED
- *    list, for every album/artist including the seed's own — the seed counts
- *    against its own album and artist, so at most 1 further track from the
- *    seed's album and 3 more from its artist;
- *  - the list still reaches the requested length when the library has enough
- *    material (the whole-library ranking must not starve the tail);
- *  - the same rules in the features-only fallback used when CLAP is absent.
- *
- * Every assertion is provable from the fixture geometry rather than from a
- * probabilistic guess: the seed's own album/artist are seeded as strictly the
- * closest vectors (cos 1.0 / 0.95) and everything else strictly further
- * (cos 0.80), so an uncapped ranking MUST be flooded by them, and a capped
- * ranking cannot hide behind ties.
- *
- * These drive the SHIPPED findSimilarTracks (and its mode selection), not a
- * re-typed copy of the SQL. featureDetection is mocked to pin the mode;
- * track_embeddings rows are seeded via raw SQL because Prisma cannot write
- * Unsupported("vector") columns.
+ * findSimilarTracks returns at most 2 tracks per album and 4 per artist, the
+ * seed included, and still fills the requested length; the features-only
+ * fallback follows the same caps. The seed's album and artist sit strictly
+ * closest, so an uncapped ranking would be flooded by them.
  */
 
 import { prisma } from "../../utils/db";
@@ -51,13 +28,7 @@ function setMode(mode: "hybrid" | "featuresOnly") {
     });
 }
 
-/**
- * A unit 512-dim vector whose cosine with the axis-0 unit vector is exactly
- * `cos`: `cos` on axis 0, the remainder on `axis`. Seeding this way keeps the
- * ranking deterministic — no LCG noise, no tie groups between the seed's
- * group and the scattered material — so "the seed's album floods the list"
- * is a fact about the fixture, not about the planner.
- */
+/** A unit 512-dim vector with cosine `cos` to axis 0; no ties, so rankings are exact. */
 function unitVectorAt(cos: number, axis: number): string {
     const v = Array(512).fill(0);
     v[0] = cos;
@@ -190,12 +161,8 @@ function maxCount(counts: Map<string, number>): number {
 }
 
 beforeEach(async () => {
-    // Each test seeds its own fixture and asserts exact counts, so clear any
-    // leftover rows first — including ones a previous TEST in this file
-    // created (the worker database persists across runs, and a stale
-    // album/artist would change the ranking geometry being asserted).
-    // Children first: track_embeddings cascades with its Track, but rows
-    // orphaned by an earlier crash would otherwise linger.
+    // Each test asserts exact counts, so clear leftover rows first, children
+    // included.
     await prisma.$executeRawUnsafe(
         `DELETE FROM "track_embeddings" WHERE "track_id" LIKE $1`,
         "trk\\_cap\\_%",
@@ -260,11 +227,8 @@ describe("hybridSimilarity diversification (DB, shipped functions)", () => {
         const artistCounts = countsBy(rows, (r) => r.artistId);
         expect(maxCount(artistCounts)).toBeLessThanOrEqual(4);
 
-        // The seed counts against its OWN album and artist: its album has 12
-        // other tracks and its artist has nothing else, so the uncapped
-        // ranking (20 from that album) fails both of these. Only 2 of that
-        // album survive the album cap, and the seed takes one of those two
-        // slots, so exactly 1 remains.
+        // The album cap keeps 2 of the seed's album and the seed is one of
+        // them, so exactly 1 other remains.
         expect(rows.filter((r) => r.albumId === "alb_cap_floodBig")).toHaveLength(1);
         expect(rows.filter((r) => r.artistId === "art_cap_floodArtist")).toHaveLength(1);
 
@@ -306,11 +270,7 @@ describe("hybridSimilarity diversification (DB, shipped functions)", () => {
         expect(rows.filter((r) => r.albumId === "alb_cap_solo_soloSecond")).toHaveLength(2);
     });
 
-    // ------------------------------------------------------------------
-    // Test 3 — the artist cap must be counted over the ALBUM-THINNED
-    // survivors, otherwise "at most 4 per artist" quietly becomes "fewer
-    // when an album was thinned". Red on the independent-window SQL too.
-    // ------------------------------------------------------------------
+    // The artist cap counts what survives the album cap.
     it("gives the seed's artist exactly 3 tracks across 4 of its albums (4 including the seed)", async () => {
         setMode("hybrid");
         await seedCrowdedLibrary({
@@ -354,12 +314,8 @@ describe("hybridSimilarity diversification (DB, shipped functions)", () => {
         expect(maxCount(countsBy(rows, (r) => r.artistId))).toBeLessThanOrEqual(4);
     });
 
-    // ------------------------------------------------------------------
-    // Test 4 — a 50-track request must still be filled: 1 from the 60-track
-    // seed album + 3 more from its artist + 46 from scattered albums.
-    // Red on the current code (the ranking can only reach ~40 through the
-    // default hnsw.ef_search = 40 candidate list).
-    // ------------------------------------------------------------------
+    // 50 = 1 from the seed album + 3 more from its artist + 46 scattered, which
+    // needs more than the default hnsw.ef_search of 40.
     it("fills a 50-track list from one 60-track album plus scattered albums", async () => {
         setMode("hybrid");
         await seedCrowdedLibrary({

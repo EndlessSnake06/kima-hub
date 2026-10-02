@@ -1,17 +1,7 @@
 /**
- * Tier-order tests for getSimilarArtists (
- * "lets try listenbrainz with deezer fallback"). All HTTP is mocked at the
- * service-module boundary — no live calls, no DB, no Redis.
- *
- * Covered:
- * - ListenBrainz-first ordering; Deezer results discarded when LB fills the
- *   request.
- * - Deezer fallback when LB is empty; merge + name-dedupe when LB is short.
- * - Empty result when both remote tiers are empty — local only re-ranks,
- *   never answers.
- * - inLibrary flag correctness (MBID-then-name lookup).
- * - Re-rank bound: match adjustments never exceed ±0.1, and an in-library
- *   artist's score moves by exactly the distance-derived delta.
+ * getSimilarArtists asks ListenBrainz first and Deezer to fill the gap, deduped
+ * by name; the library only re-ranks (by at most ±0.1) and flags inLibrary.
+ * All HTTP is mocked.
  */
 
 const mockLb = { getSimilarArtists: jest.fn() };

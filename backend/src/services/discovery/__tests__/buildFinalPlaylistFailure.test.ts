@@ -1,14 +1,6 @@
 /**
- * Task 5 -- buildFinalPlaylist must mark the batch `failed` when the
- * playlist-creation `$transaction` throws.
- *
- * Doctrine: failure path first. The single test that matters drives the
- * transaction CATCH at discoverWeekly.ts:1440 and asserts the discriminating
- * errorMessage "Playlist build failed: ..." -- a string ONLY the catch can
- * produce. The pre-existing no-tracks short-circuit (:1043) also marks the
- * batch failed but with errorMessage "No tracks found after scan", so the
- * fixture is built to sail past that short-circuit (a real track is returned
- * for the MBID search) and reach the transaction.
+ * buildFinalPlaylist marks the batch failed when the playlist transaction
+ * throws. The fixture returns a track so the build reaches the transaction.
  */
 import { discoverWeeklyService } from "../../discoverWeekly";
 import { updateBatchStatus } from "../../discovery/optimisticBatchUpdate";
@@ -18,15 +10,8 @@ jest.mock("../../discovery/optimisticBatchUpdate", () => ({
     updateBatchStatus: jest.fn().mockResolvedValue({ success: true, retries: 0 }),
 }));
 
-// buildFinalPlaylist (discoverWeekly.ts:868+) calls, before the $transaction:
-//   prisma.discoveryBatch.findUnique (:871)   -- batch lookup + idempotency guard
-//   prisma.downloadJob.findMany     (:887)    -- completed jobs -> searchCriteria
-//   prisma.track.findMany           (:930)    -- MBID track search (returns a hit)
-//   prisma.track.findMany           (:1180)   -- popular-library anchor fallback
-// After the catch, cleanupFailedArtists (:1825) and cleanupOrphanedLidarrQueue
-// (:1718) re-read prisma.discoveryBatch.findUnique and iterate batch.jobs, so
-// the findUnique fixture MUST carry `jobs: []` or those post-catch calls throw
-// an unrelated TypeError and the test would fail for the wrong reason.
+// The batch fixture carries `jobs: []` because the cleanup after the catch
+// iterates batch.jobs.
 jest.mock("../../../utils/db", () => ({
     prisma: {
         discoveryBatch: { findUnique: jest.fn(), update: jest.fn() },
@@ -40,11 +25,8 @@ jest.mock("../../../utils/db", () => ({
     },
 }));
 
-// The service imports discoveryBatchLogger + discoverySeeding from the barrel
-// "./discovery". Mock the barrel itself so both bindings are intercepted (the
-// barrel re-exports live bindings, but mocking it directly is unambiguous and
-// keeps the test self-contained). getSeedArtists -> [] so the seed-anchor
-// branch at :1111 is skipped; only the :1180 popular fallback runs.
+// Mock the discovery barrel; getSeedArtists returns [] so only the popular
+// fallback runs.
 jest.mock("../../discovery", () => ({
     discoveryBatchLogger: { info: jest.fn(), error: jest.fn() },
     discoverySeeding: { getSeedArtists: jest.fn().mockResolvedValue([]) },
@@ -167,14 +149,8 @@ describe("buildFinalPlaylist failure handling (Task 5)", () => {
         );
     });
 
-    // ---- TERMINAL STATE: completedAt MUST be set ----------------------------
-    // Gap closed: a catch that sets `status:"failed"` + the right errorMessage
-    // but OMITS `completedAt` passes every other assertion in this file, yet
-    // leaves the batch without a terminal timestamp. That is the exact bug
-    // Task 5 exists to kill: /batch-status (Task 3) selects the latest terminal
-    // batch with `orderBy: completedAt desc` and `findFirst` skips null-ordered
-    // rows in practice, so a null completedAt re-hides the failed batch and the
-    // 30-min stuck sweep is back. Pin completedAt to a real Date.
+    // The failed batch gets a completedAt, or the latest-terminal lookup
+    // cannot find it.
     it("sets completedAt so the failed batch is a real terminal state, not a pending one", async () => {
         (prisma.discoveryBatch.findUnique as jest.Mock).mockResolvedValue({
             id: "batch-terminal",
@@ -224,15 +200,7 @@ describe("buildFinalPlaylist failure handling (Task 5)", () => {
         );
     });
 
-    // ---- NO RESURRECTION: failure path never writes status "completed" ------
-    // Gap closed: every existing assertion uses toHaveBeenCalledWith, which
-    // matches ANY call. A broken implementation that marks the batch `failed`
-    // in the catch but then -- on a post-catch path or a future regression --
-    // ALSO calls updateBatchStatus({status:"completed"}) would satisfy all the
-    // failure-path assertions above while leaving the batch reading as a
-    // successful empty week to Task 3's /current fallback (which queries
-    // status:"completed"). Assert the failure path NEVER emits a completed
-    // status.
+    // The failure path never writes status "completed".
     it("never marks the batch completed once the build transaction has thrown", async () => {
         (prisma.discoveryBatch.findUnique as jest.Mock).mockResolvedValue({
             id: "batch-noresurrect",
@@ -289,13 +257,7 @@ describe("buildFinalPlaylist failure handling (Task 5)", () => {
         expect(failedCalls.length).toBeGreaterThanOrEqual(1);
     });
 
-    // ---- SINGLE WRITER: failure path writes status exactly once -------------
-    // Gap closed: nothing pins HOW MANY times the catch transitions the batch.
-    // The :1043 no-tracks short-circuit (failed) and the catch (failed) are two
-    // distinct failure writers; a regression that both short-circuits AND falls
-    // through to the catch, or a catch placed outside the try so it double-fires,
-    // would still satisfy toHaveBeenCalledWith. On the transaction-failure path
-    // the batch must be marked failed exactly once (the catch), never twice.
+    // The batch is marked failed exactly once.
     it("transitions the batch to failed exactly once on the transaction-failure path", async () => {
         (prisma.discoveryBatch.findUnique as jest.Mock).mockResolvedValue({
             id: "batch-once",

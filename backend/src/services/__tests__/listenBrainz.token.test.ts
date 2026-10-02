@@ -1,10 +1,6 @@
 /**
- * Per-user scrobble tokens are credentials, so resolution must fail closed:
- * only genuine ciphertext produced by `utils/encryption` resolves. This
- * runs the REAL cipher (no mock of it) against a stubbed database — the
- * four answers are all different outcomes, and only one is a usable token.
- *
- * Run: npx jest src/services/__tests__/listenBrainz.token.test.ts --forceExit --maxWorkers=1
+ * Scrobble tokens fail closed: only real ciphertext from `utils/encryption`
+ * resolves. The real cipher runs; the database is stubbed.
  */
 
 jest.mock("axios", () => ({

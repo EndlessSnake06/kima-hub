@@ -1,28 +1,7 @@
 /**
- * Embedding write-path probe: failure classification.
- *
- * Context. The probe exists because a rebuilt database lost track_embeddings'
- * primary key and the analyzer's upsert
- *
- *   INSERT ... ON CONFLICT (track_id) DO UPDATE ...
- *
- * failed on every track with
- *
- *   42P10: there is no unique or exclusion constraint matching the
- *          ON CONFLICT specification
- *
- * while every other signal stayed green. Nothing noticed for three weeks.
- *
- * These tests pin the classification of that failure (and the two neighbouring
- * outcomes) so the probe keeps reporting the right thing. The database calls are
- * mocked: this covers decision logic, not SQL execution. The real-database path
- * -- that a migrated schema accepts the probe -- is covered by
- * embeddingsHealth.integration.test.ts, and the end-to-end repair (damaged
- * database, 42P10 reproduced, migration repairs it, upsert then succeeds) was
- * proven against a live Postgres with pgvector when the repair migration
- * landed.
- *
- * Run with: npx jest embeddingsHealth.test.ts
+ * How the embedding write probe classifies failures, including 42P10 (no unique
+ * constraint for ON CONFLICT) when track_embeddings lost its primary key. The
+ * database is mocked; the integration test covers the real schema.
  */
 
 const mockExecuteRaw = jest.fn();

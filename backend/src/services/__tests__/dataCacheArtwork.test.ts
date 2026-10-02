@@ -1,19 +1,7 @@
 /**
- * dataCache used to ask one provider per kind of thing and give up.
- *
- * `getAlbumCover` asked the Cover Art Archive and nothing else, which is why so
- * many album cards served from this cache fell back to a placeholder when
- * Deezer had the record all along -- measured on 39 real albums, the archive
- * has 21 and Deezer has 31. `fetchArtistImage` spelled out its own
- * Fanart-then-Deezer-then-Last.fm chain, one of five such chains, each with its
- * own ordering and its own copy of the Last.fm placeholder filter.
- *
- * Both now go through `artwork.ts`. What is proved here is that wiring, and the
- * detail it turned on: the album lookup reads the title and artist out of the
- * database, because without them the sources cannot ask Deezer at all -- and
- * Deezer is the one most likely to have the record.
- *
- * Doctrine: the failure and boundary paths first, the happy path last.
+ * dataCache's album cover and artist image go through `artwork.ts`. The album
+ * lookup reads title and artist from the database so Deezer can be searched.
+ * Failure and boundary paths first, happy path last.
  */
 
 const mockAlbumFindUnique = jest.fn();
@@ -83,11 +71,8 @@ describe("dataCache asks every source, not just one", () => {
 
     describe("album covers", () => {
         it("still looks for an album whose id this app invented", async () => {
-            // 46% of a real library carries a "temp-" id, minted by the scanner
-            // when it cannot match an album to MusicBrainz. This used to return
-            // "no cover" for all of them without asking anyone -- correct for
-            // the Cover Art Archive, which needs a real id, and wrong for
-            // Deezer, which searches by artist and title.
+            // A "temp-" id has no MusicBrainz match, but Deezer can still find
+            // the album by artist and title.
             mockAlbumFindUnique.mockResolvedValue({
                 coverUrl: null,
                 title: "Reliance",

@@ -1,10 +1,5 @@
 /**
- * EnrichmentFailureService Tests
- *
- * Verifies recordFailure() uses atomic upsert (not find-then-create)
- * and properly resets resolved state on re-failure.
- *
- * Run with: npx jest enrichmentFailureService.test.ts
+ * recordFailure upserts atomically and clears the resolved state on a repeat failure.
  */
 
 import { enrichmentFailureService } from "../enrichmentFailureService";

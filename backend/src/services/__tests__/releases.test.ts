@@ -1,10 +1,6 @@
 /**
- * What closing the window means.
- *
- * The shipped catalog asks exactly one question (the 1.11 GPU choice); the rest
- * of this contract — silence recorded as a decline rather than an absence later
- * code reads as a yes — is pinned here against a two-question test release,
- * because v2's social and commons opt-ins will run on it.
+ * Closing the release window records silence as a decline, never as a missing
+ * answer. Tested on a two-question release.
  */
 
 import { ChoiceDecidedBy } from "@prisma/client";

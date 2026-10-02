@@ -1,11 +1,6 @@
 /**
- * "Do we actually have this album?"
- *
- * The answer marks downloads complete, which marks discovery picks ACQUIRED,
- * which is what retention later tries to delete. A false yes therefore ends
- * with the system confident it holds a record it never got — and it said yes
- * on a bare substring: asking for "Trust In Trance" while owning "Trance"
- * matched, because containment was tested in both directions.
+ * "Do we already have this album?" marks downloads complete, so it must not
+ * match on a bare substring ("Trust In Trance" is not "Trance").
  */
 
 import { lidarrService } from "../lidarr";
@@ -72,16 +67,8 @@ describe("isAlbumAvailableInSnapshot", () => {
 });
 
 /**
- * The library and the download check ask DIFFERENT questions about the same two
- * titles, and must keep giving opposite answers.
- *
- *   library      -- "is this one row on the shelf?"        -> NO, editions are separate
- *   acquisition  -- "do we already hold this, so skip it?" -> YES, the deluxe counts
- *
- * They shared one key until 2026-08-23, when the library rule changed to keep
- * editions apart and silently flipped acquisition with it -- every album held
- * only as a deluxe/remaster started reading as "not owned" and got fetched
- * again. These tests fail if the two are ever re-coupled, in either direction.
+ * The library keeps editions as separate albums; acquisition counts an owned
+ * edition as owned. These fail if the two rules are coupled again.
  */
 describe("library grouping and acquisition disagree on editions, on purpose", () => {
     const PLAIN = "Dangerous Days";

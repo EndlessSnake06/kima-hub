@@ -1,16 +1,7 @@
 /**
- * Tests for the textEmbeddingBridge DOOR: searchTracksByText's full path from
- * a plain query string to the pgvector ranking query. textSearch.test.ts
- * covers the ranking half in isolation; these pin the wiring the door adds:
- * the Redis pub/sub round trip to the analyzer, the failure and timeout
- * handling (the bridge must ride out a dead analyzer and recover), and that
- * the embedding reaches the transaction's $queryRaw in pgvector's text form
- * with the LIMIT (S1: the query must run inside the ef_search-widened
- * transaction, on tx, never the pool).
- *
- * Redis and prisma are mocked at their boundaries; the real pub/sub flow in
- * textEmbeddingBridge.ts (shared subscriber + publisher, listener keyed by
- * requestId) runs for real.
+ * searchTracksByText end to end: the Redis round trip to the analyzer, riding
+ * out a dead analyzer, and the embedding reaching the ranking query inside the
+ * ef_search transaction. Redis and prisma are mocked; the pub/sub code is real.
  */
 
 const duplicateMock = jest.fn();
@@ -28,12 +19,8 @@ jest.mock("../../utils/db", () => ({
     __esModule: true,
     prisma: {
         $queryRaw: (...a: unknown[]) => queryRawMock(...a),
-        // S1: the ranking query must run inside the ef_search-widened
-        // transaction, on the transaction's own client (a pool-level call
-        // would land on a connection without the raised width). The stub
-        // $transaction invokes the callback with a tx whose $queryRaw lands
-        // on txQueryRawMock, so the assertions below can tell a
-        // transaction-scoped call from a pool-level one.
+        // The callback gets a tx whose $queryRaw is txQueryRawMock, so tests can
+        // tell a transaction call from a pool call.
         $transaction: (fn: (tx: unknown) => Promise<unknown>) => {
             transactionMock(fn);
             return fn({ $queryRaw: (...a: unknown[]) => txQueryRawMock(...a) });

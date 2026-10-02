@@ -1,24 +1,8 @@
 /**
- * TS/SQL identity parity.
- *
- * Identity keys are computed in two places: here at scan time, and in SQL by the
- * migration backfills. If the two disagree by a single character the backfilled
- * key is unreachable from the runtime, and the next scan re-creates the
- * duplicate the whole identity mechanism exists to prevent -- silently.
- *
- * That has happened three times. A hand-written 20-entry "characters unaccent
- * folds" table missed 857 of 2624 sampled codepoints; the two sides lowercased
- * in opposite order, so `unaccent` expansions that are uppercase ("(C)") kept
- * their case on one side only; and JS `\s` matches four characters Postgres `\s`
- * does not, so a name containing a no-break space normalised differently.
- *
- * The expectations below are GENERATED OUTPUT from the `kima_*` SQL functions
- * running in the shipped Postgres image -- they are what the database actually
- * produces, not what anyone believes it produces. Regenerate with
- * `npm run gen:pg-text-rules` after changing those functions, and only then.
- *
- * A failure here means the runtime and the backfill have diverged. Do not
- * "fix" it by editing the fixture.
+ * Identity keys from the TypeScript must match the `kima_*` SQL functions the
+ * migrations use, or a backfilled key is unreachable at runtime. Expectations are
+ * generated from the shipped Postgres image by `npm run gen:pg-text-rules`;
+ * regenerate after changing those functions, never edit by hand.
  */
 
 import { artistIdentityKey, artistSortName, normalizeArtistName } from "../artistIdentity";

@@ -1,10 +1,6 @@
 /**
- * MoodBucketService -- unit tests for saveUserMoodMix and getUserMoodMix
- *
- * Tests the two new behaviors:
- * 1. save WITH explicit trackIds -> those exact trackIds (and derived coverUrls)
- *    are persisted and getUserMoodMix returns them in the same order.
- * 2. save WITHOUT trackIds -> regenerate path via getMoodMix, unchanged behavior.
+ * saveUserMoodMix with trackIds stores those tracks in order; without them it
+ * regenerates through getMoodMix.
  */
 
 jest.mock("../../utils/db", () => ({

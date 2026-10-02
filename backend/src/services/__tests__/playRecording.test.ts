@@ -1,10 +1,5 @@
 /**
- * The Last.fm rule, pinned.
- *
- * A play used to mean "the stream endpoint was hit", so skipping an album wrote
- * a play per track. These tests exist so that cannot come back quietly: each one
- * was watched to fail against a deliberate mutation of the rule before being
- * kept.
+ * A play is recorded by the Last.fm rule, not by hitting the stream endpoint.
  */
 
 import { ListenSource } from "@prisma/client";
@@ -23,11 +18,8 @@ jest.mock("../../utils/db", () => {
     const prisma: Record<string, any> = {
         track: { findUnique: jest.fn() },
         play: { findFirst: jest.fn(), create: jest.fn() },
-        // `recordPlay` does the duplicate check and the insert inside one
-        // transaction, behind a per-(user, track) advisory lock. Run the
-        // callback against this same object so the per-test `findFirst` /
-        // `create` stubs are the ones that answer, and resolve the lock
-        // query — there is no Postgres behind a mock to take it.
+        // recordPlay checks and inserts in one transaction under an advisory
+        // lock; the mock runs the callback on this same object.
         $transaction: jest.fn((fn: any) => fn(prisma)),
         $executeRaw: jest.fn(async () => 1),
     };
@@ -178,11 +170,8 @@ describe("recordPlay", () => {
     });
 
     it("takes no isolation level, because REPEATABLE READ would restore the race", async () => {
-        // The check and the insert run on the database's default READ
-        // COMMITTED. Pinning the argument count is the cheap guard: an
-        // `isolationLevel` option would put the second writer back on a
-        // snapshot taken before the first one inserted, and the duplicate
-        // would come back silently — no error, two rows.
+        // The transaction must use the default READ COMMITTED; a stricter
+        // isolation level would let a second writer miss the first insert.
         prisma.track.findUnique.mockResolvedValue(track(200));
 
         await recordPlay({ userId: "u1", trackId: "t1", secondsListened: 150 });

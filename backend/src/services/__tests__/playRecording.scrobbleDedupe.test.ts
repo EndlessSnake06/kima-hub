@@ -1,22 +1,6 @@
 /**
- * The dedupe must survive two things a mock cannot express.
- *
- * 1. **Two reports of the same play at the same moment.** A Subsonic client
- *    retrying a scrobble, or the same track started on two devices. The
- *    duplicate check (`play.findFirst`) and the insert (`play.create`) were two
- *    separate statements with nothing between them, so both readers saw "no
- *    earlier play" and both wrote a row. `Play` has no unique index on
- *    (userId, trackId, playedAt) and will not get one without an operator
- *    decision — existing duplicates are the play audit's job
- *    (`playHistoryRepair.ts`), not a migration's.
- * 2. **A scrobble that arrives late.** A phone syncing overnight traffic must
- *    not have its old plays thrown away because the same track was played more
- *    recently (pinned in the late-sync test below).
- *
- * These run against the real per-worker database for exactly that reason: with
- * Prisma mocked, a check-then-insert race is only ever re-asserted, never
- * caught — the mock answers both readers with "no row" and the test passes
- * while production doubles the play.
+ * Play dedupe on the real database: simultaneous reports of one play store one
+ * row, and a late scrobble is kept even when the track was played since.
  */
 
 import { ListenSource } from "@prisma/client";
@@ -41,11 +25,7 @@ const { listenBrainzService } = require("../listenBrainz");
 const PREFIX = "s6-dedupe";
 
 async function cleanup() {
-    // Deleting the users cascades their Play rows (`user` on Play is
-    // `onDelete: Cascade`), and deleting the artists takes the fixture albums
-    // and their tracks with them. Explicit rather than left to chance so a
-    // half-created fixture cannot leak into the next test in this worker's
-    // database.
+    // Deleting users cascades their plays; deleting artists takes albums and tracks.
     await prisma.user.deleteMany({ where: { username: { startsWith: PREFIX } } });
     await prisma.artist.deleteMany({ where: { name: { startsWith: PREFIX } } });
 }
@@ -111,12 +91,7 @@ describe("playRecording against the real database", () => {
     });
 
     it("stores one row when the same play is reported in parallel", async () => {
-        // Twenty-four concurrent reports of one play, each stamped a
-        // millisecond later than the last — the shape that actually doubles.
-        // Measured against the pre-fix code this stored 24 rows in every
-        // trial (12 in flight stored 12 in 2 of 3): each report read "no
-        // earlier play" from the empty window and wrote, so one listen was
-        // counted over and over and mirrored to ListenBrainz once per report.
+        // Twenty-four concurrent reports of one play, each a millisecond apart.
         const fx = await fixture("parallel");
         const t0 = Date.now();
 
@@ -159,11 +134,8 @@ describe("playRecording against the real database", () => {
     });
 
     it("keeps a scrobble that arrives 24 hours late", async () => {
-        // The phone-sync shape: a device back-fills yesterday's listens today.
-        // The duplicate check only ever had a lower edge — `playedAt >
-        // anchor − window` — so any row NEWER than the play being recorded
-        // vetoed it, and every late scrobble came back as "duplicate". The
-        // window has to be centred on the play, not start at it.
+        // A device back-fills yesterday's plays: the window is centred on the
+        // play, so a newer row does not veto it.
         const fx = await fixture("late-sync");
         const now = new Date("2026-09-25T12:00:00.000Z");
         const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);

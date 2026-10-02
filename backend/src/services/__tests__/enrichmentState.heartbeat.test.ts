@@ -1,11 +1,6 @@
 /**
- * Heartbeat-honesty tests for enrichmentState's progress signature.
- *
- * The hang detector keys on lastActivity staleness. These tests pin the rule
- * that lastActivity may ONLY be refreshed by real work (counter changes and
- * status transitions) -- never by phase churn, which runPhase() emits several
- * times per 5-second cycle and which previously kept a wedged "running" loop
- * looking alive forever (the prod hang signature).
+ * lastActivity, which the hang detector watches, moves only on real work
+ * (counter changes, status transitions), never on phase changes.
  */
 // The module under test instantiates two real ioredis connections at import
 // time (module-level singleton). Without a mock, jest's event loop never

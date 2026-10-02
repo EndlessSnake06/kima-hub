@@ -1,18 +1,7 @@
 /**
- * identifyTrackByAcoustid: which file it opens, and what it trusts from tags.
- *
- * Two bugs pinned here:
- *
- * 1. `Track.filePath` is stored relative to the music folder. The identifier
- *    handed it straight to the tag reader and to fpcalc, whose working
- *    directory is not the music folder, so both failed to open the file and
- *    the failure was swallowed -- AcoustID never ran in enrichment.
- * 2. A file's `acoustid_id` tag was returned as the MusicBrainz recording id.
- *    It is AcoustID's own fingerprint-cluster id, a different namespace, so
- *    every tagged file was given a recording id that MusicBrainz does not have.
- *
- * The step answers with an Outcome: a refusal or a lookup failure is a
- * typed kind, never a null that looks like "the source had nothing".
+ * identifyTrackByAcoustid opens the file through the music folder (filePath is
+ * stored relative to it), and never treats an `acoustid_id` tag as a
+ * MusicBrainz recording id. Refusals and lookup failures are typed Outcomes.
  */
 
 jest.mock("../../config", () => ({ config: { music: { musicPath: "/srv/music" } } }));
@@ -68,13 +57,8 @@ beforeEach(() => {
 
 describe("identifyTrackByAcoustid: the file it opens", () => {
     it("with no fingerprint anywhere, the step refuses — fpcalc is never run, never a fake answer", async () => {
-        // Defect 2: the second fpcalc path is gone. The fingerprint is the
-        // fingerprint stage's answer, and the recording stage is gated on
-        // that question being SETTLED (PREREQUISITE_STAGE) — so a call that
-        // still arrives with no fingerprint anywhere is a leaked gate, and
-        // is refused (permanent NO_FINGERPRINT): never a lookup that matched
-        // nothing, never another decode of the file, and never an "owed"
-        // record the sweep would re-poll forever.
+        // With no fingerprint anywhere the step refuses (permanent
+        // NO_FINGERPRINT): no lookup and no second decode of the file.
         const out = await identifyTrackByAcoustid(
             track("Artist/Album/01 Song.flac"),
         );

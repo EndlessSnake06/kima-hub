@@ -1,17 +1,6 @@
 /**
- * addTracks must accept every real track, regardless of its album's
- * location.
- *
- * The service once scoped adds to albums with location=LIBRARY. A
- * DISCOVER album's tracks stream and queue like any other, so a person
- * adding one to a playlist got a silent 404 ("no playable library
- * tracks") and an empty playlist -- the collection grid surfaced discover
- * albums as first-class cards, and the walkthrough drove straight into
- * this on restored production data.
- *
- * These tests run against the real per-worker database: the bug lived in
- * a Prisma where-clause, which a mocked prisma can only re-assert, not
- * catch.
+ * addTracks accepts any real track, including ones on DISCOVER albums. Real
+ * database, since the rule lives in a Prisma where-clause.
  */
 
 import { prisma } from "../../utils/db";

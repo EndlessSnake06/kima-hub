@@ -1,14 +1,6 @@
 /**
- * getAlbumCatalogue against REAL MusicBrainz JSON
- * The fixtures in fixtures/mb/ are verbatim responses fetched from
- * musicbrainz.org for Daft Punk "Discovery": the release group
- * 48117b90-a16e-34ca-a514-19c702df1158 (inc=releases+tags) and its
- * earliest release bd3bb36e-16c8-438f-850e-dfbf4d1478f0
- * (inc=recordings+isrcs+labels+tags). This suite checks the extraction —
- * that the parse produces the values actually present in the real
- * responses — not just that the code survives mocked shapes.
- *
- * Run with: npx jest musicbrainz.albumCatalogue --no-coverage
+ * getAlbumCatalogue against verbatim MusicBrainz responses for Daft Punk
+ * "Discovery" (fixtures/mb/): the release group and its earliest release.
  */
 
 const rgFixture = require("./fixtures/mb/rg-discovery.json");

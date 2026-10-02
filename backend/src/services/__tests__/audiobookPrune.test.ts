@@ -1,11 +1,6 @@
 /**
- * AudiobookCacheService.syncAll -- prune pass.
- *
- * The sync used to be add-only: books removed from Audiobookshelf stayed in
- * Kima forever. syncAll() now prunes rows not in ABS's live set, refuses to
- * prune when ABS returns an empty list (failed fetch must not wipe the
- * library), and isMissing books are deleted rather than skipped. Also covers
- * the publishedYear bracket-parse fix ("(2008)" -> 2008).
+ * syncAll removes books Audiobookshelf no longer has, refuses to prune on an
+ * empty list, deletes isMissing books, and parses "(2008)" as 2008.
  */
 
 jest.mock("../../utils/db", () => ({

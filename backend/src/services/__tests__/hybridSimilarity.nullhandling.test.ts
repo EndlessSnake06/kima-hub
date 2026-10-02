@@ -1,29 +1,7 @@
 /**
- * Similar-tracks ranking and null-handling regression test.
- *
- * With CLAP embeddings present, similar tracks rank on the fingerprint alone:
- * audio features must not reorder them (the old 0.55/0.45 blend let features
- * decide most of the top 20).
- *
- * Features-only fallback (no CLAP), after the F4 fix (weighted-mean
- * normalization over PRESENT features): a null feature on EITHER side
- * contributes 0 to the numerator AND drops its weight from the denominator, so
- * the score divides by the sum of present weights rather than the full 1.0.
- * When NO feature is present the denominator is 0 and the score is the neutral
- * 0.5.
- *
- * F5: the features-only path no longer emits a fabricated constant-0 distance;
- * it emits (1 - similarity).
- *
- * S2: a seed without a fingerprint (or a nonexistent id) must return no rows --
- * the empty seed CTE used to give every candidate a NULL distance and the
- * endpoint answered with ~`limit` arbitrary tracks.
- *
- * These tests drive the SHIPPED functions (findSimilarTracks and its mode
- * selection), not a re-typed copy of the SQL -- a mirror can drift from the
- * real query and prove nothing. featureDetection is mocked to pin the mode;
- * track_embeddings rows are seeded via raw SQL because Prisma cannot write
- * Unsupported("vector") columns.
+ * With CLAP embeddings, similar tracks rank on the embedding alone. Without
+ * them, missing features drop out of the weighted mean (0.5 when none are
+ * present) and distance is 1 - similarity. A seed with no embedding returns no rows.
  */
 
 import { prisma } from "../../utils/db";
@@ -249,12 +227,8 @@ describe("hybridSimilarity null handling (DB, shipped functions)", () => {
     });
 });
 
-// S2: a seed with no CLAP fingerprint row must yield NO rows. The seed lives
-// in a CTE that the query reads only through a scalar subquery, so an empty
-// seed gave every candidate a NULL distance and the endpoint answered with
-// ~`limit` arbitrary tracks scored 0. The contract restored here: no seed
-// fingerprint => [], and the routes turn that into their "not analysed yet"
-// 404s (see routes/__tests__/similarUnanalysedSeed.route.test.ts).
+// A seed with no embedding row returns [], which the routes turn into their
+// "not analysed yet" 404.
 describe("unanalysed seed (no embedding row) returns no rows", () => {
     it("CLAP mode: a seed track with no embedding row returns []", async () => {
         setMode("hybrid");

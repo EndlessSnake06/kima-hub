@@ -1,19 +1,7 @@
 /**
- * Public vibe surface — read-only door onto auth-walled features.
- *
- * The decisive logic in this feature is in publicVibeService:
- *   - join playback (trackId + queue) onto map coordinates
- *   - proxy `native:` cover refs into public cover URLs (never leak refs)
- *   - deterministically decimate the map to the public cap
- *   - null nowPlaying when idle (the normal case)
- *
- * Rather than asserting on re-implemented behavior, these tests drive the REAL
- * service functions against a mocked prisma layer whose rows stand in for the
- * cache + DB. They assert the observable contracts: coverage rewriting, the
- * idle-null contract, the decimate cap + reported count, and the queue
- * ordering/indices. A real DB (jest globalSetup, testbed) is OUT of reach from
- * this host, so this demonstrates the logic directly; the live-server steps in
- * the card body are recorded as not_verified with reason.
+ * publicVibeService joins playback onto map coordinates, rewrites `native:`
+ * cover refs to public URLs, decimates the map to the public cap and returns a
+ * null nowPlaying when idle. Prisma is mocked.
  */
 
 // prisma is imported by the service directly, so mock it at that path.

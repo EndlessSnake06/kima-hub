@@ -1,16 +1,6 @@
 /**
- * Text search ranking (searchTracksByEmbedding, the half of searchTracksByText
- * after the analyzer returns the query's CLAP text embedding).
- *
- * Text-to-audio cosines are only comparable within one query, and real
- * matches often sit well below any fixed floor: on the full library
- * "synth pop" scored at most 0.48 against 745 synth-pop tracks, so the old
- * absolute 0.40 cut-off returned 0-41 of them depending on the encoder. The
- * contract is now a ranked list: the `limit` nearest tracks, best first,
- * however low their absolute cosine.
- *
- * Drives the shipped query against the per-worker test DB; embeddings are
- * seeded via raw SQL because Prisma cannot write Unsupported("vector").
+ * Text search returns the `limit` nearest tracks, best first, with no cosine
+ * floor: text-to-audio cosines are only comparable within one query.
  */
 import { prisma } from "../../utils/db";
 import { searchTracksByEmbedding } from "../textEmbeddingBridge";
