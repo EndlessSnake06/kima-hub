@@ -37,5 +37,7 @@ module.exports = {
         '^p-limit$': '<rootDir>/src/__mocks__/p-limit.cjs',
         // music-metadata is pure ESM with no CJS entry point; map to a CJS stub.
         '^music-metadata$': '<rootDir>/__mocks__/music-metadata.js',
+        // One server per test app instead of one per request.
+        '^supertest$': '<rootDir>/src/__mocks__/supertest.cjs',
     },
 };

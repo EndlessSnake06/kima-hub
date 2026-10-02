@@ -51,6 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Infrastructure
 
 - **Enrichment hardening.** Failed status is genuine (crash-safe boot, honest route responses), the false-heartbeat hang class is gone, and a corrupted file can no longer disable all embeddings.
+- **Backend route tests keep one server per test app.** Handed a bare app, supertest opened a new server on a fresh port for every request; under parallel workers a request sometimes reached the wrong socket and the suite failed on a different test each time (a 303 or 404 from another app, or an HTTP parse error). A test app now keeps one server until its file finishes.
 - **Migrations for upgraders from 1.10:** `release_acknowledgements`, `play_audit_ignore`, `max_queue_length`, `acoustid_identification`, `track_embeddings_constraint_repair`, `resolve_soulseek_fallback_split`, `drop_analysis_status_audit`, `add_artist_embeddings`, `add_listenbrainz_user_token`, `rename_lastfm_tags_to_enrichment`. All are applied automatically by `npm run db:migrate` on deploy; the constraint-repair migration restores the track-embeddings primary key, foreign key, HNSW index, and model-version index. A soulseek-fallback settings split is resolved, and the boot-time fake migration rows the old Dockerfile wrote are gone.
 
 ## [1.10.1] - 2026-08-25
