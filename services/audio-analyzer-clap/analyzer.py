@@ -1167,6 +1167,16 @@ class ControlHandler:
             traceback.print_exc()
 
 
+def probe_gpu_session():
+    """Open one audio session and drop it, so the GPU's state is recorded."""
+    from onnx_backend import OnnxCLAPBackend
+    try:
+        OnnxCLAPBackend(CLAP_ONNX_MODEL_PATH).load_model()
+    except Exception as e:
+        logger.error(f"gpu-onnx: startup session failed: {e}")
+    gc.collect()
+
+
 def main():
     """Main entry point"""
     logger.info("=" * 60)
@@ -1224,11 +1234,16 @@ def main():
     logger.info("Started control handler thread")
 
     # GPU-onnx: pick up an install that was requested while this process was
-    # down. Runs in its own thread.
+    # down.
+    import gpu_runtime
     if os.path.exists(os.path.join(os.getenv('DATA_DIR', '/data'),
                                    'gpu-onnx', 'enabled.json')):
-        import gpu_runtime
         logger.info(f"gpu-runtime startup reconcile: {gpu_runtime.reconcile()}")
+
+    # The model loads on the first job, so an idle analyzer would never say
+    # whether the GPU took effect. One session opened now measures it.
+    if CLAP_BACKEND == 'onnx' and gpu_runtime.request_gpu():
+        threading.Thread(target=probe_gpu_session, name="GpuProbe", daemon=True).start()
 
     # Main loop: monitor idle state and unload model when not needed
     try:

@@ -39,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **GPU acceleration shows as active right after the analyzer restarts.** The analyzer only checked the GPU when its first job loaded the model, so an idle server kept asking for a restart that had already happened. It now opens one session at startup to check.
 - **A file that cannot be read is no longer counted as added.** The scan counted every new file before reading it, so an unreadable file showed up as "added" on every scan while never reaching the library. It now counts only as an error.
 - **The whats-new window queue.** Dismissing one release no longer reuses its window for the next; the "Take me to it" action defers the rest of the queue instead of chasing the user, and Escape with a confirmation open no longer dismisses the window underneath.
 - **Podcast subscribe returns 422 on an unreadable feed, not 500.**
