@@ -25,6 +25,7 @@ import { toAudioFeaturesDTO } from "../../utils/audioFeatures";
 import { resolveWithinMusicRoot } from "./trackPath";
 import { findArtistArtwork, withAlbumArtwork } from "../../services/artwork";
 import { LIBRARY_LOCATION } from "../../services/libraryFilters";
+import { editionlessKey } from "../../services/albumIdentity";
 
 // Alphabetical sorts use `sortName` (article-stripped, unaccented,
 // lowercased; indexed). `name`/`name-desc` take the raw-SQL branch below,
@@ -461,11 +462,10 @@ router.get("/artists/:id", async (req, res) => {
           source: "musicbrainz" as const,
         }));
 
-        const dbAlbumTitles = new Set(
-          dbAlbums.map((a) => a.title.toLowerCase()),
-        );
+        const inLibrary = new Set(dbAlbums.map((a) => a.rgMbid).filter(Boolean));
+        const inLibraryTitles = new Set(dbAlbums.map((a) => editionlessKey(a.title)));
         const mbAlbumsFiltered = await withAlbumArtwork(
-          mbAlbums.filter((a) => !dbAlbumTitles.has(a.title.toLowerCase())),
+          mbAlbums.filter((a) => !inLibrary.has(a.rgMbid) && !inLibraryTitles.has(editionlessKey(a.title))),
           (album) => ({ rgMbid: album.rgMbid, artistName: artist.name, albumTitle: album.title }),
           (album, coverUrl) => ({ ...album, coverUrl, coverArt: coverUrl }),
         );
