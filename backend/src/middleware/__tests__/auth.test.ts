@@ -1,14 +1,6 @@
 /**
- * Auth Middleware Tests
- *
- * Tests the three exported middleware functions: requireAuth, requireAdmin,
- * requireAuthOrToken. Each test targets a specific code branch and asserts
- * on an observable outcome (status code, response body, req.user state,
- * next() called or not).
- *
- * No database is hit -- prisma.user.findUnique and prisma.apiKey.findUnique
- * are mocked. Real JWT signing/verification is used against the test secret
- * set in src/__mocks__/test-env.cjs.
+ * requireAuth, requireAdmin and requireAuthOrToken, branch by branch. Prisma is
+ * mocked; JWTs are really signed with the test secret from test-env.cjs.
  */
 
 import jwt from 'jsonwebtoken';

@@ -1,18 +1,7 @@
 /**
- * One key space, two generators.
- *
- * `rankSequence` (used to seed an empty playlist) emits 1-character keys;
- * `rankForPosition` (used to seed a playlist from an ordered import, and by the
- * SQL backfill's kima_rank_from_position) emits fixed 3-character keys. Both are
- * fine on their own. Mixing them is not: '0' (0x30) sorts before every letter
- * and digit `rankSequence` uses, so appending position-derived keys to a
- * natively-seeded playlist put the whole batch AHEAD of everything already
- * there, silently.
- *
- * That is why appends go through playlistService.allocateAppendRanks, which
- * chains from the list's existing last rank with `rankAfter` and so preserves
- * whatever width is already in use. These lock the property that made the bug
- * possible, so it cannot be reintroduced by "just deriving the rank".
+ * `rankSequence` emits 1-character keys and `rankForPosition` 3-character keys;
+ * mixed, '0' sorts before every letter. Appends chain from the last rank with
+ * `rankAfter` (playlistService.allocateAppendRanks) to keep the width in use.
  */
 
 import { rankAfter, rankForPosition, rankSequence } from "../lexoRank";

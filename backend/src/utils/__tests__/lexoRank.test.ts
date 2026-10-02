@@ -1,11 +1,6 @@
 /**
- * Fractional rank keys.
- *
- * These replace the integer `sort` column whose collisions scrambled imported
- * playlists. The properties below are the ones the playlist ordering depends
- * on, so they are asserted against randomised sequences rather than a handful
- * of hand-picked pairs -- an ordering bug that only shows up after 200 inserts
- * is exactly the kind that shipped last time.
+ * Fractional rank keys for playlist order, checked against randomised insert
+ * sequences.
  */
 
 import {
@@ -204,17 +199,9 @@ describe("rankSequence — seeding a list", () => {
 
 describe("collation assumption", () => {
     /**
-     * The ranks are compared BOTH in Postgres (ORDER BY rank, rank > $x) and in
-     * JavaScript (the merge of items with pending tracks). Those two comparisons
-     * must agree.
-     *
-     * They did not: under the database's default locale collation Postgres
-     * ordered 'F' < 'j' < 'U' while JavaScript orders 'F' < 'U' < 'j', so the
-     * displayed order and the order the service computed against were different.
-     * The rank columns are now declared COLLATE "C" (byte order) to match.
-     *
-     * This test pins the JavaScript half. If it ever fails, the alphabet changed
-     * and the column collation has to be revisited with it.
+     * Ranks are compared in Postgres and in JavaScript, so the columns use
+     * COLLATE "C" (byte order). If this fails, the alphabet changed and the
+     * collation must be revisited.
      */
     it("orders by byte value, which is what COLLATE \"C\" gives Postgres", () => {
         expect(["F", "U", "j"].sort()).toEqual(["F", "U", "j"]);

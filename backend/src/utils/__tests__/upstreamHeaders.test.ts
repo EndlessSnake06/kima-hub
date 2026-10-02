@@ -1,9 +1,6 @@
 /**
- * The proxy routes copy headers off an axios response onto their own response.
- * axios and Node disagree about what a header value can be, and the gap is not
- * theoretical: axios represents a valueless header as boolean `true`, which
- * Node rejects at runtime with ERR_INVALID_HTTP_TOKEN rather than at compile
- * time. These tests pin every shape that can come out of axios.
+ * Copying axios response headers onto our response: axios can give `true` for a
+ * valueless header, which Node rejects at runtime. Every axios shape is covered.
  */
 
 import { upstreamHeader, upstreamHeaderNumber } from "../upstreamHeaders";

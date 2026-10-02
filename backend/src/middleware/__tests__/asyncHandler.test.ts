@@ -1,32 +1,7 @@
 /**
- * `asyncHandler` -- the bridge from a rejected route handler to `next()`.
- *
- * The claim this wrapper exists for: without it, a rejected async handler in
- * express 4 sends NO RESPONSE AT ALL. That is the fact the whole route-hygiene
- * pass rests on -- the plan for it said "let errors reach errorHandler instead
- * of a local res.status(500)", which is right for express 5 and actively
- * harmful here, because deleting those try/catch blocks without a bridge turns
- * answered 500s into requests that hang until the client gives up.
- *
- * That negative claim is NOT asserted below, and the omission is deliberate
- * rather than an oversight. Jest fails any test that produces an unhandled
- * rejection -- correctly -- so the failure mode cannot be observed from inside
- * a test without either suppressing process-level handlers for the whole run or
- * asserting on Jest's own error. Both are worse than not testing it.
- *
- * It was measured directly instead, against this repo's express 4.18:
- *
- *     process.on("unhandledRejection", e => console.log("UNHANDLED:", e.message));
- *     const app = express();
- *     app.get("/throws", async () => { throw new Error("boom"); });
- *     app.use((err, _req, res, _next) => res.status(500).json({ handled: true }));
- *     // race the request against a 2.5s timer
- *
- *     -> UNHANDLED: boom
- *     -> OUTCOME: TIMEOUT - no response ever sent
- *
- * Re-run that if you ever want to check whether an express upgrade has made
- * this wrapper unnecessary. Everything below tests the wrapper itself.
+ * `asyncHandler` passes a rejected route handler's error to `next()`. Without
+ * it, Express 4 sends no response at all; that case is not tested here because
+ * Jest fails any unhandled rejection.
  */
 
 import express from "express";

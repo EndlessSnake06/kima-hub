@@ -1,25 +1,7 @@
 /**
- * `errorHandler` -- what a thrown error becomes on the wire.
- *
- * The route-hygiene sweep wants handlers to throw instead of answering with
- * `res.status(...)` by hand. Whether that is safe depends entirely on this
- * file, because it is the only thing standing between a throw and the client.
- *
- * The gap that prompted these tests: `AppError`'s three categories map to 400,
- * 503 and 500 ONLY, and the route files return 404 ninety-five times, 401
- * thirty-seven times, 403 ten times and 410 seven times. None of those could be
- * expressed by throwing -- they fell through to the generic branch and became a
- * 500 with the message replaced. `UserFacingError` already carried a
- * `statusCode` field and was never consulted here; wiring it in is what makes
- * those sites rewritable.
- *
- * The same held for `ZodError`, which is why six route files hand-catch it to
- * turn it into a 400. The sweep's other instruction -- "validate input with
- * Zod" -- was unsafe for exactly the same reason as the first one.
- *
- * `config` is mocked rather than driven through the real env loader, which
- * validates DATABASE_URL/REDIS_URL/MUSIC_PATH on import and would make this a
- * test of the environment instead of a test of the handler.
+ * What a thrown error becomes on the wire: `UserFacingError` keeps its
+ * statusCode, `ZodError` becomes 400, and `AppError` maps its category.
+ * `config` is mocked so the env loader's validation stays out of it.
  */
 
 import express from "express";

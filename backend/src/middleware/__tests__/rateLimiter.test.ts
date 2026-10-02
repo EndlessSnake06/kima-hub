@@ -1,10 +1,6 @@
 /**
- * Rate limiter skip predicate tests -- spec 1.8 (B7).
- *
- * The skip function must use req.baseUrl + req.path, not req.path alone
- * (which is relative to the mount point) and not req.originalUrl (which
- * includes the query string -- stream URLs carry ?token=, so
- * endsWith("/stream") would never match against originalUrl).
+ * The rate limiter's skip check uses req.baseUrl + req.path: req.path alone is
+ * relative to the mount, and originalUrl carries the stream's ?token= query.
  */
 
 import { Request } from 'express';
@@ -28,15 +24,8 @@ function makeReq(overrides: {
 // rateLimiter.ts has no imports that require mocking -- it only imports express-rate-limit.
 import { apiLimiter } from '../rateLimiter';
 
-// The `skip` option is on the options object. express-rate-limit exposes it
-// as a function reference on the middleware itself. We access it via the
-// internal options by calling the limiter against a synthetic request and
-// capturing whether `next` was called immediately (skipped) or not.
-// A simpler approach: re-read the skip fn from the closed-over options.
-// express-rate-limit does not expose options directly, so we unit-test
-// the predicate by examining the observable behavior via supertest-like
-// approach: create a throwaway express app and verify the middleware
-// passes through (skip=true) or applies the limit.
+// express-rate-limit does not expose its options, so the skip behaviour is
+// checked through a throwaway express app.
 
 import express from 'express';
 import request from 'supertest';
@@ -87,11 +76,8 @@ describe('apiLimiter skip predicate (spec 1.8)', () => {
     });
 });
 
-// ── Unit test of the skip predicate logic directly ───────────────────────────
-//
-// The integration tests above exercise the real mounted behavior. These unit
-// tests isolate the predicate logic to explicitly cover the B7 failure mode:
-// a request with a query string must still be skipped (originalUrl would fail).
+// ── The skip predicate on its own ───────────────────────────────────────────
+// A stream URL with a query string is still skipped.
 
 describe('skip predicate logic -- B7 regression prevention', () => {
     // Replicate the predicate exactly as written in rateLimiter.ts.

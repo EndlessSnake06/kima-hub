@@ -1,9 +1,5 @@
-// The real TZ pin lives in jest.config.js, set in the PARENT process before any
-// worker (and thus V8's cached local zone) initializes. Mutating process.env.TZ
-// here is a no-op for date-fns -- V8 has already cached America/Chicago on this
-// dev box -- which is why startOfWeek would otherwise emit 05:00-UTC, day-shifted
-// weekStarts that the old `.slice(0,10)` assertions silently tolerated. This line
-// is kept only as defensive documentation; jest.config.js is what makes it work.
+// The TZ that date-fns sees is pinned in jest.config.js before workers start;
+// setting it here has no effect and only documents the assumption.
 process.env.TZ = "UTC";
 
 import {
@@ -13,11 +9,8 @@ import {
 } from "../discoveryWeek";
 
 describe("resolveGenerationWeekStart -- boundary roll-forward", () => {
-    // FAILURE-OF-OMISSION GUARD: the whole reason this function exists is the
-    // Sunday off-by-one (startOfWeek on the last day returns the ENDING week).
-    // A naive `return startOfWeek(now, {weekStartsOn})` passes the Monday and
-    // honors-config tests but FAILS this one, so this is the discriminator that
-    // proves the roll-forward branch specifically.
+    // On the week's last day startOfWeek returns the ending week; the helper
+    // must roll forward.
     it("rolls forward to the UPCOMING Monday when run on the week's last day (Sunday 20:00, Monday-start)", () => {
         const sundayEvening = new Date("2026-05-24T20:00:00.000Z");
         const result = resolveGenerationWeekStart(sundayEvening, 1);
@@ -69,14 +62,8 @@ describe("resolveGenerationWeekStart -- boundary roll-forward", () => {
         expect(result.toISOString().slice(0, 10)).toBe("2026-05-25");
     });
 
-    // GAP A (normalization): every existing assertion above only inspects
-    // `.slice(0, 10)` -- the calendar DAY. An implementation that returns the
-    // correct day but grafts the run's time-of-day back on (e.g. startOfDay or
-    // a setDate-style hack instead of startOfWeek/addWeeks) passes all of them
-    // while emitting "2026-05-25T20:00:00.000Z". That non-midnight weekStart is
-    // a silent corruption: it is written to the DB column other rows store at
-    // midnight (so equality joins miss), and resolveViewWeek compares weekStart
-    // Dates directly. The full ISO string must be exactly midnight UTC.
+    // The week start is exactly midnight UTC, not the run's time of day, since
+    // it is stored and compared against midnight values.
     it("returns the week-start normalized to 00:00:00.000 UTC -- not the run's time-of-day (mid-week branch)", () => {
         const wednesdayNoon = new Date("2026-05-27T12:00:00.000Z");
         const result = resolveGenerationWeekStart(wednesdayNoon, 1);
@@ -138,15 +125,8 @@ describe("resolveViewWeek -- fallback, staleness, and the null path", () => {
         expect(r.stale).toBe(false);
     });
 
-    // GAP B (same-week, different DAY): the happy-path test below feeds a date
-    // IDENTICAL to `calendar`, so a wrong staleness rule based on isSameDay/
-    // equality (`stale = !isSameDay(batch, calendar)`) satisfies it. But a batch
-    // generated mid-week (Wed) belongs to the SAME calendar week as a Monday
-    // calendar start -- it is fresh, not stale. Only an isBefore(batch, weekStart)
-    // rule gets this right; the isSameDay mutant flags it stale=true. This is the
-    // discriminator the identical-date happy path cannot provide. We also assert
-    // weekStart equals the BATCH date (Wed), proving the batch is served, not the
-    // calendar Monday.
+    // A batch from later in the same week (Wed vs a Monday start) is fresh and
+    // served as is.
     it("treats a batch from later in the SAME calendar week (Wed vs Mon start) as fresh, serving the batch date", () => {
         const wednesdaySameWeek = new Date("2026-05-27T00:00:00.000Z");
         const r = resolveViewWeek(calendar, wednesdaySameWeek);
@@ -177,13 +157,8 @@ describe("weekStartKey -- stable jobId key", () => {
         expect(weekStartKey(new Date("2026-05-25T23:30:00.000Z"))).toBe("2026-05-25");
     });
 
-    // GAP C (integration): both keying tests above feed hand-crafted Dates, so
-    // they never exercise the real production contract -- the jobId key is built
-    // from resolveGenerationWeekStart's OUTPUT. If generation rolled forward to
-    // the prior day at 23:59 (a time-preserving roll-forward bug, see Gap A) the
-    // standalone weekStartKey tests would still pass while the actual job dedup
-    // key for a Sunday-evening run would be one day off. Wiring the two together
-    // is the only test that catches that seam.
+    // The job key is built from resolveGenerationWeekStart's output, so a
+    // Sunday-evening run keys the upcoming week.
     it("a Sunday-evening generation run produces the UPCOMING week's key (helper composition)", () => {
         const sundayEvening = new Date("2026-05-24T20:00:00.000Z");
         const tagged = resolveGenerationWeekStart(sundayEvening, 1);
