@@ -1,17 +1,7 @@
 """
-Text-encoder parity test: the ONNX text path must equal the HF torch CLAP
-text encoder run WITH a real attention mask.
-
-The Xenova text_model.onnx graph takes only input_ids -- it has no
-attention_mask input -- so any padding token fed to it is attended to and
-changes the embedding. The reference below batches prompts of different
-lengths with padding=True and passes the tokenizer's real mask, which is how
-laion_clap and HF compute text embeddings. An earlier gate compared against
-attention_mask=ones on the same padded ids, so it reported 1.0000 while the
-shipped embeddings were far from the masked result (mean cosine 0.34 on the
-166 vocabulary terms).
-
-Run: python3 -m pytest test_text_parity.py -q
+The ONNX text path equals the HF torch text encoder run with the real
+attention mask. Xenova's text_model.onnx takes no mask, so padding tokens
+must never reach it.
 """
 import os
 import unittest

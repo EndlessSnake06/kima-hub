@@ -1,16 +1,7 @@
 """
-Audio embedders under test, with an on-disk cache.
-
-- `v1`: the SHIPPED path -- analyzer.CLAPAnalyzer.get_audio_embedding with
-  CLAP_BACKEND=onnx, i.e. models/hf_audio.onnx through onnx_backend, five 10 s
-  windows (compute_window_offsets), mean, L2-normalise. Nothing is copied: the
-  analyzer module itself is imported, so a change to the recipe is measured.
-- `engine`: the new vibe engine's Ear (vibe_engine.ear.Ear.embed) with its
-  clap_audio_fp32.onnx, imported read-only from that checkout.
-
-The cache key is the embedder name + sha256 of the model file + sha256 of the
-source files that define the recipe, so editing the recipe or swapping the
-model starts a fresh cache instead of reusing stale vectors.
+Embedders under test, cached on disk. `v1` imports the shipped analyzer (ONNX,
+five 10 s windows, mean, L2); `engine` is vibe_engine's Ear. The cache key
+hashes the model and recipe source, so a change starts a fresh cache.
 """
 from __future__ import annotations
 

@@ -1,22 +1,6 @@
-"""Tests for the single ffmpeg decode path.
-
-The analyzer must decode every track with ONE ffmpeg command that reads
-exactly the analysed window (first 90 s), tolerates a bad frame, downmixes
-any channel count to stereo, and handles any codec ffmpeg can read. The old
-design probed with a whole-file ``-xerror`` gate (``_is_decodable``) and
-then re-decoded with Essentia's ``MonoLoader``; that gate failed closed on
-the 6-channel eac3 m4a and the Opus file while both decode fine under the
-single-path design, and ``validate_audio``'s silence/NaN/short gates
-measured nothing the analysis needs.
-
-These tests drive the REAL ``analyzer._decode_to_stereo`` — they generate
-synthetic fixtures with ffmpeg (6-channel eac3, 6-channel aac m4a, opus, a
-corrupted mp3, a 120-second file) and assert on the samples, channel count,
-window length and command that the function actually produces.
-
-Run from the service dir:
-    cd services/audio-analyzer && python3.12 -m pytest -q test_decode_path.py
-"""
+"""The real ``analyzer._decode_to_stereo``: one ffmpeg command reads the first
+90 s, tolerates bad frames, downmixes to stereo and reads any codec. Fixtures
+(6-channel eac3 and aac, opus, corrupt mp3, 120 s) are generated with ffmpeg."""
 
 import shutil
 import subprocess

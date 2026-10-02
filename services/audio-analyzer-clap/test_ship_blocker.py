@@ -1,21 +1,7 @@
 """
-Ship-blocker regression tests.
-
-The ONNX swap was approved SAFE but a fresh image couldn't run it: onnxruntime
-was missing from requirements.txt, the Dockerfile never copied onnx_backend.py
-or the model, and the startup path didn't assert the ONNX path actually works.
-These tests pin the FIXED behaviors:
-
-1. requirements.txt MUST carry onnxruntime (the image pip-installs this file).
-2. CLAPAnalyzer._ensure_onnx_backend eagerly LOADS the model (raises/loud on a
-   broken model) instead of lazily constructing a wrapper that fails at the
-   first embed.
-3. With CLAP_BACKEND=onnx pinned, a per-window ONNX failure must NOT silently
-   fall back to torch -- failed track, no mixed vector spaces mid-sweep.
-
-Run with the pocs venv (has torch/librosa/onnxruntime):
-  python3 \
-      -m pytest test_ship_blocker.py -q
+The image can run ONNX: requirements.txt carries onnxruntime,
+_ensure_onnx_backend loads the model eagerly, and with CLAP_BACKEND=onnx a
+window failure fails the track instead of falling back to torch.
 """
 import importlib.util
 import os

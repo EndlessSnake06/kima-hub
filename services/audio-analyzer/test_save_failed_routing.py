@@ -1,22 +1,7 @@
-"""End-to-end routing test for the real ``AnalysisWorker._save_failed``.
-
-The classifier unit tests cover the *decision*; this suite covers the *effect*:
-the real failure sink in analyzer.py must write ``permanently_failed`` (never
-touching ``analysisRetryCount``) for terminal dispositions and ``failed``
-with a retry bump for ``INCONCLUSIVE``, while a batch-timeout is exempt -- and
-every branch must settle the TrackStage analysis record with the SAME verdict
-(status, failureClass, retryable, nextRetryAt, evidence), because the record
-is what the stage queue reads.
-
-We load analyzer.py against a stubbed psycopg2 (essentia is absent) and drive
-_save_failed / _save_results with an in-memory fake cursor that honours
-rowcount and RETURNING, then assert on the SQL and params they actually
-executed -- not on a re-implementation of the methods. The driver stub is the
-only mock: the code under test runs for real.
-
-Run from the service dir:
-    cd services/audio-analyzer && python -m pytest test_save_failed_routing.py -v
-"""
+"""The real ``AnalysisWorker._save_failed``: terminal failures write
+``permanently_failed`` without a retry bump, INCONCLUSIVE writes ``failed`` with
+one, a batch timeout is exempt, and every branch settles TrackStage the same way.
+Only psycopg2 is stubbed."""
 
 import json
 import sys
@@ -49,13 +34,8 @@ from classifier import classify_failure, Disposition  # noqa: E402
 
 
 class _FakeCursor:
-    """Minimal stand-in for a psycopg2 cursor.
-
-    Honours ``rowcount`` and the RETURNING-fetch contract of the save paths
-    so they exercise their real branches. ``execute`` records EVERY statement
-    and its params -- _save_failed writes the Track row AND the TrackStage
-    record, and the assertions must see both.
-    """
+    """Stand-in psycopg2 cursor: honours rowcount and RETURNING, and records
+    every statement with its params."""
 
     def __init__(self, *, returning_retry=1):
         self.returning_retry = returning_retry

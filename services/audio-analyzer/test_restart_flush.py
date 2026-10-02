@@ -1,23 +1,6 @@
-"""Restart safety of the audio analyzer without the old restart flush.
-
-The analyzer used to reset 'queued' DB rows to 'pending' and flush the Redis
-list on startup ("_reset_queued_on_restart"), rewriting Track columns from
-guesses. Under the stage design the TrackStage record owns every attempt: a
-job claimed before a crash is a 'working' record whose claim lease expires
-and is re-offered on its own, and a list entry lost in transit belongs to an
-unclaimed record the next dispatch offers again. The flush, the reconciliation
-re-push and the failed-track re-queue are therefore deleted outright.
-
-These tests pin the replacement: the column-rewriting paths are gone, the
-worker's only claim is the pre-decode one, and that claim accepts the states
-the stage queue legitimately dispatches from -- including the 'failed' verdict
-the old engine left on rows whose records were seeded failed+retryable.
-
-Runs the REAL AnalysisWorker claim with a fake DB cursor -- no postgres or
-redis server needed. Verify with:
-
-  cd services/audio-analyzer && python -m pytest test_restart_flush.py -q
-"""
+"""Analyzer restart safety: startup rewrites no Track columns, and the worker's
+only claim is the pre-decode one, accepting every state the stage queue
+dispatches from. Real AnalysisWorker claim, fake cursor."""
 import ast
 import inspect
 import importlib.util

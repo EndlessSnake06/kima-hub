@@ -1,13 +1,7 @@
 """
-Human-judged evaluation sets for the vibe (CLAP) embedding.
-
-Each loader returns an `EvalSet`: the clip ids, the audio path for each clip,
-and whatever human judgments the set carries (triplet votes, valence/arousal
-ratings, composed low/medium/high levels). Audio is never in the repo -- it is
-fetched into a data root (fetch_data.sh) -- and labels are read either from
-that data root or, where the licence allows redistribution, from ./labels/.
-
-Data root layout (what fetch_data.sh produces; symlinks work too):
+Human-judged evaluation sets for the CLAP embedding. Each loader returns an
+`EvalSet` of clip ids, audio paths and judgments. Audio comes from the data
+root (fetch_data.sh); labels come from there or ./labels/.
 
   <root>/mtt/comparisons_final.csv      MagnaTagATune similarity triplets
   <root>/mtt/audio/<d>/<clip>.mp3       MagnaTagATune clips
@@ -248,13 +242,9 @@ def load_memo2496(root: str) -> EvalSet:
 
 
 def derive_memo_labels(valence_csv: str, arousal_csv: str, info_csv: str, out_csv: str) -> int:
-    """Rebuild labels/memo2496/memo2496_song_means.csv from the Figshare files
-    valence_all_average.csv, arousal_all_average.csv and songs_info_all.csv.
-
-    Each track's label is the mean of its per-second expert average. NOTE the
-    Figshare record also carries *_all_std.csv files of the same shape; the
-    arousal one must not be substituted for the average (see README).
-    """
+    """Rebuild labels/memo2496/memo2496_song_means.csv from the Figshare
+    averages: each track's label is the mean of its per-second expert average.
+    Never the *_all_std.csv files (see README)."""
     def seq_mean(fn: str) -> dict[int, tuple[float, int]]:
         out = {}
         with open(fn) as f:

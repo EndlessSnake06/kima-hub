@@ -1,18 +1,6 @@
-"""Unit tests for the analysis-failure classifier.
-
-The classifier is the contract between the analyzer and the health/UI views:
-it decides, from a raw ESSENTIA/decoder error message, whether a failure is a
-damaged file, a format the engine cannot decode, or a multichannel file the
-loader refuses -- versus the generic failure that stays retryable.
-
-Run from the service dir so the classifier module is importable:
-    cd services/audio-analyzer && python -m pytest test_classifier.py -v
-
-These assert on the classifier's real return values against message phrasings
-modeled on the documented ESSENTIA signatures; there is no re-implementation
-here. Before trusting a case, mutate the source in thought and check the test
-would go red.
-"""
+"""The analysis-failure classifier: from an Essentia or decoder message, a
+damaged file, an undecodable format, a refused multichannel file, or the
+generic failure that stays retryable."""
 
 import pytest
 from classifier import (
@@ -105,14 +93,9 @@ class TestDamagedBitstream:
 
 
 class TestRetentionPrinciple:
-    """Precision over recall: a message that is not a strong damage/codec
-    signature is left INCONCLUSIVE so it keeps the current retryable 'failed'
-    fate. Only unambiguous corruption or codec is made terminal.
-
-    The inversion test: a soft 'not capable' phrase is UNSUPPORTED, while a
-    bare 'unsupported' adjective is INCONCLUSIVE, proving the codec matcher is
-    anchored to the encoder phrase and does not float free.
-    """
+    """Only a clear damage or codec signature is terminal; anything weaker stays
+    INCONCLUSIVE and retryable. A soft 'not capable' is UNSUPPORTED, a bare
+    'unsupported' is not."""
 
     def test_transient_io_keeps_inconclusive(self):
         assert classify_failure("temporary I/O error reading buffer") == \

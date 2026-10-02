@@ -1,30 +1,11 @@
 #!/usr/bin/env python3
 """
-Post-processing experiments on the CACHED v1 embeddings: can a transform
-applied after the shipped CLAP model make "similar" agree better with people?
-
-No audio is decoded and no model is run: this reads the vectors that
-vibe_eval.py cached under eval/.cache/emb/ plus each set's labels, applies a
-transform, and re-scores with the same metrics (metrics.py) as the baseline.
+Post-processing transforms on the cached v1 embeddings, scored with metrics.py.
+Library statistics come from each set's own clips, or from the other sets
+("foreign"); parameters are picked on triplet half A, reported on the rest.
 
     uv run --no-project --with numpy --with scipy python postprocess_eval.py \
         [--data <data root>] [--out results/postprocess-<date>.json]
-
-Needs only numpy + scipy (no model, no onnxruntime); about 2 minutes. Results
-and the conclusion are in README.md, "Post-processing experiments".
-
-What a "library" means here. In Kima the statistics (mean vector, covariance,
-neighbour radii) come from the user's own library. In this experiment each
-evaluation set plays that library: its statistics are computed from its own
-clips, without labels (transductive, exactly what Kima would do). A second
-condition, "foreign", computes them from the union of the OTHER sets, which
-stands in for a cold start / a library whose mix differs from the tracks being
-compared.
-
-Overfitting guard. The 446 triplets are split once (fixed seed) into halves A
-and B. Each family's parameter is picked on half A only; the pick is then
-reported on half B and on the valence/arousal sets, none of which took part
-in the choice.
 """
 from __future__ import annotations
 
@@ -51,11 +32,8 @@ def l2n(X: np.ndarray) -> np.ndarray:
     return X / np.linalg.norm(X, axis=1, keepdims=True)
 
 
-# ---------------------------------------------------------------------------
-# Library statistics and transforms. Every transform maps (library L, items X)
-# to a similarity matrix over X, so vector transforms and similarity-level
-# re-scorings (CSLS, mutual proximity) are scored identically.
-# ---------------------------------------------------------------------------
+# Every transform maps (library L, items X) to a similarity matrix over X, so
+# vector transforms and re-scorings (CSLS, mutual proximity) score the same way.
 def pca(L: np.ndarray):
     mu = L.mean(0)
     C = np.cov(L - mu, rowvar=False)

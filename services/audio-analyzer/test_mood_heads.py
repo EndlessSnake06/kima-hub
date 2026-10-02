@@ -1,14 +1,6 @@
-"""Mood-head column mapping and the re-analysis safety of analyzer.py.
-
-Essentia's classification heads do not share a column order: happy, aggressive,
-acoustic, electronic and danceability put the positive class in column 0,
-sad, relaxed and party in column 1 (model metadata "classes", fetched from
-https://essentia.upf.edu/models/classification-heads/<head>/<head>-msd-musicnn-1.json
-on 2026-09-24). The analyzer used to read column 1 for every head.
-
-Run from the service dir:
-    cd services/audio-analyzer && python -m pytest test_mood_heads.py -v
-"""
+"""Each Essentia mood head is read from its positive-class column: column 0 for
+happy, aggressive, acoustic, electronic and danceability, column 1 for sad,
+relaxed and party (from each head's model metadata)."""
 
 import inspect
 import re

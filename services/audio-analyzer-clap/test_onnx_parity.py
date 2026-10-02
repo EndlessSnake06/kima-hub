@@ -1,14 +1,6 @@
 """
-Parity test: proves the ONNX CLAP backend produces 512-d embeddings
-numerically consistent with the HF torch ClapAudioModelWithProjection
-(laion/clap-htsat-unfused) on the shipped fixtures.
-
-The ONNX backend (onnx_backend.OnnxCLAPBackend) is the HF-torch reference
-(cache/ref_model via ClapProcessor) on one side. For every fixture we
-embed via BOTH and require cosine >= 0.99 (SAFE).
-
-This is a CROSS-backend check: it compares two independent embedding
-pipelines, so it can actually FAIL (unlike the old self-sim test).
+The ONNX CLAP backend's 512-d embeddings match the HF torch reference
+(laion/clap-htsat-unfused) on the shipped fixtures: cosine >= 0.99 each.
 """
 import hashlib
 import os
@@ -28,11 +20,8 @@ REF_MODEL_DIR = os.path.join(SERVICE_DIR, 'cache', 'ref_model')
 _ref_proc_dir = os.path.join(SERVICE_DIR, 'cache', 'ref_proc')
 REF_PROC_DIR = _ref_proc_dir if os.path.isdir(_ref_proc_dir) else REF_MODEL_DIR
 
-# The ONNX audio encoder UNDER TEST. This is deliberately the artifact that
-# ships (models/hf_audio.onnx), not a scratch copy: parity numbers are only
-# meaningful about the file users actually run. The sha256 below is the pinned,
-# validated export; the check in setUp turns a swapped or re-exported model into
-# a loud failure instead of a silently different measurement.
+# The shipped model file, pinned by sha256 in setUp so a swapped export fails
+# loudly.
 SHIPPED_ONNX_MODEL = os.path.join(SERVICE_DIR, 'models', 'hf_audio.onnx')
 SCRATCH_ONNX_MODEL = os.path.join(SERVICE_DIR, 'cache', 'hf_audio.onnx')
 ONNX_MODEL_PATH = (SHIPPED_ONNX_MODEL if os.path.exists(SHIPPED_ONNX_MODEL)
@@ -122,13 +111,8 @@ class TestOnxParity(unittest.TestCase):
             self.assertAlmostEqual(float(np.linalg.norm(emb)), 1.0, places=5)
 
     def test_audio_parity_threshold(self):
-        """ONNX backend embeddings must match the HF torch reference.
-
-        The fallback counter is checked on every fixture because a silent torch
-        fallback would make this comparison torch-versus-torch: it would score a
-        perfect 1.0 with the ONNX engine completely broken. The number this test
-        prints is only worth reading if ONNX did the work.
-        """
+        """ONNX embeddings match the torch reference. A torch fallback would
+        compare torch with torch, so the fallback counter must stay at zero."""
         sims = {}
         for path in FIXTURES:
             if not os.path.exists(path):

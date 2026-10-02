@@ -1,18 +1,7 @@
 """
-With the GPU switch off, nobody pays for it.
-
-The offline half of the promise that a user who never touches the GPU toggle
-loses nothing: the provider plan is exactly CPU, the env wrapper exports
-nothing, no CUDA/nvidia module ever enters the process, and the image's own
-dependency files never mention the runtime (it only ever arrives at runtime
-into the data volume).
-
-The live half — inspecting a toggle-off container on CUDA hardware — is done
-on test-server, not here.
-
-Run with the pocs venv:
-  python3 \
-      -m pytest test_gpu_nobody_pays.py -q
+With the GPU toggle off: the provider plan is CPU only, the env wrapper
+exports nothing, no CUDA module loads, and the image's dependency files never
+name the GPU runtime.
 """
 import importlib.util
 import json
@@ -20,13 +9,20 @@ import os
 import subprocess
 import sys
 
-SERVICE_DIR = "services/audio-analyzer-clap"
+SERVICE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-CUDAISH = ("cuda", "nvidia", "cudnn", "cublas", "cufft", "curand")
-
-
-def _cudaish_modules():
-    return [m for m in sys.modules if any(k in m.lower() for k in CUDAISH)]
+# Runs in a fresh interpreter: other tests in this session may have imported torch.
+CUDAISH_PROBE = """
+import importlib.util, os, sys
+for name in ("gpu_runtime", "onnx_backend"):
+    spec = importlib.util.spec_from_file_location(name, os.path.join(sys.argv[1], name + ".py"))
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[name] = mod
+    spec.loader.exec_module(mod)
+assert sys.modules["gpu_runtime"].request_gpu() is False
+keys = ("cuda", "nvidia", "cudnn", "cublas", "cufft", "curand")
+print("\\n".join(m for m in sys.modules if any(k in m.lower() for k in keys)))
+"""
 
 
 def _load(name, filename, data_dir):
@@ -61,7 +57,11 @@ def test_request_gpu_false_on_empty_data_dir_and_no_cudaish_modules():
     assert gr.read_enabled() is False
     assert gr.is_installed() is False
     assert gr.request_gpu() is False
-    assert _cudaish_modules() == []
+    out = subprocess.run(
+        [sys.executable, "-c", CUDAISH_PROBE, SERVICE_DIR],
+        env={**os.environ, "DATA_DIR": "/tmp/nonexistent-gpu-onnx-test-dir"},
+        capture_output=True, text=True, check=True).stdout
+    assert out.split() == []
 
 
 def test_env_wrapper_exports_nothing_when_toggle_off(tmp_path):

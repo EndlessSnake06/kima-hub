@@ -1,15 +1,6 @@
 #!/usr/bin/env python3
-"""Duration-sweep test for compute_window_offsets.
-
-Verifies across a dense sweep of durations:
-  1. all offsets >= 0
-  2. offset + window <= duration + epsilon (no out-of-bounds reads)
-  3. consecutive windows never overlap (offset[i+1] >= offset[i] + window - eps)
-  4. long tracks (>= 50s) always return exactly 5 windows
-  5. the returned list is sorted ascending
-
-Prints PASS per invariant; exits non-zero on any violation.
-"""
+"""compute_window_offsets over a dense duration sweep: offsets >= 0, no window
+past the end, no overlap, exactly 5 windows from 50 s, sorted ascending."""
 import sys
 
 sys.path.insert(0, "services/audio-analyzer-clap")

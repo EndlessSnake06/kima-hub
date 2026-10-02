@@ -1,14 +1,7 @@
 #!/usr/bin/env python3
 """
-Unit tests for the five-window placement strategy.
-
-These tests cover the pure `compute_window_offsets` function only -- no model,
-no audio file, no network. Run with:
-
-    python3 test_window_offsets.py
-
-The assertions are plain `assert`s so the exit code doubles as the test result
-(a plain `python3 test_window_offsets.py` run needs no pytest installed).
+compute_window_offsets alone: no model, audio or network. Plain asserts, so
+`python3 test_window_offsets.py` runs without pytest.
 """
 from analyzer import compute_window_offsets
 
@@ -56,11 +49,8 @@ def test_window_start_never_past_track_end():
 
 
 def test_exactly_fifty_seconds():
-    # A 50s track is the boundary where clamping the last 10/30/50/70/90%
-    # window (start 45 -> clamp to 40) would overlap window 4 (40-45s is
-    # inside both). e2e02baa fixed that by falling back to even tiling:
-    # first window at 0, last ending exactly at the file end. The result
-    # tiles the whole track, no overlap, no out-of-bounds.
+    # At 50 s, clamping the last window would overlap the fourth, so the track
+    # is tiled evenly from 0 to the end.
     offsets = compute_window_offsets(duration=50.0)
     assert offsets == [0.0, 10.0, 20.0, 30.0, 40.0], f"got {offsets}"
     # No window reads past the file end, and none overlaps the next.

@@ -1,12 +1,7 @@
 """
-Scores computed from embeddings + human judgments. Every number comes with its
-sample size and a 95% interval:
-
-- proportions (triplet agreement, IsoVAT ordering): Wilson score interval;
-  significance against chance by an exact binomial test.
-- correlations: Fisher z interval, n-3 degrees of freedom.
-- paired model differences: exact McNemar test on the discordant items plus a
-  paired bootstrap interval (10,000 resamples, fixed seed).
+Scores from embeddings and human judgments, each with n and a 95% interval:
+Wilson + exact binomial for proportions, Fisher z for correlations, exact
+McNemar + paired bootstrap (10,000, fixed seed) for model differences.
 """
 from __future__ import annotations
 
@@ -78,12 +73,8 @@ def paired_difference(a: np.ndarray, b: np.ndarray) -> dict:
 # (b) continuous ratings -- neighbours and a linear probe
 # --------------------------------------------------------------------------
 def knn_agreement(E: np.ndarray, y: np.ndarray, groups: Optional[np.ndarray], k: int = 10) -> dict:
-    """Do a clip's k nearest neighbours (cosine) carry the humans' rating for it?
-
-    Predict each clip's rating as the mean rating of its k nearest neighbours,
-    excluding itself and clips from its own group (same film / artist), then
-    correlate with the true rating. This scores the similarity the vibe map and
-    "more like this" actually use, with no training."""
+    """Predict each clip's rating as the mean of its k nearest neighbours
+    (cosine, excluding its own group) and correlate with the true rating."""
     S = E @ E.T
     np.fill_diagonal(S, -np.inf)
     if groups is not None:

@@ -1,20 +1,5 @@
-"""Analysis success must leave EnrichmentFailure untouched.
-
-The analyzer's save path used to resolve ``EnrichmentFailure`` rows for the
-track on success — a second ledger for the same fact the TrackStage record
-already carries. Two ledgers drift: a track whose analysis succeeded kept an
-open failure row (757 of them, per the audit). One record per fact: success
-settles the TrackStage record and nothing else — the failures API reads
-TrackStage for track stages, and the EnrichmentFailure ledger remains only
-for entities without one (artist, podcast).
-
-Same harness as ``test_save_failed_routing.py``: the real ``_save_results``
-runs against a recorded fake cursor; the assertions look at the SQL it
-actually executed.
-
-Run from the service dir:
-    cd services/audio-analyzer && python -m pytest test_results_leave_ledger.py -v
-"""
+"""A successful analysis settles the TrackStage record and leaves
+EnrichmentFailure untouched. Real ``_save_results`` on a recording cursor."""
 
 import sys
 import types
