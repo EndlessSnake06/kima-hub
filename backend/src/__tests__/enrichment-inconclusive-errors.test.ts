@@ -1,22 +1,7 @@
 /**
- * Failure classes on the ledger.
- *
- * The casualty this fixes: `enrichmentErrorCodeClassifier.ts` returned only
- * `"quota" | "work"` — every error that was not a rate limit got the
- * generic "Work" code, so the ledger could not tell a damaged file from an
- * unclassifiable one, and "unclassifiable" was silently folded into
- * "genuine work failure".
- *
- * Rules under test:
- *   - The classifier speaks the same four classes as `classifier.py`:
- *     DAMAGED / UNSUPPORTED / MULTICANNEL / INCONCLUSIVE.
- *   - An unclassifiable error is INCONCLUSIVE **with its evidence** — never
- *     a generic "Work" code, and never an empty record.
- *   - The old two-class API (`classifyError` → "quota" | "work") is gone,
- *     not kept alongside.
- *
- * Run with:
- *   npx jest src/__tests__/enrichment-inconclusive-errors.test.ts --maxWorkers=1
+ * The error classifier speaks the same classes as `classifier.py` (DAMAGED,
+ * UNSUPPORTED, MULTICANNEL, INCONCLUSIVE), and an unclassifiable error is
+ * INCONCLUSIVE with its evidence kept.
  */
 
 import { prisma } from "../utils/db";

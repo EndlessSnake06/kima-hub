@@ -1,25 +1,8 @@
 /**
- * The controls stop deleting data.
- *
- * The old controls were all destructive or all-or-nothing: `runFullEnrichment`
- * ran `DELETE FROM track_embeddings` and cleared every track's
- * `enrichmentTags`; `resetMoodTagsOnly` was an UN-WHERE'd `updateMany`;
- * `reRunAudioAnalysisOnly` deleted every `analysis` stage record;
- * `resetAllEnrichmentData` TRUNCATEd `track_embeddings`. None of them asked
- * the one question an operator actually has: "which questions are still
- * unanswered, or due a retry?"
- *
- * They are replaced by two controls, both of which only ever move
- * `TrackStage` rows between `pending` / `failed` / `blocked` and `pending`:
- *
- *   - `retryFailedAndBlocked` — one `getNextWork` over `TrackStage`.
- *   - `redecideEverything`   — deliberately re-opens `done` answers, but
- *     NEVER re-runs AcoustID over a track that already has a `recordingMbid`.
- *
- * These run against this checkout's own `kima_v1_test` database (the Jest
- * harness clones one per worker) so the stage records are the real DDL.
- *
- * Run: cd backend && npx jest src/__tests__/enrichment-controls.test.ts --forceExit --maxWorkers=1
+ * The enrichment controls only move `TrackStage` rows back to `pending`; they
+ * never delete data. `retryFailedAndBlocked` re-offers failed and blocked
+ * questions; `redecideEverything` also reopens `done` ones, except AcoustID on
+ * a track that already has a `recordingMbid`.
  */
 
 // ── Queues + Redis + network services: observe, never hit the wire ──────
@@ -374,12 +357,8 @@ describe("getNextWork over TrackStage", () => {
         expect(byStage.has(`${id("notdue")}/analysis`)).toBe(false);
         // Nothing answered is ever handed out, whatever the status label.
         expect(work.every((w) => w.status !== "done")).toBe(true);
-        // The owed track is handed out for the questions it is due: the
-        // settled fingerprint unblocks the recording question, and analysis
-        // each reads only the file (amended by the real
-        // dependency graph — analysis does NOT wait for the recording
-        // answer). Embedding still waits for the analysis answer: an
-        // unanalysed track is never embedded.
+        // The settled fingerprint unblocks recording; analysis needs only the
+        // file; embedding still waits for the analysis answer.
         expect(byStage.get(`${id("owed")}/recording`)?.status).toBe("pending");
         expect(byStage.get(`${id("owed")}/analysis`)?.status).toBe("pending");
         expect(byStage.has(`${id("owed")}/embedding`)).toBe(false);

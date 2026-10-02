@@ -1,22 +1,7 @@
 /**
- * One timeout per stage, sized to that stage's real work
- *
- * The casualty this replaces: `computeTrackEnrichmentTimeoutMs` derived one
- * budget from the track's duration and applied it to every stage. Track
- * duration is irrelevant to identification (two or three HTTP calls, seconds
- * of real work) and is the WRONG signal there — while analysis genuinely
- * needs a decode window plus feature extraction. One shared formula meant
- * identification could burn a duration-sized budget it never needed and
- * analysis could be cut short by a budget sized for metadata.
- *
- * The fix: per-stage constants. Identification gets a network-sized budget
- * and shares it with NOTHING; analysis gets a decode-sized budget (the
- * decision keeps it reading the first 90 seconds of
- * each track, so 300s covers the 90s window with the design's "plus two
- * minutes" headroom to spare); embedding gets a CLAP-window-sized budget.
- *
- * Run with:
- *   npx jest src/__tests__/enrichment-timeout-per-stage.test.ts --maxWorkers=1
+ * Each stage has its own timeout sized to its work: identification a network
+ * budget, analysis enough to decode and analyse the first 90 seconds,
+ * embedding a CLAP-window budget. Track duration plays no part.
  */
 
 import * as unified from "../workers/unifiedEnrichment";

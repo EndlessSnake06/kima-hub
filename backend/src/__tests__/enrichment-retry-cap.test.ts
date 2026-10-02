@@ -1,24 +1,7 @@
 /**
- * Retry discipline on the stage record.
- *
- * Rules under test:
- *   - A temporary error writes `failed` with `retryable = true` and
- *     `nextRetryAt = now + increasing wait` — the waits get longer per
- *     attempt, they do not stay flat.
- *   - Nothing is retried past the configured cap (3 attempts, matching
- *     `DEFAULT_JOB_OPTIONS.attempts` and `EnrichmentFailure.maxRetries`):
- *     at the cap the record goes `retryable = false` and the dequeuer
- *     stops offering it.
- *   - A question that has an answer (`done`, or a terminal `failed`) is
- *     never re-offered — the record owns the answer.
- *
- * These drive the real record functions and the real dequeuer against this
- * checkout's own test DB; they fail on the current code, where nothing ever
- * writes `nextRetryAt`/`retryable` and claimed records sit in `working`
- * forever.
- *
- * Run with:
- *   npx jest src/__tests__/enrichment-retry-cap.test.ts --maxWorkers=1
+ * A temporary error leaves the stage record `failed` and retryable with a
+ * growing wait; at the cap it stops being retryable and the dequeuer stops
+ * offering it. An answered question (`done` or terminal) is never re-offered.
  */
 
 import { prisma } from "../utils/db";

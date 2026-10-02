@@ -1,21 +1,7 @@
 /**
- * Stale EnrichmentFailure backfill.
- *
- * The ledger holds EnrichmentFailure rows ("analysis failed", "track not
- * found", ...) that were never resolved even though the track has since
- * completed the stage they describe — the 2026-09-23 audit found rows
- * still "failing" for work that finished weeks ago. The fix is a
- * one-time, idempotent backfill in a migration: resolve (do not delete)
- * every unresolved failure whose track has since completed the stage it
- * describes — `track` → recording, `audio` → analysis, `vibe` →
- * embedding.
- *
- * This test runs the migration's own SQL against this checkout's test DB
- * and checks both the effect and the idempotency (running it twice must
- * produce the same result, not an error and not a second write).
- *
- * Run with:
- *   npx jest src/__tests__/enrichment-stale-failure-backfill.test.ts --forceExit --maxWorkers=1
+ * The migration resolves (never deletes) every open EnrichmentFailure whose
+ * track has since completed that stage: track → recording, audio → analysis,
+ * vibe → embedding. Running it twice changes nothing more.
  */
 
 import { readFileSync, existsSync } from "fs";

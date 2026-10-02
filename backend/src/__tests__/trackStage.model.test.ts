@@ -1,15 +1,6 @@
 /**
- * TrackStage / per-source record storage tests (B1 — storage half of step 2).
- *
- * ONE per-track-per-stage record (`TrackStage`,
- * unique `trackId + stage`) and a `StageRecord`-shaped record per *source*
- * (`SourceAttempt`, one row per source so a source pause has one row, not
- * 2,787). These tests drive the real migration DDL through raw SQL against
- * the checkout's own `kima_v1_test` database, so they verify the schema that
- * is actually applied — not a re-typed model — and fail until the migration
- * lands (the tables do not exist yet).
- *
- * Run: cd backend && npx jest src/__tests__/trackStage.model.test.ts --forceExit --maxWorkers=1
+ * The stage-record schema, driven through the migrated DDL: one `TrackStage`
+ * per track and stage, and one `SourceAttempt` row per source.
  */
 
 import { prisma } from "../utils/db";

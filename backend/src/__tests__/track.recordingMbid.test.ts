@@ -1,15 +1,4 @@
-/**
- * Track.recordingMbid storage test (B1 — storage half of step 2).
- *
- * These rules give the
- * AcoustID recording match a real `recordingMbid` column on Track, so the
- * answer to "which recording did this fingerprint match?" has somewhere to
- * live instead of being discarded. This test drives the real column through
- * raw SQL against the checkout's own `kima_v1_test` database and fails until
- * the migration lands (the column does not exist yet).
- *
- * Run: cd backend && npx jest src/__tests__/track.recordingMbid.test.ts --forceExit --maxWorkers=1
- */
+/** Track.recordingMbid stores the recording an AcoustID fingerprint matched. */
 
 import { prisma } from "../utils/db";
 

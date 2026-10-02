@@ -1,40 +1,13 @@
 /**
- * AcoustID fingerprint storage and identification order
- * (one fingerprinter).
- *
- * The fingerprint is the FINGERPRINT STAGE's answer, stored on
- * `Track.acoustidFingerprint`; the recording stage's AcoustID step reads it
- * and NEVER runs fpcalc — a second decode path disagreed with the analyzer's
- * about damaged files and wasted a second fpcalc run per track. Rules under
- * test, run against this checkout's own test database:
- *   - A stored or tagged fingerprint drives the AcoustID lookup; when the
- *     lookup does not match, that is an answer: the record closes `done`
- *     with the no-match evidence, consumes no attempt, and the
- *     fingerprint stays on the track.
- *   - The recording stage never reaches the AcoustID step while the
- *     fingerprint question is open: the fingerprint → recording edge in
- *     PREREQUISITE_STAGE keeps it unoffered until the question is settled
- *     (`done`, or closed as a permanent failure — then the step is skipped
- *     with the skip in the evidence). Called directly, bypassing the gate,
- *     a fingerprint-less AcoustID step refuses: no fpcalc run, no fake
- *     answer, and never a forever-pending record the sweep re-polls.
- *   - When the lookup matches, `Track.recordingMbid` holds the matched
- *     recording MBID.
- *   - The 2026-09-24 identification order: file tags first (no network),
- *     then the title-checked MusicBrainz name search, then AcoustID only for
- *     the remainder.
- *
- * Run with:
- *   npx jest src/__tests__/acoustid-fingerprint.test.ts --forceExit --maxWorkers=1
+ * The recording stage's AcoustID step reads the fingerprint stage's stored
+ * answer and never runs fpcalc itself. A no-match closes the record `done`; a
+ * match sets `Track.recordingMbid`. Identification order: file tags, then the
+ * title-checked MusicBrainz search, then AcoustID for the remainder.
  */
 
 // ── Mocks (must be before imports) ─────────────────────────────────────
-// The identification services are stubbed so the test drives the ORDER and
-// the STORAGE outcome, not the wire. The stubs answer with real `Outcome`
-// kinds — the services never throw and never return bare objects, so mocks
-// that did would be testing behaviour no real source has. `../utils/db` is
-// deliberately NOT mocked: the point of this file is that the values
-// actually land in the database the migrations built.
+// Identification services answer with real `Outcome` kinds; the database is
+// real, so stored values land in the migrated schema.
 
 const noData = { kind: "absent", evidence: { mocked: true } } as const;
 const answeredWith = (value: unknown) =>
@@ -333,13 +306,9 @@ describe("AcoustID: the fingerprint is the fingerprint stage's stored answer", (
     });
 
     it("no stored fingerprint anywhere: the step refuses — no fpcalc, no fake answer", async () => {
-        // The recording stage is gated on the fingerprint question being
-        // SETTLED (PREREQUISITE_STAGE), so the engine never reaches the
-        // AcoustID step in this state. Called directly (bypassing the
-        // gate), the step refuses rather than fake an answer: no fpcalc
-        // run, no lookup — and the record closes as that permanent
-        // refusal, with the real reason on it, rather than riding a retry
-        // ladder back to the same refusal every cycle.
+        // The fingerprint gate normally keeps this step unoffered. Called
+        // directly, it refuses without running fpcalc and closes the record as
+        // a permanent failure with the reason.
         await wipe();
         mockLookup.mockClear();
         await putTrack({ isrc: null, acoustidFingerprint: null });

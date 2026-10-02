@@ -1,18 +1,8 @@
 /**
- * fpcalc wrapper: the two decode paths must agree about a file.
- *
- * fpcalc stops at the first undecodable frame and reports it as a failure —
- * on the image's fpcalc 1.5.1 a mid-file bad frame exits 3, and without
- * `-ignore-errors` it truncates the fingerprint instead of skipping the
- * frame. The analyzer's decode path tolerates damaged frames by design; the
- * fingerprinter must too, via fpcalc's own flag. With `-ignore-errors` a
- * non-zero exit is then a REAL failure: the thrown error must carry the exit
- * code and fpcalc's stderr so classifyFailure sees the true reason, and
- * stdout is never parsed to paper over a failed exit.
- *
- * The `child_process` mock reproduces promisify(execFile)'s contract via
- * util.promisify.custom, so the real promisify call inside the service
- * resolves `{stdout, stderr}` exactly as it does in production.
+ * fpcalc runs with `-ignore-errors` so a bad frame is skipped, as the analyzer
+ * does. A non-zero exit is then a real failure, thrown with its code and
+ * stderr; stdout is never parsed after a failed exit. The `child_process` mock
+ * honours promisify.custom so execFile resolves `{stdout, stderr}` as in production.
  */
 
 const mockScenario: {

@@ -1,20 +1,6 @@
 /**
- * AcoustID fingerprint index test (B1 — storage half of step 2).
- *
- * The original migration gave Track.acoustidFingerprint a
- * plain btree index (`Track_acoustidFingerprint_idx`). Real fpcalc
- * fingerprints are ~3.3–3.6 kB base64, so every
- * `UPDATE "Track" SET "acoustidFingerprint" = …` bounced off
- * "index row size … exceeds btree version 4 maximum 2704" (SQLSTATE 54000)
- * and the answer was thrown away. The fix drops the btree and creates an
- * md5("acoustidFingerprint") expression index — the TEXT column stores the
- * 3.6 kB value fine; only the indexed write was impossible.
- *
- * These tests drive the real catalog against the checkout's own
- * `kima_v1_test` database and fail until the migration lands (the btree is
- * still present and no md5 index exists).
- *
- * Run: cd backend && npx jest src/__tests__/acoustidFingerprintIndex.test.ts --forceExit --maxWorkers=1
+ * Real fpcalc fingerprints (~3.5 kB) exceed a btree row, so
+ * Track.acoustidFingerprint is indexed by md5 of the value instead.
  */
 
 import { prisma } from "../utils/db";
