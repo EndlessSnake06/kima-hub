@@ -72,6 +72,7 @@ export function ScrobblingSection({
                 htmlFor="lb-token"
             >
                 <SettingsInput
+                    id="lb-token"
                     type="password"
                     value={token}
                     onChange={setToken}
