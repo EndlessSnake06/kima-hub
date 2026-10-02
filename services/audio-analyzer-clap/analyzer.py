@@ -259,10 +259,7 @@ class CLAPAnalyzer:
     def _load_window(self, audio_path: str, start: float,
                      window_seconds: float,
                      duration_hint: Optional[float] = None) -> Tuple[Optional[np.ndarray], int]:
-        """
-        Load `window_seconds` from `start`, clamped to the end of the file.
-        Returns (audio_array, sample_rate), or (None, 0) on error.
-        """
+        """Load a window from `start`, clamped to the file end; (None, 0) on error."""
         try:
             # Use provided duration or fall back to computing it.
             duration = duration_hint if duration_hint else librosa.get_duration(
