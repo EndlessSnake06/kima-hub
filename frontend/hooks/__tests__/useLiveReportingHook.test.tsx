@@ -1,7 +1,8 @@
 /**
  * What the live reporter sends as the engine and the shown track change: it
  * waits for the engine to reach the shown track, says nothing until something
- * plays, and goes quiet for good after a 404.
+ * plays, holds back the pause the engine makes at every track end, and goes
+ * quiet for good after a 404.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createRoot, type Root } from "react-dom/client";
@@ -56,6 +57,7 @@ function render(track: typeof A | null, queue: LiveQueueEntry[] = []) {
 const sent = () => reportLive.mock.calls.map(([r]) => `${r.status} ${r.trackId} ${r.position}`);
 
 beforeEach(() => {
+    vi.useFakeTimers();
     reportLive.mockReset().mockResolvedValue({ ok: true });
     engine = new FakeEngine();
     const div = document.createElement("div");
@@ -63,7 +65,12 @@ beforeEach(() => {
     root = createRoot(div);
 });
 
-afterEach(() => act(() => root.unmount()));
+afterEach(() => {
+    act(() => root.unmount());
+    vi.useRealTimers();
+});
+
+const settle = () => act(() => vi.advanceTimersByTime(400));
 
 describe("useLiveReporting", () => {
     it("says nothing for a restored track that is only paused", () => {
@@ -77,6 +84,7 @@ describe("useLiveReporting", () => {
         engine.time = 1.5;
         act(() => engine.set("playing", "ca"));
         act(() => engine.set("paused"));
+        settle();
         act(() => engine.seek(60));
         act(() => engine.set("playing"));
         expect(sent()).toEqual(["playing ca 1500", "paused ca 1500", "paused ca 60000", "playing ca 60000"]);
@@ -117,11 +125,46 @@ describe("useLiveReporting", () => {
         expect(sent()).toEqual(["playing ca 0", "stopped ca 0"]);
     });
 
+    it("says nothing for the pause between one track ending and the next starting", () => {
+        render(A);
+        act(() => engine.set("playing", "ca"));
+        engine.time = 200;
+        act(() => engine.set("paused"));
+        render(B);
+        engine.time = 0;
+        act(() => engine.set("loading", "cb"));
+        act(() => engine.set("playing"));
+        settle();
+        expect(sent()).toEqual(["playing ca 0", "playing cb 0"]);
+    });
+
+    it("reports a repeat-one loop as a seek back to the start, with no pause", () => {
+        render(A, [{ trackId: "ca", duration: 200_000 }]);
+        act(() => engine.set("playing", "ca"));
+        engine.time = 200;
+        act(() => engine.set("paused"));
+        act(() => engine.seek(0));
+        act(() => engine.set("playing"));
+        settle();
+        expect(sent()).toEqual(["playing ca 0", "playing ca 0"]);
+        expect(reportLive).toHaveBeenCalledTimes(2);
+    });
+
+    it("reports stopped when the queue runs out at a track's end", () => {
+        render(A);
+        act(() => engine.set("playing", "ca"));
+        engine.time = 200;
+        act(() => engine.set("paused"));
+        settle();
+        expect(sent()).toEqual(["playing ca 0", "stopped ca 200000"]);
+    });
+
     it("goes quiet after a 404", async () => {
         reportLive.mockRejectedValueOnce({ status: 404 });
         render(A);
         await act(async () => engine.set("playing", "ca"));
         act(() => engine.set("paused"));
+        settle();
         expect(reportLive).toHaveBeenCalledTimes(1);
     });
 });

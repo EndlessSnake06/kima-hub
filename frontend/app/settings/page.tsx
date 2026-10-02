@@ -213,6 +213,14 @@ export default function SettingsPage() {
                 <ScrobblingSection
                     configured={!!userSettings.hasListenbrainzToken}
                     onSaved={reloadUserSettings}
+                    liveSharing={
+                        userSettings.liveSharingAvailable
+                            ? {
+                                  checked: userSettings.shareLiveListening !== false,
+                                  onChange: (shareLiveListening) => updateUserSettings({ shareLiveListening }),
+                              }
+                            : undefined
+                    }
                 />
 
                 {isAdmin && (

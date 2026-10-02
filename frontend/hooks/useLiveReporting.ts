@@ -19,6 +19,10 @@ export interface LiveQueueEntry {
 }
 
 const UP_NEXT = 10;
+/** The engine pauses for a moment at every track end; only a pause that lasts this long is reported. */
+const PAUSE_SETTLE_MS = 400;
+/** A pause this close to the end is the queue running out, reported as stopped. */
+const END_TOLERANCE_S = 1.5;
 
 /** Loading, buffering and recovery are not changes a listener would see, so they map to nothing. */
 export function liveStatusFor(status: EngineStatus): LiveStatus | null {
@@ -50,7 +54,7 @@ export function upNext(
         : queue.map((_, i) => i);
     const at = order.indexOf(currentIndex);
     if (at < 0) return [];
-    const following = order.slice(at + 1);
+    const following = repeatMode === "one" ? [currentIndex] : order.slice(at + 1);
     if (repeatMode === "all") following.push(...order.slice(0, at));
     return following.slice(0, limit).map((i) => ({
         trackId: queue[i].id,
@@ -95,6 +99,8 @@ export function useLiveReporting(
     const queueRef = useRef(queue);
     const disabledRef = useRef(false);
     const sentRef = useRef<Sent | null>(null);
+    const seekPendingRef = useRef(false);
+    const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useLayoutEffect(() => {
         controllerRef.current = controller;
@@ -102,8 +108,13 @@ export function useLiveReporting(
         queueRef.current = queue;
     });
 
-    const evaluateRef = useRef((seeked: boolean) => {
+    const evaluateRef = useRef((seeked: boolean, settled = false) => {
         const ctrl = controllerRef.current;
+        if (seeked) seekPendingRef.current = true;
+        if (settleTimerRef.current && !settled) {
+            clearTimeout(settleTimerRef.current);
+            settleTimerRef.current = null;
+        }
         if (disabledRef.current || !ctrl) return;
         const snap = ctrl.getSnapshot();
         const current = trackRef.current;
@@ -115,6 +126,16 @@ export function useLiveReporting(
         const onTrack = current !== null && !!snap.src?.includes(`/tracks/${current.id}/`);
         if (!current && live) status = "stopped";
         if (!status) return;
+        if (status === "paused" && live && sent.status === "playing" && !settled) {
+            settleTimerRef.current = setTimeout(() => {
+                settleTimerRef.current = null;
+                evaluateRef.current(false, true);
+            }, PAUSE_SETTLE_MS);
+            return;
+        }
+        if (status === "paused" && live && current && onTrack && ctrl.getCurrentTime() >= current.duration - END_TOLERANCE_S) {
+            status = "stopped";
+        }
 
         let report: Sent;
         if (status === "stopped") {
@@ -126,10 +147,11 @@ export function useLiveReporting(
             // restored, paused track is not listening.
             if (status === "paused" && !live) return;
             report = { status, trackId: current.id, duration: current.duration, queueKey: queueKeyOf(queueRef.current) };
-            if (!seeked && sent && sent.status === report.status && sent.trackId === report.trackId && sent.queueKey === report.queueKey) return;
+            if (!seekPendingRef.current && sent && sent.status === report.status && sent.trackId === report.trackId && sent.queueKey === report.queueKey) return;
         }
 
         sentRef.current = report;
+        seekPendingRef.current = false;
         api.reportLive({
             status: report.status,
             trackId: report.trackId,
@@ -149,6 +171,8 @@ export function useLiveReporting(
         return () => {
             unsubscribe();
             controller.off("seeked", onSeeked);
+            if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
+            settleTimerRef.current = null;
         };
     }, [controller]);
 

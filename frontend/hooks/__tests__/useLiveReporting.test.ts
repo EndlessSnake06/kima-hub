@@ -20,6 +20,10 @@ describe("upNext", () => {
         expect(upNext(q, 2, false, [], "all").map((e) => e.trackId)).toEqual(["d", "a", "b"]);
     });
 
+    it("is the same track again on repeat one", () => {
+        expect(upNext(q, 1, true, [2, 1, 0, 3], "one")).toEqual([{ trackId: "b", duration: 101_000 }]);
+    });
+
     it("stops at the limit", () => {
         expect(upNext(q, 0, false, [], "off", 2).map((e) => e.trackId)).toEqual(["b", "c"]);
     });

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { SettingsSection, SettingsRow, SettingsInput } from "../ui";
+import { SettingsSection, SettingsRow, SettingsInput, SettingsToggle } from "../ui";
 import { InlineStatus, StatusType } from "@/components/ui/InlineStatus";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
@@ -11,12 +11,15 @@ interface ScrobblingSectionProps {
     configured: boolean;
     /** Called after a save/clear so the parent refreshes `configured`. */
     onSaved: () => void;
+    /** The public live feed switch; omitted unless this server shares this user's listening. */
+    liveSharing?: { checked: boolean; onChange: (checked: boolean) => void };
 }
 
 /** Per-user ListenBrainz scrobbling with the user's own optional token. */
 export function ScrobblingSection({
     configured,
     onSaved,
+    liveSharing,
 }: ScrobblingSectionProps) {
     const [token, setToken] = useState("");
     const [clearRequested, setClearRequested] = useState(false);
@@ -53,6 +56,16 @@ export function ScrobblingSection({
             title="ListenBrainz Scrobbling"
             description="Mirror your plays to your own ListenBrainz account (optional)"
         >
+            {liveSharing && (
+                <SettingsRow
+                    label="Share what I'm playing"
+                    description="Show your listening live on the public vibe map. Off hides it at once."
+                    htmlFor="share-live"
+                >
+                    <SettingsToggle id="share-live" checked={liveSharing.checked} onChange={liveSharing.onChange} />
+                </SettingsRow>
+            )}
+
             <SettingsRow
                 label="User token"
                 description="Create one at listenbrainz.org → Settings → Reset token"

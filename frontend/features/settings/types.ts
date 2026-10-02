@@ -10,6 +10,10 @@ export interface UserSettings {
     maxCacheSizeMb: number;
     /** True when the user saved an LB scrobble token; the value itself is never returned. */
     hasListenbrainzToken?: boolean;
+    /** Whether the public live feed shows what this user is playing. */
+    shareLiveListening?: boolean;
+    /** True only for the user whose listening the server's public feed shares. */
+    liveSharingAvailable?: boolean;
 }
 
 export interface SystemSettings {
