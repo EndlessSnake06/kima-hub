@@ -1,29 +1,8 @@
 /**
- * Shared local-dev fallback values for DATABASE_URL/REDIS_URL.
- *
- * Both test-env.cjs (loaded per Jest worker via `setupFiles`) and
- * test-global-setup.cjs (run ONCE by Jest in a separate process via
- * `globalSetup`, which never loads `setupFiles`) need to know the same "if
- * nothing else is configured, assume local dev" values. Factored out here so
- * the two can't drift apart into disagreeing about what "local dev" means.
- *
- * The credentials are NOT hardcoded. They are derived at runtime from the
- * developer's gitignored backend/.env (the same file config.ts loads), with
- * the database name swapped to this checkout's own test database. Two
- * reasons, both learned the hard way:
- *
- * 1. A previous revision hardcoded a test password here, and a later edit
- *    replaced it with a redaction placeholder ('***') that was never caught
- *    -- a bare `npm test` then silently failed to authenticate. Secrets
- *    cannot rot the same way if they are never written here at all.
- * 2. The fallback must never point at another checkout's server. It used to
- *    aim at port 5433, which is the social checkouts' shared test server; a
- *    `prisma db push` from this project against it once dropped 22 of their
- *    tables. This now aims at THIS checkout's dedicated Postgres (5455) and
- *    its own database name, so it cannot reach across.
- *
- * CI is unaffected: it exports its own DATABASE_URL/REDIS_URL, and every
- * consumer uses `??=`, so these values never fire there.
+ * Local-dev DATABASE_URL/REDIS_URL fallbacks shared by test-env.cjs and
+ * test-global-setup.cjs. Credentials come from the gitignored backend/.env,
+ * with the database swapped to this checkout's own test database, so tests
+ * never reach another checkout's server. CI sets its own URLs.
  */
 const fs = require("fs");
 const path = require("path");

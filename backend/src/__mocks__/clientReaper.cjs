@@ -1,12 +1,6 @@
-// Every test file's imports can build long-lived ioredis clients (the shared
-// redisClient singleton, BullMQ queue connections, enrichmentState's pair) as
-// a side effect of importing production code. Jest sandboxes globals per test
-// file but shares Node's core module instances, so the registry lives on
-// `net` — the one object every file's context sees. Each registered client is
-// told to never reconnect (production clients retry forever, and a retry after
-// teardown resurrects the socket with nobody left to close it), then quit or
-// force-disconnected when the file that had it running finishes. No client
-// outlives a file boundary, so the run can exit after the last one.
+// Imports can open long-lived ioredis clients. Each one is registered (on
+// `net`, the one object every test file's sandbox shares), told never to
+// reconnect, and closed when its file finishes, so the run can exit.
 const net = require('net');
 const { zeroDisconnectTimeout } = require('../utils/closeRedisClient');
 
@@ -35,12 +29,8 @@ try {
     if (!Redis.__testReaperPatched) {
         Redis.__testReaperPatched = true;
 
-        // connect() is called synchronously by the constructor (unless
-        // lazyConnect), so patching it registers every client the moment it is
-        // built. Status events cannot be the registration point: ioredis emits
-        // them via process.nextTick, and a file using fake timers defers them
-        // into the fake clock — those clients would arrive in the registry too
-        // late, or never.
+        // The constructor calls connect() synchronously, so patching it registers
+        // every client at birth; status events arrive too late under fake timers.
         const origConnect = Redis.prototype.connect;
         Redis.prototype.connect = function (...args) {
             register(this);
