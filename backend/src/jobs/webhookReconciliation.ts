@@ -19,10 +19,7 @@ class WebhookReconciliationService {
     // The webhook route is still processing events younger than this.
     private readonly IN_FLIGHT_MS = 60 * 1000;
 
-    /**
-     * Start the reconciliation loop
-     * Safe to call multiple times - won't create duplicate loops
-     */
+    /** Safe to call more than once: a second call does not start another loop. */
     start() {
         if (this.isRunning) {
             logger.debug("[WEBHOOK-RECONCILE] Already running");
@@ -37,9 +34,6 @@ class WebhookReconciliationService {
         this.runReconciliation();
     }
 
-    /**
-     * Stop the reconciliation loop
-     */
     stop() {
         if (this.timeoutId) {
             clearTimeout(this.timeoutId);
@@ -49,12 +43,8 @@ class WebhookReconciliationService {
         logger.info("[WEBHOOK-RECONCILE] Stopped");
     }
 
-    /**
-     * Run a single reconciliation cycle
-     */
     async runReconciliation() {
-        // in-flight guard: a slow cycle (Lidarr latency, large event backlog) must not
-        // overlap itself once rescheduled below - only one cycle runs at a time
+        // A slow cycle must not overlap the next one.
         if (!this.isRunning || this.cycleRunning) return;
         this.cycleRunning = true;
 
@@ -86,19 +76,11 @@ class WebhookReconciliationService {
         } finally {
             this.cycleRunning = false;
             if (this.isRunning) {
-                // Schedule next run AFTER this one completes (prevents pile-up)
                 this.timeoutId = setTimeout(() => {
                     this.runReconciliation();
                 }, this.RECONCILE_INTERVAL_MS);
             }
         }
-    }
-
-    /**
-     * Manually trigger reconciliation (for testing)
-     */
-    async triggerReconciliation(): Promise<void> {
-        await this.runReconciliation();
     }
 }
 
