@@ -391,9 +391,7 @@ class SoulseekService {
             }, 5 * 60 * 1000);
         }
 
-        // Handle unexpected server disconnection at service level
-        // This ensures reconnection goes through ensureConnected() with proper
-        // distributed locking and backoff, not the client's own scheduleReconnect
+        // Reconnects go through ensureConnected(), which holds the distributed lock and backoff.
         this.client.server.conn.once('close', () => {
             sessionLog("SOULSEEK", "Server connection closed unexpectedly", "WARN");
             if (this.client) {
