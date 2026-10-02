@@ -524,6 +524,60 @@ test.describe("Dogfood: stats, filters, audit, queue", () => {
             return (await res.json()).totalRows;
         };
 
+        await session.step("scrobble three back-dated plays, five seconds apart", async () => {
+            // Five seconds of a track is a provable skip, so the first two plays
+            // give the audit something to act on in every run. The dates sit long
+            // before any real play; a repeat run's rows are refused as duplicates.
+            const tracksRes = await page.request.get("/api/library/tracks?limit=50", {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            expect(tracksRes.ok(), `track list returned ${tracksRes.status()}`).toBeTruthy();
+            const body = await tracksRes.json();
+            const listed: Array<{ id: string; duration: number }> = Array.isArray(body)
+                ? body
+                : (body.tracks ?? body.items ?? []);
+            const picked = listed.filter((t) => t.duration > 60).slice(0, 3);
+            expect(picked.length, "the library needs three tracks over a minute long").toBe(3);
+
+            const keyName = "dogfood-audit";
+            const made = await page.request.post("/api/api-keys", {
+                data: { deviceName: keyName },
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            expect(made.ok(), `provisioning an API key returned ${made.status()}`).toBeTruthy();
+            const apiKey = (await made.json()).apiKey as string;
+
+            try {
+                const start = Date.UTC(2001, 0, 1);
+                for (const [i, track] of picked.entries()) {
+                    const res = await page.request.get(
+                        `/rest/scrobble.view?u=${encodeURIComponent(username)}` +
+                            `&apiKey=${encodeURIComponent(apiKey)}&id=${track.id}` +
+                            `&time=${start + i * 5000}&submission=true&v=1.16.1&c=kima-dogfood&f=json`,
+                    );
+                    const status = (await res.json())?.["subsonic-response"]?.status;
+                    expect(status, `scrobble ${i + 1} answered "${status}"`).toBe("ok");
+                }
+            } finally {
+                const list = await page.request.get("/api/api-keys", {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                if (list.ok()) {
+                    const keys = (await list.json()).apiKeys as Array<{ id: string; name?: string }>;
+                    const mine = keys.find((k) => (k.name ?? "").includes(keyName));
+                    if (mine) {
+                        await page.request
+                            .delete(`/api/api-keys/${mine.id}`, {
+                                headers: { Authorization: `Bearer ${token}` },
+                            })
+                            .catch(() => {});
+                    }
+                }
+            }
+
+            expect((await audit()).skipped, "the two short plays must read as skips").toBeGreaterThanOrEqual(2);
+        });
+
         await session.step("open the panel and ask it to look", async () => {
             await page.goto("/stats#false-starts");
             await settle(page);
@@ -536,9 +590,14 @@ test.describe("Dogfood: stats, filters, audit, queue", () => {
 
         await session.step("the merge button removes exactly the number it names", async () => {
             const start = await audit();
-            test.skip(start.collapsibleRows === 0, "nothing left to merge");
-
             const button = page.getByRole("button", { name: /merge [\d,]+ duplicate records/i });
+            // Recording refuses duplicates, so only history from older versions
+            // has any to merge; once merged, the button must not be offered.
+            if (start.collapsibleRows === 0) {
+                await expect(button, "with nothing to merge, no merge is offered").toHaveCount(0);
+                return;
+            }
+
             await expect(button).toBeVisible();
             const label = await button.innerText();
             const promised = Number(label.replace(/\D/g, ""));
@@ -578,7 +637,7 @@ test.describe("Dogfood: stats, filters, audit, queue", () => {
             });
 
             const start = await audit();
-            test.skip(start.tracks.length === 0, "the audit found nothing to act on");
+            expect(start.tracks.length, "the seeded skips must be listed").toBeGreaterThan(0);
 
             const rowsBefore = await rowCount();
             const firstBox = page.locator('main input[type="checkbox"]').first();
@@ -601,12 +660,12 @@ test.describe("Dogfood: stats, filters, audit, queue", () => {
 
         await session.step("putting it back returns it to the audit", async () => {
             const start = await audit();
-            test.skip(start.ignored.length === 0, "nothing is ignored");
+            expect(start.ignored.length, "the track left alone must be listed as ignored").toBeGreaterThan(0);
 
             // The ignored list is collapsed by default, so expand it first. The
             // control inside reads "put back"; "Back in the audit." is the
             // message it shows afterwards.
-            const reveal = page.getByRole("button", { name: /show \d+ ignored track/i });
+            const reveal = page.getByRole("button", { name: /show \d+ left alone/i });
             await expect(reveal).toBeVisible({ timeout: 15_000 });
             await reveal.click();
 
@@ -630,7 +689,7 @@ test.describe("Dogfood: stats, filters, audit, queue", () => {
             });
 
             const start = await audit();
-            test.skip(start.skipped === 0, "the audit can prove nothing was skipped");
+            expect(start.skipped, "the seeded skips must still be provable").toBeGreaterThan(0);
 
             const rowsBefore = await rowCount();
 
