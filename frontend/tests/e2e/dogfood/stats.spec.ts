@@ -778,9 +778,12 @@ test.describe("Dogfood: stats, filters, audit, queue", () => {
                 );
                 expect(overflow, "a phone must not scroll sideways").toBe(false);
 
-                // The period control has to be reachable on a phone too, or a
-                // narrow window is a trap with no way out.
-                await expect(p.getByRole("button", { name: "30 days", exact: true })).toBeVisible();
+                // On a phone the period is a select folded into the tab row; it
+                // has to be reachable and has to change what the page shows.
+                const periodSelect = p.getByRole("combobox", { name: "Period" });
+                await expect(periodSelect).toBeVisible();
+                await periodSelect.selectOption("30d");
+                await expect(p.locator("main h1").first()).toHaveText(/last 30 days/i);
             } finally {
                 session.setActivePage(page);
                 await phone.close();
