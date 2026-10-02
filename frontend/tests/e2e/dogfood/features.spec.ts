@@ -391,13 +391,17 @@ test.describe("Dogfood: tray, scrobbling, public feed, GPU, release window", () 
             await session.step("1.11.0: the mood mix is saved as a playlist, then rebuilt", async () => {
                 await expect(heading).toHaveText("A page that knows your habits", { timeout: 10_000 });
                 await expect(fp.getByTestId("moodmix-name")).toBeVisible({ timeout: 10_000 });
+                const savedResponse = fp.waitForResponse((r) => r.url().includes("/whats-new/mood-mixes/save"));
                 await fp.getByTestId("moodmix-save").click();
+                const saved = (await (await savedResponse).json()) as { id: string; trackCount: number };
                 await expect(fp.getByTestId("moodmix-saved")).toBeVisible({ timeout: 15_000 });
                 await fp.getByTestId("moodmix-rebuild").click();
                 await expect(fp.getByTestId("moodmix-rebuilt")).toBeVisible({ timeout: 15_000 });
-                const state = await freshGet<{ mix: unknown; playlist: { id: string } | null }>("/whats-new/mood-mixes");
+                const state = await freshGet<{ mix: unknown }>("/whats-new/mood-mixes");
                 expect(state.mix, "the rebuilt mix should be gone").toBeNull();
-                expect(state.playlist, "the saved playlist should stay").toBeTruthy();
+                // With the mix cleared, the status no longer links to the playlist; check it directly.
+                const playlist = await freshGet<{ id: string; items: unknown[] }>(`/playlists/${saved.id}`);
+                expect(playlist.items, "the saved playlist should keep its tracks").toHaveLength(saved.trackCount);
             });
 
             await session.step("1.11.0: the GPU answer is kept through closing", async () => {
