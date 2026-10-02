@@ -1,20 +1,7 @@
 /**
- * Testbed dogfood — fresh install → onboarding → scan → enrichment → removals.
- *
- * Pre-release gate for the v1.11.0 lane. Runs against the SINGLE PRODUCTION
- * IMAGE (kima-test:amd64) propped up on the test-server testbed
- * (~/kima-testbed, port 3055) with a fresh /data volume and a read-only
- * 5-artist music subset. Proves the full boot path on real metal:
- * fresh DB → migrations → register → skip integrations → scan →
- * metadata → moods → CLAP embeddings → vibe map.
- *
- * Removal-fix scenarios folded in (bugs fixed this release):
- *   - podcast delete via the UI
- *   - audiobook cache prune (syncAll) when Audiobookshelf is absent
- *
- * RUN:
- *   KIMA_UI_BASE_URL=http://127.0.0.1:3055 \
- *   npx playwright test tests/e2e/dogfood/testbed.spec.ts --reporter=list
+ * Fresh-install gate on the testbed image: migrations, register, skip
+ * integrations, scan, metadata, moods, CLAP embeddings and the vibe map, plus
+ * podcast delete and the audiobook prune with Audiobookshelf absent.
  */
 import { test, expect, Browser, BrowserContext, Page } from "@playwright/test";
 import { DogfoodSession } from "./session";

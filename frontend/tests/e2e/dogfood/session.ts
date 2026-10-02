@@ -1,21 +1,7 @@
 /**
- * Session instrumentation for the dogfood walkthrough.
- *
- * The rest of the E2E suite checks features one at a time: log in, jump straight to a
- * page, assert something, throw the browser away. That finds broken features. It cannot
- * find anything that only goes wrong after a person has been using the app for a while --
- * state that leaks between screens, a listener that gets attached twice, a cache that goes
- * stale, an event stream that quietly reconnects in a loop. Those are the faults that
- * survive a green test suite and greet the user twenty minutes into a real session.
- *
- * So this file runs ONE browser session from login to logout and watches it the whole way
- * through. Two things fall out of that:
- *
- *   1. Faults are attributed. Every error is stamped with the step that was running when it
- *      happened, so a report says "the artwork 404'd while opening the playlist" rather
- *      than "something 404'd".
- *   2. Faults are cumulative. A leak that adds one listener per navigation is invisible in
- *      a test that navigates once, and obvious after thirty client-side navigations.
+ * One browser session from login to logout, watched the whole way. Every fault is
+ * stamped with the step that was running, and faults that build up over many
+ * navigations (leaked listeners, reconnect loops) become visible.
  */
 import { expect, Page, Response } from "@playwright/test";
 import * as fs from "fs";
@@ -54,14 +40,8 @@ const IGNORED_CONSOLE = [
     /Download the React DevTools/i,
     // Next.js prints this for any <img> it would rather have been next/image.
     /Image with src .* has either width or height modified/i,
-    // The player saves playback position in the background. Navigating away cancels any
-    // save that happens to be in flight, and the browser reports a cancelled fetch as
-    // "TypeError: Failed to fetch", which the app's catch block logs. It is the same
-    // cancelled-on-navigation case already ignored at the network layer, and it is
-    // harmless -- the next save writes the position again a moment later.
-    //
-    // Narrow on purpose. If the server were genuinely unreachable every other request in
-    // the session would fail too, and those are still reported.
+    // Navigating away cancels an in-flight position save, logged as "Failed to
+    // fetch"; the next save writes it again. A real outage fails other requests too.
     /\[AudioState\] Failed to save to server: TypeError: Failed to fetch/,
     // Same cause, same reasoning, two more background jobs the player runs while you read
     // a page: saving episode position, and fetching related podcasts. Navigating away
@@ -161,11 +141,8 @@ export class DogfoodSession {
 
             const reason = req.failure()?.errorText ?? "unknown";
 
-            // ERR_ABORTED means the app cancelled the request itself -- a search-as-you-type
-            // box dropping a stale query, or a component unmounting mid-fetch. That is the
-            // app being well behaved, and flagging it would fail the run every time someone
-            // types. A request that genuinely could not be served fails differently
-            // (connection refused, name not resolved, timed out).
+            // ERR_ABORTED is the app cancelling its own request (a stale search, an
+            // unmount). A request that could not be served fails differently.
             if (reason.includes("ERR_ABORTED")) return;
 
             this.record("http", `FAILED ${req.method()} ${url.replace(this.baseUrl, "")} -- ${reason}`);
@@ -178,12 +155,8 @@ export class DogfoodSession {
     }
 
     /**
-     * Has this failure been declared as expected?
-     *
-     * `haystack` is the URL for a response, or the console text for a log line -- the app's
-     * own logger prints the path without the origin, so both are matched against the
-     * pattern. The status has to appear too, so declaring "404 on this route is fine" does
-     * not quietly excuse a 500 on the same route.
+     * Whether a failure was declared expected. `haystack` is the URL or the console
+     * text, and the status must match too, so an allowed 404 never excuses a 500.
      */
     private isExpected(url: string, textOrStatus: string): boolean {
         return this.expectedFailures.some(
@@ -211,12 +184,8 @@ export class DogfoodSession {
     }
 
     /**
-     * Record something this run could NOT check, and why.
-     *
-     * The preflight knows some gaps before the run starts. Others only surface once the
-     * run is under way -- a podcast directory that is down, an Audiobookshelf with nothing
-     * in it. Both kinds belong in the same list, because the danger is identical: an
-     * unexercised journey silently reading as a passing one.
+     * Records something this run could not check, and why, so an unexercised
+     * journey never reads as a passing one.
      */
     noteNotCovered(reason: string): void {
         this.notCovered.push(reason);
@@ -417,13 +386,8 @@ export class DogfoodSession {
 }
 
 /**
- * Navigate by clicking, the way a person does.
- *
- * page.goto() does a full browser reload, which throws away every piece of React state --
- * the queue, the current track, open panels. Half the value of a continuous walkthrough is
- * that state carries across screens, so the walkthrough clicks links instead. If the link
- * is not on screen this throws rather than silently falling back to a reload, because a
- * fallback would quietly convert this test back into the isolated kind.
+ * Navigates by clicking a link so React state carries across screens. Throws
+ * when the link is not on screen rather than falling back to a reload.
  */
 export async function navigateByClick(page: Page, href: string, timeoutMs = 10_000): Promise<void> {
     const link = page.locator(`a[href="${href}"]`).first();
@@ -436,26 +400,16 @@ export async function navigateByClick(page: Page, href: string, timeoutMs = 10_0
 }
 
 /**
- * The first album card in the main content area.
- *
- * Scoped to <main> deliberately. A bare `a[href^="/album/"]` also matches the 56px artwork
- * thumbnails in the sidebar's recently-played strip, which sit in the bottom-left corner --
- * underneath the Next.js dev-tools overlay, which swallows the click. Beyond dodging that,
- * the album grid is what a person actually clicks, so scoping here makes the walkthrough
- * more faithful rather than less.
+ * The first album card in <main>. The sidebar's recently-played thumbnails also
+ * link to albums and sit under the Next.js dev overlay.
  */
 export function firstAlbumCard(page: Page) {
     return page.locator('main a[href^="/album/"]').first();
 }
 
 /**
- * Open the Collection screen on its Albums tab.
- *
- * Collection opens on Artists, so anything looking for album cards has to switch tabs
- * first. The switch goes through the tab button rather than a URL, both because that is
- * what a person does and because the page keeps tab state in the URL via a client-side
- * push -- navigating directly would reload and throw away the session state the
- * walkthrough exists to carry forward.
+ * Opens Collection on its Albums tab through the tab button; a URL navigation
+ * would reload and lose the session state.
  */
 export async function openAlbumsTab(page: Page, timeoutMs = 15_000): Promise<void> {
     if (!page.url().includes("/collection")) {

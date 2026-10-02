@@ -1,28 +1,7 @@
 /**
- * The dogfood walkthrough -- one person, one sitting, the whole app.
- *
- * WHAT MAKES THIS DIFFERENT FROM THE REST OF THE SUITE
- *
- * Every other spec here is a feature test: log in, jump straight to the page under test,
- * assert, throw the browser away. That shape is right for finding a broken feature and
- * wrong for answering "is this build safe to deploy", for three reasons.
- *
- *   1. It reloads between every action. A full page load wipes React state -- the queue,
- *      the current track, open panels -- so any fault that needs state to accumulate cannot
- *      occur. Real sessions run for half an hour without a reload.
- *   2. It asserts liveness, not correctness. "the body contains the word album" passes on a
- *      page that rendered its shell and no data. This file asserts the user's actual music
- *      is on screen, and that the audio position actually moves.
- *   3. It skips when data is missing. For a deployment gate that is the worst outcome
- *      available: green, having tested nothing. Here a bare instance fails the run.
- *
- * So: one browser, opened once, driven by clicking the way a person drives it, with a
- * monitor watching the whole session and a report written at the end.
- *
- * RUNNING IT
- *   KIMA_UI_BASE_URL=http://host:3030 \
- *   KIMA_TEST_USERNAME=... KIMA_TEST_PASSWORD=... \
- *   npx playwright test tests/e2e/dogfood --reporter=list
+ * The deploy gate: one browser session driven by clicks, with no reloads, so
+ * state builds up as in real use. It checks the user's own music is on screen
+ * and audio position moves, and a bare instance fails instead of skipping.
  */
 import { test, expect, devices, Browser, Page, BrowserContext } from "@playwright/test";
 import { DogfoodSession, navigateByClick, settle, firstAlbumCard, openAlbumsTab } from "./session";
@@ -45,11 +24,8 @@ function escapeRegExp(s: string): string {
 // instead of reporting eight confusing consequences of one cause.
 test.describe.configure({ mode: "serial" });
 
-// Headless Chromium ships with NO WebGL at all -- measured: both webgl and webgl2 come
-// back null on a default launch. The vibe map is a WebGL scene, so without this the map
-// journey would be testing the absence of a graphics stack rather than the app. These
-// flags turn on software rendering (SwiftShader), which is slower than a real GPU and
-// perfectly sufficient for confirming the map draws.
+// Headless Chromium has no WebGL, and the vibe map needs it; these flags turn
+// on software rendering.
 test.use({
     launchOptions: {
         args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"],
@@ -201,14 +177,9 @@ test.describe("Dogfood walkthrough", () => {
             if (!(await firstAlbumCard(page).isVisible().catch(() => false))) {
                 await openAlbumsTab(page);
             }
-            // Journey 3 queues a *second* track from whatever album opens
-            // here, and production data contains single-track releases -- a
-            // classical artist's search results can be nothing but singles
-            // -- so prefer an album with at least two rows. The search page
-            // keeps its query in component state (a bare /search URL), so
-            // back-navigation restores an empty results list: collect the
-            // candidate hrefs while results are on screen and navigate
-            // forward to each candidate instead.
+            // Journey 3 queues a second track, so prefer an album with two rows.
+            // Search results live in component state and are lost on back, so
+            // candidate hrefs are collected first and visited in turn.
             const collect = async (): Promise<string[]> => {
                 const cards = page.locator('main a[href^="/album/"]');
                 await cards.first().waitFor({ state: "visible", timeout: 10_000 });
@@ -304,11 +275,7 @@ test.describe("Dogfood walkthrough", () => {
     test("3. queue: line up more music and confirm every surface agrees", async () => {
         session.setJourney("3. Queue");
 
-        // Asked of the server, which is where the queue actually lives.
-        // This read localStorage, and the app wrote the queue there without
-        // ever reading it back — so the assertion passed by watching a value
-        // nothing consumed. That write is gone; `PlaybackState.queue` is the
-        // only copy, and it is the one a reload and another device both see.
+        // Read from the server, where the queue lives.
         const queueLength = () =>
             page.evaluate(async () => {
                 try {
@@ -360,13 +327,8 @@ test.describe("Dogfood walkthrough", () => {
             return { nowPlaying: true, nextUp: true, queueLength: len };
         });
 
-        // Cross-surface consistency. The player and the queue page render the same state
-        // through different components; if they disagree, one of them is lying to the user.
-        //
-        // The anchor is the track id embedded in the stream URL the audio element is
-        // actually pulling from -- the one fact that cannot be faked by a stale render.
-        // Its real title comes from the API, and that title must be the one the queue page
-        // is showing under Now Playing.
+        // The player and the queue page must name the same track. The id comes
+        // from the stream URL the audio element is playing; its title from the API.
         await session.step("the queue and the player name the same track", async () => {
             const src = await page.evaluate(
                 (sel) => (document.querySelector(sel) as HTMLAudioElement | null)?.src ?? "",
@@ -405,11 +367,7 @@ test.describe("Dogfood walkthrough", () => {
         test.setTimeout(180_000);
         session.setJourney("3a. Queue editing");
 
-        // Asked of the server, which is where the queue actually lives.
-        // This read localStorage, and the app wrote the queue there without
-        // ever reading it back — so the assertion passed by watching a value
-        // nothing consumed. That write is gone; `PlaybackState.queue` is the
-        // only copy, and it is the one a reload and another device both see.
+        // Read from the server, where the queue lives.
         const queueLength = () =>
             page.evaluate(async () => {
                 try {
@@ -1144,11 +1102,8 @@ test.describe("Dogfood walkthrough", () => {
             `only ${facts.tracks} tracks -- too few to say anything about pipeline throughput`,
         );
 
-        // This is the one journey that deliberately destroys state and rebuilds it. Every
-        // other journey observes; this one exercises the data-collection pipeline end to
-        // end, because "the vibe map renders" proves nothing about whether the thing that
-        // FILLS it still works. Reading a map built days ago would pass on a build whose
-        // embedder is completely broken.
+        // Wipes and rebuilds embeddings: an old map would pass even with a
+        // broken embedder.
         const before = facts.embeddedTracks;
         let rebuiltIn = 0;
 
@@ -1161,13 +1116,8 @@ test.describe("Dogfood walkthrough", () => {
             return { hadEmbeddings: before, requestedRebuild: true };
         });
 
-        // The embedder itself costs well under a second per track. What this is really
-        // watching is whether the producer keeps it fed: the failure being guarded against
-        // is a scheduler that hands over a batch, decides it has nothing to do, and sleeps
-        // for a minute while the embedder sits idle. That shape took ten minutes to do
-        // twenty-six seconds of work.
-        // The ceiling is the guard; the budget derives from it so a large library is
-        // given as long as the ceiling allows, while a small one keeps the fixed floor.
+        // Guards against a producer that leaves the embedder idle between batches.
+        // The budget scales with the per-track ceiling, above a fixed floor.
         const PER_TRACK_CEILING_MS = 4000;
         const BUDGET_MS = Math.max(6 * 60 * 1000, facts.tracks * PER_TRACK_CEILING_MS);
         test.setTimeout(BUDGET_MS + 5 * 60 * 1000);
@@ -1186,16 +1136,9 @@ test.describe("Dogfood walkthrough", () => {
                 if (res.ok()) {
                     const body = await res.json();
                     completed = body?.clapEmbeddings?.completed ?? 0;
-                    // A file the scan flagged missing has an embedding question
-                    // at rest, not owed: the offer gate will never hand it out
-                    // and the endpoint already excludes it from `pending`. It
-                    // must not be in the target either, or the rebuild is
-                    // racing a number it can never reach. Same for permanently
-                    // failed rows (a closed dependency, an upstream rejection):
-                    // the engine's own pending definition is
-                    // total − completed − failed − fileMissing, and a rebuild
-                    // that reaches pending == 0 IS done — waiting past it means
-                    // chasing questions that no longer exist.
+                    // Missing files and permanently failed rows are never handed
+                    // out, so the target is total − completed − failed − fileMissing,
+                    // the engine's own definition of pending.
                     owed =
                         facts.tracks -
                         (body?.clapEmbeddings?.waitingMissing ?? 0) -
@@ -1314,16 +1257,9 @@ test.describe("Dogfood walkthrough", () => {
     test("5b. subscribe: follow a podcast and listen to an episode", async () => {
         session.setJourney("5b. Podcast");
 
-        // Nothing is skipped here for want of a subscription: subscribing IS the journey,
-        // the same way journey 4 creates the playlist it then uses. What this cannot supply
-        // for itself is the outside world -- the feed lives on someone else's server, and
-        // the subscribe endpoint refuses private addresses (SSRF protection), so a local
-        // stand-in is not an option.
-        //
-        // Which makes the distinction below the important part. A directory that is down,
-        // or a feed that will not load, is not this build's fault and must not fail the
-        // deploy; it is recorded and the journey stops. Anything the app itself gets wrong
-        // still fails.
+        // The journey subscribes to a public feed; private addresses are refused.
+        // A directory or feed that is down is recorded and the journey stops; an
+        // error in the app still fails.
         let podcastId = "";
         let podcastTitle = "";
         let externalBlocker = "";
@@ -1464,13 +1400,9 @@ test.describe("Dogfood walkthrough", () => {
                 return { from: first.t.toFixed(2), to: second.t.toFixed(2) };
             });
 
-            // The cleanup below stops playback before unsubscribing precisely because
-            // yanking the source out from under the player used to send it into a 404
-            // loop. That hazard has never been tested -- only avoided. These two steps
-            // do it deliberately while counting what the app asks for, so "it settles"
-            // becomes an assertion instead of an assumption. The progress-save handler
-            // (audio-controls-context) is supposed to clear the current podcast on the
-            // first 404; if it does, the storm never starts.
+            // Unsubscribe while the episode plays and count requests: the
+            // progress-save handler should clear the podcast on the first 404, so
+            // no request storm starts.
             await session.step("unsubscribe while the episode is still playing", async () => {
                 session.expectFailure({
                     urlPattern: /\/api\/(podcasts|playback-state)/,
@@ -1506,14 +1438,8 @@ test.describe("Dogfood walkthrough", () => {
 
             session.assertClean("Journey 5b (podcast)");
         } finally {
-            // Leave the library as it was found, pass or fail.
-            //
-            // Stop playback and leave the page BEFORE unsubscribing. The player keeps
-            // saving position and refreshing progress for whatever it is playing, and if
-            // the subscription disappears underneath it those calls start 404ing on a
-            // loop -- noise that would otherwise land on whichever journey runs next and
-            // be blamed there. (The app retrying without backing off in that situation is
-            // worth a look on its own, but it is not what this journey is testing.)
+            // Leave the library as found, pass or fail. Playback stops before the
+            // unsubscribe so position saves do not 404 into the next journey.
             const pause = page.getByTitle("Pause", { exact: true });
             if (await pause.isVisible({ timeout: 2000 }).catch(() => false)) {
                 await pause.click().catch(() => {});
@@ -1528,12 +1454,8 @@ test.describe("Dogfood walkthrough", () => {
                     })
                     .catch(() => {});
 
-                // Also drop every reference to it. Unsubscribing alone leaves the podcast
-                // recorded as "what you were playing" in both localStorage and the server's
-                // playback state, so the next screen -- and the next RUN -- would look it
-                // up, get a 404, and clean up. The app handles that correctly, but it is
-                // this journey's litter, and leaving it makes later journeys report a
-                // problem they did not cause.
+                // Also clear it as the current item, locally and on the server,
+                // so later journeys do not look it up and log a 404.
                 await page.request
                     .delete("/api/playback-state", {
                         headers: { Authorization: `Bearer ${token}` },
@@ -1777,11 +1699,8 @@ test.describe("Dogfood walkthrough", () => {
         let startTrackId = "";
         let endTrackId = "";
         await session.step("pick two queries that exist in the library", async () => {
-            // The vibe map tracks are projected from audio-feature embeddings but lack
-            // CLAP embeddings, so the path API (which interpolates CLAP vectors) fails.
-            // We use the vibe search API which queries track_embeddings directly,
-            // guaranteeing the returned tracks have CLAP embeddings.
-            // We use mood descriptors (like vibe.spec.ts) that reliably match tracks.
+            // Tracks come from vibe search, which reads track_embeddings, so each
+            // has the CLAP embedding the path API needs. Mood words match reliably.
             const candidates = [
                 "rock", "pop", "electronic", "bright", "dark",
                 "sad", "piano", "guitar", "ambient", "driving",
@@ -2140,14 +2059,8 @@ test.describe("Dogfood walkthrough", () => {
             return { url: new URL(page.url()).pathname };
         });
 
-        // The settings screen stages edits in local state and writes them only when Save
-        // Changes is pressed, so flipping a toggle and reloading is SUPPOSED to discard it.
-        // The thing worth testing is the whole path a person actually takes: change, save,
-        // come back, and find it the way you left it.
-        //
-        // Fanart.tv is the toggle of choice because it is an optional artwork source --
-        // switching it costs nothing while the walkthrough is running. The setting is put
-        // back in a finally block, so a failure mid-step still leaves the instance as found.
+        // Settings save only on Save Changes, so the test changes, saves, returns
+        // and checks. Fanart.tv is optional, and the finally block restores it.
         const TOGGLE = "Enable Fanart.tv";
 
         await session.step("change a setting, save it, and come back", async () => {
@@ -2317,12 +2230,8 @@ test.describe("Dogfood walkthrough", () => {
     test("7. on a phone: a real touch session, not a narrow window", async () => {
         session.setJourney("7. Phone");
 
-        // A resized desktop window is not a phone. The app's touch rules are written behind
-        // `(hover: none)` and `(pointer: coarse)`, and a desktop Chromium reports neither no
-        // matter how narrow it gets -- so measuring touch targets in a resized window
-        // measures rules that a real phone would never apply. Touch emulation can only be
-        // set when a context is created, so the phone gets its own context. That is honest
-        // in its own right: picking up your phone IS a new session.
+        // Touch rules sit behind (hover: none) and (pointer: coarse), which a
+        // desktop window never reports, and touch emulation needs a new context.
         const phoneContext = await browser.newContext({
             ...devices["iPhone 13"],
         });
@@ -2388,14 +2297,8 @@ test.describe("Dogfood walkthrough", () => {
                 return { playing: true };
             });
 
-            // Touch targets, measured against WCAG 2.2 AA (2.5.8): 24x24 CSS pixels.
-            //
-            // Two exclusions, both from the standard rather than convenience. Text links
-            // sitting inline in a sentence or a row of text are explicitly exempt -- an
-            // artist name inside a track row is type, not a button, and padding it to 24px
-            // would wreck the line. Screen-reader-only elements (the skip link) are 1x1 by
-            // design and only become interactive on keyboard focus, so they are not touch
-            // targets at all.
+            // Touch targets at WCAG 2.2 AA 2.5.8 (24x24). Inline text links and
+            // screen-reader-only elements are exempt by the standard.
             await session.step("controls are big enough to hit with a thumb", async () => {
                 const small = await phone.evaluate(() => {
                     const out: string[] = [];
@@ -2408,17 +2311,9 @@ test.describe("Dogfood walkthrough", () => {
                         // The sr-only technique: clipped to nothing, off in a corner.
                         if (cs.clipPath !== "none" || (cs.clip && cs.clip !== "auto")) return;
 
-                        // WCAG 2.5.8's inline exception has two clauses, and both matter
-                        // here. The first is a target sitting inline in a sentence. The
-                        // second is a target "otherwise constrained by the line-height of
-                        // non-target text" -- a bare text link in a metadata row, whose box
-                        // IS its line box. Padding those to 24px would push the line apart,
-                        // which is why the standard exempts them.
-                        //
-                        // The test for the second clause is deliberately tight: no padding
-                        // at all, and a height that matches the line-height. Anything with a
-                        // padded box is a control that chose its own size and is still held
-                        // to 24px.
+                        // WCAG 2.5.8 exempts a target inline in a sentence and one held
+                        // to the line-height of its text: no padding and height equal to
+                        // line-height. A padded box is still held to 24px.
                         if (cs.display === "inline") return;
                         const lineHeight = parseFloat(cs.lineHeight);
                         const unpadded =

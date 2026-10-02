@@ -1,13 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { AudioController } from "../audio-controller";
 
-// ---------------------------------------------------------------------------
-// Fakes
-// ---------------------------------------------------------------------------
-// vitest.config.ts runs this suite under environment: "node", so document /
-// window / navigator / localStorage do not exist unless stubbed per-test.
-// AudioController references several of them as bare globals (not window.x),
-// so each must be stubbed individually via vi.stubGlobal.
+// Runs under the node environment. AudioController uses document, window,
+// navigator and localStorage as bare globals, so each is stubbed per test.
 
 class MockAudioContext {
     static throwOnStart = false;
@@ -474,19 +469,9 @@ describe("AudioController -- analyser wiring and bridge latch ordering (F-A)", (
     });
 });
 
-// ---------------------------------------------------------------------------
-// 6. checkSilentPlayback -- C3 running-but-silent detector (F-B)
-// ---------------------------------------------------------------------------
-//
-// These tests call the private checkSilentPlayback() directly (via cast)
-// rather than driving it through the real setInterval ticker. Both the C3
-// silent-audio detector and the unrelated stall/recovery ladder key off the
-// same audio.currentTime signal via the "tick" policy event, so exercising
-// them together (e.g. a frozen currentTime for 5+ seconds) trips the ladder's
-// own stall escalation first and makes it impossible to isolate the detector.
-// Calling checkSilentPlayback() directly still exercises the exact streak/
-// arm-window/advancing-clock logic under test and fails under mutation of
-// any of those three gates.
+// ── checkSilentPlayback: running but silent ─────────────────────────────────
+// Called directly: driving it through the ticker would trip the stall ladder,
+// which watches the same currentTime, before the detector.
 
 type SilentDetectorInternals = {
     dispatch(event: { type: string; now: number }): void;

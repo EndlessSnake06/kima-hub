@@ -1,13 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { AudioController } from "../audio-controller";
 
-// ---------------------------------------------------------------------------
-// Fakes -- deliberately simpler than audio-controller-prime.test.ts's: these
-// tests exercise the dual-element gapless swap, which is NOT iOS-gated
-// (INV-2/4: both elements are bare off-iOS), so a plain desktop UA is used
-// throughout. vitest.config.ts runs this suite under environment: "node", so
-// document/window/navigator/localStorage must be stubbed per-test.
-// ---------------------------------------------------------------------------
+// Fakes for the dual-element gapless swap, which is not iOS-gated, so a desktop
+// UA is used. Runs under the node environment: browser globals are stubbed per test.
 
 function createFakeAudioElement() {
     const listeners: Record<string, Array<() => void>> = {};

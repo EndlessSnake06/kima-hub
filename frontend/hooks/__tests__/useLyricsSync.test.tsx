@@ -1,12 +1,7 @@
 /**
- * State-machine tests for useLyricsSync.
- *
- * Tests the critical invariant: isLoading must be true from the very first
- * render when trackId is present, avoiding the false-empty flash.
- * House anti-pattern documented at useMediaQuery.ts:9.
- *
- * Approach: read the hook value into an array on every render, so we can
- * verify the FIRST value in the sequence is isLoading=true.
+ * useLyricsSync reports isLoading from the very first render when a trackId is
+ * present, so the panel never flashes "no lyrics". Every render's value is
+ * recorded and the first one checked.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createRoot, type Root } from "react-dom/client";

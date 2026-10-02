@@ -1,17 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
 
 /**
- * Testbed dogfood addendum — the removal fixes as real UI journeys.
- *
- * Covers the v1.11.0 bug-fix surface the canonical walkthrough does not:
- *   1. Podcast delete through the actual UI (Remove → "Remove podcast?")
- *      with DB-level verification and idempotency (delete twice → still 200).
- *   2. Audiobook cache prune is exercised only when Audiobookshelf is
- *      enabled; on this testbed it is deliberately absent, so the dogfood
- *      for it is the graceful-absence journey in testbed.spec.ts.
- *
- * Runs against the same testbed instance as testbed.spec.ts, which has
- * already registered kima_dogfood. Auth is the JWT from localStorage.
+ * Podcast delete through the UI (Remove → "Remove podcast?"), checked in the
+ * database and repeatable. Runs on the testbed after testbed.spec.ts has
+ * registered kima_dogfood.
  */
 
 const baseUrl = process.env.KIMA_UI_BASE_URL || "http://127.0.0.1:3055";
@@ -33,11 +25,8 @@ function escapeRegExp(s: string): string {
  */
 async function dismissWhatsNew(page: Page): Promise<void> {
     const dialog = page.locator('div[role="dialog"][aria-labelledby="whats-new-title"]');
-    // The dialog renders ASYNCHRONOUSLY after login. A single count() check
-    // races the render: it returns "not present" before the dialog mounts, and
-    // the dialog then intercepts every pointer event for the rest of the run
-    // (observed as a >15m hang on a genuinely fresh instance). Wait for it to
-    // appear, bounded — proceed immediately when it never shows.
+    // The dialog mounts after login, so wait for it (bounded) instead of one
+    // count(); a missed dialog blocks every click for the rest of the run.
     const appeared = await dialog
         .waitFor({ state: "visible", timeout: 15_000 })
         .then(() => true)

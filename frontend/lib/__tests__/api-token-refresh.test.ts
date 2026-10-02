@@ -1,15 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { api, NetworkError } from "../api";
 
-// ---------------------------------------------------------------------------
-// C6: 401 -> refresh three-way (network-error / rejected / refreshed).
-//
-// vitest.config.ts runs this suite under environment: "node". ApiClient reads
-// `window`/`localStorage` as bare globals gated on `typeof window`, so both
-// must be stubbed for the refresh-token lookup path to run at all. `api` is
-// a module-level singleton constructed at import time (before any stubbing),
-// so its in-memory `token` field is poked directly rather than via setToken().
-// ---------------------------------------------------------------------------
+// 401 → refresh: network error, refresh rejected, or refreshed. Runs under the
+// node environment, so window and localStorage are stubbed; `api` is built at
+// import, so its in-memory token is set directly.
 
 type ApiClientInternals = { token: string | null };
 

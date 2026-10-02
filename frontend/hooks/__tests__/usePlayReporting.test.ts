@@ -1,10 +1,6 @@
 /**
- * What the client is allowed to claim it heard.
- *
- * The server decides whether a play counts, but it can only judge the number it
- * is given. These pin the measurement — above all that dragging the scrubber to
- * the end buys almost nothing, that being the obvious way to turn a progress bar
- * into a scrobble button.
+ * What the client reports as heard. The server judges plays from this number,
+ * so dragging the scrubber to the end must add almost nothing.
  */
 
 import { describe, expect, it } from "vitest";

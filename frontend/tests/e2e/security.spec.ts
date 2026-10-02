@@ -2,22 +2,9 @@ import { test, expect } from "@playwright/test";
 import { username, password } from "./fixtures/test-helpers";
 
 /**
- * Security E2E Tests
- *
- * These run against the full Docker stack (real DB, real Redis, real JWT).
- * They complement the backend unit tests, which verify individual middleware
- * and route logic in isolation. These tests verify the whole system works
- * correctly end-to-end under security scenarios.
- *
- * Scope:
- *   - IDOR: two real users, real playlists, real ownership enforcement
- *   - XSS: real browser rendering of attacker-controlled data
- *   - Mass assignment: real API rejects injected fields
- *   - Error responses: no data leakage in real server responses
- *
- * Not in scope here (covered by backend unit tests):
- *   - Auth middleware behavior (tokenVersion, expired JWT, missing header)
- *   - Route-level ownership logic (covered by playlists.route.test.ts)
+ * Against the full stack: IDOR with two real users, XSS in real rendering, mass
+ * assignment, and error responses that leak nothing. Auth middleware and route
+ * ownership are covered by backend unit tests.
  */
 
 const ATTACKER_USER = `attacker_${Date.now()}`;

@@ -1,13 +1,7 @@
 /**
- * Playwright global setup -- runs once before all tests.
- *
- * Verifies the E2E test user exists and can authenticate.
- * If login fails with the configured credentials, prints setup instructions and aborts.
- *
- * Required env vars (set in .env.test or export before running):
- *   KIMA_TEST_USERNAME  -- username of the dedicated E2E test user
- *   KIMA_TEST_PASSWORD  -- password of the dedicated E2E test user
- *   KIMA_UI_BASE_URL    -- base URL of the running app (default: http://127.0.0.1:3030)
+ * Runs once before all tests: checks KIMA_TEST_USERNAME / KIMA_TEST_PASSWORD
+ * can log in at KIMA_UI_BASE_URL (default http://127.0.0.1:3030), and aborts
+ * with setup instructions if not.
  */
 import { chromium } from "@playwright/test";
 
@@ -46,13 +40,9 @@ async function globalSetup(): Promise<void> {
             );
         }
 
-        // Dismiss any pending What's New releases server-side, so the modal
-        // cannot mount over tests (aria-modal intercepts all pointer events).
-        // Best-effort: an empty pending list or a versioned endpoint that moved
-        // must not fail setup.
-        // The backend rejects session cookies on /api (bearer-only on this
-        // origin), so a page-side cookie fetch 401s silently. Extract the JWT
-        // from storage the app itself uses and call the API with an auth header.
+        // Dismiss pending What's New releases server-side so the modal never
+        // blocks tests; best effort. /api takes bearer tokens only, so the JWT
+        // is read from the app's storage.
         try {
             // lib/api.ts persists the JWT under AUTH_TOKEN_KEY ("auth_token").
             const token = await page.evaluate(() => window.localStorage.getItem("auth_token"));

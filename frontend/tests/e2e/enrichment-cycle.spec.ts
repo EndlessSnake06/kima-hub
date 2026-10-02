@@ -1,20 +1,9 @@
 import { test, expect } from "@playwright/test";
 import { loginAsTestUser, getAuthToken } from "./fixtures/test-helpers";
 
-// ---------------------------------------------------------------------------
-// Enrichment cycle test
-//
-// Wipes all enrichment data, triggers a full re-enrich, and verifies the
-// system is functional afterward.  Intended to catch:
-//   - Enrichment correctness regressions (wrong counts, missing embeddings)
-//   - Memory leaks introduced by the enrichment pipeline
-//
-// Skips gracefully when the library has fewer than 10 tracks (CI containers
-// have no music mount).
-//
-// For memory monitoring run this spec via the companion shell script:
-//   bash scripts/run-enrichment-memory-test.sh
-// ---------------------------------------------------------------------------
+// Wipes enrichment data, re-enriches, and checks the library still works.
+// Skips below 10 tracks. scripts/run-enrichment-memory-test.sh runs it with
+// memory monitoring.
 
 const POLL_INTERVAL_MS = 10_000;
 const ENRICHMENT_TIMEOUT_MS = 45 * 60 * 1000; // 45 minutes

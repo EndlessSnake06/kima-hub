@@ -1,21 +1,7 @@
 /**
- * The stats page, the period filter, the play-history audit, the player's play
- * count and the queue limit — as one real session, watched the whole way.
- *
- * Separate from `walkthrough.spec.ts` on purpose. That file is the whole-app
- * gate and includes an embeddings rebuild that runs for hours; these surfaces
- * change often enough to need a run measured in minutes.
- *
- * It uses the same `DogfoodSession`, so every journey here also fails on a
- * console error, an uncaught exception, a failed request, a horizontal
- * overflow or a dropped event stream — not just on its own assertions.
- *
- * ## What it needs
- *
- * An instance with a real play history for the test user. Figures like "half of
- * everything you play is N songs" have nothing to say about four plays, and a
- * test that asserts on an empty page proves the page renders, not that it is
- * right. `preflight` refuses rather than passing vacuously.
+ * The stats page, period filter, play-history audit, player play count and queue
+ * limit as one watched session, apart from the hours-long walkthrough. Needs a
+ * real play history: `preflight` refuses an empty one.
  */
 
 import { test, expect, Browser, Page, BrowserContext } from "@playwright/test";
@@ -110,12 +96,8 @@ test.describe("Dogfood: stats, filters, audit, queue", () => {
         });
 
         await session.step("dismiss the release window if it is up", async () => {
-            // After an upgrade the What's New dialog opens over everything on
-            // first login, so every later journey would be clicking through a
-            // modal. Closing it is part of a real first session, not a
-            // workaround — and it's worth knowing this gates the whole app.
-            // Match ANY release window: the title changes per release and the
-            // spec must not break the day a new one ships.
+            // Close the What's New dialog of any release; it opens over
+            // everything on first login after an upgrade.
             const dialog = page.locator('div[role="dialog"][aria-labelledby="whats-new-title"]');
             if (await dialog.isVisible().catch(() => false)) {
                 await page.locator('div[role="dialog"] button[aria-label="Close"]').first().click();
@@ -313,11 +295,8 @@ test.describe("Dogfood: stats, filters, audit, queue", () => {
         session.setJourney("5. Player play count");
 
         await session.step("the count in the bar is the count the API gives", async () => {
-            // Name the track from the bar's own audio element. The
-            // persisted current-track key lags the player state by seconds,
-            // and this journey runs right after one that starts playback —
-            // reading storage here once grabbed the PREVIOUS track and
-            // chased an ordinal the bar could never show.
+            // The track id comes from the bar's audio element; the stored
+            // current-track key lags the player by seconds.
             const idFromPlayer = () =>
                 page
                     .$eval(PLAYER, (el) =>
@@ -339,11 +318,8 @@ test.describe("Dogfood: stats, filters, audit, queue", () => {
 
             test.skip(!(await idFromPlayer()), "nothing is playing to count");
 
-            // The play in progress is one past the last recorded listen, and
-            // the listen itself gets recorded mid-window — so a single read
-            // pairs with whatever the bar showed at its own fetch: the bar
-            // states plays+1, or plays once this one is on the books. A
-            // first listen is silent by design.
+            // The listen is recorded mid-window, so the bar shows plays+1
+            // before it lands and plays after. A first listen shows nothing.
             await expect
                 .poll(
                     async () => {
@@ -386,11 +362,8 @@ test.describe("Dogfood: stats, filters, audit, queue", () => {
     test("6. the queue limit is a setting, and the server enforces it", async () => {
         session.setJourney("6. Queue limit");
 
-        // Journeys 4-5 leave the player running. A playing page persists its
-        // own queue on every auto-advance, which races this journey's API
-        // probe and overwrites it (observed: probe saved 10025 -> clamped
-        // 10000, then the live player's 8-track queue landed before the
-        // read-back). Pause first so nothing writes during the probe.
+        // Pause first: a playing page saves its own queue on every advance and
+        // would overwrite this journey's probe.
         const pause = page.getByTitle("Pause", { exact: true });
         if (await pause.isVisible({ timeout: 2000 }).catch(() => false)) {
             await pause.click().catch(() => {});

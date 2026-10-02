@@ -1,10 +1,6 @@
 /**
- * The queue-limit box in Settings > Playback.
- *
- * It clamped on every keystroke: typing "5000" went 5 -> 100 (clamped up to
- * the minimum), then 1000, 10000, 100000, and 100,000 was what got saved.
- * These tests type into the real component, one character at a time, the way
- * a person does.
+ * The queue-limit box in Settings > Playback clamps only when committed, not
+ * per keystroke, so typing "5000" saves 5000. Typed one character at a time.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createRoot, type Root } from "react-dom/client";

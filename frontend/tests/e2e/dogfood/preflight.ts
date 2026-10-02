@@ -1,15 +1,6 @@
 /**
- * Data readiness gate for the dogfood walkthrough.
- *
- * The rest of the suite calls test.skip() when the library is empty, which is the right
- * call for a feature test -- there is no album page to check if there are no albums. It is
- * the wrong call for a deployment gate. A suite that skips its way to green has tested
- * nothing and reports the same colour as a suite that passed, which is precisely the signal
- * you must not send just before a deploy.
- *
- * So this gate fails instead of skipping, and it fails with an explanation of what is
- * missing and how to supply it. "Not enough data to test this build" is a real answer. A
- * green tick over an untested build is not.
+ * Data readiness gate for the dogfood walkthrough. It fails, with what is
+ * missing and how to supply it, instead of letting the suite skip to green.
  */
 import { APIRequestContext, expect } from "@playwright/test";
 
@@ -71,15 +62,8 @@ export async function readLibraryFacts(
     const withFeatures =
         sample?.tracks?.filter((t) => t.audioFeatures && t.audioFeatures.bpm != null).length ?? 0;
 
-    // Embeddings are counted from enrichment progress, NOT from the vibe map.
-    //
-    // The map is a UMAP projection built ON TOP of the embeddings, so a broken projection
-    // makes it answer "no tracks" while every embedding sits happily in the database. This
-    // preflight used to read the map, and it did exactly that: it reported zero embeddings
-    // against a library with all 59 present, and the walkthrough recorded the vibe journey
-    // as "not covered" instead of failing on a map that was returning 500. Using a derived,
-    // failure-prone endpoint to decide whether to test its own upstream turned a broken
-    // feature into a skipped one -- the precise outcome this file exists to prevent.
+    // Embeddings are counted from enrichment progress, not the vibe map: a broken
+    // map would otherwise read as "no embeddings" and skip the journey that should fail.
     const progress = await getJson<{ clapEmbeddings?: { completed?: number } }>(
         api,
         "/api/enrichment/progress",
