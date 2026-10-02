@@ -14,6 +14,7 @@ import { useAudioState } from "./audio-state-context";
 import { useAudioController } from "./audio-controller-context";
 import type { EngineSnapshot } from "./audio-engine-policy";
 import { usePlayReporting } from "@/hooks/usePlayReporting";
+import { upNext, useLiveReporting } from "@/hooks/useLiveReporting";
 
 interface AudioPlaybackContextType {
     isPlaying: boolean;
@@ -88,6 +89,19 @@ export function AudioPlaybackProvider({ children }: { children: ReactNode }) {
         controller as Parameters<typeof usePlayReporting>[0],
         state.currentTrack?.id ?? null,
         state.currentTrack?.duration ?? duration ?? null,
+    );
+
+    const liveTrack = state.playbackType === "track" ? state.currentTrack : null;
+    const liveQueue = useMemo(
+        () => liveTrack
+            ? upNext(state.queue, state.currentIndex, state.isShuffle, state.shuffleIndices, state.repeatMode)
+            : [],
+        [liveTrack, state.queue, state.currentIndex, state.isShuffle, state.shuffleIndices, state.repeatMode],
+    );
+    useLiveReporting(
+        controller as Parameters<typeof useLiveReporting>[0],
+        liveTrack ? { id: liveTrack.id, duration: liveTrack.duration } : null,
+        liveQueue,
     );
 
     // Snapshot subscriber: derive isPlaying/isBuffering/audioError from engine state machine.

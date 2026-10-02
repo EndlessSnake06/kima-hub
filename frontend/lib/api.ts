@@ -1432,6 +1432,20 @@ class ApiClient {
         });
     }
 
+    /** Play, pause, seek and up-next changes for the public live trip; 404 for everyone but its user. */
+    async reportLive(report: {
+        status: "playing" | "paused" | "stopped";
+        trackId: string;
+        position: number;
+        duration: number;
+        queue: { trackId: string; duration: number }[];
+    }) {
+        return this.request<{ ok: boolean }>("/playback-state/live", {
+            method: "POST",
+            body: JSON.stringify(report),
+        });
+    }
+
     async clearPlaybackState() {
         return this.request<void>("/playback-state", {
             method: "DELETE",
