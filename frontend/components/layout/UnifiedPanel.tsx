@@ -67,6 +67,7 @@ export function UnifiedPanel({ isOpen, onToggle }: UnifiedPanelProps) {
             style={{ width: isOpen ? 380 : 48 }}
         >
             <div
+                id="activity-panel"
                 className="absolute inset-y-0 right-0 w-[380px] bg-[var(--bg-primary)] flex flex-col overflow-hidden transition-transform duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] rounded-lg"
                 style={{
                     transform: isOpen ? "translateX(0)" : "translateX(332px)",

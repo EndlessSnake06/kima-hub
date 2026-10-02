@@ -33,7 +33,6 @@ export function TopBar() {
     const isMobileOrTablet = isMobile || isTablet;
     const [searchQuery, setSearchQuery] = useState("");
     const [scanJobId, setScanJobId] = useState<string | null>(null);
-    const [lastScanTime, setLastScanTime] = useState<number>(0);
     const [isActivityPanelOpen, setIsActivityPanelOpen] = useState(() => {
         if (typeof window === "undefined") return false;
         return localStorage.getItem("kima_activity_panel_open") === "true";
@@ -79,15 +78,7 @@ export function TopBar() {
     const handleSync = async () => {
         if (isPolling) return;
 
-        // Prevent spam clicking - cooldown of 5 seconds (silently ignore)
-        const now = Date.now();
-        const timeSinceLastScan = now - lastScanTime;
-        if (timeSinceLastScan < 5000) {
-            return;
-        }
-
         try {
-            setLastScanTime(now);
             const response = await api.scanLibrary();
             setScanJobId(response.jobId);
         } catch (error) {

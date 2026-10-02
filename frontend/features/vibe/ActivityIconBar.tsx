@@ -25,26 +25,31 @@ export function ActivityIconBar({ expandedActivity, onToggleActivity }: Activity
 
     return (
         <div className="flex items-center justify-center gap-1 px-3 py-2 border-b border-white/5">
-            {items.map(({ type, icon: Icon, badge }) => (
-                <button
-                    key={type}
-                    onClick={() => onToggleActivity(type)}
-                    className={cn(
-                        "relative p-2 rounded-md transition-colors",
-                        expandedActivity === type
-                            ? "bg-white/10 text-white"
-                            : "text-[var(--text-muted)] hover:text-white/70 hover:bg-white/5",
-                    )}
-                    title={type.charAt(0).toUpperCase() + type.slice(1)}
-                >
-                    <Icon className="w-4 h-4" />
-                    {badge > 0 && (
-                        <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 flex items-center justify-center bg-[#e35656] text-white text-micro font-semibold rounded-full">
-                            {badge > 99 ? "99+" : badge}
-                        </span>
-                    )}
-                </button>
-            ))}
+            {items.map(({ type, icon: Icon, badge }) => {
+                const label = type.charAt(0).toUpperCase() + type.slice(1);
+                return (
+                    <button
+                        key={type}
+                        onClick={() => onToggleActivity(type)}
+                        aria-label={badge > 0 ? `${label} (${badge})` : label}
+                        aria-pressed={expandedActivity === type}
+                        className={cn(
+                            "relative p-2 rounded-md transition-colors",
+                            expandedActivity === type
+                                ? "bg-white/10 text-white"
+                                : "text-[var(--text-muted)] hover:text-white/70 hover:bg-white/5",
+                        )}
+                        title={label}
+                    >
+                        <Icon className="w-4 h-4" />
+                        {badge > 0 && (
+                            <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 flex items-center justify-center bg-[#e35656] text-white text-micro font-semibold rounded-full">
+                                {badge > 99 ? "99+" : badge}
+                            </span>
+                        )}
+                    </button>
+                );
+            })}
         </div>
     );
 }

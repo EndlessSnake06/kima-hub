@@ -40,6 +40,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **The public library export answers at once.** It rebuilt on every request after any library change, which on a 9,100-track library took up to half a minute, past the 30-second limit of the frontend's proxy, so the request failed. Requests now get the last finished export while the next one builds in the background, and the first build starts when the server does; before it finishes the export answers 503 with Retry-After.
+- **Saving a ListenBrainz token keeps the rest of the settings page as it was.** Saving reloaded every setting, which briefly unmounted the page, dropped unsaved edits and hid the confirmation. The token no longer counts as an unsaved change either, since it saves on its own.
+- **A second "Sync library" press within five seconds is no longer silently ignored.** The server already refuses a scan while one is running.
+- **The activity panel's tabs have names.** Screen readers heard only the unread count ("15"); each tab is now named and says whether it is open, and the panel toggle points at the panel it opens on desktop.
 - **GPU acceleration shows as active right after the analyzer restarts.** The analyzer only checked the GPU when its first job loaded the model, so an idle server kept asking for a restart that had already happened. It now opens one session at startup to check.
 - **A file that cannot be read is no longer counted as added.** The scan counted every new file before reading it, so an unreadable file showed up as "added" on every scan while never reaching the library. It now counts only as an error.
 - **The whats-new window queue.** Dismissing one release no longer reuses its window for the next; the "Take me to it" action defers the rest of the queue instead of chasing the user, and Escape with a confirmation open no longer dismisses the window underneath.

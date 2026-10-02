@@ -10,7 +10,7 @@ interface ScrobblingSectionProps {
     /** Whether a token is already saved (the value itself is never returned). */
     configured: boolean;
     /** Called after a save/clear so the parent refreshes `configured`. */
-    onSaved: () => void;
+    onSaved: (configured: boolean) => void;
     /** The public live feed switch; omitted unless this server shares this user's listening. */
     liveSharing?: { checked: boolean; onChange: (checked: boolean) => void };
 }
@@ -43,7 +43,7 @@ export function ScrobblingSection({
             setMessage(clearRequested ? "Token removed" : "Scrobbling on");
             setToken("");
             setClearRequested(false);
-            onSaved();
+            onSaved(!clearRequested);
         } catch {
             setStatus("error");
             setMessage("Failed to save");

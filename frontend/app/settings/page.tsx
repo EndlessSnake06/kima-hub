@@ -75,7 +75,13 @@ export default function SettingsPage() {
     const loadError = userLoadError ?? (isAdmin ? systemLoadError : null);
     const isLoaded = !userLoading && (!isAdmin || !systemLoading);
 
-    const current = isLoaded && !loadError ? JSON.stringify([userSettings, isAdmin ? systemSettings : null]) : null;
+    // The token is saved on its own, so only the editable settings count as unsaved.
+    const snapshot = useCallback(
+        ({ hasListenbrainzToken: _token, ...editable }: typeof userSettings) =>
+            JSON.stringify([editable, isAdmin ? systemSettings : null]),
+        [isAdmin, systemSettings],
+    );
+    const current = isLoaded && !loadError ? snapshot(userSettings) : null;
     const [saved, setSaved] = useState<string | null>(null);
     if (current !== null && saved === null) setSaved(current);
     const isDirty = current !== null && saved !== null && current !== saved;
@@ -131,10 +137,10 @@ export default function SettingsPage() {
         if (hasError) {
             saveStatus.setError("Couldn't save");
         } else {
-            setSaved(JSON.stringify([userSettings, isAdmin ? systemSettings : null]));
+            setSaved(snapshot(userSettings));
             saveStatus.setSuccess("Saved");
         }
-    }, [userSettings, systemSettings, isAdmin, saveUserSettings, saveSystemSettings, saveStatus]);
+    }, [userSettings, systemSettings, isAdmin, saveUserSettings, saveSystemSettings, saveStatus, snapshot]);
 
     const handleTestService = useCallback(async (service: string) => {
         setTestingServices(prev => ({ ...prev, [service]: true }));
@@ -212,7 +218,7 @@ export default function SettingsPage() {
 
                 <ScrobblingSection
                     configured={!!userSettings.hasListenbrainzToken}
-                    onSaved={reloadUserSettings}
+                    onSaved={(hasListenbrainzToken) => updateUserSettings({ hasListenbrainzToken })}
                     liveSharing={
                         userSettings.liveSharingAvailable
                             ? {
