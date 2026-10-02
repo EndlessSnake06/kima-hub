@@ -41,8 +41,6 @@ test.describe("Dogfood walkthrough", () => {
     let journeys: ReturnType<typeof availableJourneys>;
     let token = "";
     const createdPlaylistIds: string[] = [];
-    const podcastId = "";
-    const podcastTitle = "";
     let movedTrackTitle = "";
 
     test.beforeAll(async ({ browser: launched }) => {
@@ -1341,14 +1339,13 @@ test.describe("Dogfood walkthrough", () => {
                 return;
             }
 
-            // The library renders each podcast as a button, not a link, so it is found by
-            // its accessible name rather than an href.
+            // Each podcast card is a link named by its title.
             await session.step("it appears in the podcast list", async () => {
                 await navigateByClick(page, "/podcasts");
                 await settle(page, 2500);
                 const card = page
                     .locator("main")
-                    .getByRole("button", { name: new RegExp(escapeRegExp(podcastTitle)) })
+                    .getByRole("link", { name: new RegExp(escapeRegExp(podcastTitle)) })
                     .first();
                 await expect(card).toBeVisible({ timeout: 15_000 });
                 return { title: podcastTitle };
@@ -1358,7 +1355,7 @@ test.describe("Dogfood walkthrough", () => {
             await session.step("open it and see its episodes", async () => {
                 await page
                     .locator("main")
-                    .getByRole("button", { name: new RegExp(escapeRegExp(podcastTitle)) })
+                    .getByRole("link", { name: new RegExp(escapeRegExp(podcastTitle)) })
                     .first()
                     .click();
                 await page.waitForURL(/\/podcasts\/[^/]+/, { timeout: 15_000 });
@@ -1474,113 +1471,166 @@ test.describe("Dogfood walkthrough", () => {
     test("5c. podcast management: episode list, mark-as-played, refresh, similar", async () => {
         session.setJourney("5c. Podcast management");
 
-        // This journey exercises the deeper podcast management surface that 5b's
-        // subscribe step creates. The podcast subscription from 5b is still present
-        // (the finally block only cleans up playback state, not the subscription).
-        if (!podcastId) {
-            session.noteNotCovered(
-                "podcast management journey skipped: 5b did not create a subscription",
-            );
-            return;
-        }
+        // 5b unsubscribes mid-play, so this journey follows its own podcast and
+        // leaves the library as found. A directory or feed that is down is
+        // recorded and the journey stops; an error in the app still fails.
+        let podcastId = "";
+        let podcastTitle = "";
+        let externalBlocker = "";
 
-        // 1. The podcast card is visible in the library list
-        await session.step("podcast card is visible in the library", async () => {
-            await navigateByClick(page, "/podcasts");
-            await settle(page, 2500);
-            const card = page
-                .locator("main")
-                .getByRole("button", { name: new RegExp(escapeRegExp(podcastTitle)) })
-                .first();
-            await expect(card).toBeVisible({ timeout: 15_000 });
-            return { title: podcastTitle, cardVisible: true };
-        });
-
-        // 2. Fetch podcast detail and see the episode list
-        await session.step("podcast detail page shows episodes", async () => {
-            const res = await page.request.get(`/api/podcasts/${podcastId}`, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
-            expect(res.status(), `podcast detail returned ${res.status()}`).toBe(200);
-            const body = await res.json();
-            const episodes = body.episodes ?? body.podcast?.episodes ?? [];
-            expect(episodes.length, "podcast detail listed no episodes").toBeGreaterThan(0);
-            return { episodes: episodes.length };
-        });
-
-        // 3. Mark an episode as played via the progress endpoint
-        await session.step("mark an episode as played", async () => {
-            // Fetch episodes to get an episode ID
-            const epRes = await page.request.get(`/api/podcasts/${podcastId}/episodes`, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
-            expect(epRes.status(), `episode list returned ${epRes.status()}`).toBe(200);
-            const epBody = await epRes.json();
-            const episodeList = epBody.episodes ?? epBody;
-            const episodes = Array.isArray(episodeList) ? episodeList : [];
-            expect(episodes.length, "no episodes to mark as played").toBeGreaterThan(0);
-
-            const episodeId = episodes[0].id ?? episodes[0].episodeId ?? "";
-            expect(episodeId, "episode list returned entries without an id").toBeTruthy();
-
-            // Mark as played: set progress to a few seconds in
-            const progressRes = await page.request.post(
-                `/api/podcasts/${podcastId}/episodes/${episodeId}/progress`,
-                {
-                    data: { progress: 30 },
+        try {
+            await session.step("subscribe to a podcast from the directory", async () => {
+                const listRes = await page.request.get("/api/podcasts/discover/top?limit=5", {
                     headers: { Authorization: `Bearer ${token}` },
-                },
-            );
-            expect(
-                progressRes.status(),
-                `mark-as-played returned ${progressRes.status()}`,
-            ).toBe(200);
-            return { episodeId, markedPlayed: true };
-        });
-
-        // 4. Manually refresh the podcast feed
-        await session.step("refresh the podcast feed for new episodes", async () => {
-            const before = await page.request.get(`/api/podcasts/${podcastId}`, {
-                headers: { Authorization: `Bearer ${token}` },
+                });
+                expect(
+                    listRes.status(),
+                    `podcast discovery returned ${listRes.status()}`,
+                ).toBeLessThan(500);
+                if (!listRes.ok()) {
+                    externalBlocker = `the podcast directory answered ${listRes.status()}`;
+                    return { subscribed: false };
+                }
+                const list = await listRes.json();
+                const offered = Array.isArray(list) ? list : (list.podcasts ?? []);
+                const candidate = offered.find(
+                    (p: { itunesId?: number | string; feedUrl?: string }) =>
+                        p.itunesId || p.feedUrl,
+                );
+                if (!candidate) {
+                    externalBlocker = "the podcast directory returned nothing to subscribe to";
+                    return { subscribed: false };
+                }
+                const res = await page.request.post("/api/podcasts/subscribe", {
+                    data: candidate.itunesId
+                        ? { itunesId: candidate.itunesId }
+                        : { feedUrl: candidate.feedUrl },
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                expect(res.status(), `subscribing returned ${res.status()}`).toBeLessThan(500);
+                if (!res.ok()) {
+                    externalBlocker = `the feed could not be fetched (${res.status()})`;
+                    return { subscribed: false };
+                }
+                const created = await res.json();
+                podcastId = created.id ?? created.podcast?.id ?? "";
+                podcastTitle = created.title ?? created.podcast?.title ?? candidate.title ?? "";
+                expect(podcastId, "subscribing succeeded but returned no podcast id").toBeTruthy();
+                return { id: podcastId, title: podcastTitle };
             });
-            const beforeBody = await before.json();
-            const beforeCount = (beforeBody.episodes ?? beforeBody.podcast?.episodes ?? []).length;
 
-            const refreshRes = await page.request.get(`/api/podcasts/${podcastId}/refresh`, {
-                headers: { Authorization: `Bearer ${token}` },
+            if (externalBlocker) {
+                session.noteNotCovered(`podcast management journey stopped: ${externalBlocker}`);
+                return;
+            }
+
+            // 1. The podcast card is visible in the library list
+            await session.step("podcast card is visible in the library", async () => {
+                await navigateByClick(page, "/podcasts");
+                await settle(page, 2500);
+                const card = page
+                    .locator("main")
+                    .getByRole("link", { name: new RegExp(escapeRegExp(podcastTitle)) })
+                    .first();
+                await expect(card).toBeVisible({ timeout: 15_000 });
+                return { title: podcastTitle, cardVisible: true };
             });
-            // Refresh may be 200 (immediate) or 202 (queued) or 200 with updated data
-            expect(refreshRes.status(), `podcast refresh returned ${refreshRes.status()}`).toBeLessThan(400);
 
-            const after = await page.request.get(`/api/podcasts/${podcastId}`, {
-                headers: { Authorization: `Bearer ${token}` },
+            // 2. Fetch podcast detail and see the episode list
+            await session.step("podcast detail page shows episodes", async () => {
+                const res = await page.request.get(`/api/podcasts/${podcastId}`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                expect(res.status(), `podcast detail returned ${res.status()}`).toBe(200);
+                const body = await res.json();
+                const episodes = body.episodes ?? body.podcast?.episodes ?? [];
+                expect(episodes.length, "podcast detail listed no episodes").toBeGreaterThan(0);
+                return { episodes: episodes.length };
             });
-            const afterBody = await after.json();
-            const afterCount = (afterBody.episodes ?? afterBody.podcast?.episodes ?? []).length;
-            return { beforeEpisodes: beforeCount, afterEpisodes: afterCount, refreshed: true };
-        });
 
-        // 5. Find similar podcasts (uses iTunes Search API, no auth needed)
-        await session.step("find similar podcasts", async () => {
-            const res = await page.request.get(`/api/podcasts/${podcastId}/similar`, {
-                headers: { Authorization: `Bearer ${token}` },
+            // 3. Mark an episode as played via the progress endpoint
+            await session.step("mark an episode as played", async () => {
+                // Fetch episodes to get an episode ID
+                const epRes = await page.request.get(`/api/podcasts/${podcastId}/episodes`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                expect(epRes.status(), `episode list returned ${epRes.status()}`).toBe(200);
+                const epBody = await epRes.json();
+                const episodeList = epBody.episodes ?? epBody;
+                const episodes = Array.isArray(episodeList) ? episodeList : [];
+                expect(episodes.length, "no episodes to mark as played").toBeGreaterThan(0);
+
+                const episodeId = episodes[0].id ?? episodes[0].episodeId ?? "";
+                expect(episodeId, "episode list returned entries without an id").toBeTruthy();
+
+                // Mark as played: set progress to a few seconds in
+                const progressRes = await page.request.post(
+                    `/api/podcasts/${podcastId}/episodes/${episodeId}/progress`,
+                    {
+                        data: { progress: 30 },
+                        headers: { Authorization: `Bearer ${token}` },
+                    },
+                );
+                expect(
+                    progressRes.status(),
+                    `mark-as-played returned ${progressRes.status()}`,
+                ).toBe(200);
+                return { episodeId, markedPlayed: true };
             });
-            expect(res.status(), `similar podcasts returned ${res.status()}`).toBeLessThan(500);
-            const body = await res.json();
-            const similar = body.podcasts ?? body.similar ?? body.results ?? [];
-            return { similarCount: Array.isArray(similar) ? similar.length : 0 };
-        });
 
-        // 6. Unsubscribe
-        await session.step("unsubscribe from the podcast", async () => {
-            const res = await page.request.delete(`/api/podcasts/${podcastId}/unsubscribe`, {
-                headers: { Authorization: `Bearer ${token}` },
+            // 4. Manually refresh the podcast feed
+            await session.step("refresh the podcast feed for new episodes", async () => {
+                const before = await page.request.get(`/api/podcasts/${podcastId}`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                const beforeBody = await before.json();
+                const beforeCount = (beforeBody.episodes ?? beforeBody.podcast?.episodes ?? []).length;
+
+                const refreshRes = await page.request.get(`/api/podcasts/${podcastId}/refresh`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                // Refresh may be 200 (immediate) or 202 (queued) or 200 with updated data
+                expect(refreshRes.status(), `podcast refresh returned ${refreshRes.status()}`).toBeLessThan(400);
+
+                const after = await page.request.get(`/api/podcasts/${podcastId}`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                const afterBody = await after.json();
+                const afterCount = (afterBody.episodes ?? afterBody.podcast?.episodes ?? []).length;
+                return { beforeEpisodes: beforeCount, afterEpisodes: afterCount, refreshed: true };
             });
-            expect(res.status(), `unsubscribed returned ${res.status()}`).toBeLessThan(400);
-            return { unsubscribed: true };
-        });
 
-        session.assertClean("Journey 5c (podcast management)");
+            // 5. Find similar podcasts (uses iTunes Search API, no auth needed)
+            await session.step("find similar podcasts", async () => {
+                const res = await page.request.get(`/api/podcasts/${podcastId}/similar`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                expect(res.status(), `similar podcasts returned ${res.status()}`).toBeLessThan(500);
+                const body = await res.json();
+                const similar = body.podcasts ?? body.similar ?? body.results ?? [];
+                return { similarCount: Array.isArray(similar) ? similar.length : 0 };
+            });
+
+            // 6. Unsubscribe
+            await session.step("unsubscribe from the podcast", async () => {
+                const res = await page.request.delete(`/api/podcasts/${podcastId}/unsubscribe`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                expect(res.status(), `unsubscribed returned ${res.status()}`).toBeLessThan(400);
+                podcastId = "";
+                return { unsubscribed: true };
+            });
+
+            session.assertClean("Journey 5c (podcast management)");
+        } finally {
+            if (podcastId) {
+                await page.request
+                    .delete(`/api/podcasts/${podcastId}/unsubscribe`, {
+                        headers: { Authorization: `Bearer ${token}` },
+                    })
+                    .catch(() => {});
+            }
+        }
     });
 
     // ----------------------------------------------------------------------------------
