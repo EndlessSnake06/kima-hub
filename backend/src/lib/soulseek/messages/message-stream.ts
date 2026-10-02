@@ -39,8 +39,4 @@ export class MessageStream extends stream.Writable {
       }
     }
   }
-
-  reset() {
-    this.rest = undefined
-  }
 }

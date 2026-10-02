@@ -40,24 +40,4 @@ export class CacheWrapper {
             logger.error(`Cache set error (${this.cacheName}):`, error);
         }
     }
-
-    async delete(key: string): Promise<void> {
-        try {
-            cacheOperations.inc({ cache_name: this.cacheName, operation: 'delete' });
-            await redisClient.del(key);
-        } catch (error) {
-            logger.error(`Cache delete error (${this.cacheName}):`, error);
-        }
-    }
-
-    async exists(key: string): Promise<boolean> {
-        try {
-            cacheOperations.inc({ cache_name: this.cacheName, operation: 'exists' });
-            const result = await redisClient.exists(key);
-            return result > 0;
-        } catch (error) {
-            logger.error(`Cache exists error (${this.cacheName}):`, error);
-            return false;
-        }
-    }
 }

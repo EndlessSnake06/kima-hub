@@ -932,11 +932,6 @@ export class AudioController {
         }
     }
 
-    stop(): void {
-        this.audio.pause();
-        this.audio.currentTime = 0;
-    }
-
     cleanup(): void {
         this.dispatch({ type: "cleanup", now: Date.now() });
 
@@ -1020,10 +1015,6 @@ export class AudioController {
 
     isPlaying(): boolean {
         return !this.audio.paused && !this.audio.ended;
-    }
-
-    hasAudio(): boolean {
-        return this.audio.readyState >= 2;
     }
 
     get isTransitioning(): boolean {

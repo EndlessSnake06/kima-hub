@@ -39,11 +39,6 @@ export class MessageBuilder {
     return this
   }
 
-  buffer(value: Buffer) {
-    this.chunks.push(value)
-    return this
-  }
-
   getBuffer() {
     const data = Buffer.concat(this.chunks)
     const b = Buffer.alloc(4)
