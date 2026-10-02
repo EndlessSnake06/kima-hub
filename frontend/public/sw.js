@@ -117,15 +117,8 @@ self.addEventListener('install', (event) => {
       return cache.addAll(PRECACHE_ASSETS);
     })
   );
-  // Do NOT skipWaiting here -- let the app show an update banner and reload
-  // on user action to avoid disrupting mid-session state.
-});
-
-// Allow the app to trigger SW takeover after showing the update banner
-self.addEventListener('message', (event) => {
-  if (event.data?.type === 'SKIP_WAITING') {
-    self.skipWaiting();
-  }
+  // The worker serves no app code, so a new one can take over at once.
+  self.skipWaiting();
 });
 
 // Activate event - clean up old caches
