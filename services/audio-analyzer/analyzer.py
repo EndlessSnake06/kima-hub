@@ -33,22 +33,9 @@ print(f"Expected CPU usage: ~{THREADS_PER_WORKER * 100 + 100}% per worker", file
 print("=" * 80, file=sys.stderr)
 
 """
-Essentia Audio Analyzer Service - Enhanced Vibe Matching
-
-This service processes audio files and extracts audio features including:
-- BPM/Tempo
-- Key/Scale
-- Energy/Loudness
-- Danceability
-- ML-based Mood classification (happy, sad, relaxed, aggressive)
-- ML-based Valence and Arousal (real predictions, not estimates)
-- Voice/Instrumental detection
-
-Two analysis modes:
-- ENHANCED (default): Uses TensorFlow models for accurate mood detection
-- STANDARD (fallback): Uses heuristics when models aren't available
-
-It connects to Redis for job queue and PostgreSQL for storing results.
+Essentia audio analyzer: BPM, key, energy, danceability, mood heads, valence
+and arousal from MusiCNN models, with heuristics when the models are missing.
+Jobs arrive over Redis; results go to PostgreSQL.
 """
 
 # NOW safe to import other dependencies
@@ -68,11 +55,6 @@ from concurrent.futures import (
 )
 import multiprocessing
 
-# BrokenProcessPool has always lived in concurrent.futures.process (3.7+);
-# `from concurrent.futures import BrokenProcessPool` raises ImportError on
-# every supported version -- the package never re-exported it -- so the old
-# three-way try/except chain always took its second branch and the fallback
-# shim class below it was dead code.
 from concurrent.futures.process import BrokenProcessPool
 
 # Force spawn mode for TensorFlow compatibility (must be called before any multiprocessing)
@@ -96,13 +78,8 @@ from classifier import (
     Disposition,
 )
 
-# ProcessPoolExecutor gained max_tasks_per_child in Python 3.11. This image is
-# built on Ubuntu 20.04 for essentia-tensorflow compatibility, which ships
-# Python 3.8, so passing it unconditionally raised
-#   TypeError: __init__() got an unexpected keyword argument 'max_tasks_per_child'
-# the first time a scan batch arrived -- killing the worker loop while the
-# container still reported healthy. Worker recycling is a memory-hygiene nicety;
-# not starting at all is not.
+# max_tasks_per_child needs Python 3.11; this image ships 3.8 for
+# essentia-tensorflow, where passing it raises TypeError.
 def _pool_recycle_kwargs(limit: int) -> dict:
     return {"max_tasks_per_child": limit} if sys.version_info >= (3, 11) else {}
 
@@ -232,24 +209,16 @@ def _get_workers_from_db() -> int:
         logger.warning(f"Failed to fetch worker count from database: {e}")
         logger.info("Falling back to env var or default")
         return int(os.getenv('NUM_WORKERS', str(DEFAULT_WORKERS)))
-# Conservative default: 2 workers (stable on any system)
-# Previous default used auto-scaling which could cause OOM on memory-constrained systems
+# Two workers fit any machine's memory.
 DEFAULT_WORKERS = 2
 # Try to load from database first, fall back to env var or default
 NUM_WORKERS = _get_workers_from_db()
-# v3: mood heads read at their metadata-correct column, stored independently
-# (see HEAD_CLASSES). Migration 20260924120000_reset_inverted_mood_heads
-# re-queues every row analysed by an earlier version.
+# Bump when stored features change meaning, so older rows can be re-queued.
 ESSENTIA_VERSION = '2.1b6-enhanced-v3'
 
-# Retry configuration
-
-# Retry cap + backoff ladder for the analysis stage record. Parity with the
-# engine's TypeScript twin (backend unifiedEnrichment.ts: STAGE_RETRY_CAP /
-# computeStageRetryWaitMs): INCONCLUSIVE stays retryable through the
-# initial dispatch plus 3 retries -- waits of 1 min, 10 min, then 1 h --
-# and a 4th failure closes the record. A ladder that closes in 3.5 minutes
-# ends inside any real outage.
+# Same cap and ladder as the backend (STAGE_RETRY_CAP, computeStageRetryWaitMs):
+# an INCONCLUSIVE failure retries after 1 min, 10 min, then 1 h, and the 4th
+# failure closes the record.
 STAGE_RETRY_LADDER_SECONDS = [60, 600, 3600]
 STAGE_RETRY_CAP = 4
 
@@ -293,13 +262,9 @@ MODELS = {
     'emomusic': os.path.join(MODEL_DIR, 'emomusic-msd-musicnn-2.pb'),
 }
 
-# Output column order of each classification head. Copied verbatim from the
-# "classes" field of Essentia's model metadata,
-# https://essentia.upf.edu/models/classification-heads/<head>/<head>-msd-musicnn-1.json
-# (fetched 2026-09-24). The order is NOT consistent across heads: happy,
-# aggressive, acoustic, electronic and danceability list the positive class
-# first, while sad, relaxed and party list it second. Reading column 1 for
-# every head (the pre-fix behaviour) stored "not happy" as moodHappy, etc.
+# Output column order of each head, from the "classes" field of Essentia's model
+# metadata (essentia.upf.edu/models/classification-heads/<head>/). The positive
+# class is first for some heads and second for others.
 HEAD_CLASSES = {
     'mood_happy': ['happy', 'non_happy'],
     'mood_sad': ['non_sad', 'sad'],
@@ -336,35 +301,12 @@ else:
 
 
 def _decode_to_stereo(file_path: str, duration: int = 90):
-    """Single decode path: ONE ffmpeg command that decodes exactly the
-    analysed window and hands back the samples to analyse.
+    """Decode the first ``duration`` seconds of the first audio stream to
+    stereo with one ffmpeg call, skipping bad frames rather than failing.
 
-    Replaces the two-decoder design (a whole-file ``-xerror`` integrity
-    probe plus a separate ``es.MonoLoader`` read). The probe measured
-    nothing the analysis needed -- it condemned files ffmpeg itself
-    decodes fine (the 6-channel eac3 m4a, the Opus file) while the real
-    analysis only ever reads the first 90 s. One command does the whole
-    job now:
-
-    * ``-t`` before ``-i`` reads exactly the first ``duration`` seconds
-      -- the analysed window, never the whole file.
-    * ``-map 0:a:0`` takes the first audio stream only, so a malformed
-      embedded cover art cannot condemn the audio (analysis never
-      touches the artwork, so the artwork gets no vote).
-    * ``-ac 2`` downmixes any channel count above two to stereo; the
-      Essentia algorithms all take mono, so ``load_audio`` averages the
-      two channels down from there.
-    * ``-err_detect ignore_err`` and NO ``-xerror``: a bad frame is
-      skipped, not fatal. If samples come back, the track gets analysed
-      even when ffmpeg logged errors -- retrying a corrupt file just
-      reproduces the same corruption.
-
-    Returns ``(samples, sample_rate, channels, duration, command, rc,
-    stderr, class)``. ``samples`` is a ``(channels, samples)`` float32
-    array, or ``None`` when nothing decoded. ``class`` is the
-    ``Disposition`` from ``classifier.classify_failure`` over whatever
-    ffmpeg reported, so a genuinely damaged file can still be routed to
-    ``permanently_failed`` while a merely odd one stays retryable.
+    Returns ``(samples, sample_rate, channels, duration, command, rc, stderr,
+    class)``: samples is ``(channels, n)`` float32 or None, class is the
+    ``classify_failure`` disposition of whatever ffmpeg reported.
     """
     command = [
         'ffmpeg', '-nostdin', '-v', 'error',
@@ -451,15 +393,8 @@ class AudioAnalyzer:
         logger.info("Essentia basic algorithms initialized")
     
     def _load_ml_models(self):
-        """
-        Load MusiCNN TensorFlow models for Enhanced mode.
-
-        Architecture:
-        1. Base MusiCNN model generates embeddings from audio
-        2. Classification head models take embeddings and output predictions
-
-        If models are missing, gracefully fall back to Standard mode.
-        """
+        """Load the MusiCNN embedding model and its classification heads for
+        Enhanced mode; without them, analysis runs in Standard mode."""
         if not TF_MODELS_AVAILABLE:
             logger.info("Model files not available - using Standard mode")
             return
@@ -551,15 +486,9 @@ class AudioAnalyzer:
             self.enhanced_mode = False
     
     def load_audio(self, file_path: str, max_duration: int = 90) -> Optional[Any]:
-        """Load up to max_duration seconds of audio at 44.1kHz as mono signal.
-
-        The single decode path is _decode_to_stereo: one ffmpeg command
-        per track, decoding exactly the analysed window and downmixing
-        any channel count to stereo. The Essentia algorithms all take
-        mono, so the stereo decode is averaged down to one channel here.
-        There is no pre-decode integrity gate any more: the one decode IS
-        the check, and a file that decodes with a logged bad frame is
-        analysed, not rejected.
+        """Load up to max_duration seconds at 44.1kHz as mono: the stereo
+        decode from _decode_to_stereo, averaged to one channel. The decode is
+        the only integrity check; a file with a logged bad frame is analysed.
         """
         self._last_load_error = None
         if not ESSENTIA_AVAILABLE:
@@ -756,19 +685,9 @@ class AudioAnalyzer:
         return result
     
     def _extract_ml_features(self, audio_16k) -> Dict[str, Any]:
-        """
-        Extract features using Essentia MusiCNN + classification heads.
-        
-        Architecture:
-        1. TensorflowPredictMusiCNN extracts embeddings from audio
-        2. TensorflowPredict2D classification heads take embeddings and output predictions
-        
-        This is the heart of Enhanced mode - real ML predictions for mood.
-        
-        Note: MusiCNN was trained on pop/rock music (Million Song Dataset).
-        For genres outside this distribution (classical, piano, ambient),
-        predictions may be less reliable. Values are stored raw; ranking them
-        within the user's own library (backend) absorbs a library-wide skew.
+        """Enhanced mode: MusiCNN embeddings fed through the classification
+        heads. MusiCNN was trained on pop and rock, so other genres skew; values
+        are stored raw and the backend ranks them within each library.
         """
         result = {}
         
@@ -794,11 +713,8 @@ class AudioAnalyzer:
         embeddings = self.musicnn_model(audio_16k)
         logger.debug(f"MusiCNN embeddings shape: {embeddings.shape}")
 
-        # Step 2: Pass embeddings through classification heads.
-        # Each head is an independent binary classifier; its value is stored
-        # as-is. The heads are not calibrated against each other, so any
-        # cross-mood comparison (e.g. "which mood is this track") is done
-        # per library by the backend (moodBucketService), not here.
+        # Step 2: each head is an independent binary classifier, stored raw;
+        # the backend (moodBucketService) compares moods within the library.
         mood_heads = {
             'moodHappy': 'mood_happy',
             'moodSad': 'mood_sad',
@@ -865,18 +781,8 @@ class AudioAnalyzer:
             (1 - result['moodAcoustic']) * 0.1)), 3)
 
     def _apply_standard_estimates(self, result: Dict[str, Any], scale: str, bpm: float):
-        """
-        Apply heuristic estimates for Standard mode.
-        
-        Uses multiple audio features for more accurate mood estimation:
-        - Key (major/minor) correlates with valence
-        - BPM correlates with arousal  
-        - Energy (RMS) correlates with both
-        - Dynamic range indicates acoustic vs electronic
-        - Spectral centroid indicates brightness (higher = more energetic)
-        - Spectral flatness indicates noise vs tonal (instrumental estimation)
-        - Zero-crossing rate indicates speech presence
-        """
+        """Standard mode: estimate mood from key, BPM, energy, dynamic range,
+        spectral centroid and flatness, and zero-crossing rate."""
         result['analysisMode'] = 'standard'
         
         # Get all available features
@@ -1338,12 +1244,9 @@ class AnalysisWorker:
         self.db.connect()
         self.running = True
 
-        # No restart flush, stale sweep or re-queue here: those rewritten
-        # Track rows from column guesses. The TrackStage record owns each
-        # attempt now -- a job claimed before a crash is a 'working' record
-        # whose claim lease expires and comes back around on its own, and a
-        # queue entry lost in transit belongs to an unclaimed record that the
-        # next dispatch offers again.
+        # The TrackStage record owns each attempt: a claim from before a crash
+        # expires and comes around again, and a lost queue entry is re-offered
+        # by the next dispatch.
 
         try:
             while self.running:
@@ -1420,14 +1323,8 @@ class AnalysisWorker:
             logger.info("Worker stopped")
     
     def process_batch_parallel(self) -> bool:
-        """Process a batch of pending tracks in parallel.
-
-        Uses BRPOP to wait for the first job (blocking, zero CPU),
-        then drains remaining queued jobs up to BATCH_SIZE.
-
-        Returns:
-            True if there was work to process, False if BRPOP timed out
-        """
+        """Block on BRPOP for the first job, drain up to BATCH_SIZE more, and
+        process them in parallel. Returns False if BRPOP timed out."""
         if self._is_gate_closed():
             return False
 
@@ -1451,20 +1348,9 @@ class AnalysisWorker:
         return True
     
     def _mark_track_processing(self, track_id: str) -> bool:
-        """Claim a single track just before its worker starts.
-
-        There is no scan gate any more: the single ffmpeg decode is the
-        only check a file gets, and whoever holds the queue entry owns
-        the attempt -- so the claim keys on the analysis status alone.
-        'failed' is included because the stage queue re-asks tracks the
-        old engine had marked failed (the migration seeded their records
-        as failed+retryable): the record is the authority, the column
-        still carries the stale verdict. A track whose file is missing
-        or undecodable fails into _save_failed with a class-tagged
-        error; it is never deleted and its true state stays visible on
-        the row.
-
-        Returns True if the track was claimed.
+        """Claim a track just before its worker starts, keyed on analysis
+        status alone. 'failed' is included because the stage record, not the
+        column, decides whether a track is asked again. Returns True if claimed.
         """
         cursor = self.db.get_cursor()
         try:
@@ -1567,12 +1453,8 @@ class AnalysisWorker:
         logger.info(f"Batch complete: {completed} succeeded, {failed} failed in {elapsed:.1f}s ({rate:.1f} tracks/sec)")
     
     def _save_results(self, track_id: str, file_path: str, features: Dict[str, Any]):
-        """Save analysis results to database and resolve any stale EnrichmentFailure record.
-
-        instrumentalness/acousticness are deliberately not written: CLAP is
-        their sole writer, and on a re-analysis this UPDATE would otherwise
-        wipe CLAP's values with NULL (the vibe phase does not re-run for a
-        track whose CLAP embedding already exists)."""
+        """Save analysis results. instrumentalness and acousticness are left
+        alone: CLAP is their only writer, and a re-analysis would null them."""
         cursor = self.db.get_cursor()
         try:
             cursor.execute("""
@@ -1637,16 +1519,8 @@ class AnalysisWorker:
                 logger.warning(f"Track {track_id} was reset by cleanup before save completed, skipping")
                 self.db.rollback()
                 return
-            # No EnrichmentFailure resolve here: the TrackStage
-            # record settled below IS the record of this success — a failed
-            # analysis simply disappears from the TrackStage-backed failures
-            # list. Writing a second ledger entry was the drift
-            # removes.
-
-            # Settle the analysis stage record: the dispatch claim marked it
-            # 'working' with attempt left untouched, so the answer lands with
-            # attempt advanced by exactly one -- which is the number the
-            # dispatched jobId carried (track-<id>-analysis-<attempt+1>).
+            # Settle the analysis stage record: the claim left attempt untouched,
+            # so it advances by one, matching the jobId (track-<id>-analysis-<attempt+1>).
             cursor.execute("""
                 INSERT INTO "TrackStage"
                     (id, "trackId", stage, status, source, attempt,
@@ -1683,8 +1557,7 @@ class AnalysisWorker:
 
             self.db.commit()
 
-            # Publish completion event for Node audio completion subscriber
-            # Node subscribes and queues a BullMQ vibe embedding job (enrichment:vibe)
+            # The backend queues the vibe embedding job on this event.
             try:
                 completion_event = json.dumps({
                     "trackId": track_id,
@@ -1703,37 +1576,16 @@ class AnalysisWorker:
             cursor.close()
     
     def _save_failed(self, track_id: str, error: str, is_timeout: bool = False):
-        """Mark track as failed, routed through the classifier.
-
-        This is the single failure choke point: every failure surface --
-        decode failure, analysis exception, worker death -- funnels the
-        raw message through classify_with_codec here.
-
-        A terminal disposition (DAMAGED / UNSUPPORTED / MULTICANNEL)
-          marks the track 'permanently_failed' with the class-tagged error
-          and does NOT bump analysisRetryCount -- re-offering the same
-          question to the same decoder cannot produce a different answer.
-          INCONCLUSIVE stays retryable -- 'failed' with the retry bump -- so
-          a transient IO hiccup can still recover, but only below the
-          engine's STAGE_RETRY_CAP (4), with the same backoff ladder the
-          TypeScript twin uses (1min/10min/1h): at the cap the record closes
-          terminally (retryable false, nextRetryAt NULL) and the column
-          mirrors permanently_failed. An already-closed record is never
-          resurrected. A batch timeout is an
-          innocent bystander: back to 'pending', no penalty, no class.
-
-        Every branch settles the TrackStage analysis record with the
-        same verdict (status, failureClass, retryable, nextRetryAt,
-        evidence) -- the record drives the stage queue, the column is
-        its mirror, and the two are written in one transaction.
+        """Every failure lands here and is classified. DAMAGED, UNSUPPORTED and
+        MULTICANNEL are terminal; INCONCLUSIVE retries on the shared ladder up
+        to STAGE_RETRY_CAP; a batch timeout returns to pending with no penalty.
+        The TrackStage record and the Track column are written in one transaction.
         """
         disp, codec = classify_with_codec(error)
         cursor = self.db.get_cursor()
         try:
-            # The INCONCLUSIVE verdict needs the record's CURRENT attempt
-            # before anything is written -- exactly what recordStageFailure
-            # (the TypeScript twin) does: read the row, attempt = row + 1,
-            # apply the shared cap and backoff ladder.
+            # INCONCLUSIVE needs the record's current attempt first, as the
+            # backend's recordStageFailure does.
             inconclusive_retryable = False
             inconclusive_wait_seconds = None
             inconclusive_attempt = 0
@@ -1746,10 +1598,7 @@ class AnalysisWorker:
                 row = cursor.fetchone()
                 current_attempt = (row.get("attempt") or 0) if row else 0
                 inconclusive_attempt = current_attempt + 1
-                # A record already closed (failed, not retryable) is never
-                # resurrected -- the engine's rule. The column is still
-                # settled below (this worker owns that mirror), but the
-                # record is left exactly as it is.
+                # A closed record is never reopened; only the column is settled.
                 record_closed = bool(row) and row.get("status") == "failed" and not row.get("retryable")
                 inconclusive_retryable = (
                     not record_closed
@@ -1770,10 +1619,8 @@ class AnalysisWorker:
                     WHERE id = %s AND "analysisStatus" = 'processing'
                 """, (error[:500], track_id))
             elif disp == Disposition.INCONCLUSIVE and (record_closed or not inconclusive_retryable):
-                # At the cap (or against an already-closed record) the
-                # question is over: the column tells the same truth the
-                # record does -- terminal, no retry bump, because
-                # re-offering the same question cannot change the answer.
+                # At the cap, or on a closed record, the column turns terminal
+                # to match the record.
                 cursor.execute("""
                     UPDATE "Track"
                     SET
@@ -1808,13 +1655,8 @@ class AnalysisWorker:
                 self.db.rollback()
                 return
 
-            # Settle the analysis stage record with the classifier's answer:
-            # terminal dispositions close the question for good (retryable
-            # false, no nextRetryAt), INCONCLUSIVE stays due after a backoff,
-            # and a batch timeout reopens it as pending shortly. Attempt is
-            # advanced exactly once per settled answer, matching the
-            # dispatched jobId (track-<id>-analysis-<attempt+1>); the timeout
-            # path leaves it untouched -- that attempt was innocent.
+            # Terminal answers close the record; INCONCLUSIVE stays due after a
+            # backoff; a timeout reopens it as pending without spending an attempt.
             if is_timeout:
                 cursor.execute("""
                     INSERT INTO "TrackStage"
@@ -1847,14 +1689,10 @@ class AnalysisWorker:
                     json.dumps({"timeout": True, "error": error[:500]}),
                 ))
             elif disp == Disposition.INCONCLUSIVE and record_closed:
-                # Never resurrect a closed record: the TS twin returns
-                # without touching it. Nothing is written here.
-                pass
+                pass  # a closed record is left as it is
             elif disp == Disposition.INCONCLUSIVE:
-                # Same verdict the TypeScript twin writes: failed with the
-                # attempt read from this very record, retryable only below
-                # STAGE_RETRY_CAP, nextRetryAt on the shared ladder -- and
-                # NULL once the cap closes the record for good.
+                # Retryable below STAGE_RETRY_CAP with nextRetryAt on the ladder;
+                # NULL once the cap closes the record.
                 cursor.execute("""
                     INSERT INTO "TrackStage"
                         (id, "trackId", stage, status, source, attempt,

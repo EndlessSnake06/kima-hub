@@ -1,28 +1,7 @@
-"""Classification of analysis failures into terminal disposition classes.
-
-Pure, stdlib-only. Deliberately free of ent/psycopg/redis: it must be
-importable from the analyzer's worker process *and* from the Node-side mirror
-without dragging the heavy runtime in.
-
-Three kinds of failure matter for a healthy library:
-
-* ``DAMAGED``      -- the file's bitstream is corrupt (a damaged file).
-* ``UNSUPPORTED``  -- the codec the engine cannot decode (format-different,
-                      not broken). Reported so the UI can name the codec.
-* ``MULTICANNEL``  -- more than two channels; the ESSENTIA MonoLoader refuses
-                      it. A capability limitation, not a defect in the file.
-* ``INCONCLUSIVE`` -- anything else. Left retryable: it keeps the caller's
-                      current "failed" fate and rides the retry gate, so a
-                      transient IO hiccup can still recover.
-
-Precision dominates recall: a message that is not a *strong* damage or codec
-signature stays INCONCLUSIVE rather than being wrongly doomed. A good file
-retaken by a transient error is worth more than a speculative terminal tag.
-
-The disposition is decided at the single failure choke point
-(``analyzer._save_failed``): every failure surface -- pre-decode ffmpeg,
-MonoLoader, worker-death-on-decode -- funnels through the same classify call,
-so a new path inherits the rule with zero per-site plumbing.
+"""Sorts analysis failures into DAMAGED (corrupt bitstream), UNSUPPORTED
+(codec), MULTICANNEL (over two channels) and INCONCLUSIVE (anything else,
+left retryable). Only strong signatures are terminal. Stdlib only, so the
+worker process can import it cheaply.
 """
 
 import re
@@ -40,12 +19,8 @@ class Disposition:
     ALL = (DAMAGED, UNSUPPORTED, MULTICANNEL, INCONCLUSIVE)
 
 
-# Strong corruption signatures only. A message matching one of these is a file
-# the analyzer demonstrably cannot turn into samples; flagging it permanent is
-# safe because retrying it will produce the same failure. Each pattern mirrors a
-# signature from the design note rather than guessing at every phrasing ESSENTIA
-# might emit -- because the inverse mistake (dooming a file that would decode on
-# retry) is far worse than missing a rare one.
+# Strong corruption signatures only: a file matching one fails the same way on
+# retry. Dooming a file that would decode is worse than missing a rare phrasing.
 _DAMAGED_PATTERNS = [
     r"truncated",
     r"\bcrc\b",
@@ -146,13 +121,7 @@ def classify_with_codec(message: str) -> tuple:
 
 
 def _extract_codec(message: str, ext_hint: str = "") -> str:
-    """Best-effort codec label for an unsupported-codec failure.
-
-    Strategy mirrors the design note: a named codec token when the message
-    names one, else the file extension when supplied, else "unknown". We only
-    ever call this for an UNSUPPORTED disposition, so an absence of a named
-    token is legitimately "unknown" -- the message gave no codec to report.
-    """
+    """Codec named in the message, else the file extension, else "unknown"."""
 
     m = _CODEC_RE.search(message)
     if m:
@@ -167,13 +136,8 @@ def _extract_codec(message: str, ext_hint: str = "") -> str:
 
 
 def disposition_label(disp: str, codec: str = "unknown") -> str:
-    """Readable label for a terminal disposition, or "" for ``INCONCLUSIVE``.
-
-    DAMAGED and MULTICANNEL carry just their kind; UNSUPPORTED embeds the codec
-    so the operator sees what the library holds. ``INCONCLUSIVE`` returns an
-    empty label because it is not a terminal disposition and its error is left
-    untouched.
-    """
+    """Label for a terminal disposition (UNSUPPORTED includes the codec), or ""
+    for INCONCLUSIVE."""
 
     if disp == Disposition.INCONCLUSIVE:
         return ""
@@ -183,13 +147,8 @@ def disposition_label(disp: str, codec: str = "unknown") -> str:
 
 
 def tag_error(error: str, disp: str, codec: str = "unknown") -> str:
-    """Return ``error`` prefixed with its disposition so health/inspection can
-    read the classification. The original message is preserved verbatim.
-
-    Format mirrors the design note: a DAMAGED/MULTICANNEL failure reads
-    ``"<KIND>:: <original>"``; an UNSUPPORTED one names the codec
-    (``"UNSUPPORTED::<codec> -- <original>"``). An INCONCLUSIVE failure is the
-    retryable bucket, so its error is returned unchanged.
+    """Prefix ``error`` with its disposition: ``"DAMAGED:: <msg>"`` or
+    ``"UNSUPPORTED::<codec> -- <msg>"``. INCONCLUSIVE errors come back unchanged.
     """
 
     label = disposition_label(disp, codec)
