@@ -40,7 +40,8 @@ export function toWebhookPayload(eventType: string, record: LidarrHistoryRecord)
 
 /**
  * Reads history from 10 minutes before the newest stored Lidarr event (at most
- * 7 days back) and handles each record not seen yet. Returns how many were new.
+ * 7 days back) and handles each record not seen yet, in the order Lidarr wrote
+ * them, so a second grab follows the failure of the first. Returns how many were new.
  */
 export async function recoverMissedEvents(lidarrUrl: string, apiKey: string): Promise<number> {
     const now = Date.now();
@@ -52,17 +53,22 @@ export async function recoverMissedEvents(lidarrUrl: string, apiKey: string): Pr
     const floor = now - LOOKBACK_FLOOR_MS;
     const since = new Date(Math.max(floor, (newest?.createdAt.getTime() ?? floor) - OVERLAP_MS));
 
-    let recovered = 0;
+    const missed: { eventType: string; record: LidarrHistoryRecord }[] = [];
     for (const { historyType, eventType } of HISTORY_EVENTS) {
         const records = await getHistorySince(lidarrUrl, apiKey, since, historyType);
         for (const record of records) {
-            if (!record.downloadId) continue;
-            const payload = toWebhookPayload(eventType, record);
-            const { event, created } = await webhookEventStore.storeEvent("lidarr", eventType, payload);
-            if (!created) continue;
-            recovered++;
-            await processStoredEvent(event.id, eventType, payload);
+            if (record.downloadId) missed.push({ eventType, record });
         }
+    }
+    missed.sort((a, b) => a.record.id - b.record.id);
+
+    let recovered = 0;
+    for (const { eventType, record } of missed) {
+        const payload = toWebhookPayload(eventType, record);
+        const { event, created } = await webhookEventStore.storeEvent("lidarr", eventType, payload);
+        if (!created) continue;
+        recovered++;
+        await processStoredEvent(event.id, eventType, payload);
     }
     return recovered;
 }

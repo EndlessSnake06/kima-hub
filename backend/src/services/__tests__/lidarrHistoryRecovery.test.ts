@@ -23,8 +23,8 @@ import { recoverMissedEvents } from "../lidarrHistoryRecovery";
 import { closeEngineConnections } from "../../__tests__/helpers/engineConnections";
 
 const history = getHistorySince as jest.Mock;
-const record = (downloadId: string | undefined, data: Record<string, string> = {}) => ({
-    id: 1,
+const record = (downloadId: string | undefined, data: Record<string, string> = {}, id = 1) => ({
+    id,
     albumId: 42,
     downloadId,
     eventType: "downloadImported",
@@ -105,4 +105,24 @@ it("reads from 10 minutes before the newest event, never more than 7 days back",
     const since = history.mock.calls[0][2] as Date;
     expect(event.createdAt.getTime() - since.getTime()).toBe(10 * 60 * 1000);
     expect(history.mock.calls.map((c) => c[3])).toEqual([1, 8, 4, 7]);
+});
+
+it("replays missed events in the order Lidarr recorded them", async () => {
+    const byType: Record<number, unknown[]> = {
+        1: [record("dl-a", {}, 1), record("dl-b", {}, 3)],
+        4: [record("dl-a", { message: "stalled" }, 2), record("dl-b", { message: "stalled" }, 4)],
+    };
+    history.mockImplementation(async (_u, _k, _since, eventType) => byType[eventType] ?? []);
+    const order: string[] = [];
+    (simpleDownloadManager.onDownloadGrabbed as jest.Mock).mockImplementation(async (id: string) => {
+        order.push(`grab ${id}`);
+        return { matched: true };
+    });
+    (simpleDownloadManager.onImportFailed as jest.Mock).mockImplementation(async (id: string) => {
+        order.push(`fail ${id}`);
+        return {};
+    });
+
+    expect(await recoverMissedEvents("http://lidarr", "key")).toBe(4);
+    expect(order).toEqual(["grab dl-a", "fail dl-a", "grab dl-b", "fail dl-b"]);
 });
