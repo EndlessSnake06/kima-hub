@@ -7,6 +7,7 @@ const DEFAULT_USER_SETTINGS = {
     wifiOnly: false,
     offlineEnabled: false,
     maxCacheSizeMb: 10240, // 10 GB
+    shareLiveListening: true,
 };
 
 export function defaultUserSettingsFor(

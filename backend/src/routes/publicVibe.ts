@@ -12,7 +12,7 @@ import { prisma } from "../utils/db";
 import { logger } from "../utils/logger";
 import { USER_AGENT, config } from "../config";
 import { getLibraryExport } from "../services/publicLibraryExport";
-import { getLiveState, liveListenerCount, subscribeLive, LiveEvent } from "../services/liveListening";
+import { getLiveState, liveListenerCount, publicUserId, subscribeLive, LiveEvent } from "../services/liveListening";
 import { searchTracksByText, TextSearchRow } from "../services/textEmbeddingBridge";
 import { findAlbumArtwork } from "../services/artwork";
 import { getLocalImagePath } from "../services/imageStorage";
@@ -67,7 +67,12 @@ async function resolveCoverBytes(trackId: string): Promise<CoverBytes | null> {
         where: { id: trackId },
         select: {
             album: {
-                select: { coverUrl: true, rgMbid: true, title: true, artist: { select: { name: true } } },
+                select: {
+                    coverUrl: true,
+                    rgMbid: true,
+                    title: true,
+                    artist: { select: { name: true } },
+                },
             },
         },
     });
@@ -89,7 +94,11 @@ async function resolveCoverBytes(trackId: string): Promise<CoverBytes | null> {
     }).catch(() => null);
     if (response?.status !== 200) return null;
     const buffer = Buffer.from(await response.arrayBuffer());
-    return { buffer, etag: etagFor(buffer), contentType: response.headers.get("content-type") };
+    return {
+        buffer,
+        etag: etagFor(buffer),
+        contentType: response.headers.get("content-type"),
+    };
 }
 
 const router = Router();
@@ -118,34 +127,42 @@ router.get(
 );
 
 /** GET /live: what is playing now, for a client that has just connected. */
-router.get("/live", (_req: Request, res: Response) => {
-    res.header("Cache-Control", "no-store");
-    res.json(getLiveState());
-});
+router.get(
+    "/live",
+    asyncHandler(async (_req: Request, res: Response) => {
+        await publicUserId();
+        res.header("Cache-Control", "no-store");
+        res.json(getLiveState());
+    }),
+);
 
 /** GET /live/events: the live trip as server-sent events, opening with the current state. */
-router.get("/live/events", (req: Request, res: Response) => {
-    if (liveListenerCount() >= LIVE_STREAM_CAP) {
-        res.status(429).json({ error: "Live stream at capacity" });
-        return;
-    }
-    res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache, no-transform");
-    res.setHeader("Connection", "keep-alive");
-    res.setHeader("X-Accel-Buffering", "no");
-    res.flushHeaders();
+router.get(
+    "/live/events",
+    asyncHandler(async (req: Request, res: Response) => {
+        await publicUserId();
+        if (liveListenerCount() >= LIVE_STREAM_CAP) {
+            res.status(429).json({ error: "Live stream at capacity" });
+            return;
+        }
+        res.setHeader("Content-Type", "text/event-stream");
+        res.setHeader("Cache-Control", "no-cache, no-transform");
+        res.setHeader("Connection", "keep-alive");
+        res.setHeader("X-Accel-Buffering", "no");
+        res.flushHeaders();
 
-    const send = (name: string, data: unknown) => {
-        res.write(`event: ${name}\ndata: ${JSON.stringify(data)}\n\n`);
-    };
-    send("state", getLiveState());
-    const unsubscribe = subscribeLive((event: LiveEvent) => send(event.type, event));
-    const heartbeat = setInterval(() => res.write(": keepalive\n\n"), HEARTBEAT_MS);
-    req.on("close", () => {
-        clearInterval(heartbeat);
-        unsubscribe();
-    });
-});
+        const send = (name: string, data: unknown) => {
+            res.write(`event: ${name}\ndata: ${JSON.stringify(data)}\n\n`);
+        };
+        send("state", getLiveState());
+        const unsubscribe = subscribeLive((event: LiveEvent) => send(event.type, event));
+        const heartbeat = setInterval(() => res.write(": keepalive\n\n"), HEARTBEAT_MS);
+        req.on("close", () => {
+            clearInterval(heartbeat);
+            unsubscribe();
+        });
+    }),
+);
 
 /** POST /search: tracks ranked against a text description, as the authed vibe search ranks them. */
 router.post(

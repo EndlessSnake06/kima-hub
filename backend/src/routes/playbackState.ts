@@ -200,12 +200,11 @@ router.post("/live", requireAuth, async (req, res) => {
     if (!LIVE_STATUSES.has(status) || typeof trackId !== "string" || !trackId || positionMs === null || durationMs === null) {
         return res.status(400).json({ error: "status, trackId, position and duration are required" });
     }
-    let upNext: LiveQueueEntry[] | undefined;
-    if (Array.isArray(queue)) {
-        upNext = queue
+    const upNext: LiveQueueEntry[] = Array.isArray(queue)
+        ? queue
             .filter((e: any) => e && typeof e.trackId === "string" && millis(e.duration) !== null)
-            .map((e: any) => ({ trackId: e.trackId, duration: millis(e.duration)! }));
-    }
+            .map((e: any) => ({ trackId: e.trackId, duration: millis(e.duration)! }))
+        : [];
     reportLive({ status, trackId, position: positionMs, duration: durationMs, queue: upNext });
     res.json({ ok: true });
 });

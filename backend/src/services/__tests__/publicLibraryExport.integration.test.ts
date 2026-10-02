@@ -1,7 +1,7 @@
 /**
- * The public library export against a real database: only mapped tracks are
- * included, each with its nearest tracks by cosine, and the ETag holds until
- * the library changes.
+ * The public library export against a real database: only owned, present,
+ * mapped tracks are included, each with its nearest such tracks by cosine, and
+ * the ETag holds until the library changes.
  */
 import zlib from "zlib";
 import { prisma } from "../../utils/db";
@@ -18,11 +18,17 @@ function axis(...weights: Array<[number, number]>): string {
     return `[${v.join(",")}]`;
 }
 
-async function addTrack(id: string, albumId: string, embedding?: string, xyz?: [number, number, number]) {
+async function addTrack(
+    id: string,
+    albumId: string,
+    embedding?: string,
+    xyz?: [number, number, number],
+    missingSince: Date | null = null,
+) {
     await prisma.track.create({
         data: {
             id, albumId, title: `T ${id}`, trackNo: 1, duration: 200, energy: 0.71234, valence: 0.2,
-            filePath: `/tmp/${id}.flac`, fileModified: new Date(), fileSize: 1000,
+            filePath: `/tmp/${id}.flac`, fileModified: new Date(), fileSize: 1000, missingSince,
         },
     });
     if (!embedding) return;
@@ -50,6 +56,11 @@ beforeAll(async () => {
     await addTrack("trk_c", "alb_pub", axis([1, 1]), [0.9, 0.8, 0.7]);
     await addTrack("trk_unmapped", "alb_pub", axis([0, 1]));
     await addTrack("trk_unanalysed", "alb_pub");
+    await prisma.album.create({
+        data: { id: "alb_disc", rgMbid: "rg_disc", identityKey: "al_disc", artistId: "art_pub", title: "Suggested", primaryType: "Album", location: "DISCOVER" },
+    });
+    await addTrack("trk_suggested", "alb_disc", axis([0, 1], [2, 0.01]), [0.1, 0.2, 0.3]);
+    await addTrack("trk_missing", "alb_pub", axis([0, 1], [3, 0.01]), [0.1, 0.2, 0.3], new Date());
 });
 
 afterAll(() => {
@@ -100,5 +111,17 @@ describe("public library export", () => {
         await prisma.$executeRawUnsafe(`UPDATE track_embeddings SET map_y = 0.6 WHERE track_id = 'trk_c'`);
         const [x, y] = await Promise.all([getLibraryExport(), getLibraryExport()]);
         expect(x.gzipped).toBe(y.gzipped);
+    });
+
+    it("takes in a suggested album once it is owned, and a missing file once it is found", async () => {
+        const before = await getLibraryExport();
+        await prisma.album.update({ where: { id: "alb_disc" }, data: { location: "LIBRARY" } });
+        await prisma.track.update({ where: { id: "trk_missing" }, data: { missingSince: null } });
+        const after = await getLibraryExport();
+        expect(after.etag).not.toBe(before.etag);
+        const doc = unpack(after.gzipped);
+        expect(doc.tracks.map((t: any) => t.id)).toEqual(["trk_a", "trk_b", "trk_c", "trk_missing", "trk_suggested"]);
+        expect(doc.excluded).toBe(2);
+        expect(doc.tracks[0].neighbours.map(([id]: [string]) => id).slice(0, 2).sort()).toEqual(["trk_missing", "trk_suggested"]);
     });
 });

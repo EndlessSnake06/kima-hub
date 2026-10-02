@@ -34,7 +34,7 @@ import { prisma } from "../../utils/db";
 import { getLibraryExport } from "../../services/publicLibraryExport";
 import { searchTracksByText } from "../../services/textEmbeddingBridge";
 import { getLocalImagePath } from "../../services/imageStorage";
-import { reportLive, resetLive } from "../../services/liveListening";
+import { reportLive, resetLive, setLiveHidden } from "../../services/liveListening";
 
 const app = express();
 app.use(express.json());
@@ -127,14 +127,25 @@ describe("live", () => {
     });
 
     it("GET /live reports the playing track", async () => {
-        reportLive({ status: "playing", trackId: TRACK, position: 1_000, duration: 180_000 });
+        reportLive({ status: "playing", trackId: TRACK, position: 1_000, duration: 180_000, queue: [] });
         const res = await request(app).get("/api/public/vibe/live").set(auth);
         expect(res.body).toMatchObject({ status: "playing", trackId: TRACK, duration: 180_000 });
     });
 
+    it("GET /live reads hidden while sharing is off, and the stream says so when it turns off", async () => {
+        reportLive({ status: "playing", trackId: TRACK, position: 0, duration: 180_000, queue: [] });
+        const { body } = await readStream(300, () => setLiveHidden(true));
+        expect(body.split("\n\n").filter(Boolean).map((frame) => frame.split("\n")[0])).toEqual([
+            "event: state",
+            "event: hidden",
+        ]);
+        const res = await request(app).get("/api/public/vibe/live").set(auth);
+        expect(res.body).toMatchObject({ status: "hidden", trackId: null });
+    });
+
     it("the event stream opens with the state, then carries each change", async () => {
         const { status, body } = await readStream(300, () =>
-            reportLive({ status: "playing", trackId: TRACK, position: 0, duration: 180_000 }),
+            reportLive({ status: "playing", trackId: TRACK, position: 0, duration: 180_000, queue: [] }),
         );
         expect(status).toBe(200);
         const events = body.split("\n\n").filter(Boolean).map((frame) => frame.split("\n")[0]);

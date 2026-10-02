@@ -960,6 +960,8 @@ model UserSettings {
   // Write-only per-user scrobble credential (encrypted, `xc1.` prefix);
   // never returned in full — see routes/settings.ts.
   listenbrainzToken String?
+  // Only read for KIMA_PUBLIC_VIBE_USER: false hides their live listening.
+  shareLiveListening Boolean @default(true)
   user            User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 

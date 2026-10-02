@@ -1,5 +1,5 @@
 /**
- * The whole mapped library as one gzipped JSON document for chevron7.io: every
+ * The owned library as one gzipped JSON document for chevron7.io: every present
  * track with a map position, its raw 3-axis position, moods, energy, valence and
  * its nearest tracks by CLAP cosine. Rebuilt only when the library's fingerprint
  * changes; the fingerprint doubles as the ETag.
@@ -18,6 +18,8 @@ const gzip = promisify(zlib.gzip);
 const EXPORT_VERSION = 1;
 const NEIGHBOURS = 8;
 const NEIGHBOUR_BATCH = 500;
+/** Index candidates fetched per track before excluded tracks are filtered out. */
+const NEIGHBOUR_CANDIDATES = 40;
 const BUILD_TIMEOUT_MS = 10 * 60 * 1000;
 
 export interface LibraryExport {
@@ -47,6 +49,12 @@ const MAPPED = Prisma.sql`
     JOIN "Album" a ON a.id = t."albumId"
     JOIN "Artist" ar ON ar.id = a."artistId"
     WHERE te.map_x IS NOT NULL AND te.map_y IS NOT NULL AND te.map_z IS NOT NULL
+      AND a.location = 'LIBRARY' AND t."missingSince" IS NULL
+`;
+
+const OWNED_TRACKS = Prisma.sql`
+    SELECT COUNT(*) FROM "Track" t JOIN "Album" a ON a.id = t."albumId"
+    WHERE a.location = 'LIBRARY' AND t."missingSince" IS NULL
 `;
 
 const MOOD_ID_BY_FIELD = new Map<string, string>(MOODS.map((m) => [m.field, m.id]));
@@ -62,7 +70,7 @@ async function fingerprint(moodSignature: string): Promise<string> {
             MAX(te.analyzed_at) AS embedded,
             MAX(t."updatedAt") AS touched,
             SUM(hashtext(a.title || ar.name || COALESCE(a.year::text, ''))) AS names,
-            (SELECT COUNT(*) FROM "Track") AS total
+            (${OWNED_TRACKS}) AS total
         ${MAPPED}
     `;
     const raw = JSON.stringify([EXPORT_VERSION, row, moodSignature], (_k, v) =>
@@ -84,10 +92,20 @@ async function nearestNeighbours(ids: string[]): Promise<Map<string, Array<[stri
                     SELECT a.track_id AS id, n.track_id AS neighbour, n.similarity
                     FROM track_embeddings a
                     CROSS JOIN LATERAL (
-                        SELECT b.track_id, 1 - (b.embedding <=> a.embedding) AS similarity
-                        FROM track_embeddings b
-                        WHERE b.track_id <> a.track_id AND b.map_x IS NOT NULL
-                        ORDER BY b.embedding <=> a.embedding
+                        SELECT c.track_id, c.similarity
+                        FROM (
+                            SELECT b.track_id, 1 - (b.embedding <=> a.embedding) AS similarity
+                            FROM track_embeddings b
+                            WHERE b.track_id <> a.track_id
+                            ORDER BY b.embedding <=> a.embedding
+                            LIMIT ${NEIGHBOUR_CANDIDATES}
+                        ) c
+                        JOIN track_embeddings ce ON ce.track_id = c.track_id
+                        JOIN "Track" ct ON ct.id = c.track_id
+                        JOIN "Album" ca ON ca.id = ct."albumId"
+                        WHERE ce.map_x IS NOT NULL AND ce.map_y IS NOT NULL AND ce.map_z IS NOT NULL
+                          AND ca.location = 'LIBRARY' AND ct."missingSince" IS NULL
+                        ORDER BY c.similarity DESC
                         LIMIT ${NEIGHBOURS}
                     ) n
                     WHERE a.track_id = ANY(${batch})
@@ -127,7 +145,7 @@ async function build(etag: string): Promise<LibraryExport> {
         ${MAPPED}
         ORDER BY t.id
     `;
-    const [{ total }] = await prisma.$queryRaw<Array<{ total: bigint }>>`SELECT COUNT(*) AS total FROM "Track"`;
+    const [{ total }] = await prisma.$queryRaw<Array<{ total: bigint }>>`SELECT (${OWNED_TRACKS}) AS total`;
     const [{ model }] = await prisma.$queryRaw<Array<{ model: string | null }>>`
         SELECT mode() WITHIN GROUP (ORDER BY model_version) AS model FROM track_embeddings
     `;

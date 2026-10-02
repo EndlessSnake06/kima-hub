@@ -105,14 +105,14 @@ describe('scrobble.view now-playing and the public live trip', () => {
 
     it('starts the trip at the top of the track for the public user', async () => {
         await request(app).get('/rest/scrobble.view?id=tr-1&submission=false');
-        expect(reportLive).toHaveBeenCalledWith({ status: 'playing', trackId: 'tr-1', position: 0, duration: 200_000 });
+        expect(reportLive).toHaveBeenCalledWith({ status: 'playing', trackId: 'tr-1', position: 0, duration: 200_000, queue: [] });
         expect(prisma.play.create).not.toHaveBeenCalled();
     });
 
     it('keeps the position when the same track is announced again', async () => {
         (getLiveState as jest.Mock).mockReturnValue({ status: 'paused', trackId: 'tr-1', position: 42_000 });
         await request(app).get('/rest/scrobble.view?id=tr-1&submission=false');
-        expect(reportLive).toHaveBeenCalledWith({ status: 'playing', trackId: 'tr-1', position: 42_000, duration: 200_000 });
+        expect(reportLive).toHaveBeenCalledWith({ status: 'playing', trackId: 'tr-1', position: 42_000, duration: 200_000, queue: [] });
     });
 
     it('reports nothing when the public routes are off', async () => {

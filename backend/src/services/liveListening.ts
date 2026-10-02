@@ -2,7 +2,8 @@
  * What the public user (KIMA_PUBLIC_VIBE_USER) is playing right now, as a state
  * plus a stream of change events for chevron7.io's live trip. Players report
  * state changes; a track that runs out with nothing heard after it, or a pause
- * nobody returns to, ends as `stopped`.
+ * nobody returns to, ends as `stopped`. While the user has sharing turned off,
+ * reports are dropped and the state reads `hidden`.
  */
 import { prisma } from "../utils/db";
 import { logger } from "../utils/logger";
@@ -23,12 +24,12 @@ export interface LiveReport {
     position: number;
     /** Milliseconds. */
     duration: number;
-    /** The tracks that will play next, in play order. Omitted when the player cannot say. */
-    queue?: LiveQueueEntry[];
+    /** The tracks that will play next, in play order; empty when the player cannot say. */
+    queue: LiveQueueEntry[];
 }
 
 export interface LiveState {
-    status: LiveStatus;
+    status: LiveStatus | "hidden";
     trackId: string | null;
     duration: number;
     position: number;
@@ -42,7 +43,9 @@ export type LiveEvent =
     | { type: "paused" | "resumed" | "seeked"; at: number; trackId: string; position: number }
     | { type: "skipped"; at: number; trackId: string }
     | { type: "stopped"; at: number; trackId: string; position: number }
-    | { type: "queue_changed"; at: number; queue: LiveQueueEntry[] };
+    | { type: "queue_changed"; at: number; queue: LiveQueueEntry[] }
+    | { type: "hidden"; at: number }
+    | ({ type: "state" } & LiveState);
 
 /** Heard after a track's end, before the trip counts as over. */
 const END_GRACE_MS = 30_000;
@@ -54,15 +57,8 @@ const SEEK_TOLERANCE_MS = 3_000;
 const SKIP_TOLERANCE_MS = 5_000;
 const MAX_QUEUE = 25;
 
-let state: LiveState = {
-    status: "stopped",
-    trackId: null,
-    duration: 0,
-    position: 0,
-    startedAt: null,
-    queue: [],
-    at: Date.now(),
-};
+let state: LiveState = { status: "stopped", trackId: null, duration: 0, position: 0, startedAt: null, queue: [], at: Date.now() };
+let hidden = false;
 let staleTimer: NodeJS.Timeout | null = null;
 const listeners = new Set<(event: LiveEvent) => void>();
 
@@ -76,8 +72,12 @@ export async function publicUserId(): Promise<string | null> {
     if (publicUser && (publicUser.id || Date.now() - publicUser.checkedAt < USER_RECHECK_MS)) {
         return publicUser.id;
     }
-    const user = await prisma.user.findUnique({ where: { username }, select: { id: true } });
+    const user = await prisma.user.findUnique({
+        where: { username },
+        select: { id: true, settings: { select: { shareLiveListening: true } } },
+    });
     if (!user) logger.warn(`[PUBLIC-VIBE] KIMA_PUBLIC_VIBE_USER "${username}" is not a user`);
+    else hidden = user.settings?.shareLiveListening === false;
     publicUser = { id: user?.id ?? null, checkedAt: Date.now() };
     return publicUser.id;
 }
@@ -107,10 +107,23 @@ function projectedPosition(s: LiveState, now: number): number {
     return Math.min(s.duration || Infinity, s.position + (now - s.at));
 }
 
+const STOPPED: Omit<LiveState, "at"> = { status: "stopped", trackId: null, duration: 0, position: 0, startedAt: null, queue: [] };
+
 /** The current state, with a playing track's position advanced to now. */
 export function getLiveState(): LiveState {
     const now = Date.now();
+    if (hidden) return { ...STOPPED, status: "hidden", at: now };
     return { ...state, position: projectedPosition(state, now), at: now };
+}
+
+/** Turn sharing off (forgetting what was playing) or back on. */
+export function setLiveHidden(value: boolean): void {
+    if (value === hidden) return;
+    hidden = value;
+    if (staleTimer) clearTimeout(staleTimer);
+    staleTimer = null;
+    state = { ...STOPPED, at: Date.now() };
+    emit(hidden ? { type: "hidden", at: Date.now() } : { type: "state", ...getLiveState() });
 }
 
 function sameQueue(a: LiveQueueEntry[], b: LiveQueueEntry[]): boolean {
@@ -136,9 +149,10 @@ function armStaleTimer(): void {
 
 /** Apply one player report and emit the events it amounts to. */
 export function reportLive(report: LiveReport): void {
+    if (hidden) return;
     const now = Date.now();
     const prev = state;
-    const queue = report.queue ? report.queue.slice(0, MAX_QUEUE) : prev.queue;
+    const queue = report.queue.slice(0, MAX_QUEUE);
     const prevPosition = projectedPosition(prev, now);
     const newTrack = report.trackId !== prev.trackId;
     const resumedAfterStop = prev.status === "stopped" && report.status !== "stopped";
@@ -187,5 +201,6 @@ export function resetLive(): void {
     staleTimer = null;
     listeners.clear();
     publicUser = null;
-    state = { status: "stopped", trackId: null, duration: 0, position: 0, startedAt: null, queue: [], at: Date.now() };
+    hidden = false;
+    state = { ...STOPPED, at: Date.now() };
 }

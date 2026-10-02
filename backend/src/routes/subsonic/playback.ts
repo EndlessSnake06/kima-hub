@@ -321,7 +321,7 @@ playbackRouter.all("/scrobble.view", wrap(async (req, res) => {
         // A repeat "now playing" for the current track is a resume, not a restart.
         const live = getLiveState();
         const position = live.trackId === id && live.status !== "stopped" ? live.position : 0;
-        if (track) reportLive({ status: "playing", trackId: id, position, duration: track.duration * 1000 });
+        if (track) reportLive({ status: "playing", trackId: id, position, duration: track.duration * 1000, queue: [] });
     }
 
     if (submission) {
