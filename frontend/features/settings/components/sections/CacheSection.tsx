@@ -213,6 +213,14 @@ const confirmMeta: Record<
     },
 };
 
+// The analyzer installs or removes the runtime after the toggle is saved, so the
+// status keeps polling until the runtime matches the toggle.
+function gpuSettling(g: GpuRuntimeStatus): boolean {
+    if (g.installing) return true;
+    if (!g.enabled) return g.installed;
+    return !g.installed && g.status !== "failed";
+}
+
 function gpuStatusText(g: GpuRuntimeStatus): string {
     if (g.installing) return "Downloading GPU runtime (~2 GB)…";
     if (g.status === "failed") {
@@ -393,7 +401,7 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
         queryKey: ["gpu-runtime-status"],
         queryFn: () => api.getGpuStatus(),
         refetchInterval: (query) =>
-            query.state.data?.installing ? 5000 : false,
+            query.state.data && gpuSettling(query.state.data) ? 5000 : false,
     });
 
     const setGpuMutation = useMutation({
