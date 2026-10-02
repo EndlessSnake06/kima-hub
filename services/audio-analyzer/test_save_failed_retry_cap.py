@@ -1,24 +1,7 @@
-"""Retry-cap parity tests for ``AnalysisWorker._save_failed`` (INCONCLUSIVE).
-
-The TypeScript twin of this failure sink — ``recordStageFailure`` in
-backend/src/workers/unifiedEnrichment.ts — applies the rules the engine
-actually runs:
-
-  - attempt = (the TrackStage record's attempt) + 1, read from the row;
-  - ``retryable = failureClass == "INCONCLUSIVE" && attempt < STAGE_RETRY_CAP``
-    (cap = 3);
-  - ``nextRetryAt = now + computeStageRetryWaitMs(attempt)`` — 30s, 60s,
-    120s, never more — and NULL once the record closes;
-  - at the cap the record closes TERMINALLY (retryable = false,
-    nextRetryAt = NULL): it is never offered again until a human re-decides;
-  - an already-closed record (failed, not retryable) is never resurrected.
-
-The analyzer's INCONCLUSIVE branch did none of this: it wrote
-``retryable = true`` and ``nextRetryAt = now() + interval '30 minutes'``
-forever, and its only cap check was a log line. These tests pin the parity.
-
-Run from the service dir:
-    cd services/audio-analyzer && python3 -m pytest test_save_failed_retry_cap.py -v
+"""``_save_failed`` on an INCONCLUSIVE failure matches the backend's
+``recordStageFailure``: attempt read from the TrackStage record plus one,
+retryable below STAGE_RETRY_CAP with the 1 min / 10 min / 1 h ladder, and a
+record at the cap or already closed stays closed.
 """
 
 import json
@@ -44,7 +27,7 @@ _install_psycopg2_stub()
 
 import analyzer  # noqa: E402
 
-STAGE_RETRY_CAP = 3
+STAGE_RETRY_CAP = 4
 
 
 def _stage_row(attempt: int, *, status: str = "pending", retryable: bool = True):
@@ -100,12 +83,11 @@ class RetryLadderParityTest(unittest.TestCase):
     """The backoff function itself mirrors computeStageRetryWaitMs exactly."""
 
     def test_ladder_matches_typescript(self):
-        # 30s * 2^(attempt-1), floored at 30s, capped at 120s.
-        self.assertEqual(analyzer.compute_stage_retry_wait_seconds(0), 30)
-        self.assertEqual(analyzer.compute_stage_retry_wait_seconds(1), 30)
-        self.assertEqual(analyzer.compute_stage_retry_wait_seconds(2), 60)
-        self.assertEqual(analyzer.compute_stage_retry_wait_seconds(3), 120)
-        self.assertEqual(analyzer.compute_stage_retry_wait_seconds(4), 120)
+        self.assertEqual(analyzer.compute_stage_retry_wait_seconds(0), 60)
+        self.assertEqual(analyzer.compute_stage_retry_wait_seconds(1), 60)
+        self.assertEqual(analyzer.compute_stage_retry_wait_seconds(2), 600)
+        self.assertEqual(analyzer.compute_stage_retry_wait_seconds(3), 3600)
+        self.assertEqual(analyzer.compute_stage_retry_wait_seconds(4), 3600)
 
     def test_cap_matches_typescript(self):
         self.assertEqual(analyzer.STAGE_RETRY_CAP, STAGE_RETRY_CAP)
@@ -134,14 +116,13 @@ class SaveFailedCapTest(unittest.TestCase):
         raise AssertionError("no Track update was executed")
 
     def test_attempt_below_cap_stays_retryable_with_ladder_wait(self):
-        # The record sits at attempt 0; this failure is attempt 1 -> 30s wait.
+        # The record sits at attempt 0; this failure is attempt 1 -> 1 min wait.
         self._run(_stage_row(0))
 
         sql, params = self._stage_write()
         self.assertIn('"TrackStage"', sql)
         self.assertIn("'failed'", sql)
-        # Retryable below the cap, and the wait comes in as a computed
-        # seconds param (30 for attempt 1), not a flat 30 minutes.
+        # Retryable below the cap, with the wait passed in as seconds.
         self.assertIn("retryable = EXCLUDED.retryable", sql)
         self.assertIn("interval '1 second'", sql)
         # params: (id, trackId, attempt, lastErrorMessage, failureClass,
@@ -149,7 +130,7 @@ class SaveFailedCapTest(unittest.TestCase):
         self.assertEqual(params[2], 1)                      # attempt = 0 + 1
         self.assertEqual(params[4], "INCONCLUSIVE")
         self.assertEqual(params[5], True)                   # retryable
-        self.assertEqual(params[6], 30)                     # ladder wait
+        self.assertEqual(params[6], 60)                     # ladder wait
         evidence = json.loads(params[8])                    # wait passed twice (CASE + multiply)
         self.assertIn("error", evidence)
 
@@ -167,17 +148,16 @@ class SaveFailedCapTest(unittest.TestCase):
         self.assertIn('FROM "TrackStage"', first_sql)
         self.assertIn("attempt", first_sql)
 
-    def test_mid_ladder_attempt_waits_60s(self):
-        # attempt 1 on the record -> this is attempt 2 -> 60s.
+    def test_mid_ladder_attempt_waits_ten_minutes(self):
         self._run(_stage_row(1))
         _, params = self._stage_write()
         self.assertEqual(params[2], 2)
         self.assertEqual(params[5], True)
-        self.assertEqual(params[6], 60)
+        self.assertEqual(params[6], 600)
 
     def test_attempt_at_cap_closes_the_record_terminally(self):
-        # attempt 2 on the record -> this is attempt 3 == the cap: closed.
-        self._run(_stage_row(2))
+        # attempt 3 on the record -> this is attempt 4 == the cap: closed.
+        self._run(_stage_row(STAGE_RETRY_CAP - 1))
 
         sql, params = self._stage_write()
         self.assertEqual(params[2], STAGE_RETRY_CAP)

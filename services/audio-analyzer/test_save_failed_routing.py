@@ -199,10 +199,8 @@ class SaveFailedRoutingTest(unittest.TestCase):
         self.assertEqual(evidence["codec"], "dts")
 
     def test_inconclusive_settles_stage_record_retryable_with_backoff(self):
-        # The engine's rules, mirrored: attempt is READ from the record (the
-        # fake cursor has no attempt -> 0 -> this is attempt 1), retryable
-        # below STAGE_RETRY_CAP, and the wait is the ladder's 30s -- not the
-        # old flat 30 minutes.
+        # The fake cursor has no record -> attempt 1, retryable, and the
+        # ladder's first wait of 60 seconds.
         self.worker._save_failed("t4", "temporary transient io glitch")
         sql = self.stage_sql()
         self.assertIn('"TrackStage"', sql)
@@ -216,7 +214,7 @@ class SaveFailedRoutingTest(unittest.TestCase):
         self.assertEqual(params[3], "temporary transient io glitch")
         self.assertEqual(params[4], "INCONCLUSIVE")
         self.assertEqual(params[5], True)                    # retryable
-        self.assertEqual(params[6], 30)                      # ladder wait
+        self.assertEqual(params[6], 60)                      # ladder wait
         self.assertIn("error", json.loads(params[8]))
 
     def test_batch_timeout_settles_stage_record_pending_without_penalty(self):
