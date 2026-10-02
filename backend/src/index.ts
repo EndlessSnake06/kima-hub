@@ -463,6 +463,12 @@ async function main() {
     // reported healthy.
     await reportEmbeddingWritePathAtStartup();
 
+    // Start chevron7.io's export now, so its first request finds one built.
+    if (config.publicVibe) {
+        const { latestLibraryExport } = await import("./services/publicLibraryExport");
+        latestLibraryExport();
+    }
+
     // AcoustID fingerprinting is on only when the fpcalc binary exists; log
     // either way. Without it identification uses MusicBrainz alone.
     {

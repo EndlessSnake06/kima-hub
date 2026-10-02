@@ -2,7 +2,7 @@
  * The owned library as one gzipped JSON document for chevron7.io: every present
  * track with a map position, its raw 3-axis position, moods, energy, valence and
  * its nearest tracks by CLAP cosine. Rebuilt only when the library's fingerprint
- * changes; the fingerprint doubles as the ETag.
+ * changes, in the background; the fingerprint doubles as the ETag.
  */
 import crypto from "crypto";
 import { promisify } from "util";
@@ -200,8 +200,8 @@ async function build(etag: string): Promise<LibraryExport> {
     return { etag, gzipped };
 }
 
-/** The current export, rebuilt once per library change however many callers ask at once. */
-export async function getLibraryExport(): Promise<LibraryExport> {
+/** The export for the library as it is now, built once per change however many callers ask at once. */
+export async function refreshLibraryExport(): Promise<LibraryExport> {
     const { snapshot } = await refreshMoodSnapshot();
     const etag = await fingerprint(snapshot.signature);
     if (cached?.etag === etag) return cached;
@@ -219,3 +219,14 @@ export async function getLibraryExport(): Promise<LibraryExport> {
     return building.promise;
 }
 
+/**
+ * The last finished export, or null before the first one exists. A build takes
+ * seconds to tens of seconds on a large library, so callers never wait for it:
+ * each call starts a rebuild in the background when the library has changed.
+ */
+export function latestLibraryExport(): LibraryExport | null {
+    refreshLibraryExport().catch((err) => {
+        logger.error(`[PUBLIC-VIBE] library export failed: ${(err as Error).message}`);
+    });
+    return cached;
+}

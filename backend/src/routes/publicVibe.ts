@@ -11,7 +11,7 @@ import { asyncHandler } from "../middleware/asyncHandler";
 import { prisma } from "../utils/db";
 import { logger } from "../utils/logger";
 import { USER_AGENT, config } from "../config";
-import { getLibraryExport } from "../services/publicLibraryExport";
+import { latestLibraryExport } from "../services/publicLibraryExport";
 import { getLiveState, liveListenerCount, publicUserId, subscribeLive, LiveEvent } from "../services/liveListening";
 import { searchTracksByText, TextSearchRow } from "../services/textEmbeddingBridge";
 import { findAlbumArtwork } from "../services/artwork";
@@ -108,7 +108,12 @@ router.use(requireServiceToken);
 router.get(
     "/library",
     asyncHandler(async (req: Request, res: Response) => {
-        const library = await getLibraryExport();
+        const library = latestLibraryExport();
+        if (!library) {
+            res.header("Retry-After", "30");
+            res.status(503).json({ error: "The library export is being built" });
+            return;
+        }
         res.header("ETag", library.etag);
         res.header("Cache-Control", "no-cache");
         res.header("Vary", "Accept-Encoding");

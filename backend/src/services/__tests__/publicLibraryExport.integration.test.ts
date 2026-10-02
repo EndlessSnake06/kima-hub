@@ -1,12 +1,13 @@
 /**
  * The public library export against a real database: only owned, present,
  * mapped tracks are included, each with its nearest such tracks by cosine, and
- * the ETag holds until the library changes.
+ * the ETag holds until the library changes, and readers are served the last
+ * finished export while a rebuild runs.
  */
 import zlib from "zlib";
 import { prisma } from "../../utils/db";
 import { config } from "../../config";
-import { getLibraryExport } from "../publicLibraryExport";
+import { latestLibraryExport, refreshLibraryExport } from "../publicLibraryExport";
 
 jest.setTimeout(60_000);
 
@@ -68,8 +69,14 @@ afterAll(() => {
 });
 
 describe("public library export", () => {
+    it("has nothing to serve until the first build finishes", async () => {
+        expect(latestLibraryExport()).toBeNull();
+        const built = await refreshLibraryExport();
+        expect(latestLibraryExport()).toBe(built);
+    });
+
     it("lists the mapped tracks with their nearest mapped tracks", async () => {
-        const doc = unpack((await getLibraryExport()).gzipped);
+        const doc = unpack((await refreshLibraryExport()).gzipped);
         expect(doc.version).toBe(1);
         expect(doc.library).toEqual({ id: "kevin-o", name: "Kevin O", engine: { analyzer: null, embedding: "clap-test" } });
         expect(doc.artists).toEqual([{ id: "art_pub", name: "Pub Artist" }]);
@@ -85,39 +92,49 @@ describe("public library export", () => {
     });
 
     it("keeps its ETag and its bytes while nothing changes", async () => {
-        const first = await getLibraryExport();
-        const second = await getLibraryExport();
+        const first = await refreshLibraryExport();
+        const second = await refreshLibraryExport();
         expect(second.etag).toBe(first.etag);
         expect(second.gzipped).toBe(first.gzipped);
     });
 
+    it("serves the last export without waiting while a rebuild runs", async () => {
+        const before = await refreshLibraryExport();
+        await prisma.$executeRawUnsafe(`UPDATE track_embeddings SET map_z = 0.4 WHERE track_id = 'trk_c'`);
+        expect(latestLibraryExport()).toBe(before);
+        const after = await refreshLibraryExport();
+        expect(after.etag).not.toBe(before.etag);
+        expect(latestLibraryExport()).toBe(after);
+        await refreshLibraryExport();
+    });
+
     it("rebuilds when a track moves on the map", async () => {
-        const before = await getLibraryExport();
+        const before = await refreshLibraryExport();
         await prisma.$executeRawUnsafe(`UPDATE track_embeddings SET map_x = 0.5 WHERE track_id = 'trk_c'`);
-        const after = await getLibraryExport();
+        const after = await refreshLibraryExport();
         expect(after.etag).not.toBe(before.etag);
         expect(unpack(after.gzipped).tracks[2].xyz[0]).toBe(0.5);
     });
 
     it("rebuilds when an album is renamed", async () => {
-        const before = await getLibraryExport();
+        const before = await refreshLibraryExport();
         await prisma.album.update({ where: { id: "alb_pub" }, data: { title: "Renamed" } });
-        const after = await getLibraryExport();
+        const after = await refreshLibraryExport();
         expect(after.etag).not.toBe(before.etag);
         expect(unpack(after.gzipped).albums[0].title).toBe("Renamed");
     });
 
     it("gives concurrent callers one build", async () => {
         await prisma.$executeRawUnsafe(`UPDATE track_embeddings SET map_y = 0.6 WHERE track_id = 'trk_c'`);
-        const [x, y] = await Promise.all([getLibraryExport(), getLibraryExport()]);
+        const [x, y] = await Promise.all([refreshLibraryExport(), refreshLibraryExport()]);
         expect(x.gzipped).toBe(y.gzipped);
     });
 
     it("takes in a suggested album once it is owned, and a missing file once it is found", async () => {
-        const before = await getLibraryExport();
+        const before = await refreshLibraryExport();
         await prisma.album.update({ where: { id: "alb_disc" }, data: { location: "LIBRARY" } });
         await prisma.track.update({ where: { id: "trk_missing" }, data: { missingSince: null } });
-        const after = await getLibraryExport();
+        const after = await refreshLibraryExport();
         expect(after.etag).not.toBe(before.etag);
         const doc = unpack(after.gzipped);
         expect(doc.tracks.map((t: any) => t.id)).toEqual(["trk_a", "trk_b", "trk_c", "trk_missing", "trk_suggested"]);

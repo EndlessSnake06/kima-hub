@@ -17,7 +17,7 @@ jest.mock("../../config", () => ({
 jest.mock("../../utils/db", () => ({
     prisma: { track: { findFirst: jest.fn() }, user: { findUnique: jest.fn() } },
 }));
-jest.mock("../../services/publicLibraryExport", () => ({ getLibraryExport: jest.fn() }));
+jest.mock("../../services/publicLibraryExport", () => ({ latestLibraryExport: jest.fn() }));
 jest.mock("../../services/textEmbeddingBridge", () => ({ searchTracksByText: jest.fn() }));
 jest.mock("../../services/artwork", () => ({ findAlbumArtwork: jest.fn(async () => null) }));
 jest.mock("../../services/imageStorage", () => ({ getLocalImagePath: jest.fn(() => null) }));
@@ -31,7 +31,7 @@ import express from "express";
 import request from "supertest";
 import publicVibeRouter from "../publicVibe";
 import { prisma } from "../../utils/db";
-import { getLibraryExport } from "../../services/publicLibraryExport";
+import { latestLibraryExport } from "../../services/publicLibraryExport";
 import { searchTracksByText } from "../../services/textEmbeddingBridge";
 import { getLocalImagePath } from "../../services/imageStorage";
 import { reportLive, resetLive, setLiveHidden } from "../../services/liveListening";
@@ -60,7 +60,7 @@ afterAll(async () => {
 
 beforeEach(() => {
     resetLive();
-    (getLibraryExport as jest.Mock).mockResolvedValue({
+    (latestLibraryExport as jest.Mock).mockReturnValue({
         etag: ETAG,
         gzipped: zlib.gzipSync(JSON.stringify(LIBRARY)),
     });
@@ -116,6 +116,13 @@ describe("GET /library", () => {
     it("answers 304 when the client already has this version", async () => {
         const res = await request(app).get("/api/public/vibe/library").set(auth).set("If-None-Match", ETAG);
         expect(res.status).toBe(304);
+    });
+
+    it("answers 503 with a retry time before the first export is built", async () => {
+        (latestLibraryExport as jest.Mock).mockReturnValue(null);
+        const res = await request(app).get("/api/public/vibe/library").set(auth);
+        expect(res.status).toBe(503);
+        expect(res.headers["retry-after"]).toBe("30");
     });
 });
 
