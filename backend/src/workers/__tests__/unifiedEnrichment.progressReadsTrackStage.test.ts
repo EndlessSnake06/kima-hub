@@ -1,20 +1,7 @@
 /**
- * enrichment progress reads `TrackStage` for every stage
- * ("the record
- * owns the answer").
- *
- * The old `computeEnrichmentProgress` counted the legacy `Track` columns
- * (`analysisStatus`, `enrichmentTags`, presence of a `track_embeddings`
- * row). That lies whenever a record and a column disagree — which is
- * exactly the state a re-opened, re-decided, or half-answered track is in.
- * The replacement counts each stage straight off `TrackStage` (one LEFT
- * JOIN from `Track` per stage, so a track with no record for a stage is
- * owed work, not finished work), and reports `source: "TrackStage"`.
- *
- * This seeds tracks whose records CONTRADICT the columns in both
- * directions and asserts progress follows the records.
- *
- * Run: cd backend && npx jest src/workers/__tests__/unifiedEnrichment.progressReadsTrackStage.test.ts --forceExit --maxWorkers=1
+ * Enrichment progress counts each stage from `TrackStage`, joined from `Track`
+ * so a missing record counts as owed. Seeded records contradict the Track
+ * columns both ways, and progress follows the records.
  */
 
 const mockQueueAdd = jest.fn().mockResolvedValue({ id: "job-1" });
@@ -343,11 +330,8 @@ describe("getEnrichmentProgress", () => {
     it("holds a flagged-missing file's questions as waitingMissing, not as owed work", async () => {
         const before = await getEnrichmentProgress();
 
-        // The scan found this file gone, flagged it, and CLOSED
-        // its open question as FILE_MISSING. The count reads the closure:
-        // owed work loses the row, `waitingMissing` gains it, and the
-        // stage's `failed` figures do not inflate — a missing file is a
-        // counted resting state, not a failure for a human to triage.
+        // A file the scan found missing closes as FILE_MISSING: it counts as
+        // waitingMissing, not owed work and not a failure.
         await seedTrack(
             id("vanished"),
             { recording: "done", analysis: "done", embedding: "failed" },

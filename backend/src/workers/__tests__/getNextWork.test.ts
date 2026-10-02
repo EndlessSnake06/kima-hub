@@ -1,15 +1,7 @@
 /**
- * getNextWork over TrackStage.
- *
- * One query per stage over the per-track stage records, returning "answer
- * missing, or status='failed' and retryable and nextRetryAt due". It never
- * filters on Track.analysisStatus / Track.scanStatus, so a track left failed
- * or parked can neither stop the sweep nor stay pending forever.
- *
- * These tests drive the real migration DDL against this checkout's own
- * `kima_v1_test` database (the Jest harness clones one per worker), so they
- * verify the table that is actually applied — they fail until the migration
- * and `getNextWork` land.
+ * getNextWork reads `TrackStage` only: a question is due when it has no answer,
+ * or failed, is retryable and its retry time has passed. Track status columns
+ * play no part. Runs against the migrated test database.
  */
 
 import { prisma } from "../../utils/db";
@@ -241,12 +233,9 @@ describe("getNextWork", () => {
   });
 
   it("never gates fingerprint on any other stage, and recording only on the settled fingerprint", async () => {
-    // A track whose analysis is terminally failed still owes its recording
-    // and fingerprint answers: those questions share only the file. The
-    // recording question, though, waits for the fingerprint question to be
-    // SETTLED (PREREQUISITE_STAGE: fingerprint → recording) — an open
-    // fingerprint question keeps it unoffered, so the sweep cannot re-poll
-    // it; a closed permanent failure settles the question either way.
+    // A terminally failed analysis does not hold back fingerprint or recording.
+    // Recording waits until the fingerprint question is settled: done, or
+    // closed as a permanent failure.
     await putStage(id("ok0"), "analysis", "failed", { retryable: false, attempt: 3 });
     await putStage(id("ok0"), "recording", "pending");
     await putStage(id("ok0"), "fingerprint", "pending");

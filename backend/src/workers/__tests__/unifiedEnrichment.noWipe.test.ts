@@ -1,26 +1,8 @@
 /**
- * The controls stop wiping data.
- *
- * The old controls were destructive: `runFullEnrichment` ran
- * `DELETE FROM track_embeddings` and cleared every track's
- * `enrichmentTags`; `resetMoodTagsOnly` was an UN-WHERE'd `updateMany`
- * that reset every track's tags; `reRunAudioAnalysisOnly` deleted every
- * `analysis` stage record; `resetAllEnrichmentData` TRUNCATEd
- * `track_embeddings`. They are all gone — replaced by two controls that
- * only ever move `TrackStage` rows between answers:
- *
- *   - `retryFailedAndBlocked` — one `getNextWork` over `TrackStage`.
- *   - `redecideEverything`   — deliberately re-opens `done` answers, but
- *     never re-runs AcoustID over an existing answer and never deletes an
- *     answer that already landed.
- *
- * This proves: (a) the destructive functions no longer exist on the worker
- * module, (b) the source contains no `DELETE FROM track_embeddings` and no
- * un-where'd `enrichmentTags` reset, and (c) running whatever remains of
- * the controls against seeded `track_embeddings` rows and `enrichmentTags`
- * deletes and clears nothing.
- *
- * Run: cd backend && npx jest src/workers/__tests__/unifiedEnrichment.noWipe.test.ts --forceExit --maxWorkers=1
+ * The enrichment controls delete nothing: the destructive functions are gone
+ * from the module, the source has no `DELETE FROM track_embeddings` or
+ * unscoped `enrichmentTags` reset, and running the controls leaves seeded
+ * embeddings and tags in place.
  */
 
 // ── Queues + Redis + network services: observe, never hit the wire ──────

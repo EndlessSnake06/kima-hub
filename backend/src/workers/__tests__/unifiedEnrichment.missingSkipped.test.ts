@@ -1,14 +1,6 @@
 /**
- * a track whose file the scan flagged missing is never offered to
- * the enrichment stages, and never pays an attempt or a failure for it.
- *
- * The operator keeps the row (its plays, likes and stage answers survive a
- * vanished file), but a file that is not on disk cannot be fingerprinted,
- * analysed or embedded. Skipping it must be silent: the record stays exactly
- * as it was, and when the file comes back the scan clears the flag and the
- * question is simply due again.
- *
- * Run: cd backend && npx jest src/workers/__tests__/unifiedEnrichment.missingSkipped.test.ts --forceExit --maxWorkers=1
+ * A track whose file the scan flagged missing is never offered to a stage and
+ * its record is left as it was. When the file returns, the question is due again.
  */
 
 // ── Queues + Redis + network services: observe, never hit the wire ──────────

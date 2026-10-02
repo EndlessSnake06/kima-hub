@@ -1,23 +1,8 @@
 /**
- * Task 9 GATE 1 (part B) -- the cron enqueue path must (a) take the same
- * distributed lock the manual /generate path holds, and (b) drop a stale BullMQ
- * job hash before re-adding the same jobId.
- *
- * Two defects in one path:
- *  1. SILENT DROP: re-adding the same jobId returns the retained completed/failed
- *     hash without enqueuing (queues.ts removeOnComplete: 100). The cron silently
- *     does nothing for any user whose previous week's hash is still in Redis.
- *  2. TOCTOU: the cron enqueue holds no lock, so its getJob->remove->add races a
- *     concurrent manual /generate (which DOES hold distributedLock,
- *     discover.ts:202). Two enqueues / a remove-then-add interleave can drop a
- *     job or double-run.
- *
- * The cron body lives inside cron.schedule's callback. We mock node-cron to
- * capture that callback and invoke it directly.
- *
- * Doctrine: FAILURE/race paths FIRST, happy path LAST. Every assertion targets a
- * specific discriminator (lock key, remove-inside-callback, terminal-only remove,
- * per-user isolation on lock failure).
+ * The weekly cron enqueues each user's discover job under the same lock as the
+ * manual /generate path (`discover:generate:<userId>`), and removes a finished
+ * job with the same id first, since BullMQ silently ignores a re-add. The cron
+ * callback is captured from a node-cron mock and fired directly.
  */
 
 // Capture the scheduled callback so the test can fire it deterministically.
@@ -91,12 +76,7 @@ describe('discoverCron enqueue -- lock + stale-hash guard (Task 9)', () => {
         (discoverQueue.getJob as jest.Mock).mockResolvedValue(null);
     });
 
-    // RACE PATH (the TOCTOU this task exists for): the per-user enqueue MUST run
-    // under distributedLock with the SAME key the manual /generate handler uses
-    // (`discover:generate:<userId>`). Without the lock, the cron's
-    // getJob->remove->add interleaves a concurrent manual generate. Discriminator:
-    // withLock called with exactly that key, and the enqueue happens INSIDE the
-    // locked callback (add not called before withLock).
+    // The enqueue runs inside withLock under the manual path's key.
     it('RACE PATH: takes distributedLock with the discover:generate:<userId> key around the enqueue', async () => {
         (prisma.userDiscoverConfig.findMany as jest.Mock).mockResolvedValue([
             { userId: 'user-a', playlistSize: 25 },
@@ -150,11 +130,7 @@ describe('discoverCron enqueue -- lock + stale-hash guard (Task 9)', () => {
         expect(live.remove).not.toHaveBeenCalled();
     });
 
-    // FAILURE ISOLATION: when the lock cannot be acquired for one user (a
-    // concurrent generate holds it), that user's enqueue is skipped WITHOUT
-    // aborting the whole cron tick -- the next user must still be enqueued.
-    // Discriminator: user-a's lock rejects, user-a never enqueues, user-b does.
-    // A missing per-user .catch would let the rejection bubble and skip user-b.
+    // A lock failure for one user skips only that user; the next is enqueued.
     it('FAILURE ISOLATION: a lock failure for one user does not block the others', async () => {
         (prisma.userDiscoverConfig.findMany as jest.Mock).mockResolvedValue([
             { userId: 'user-a', playlistSize: 25 },
@@ -178,14 +154,7 @@ describe('discoverCron enqueue -- lock + stale-hash guard (Task 9)', () => {
         expect(addedUserIds).toContain('user-b');
     });
 
-    // CRITIC GAP B (the TOCTOU this task exists for, fully pinned): the existing
-    // RACE test proves withLock fires before add, and the COMPLETED test proves
-    // remove fires before add -- but NEITHER proves getJob/remove run INSIDE the
-    // lock. A broken impl that does getJob->remove OUTSIDE the lock and only
-    // wraps add() in withLock reintroduces the exact getJob->remove->add race the
-    // task closes (a concurrent /generate can interleave between the unlocked
-    // remove and the locked add), yet passes both existing tests. Pin it: the
-    // lock is acquired BEFORE getJob and BEFORE remove.
+    // The lock is taken before getJob and remove, not only around add.
     it('CRITIC GAP B: getJob and remove happen INSIDE the lock (not before it)', async () => {
         const stale = fakeJob('completed');
         (discoverQueue.getJob as jest.Mock).mockResolvedValue(stale);
@@ -202,12 +171,7 @@ describe('discoverCron enqueue -- lock + stale-hash guard (Task 9)', () => {
         expect(lockOrder).toBeLessThan(removeOrder);
     });
 
-    // CRITIC GAP C: the COMPLETED test pins terminal removal, but a FAILED hash
-    // is the other terminal state and is just as silent a drop (a prior run that
-    // errored leaves a failed hash; re-adding the same id no-ops). A broken impl
-    // that removes only on 'completed' silently skips every user whose last run
-    // FAILED -- forever -- and passes the COMPLETED-only suite. Mirror the
-    // /generate side, which DOES test both terminal states.
+    // A failed job blocks a re-add just as a completed one does.
     it('CRITIC GAP C: removes a stale FAILED job hash before re-enqueuing (inside the lock)', async () => {
         const stale = fakeJob('failed');
         (discoverQueue.getJob as jest.Mock).mockResolvedValue(stale);
@@ -224,11 +188,7 @@ describe('discoverCron enqueue -- lock + stale-hash guard (Task 9)', () => {
         expect(removeOrder).toBeLessThan(addOrder);
     });
 
-    // CRITIC GAP D: the removal only fixes the no-op if it looks up the SAME id
-    // it adds. getJob is mocked to return the stale job for ANY arg, so an impl
-    // that checks/removes the wrong id and adds the real week-keyed id removes a
-    // bystander hash, re-adds the still-present real one, and the silent drop
-    // survives -- yet remove/add/order all pass. Pin: getJob's id == add's id.
+    // getJob looks up the same id add() enqueues.
     it('CRITIC GAP D: getJob is looked up with the SAME jobId that add() enqueues', async () => {
         const stale = fakeJob('completed');
         (discoverQueue.getJob as jest.Mock).mockResolvedValue(stale);

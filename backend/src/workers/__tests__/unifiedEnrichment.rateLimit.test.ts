@@ -1,21 +1,7 @@
 /**
- * A source failure must reach the record as the failure it is.
- *
- * The services answer with typed `Outcome` kinds and never throw, so the
- * engine never sees a raw error here — it sees `rateLimited` (the source
- * said "come back later"), `permanent` ("don't bother asking again"), or
- * `transient`. What this pins, with the services stubbed and the record on
- * a real database:
- *
- *   - a `rateLimited` answer parks the record as pending until the answer's
- *     own `retryAfter`, consumes no attempt, and never tags the track
- *     `_not_found` — nobody said the recording doesn't exist;
- *   - a genuine no-match (`absent` from every source) records a failed
- *     INCONCLUSIVE question with the attempt consumed, riding its own
- *     backoff — an honest "nothing there" is not a pause and must not
- *     consult the pause controller with a fake 429.
- *
- * Run: npx jest src/workers/__tests__/unifiedEnrichment.rateLimit.test.ts --forceExit --maxWorkers=1
+ * A `rateLimited` answer parks the record until its `retryAfter`, uses no
+ * attempt and never tags the track `_not_found`. A no-match from every source
+ * closes the record `done` with the asked sources as evidence.
  */
 
 const noData = { kind: "absent", evidence: { mocked: true } } as const;
@@ -306,11 +292,8 @@ describe("an honest no-match", () => {
     it("answers the question as Absent with no attempt consumed", async () => {
         const trackId = id("t2");
         await seedTrack(trackId, { attempt: 1 });
-        // Every source was asked and answered "nothing there" — the tags
-        // hold a fingerprint, the search has no record, and the
-        // fingerprint lookup matches nothing. A correct "no" is an
-        // answer: the record closes `done` with the asked-sources
-        // evidence, and the retry ladder is not touched.
+        // Every source answered "nothing there", which is an answer: the
+        // record closes `done` and the retry ladder is untouched.
         mockReadTags.mockResolvedValue({
             recordingMbid: null,
             fingerprint: "TAGFP",

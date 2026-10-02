@@ -1,18 +1,7 @@
 /**
- * The enrichment worker had two places that stopped after one or two sources.
- *
- * The hero image was a hand-rolled Fanart-then-Deezer chain that never reached
- * Last.fm at all -- one of five such chains, each ordered slightly differently.
- * The album-cover sweep asked the Cover Art Archive and nothing else, which is
- * why a library sweep left so many albums on a placeholder: measured on 39 real
- * albums, the archive has 21 and Deezer has 31.
- *
- * Both go through `artwork.ts` now. What is proved here is the wiring, and the
- * detail the change turned on: the sweep passes the artist's NAME as well as
- * the release-group id, because without a name the sources cannot search Deezer
- * -- and Deezer is the one most likely to have the record.
- *
- * Doctrine: the failure and boundary paths first, the happy path last.
+ * The hero image and the album-cover sweep both go through `artwork.ts`. The
+ * sweep passes the artist's name with the release-group id, since the sources
+ * need it to search Deezer. Failure and boundary paths first, happy path last.
  */
 
 const mockArtistUpdate = jest.fn();
@@ -147,11 +136,8 @@ describe("the enrichment worker asks every source", () => {
         });
 
         it("does not hand a placeholder MBID to the sources", async () => {
-            // A "temp-" id is this app's own invention, not a MusicBrainz one,
-            // so Fanart would 404 on every one. An artist keeps its temp id
-            // when MusicBrainz is unreachable -- a no-match instead marks the
-            // artist unresolvable and returns before any of this.
-            // The service answers a timeout with `transient`; it never throws.
+            // A "temp-" id is kept when MusicBrainz is unreachable; Fanart would
+            // 404 on it. The service answers a timeout with `transient`.
             mockSearchArtist.mockResolvedValue({
                 kind: "transient",
                 error: { code: "TIMEOUT", message: "MusicBrainz timed out" },

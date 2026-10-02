@@ -1,10 +1,7 @@
 /**
- * One source for the music folder, and a verified move.
- *
- * The organizer must read `getSystemSettings().musicPath` only (no
- * `process.env.MUSIC_PATH`, no repo-root `.env` scraping), and must move a
- * file only through rename (same volume) or copy → verify → unlink.
- * Runs the real `organizeSingles` against real files in a temp dir.
+ * The organizer reads the music folder from `getSystemSettings().musicPath`
+ * only, and moves a file by rename or copy → verify → unlink. Real files in a
+ * temp dir.
  */
 
 import fs from "fs";

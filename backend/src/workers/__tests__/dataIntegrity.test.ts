@@ -1,15 +1,8 @@
 /**
- * The integrity check keeps every row a human decided.
- *
- * The check deletes only things a scan or re-discovery recreates
- * (expired exclusions, orphaned DiscoveryTrack rows, stale download jobs)
- * and REPORTS everything that carries a decision — orphaned DISCOVER
- * albums, ghost albums, and orphaned OwnedAlbum keeps. Before this fix
- * section 6 ran `DELETE FROM "OwnedAlbum"` for every keep whose Album row
- * was gone, while the file's own comments claimed the opposite.
- *
- * Real DB, no prisma mock — the deletes and the anti-joins are the point.
- * Run: cd backend && npx jest dataIntegrity --forceExit --maxWorkers=1
+ * The integrity check deletes only what a scan or re-discovery recreates
+ * (expired exclusions, orphaned DiscoveryTrack rows, stale download jobs) and
+ * only reports rows that carry a decision: orphaned DISCOVER albums, ghost
+ * albums and orphaned OwnedAlbum keeps. Real database, no prisma mock.
  */
 
 import { prisma } from "../../utils/db";

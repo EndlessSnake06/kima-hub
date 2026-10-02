@@ -1,26 +1,8 @@
 /**
- * Identification order (supersedes the earlier
- * "AcoustID first").
- *
- * Pins the order in unifiedEnrichment.enrichSingleTrack:
- *   1. The file's own identity tags — a musicbrainz_recordingid tag answers
- *      the recording question with no network call at all.
- *   2. The album's catalogue — one two-request fetch chain per album
- *      (release group → its earliest release with the tracklist); every
- *      track the tracklist answers is answered from it, without a
- *      per-track search.
- *   3. The title-checked MusicBrainz name search — runs when tags and the
- *      chain did not answer, and answers before AcoustID is ever asked.
- *   4. AcoustID for the remainder — only when all of the above failed does
- *      the fingerprint path run, and its computed or tagged fingerprint is
- *      persisted even when the lookup does not match (dedupe value).
- *
- * The identification layer itself is mocked here — its wire contract is
- * covered by acoustidService.test.ts and the storage outcome by
- * src/__tests__/acoustid-fingerprint.test.ts. This suite proves the ORDER
- * and the fallback wiring in enrichSingleTrack.
- *
- * Run with: npx jest unifiedEnrichment.acoustidOrder --no-coverage
+ * enrichSingleTrack identifies a recording in this order: file tags (no
+ * network), the album's MusicBrainz tracklist, the title-checked name search,
+ * then AcoustID for the remainder, storing the fingerprint even on a no-match.
+ * The identification services are mocked; only the order and fallbacks are tested.
  */
 
 // ── Mocks (must be before imports) ──────────────────────────────────

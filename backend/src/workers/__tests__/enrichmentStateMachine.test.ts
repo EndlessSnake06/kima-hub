@@ -1,20 +1,7 @@
 /**
- * Enrichment State Machine Tests
- *
- * Tests the enrichment cycle control flow: stop/pause/resume/re-run sequences,
- * stop persistence, and state sync — plus the per-track stage queue that
- * replaced the crash-recovery sweep, the dead-analyzer reset, the purgatory
- * drain and the record-driven re-queue.
- *
- * the tests that pinned the deleted workarounds
- * (reset-orphaned-rows-on-startup, the stale-heartbeat queue flush, and the
- * soft/hard watermark feed) are gone rather than kept as assertions against
- * code that no longer exists.
- *
- * Mocks Prisma, Redis, BullMQ, and all external services. Exercises real
- * control flow logic in unifiedEnrichment.ts.
- *
- * Run with: npx jest src/workers/__tests__/enrichmentStateMachine.test.ts --forceExit --maxWorkers=1
+ * The enrichment cycle's controls (stop, pause, resume, re-run), stop
+ * persistence and state sync, plus the per-track stage queue. Prisma, Redis,
+ * BullMQ and services are mocked; the control flow in unifiedEnrichment.ts is real.
  */
 
 // ── Mocks (must be before imports) ──────────────────────────────────
@@ -206,13 +193,8 @@ import {
 // ── Test helpers ────────────────────────────────────────────────────
 
 /**
- * Simulate a stop control message arriving.
- * In production this comes via Redis pub/sub, but the handler just sets
- * module-level flags. We can trigger the same effect by calling
- * triggerEnrichmentNow() after a stop to observe the isStopping path.
- *
- * Since we can't directly set isStopping, we use the state service mock
- * to simulate the "stopping" state that the sync block detects.
+ * Stop arrives over Redis pub/sub in production. The state service mock
+ * reports "stopping", which the sync block picks up the same way.
  */
 function simulateStopViaStateService() {
     mockGetState.mockResolvedValueOnce({ status: "stopping" });
@@ -409,11 +391,8 @@ describe("Enrichment State Machine", () => {
             mockGetState.mockResolvedValue({ status: "idle" });
             mockUpdateState.mockClear();
 
-            // A SECOND explicit trigger is the user pressing "Run Enrichment":
-            // the immediate flag runs one cycle even while userStopped is
-            // set. That is designed behavior (the guard is against the
-            // TIMER auto-restarting, not against an explicit user action);
-            // after this cycle the engine sits stopped again until Resume.
+            // An explicit "Run Enrichment" runs one cycle even while stopped;
+            // only the timer is kept from restarting. Then it stays stopped.
             await triggerEnrichmentNow();
             expect(mockUpdateState).toHaveBeenCalledWith(
                 expect.objectContaining({ status: "running" }),

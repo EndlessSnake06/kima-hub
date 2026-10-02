@@ -1,17 +1,7 @@
 /**
- * Per-track stage gating.
- *
- * The chain is per track: recording -> analysis -> embedding. A track that
- * is failed, parked, or still waiting must never hold another track's stage
- * behind it, and an unanalysed track must never be embedded.
- *
- * These drive the real phase functions against this checkout's own test DB
- * (the harness clones one per worker), with BullMQ/Redis/services mocked so
- * the assertions are about which work each phase offers. They fail on the
- * current code — where a global `audioInFlight` count and status-column
- * sweeps decide everything — and pass once the stage queue lands.
- *
- * Run: cd backend && npx jest src/workers/__tests__/stageGating.test.ts --forceExit --maxWorkers=1
+ * Stage gating is per track: a failed, parked or waiting track never holds
+ * another track's stage back, and an unanalysed track is never embedded. Real
+ * phase functions on the test database; queues, Redis and services are mocked.
  */
 
 // ── Queue + Redis mocks: observe what gets offered ───────────────────────
@@ -418,11 +408,7 @@ describe("per-track stage gating", () => {
         });
 
         it("re-offers a failed track whose record is due, and never re-asks an answered one", async () => {
-            // Selection must come from the stage RECORD, not from Track's
-            // status column. Current code selects on
-            // `analysisStatus: "pending"`, so `stuck` (column 'failed') is
-            // never offered again while `answered` (column 'pending', record
-            // done) is re-asked forever.
+            // Selection reads the stage record, not Track's status column.
             await seedTrack(id("stuck"), {
                 analysisStatus: "failed",
                 analysisStatusOfRecord: "failed",
@@ -482,12 +468,9 @@ describe("per-track stage gating", () => {
         it("declares exactly the four stages of the graph", async () => {
             const { STAGE_ORDER, PREREQUISITE_STAGE } = await import("../unifiedEnrichment");
             expect(STAGE_ORDER).toEqual(["recording", "analysis", "embedding", "fingerprint"]);
-            // The map states what each stage READS, not the order stages are
-            // listed in. Recording waits for the fingerprint QUESTION to be
-            // settled — a done answer (use the stored fingerprint) or a
-            // closed permanent failure (skip AcoustID, record the skip).
-            // Embedding waits for analysis's OUTPUT: only a done answer
-            // unblocks it, a closed analysis failure wrote no valence.
+            // Each stage lists what it reads. Recording needs the fingerprint
+            // question settled (done, or closed as permanent); embedding needs a
+            // done analysis, since a failed one wrote no features.
             expect(PREREQUISITE_STAGE.recording).toEqual({
                 stage: "fingerprint", wait: "settled",
             });

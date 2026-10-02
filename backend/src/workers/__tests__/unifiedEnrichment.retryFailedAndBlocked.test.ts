@@ -1,18 +1,7 @@
 /**
- * "Retry failed and blocked" is the queue-based path, not a reset
- *
- * The control is one `getNextWork` over `TrackStage` plus a dispatch per
- * stage. It never resets an answer: a `done` record is not re-asked, a
- * terminal (`retryable = false`) failure stays closed, a `blocked` record
- * stays parked until a human re-decides it, and a retry whose backoff has
- * not elapsed is not due yet. Only genuinely owed questions are handed to
- * the queues, and dispatching them CLAIMS the record, so the next sweep
- * cannot hand out the same attempt twice.
- *
- * Runs against this checkout's own `kima_v1_test` database (the Jest
- * harness clones one per worker), so the stage records are the real DDL.
- *
- * Run: cd backend && npx jest src/workers/__tests__/unifiedEnrichment.retryFailedAndBlocked.test.ts --forceExit --maxWorkers=1
+ * "Retry failed and blocked" hands out only owed questions: done, terminal and
+ * blocked records stay put, and a retry not yet due waits. Dispatch claims the
+ * record so the next sweep cannot hand it out twice. Real test database.
  */
 
 // ── Queues + Redis + network services: observe, never hit the wire ──────
@@ -309,25 +298,16 @@ describe("retryFailedAndBlocked — the queue-based path", () => {
         });
         // Already answered — never re-asked by a retry control.
         await seedTrack(id("answered"), { recording: "done", analysis: "done", embedding: "done" });
-        // A never-asked track: recording and analysis are both owed right
-        // away (each reads only the file — analysis does not wait behind the
-        // recording answer under the real dependency graph); embedding waits
-        // for analysis. Its fingerprint question is already SETTLED (done),
-        // which is what makes the recording question due at all: an open
-        // fingerprint question would hold the recording stage behind the
-        // fingerprint → recording gate.
+        // A never-asked track with a done fingerprint: recording and analysis
+        // are owed now, embedding waits for analysis.
         await seedTrack(id("fresh"), { recording: "pending", analysis: "pending", embedding: "pending" });
         await putStage(id("fresh"), "fingerprint", "done");
 
         const work = await retryFailedAndBlocked(50);
         const keys = new Set(work.map((w) => `${w.trackId}/${w.stage}`));
 
-        // Only the due rows are handed out: the elapsed retry, the
-        // never-asked track's recording AND analysis questions, and every
-        // track's prerequisite-free fingerprint question — the sweep covers
-        // every track, but an answered fingerprint (`fresh`) is not re-asked.
-        // Nothing answered, parked, closed, or gated on an unmet
-        // prerequisite appears.
+        // Only due rows are handed out: the elapsed retry, the fresh track's
+        // recording and analysis, and every unanswered fingerprint.
         expect(keys).toEqual(new Set([
             `${id("due")}/analysis`,
             `${id("fresh")}/recording`,

@@ -1,34 +1,8 @@
 /**
- * The recording stage's AcoustID step needs the fingerprint stage's answer.
- * That data dependency belongs in PREREQUISITE_STAGE — the one place the
- * engine models "wait for another stage" — not in runtime polling inside the
- * stage (the old `recordStageOwed` path re-offered the recording record every
- * 5s cycle with `nextRetryAt = NULL`, re-reading tags and re-searching
- * MusicBrainz forever, and never ending when the fingerprint stage closed as
- * a permanent failure).
- *
- * Pinned here:
- *  - recording is NOT offered while the fingerprint question is open;
- *  - recording IS offered once the fingerprint stage is `done`, and its
- *    AcoustID step reuses the stored fingerprint (no fpcalc run);
- *  - recording IS offered once the fingerprint stage closed as a permanent
- *    failure — AcoustID is skipped, the skip is recorded in the recording
- *    stage's evidence, the no-match is honest, and the record is not
- *    re-offered in a loop;
- *  - embedding still waits for a DONE analysis (a closed analysis failure
- *    does NOT settle the "output" edge — only the fingerprint→recording
- *    edge is "settled");
- *  - when a control re-opens the fingerprint stage, a recording stage whose
- *    evidence shows a no-match WITHOUT AcoustID is re-opened with it, so it
- *    can use the new fingerprint; one whose evidence shows AcoustID ran is
- *    not;
- *  - progress counts a recording stage parked on an unsettled fingerprint
- *    as WAITING, not as pending work.
- *
- * Runs against this checkout's own `kima_v1_test` database (the Jest
- * harness clones one per worker), so the stage records are the real DDL.
- *
- * Run: cd backend && npx jest src/workers/__tests__/unifiedEnrichment.fingerprintGate.test.ts --forceExit --maxWorkers=1
+ * Recording waits on the fingerprint question through PREREQUISITE_STAGE. Once
+ * it is done, AcoustID reuses the stored fingerprint; once it closes as
+ * permanent, AcoustID is skipped and the skip recorded. Reopening the
+ * fingerprint reopens recordings that never ran AcoustID. Real test database.
  */
 
 // ── Queues + Redis + network services: observe, never hit the wire ──────

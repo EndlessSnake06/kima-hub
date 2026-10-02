@@ -1,24 +1,7 @@
 /**
- * "Re-decide everything".
- *
- * The control is an admin-only operator override for "we know the answer was
- * wrong": it deliberately re-opens every stage question, `done` included —
- * that IS its purpose, and why it sits behind requireAdmin. The one thing
- * it never does is re-run AcoustID over a track that already has a
- * `recordingMbid`: re-fingerprinting would spend a fingerprint and a lookup
- * to rediscover something already in the column.
- *
- * (An earlier wording said "does NOT re-enqueue
- * done answers"; that contradicts the design and the shipped code — a
- * control that ignored `done` would be identical to "Retry failed and
- * blocked". The design rule that IS enforced is the AcoustID guard, and the
- * admin-only gate. Both are proven here, plus the re-open of `done` that
- * the design explicitly calls for.)
- *
- * Runs against this checkout's own `kima_v1_test` database (the Jest
- * harness clones one per worker), so the stage records are the real DDL.
- *
- * Run: cd backend && npx jest src/workers/__tests__/unifiedEnrichment.redecideEverything.test.ts --forceExit --maxWorkers=1
+ * "Re-decide everything" is admin-only and reopens every stage question,
+ * `done` included, but never reruns AcoustID on a track that already has a
+ * `recordingMbid`. Runs against the real test database and requireAdmin.
  */
 
 // ── Queues + Redis + network services: observe, never hit the wire ──────
@@ -77,11 +60,7 @@ jest.mock("../../utils/logger", () => ({
     logger: { warn: jest.fn(), debug: jest.fn(), error: jest.fn(), info: jest.fn() },
 }));
 
-// NOTE: `../../utils/db` and `../../middleware/auth` are deliberately NOT
-// mocked — the AcoustID guard must be proven against the real TrackStage
-// table the migration creates, and "Re-decide everything is admin-only"
-// must be proven against the real requireAdmin, not a stub that hands back
-// whatever role we ask for.
+// The database and requireAdmin are real.
 
 jest.mock("../../services/enrichmentState", () => ({
     enrichmentStateService: {
@@ -455,12 +434,8 @@ describe("POST /enrichment/re-decide-everything and POST /enrichment/retry-faile
             .post("/enrichment/retry-failed-and-blocked")
             .set("Authorization", `Bearer ${token}`);
         expect(retry.status).toBe(200);
-        // All three questions are pending again, and the fingerprint question
-        // was never asked at all — analysis and the prerequisite-free
-        // fingerprint sweep are handed out (analysis does not wait for
-        // recording under the real dependency graph). The recording question
-        // waits: it is behind the fingerprint → recording gate until the
-        // fingerprint question settles, and then it is due.
+        // Analysis and fingerprint are handed out; recording waits behind the
+        // fingerprint gate.
         expect(retry.body.queued).toBe(2);
     });
 });

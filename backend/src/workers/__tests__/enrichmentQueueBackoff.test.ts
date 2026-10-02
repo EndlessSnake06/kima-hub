@@ -1,15 +1,7 @@
 /**
- * Job-key and backoff behaviour for the artist and track enrichment phases.
- *
- * The track phase used to re-dequeue from
- * `Track.enrichmentTags` and reuse the jobId `track-<id>`, so one failed job
- * held that key and silently defeated every later re-add until the marker
- * aged out. With `TrackStage` the record owns the attempt and the jobId is per
- * attempt, so there is no marker to hold and no `getJob` skip to test.
- *
- * The artist phase still selects from `Track.enrichmentStatus` (artists are
- * not tracks, so there is no per-artist stage record), so its clean/backoff
- * pins stay.
+ * Job keys and backoff for the enrichment phases. Track jobs get a per-attempt
+ * id from their `TrackStage` record. Artists have no stage record, so the
+ * artist phase still selects on `Track.enrichmentStatus` with its own backoff.
  */
 
 const mockArtistAdd = jest.fn().mockResolvedValue({ id: "j" });

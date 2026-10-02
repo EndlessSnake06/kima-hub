@@ -1,19 +1,7 @@
 /**
- * Dispatch throughput (stage windows, in-flight cap).
- *
- * Runs in waves — every fingerprint, then every
- * recording, then analysis, then embedding — because all three track phases
- * drew from ONE shared stage-ordered window: while 9,000 recordings were
- * pending, the window held only recordings and the analyzers and embedders
- * sat idle for hours. The waves and the idle are the same bug.
- *
- * Rules under test:
- *   - each phase gets its OWN stage window, so analysis dispatches while
- *     identification is still spending its network budget;
- *   - no stage claims deeper than its in-flight cap, so a queued job never
- *     waits past its record's patience and gets run twice.
- *
- * Run: cd backend && npx jest src/workers/__tests__/unifiedEnrichment.dispatchThroughput.test.ts --maxWorkers=1
+ * Each track phase has its own stage window, so analysis dispatches while
+ * identification is still running, and no stage claims beyond its in-flight
+ * cap, so a queued job never outlives its record's patience.
  */
 
 const mockQueueAdd = jest.fn().mockResolvedValue({ id: "job-1" });

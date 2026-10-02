@@ -1,12 +1,6 @@
 /**
- * The scan producer's contract, and the defect that made every scan trigger
- * throw since the single-producer landing: BullMQ rejects custom job ids
- * containing ':' (job.js throws 'Custom Id cannot contain :'), and the dedupe
- * key used a ':' namespace separator — so requestScan() threw for EVERY
- * caller (manual scan route, cron, webhooks) and no scan could be enqueued.
- *
- * Doctrine: the failure class first (colon-free ids, enforced the way BullMQ
- * enforces it), then the dedupe behaviour the key exists for.
+ * requestScan builds job ids without ':', which BullMQ rejects in custom ids,
+ * and dedupes repeated requests on that key.
  */
 
 jest.mock('../queues', () => ({

@@ -1,23 +1,7 @@
 /**
- * the fingerprint stage runs in its OWN loop.
- *
- * The old producer executed `runFingerprintStageWork` INLINE inside
- * dispatchStageWork's sequential loop: fpcalc ran one track at a time, the
- * whole cycle waited on the phase before audio dispatch, and one hung fpcalc
- * stalled everything forever (the stage timeout existed only for stale-claim
- * reconciliation, never per call).
- *
- * Pinned here:
- *   1. Concurrency comes from os.availableParallelism() — with parallelism 2
- *      exactly two fpcalc subprocesses run at once, never three.
- *   2. The dispatch does NOT wait for the subprocesses: executeFingerprintPhase
- *      returns while fpcalc is still running, so the other stages' dispatch
- *      (and the cycle) is never gated behind the sweep.
- *   3. A hung fpcalc is bounded by the stage's OWN timeout
- *      (getStageTimeoutMs('fingerprint')) and becomes a recorded, classified,
- *      retryable failure on the record — while the other slots keep working.
- *
- * Run: cd backend && npx jest unifiedEnrichment.fingerprintPool --forceExit --maxWorkers=1
+ * The fingerprint stage runs its own pool, sized by os.availableParallelism().
+ * Dispatch returns while fpcalc runs, and a hung fpcalc is cut off by the
+ * stage's own timeout and recorded as a retryable failure.
  */
 
 const mockQueueAdd = jest.fn().mockResolvedValue({ id: "job-1" });

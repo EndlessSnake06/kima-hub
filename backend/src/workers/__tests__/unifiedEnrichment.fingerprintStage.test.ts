@@ -1,34 +1,8 @@
 /**
- * GAP 1 (2026-09-26): the AcoustID fingerprint sweep covers EVERY track.
- *
- * "the AcoustID fingerprint sweep covers every
- * track (dedupe value)". Until now `enrichSingleTrack` only fingerprinted a
- * track that had no ISRC AND was not identified by file tags or the name
- * search, so ~7,264 ISRC tracks and most of the rest never got a fingerprint.
- *
- * The fix makes fingerprinting its own per-track stage — TrackStage stage
- * 'fingerprint' — seeded for every existing track by a migration, created for
- * new tracks the same way the other stages are (the claim creates a record
- * that has never been asked), and answered by computing the fingerprint with
- * fpcalc locally and storing it via `persistAcoustidFingerprint` whether or
- * not any lookup matches.
- *
- * Pinned here:
- *   1. A track WITH an ISRC (already identified) still gets its fingerprint
- *      computed and stored, and its fingerprint record answered.
- *   2. The migration seeds a pending fingerprint record for every track that
- *      exists, and a new track's record is created and answered the same way
- *      the other stages are.
- *   3. A paused 'acoustid' source blocks only the NETWORK lookup — the
- *      fingerprint stage is local (fpcalc) and must not be gated by it.
- *   4. Progress reads the fingerprint stage from TrackStage like every other
- *      stage, and a pending fingerprint keeps `isFullyComplete` honest.
- *
- * fpcalc (the binary) is mocked — its wire contract is fpcalcService's own
- * suite; what is proven here is the stage machinery around it. The DB writes
- * (claim, settle, persistAcoustidFingerprint, the migration seed) are REAL.
- *
- * Run: cd backend && npx jest unifiedEnrichment.fingerprintStage --forceExit --maxWorkers=1
+ * Every track gets a fingerprint stage, ISRC or not: the migration seeds it for
+ * existing tracks and the claim creates it for new ones. It runs fpcalc locally,
+ * so a paused 'acoustid' source does not block it, and progress counts it like
+ * any stage. fpcalc is mocked; the database writes are real.
  */
 
 // ── Queues + Redis + network services: observe, never hit the wire ──────
@@ -296,11 +270,7 @@ async function seedEmbedding(trackId: string): Promise<void> {
 }
 
 async function wipe(): Promise<void> {
-    // The seed migration this suite exercises is GLOBAL (every track that
-    // exists), so the sweep's counts are only exact from an empty library:
-    // tracks left behind by any other suite (or an interrupted run) would be
-    // seeded and dispatched too. Track deletion cascades its stage/embedding
-    // rows.
+    // The seed covers every track, so start from an empty library.
     await prisma.$executeRawUnsafe(`DELETE FROM "Track"`);
     await prisma.$executeRawUnsafe(`DELETE FROM "TrackStage" WHERE "trackId" LIKE $1`, `${PREFIX}_%`);
     await prisma.$executeRawUnsafe(`DELETE FROM "SourceAttempt"`);
