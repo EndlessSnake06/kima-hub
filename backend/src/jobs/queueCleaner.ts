@@ -4,8 +4,8 @@ import { getSystemSettings } from "../utils/systemSettings";
 import { sweepFailedDownloads } from "../services/lidarrFailures";
 import { requestScan } from "../workers/scanRequest";
 import { simpleDownloadManager } from "../services/simpleDownloadManager";
-import { yieldToEventLoop } from "../utils/async";
-import { stringSimilarity } from "../utils/normalization";
+import { artistIdentityKey } from "../services/artistIdentity";
+import { editionlessKey } from "../services/albumIdentity";
 
 class QueueCleanerService {
     private isRunning = false;
@@ -248,154 +248,37 @@ class QueueCleanerService {
     }
 
     /**
-     * Mark pending and processing jobs complete when their album is already in
-     * the library, matching names fuzzily: covers missed Lidarr webhooks and
-     * MBID or name mismatches. Loads the library once. Also run by workers/index.ts.
+     * Complete pending and processing jobs whose album is now in the library, and
+     * tell their users. Covers imports no Lidarr event reported. An album counts
+     * when the artist matches and the title matches ignoring edition.
      */
     async reconcileWithLocalLibrary(): Promise<{ reconciled: number }> {
-        const processingJobs = await prisma.downloadJob.findMany({
+        const activeJobs = await prisma.downloadJob.findMany({
             where: { status: { in: ["pending", "processing"] } },
         });
-
-        if (processingJobs.length === 0) {
-            return { reconciled: 0 };
-        }
-
-        logger.debug(
-            `[LOCAL-RECONCILE] Checking ${processingJobs.length} job(s) against local library...`
-        );
-
-        // Extract jobs with valid artist/album metadata
-        const jobsToCheck = processingJobs
-            .map((job) => {
-                const metadata = (job.metadata as any) || {};
-                return {
-                    job,
-                    artistName: metadata?.artistName as string | undefined,
-                    albumTitle: metadata?.albumTitle as string | undefined,
-                };
-            })
-            .filter((x) => x.artistName && x.albumTitle);
-
-        if (jobsToCheck.length === 0) {
-            return { reconciled: 0 };
-        }
-
-        // Fetch ALL local albums with tracks in ONE query
-        const localAlbums = await prisma.album.findMany({
-            where: {
-                tracks: { some: {} }, // Only albums with at least one track
-            },
-            select: {
-                id: true,
-                title: true,
-                artist: { select: { name: true } },
-            },
+        const wanted = activeJobs.filter((job) => {
+            const meta = (job.metadata as any) ?? {};
+            return meta.artistName && meta.albumTitle;
         });
+        if (wanted.length === 0) return { reconciled: 0 };
 
-        logger.debug(
-            `[LOCAL-RECONCILE] Loaded ${localAlbums.length} local albums for matching`
+        const localAlbums = await prisma.album.findMany({
+            where: { tracks: { some: {} } },
+            select: { title: true, artist: { select: { name: true } } },
+        });
+        const owned = new Set(
+            localAlbums.map((a) => `${artistIdentityKey(a.artist.name)}|${editionlessKey(a.title)}`)
         );
 
-        // Build normalized lookup index for O(1) exact matching
-        const exactIndex = new Map<string, boolean>();
-        for (const album of localAlbums) {
-            const key = `${album.artist.name.toLowerCase().trim()}|${album.title.toLowerCase().trim()}`;
-            exactIndex.set(key, true);
+        const found = wanted.filter((job) => {
+            const meta = job.metadata as any;
+            return owned.has(`${artistIdentityKey(meta.artistName)}|${editionlessKey(meta.albumTitle)}`);
+        });
+        const reconciled = await simpleDownloadManager.completeJobs(found);
+        if (reconciled > 0) {
+            logger.debug(`[LOCAL-RECONCILE] ${reconciled} job(s) found in the library`);
         }
-
-        // Check all jobs against index
-        const toComplete: string[] = [];
-        const discoveryBatchIds = new Set<string>();
-
-        for (const { job, artistName, albumTitle } of jobsToCheck) {
-            const normalizedArtist = artistName!.toLowerCase().trim();
-            const normalizedAlbum = albumTitle!.toLowerCase().trim();
-            const exactKey = `${normalizedArtist}|${normalizedAlbum}`;
-
-            let matched = false;
-
-            // Strategy 1: Exact match (O(1))
-            if (exactIndex.has(exactKey)) {
-                matched = true;
-                logger.debug(
-                    `[LOCAL-RECONCILE] ✓ Exact match for "${artistName} - ${albumTitle}"`
-                );
-            }
-
-            // Strategy 2: Contains match (check if album title contains or is contained)
-            if (!matched) {
-                for (const album of localAlbums) {
-                    const libArtist = album.artist.name.toLowerCase().trim();
-                    const libAlbum = album.title.toLowerCase().trim();
-
-                    if (
-                        libArtist.includes(normalizedArtist) ||
-                        normalizedArtist.includes(libArtist)
-                    ) {
-                        if (
-                            libAlbum.includes(normalizedAlbum) ||
-                            normalizedAlbum.includes(libAlbum)
-                        ) {
-                            matched = true;
-                            logger.debug(
-                                `[LOCAL-RECONCILE] ✓ Contains match "${artistName} - ${albumTitle}" -> "${album.artist.name} - ${album.title}"`
-                            );
-                            break;
-                        }
-                    }
-                }
-            }
-
-            // Strategy 3: Fuzzy match (more expensive, last resort)
-            if (!matched) {
-                const fuzzyMatch = localAlbums.find(
-                    (album) =>
-                        stringSimilarity(artistName!, album.artist.name) >= 75 &&
-                        stringSimilarity(albumTitle!, album.title) >= 75
-                );
-
-                if (fuzzyMatch) {
-                    matched = true;
-                    logger.debug(
-                        `[LOCAL-RECONCILE] ✓ Fuzzy match "${artistName} - ${albumTitle}" -> "${fuzzyMatch.artist.name} - ${fuzzyMatch.title}"`
-                    );
-                }
-            }
-
-            if (matched) {
-                toComplete.push(job.id);
-                if (job.discoveryBatchId) {
-                    discoveryBatchIds.add(job.discoveryBatchId);
-                }
-            }
-        }
-
-        // Batch update all matched jobs
-        if (toComplete.length > 0) {
-            await prisma.downloadJob.updateMany({
-                where: { id: { in: toComplete } },
-                data: {
-                    status: "completed",
-                    completedAt: new Date(),
-                    error: null,
-                },
-            });
-            logger.debug(
-                `[LOCAL-RECONCILE] Batch updated ${toComplete.length} job(s) to completed`
-            );
-        }
-
-        // Check discovery batch completions (deduplicated, with yielding)
-        if (discoveryBatchIds.size > 0) {
-            const discoverWeeklyService = await this.getDiscoverWeeklyService();
-            for (const batchId of discoveryBatchIds) {
-                await discoverWeeklyService.checkBatchCompletion(batchId);
-                await yieldToEventLoop();
-            }
-        }
-
-        return { reconciled: toComplete.length };
+        return { reconciled };
     }
 
     /**

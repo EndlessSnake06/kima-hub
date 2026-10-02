@@ -1,7 +1,7 @@
 import { AxiosInstance } from "axios";
 import pLimit from "p-limit";
 import { logger } from "../utils/logger";
-import { albumIdentityKey, titlesAgree } from "./albumIdentity";
+import { editionlessKey, titlesAgree } from "./albumIdentity";
 import { config } from "../config";
 import { getSystemSettings } from "../utils/systemSettings";
 import { stripAlbumEdition } from "../utils/artistNormalization";
@@ -1540,18 +1540,12 @@ class LidarrService {
                 return true;
             }
 
-            // Edition differences: holding the deluxe is enough not to fetch the plain
-            // one. albumIdentityKey keeps editions apart for the library, so strip the
-            // edition marker first. Compare whole keys, never substrings: owning "Trance"
-            // must not satisfy "Trust In Trance".
-            const acquisitionKey = (title: string) => albumIdentityKey(stripAlbumEdition(title));
-
             const normalizedArtist = artistName.toLowerCase().trim();
-            const wantKey = acquisitionKey(albumTitle);
+            const wantKey = editionlessKey(albumTitle);
             if (wantKey) {
                 for (const [titleKey] of snapshot.albumsByTitle) {
                     const [keyArtist, keyAlbum] = titleKey.split("|");
-                    if (keyArtist === normalizedArtist && acquisitionKey(keyAlbum) === wantKey) {
+                    if (keyArtist === normalizedArtist && editionlessKey(keyAlbum) === wantKey) {
                         return true;
                     }
                 }

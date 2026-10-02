@@ -11,6 +11,7 @@ import { foldIdentityText, artistSortName } from "./artistIdentity";
 import { pgCollapseSpace, pgLower, pgTrim, stripNonAlnum } from "./pgTextRules";
 import { LIBRARY_LOCATION } from "./libraryFilters";
 import { musicBrainzService } from "./musicbrainz";
+import { stripAlbumEdition } from "../utils/artistNormalization";
 
 /**
  * Titles too generic to identify a release group on their own. A cross-artist
@@ -44,6 +45,15 @@ const GENERIC_TITLES = new Set([
 export function albumIdentityKey(title: string | null | undefined): string {
     if (title == null) return "";
     return stripNonAlnum(pgLower(foldIdentityText(pgTrim(String(title)))));
+}
+
+/**
+ * The key that decides whether owning one title covers another: edition markers
+ * drop, so "Antics (Deluxe)" covers "Antics". Compare whole keys, never
+ * substrings: owning "Trance" must not cover "Trust In Trance".
+ */
+export function editionlessKey(title: string | null | undefined): string {
+    return albumIdentityKey(stripAlbumEdition(title ?? ""));
 }
 
 /**

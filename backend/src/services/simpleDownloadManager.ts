@@ -27,6 +27,14 @@ import { removeFailedDownload } from "./lidarrFailures";
 import { distributedLock } from "../utils/distributedLock";
 import type { LidarrAlbum } from "../types/lidarr";
 
+type CompletableJob = {
+    id: string;
+    userId: string;
+    subject: string;
+    metadata: Prisma.JsonValue;
+    discoveryBatchId: string | null;
+};
+
 const LIDARR_RETRY_DELAYS_MS = [5_000, 20_000];
 
 type TransactionClient = Omit<
@@ -479,29 +487,38 @@ class SimpleDownloadManager {
     }
 
     /** Lidarr already has this album at or above the wanted quality: the job is done. */
-    private async completeAlreadyOwned(
-        job: { id: string; userId: string; subject: string; metadata: unknown; discoveryBatchId: string | null },
-        reason: string
-    ): Promise<void> {
-        const metadata = {
-            ...((job.metadata as any) ?? {}),
-            statusText: "Already in library",
-            alreadyOwnedReason: reason,
-            completedAt: new Date().toISOString(),
-        };
-        await prisma.downloadJob.update({
-            where: { id: job.id },
-            data: { status: "completed", completedAt: new Date(), metadata },
-        });
+    private async completeAlreadyOwned(job: CompletableJob, reason: string): Promise<void> {
+        await this.completeJobs([job], { statusText: "Already in library", alreadyOwnedReason: reason });
         logger.debug(`   ${reason} - job ${job.id} complete`);
-        await this.announceCompletion({
-            jobId: job.id,
-            userId: job.userId,
-            subject: job.subject,
-            metadata,
-            batchId: job.discoveryBatchId ?? undefined,
-            spotifyImportJobId: metadata.spotifyImportJobId,
-        });
+    }
+
+    /**
+     * Complete jobs whose album turned up in Lidarr or the library, and tell each
+     * user and batch. A job another path already settled is left alone, so nobody
+     * is told twice. Returns how many were completed here.
+     */
+    async completeJobs(jobs: CompletableJob[], extra: Record<string, unknown> = {}): Promise<number> {
+        let completed = 0;
+        for (const job of jobs) {
+            const completedAt = new Date();
+            const metadata = { ...((job.metadata as any) ?? {}), ...extra, completedAt: completedAt.toISOString() };
+            const { count } = await prisma.downloadJob.updateMany({
+                where: { id: job.id, status: { in: ["pending", "processing"] } },
+                data: { status: "completed", completedAt, error: null, metadata },
+            });
+            if (count === 0) continue;
+            completed++;
+            await this.announceCompletion({
+                jobId: job.id,
+                userId: job.userId,
+                subject: job.subject,
+                metadata,
+                batchId: job.discoveryBatchId ?? undefined,
+                spotifyImportJobId: metadata.spotifyImportJobId,
+            });
+            await yieldToEventLoop();
+        }
+        return completed;
     }
 
     /** Tell the user and the batch that owns the job that it completed. */
@@ -1576,7 +1593,7 @@ class SimpleDownloadManager {
         }
         const snapshot = existingSnapshot;
 
-        const toComplete: string[] = [];
+        const toComplete: typeof processingJobs = [];
 
         for (const job of processingJobs) {
             const metadata = job.metadata as any;
@@ -1617,7 +1634,7 @@ class SimpleDownloadManager {
 
             if (isAvailable) {
                 logger.debug(`   Job ${job.id}: Album "${job.subject}" found in Lidarr`);
-                toComplete.push(job.id);
+                toComplete.push(job);
             } else {
                 // Only log for jobs older than 5 minutes
                 const jobAge = Date.now() - (job.createdAt?.getTime() || 0);
@@ -1629,36 +1646,9 @@ class SimpleDownloadManager {
             }
         }
 
-        if (toComplete.length > 0) {
-            await prisma.downloadJob.updateMany({
-                where: { id: { in: toComplete } },
-                data: {
-                    status: "completed",
-                    completedAt: new Date(),
-                    error: null,
-                },
-            });
-
-            const completedSet = new Set(toComplete);
-            for (const job of processingJobs) {
-                if (!completedSet.has(job.id)) continue;
-                const metadata = job.metadata as any;
-                await this.announceCompletion({
-                    jobId: job.id,
-                    userId: job.userId,
-                    subject: job.subject,
-                    metadata,
-                    batchId: job.discoveryBatchId ?? undefined,
-                    spotifyImportJobId: metadata?.spotifyImportJobId,
-                });
-                await yieldToEventLoop();
-            }
-
-            logger.debug(`   Batch updated ${toComplete.length} job(s) to completed`);
-        }
-
-        logger.debug(`[RECONCILE] Reconciled ${toComplete.length} job(s)`);
-        return { reconciled: toComplete.length, errors: [], snapshot };
+        const reconciled = await this.completeJobs(toComplete);
+        logger.debug(`[RECONCILE] Reconciled ${reconciled} job(s)`);
+        return { reconciled, errors: [], snapshot };
     }
 
     /**
