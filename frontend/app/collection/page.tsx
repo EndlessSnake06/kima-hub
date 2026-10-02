@@ -59,7 +59,7 @@ export default function LibraryPage() {
     // Last total seen per tab. A query that fails on its first load has no
     // data; the latch keeps the pager standing on the last real count instead
     // of recomputing the list down to zero pages.
-    const latchedTotalsRef = useRef<Partial<Record<Tab, number>>>({});
+    const [latchedTotals, setLatchedTotals] = useState<Partial<Record<Tab, number>>>({});
 
     const queryClient = useQueryClient();
 
@@ -132,38 +132,30 @@ export default function LibraryPage() {
     // `fresh` is undefined while the query has no data (loading, or a failed
     // first load). The latch keeps the last real total, and totalPages is
     // floored at 1 so the pager never disappears.
+    const fresh =
+        activeTab === "artists" ? artistsQuery.data?.total
+        : activeTab === "albums" ? albumsQuery.data?.total
+        : tracksQuery.data?.total;
+    const total = latchTotal(latchedTotals[activeTab] ?? 0, fresh);
+    if (total !== (latchedTotals[activeTab] ?? 0)) {
+        setLatchedTotals((prev) => ({ ...prev, [activeTab]: total }));
+    }
+
     const activeQuery =
         activeTab === "artists" ? artistsQuery
         : activeTab === "albums" ? albumsQuery
         : tracksQuery;
 
     const pagination = useMemo(
-        () => {
-            const fresh =
-                activeTab === "artists" ? artistsQuery.data?.total
-                : activeTab === "albums" ? albumsQuery.data?.total
-                : tracksQuery.data?.total;
-
-            const total = latchTotal(latchedTotalsRef.current[activeTab] ?? 0, fresh);
-            latchedTotalsRef.current[activeTab] = total;
-
-            return {
-                total,
-                offset: 0,
-                limit: itemsPerPage,
-                totalPages: Math.max(1, Math.ceil(total / itemsPerPage)),
-                currentPage,
-                itemsPerPage,
-            };
-        },
-        [
-            activeTab,
-            artistsQuery.data,
-            albumsQuery.data,
-            tracksQuery.data,
-            itemsPerPage,
+        () => ({
+            total,
+            offset: 0,
+            limit: itemsPerPage,
+            totalPages: Math.max(1, Math.ceil(total / itemsPerPage)),
             currentPage,
-        ],
+            itemsPerPage,
+        }),
+        [total, itemsPerPage, currentPage],
     );
 
     // Reload data function using React Query invalidation
@@ -197,16 +189,14 @@ export default function LibraryPage() {
     // entrance animation. Declared above the effects that set it.
     const [gridKey, setGridKey] = useState(0);
 
-    // Reset page and filter when tab changes. The URL is the page's source of
-    // truth, so switching tabs (which pushes a page-less URL) already lands on
-    // page 1; this effect only handles the tracks-tab filter reset and the
-    // grid remount that replays the entrance cascade.
-    useEffect(() => {
-        if (activeTab === "tracks") {
-            setFilter("owned");
-        }
+    // A tab switch pushes a page-less URL, so the page resets on its own; here
+    // the tracks tab resets its filter and the grid remounts to replay its entrance.
+    const [shownTab, setShownTab] = useState(activeTab);
+    if (shownTab !== activeTab) {
+        setShownTab(activeTab);
+        if (activeTab === "tracks") setFilter("owned");
         setGridKey((k) => k + 1);
-    }, [activeTab]);
+    }
 
     // Changing filter/sort/page-size invalidates the current page number, so
     // the URL loses it and the grid remounts. Done in the handlers, not an
