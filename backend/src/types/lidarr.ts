@@ -115,60 +115,6 @@ export interface LidarrRootFolder {
   totalSpace: number;
 }
 
-export interface LidarrQualityProfile {
-  id: number;
-  name: string;
-  upgradeAllowed: boolean;
-  cutoff: number;
-  items: Array<{
-    id: number;
-    name: string;
-    quality?: {
-      id: number;
-      name: string;
-    };
-    allowed: boolean;
-  }>;
-}
-
-export interface LidarrWebhookPayload {
-  eventType: 'Grab' | 'Download' | 'AlbumDownload' | 'TrackRetag' | 'Rename' | 'ImportFailure';
-  artist?: {
-    id: number;
-    name: string;
-    mbId?: string;
-  };
-  album?: {
-    id: number;
-    title: string;
-    mbId?: string;
-  };
-  release?: {
-    id: number;
-    title: string;
-    mbId?: string;
-  };
-  downloadId?: string;
-  albumId?: number;
-  trackFiles?: Array<{
-    id: number;
-    path: string;
-    quality: string;
-  }>;
-}
-
-export interface LidarrAddAlbumRequest {
-  foreignAlbumId: string;
-  monitored: boolean;
-  qualityProfileId: number;
-  metadataProfileId: number;
-  rootFolderPath: string;
-  addOptions: {
-    searchForNewAlbum: boolean;
-  };
-  tags?: number[];
-}
-
 export interface LidarrAddArtistRequest {
   foreignArtistId: string;
   artistName: string;

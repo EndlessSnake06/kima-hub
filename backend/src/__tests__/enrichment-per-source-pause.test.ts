@@ -1,23 +1,7 @@
 /**
- * Per-source pause the dequeuer actually consults
- *
- * The casualty this fixes: quotaPauseController.ts existed with the right
- * idea (a per-source pause the enclosing phase checks BEFORE handing out
- * more work) but was imported by nothing — every 5s cycle kept dequeuing
- * tracks for a source that was refusing us, each burning its timeout in
- * turn ("1,047 attempt-3 failures, 16 cores 96% idle").
- *
- * Rules under test:
- *   - `getNextWork` consults the pause before handing out work: while a
- *     source is paused, its stage's work is not offered at all.
- *   - A rate-limit error pauses ONLY that source; other stages' sources
- *     keep working.
- *   - A rate limit does not count as a failure: the record's attempt does
- *     not increment and the record is not marked `failed` — it waits
- *     (`pending`) until the pause lifts.
- *
- * Run with:
- *   npx jest src/__tests__/enrichment-per-source-pause.test.ts --maxWorkers=1
+ * While a source is paused, getNextWork offers none of its stage's work. A rate
+ * limit pauses only that source, and the record waits as pending without
+ * spending an attempt.
  */
 
 import { prisma } from "../utils/db";

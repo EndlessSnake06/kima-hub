@@ -1,6 +1,6 @@
 /**
- * What a Lidarr Grab, Download or ImportFailure event does, shared by the live
- * webhook route and the reconciliation replay so both end in the same state.
+ * What each Lidarr webhook event does, shared by the live webhook route and the
+ * reconciliation replay so both end in the same state.
  */
 
 import { simpleDownloadManager } from "./simpleDownloadManager";
