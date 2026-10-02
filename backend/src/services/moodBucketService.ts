@@ -1,9 +1,8 @@
 /**
- * The one place a track's mood is decided, from five Essentia heads: happy
- * (Upbeat), sad (Melancholic), chill/moodRelaxed (Calm), aggressive (Intense),
- * party (Energetic). The heads are not calibrated against each other, so each
- * mood is a rank within the library (share of tracks scoring lower on that
- * head), and buckets are rebuilt whenever the analysed library changes.
+ * Decides a track's mood from five Essentia heads: happy (Upbeat), sad
+ * (Melancholic), relaxed (Calm), aggressive (Intense), party (Energetic). The
+ * heads are uncalibrated, so each mood is the track's rank on that head within
+ * the library, and buckets rebuild whenever the analysed library changes.
  */
 
 import { logger } from "../utils/logger";

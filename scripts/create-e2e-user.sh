@@ -1,15 +1,7 @@
 #!/usr/bin/env bash
-# Create the E2E test user inside a running Kima Docker container.
-# Usage: bash scripts/create-e2e-user.sh
-#
-# Reads KIMA_TEST_USERNAME and KIMA_TEST_PASSWORD from env.
-# If not set, defaults to username "kima_e2e" and a random password.
-# The chosen credentials are printed at the end -- capture them for Playwright.
-#
-# Env vars:
-#   KIMA_TEST_USERNAME  -- test username (default: kima_e2e)
-#   KIMA_TEST_PASSWORD  -- test password (default: randomly generated)
-#   KIMA_CONTAINER      -- container name (default: kima-test)
+# Creates the E2E test user inside a running Kima container and prints the
+# credentials for Playwright. Env: KIMA_TEST_USERNAME (default kima_e2e),
+# KIMA_TEST_PASSWORD (default random), KIMA_CONTAINER (default kima-test).
 
 set -euo pipefail
 

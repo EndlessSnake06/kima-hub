@@ -1,9 +1,7 @@
 /**
  * Album identity, the sibling of artistIdentity. An Album is a MusicBrainz
  * release group, and only true duplicates merge: "Il Pozzo D'Amor" and "Il
- * Pozzo d'Amor" merge; "Playing the Angel (Deluxe)" stays separate. The
- * `temp-` rgMbid placeholder stays until OwnedAlbum and DiscoveryAlbum reference
- * albums by id, since they key on the rgMbid string today.
+ * Pozzo d'Amor" merge; "Playing the Angel (Deluxe)" stays separate.
  */
 
 import { Prisma } from "@prisma/client";

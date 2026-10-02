@@ -40,11 +40,10 @@ export interface MatchResult {
 }
 
 /**
- * Match one source track against a candidate pool; the first strategy that
- * hits wins. `requireArtistMatch` (default true) limits the exact, containment
- * and prefix strategies to the same artist; with it false, the title-only floor
- * is an exact title or similarity >= 85. The 60/40 and 70/30 title/artist
- * blends scan the whole pool.
+ * Match one source track against a pool; the first strategy that hits wins.
+ * `requireArtistMatch` (default true) keeps exact, containment and prefix
+ * matches to the same artist; without it a bare title must match exactly or at
+ * similarity >= 85. The weighted title/artist blends scan the whole pool.
  */
 export function matchTrackToLibrary(
   source: SourceTrack,

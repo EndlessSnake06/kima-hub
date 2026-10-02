@@ -1,9 +1,8 @@
 /**
- * What each release tells the user and asks them; the file to edit when
- * cutting a release. A `note` informs, an `action` offers something to run,
- * a `choice` asks permission and defaults to false. Dismissing the window
- * records every untouched choice at its default (`decidedBy: DISMISSED`), so
- * silence is never read as consent.
+ * What each release tells and asks the user; edit this when cutting a release.
+ * A `note` informs, an `action` offers something to run, a `choice` asks and
+ * defaults to false. Dismissing records untouched choices at their default
+ * (`decidedBy: DISMISSED`), so silence is never consent.
  */
 
 export type ReleaseItem =

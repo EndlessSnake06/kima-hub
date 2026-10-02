@@ -1,9 +1,8 @@
 /**
- * The only producer for the library-scan queue: every caller uses requestScan().
- * A request is deduped by scope (download/album/import id, or "full") while one
- * is waiting or running; a leftover completed or failed marker is replaced so a
- * new request always runs. Every scope walks the whole music path; the ids only
- * let the processor close download jobs.
+ * The only producer for the library-scan queue. A request is deduped by scope
+ * (download, album or import id, or "full") while one is waiting or running; a
+ * finished marker is replaced so a new request always runs. Every scope walks
+ * the whole music path; the ids only tell the processor which jobs it serves.
  */
 
 import type { Job } from "bullmq";

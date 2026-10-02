@@ -1,9 +1,7 @@
 /**
- * Similar artists, discovery first: ListenBrainz's global dataset (by MBID),
- * with Deezer's related artists (by name) filling in when it is short. The
- * library never answers on its own; it only marks `inLibrary` and nudges scores
- * by CLAP centroid distance. Match scores from every source overlap the 0.5-0.7
- * band the discover-weekly tiers use.
+ * Similar artists, discovery first: ListenBrainz by MBID, then Deezer by name
+ * when it is short. The library only marks `inLibrary` and nudges scores by CLAP
+ * centroid distance. Scores sit in the 0.5-0.7 band the discover-weekly tiers use.
  */
 
 import { prisma } from "../utils/db";

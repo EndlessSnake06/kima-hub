@@ -1,9 +1,8 @@
 /**
- * One row per actual listen. Before 1.10.1 streaming wrote a Play row per
- * chunk, so a long track wrote many. A row belongs to the listen in progress
- * while the song could still be playing, measured from where that listen
- * began. Rows further apart than the track's length always split, so the
- * recursive walk only runs inside short bursts. Leaves relation `p`.
+ * One row per actual listen. A Play row joins the listen in progress while the
+ * song could still be playing, measured from where that listen began. Rows
+ * further apart than the track's length always split, so the recursive walk
+ * only runs inside short bursts. Leaves relation `p`.
  */
 
 import { Prisma } from "@prisma/client";

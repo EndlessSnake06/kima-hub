@@ -1,28 +1,8 @@
 /**
- * Regenerates src/services/pgTextRules.ts from a live Postgres, and re-derives
- * the TS/SQL parity fixture the identity tests assert against.
- *
- * The rules must match the Postgres the migrations run against. Run this if
- * that image is ever upgraded, and commit the diff:
- *
- *     npm run gen:pg-text-rules      (needs DATABASE_URL + the unaccent extension)
- *
- * It sweeps the whole Basic Multilingual Plane for four things the identity
- * keys depend on, because each is libc/ICU-defined and none matches its
- * JavaScript equivalent:
- *
- *   unaccent()  -- not Unicode normalisation; strips a bare combining mark but
- *                  leaves composed kana alone
- *   [:alnum:]   -- accepts 846 codepoints \p{L}\p{N} rejects, rejects 300 it
- *                  accepts (superscripts, fractions)
- *   lower()     -- the shipped image predates the Unicode 14/15 case mappings
- *                  V8 knows, and folds U+0130 differently
- *   \s          -- JS additionally matches NBSP, figure space, narrow NBSP, BOM
- *
- * The fixture regeneration runs the `kima_*` SQL functions the migrations
- * define, so the committed expectations are what the database actually
- * produces. Both outputs move together: changing the rules without re-deriving
- * the fixture would leave the parity test asserting stale behaviour.
+ * Regenerates src/services/pgTextRules.ts and its parity fixture from a live
+ * Postgres: unaccent(), [:alnum:], lower() and \s across the BMP, none of which
+ * match their JavaScript equivalents. Rerun after a Postgres image upgrade:
+ * `npm run gen:pg-text-rules` (needs DATABASE_URL and unaccent).
  */
 import { readFileSync, writeFileSync } from "fs";
 import { PrismaClient } from "@prisma/client";

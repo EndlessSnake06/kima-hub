@@ -1,15 +1,7 @@
 /**
- * Check every figure the stats page shows against a second, independent
- * calculation of the same thing.
- *
- * The point is not to re-run the service's SQL and confirm SQL is
- * deterministic. Each check below pulls the raw rows and recomputes the number
- * in JavaScript by a different route — the dedup rule applied in a loop rather
- * than a window function, a Pareto rank found by sorting rather than by
- * `sum() OVER`, a median from a sorted array rather than `percentile_cont`.
- * Where the two agree the figure is real. Where they disagree one of them is
- * wrong and the page is lying to somebody.
- *
+ * Checks every figure the stats page shows by recomputing it from raw rows by a
+ * different route: loops instead of window functions, sorts instead of
+ * `sum() OVER`, a sorted array instead of `percentile_cont`.
  * Run: npx tsx scripts/verify-stats.ts
  */
 
@@ -52,13 +44,9 @@ function note(name: string, text: string) { console.log(`  note  ${name}: ${text
 function fmt(v: unknown) { return typeof v === "number" ? String(round(v)) : JSON.stringify(v); }
 function round(n: number) { return Number.isInteger(n) ? n : Number(n.toFixed(6)); }
 
-/* ── The dedup rule, reimplemented ─────────────────────────────────────────
- *
- * The services express this as a window function: a play row starts a new
- * listen when the previous play of the same track was longer ago than that
- * track's own duration. Here it is a sort and a loop over raw rows, which is
- * the same rule arrived at by different means.
- */
+/* A play row starts a new listen when the previous play of the same track was
+ * longer ago than the track's duration. The services use a window function;
+ * this is a sort and a loop over raw rows. */
 interface Raw { id: string; trackId: string; playedAt: Date; source: string; duration: number;
                 energy: number | null; valence: number | null; bpm: number | null;
                 albumId: string; artistId: string; trackNo: number | null;
@@ -282,11 +270,8 @@ async function main() {
 
     /* ── the rolling windows ───────────────────────────────────────────── */
     //
-    // The window is applied to the walk's RESULT, not to its input, because a
-    // listen that began before the window opens can have chunk-writes inside
-    // it — and with the earlier rows filtered away the first surviving chunk
-    // would look like a listen starting, inventing a play at the edge of every
-    // window. These checks are what say that reasoning held.
+    // The window filters the walk's result, not its input: filtering rows first
+    // would turn a listen that began before the window into a new one at its edge.
     console.log("\nwindows");
     const now = Date.now();
     const startedWithin = (days: number) =>
@@ -322,10 +307,7 @@ async function main() {
 
     /* ── the player bar's number ───────────────────────────────────────── */
     //
-    // The player bar prints a count for the track it is playing, a few pixels
-    // from where this page prints its own. They read through the same rule, and
-    // this is the check that says so. If these ever disagree, one of them is
-    // lying to somebody who can see both at once.
+    // The player bar's play count must match this page's for the same track.
     console.log("\nplayer bar");
     const topTrack = L.topTracks[0];
     if (topTrack) {
@@ -341,10 +323,8 @@ async function main() {
 
     /* ── numbers the interface repeats back ────────────────────────────── */
     //
-    // Two limits live on the server and are printed by the client, which cannot
-    // import them. So they are asserted here: if a cap moves, this fails and
-    // names the file that has to move with it. Without that the interface just
-    // starts promising something the server will not do, silently.
+    // Two server limits are repeated in client copy, which cannot import them;
+    // if a cap moves, this fails and names the file that must move with it.
     console.log("\nshared limits");
     const playableSrc = readFileSync(
         new URL("../src/services/stats/playable.ts", import.meta.url), "utf8");
@@ -357,10 +337,8 @@ async function main() {
 
     /* ── the audit's own promise ───────────────────────────────────────── */
     //
-    // The delete says it removes only listens it can prove were skipped. A
-    // track under 30 seconds can never register a play at all, which is a fact
-    // about its length and not proof about the listen, so those are reported
-    // apart and left alone.
+    // The delete removes only listens proven skipped. Tracks under 30 seconds
+    // can never register a play, so they are reported apart and left alone.
     console.log("\nplay-history audit");
     const audit = await auditFalseStarts(user.id);
     check("heard + skipped + tooShort + unclear == listens",

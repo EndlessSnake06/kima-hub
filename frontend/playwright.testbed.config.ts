@@ -1,13 +1,9 @@
 import { defineConfig } from "@playwright/test";
 
 /**
- * Testbed dogfood config — fresh-install gate for the single production image.
- *
- * Differences from playwright.config.ts:
- *   - NO globalSetup: the whole point is registering the account through the
- *     real onboarding UI on a fresh database. The default globalSetup logs in
- *     as a pre-provisioned user, which cannot exist yet.
- *   - launchArgs: deck.gl (vibe map) needs software GL in headless Chromium.
+ * The fresh-install gate for the production image. No globalSetup: the spec
+ * registers its account through onboarding on an empty database. Headless
+ * Chromium needs software GL for the vibe map.
  */
 const baseURL = process.env.KIMA_UI_BASE_URL || "http://127.0.0.1:3055";
 

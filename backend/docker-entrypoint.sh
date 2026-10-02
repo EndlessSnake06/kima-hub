@@ -54,26 +54,10 @@ if [ -z "$SESSION_SECRET" ] || [ "$SESSION_SECRET" = "changeme-generate-secure-k
   echo "Generated SESSION_SECRET (will not persist across restarts - set it in .env for production)"
 fi
 
-# SETTINGS_ENCRYPTION_KEY is deliberately NOT defaulted here.
-#
-# This used to fall back to the literal string "default-encryption-key-change-me",
-# which is the exact value src/utils/encryption.ts refuses to start under. That
-# module derives its key at import time, so the fallback did not produce a
-# working-but-insecure server as its message promised -- it produced a boot
-# crash, on the documented onboarding path (.env.example ships the variable
-# empty and docker-compose.yml passes the empty value straight through).
-#
-# It is not defaulted to a GENERATED key either, the way SESSION_SECRET is two
-# blocks above. A session secret is disposable: regenerating it logs everyone
-# out. This key is not -- every stored credential and 2FA secret is encrypted
-# under it, so a fresh key each boot silently makes all of them permanently
-# unreadable. Losing data quietly is worse than refusing to start.
-#
-# So the container now fails with encryption.ts's own error, which names the
-# variable and gives the command to generate one. The unified all-in-one image
-# takes the other route and can afford to: it generates a key and PERSISTS it to
-# /data/secrets/encryption_key, so the same key comes back after a restart.
-# Doing that here needs somewhere durable to put it, which is a compose change.
+# SETTINGS_ENCRYPTION_KEY is never defaulted: every stored credential is
+# encrypted under it, so a generated key would make them unreadable after a
+# restart. Without it the server stops with an error naming the variable and
+# the command that generates one.
 
 echo "[START] Kima Backend starting on port ${PORT:-3006}..."
 echo "[CONFIG] Music path: ${MUSIC_PATH:-/music}"

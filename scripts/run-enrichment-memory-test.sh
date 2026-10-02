@@ -1,15 +1,8 @@
 #!/usr/bin/env bash
-# Run the enrichment-cycle Playwright test with before/after host memory monitoring.
-#
-# Usage:
-#   bash scripts/run-enrichment-memory-test.sh [container-name]
-#
-# Environment:
-#   KIMA_TEST_USERNAME  -- E2E test user (default: kima_e2e)
-#   KIMA_TEST_PASSWORD  -- E2E test password (required)
-#   KIMA_UI_BASE_URL    -- Base URL (default: http://127.0.0.1:3030)
-#   KIMA_CONTAINER      -- Docker container name (default: kima-test)
-#   SUNRECLAIM_LIMIT_MB -- Fail if SUnreclaim grows by more than this (default: 1024)
+# Runs the enrichment-cycle Playwright test and fails if host SUnreclaim grows
+# more than SUNRECLAIM_LIMIT_MB (default 1024). Usage: [container-name].
+# Env: KIMA_TEST_PASSWORD (required), KIMA_TEST_USERNAME, KIMA_UI_BASE_URL,
+# KIMA_CONTAINER (default kima-test).
 
 set -euo pipefail
 

@@ -1,9 +1,6 @@
-// Pin the timezone for the whole worker process BEFORE any Date/Intl is
-// initialized. Setting process.env.TZ from inside a test file is a no-op --
-// V8 caches the local zone at startup -- so date-fns' startOfWeek would resolve
-// in the host zone (America/Chicago on the dev box) and emit non-midnight,
-// occasionally day-shifted weekStarts. This runs in the parent before workers
-// spawn; workers inherit the env, making the suite host-independent.
+// V8 reads the zone once at startup, so TZ is pinned here, before workers spawn
+// and inherit it. Set inside a test file it does nothing, and week starts would
+// follow the host's zone.
 process.env.TZ = 'UTC';
 
 /** @type {import('jest').Config} */
@@ -25,13 +22,9 @@ module.exports = {
     moduleFileExtensions: ['ts', 'js', 'json'],
     clearMocks: true,
     collectCoverageFrom: ['src/**/*.ts', '!src/**/*.d.ts'],
-    // `@noble/ciphers` is pure ESM with no CJS build, and `utils/encryption.ts`
-    // imports it synchronously. Node 24 requires it fine -- `require(esm)` is on
-    // by default there, which is what makes the compiled CJS server work -- but
-    // Jest resolves modules through its own registry, not Node's, so it needs
-    // the package transformed to CJS on the way in. Mocking it the way p-queue
-    // is mocked is not an option: the whole point of the encryption suite is
-    // that it exercises the real cipher.
+    // `@noble/ciphers` is ESM only. Node loads it, but Jest's own registry does
+    // not, so it is transformed to CJS rather than mocked: the encryption tests
+    // must run the real cipher.
     transformIgnorePatterns: [
         'node_modules/(?!(p-queue|eventemitter3|@noble)/)',
     ],

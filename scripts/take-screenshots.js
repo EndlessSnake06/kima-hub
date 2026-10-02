@@ -1,13 +1,8 @@
 #!/usr/bin/env node
 /**
- * Takes README screenshots against a running Kima instance.
- *
- * Usage:
- *   export KIMA_TEST_USERNAME=your_username
- *   export KIMA_TEST_PASSWORD=your_password
- *   export KIMA_UI_BASE_URL=http://127.0.0.1:3030  # optional, this is the default
- *   cd /mnt/storage/Projects/lidify/frontend
- *   node ../scripts/take-screenshots.js
+ * Takes README screenshots against a running Kima instance. From frontend/:
+ * KIMA_TEST_USERNAME=… KIMA_TEST_PASSWORD=… node ../scripts/take-screenshots.js
+ * (KIMA_UI_BASE_URL defaults to http://127.0.0.1:3030).
  */
 
 const { chromium } = require("playwright");

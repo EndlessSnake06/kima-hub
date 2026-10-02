@@ -6,11 +6,9 @@ import { useLayoutEffect, useRef } from "react";
 const MIN_SCALE = 0.5;
 
 /**
- * Shows its content at the largest scale, up to 1, that fits the panel with no
- * scrolling. Content is laid out at the panel width divided by the scale, so it
- * still spans the full width once scaled. `fill` content takes the full height
- * and pages itself; it shrinks only if its fixed parts overflow. `--fit-h` is
- * the height on offer, so charts can size themselves to it.
+ * Shows its content at the largest scale, up to 1, that fits without scrolling,
+ * laid out at width / scale so it still spans the panel. `fill` content takes
+ * the full height and pages itself. `--fit-h` is the height on offer to charts.
  */
 export function FitPanel({ fill = false, children }: { fill?: boolean; children: React.ReactNode }) {
     const outer = useRef<HTMLDivElement>(null);

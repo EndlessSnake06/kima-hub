@@ -247,11 +247,9 @@ code {
         transition-duration: 0ms;
     }
 
-    /* A 44px floor for anything a finger has to hit, set here rather than per
-     * component. Range, checkbox and radio are excluded: a range input is its
-     * own 4px track, and checkboxes sit in fixed grid columns they would
-     * overflow. Their tap area comes from the label beside them. Cells of a
-     * chart marked .touch-exempt are a picture on touch screens and keep their size. */
+    /* A 44px floor for anything a finger has to hit. Range, checkbox and radio
+     * are excluded: their tap area is the label beside them. Chart cells marked
+     * .touch-exempt are a picture on touch screens and keep their size. */
     button:not(.touch-exempt),
     input:not([type="range"]):not([type="checkbox"]):not([type="radio"]),
     select,
