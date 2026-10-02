@@ -8,10 +8,14 @@ import { expect, test } from "@playwright/test";
  * Runs against the fresh-install dogfood testbed at :3055.
  */
 const baseUrl = process.env.KIMA_UI_BASE_URL || "http://127.0.0.1:3055";
-const USERNAME = process.env.KIMA_TEST_USERNAME || "kima_dogfood";
-const PASSWORD = process.env.KIMA_TEST_PASSWORD || "dogfood-test-1";
+const USERNAME = process.env.KIMA_TEST_USERNAME || "";
+const PASSWORD = process.env.KIMA_TEST_PASSWORD || "";
 
 test("release window: Esc hint renders and Escape dismisses", async ({ browser }) => {
+    expect(
+        USERNAME && PASSWORD,
+        "KIMA_TEST_USERNAME and KIMA_TEST_PASSWORD must be set",
+    ).toBeTruthy();
     const page = await browser.newPage();
     await page.goto(baseUrl + "/login");
     await page.locator('input[placeholder="Enter your username"]').fill(USERNAME);

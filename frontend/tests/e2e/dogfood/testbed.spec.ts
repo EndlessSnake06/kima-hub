@@ -7,8 +7,8 @@ import { test, expect, Browser, BrowserContext, Page } from "@playwright/test";
 import { DogfoodSession } from "./session";
 
 const baseUrl = process.env.KIMA_UI_BASE_URL || "http://127.0.0.1:3055";
-const username = process.env.KIMA_TEST_USERNAME || "kima_dogfood";
-const password = process.env.KIMA_TEST_PASSWORD || "dogfood-test-1";
+const username = process.env.KIMA_TEST_USERNAME || "";
+const password = process.env.KIMA_TEST_PASSWORD || "";
 
 // 363 tracks on 16 cores; enrichment includes CLAP embeddings for all.
 const ENRICHMENT_TIMEOUT_MS = 90 * 60 * 1000;
@@ -30,6 +30,10 @@ test.describe("Testbed dogfood: fresh install", () => {
 
     test.beforeAll(async ({ browser: launched }) => {
         browser = launched;
+        expect(
+            username && password,
+            "KIMA_TEST_USERNAME and KIMA_TEST_PASSWORD must be set",
+        ).toBeTruthy();
         context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
         page = await context.newPage();
         session = new DogfoodSession(page, baseUrl);

@@ -7,8 +7,8 @@ import { expect, test, type Page } from "@playwright/test";
  */
 
 const baseUrl = process.env.KIMA_UI_BASE_URL || "http://127.0.0.1:3055";
-const USERNAME = process.env.KIMA_TEST_USERNAME || "kima_dogfood";
-const PASSWORD = process.env.KIMA_TEST_PASSWORD || "dogfood-test-1";
+const USERNAME = process.env.KIMA_TEST_USERNAME || "";
+const PASSWORD = process.env.KIMA_TEST_PASSWORD || "";
 
 /** Feed is sourced from the app's own discover API at runtime — never hardcoded. */
 let FEED_URL = "";
@@ -54,6 +54,10 @@ test.describe.serial("Testbed removals", () => {
     let podcastTitle = "";
 
     test.beforeAll(async ({ browser }) => {
+        expect(
+            USERNAME && PASSWORD,
+            "KIMA_TEST_USERNAME and KIMA_TEST_PASSWORD must be set",
+        ).toBeTruthy();
         page = await browser.newPage();
         await page.goto(baseUrl + "/login");
         await page.locator('input[placeholder="Enter your username"]').fill(USERNAME);
