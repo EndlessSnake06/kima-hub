@@ -201,6 +201,17 @@ export function FalseStarts() {
                 <p className="t-body max-w-[52ch]">
                     Nothing left to judge. Every listen is either one the audit can&apos;t call or
                     one on a track you told it to leave alone.
+                    {audit.ignored.length > 0 && (
+                        <>
+                            {" "}
+                            <button
+                                onClick={toggleIgnored}
+                                className="t-control text-[var(--text-secondary)] hover:text-white transition-colors rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+                            >
+                                Show {audit.ignored.length} left alone
+                            </button>
+                        </>
+                    )}
                 </p>
             )}
 
