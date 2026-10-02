@@ -28,7 +28,7 @@ export type ResolvedSystemSettings<S> = S & {
     [K in EncryptedField]: string | null;
 };
 
-export function encryptedFields(): EncryptedField[] {
+function encryptedFields(): EncryptedField[] {
     return Object.keys(ENCRYPTED_FIELDS) as EncryptedField[];
 }
 

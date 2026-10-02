@@ -11,7 +11,7 @@ import { logger } from "../../utils/logger";
 import { RELEASES, choicesIn, findRelease, type Release, type ReleaseItem } from "./catalog";
 import { MOOD_MIX_RELEASE, moodMixState, type MoodMixState } from "./moodMixes";
 
-export { RELEASES, findRelease, GPU_CHOICE_KEY } from "./catalog";
+export { findRelease, GPU_CHOICE_KEY } from "./catalog";
 export type { Release, ReleaseItem } from "./catalog";
 
 async function isAdminUser(userId: string): Promise<boolean> {

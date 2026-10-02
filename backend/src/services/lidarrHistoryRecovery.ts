@@ -21,7 +21,7 @@ const HISTORY_EVENTS = [
     { historyType: 7, eventType: "ImportFailure" },
 ];
 
-export function toWebhookPayload(eventType: string, record: LidarrHistoryRecord) {
+function toWebhookPayload(eventType: string, record: LidarrHistoryRecord) {
     const album = record.album && {
         id: record.album.id,
         mbId: record.album.foreignAlbumId,

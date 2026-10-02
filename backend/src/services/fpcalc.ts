@@ -18,7 +18,7 @@ interface Fingerprint {
  * so the error carries the exit code and fpcalc's stderr text verbatim:
  * classifyFailure reads the message and routes the stage record accordingly.
  */
-export class FpcalcFailure extends Error {
+class FpcalcFailure extends Error {
     readonly exitCode: number;
     readonly stderr: string;
 

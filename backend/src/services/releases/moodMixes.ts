@@ -54,7 +54,7 @@ interface SavedMix {
  * The user's saved mood mix, including a retired one. The id is the one the
  * home page uses for the same mix (`your-mood-mix-<generatedAt ms>`).
  */
-export async function savedMoodMix(userId: string): Promise<SavedMix | null> {
+async function savedMoodMix(userId: string): Promise<SavedMix | null> {
     const row = await prisma.userMoodMix.findUnique({
         where: { userId },
         select: { mood: true, trackIds: true, generatedAt: true },

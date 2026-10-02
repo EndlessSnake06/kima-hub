@@ -15,7 +15,7 @@ import { getSystemSettings, invalidateSystemSettingsCache } from "../utils/syste
 import { notificationService } from "./notificationService";
 
 export const WEBHOOK_SECRET_HEADER = "X-Webhook-Secret";
-export const DEFAULT_CALLBACK_URL = "http://host.docker.internal:3030";
+const DEFAULT_CALLBACK_URL = "http://host.docker.internal:3030";
 const UNREACHABLE_KEY = "lidarr-callback";
 
 const EVENTS = {
