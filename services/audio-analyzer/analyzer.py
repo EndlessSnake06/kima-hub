@@ -383,8 +383,6 @@ class AudioAnalyzer:
         
         # Additional extractors for better Standard mode
         self.spectral_centroid = es.Centroid(range=22050)  # For brightness
-        self.spectral_flatness = es.FlatnessDB()  # For instrumentalness
-        self.zcr = es.ZeroCrossingRate()
         self.rms = es.RMS()  # For proper energy calculation
         self.spectrum = es.Spectrum()
         self.windowing = es.Windowing(type='hann')
@@ -608,9 +606,7 @@ class AudioAnalyzer:
             n_frames = max(0, (len(audio_44k) - frame_size) // hop_size)
 
             rms_values = np.empty(n_frames, dtype=np.float32)
-            zcr_values = np.empty(n_frames, dtype=np.float32)
             sc_values = np.empty(n_frames, dtype=np.float32)
-            sf_values = np.empty(n_frames, dtype=np.float32)
 
             for idx in range(n_frames):
                 offset = idx * hop_size
@@ -619,21 +615,15 @@ class AudioAnalyzer:
                 spectrum = self.spectrum(windowed)
 
                 rms_values[idx] = self.rms(frame)
-                zcr_values[idx] = self.zcr(frame)
                 sc_values[idx] = self.spectral_centroid(spectrum)
-                sf_values[idx] = self.spectral_flatness(spectrum)
 
             if n_frames > 0:
                 avg_rms = float(np.mean(rms_values))
                 result['energy'] = round(min(1.0, avg_rms * 3), 3)
                 avg_sc = float(np.mean(sc_values))
-                avg_sf = float(np.mean(sf_values))
-                avg_zcr = float(np.mean(zcr_values))
             else:
                 result['energy'] = 0.5
                 avg_sc = 0.5
-                avg_sf = -20.0
-                avg_zcr = 0.1
 
             loudness = self.loudness(audio_44k)
             result['loudness'] = round(float(loudness), 2)
@@ -643,8 +633,6 @@ class AudioAnalyzer:
 
             # Store spectral features for Standard mode estimates
             result['_spectral_centroid'] = avg_sc
-            result['_spectral_flatness'] = avg_sf
-            result['_zcr'] = avg_zcr
 
             # Basic Danceability (non-ML)
             # Essentia Danceability() returns [0, 3], normalize to [0, 1]
@@ -680,8 +668,7 @@ class AudioAnalyzer:
             logger.error(f"Analysis error: {e}")
             traceback.print_exc()
         finally:
-            for k in ['_spectral_centroid', '_spectral_flatness', '_zcr']:
-                result.pop(k, None)
+            result.pop('_spectral_centroid', None)
         return result
     
     def _extract_ml_features(self, audio_16k) -> Dict[str, Any]:
@@ -782,7 +769,7 @@ class AudioAnalyzer:
 
     def _apply_standard_estimates(self, result: Dict[str, Any], scale: str, bpm: float):
         """Standard mode: estimate mood from key, BPM, energy, dynamic range,
-        spectral centroid and flatness, and zero-crossing rate."""
+        and spectral centroid."""
         result['analysisMode'] = 'standard'
         
         # Get all available features
@@ -790,8 +777,6 @@ class AudioAnalyzer:
         dynamic_range = result.get('dynamicRange', 8) or 8
         danceability = result.get('danceability', 0.5) or 0.5
         spectral_centroid = result.get('_spectral_centroid', 0.5) or 0.5
-        spectral_flatness = result.get('_spectral_flatness', -20) or -20
-        zcr = result.get('_zcr', 0.1) or 0.1
         
         # === VALENCE (happiness/positivity) ===
         # Major key = happier, minor = sadder, unknown key = neutral.
@@ -842,25 +827,7 @@ class AudioAnalyzer:
             compression_arousal * 0.15, # Compression = intensity
             3
         )
-        
-        # === INSTRUMENTALNESS ===
-        # High spectral flatness (closer to 0 dB) = more noise-like = more instrumental
-        # Low spectral flatness (closer to -60 dB) = more tonal = likely vocals
-        # ZCR also helps - vocals have moderate ZCR
-        flatness_normalized = min(1.0, max(0, (spectral_flatness + 40) / 40))  # -40 to 0 dB -> 0 to 1
-        
-        # High ZCR often indicates percussion/hi-hats OR speech
-        # Very low ZCR indicates sustained tones (likely instrumental)
-        if zcr < 0.05:
-            zcr_instrumental = 0.7  # Very low = likely sustained instrumental
-        elif zcr > 0.15:
-            zcr_instrumental = 0.4  # High = could be speech or percussion
-        else:
-            zcr_instrumental = 0.5  # Moderate = uncertain
-        
-        # instrumentalness, acousticness: CLAP zero-shot is the sole writer.
-        # Do NOT set them here -- they will be populated during the vibe phase.
-    
+
     def _generate_mood_tags(self, features: Dict[str, Any]) -> List[str]:
         """
         Generate mood tags based on extracted features.
