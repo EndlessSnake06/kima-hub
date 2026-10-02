@@ -173,19 +173,15 @@ class WebhookEventStore {
     }
 
     /**
-     * Clean up old processed events (older than N days)
+     * Delete events older than `daysToKeep`, including those that ran out of
+     * retries: by then the download sweeps have settled their jobs.
      */
     async cleanupOldEvents(daysToKeep: number = 30): Promise<number> {
         const cutoffDate = new Date();
         cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
 
         const result = await prisma.webhookEvent.deleteMany({
-            where: {
-                processed: true,
-                createdAt: {
-                    lt: cutoffDate,
-                },
-            },
+            where: { createdAt: { lt: cutoffDate } },
         });
 
         if (result.count > 0) {

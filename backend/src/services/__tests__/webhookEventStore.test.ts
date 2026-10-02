@@ -185,16 +185,14 @@ describe("WebhookEventStore", () => {
     });
 
     describe("cleanupOldEvents", () => {
-        it("deletes only processed events older than the cutoff date", async () => {
+        it("deletes every event older than the cutoff, processed or out of retries", async () => {
             (prisma.webhookEvent.deleteMany as jest.Mock).mockResolvedValue({ count: 5 });
 
             const deleted = await webhookEventStore.cleanupOldEvents(30);
 
             expect(deleted).toBe(5);
             const call = (prisma.webhookEvent.deleteMany as jest.Mock).mock.calls[0][0];
-            expect(call.where.processed).toBe(true);
-            expect(call.where.createdAt.lt).toBeInstanceOf(Date);
-            // Cutoff must be approximately 30 days ago
+            expect(Object.keys(call.where)).toEqual(["createdAt"]);
             const cutoff = call.where.createdAt.lt as Date;
             const daysAgo = (Date.now() - cutoff.getTime()) / (1000 * 60 * 60 * 24);
             expect(daysAgo).toBeCloseTo(30, 0);

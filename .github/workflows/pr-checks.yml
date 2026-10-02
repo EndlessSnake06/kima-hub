@@ -110,15 +110,7 @@ jobs:
 
             - name: Run Jest
               working-directory: backend
-              # Exclude webhookEventStore -- it is an integration test requiring
-              # a live PostgreSQL database. It runs in integration.yml instead.
-              # (Unrelated to the Postgres service above, which now covers the
-              # vibeProfile/social/socialProfile integration suite instead --
-              # see backend/src/__mocks__/test-global-setup.cjs for the one
-              # thing a fresh database here still doesn't have: the vibe-engine's
-              # OWN tables, not owned by these migrations. It bootstraps a
-              # minimal stand-in; see that file's comment for the real boundary.)
-              run: npm test -- --passWithNoTests --testPathIgnorePatterns="webhookEventStore"
+              run: npm test -- --passWithNoTests
 
     python-analyzer-tests:
         name: Python Analyzer Tests
