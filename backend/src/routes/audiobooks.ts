@@ -1,6 +1,4 @@
 import { Router } from "express";
-import * as fs from "fs";
-import * as path from "path";
 import { logger } from "../utils/logger";
 import { safeError, UserFacingError } from "../utils/errors";
 import { audiobookCacheService } from "../services/audiobookCache";
@@ -10,7 +8,7 @@ import { requireAuthOrToken } from "../middleware/auth";
 import { apiLimiter } from "../middleware/rateLimiter";
 import { getSystemSettings } from "../utils/systemSettings";
 import { config } from "../config";
-import { resolveWithinMusicRoot } from "./library/trackPath";
+import { getLocalImagePath } from "../services/imageStorage";
 import { artistSortName } from "../services/artistIdentity";
 import { upstreamHeader } from "../utils/upstreamHeaders";
 
@@ -470,36 +468,10 @@ router.get("/:id/cover", async (req, res) => {
             select: { localCoverPath: true, coverUrl: true },
         });
 
-        let coverPath = audiobook?.localCoverPath;
-
-        // Fallback: check if cover exists on disk even if DB path is empty
-        if (!coverPath) {
-            // `id` comes from the URL, and Express decodes %2F after matching, so "..%2F"
-            // is real traversal here. This route is unauthenticated; without the resolve it
-            // would serve any .jpg the process can read.
-            const fallbackPath = resolveWithinMusicRoot(
-                "cover-cache",
-                "audiobooks",
-                `${id}.jpg`
-            );
-            if (fallbackPath && fs.existsSync(fallbackPath)) {
-                coverPath = fallbackPath;
-                // Update database with the correct path
-                await prisma.audiobook
-                    .update({
-                        where: { id },
-                        data: { localCoverPath: fallbackPath },
-                    })
-                    .catch(() => {}); // Ignore errors if audiobook doesn't exist
-            }
-        }
-
-        // The stored localCoverPath is resolved too: it is a database value and could
-        // point outside the music root.
-        const resolvedCover = coverPath
-            ? resolveWithinMusicRoot(coverPath)
+        const resolvedCover = audiobook?.localCoverPath
+            ? getLocalImagePath(audiobook.localCoverPath)
             : null;
-        if (resolvedCover && fs.existsSync(resolvedCover)) {
+        if (resolvedCover) {
             const origin = resolveCorsOrigin(req.headers.origin, "http://localhost:3030");
             res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
             if (origin) {

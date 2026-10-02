@@ -3,9 +3,7 @@ import { buildSections, resolveMetaTags } from "./audiobookSections";
 import { artistSortName } from "./artistIdentity";
 import { logger } from "../utils/logger";
 import { prisma } from "../utils/db";
-import fs from "fs/promises";
-import path from "path";
-import { config } from "../config";
+import { downloadAndStoreImage } from "./imageStorage";
 
 /**
  * Service to sync audiobooks from Audiobookshelf and cache them locally
@@ -22,35 +20,6 @@ interface SyncResult {
 }
 
 class AudiobookCacheService {
-    private coverCacheDir: string;
-    private coverCacheAvailable: boolean = false;
-
-    constructor() {
-        // Store covers in: <MUSIC_PATH>/cover-cache/audiobooks/
-        this.coverCacheDir = path.join(
-            config.music.musicPath,
-            "cover-cache",
-            "audiobooks"
-        );
-    }
-
-    /**
-     * Try to ensure cover cache directory exists
-     * Returns true if available, false if not (permissions issue)
-     */
-    private async ensureCoverCacheDir(): Promise<boolean> {
-        try {
-            await fs.mkdir(this.coverCacheDir, { recursive: true });
-            this.coverCacheAvailable = true;
-            return true;
-        } catch (error: any) {
-            logger.warn(`[AUDIOBOOK] Cover cache directory unavailable: ${error.message}`);
-            logger.warn("[AUDIOBOOK] Covers will be served directly from Audiobookshelf");
-            this.coverCacheAvailable = false;
-            return false;
-        }
-    }
-
     /**
      * Sync all audiobooks from Audiobookshelf to our database
      */
@@ -65,9 +34,6 @@ class AudiobookCacheService {
 
         try {
             logger.debug(" Starting audiobook sync from Audiobookshelf...");
-
-            // Try to ensure cover cache directory exists (non-fatal if it fails)
-            await this.ensureCoverCacheDir();
 
             // Fetch all audiobooks from Audiobookshelf
             const audiobooks = await audiobookshelfService.getAllAudiobooks();
@@ -379,57 +345,18 @@ class AudiobookCacheService {
         }
     }
 
-    /**
-     * Download a cover image and save it locally
-     * Returns null if cover caching is not available (permissions issue)
-     */
+    /** Store the cover in the app's image store; null when it cannot be fetched. */
     private async downloadCover(
         audiobookId: string,
         coverUrl: string
     ): Promise<string | null> {
-        // Skip cover download if cache directory is not available
-        if (!this.coverCacheAvailable) {
-            return null;
-        }
+        const { getSystemSettings } = await import("../utils/systemSettings");
+        const settings = await getSystemSettings();
+        if (!settings?.audiobookshelfApiKey) return null;
 
-        try {
-            // Get API key for authentication
-            const { getSystemSettings } = await import(
-                "../utils/systemSettings"
-            );
-            const settings = await getSystemSettings();
-
-            if (!settings?.audiobookshelfApiKey) {
-                throw new Error("Audiobookshelf API key not configured");
-            }
-
-            const response = await fetch(coverUrl, {
-                headers: {
-                    Authorization: `Bearer ${settings.audiobookshelfApiKey}`,
-                },
-                signal: AbortSignal.timeout(10_000),
-            });
-
-            if (!response.ok) {
-                throw new Error(
-                    `HTTP ${response.status}: ${response.statusText}`
-                );
-            }
-
-            const buffer = await response.arrayBuffer();
-            const fileName = `${audiobookId}.jpg`;
-            const filePath = path.join(this.coverCacheDir, fileName);
-
-            await fs.writeFile(filePath, Buffer.from(buffer));
-
-            return filePath;
-        } catch (error: any) {
-            logger.error(
-                `Failed to download cover for ${audiobookId}:`,
-                error.message
-            );
-            return null;
-        }
+        return downloadAndStoreImage(coverUrl, audiobookId, "audiobook", {
+            Authorization: `Bearer ${settings.audiobookshelfApiKey}`,
+        });
     }
 
     /**
@@ -478,54 +405,6 @@ class AudiobookCacheService {
         }
 
         return audiobook;
-    }
-
-    /** Delete cached covers that belong to no audiobook. */
-    async cleanupOrphanedCovers(): Promise<number> {
-        // Ensure cache directory is available
-        const available = await this.ensureCoverCacheDir();
-        if (!available) {
-            logger.warn("[AUDIOBOOK] Cannot cleanup covers - cache directory unavailable");
-            return 0;
-        }
-
-        const audiobooks = await prisma.audiobook.findMany({
-            select: { id: true, localCoverPath: true },
-        });
-
-        // Keep any file named for a live audiobook, even one whose localCoverPath is
-        // NULL: the cover route also finds files on disk.
-        const validCoverPaths = new Set(
-            audiobooks
-                .filter((a) => a.localCoverPath)
-                .map((a) => path.basename(a.localCoverPath!))
-        );
-        // Cover files are named <audiobookId>.<ext> by ensureCoverCacheDir's
-        // writer; keep any file matching a live id regardless of the column.
-        const liveIds = new Set(audiobooks.map((a) => a.id));
-        for (const file of await fs.readdir(this.coverCacheDir)) {
-            const stem = file.replace(/\.[^.]+$/, "");
-            if (liveIds.has(stem)) {
-                validCoverPaths.add(file);
-            }
-        }
-
-        let deleted = 0;
-        try {
-            const files = await fs.readdir(this.coverCacheDir);
-
-            for (const file of files) {
-                if (!validCoverPaths.has(file)) {
-                    await fs.unlink(path.join(this.coverCacheDir, file));
-                    deleted++;
-                    logger.debug(`  [DELETE] Deleted orphaned cover: ${file}`);
-                }
-            }
-        } catch (error: any) {
-            logger.warn(`[AUDIOBOOK] Failed to read cover cache directory: ${error.message}`);
-        }
-
-        return deleted;
     }
 }
 

@@ -1,7 +1,11 @@
+import fs from "fs";
+import os from "os";
+import path from "path";
+
 /**
- * GET /audiobooks/:id/cover is unauthenticated and must not serve a file outside
- * the covers folder; Express decodes %2F in a param after matching. A real file
- * outside the root is planted and requested.
+ * GET /audiobooks/:id/cover is unauthenticated. It serves only a cover the
+ * audiobook row points at inside the app's image store; a stored path that
+ * leaves the store, or points into the music folder, is never read from disk.
  */
 
 jest.mock("../../utils/db", () => ({
@@ -59,83 +63,79 @@ jest.mock("../../services/notificationService", () => ({
     notificationService: { notifySystem: jest.fn() },
 }));
 
+const COVERS_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), "kima-covers-"));
+
 jest.mock("../../config", () => ({
-    config: { music: { musicPath: "/music" } },
+    config: { music: { musicPath: "/music", transcodeCachePath: path.join(COVERS_ROOT, "transcodes") } },
 }));
 
 import express from "express";
 import request from "supertest";
-import fs from "fs";
-import os from "os";
-import path from "path";
 import audiobookRoutes from "../../routes/audiobooks";
 import { prisma } from "../../utils/db";
 
-// Where the unguarded join would have landed: the route appends ".jpg" itself.
-const PROBE_BODY = "if you can read this, the traversal worked";
-const probeFile = path.join(os.tmpdir(), `kima-cover-traversal-${process.pid}.jpg`);
-
-/**
- * The id that reaches outside. Built from the real temp path rather than
- * hardcoded, so this works wherever os.tmpdir() points. encodeURIComponent
- * turns the separators into %2F, which is the whole trick: Express matches
- * `/:id/cover` on the still-encoded segment, then decodes it for the handler.
- */
-function traversingId(): string {
-    const withoutExt = probeFile.replace(/\.jpg$/, "");
-    const relative = path.relative("/music/cover-cache/audiobooks", withoutExt);
-    return encodeURIComponent(relative);
-}
+const SECRET_BODY = "if you can read this, the stored path escaped the image store";
+const COVER_BODY = "a real audiobook cover";
+const outsideFile = path.join(os.tmpdir(), `kima-cover-outside-${process.pid}.jpg`);
 
 function makeApp() {
     const app = express();
-    app.use(express.json());
     app.use("/", audiobookRoutes);
     return app;
 }
 
+function storedCover(localCoverPath: string | null) {
+    (prisma.audiobook.findUnique as jest.Mock).mockResolvedValue({ localCoverPath, coverUrl: null });
+}
+
 describe("GET /audiobooks/:id/cover", () => {
-    let app: express.Application;
+    const app = makeApp();
 
     beforeAll(() => {
-        app = makeApp();
-        fs.writeFileSync(probeFile, PROBE_BODY);
+        fs.mkdirSync(path.join(COVERS_ROOT, "covers", "audiobooks"), { recursive: true });
+        fs.writeFileSync(path.join(COVERS_ROOT, "covers", "audiobooks", "book-1.jpg"), COVER_BODY);
+        fs.writeFileSync(outsideFile, SECRET_BODY);
     });
 
     afterAll(() => {
-        fs.rmSync(probeFile, { force: true });
+        fs.rmSync(COVERS_ROOT, { recursive: true, force: true });
+        fs.rmSync(outsideFile, { force: true });
     });
 
-    beforeEach(() => {
-        jest.clearAllMocks();
-        (prisma.audiobook.findUnique as jest.Mock).mockResolvedValue(null);
+    beforeEach(() => storedCover(null));
+
+    it("serves the cover the row points at in the image store", async () => {
+        storedCover("native:audiobooks/book-1.jpg");
+
+        const res = await request(app).get("/book-1/cover");
+
+        expect(res.status).toBe(200);
+        expect(Buffer.from(res.body).toString()).toBe(COVER_BODY);
     });
 
-    it("refuses an id that escapes the music root, and does not serve the file", async () => {
-        // The file really exists and really is readable by this process.
-        expect(fs.existsSync(probeFile)).toBe(true);
+    it("refuses a stored path that climbs out of the image store", async () => {
+        storedCover(`native:${path.relative(path.join(COVERS_ROOT, "covers"), outsideFile)}`);
 
-        const res = await request(app).get(`/${traversingId()}/cover`);
+        const res = await request(app).get("/book-1/cover");
 
-        // 404 is the route's own "no cover available" answer, reached because
-        // the guard refused the path rather than because the file was missing.
         expect(res.status).toBe(404);
-        expect(res.text).not.toContain(PROBE_BODY);
+        expect(res.text).not.toContain(SECRET_BODY);
     });
 
-    it("does not record an out-of-root path back onto the audiobook row", async () => {
-        // The unguarded version wrote whatever it resolved into
-        // localCoverPath, which would have persisted the escape.
-        await request(app).get(`/${traversingId()}/cover`);
+    it("does not read an absolute path stored by older versions", async () => {
+        storedCover(outsideFile);
 
-        expect(prisma.audiobook.update).not.toHaveBeenCalled();
+        const res = await request(app).get("/book-1/cover");
+
+        expect(res.status).toBe(404);
+        expect(res.text).not.toContain(SECRET_BODY);
     });
 
-    it("still answers 404 for an ordinary id with no cover on disk", async () => {
-        // The guard must not turn "no cover" into an error.
-        const res = await request(app).get("/audiobook-with-no-cover/cover");
+    it("answers 404 for an audiobook it does not know", async () => {
+        const res = await request(app).get("/no-such-book/cover");
 
         expect(res.status).toBe(404);
         expect(res.body.error).toBe("Cover not found");
+        expect(prisma.audiobook.update).not.toHaveBeenCalled();
     });
 });
