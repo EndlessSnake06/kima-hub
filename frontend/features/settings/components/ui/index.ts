@@ -1,5 +1,5 @@
 export { SettingsLayout } from "./SettingsLayout";
-export { SettingsSidebar, type SidebarItem } from "./SettingsSidebar";
+export type { SidebarItem } from "./SettingsSidebar";
 export { SettingsSection } from "./SettingsSection";
 export { SettingsRow } from "./SettingsRow";
 export { SettingsToggle } from "./SettingsToggle";

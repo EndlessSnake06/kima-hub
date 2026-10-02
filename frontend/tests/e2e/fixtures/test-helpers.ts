@@ -31,18 +31,6 @@ export function skipIfNoEnv(envVar: string, testInfo: TestInfo): void {
     }
 }
 
-export async function waitForApiHealth(page: Page, timeoutMs = 30000): Promise<void> {
-    const start = Date.now();
-    while (Date.now() - start < timeoutMs) {
-        try {
-            const response = await page.request.get(`${baseUrl}/api/health`);
-            if (response.ok()) return;
-        } catch {}
-        await page.waitForTimeout(1000);
-    }
-    throw new Error("API health check timed out");
-}
-
 /** Navigate to the first available album and start playing all tracks.
  *  Skips gracefully if the library has no music (e.g., bare CI container). */
 export async function startPlayingFirstAlbum(page: Page): Promise<void> {
@@ -63,7 +51,7 @@ export async function startPlayingFirstAlbum(page: Page): Promise<void> {
 /** Wait until the player shows the Pause button (meaning audio started).
  * Uses `title="Pause"` to target the FullPlayer button specifically (avoids ambiguity
  * with album action bar and section-level Pause buttons). */
-export async function waitForPlaying(page: Page, timeoutMs = 8_000): Promise<void> {
+async function waitForPlaying(page: Page, timeoutMs = 8_000): Promise<void> {
     await page.getByTitle("Pause", { exact: true }).waitFor({ timeout: timeoutMs });
 }
 
