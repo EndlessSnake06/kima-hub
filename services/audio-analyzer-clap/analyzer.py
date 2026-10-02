@@ -262,13 +262,8 @@ class CLAPAnalyzer:
                      window_seconds: float,
                      duration_hint: Optional[float] = None) -> Tuple[Optional[np.ndarray], int]:
         """
-        Load a single `window_seconds`-long clip starting at `start` seconds.
-
-        The clip is clamped to the end of the file, so a window near the tail
-        simply reads to the end of the track rather than past it.
-
-        Returns:
-            Tuple of (audio_array, sample_rate) or (None, 0) on error.
+        Load `window_seconds` from `start`, clamped to the end of the file.
+        Returns (audio_array, sample_rate), or (None, 0) on error.
         """
         try:
             # Use provided duration or fall back to computing it.
