@@ -353,9 +353,8 @@ describe("getEnrichmentProgress", () => {
     });
 
     it("lets the library reach fully-complete when the only open questions are missing files", async () => {
-        // The shape that used to hang the run forever: every answerable
-        // question is answered and the only ones left belong to files the
-        // scan flagged missing — those are closed, so nothing is owed.
+        // Every answerable question is answered and the only open ones belong
+        // to files the scan flagged missing, which are closed, so nothing is owed.
         await seedTrack(
             id("ghostonly"),
             { recording: "done", analysis: "done", embedding: "failed" },

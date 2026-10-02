@@ -449,9 +449,7 @@ describe("Enrichment State Machine", () => {
 
     describe("per-track stage queue replaces the status-column sweeps", () => {
         it("does not flush audio:analysis:queue on a stale analyzer heartbeat", async () => {
-            // The dead-analyzer reset used to flush the whole list and flip
-            // every queued row to pending when the heartbeat went stale. The
-            // record owns the attempt now, so nothing flushes the list.
+            // A stale heartbeat flushes nothing: each stage record owns its attempt.
             mockRedisGet.mockResolvedValue(String(Date.now() - 600_000));
             mockRedisLlen.mockResolvedValue(42);
             mockRedisDel.mockClear();

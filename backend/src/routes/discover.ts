@@ -1568,7 +1568,7 @@ router.delete("/clear", async (req, res) => {
             where: { userId },
         });
 
-        // Failed jobs no longer help the scanner match discovery albums.
+        // Failed discovery jobs are of no further use to the scanner.
         await prisma.downloadJob.deleteMany({
             where: {
                 userId,

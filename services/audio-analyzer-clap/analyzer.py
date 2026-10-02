@@ -61,10 +61,8 @@ SLEEP_INTERVAL = int(os.getenv('SLEEP_INTERVAL', '5'))
 NUM_WORKERS = int(os.getenv('NUM_WORKERS', '2'))
 BACKEND_URL = os.getenv('BACKEND_URL', 'http://backend:3006')
 MODEL_IDLE_TIMEOUT = int(os.getenv('MODEL_IDLE_TIMEOUT', '300'))
-# CLAP backend selection. ONNX is the default from v1.11.0: the shipped images
-# no longer install PyTorch (several GB, and the recurring source of ARM wheel
-# build failures), so 'torch' only exists in a build that deliberately puts the
-# PyTorch stack back -- the legacy path, see requirements-torch.txt.
+# ONNX is the default; the shipped images carry no PyTorch. 'torch' works only
+# in a build that installs requirements-torch.txt.
 CLAP_BACKEND = os.getenv('CLAP_BACKEND', 'onnx').lower()
 if CLAP_BACKEND == 'torch' and not TORCH_AVAILABLE:
     logger.error(

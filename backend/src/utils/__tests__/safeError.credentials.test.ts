@@ -107,9 +107,8 @@ describe("safeError and credentials in logs", () => {
 
         const args = (logger.error as jest.Mock).mock.calls[0];
         expect(args).toHaveLength(1);
-        // Inspect the WHOLE argument list, not just the first entry: a second
-        // argument is precisely how the secret used to escape, so checking only
-        // args[0] would pass while leaking.
+        // Inspect the whole argument list: a second argument would carry the
+        // secret while args[0] looked clean.
         expect(util.inspect(args)).not.toContain(SECRET);
     });
 });

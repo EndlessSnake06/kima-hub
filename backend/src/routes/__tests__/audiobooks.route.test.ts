@@ -143,9 +143,8 @@ describe("GET /audiobooks", () => {
         (prisma.audiobookProgress.findMany as jest.Mock).mockResolvedValue([]);
     });
 
-    // sortName, not title -- "The Hobbit" used to file under T. Kept in sync
-    // at write time in audiobookCache.ts and audiobookshelf.ts, same as
-    // Artist.sortName and Album.sortName.
+    // "The Hobbit" files under H. sortName is written by audiobookCache.ts and
+    // audiobookshelf.ts, like Artist.sortName and Album.sortName.
     it("orders the list on sortName, not title", async () => {
         (prisma.audiobook.findMany as jest.Mock).mockResolvedValue([]);
 

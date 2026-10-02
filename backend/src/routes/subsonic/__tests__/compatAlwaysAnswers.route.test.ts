@@ -56,7 +56,7 @@ describe('compat router answers even when a dependency fails', () => {
     });
 
     it('createShare answers when the share service throws something unexpected', async () => {
-        // Not a ShareError -- the class the handler used to rethrow.
+        // Not a ShareError, so the handler's own error branch does not apply.
         (createShareLink as jest.Mock).mockRejectedValue(
             new Error('P2034: transaction conflict on ShareLink'),
         );

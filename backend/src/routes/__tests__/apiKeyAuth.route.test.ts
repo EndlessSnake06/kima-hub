@@ -66,9 +66,8 @@ describe("API key auth, hashed at rest", () => {
     });
 
     it("a key that existed BEFORE this migration still authenticates with its original plaintext, after being re-keyed the same way the migration re-keys every row", async () => {
-        // Bypasses createApiKey deliberately: this simulates a row exactly as
-        // the migration leaves it -- keyHash holding SHA-256(the value that
-        // used to be the plaintext column), not a key minted fresh today.
+        // A row as the migration leaves it: keyHash is SHA-256 of the old
+        // plaintext column, written directly rather than through createApiKey.
         const user = await mkUser("premigration");
         const originalPlaintextKey = crypto.randomBytes(32).toString("hex");
         await prisma.apiKey.create({

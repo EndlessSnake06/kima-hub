@@ -86,9 +86,8 @@ function makeApp() {
     return app;
 }
 
-// The production scenario: "today" is the calendar week of Mon 2026-05-25, but
-// the only ACTIVE albums + the latest completed batch are tagged the PRIOR week
-// (Mon 2026-05-18). The unmodified handler queries the 05-25 week -> 0 rows.
+// "Today" is in the week of Mon 2026-05-25, but the active albums and latest
+// completed batch belong to the prior week (Mon 2026-05-18).
 const CALENDAR_MONDAY = '2026-05-25';
 const BATCH_MONDAY_ISO = '2026-05-18T00:00:00.000Z';
 

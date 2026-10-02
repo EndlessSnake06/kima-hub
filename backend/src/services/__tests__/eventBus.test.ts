@@ -137,10 +137,8 @@ describe("eventBus reaping", () => {
     });
 
     it("scales fan-out with recipients, not with total connections", () => {
-        // 200 connected users, one event addressed to one of them. Under the
-        // old broadcast every listener ran and filtered; here only the target
-        // is touched -- and 200 connections used to exceed the emitter's
-        // setMaxListeners(100) warning threshold.
+        // 200 connected users, one event for one of them: only the target's
+        // listener runs, and no emitter listener limit is hit.
         const others = Array.from({ length: 200 }, (_, i) => {
             const r = recorder();
             cleanups.push(eventBus.subscribe(`user-${i}`, r.sub));

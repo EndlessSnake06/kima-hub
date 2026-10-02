@@ -39,8 +39,8 @@ class EvalSet:
     paths: list[str]
     # Continuous human ratings, one array per dimension, aligned with ids.
     ratings: dict[str, np.ndarray] = field(default_factory=dict)
-    # Grouping used to keep related clips out of each other's folds and
-    # neighbour lists (same film / same artist). None = every clip its own group.
+    # Groups (same film / artist) are kept out of each other's folds and
+    # neighbour lists. None = every clip its own group.
     groups: Optional[np.ndarray] = None
     # Free-form per-clip categorical info (Soundtracks target emotion, IsoVAT level).
     meta: dict[str, list] = field(default_factory=dict)

@@ -196,7 +196,6 @@ describe("the enrichment worker asks every source", () => {
 
         it("still tries for an album whose id this app invented", async () => {
             // The id-keyed sources skip themselves; Deezer does not need an id.
-            // This used to skip the album outright.
             mockAlbumFindMany.mockResolvedValue([
                 { id: "alb-2", rgMbid: "temp-7", title: "Unscanned", coverUrl: null },
             ]);

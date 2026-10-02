@@ -75,10 +75,8 @@ describe("the three fields the old lists disagreed about", () => {
         expect(mockUpdate).not.toHaveBeenCalled();
     });
 
-    it("maps every field either side used to read or write alone", () => {
-        // The audit's finding 1: the two hand-copied lists had to agree.
-        // The roster is the audit's union of ten minus `listenbrainzUserToken`,
-        // which retired with the move to per-user scrobble tokens.
+    it("maps every encrypted settings field", () => {
+        // Every encrypted SystemSettings field, read and write side alike.
         expect(Object.keys(ENCRYPTED_FIELDS)).toHaveLength(9);
         for (const field of ["fanartApiKey", "slskdApiKey", "spotifyClientSecret",
             "lidarrApiKey", "lidarrWebhookSecret", "acoustidApiKey",

@@ -14,7 +14,7 @@ describe("resolveGenerationWeekStart -- boundary roll-forward", () => {
     it("rolls forward to the UPCOMING Monday when run on the week's last day (Sunday 20:00, Monday-start)", () => {
         const sundayEvening = new Date("2026-05-24T20:00:00.000Z");
         const result = resolveGenerationWeekStart(sundayEvening, 1);
-        // Bare startOfWeek would yield 2026-05-18 (the ENDING week) -- the bug.
+        // Bare startOfWeek would yield 2026-05-18, the week that is ending.
         expect(result.toISOString().slice(0, 10)).toBe("2026-05-25");
     });
 

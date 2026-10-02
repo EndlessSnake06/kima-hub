@@ -244,9 +244,7 @@ afterAll(async () => {
 describe("per-track stage gating", () => {
     describe("a failed or pending track never blocks another track's stage", () => {
         it("embeds the ready track while another track's analysis is dead", async () => {
-            // A's analysis is terminal (not retryable) — the old code counted
-            // it in `audioInFlight` and returned 0 for the whole phase, so B
-            // was never embedded while A sat failed.
+            // A's analysis is terminal; it must not hold B's embedding back.
             await seedTrack(id("dead"), {
                 analysisStatus: "failed",
                 analysisStatusOfRecord: "failed",

@@ -433,8 +433,7 @@ describe("AcoustID: the 2026-09-24 identification order", () => {
 
         await enrichSingleTrack(id("t1"));
 
-        // The search answered, so AcoustID is never asked and fpcalc is
-        // never run — this is the reversal of the 2026-09-01 order.
+        // The search answered, so AcoustID is never asked and fpcalc never runs.
         expect(mockSearchRecording).toHaveBeenCalledWith("Test Track", "Test Artist");
         expect(mockLookup).not.toHaveBeenCalled();
         expect(mockFingerprintFile).not.toHaveBeenCalled();

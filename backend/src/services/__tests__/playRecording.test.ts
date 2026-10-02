@@ -142,10 +142,8 @@ describe("recordPlay", () => {
     });
 
     it("pins the duplicate window to ±one duration around the reported play", async () => {
-        // The window used to be one-sided — `playedAt > anchor − window` —
-        // so anything NEWER than the play being recorded vetoed it and every
-        // late-synced scrobble came back "duplicate". Both edges, or a play
-        // from yesterday never gets stored at all.
+        // Both edges: a one-sided window lets any newer play veto a
+        // late-synced scrobble as a duplicate.
         prisma.track.findUnique.mockResolvedValue(track(200));
         const at = new Date("2026-09-25T12:00:00.000Z");
 

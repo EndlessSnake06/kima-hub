@@ -1,4 +1,3 @@
-// backend/src/lib/soulseek/__tests__/client.test.ts
 import { EventEmitter } from "events";
 
 describe("Soulseek download events", () => {

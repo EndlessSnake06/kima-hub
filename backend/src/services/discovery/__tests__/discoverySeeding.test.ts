@@ -230,7 +230,7 @@ describe('DiscoverySeeding', () => {
         });
 
         it('should handle empty listening history by falling back to library', async () => {
-            // getFallbackSeedArtists now uses artist.findMany with included albums
+            // getFallbackSeedArtists reads artist.findMany with album track counts.
             const artists = [
                 { id: 'artist-1', name: 'Library Artist One', mbid: 'lib-mbid-1', albums: [{ _count: { tracks: 5 } }] },
                 { id: 'artist-2', name: 'Library Artist Two', mbid: 'lib-mbid-2', albums: [{ _count: { tracks: 3 } }] },

@@ -263,10 +263,8 @@ describe("catalog", () => {
     });
 
     it("puts the ONNX note and re-embed action in 1.11.0 only", () => {
-        // ONNX shipped after 1.10.1 (commit 4c8827b1, 2026-08-31; the 1.10.1
-        // changelog date is 2026-08-25). Duplicated in both windows, a user
-        // dismissing the first watched the same body "pop back up" as the
-        // second — the queue advancing looked like the close failing.
+        // ONNX shipped after 1.10.1. In both windows, closing the first would
+        // show the same note again and look like the close failed.
         const keysOf = (v: string) =>
             catalog.RELEASES.find((r) => r.version === v)!.items.map((i) => i.key);
         expect(keysOf("1.10.1")).not.toContain("clap.onnx");

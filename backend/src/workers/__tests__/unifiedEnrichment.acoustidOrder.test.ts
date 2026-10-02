@@ -287,8 +287,7 @@ describe("enrichSingleTrack: the 2026-09-24 identification order", () => {
             "Cheerleader Effect",
             "Carpenter Brut",
         );
-        // The search answered, so AcoustID is never asked — this is the
-        // reversal of the 2026-09-01 order.
+        // The search answered, so AcoustID is never asked.
         expect(mockIdentifyTrackByAcoustid).not.toHaveBeenCalled();
         expect(mockTrackUpdate).toHaveBeenCalledWith(
             expect.objectContaining({
@@ -568,8 +567,7 @@ describe("enrichSingleTrack: the 2026-09-24 identification order", () => {
             reason: "sources have no recording for this track",
             asked: ["isrc", "mb-search", "acoustid"],
         });
-        // The code that matched nothing is no longer trusted: the ISRC is
-        // re-asked from whatever recording answers.
+        // The ISRC is only read from a recording that answered.
         expect(mockGetRecordingIsrc).not.toHaveBeenCalled(); // nothing answered here
         expect(mockTrackUpdate).not.toHaveBeenCalled();
     });

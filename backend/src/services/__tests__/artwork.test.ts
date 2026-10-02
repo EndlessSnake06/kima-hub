@@ -50,7 +50,7 @@ import { validateUrlForFetch } from "../../utils/ssrf";
 const DEEZER_URL = "https://e-cdns-images.dzcdn.net/images/cover/abc/500x500.jpg";
 const ARCHIVE_URL = "https://coverartarchive.org/release-group/rg-1/front-1200.jpg";
 const FANART_URL = "https://assets.fanart.tv/fanart/music/xyz/albumcover/a.jpg";
-/** The address a route used to build by hand and never check. */
+/** An unchecked Cover Art Archive address, built from the MBID alone. */
 const GUESS = "https://coverartarchive.org/release-group/rg-1/front-500";
 
 const ALBUM = { rgMbid: "rg-1", artistName: "Perturbator", albumTitle: "Age Of Aquarius" };
