@@ -16,8 +16,6 @@ class Disposition:
     MULTICANNEL = "MULTICANNEL"
     INCONCLUSIVE = "INCONCLUSIVE"
 
-    ALL = (DAMAGED, UNSUPPORTED, MULTICANNEL, INCONCLUSIVE)
-
 
 # Strong corruption signatures only: a file matching one fails the same way on
 # retry. Dooming a file that would decode is worse than missing a rare phrasing.
