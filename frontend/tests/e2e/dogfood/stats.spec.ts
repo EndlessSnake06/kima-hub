@@ -539,6 +539,13 @@ test.describe("Dogfood: stats, filters, audit, queue", () => {
             const picked = listed.filter((t) => t.duration > 60).slice(0, 3);
             expect(picked.length, "the library needs three tracks over a minute long").toBe(3);
 
+            // A run that died after "leave alone" left these tracks off the list.
+            const restored = await page.request.post("/api/stats/false-starts/restore", {
+                data: { trackIds: picked.map((t) => t.id) },
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            expect(restored.ok(), `putting the tracks back returned ${restored.status()}`).toBeTruthy();
+
             const keyName = "dogfood-audit";
             const made = await page.request.post("/api/api-keys", {
                 data: { deviceName: keyName },
@@ -575,7 +582,11 @@ test.describe("Dogfood: stats, filters, audit, queue", () => {
                 }
             }
 
-            expect((await audit()).skipped, "the two short plays must read as skips").toBeGreaterThanOrEqual(2);
+            const flagged = new Set((await audit()).tracks.map((t: { trackId: string }) => t.trackId));
+            expect(
+                picked.slice(0, 2).every((t) => flagged.has(t.id)),
+                "the two short plays must be listed as skips",
+            ).toBe(true);
         });
 
         await session.step("open the panel and ask it to look", async () => {
