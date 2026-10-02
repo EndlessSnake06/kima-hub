@@ -1,22 +1,8 @@
 #!/usr/bin/env python3
 """
-CLAP Audio Analyzer Service - LAION CLAP embeddings for vibe similarity
-
-This service processes audio files and generates 512-dimensional embeddings
-using LAION CLAP (Contrastive Language-Audio Pretraining). These embeddings
-enable semantic similarity search - finding tracks that "sound similar" based
-on learned audio representations.
-
-Features:
-- Audio embedding generation from music files
-- Text embedding generation for natural language queries
-- Redis queue processing for batch embedding generation
-- Direct database storage in PostgreSQL with pgvector
-
-Architecture:
-- CLAPAnalyzer: Model loading and embedding generation
-- BullMQVibeWorker: Queue consumer that processes tracks and stores embeddings
-- TextEmbedHandler: Real-time text embedding via Redis pub/sub
+CLAP analyzer: 512-d LAION CLAP embeddings for audio (vibe similarity) and for
+text queries. BullMQVibeWorker embeds tracks into pgvector, TextEmbedHandler
+answers text queries over Redis pub/sub, ControlHandler applies worker changes.
 """
 
 import os
@@ -42,14 +28,8 @@ os.environ['OPENBLAS_NUM_THREADS'] = str(THREADS_PER_WORKER)
 os.environ['MKL_NUM_THREADS'] = str(THREADS_PER_WORKER)
 os.environ['NUMEXPR_MAX_THREADS'] = str(THREADS_PER_WORKER)
 
-# PyTorch is needed ONLY by the legacy torch backend. The shipped images run the
-# ONNX backend (CLAP_BACKEND=onnx) precisely so the PyTorch stack -- torch,
-# torchaudio, torchvision, laion-clap: several GB, and the source of the ARM
-# wheel failures and the eleven silently-failed nightly builds -- is not
-# installed at all. An unconditional import here made that impossible: a
-# torch-free image died at import with ModuleNotFoundError before it could do
-# anything. So the import is optional, and the torch path says so plainly when
-# it is asked for.
+# Only the torch backend needs PyTorch; the shipped images run ONNX
+# (CLAP_BACKEND=onnx) and do not install it, so the import is optional.
 try:
     import torch
 
@@ -117,33 +97,11 @@ CLAP_SAMPLE_RATE = 48000  # 48kHz for CLAP model
 def compute_window_offsets(duration: float,
                            count: int = WINDOW_COUNT,
                            window_seconds: float = WINDOW_SECONDS) -> list:
-    """
-    Return the start offsets (in seconds) for windows sampled across a track.
+    """Start offsets, in seconds, for `count` windows of `window_seconds`.
 
-    Normal tracks (>= count * window_seconds, i.e. >= 50s for the default five
-    10s windows) get `count` windows centered at the (i + 0.5)/count quantiles
-    -- 10/30/50/70/90% -- so the windows tile the whole file with no overlap.
-    Each window is clamped to the file bounds so the last one never reads past
-    the end.
-
-    For shorter tracks, non-overlapping windows of the given length simply do
-    not all fit, so the function places only the number that do fit -- tiled
-    so the first starts at 0 and the last ends at the file end -- and drops the
-    rest. That is the "place what fits without heavy overlap" behaviour: the
-    mean is taken over however many windows the track can hold.
-
-    On the boundary (a track just long enough for `count` windows), the literal
-    10/30/50/70/90% placement is kept, but the last window is clamped to the file
-    end so it never reads past the end of the file.
-
-    Args:
-        duration: Total track length in seconds.
-        count: Number of windows to place on a long track.
-        window_seconds: Length of each window in seconds.
-
-    Returns:
-        A list of start offsets, each >= 0 and clamped so that
-        offset + window_seconds never exceeds `duration`.
+    A long track gets windows centred at 10/30/50/70/90% of its length; a short
+    one gets only the non-overlapping windows that fit, tiled from 0 to the end.
+    No window reads past `duration`.
     """
     if duration <= 0:
         return [0.0] * count
@@ -168,12 +126,8 @@ def compute_window_offsets(duration: float,
     starts = [(i + 0.5) / count * duration for i in range(count)]
     starts[-1] = min(starts[-1], max_start)
     if count > 1 and starts[-1] < starts[-2] + window_seconds:
-        # Clamping the last window made it overlap its neighbour. That happens
-        # exactly when count*window_seconds <= duration < (4/3)*count*window_seconds
-        # -- concretely 50s <= d < ~66.67s for the defaults (d - w < 0.7d + w
-        #  =>  d < (2/0.3)w = 6.667w). Tile the windows evenly across the whole
-        # file instead: first at 0, last ending exactly at the file end,
-        # guaranteed non-overlapping.
+        # Clamping made the last window overlap its neighbour (50-66.7 s with
+        # the defaults); tile evenly from 0 to the file end instead.
         step = (duration - window_seconds) / (count - 1)
         starts = [i * step for i in range(count)]
     return starts
@@ -227,15 +181,9 @@ class CLAPAnalyzer:
             logger.info(f"[CLAP] ONNX text backend verified: {ONNX_TEXT_MODEL_PATH}")
 
     def _text_embeddings(self, prompts: list[str]) -> list:
-        """Text embeddings via the active backend (ONNX when CLAP_BACKEND=onnx).
-
-        Mirrors laion_clap's get_text_embedding(prompts, use_tensor=False)
-        return shape: a list of 512-d float32 vectors. When CLAP_BACKEND=onnx
-        this uses OnnxTextCLAPBackend (roberta-base tokenizer + Xenova
-        text_model.onnx, each prompt encoded unpadded so it matches the masked
-        laion_clap result; see test_text_parity.py) — NO torch load. When
-        the text backend is unavailable it falls back to laion_clap so the
-        default (torch) mode is untouched.
+        """A list of 512-d float32 vectors, as laion_clap's get_text_embedding
+        returns. With CLAP_BACKEND=onnx this is OnnxTextCLAPBackend, one
+        unpadded prompt at a time; otherwise, or if it is unavailable, laion_clap.
         """
         if CLAP_BACKEND == 'onnx':
             self._ensure_onnx_text_backend()
@@ -348,21 +296,9 @@ class CLAPAnalyzer:
             return None, 0
 
     def get_audio_embedding(self, audio_path: str, duration: Optional[float] = None) -> Optional[np.ndarray]:
-        """
-        Generate a 512-dimensional embedding from an audio file.
-
-        Samples the whole track with five 10-second windows (at 10/30/50/70/90%
-        of the duration, each clamped to the file bounds), embeds each window
-        through the active backend (torch or ONNX), takes the mean of the five
-        vectors, and L2-normalizes the result. The output is a single 512-d
-        vector, byte-compatible with the previous single-60s-chunk embedding.
-
-        Args:
-            audio_path: Path to the audio file
-            duration: Pre-computed duration in seconds (avoids file read)
-
-        Returns:
-            numpy array of shape (512,) or None on error
+        """512-d embedding of a track: five 10 s windows (see window offsets)
+        embedded by the active backend, averaged and L2-normalised. `duration`
+        skips a file read when known. Returns None on error.
         """
         if CLAP_BACKEND == 'onnx':
             # ONNX path never touches laion_clap -- don't try to load it.
@@ -427,12 +363,8 @@ class CLAPAnalyzer:
                 with self._lock:
                     return self.onnx_backend.embed_audio(audio)
             except Exception as e:
-                # DO NOT fall through to the torch path. CLAP_BACKEND=onnx is
-                # pinned for a whole re-embed so every embedding shares one
-                # vector space; a mid-sweep fallback would silently mix two
-                # spaces and corrupt the library's similarity. Fail the track
-                # loudly instead -- the backend's retry machinery (which the
-                # sweep monitoring surfaces) will pick it up.
+                # Never fall back to torch: a re-embed must stay in one vector
+                # space. The track fails and the backend retries it.
                 logger.critical(f"ONNX backend FAILED with CLAP_BACKEND=onnx pinned; NOT falling back to torch. Track {audio_path} failed: {e}")
                 traceback.print_exc()
                 return None
@@ -464,15 +396,7 @@ class CLAPAnalyzer:
             return None
 
     def get_text_embedding(self, text: str) -> Optional[np.ndarray]:
-        """
-        Generate a 512-dimensional embedding from a text query.
-
-        Args:
-            text: Natural language description (e.g., "upbeat electronic dance music")
-
-        Returns:
-            numpy array of shape (512,) or None on error
-        """
+        """512-d embedding of a text query, or None on error."""
         if CLAP_BACKEND != 'onnx':
             self.ensure_model()
         self.last_work_time = time.time()
@@ -677,17 +601,8 @@ class CLAPAnalyzer:
 
 
 def load_configured_workers() -> int:
-    """
-    How many jobs to run at once, according to the database.
-
-    The settings screen writes SystemSettings.clapWorkers. Reading it here is
-    what makes a change stick across a restart: previously the count came only
-    from the NUM_WORKERS environment variable, so the slider wrote a column
-    that nothing ever read and the setting had no effect at all.
-
-    Falls back to NUM_WORKERS when the row or the database is unavailable --
-    the analyzer must still start on a fresh install.
-    """
+    """Concurrent jobs from SystemSettings.clapWorkers, which the settings
+    screen writes; NUM_WORKERS when the row or database is unavailable."""
     if not DATABASE_URL:
         return NUM_WORKERS
     conn = None
@@ -712,21 +627,10 @@ def load_configured_workers() -> int:
 
 
 class BullMQVibeWorker:
-    """
-    BullMQ-based vibe embedding worker.
-
-    Replaces the legacy BLPOP-based Worker class. Consumes jobs from
-    'enrichment-vibe' (BullMQ queue) instead of polling 'audio:clap:queue'
-    (raw Redis list). Runs asyncio event loop in a background thread so
-    it does not block TextEmbedHandler or ControlHandler.
-
-    Concurrency: controlled by NUM_WORKERS env var (default 2). Each job
-    gets its own connection from a ThreadedConnectionPool, and all DB calls
-    run via run_in_executor so they never block the asyncio event loop.
-    CLAPAnalyzer._lock still serialises model inference; concurrency > 1
-    allows pipeline parallelism (one job waiting on DB I/O while another
-    runs inference).
-    """
+    """Consumes 'enrichment-vibe' jobs on an asyncio loop in a background
+    thread. Each job takes its own pooled DB connection via run_in_executor;
+    CLAPAnalyzer._lock serialises inference, so extra concurrency overlaps DB
+    I/O with inference."""
 
     def __init__(self, analyzer: CLAPAnalyzer, stop_event: threading.Event,
                  concurrency: int = None):
@@ -1198,14 +1102,8 @@ class TextEmbedHandler:
 
 
 class ControlHandler:
-    """
-    Handles control messages from Redis pub/sub.
-
-    Listens for worker count changes and other control commands. A worker count
-    change is applied to the running BullMQ worker within a couple of seconds --
-    it used to be logged and discarded, with a note advising a container
-    restart, which meant the settings screen could not change anything.
-    """
+    """Applies control messages from Redis pub/sub, such as a worker count
+    change, to the running BullMQ worker within a couple of seconds."""
 
     def __init__(self, stop_event: threading.Event, worker: "BullMQVibeWorker" = None):
         self.stop_event = stop_event

@@ -1,25 +1,8 @@
 """
-Torch-free CLAP mel front-end (vendored from HF ClapFeatureExtractor).
-
-Why this exists: transformers gates `ClapFeatureExtractor` behind PyTorch
-(both 4.57.6 and 5.8.1 raise ImportError without torch installed), but the
-actual mel math is pure numpy living in `transformers.audio_utils`
-(mel_filter_bank / spectrogram / window_function) — deliberately NOT gated,
-per the ImportError message: "only tokenizers, configuration and file/data
-utilities can be used" without torch. This module reproduces
-`ClapFeatureExtractor._get_input_mel` for exactly the paths the ONNX backend
-exercises, so the shipped image needs no torch and no HF cache for the audio
-side.
-
-Equivalence contract (proven in test_clap_mel.py):
-  clap_mel.get_input_mel(audio) == ClapFeatureExtractor(...)._get_input_mel(
-      audio, max_length=480000, truncation="rand_trunc", padding="repeatpad")
-bit-for-bit, because it calls the same audio_utils primitives with the same
-arguments derived from laion/clap-htsat-unfused's preprocessor_config.json.
-
-Only the <= max_length paths are implemented (the backend slices clips to
-10s before calling); longer inputs raise, rather than silently diverging
-from HF's random-crop behavior.
+ClapFeatureExtractor._get_input_mel without PyTorch, built on the same
+transformers.audio_utils primitives and laion/clap-htsat-unfused's config.
+Only inputs up to max_length are supported; longer ones raise rather than
+diverge from HF's random crop.
 """
 import json
 import os

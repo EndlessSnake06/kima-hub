@@ -1,25 +1,7 @@
 """
-ONNX backend for the CLAP audio analyzer.
-
-Swaps in the HF torch-onnx export (audio_model.onnx via onnxruntime) so the
-vibe engine can run on Apple silicon without PyTorch. Verified numerically
-identical (cosine == 1.0000) to the PyTorch CLAP audio encoder on this
-checkpoint (laion/clap-htsat-unfused).
-
-Preprocessing matches HF ClapFeatureExtractor exactly:
-  - librosa 48kHz mono
-  - HF ClapFeatureExtractor._get_input_mel (Hann STFT + power spectrogram
-    + HF config mel_filters, log-dB clamp)
-  - center-padding/truncation to 1001 frames
-  - 10s chunks (nb_max_samples=480000, nb_max_frames=1001)
-  - feed [1, 1, 1001, 64] to audio_model.onnx -> 512-d -> L2-normalize
-
-The ONNX model input is the HF-extracted log-mel spectrogram. The mel is
-computed with HF's own feature extractor so it matches the HF torch
-reference bit-for-bit (verified 1.0000 in test_onnx_parity.py).
-
-Falls back to the torch backend if the ONNX model fails (e.g. missing
-weights).
+ONNX backend for the CLAP analyzer, so it runs without PyTorch. Audio: 48 kHz
+mono, 10 s chunks, the HF log-mel (clap_mel.py) as [1, 1, 1001, 64] into
+audio_model.onnx, then 512-d and L2-normalised (test_onnx_parity.py).
 """
 import os
 import logging
@@ -75,11 +57,8 @@ class OnnxCLAPBackend:
         self.model_path = model_path
         self._sess = None
         self._fe = None
-        # Counts how often an ONNX failure was papered over with a torch
-        # embedding. Any value above zero means ONNX did NOT do the work, which
-        # is precisely the state the parity harness must never mistake for a
-        # pass (it compares ONNX against a torch reference, so a fallback would
-        # score a perfect 1.0 while the ONNX engine was broken).
+        # Non-zero means a torch embedding stood in for ONNX, which a parity
+        # check against torch would wrongly score as a pass.
         self.torch_fallback_count = 0
 
     def load_model(self) -> None:
@@ -104,10 +83,8 @@ class OnnxCLAPBackend:
                     f'(providers={active}) — embeddings still correct, CPU speed')
         self._in_name = self._sess.get_inputs()[0].name
         self._out_name = self._sess.get_outputs()[0].name
-        # Torch-free mel front-end (vendored; bit-for-bit parity with HF's
-        # ClapFeatureExtractor proven in test_clap_mel_parity.py). transformers
-        # gates that class behind PyTorch on every version we can install, so
-        # the shipped image cannot use it; audio_utils primitives are ungated.
+        # transformers gates ClapFeatureExtractor behind PyTorch, so the mel
+        # comes from clap_mel, built on the ungated audio_utils primitives.
         import clap_mel
         config_path = os.path.join(os.path.dirname(self.model_path),
                                    'preprocessor_config.json')
@@ -141,16 +118,9 @@ class OnnxCLAPBackend:
 
     def embed_audio(self, audio: np.ndarray,
                     allow_torch_fallback: bool = False) -> np.ndarray:
-        """Return a 512-d L2-normalized audio embedding for a 48k mono clip.
-
-        On ONNX failure this RAISES by default rather than substituting a torch
-        embedding. Two reasons: an ONNX-only image has no torch to fall back to
-        (so the fallback would crash with a confusing ImportError instead of the
-        real cause), and a silent substitution is how this project previously
-        spent an entire testbed run measuring torch while reporting that it was
-        running ONNX. Callers that genuinely want the HF torch reference for
-        comparison (the parity harness) must ask for it explicitly, and should
-        check torch_fallback_count afterwards to prove ONNX did the work.
+        """512-d L2-normalised embedding of a 48 kHz mono clip. An ONNX failure
+        raises: only a parity harness may pass allow_torch_fallback, and it
+        must then check torch_fallback_count.
         """
         self.load_model()
         inp = self._prepare_input(audio)
@@ -202,25 +172,15 @@ ONNX_TEXT_MODEL_PATH = os.getenv(
     _default_text_model_path(),
 )
 
-# Tokenizer for the text path. laion_clap uses RobertaTokenizer('roberta-base')
-# -- NOT the 'laion/clap-htsat-unfused' tokenizer -- and the Xenova ONNX export
-# was built with the same roberta-base vocab. Using the wrong tokenizer was the
-# cause of a measured 0.84 cosine (text_parity_gate.py).
-# 77 is laion_clap's maximum text length; longer prompts are truncated.
+# laion_clap and the Xenova export both use the roberta-base tokenizer, not
+# laion/clap-htsat-unfused's. Prompts truncate at laion_clap's 77 tokens.
 TEXT_MAX_LENGTH = 77
 
 
 class OnnxTextCLAPBackend:
-    """Pure-ONNX text encoder: tokenizer + Xenova text_model.onnx.
-
-    The ONNX graph has no attention_mask input, so every token it is given is
-    attended to, padding included. Each prompt is therefore encoded on its own
-    at its true token length, which equals the masked HF/laion_clap text
-    embedding (test_text_parity.py). The earlier "cosine 1.0000" gate
-    (text_parity_gate.py, 2026-09-10) compared padded ids against a reference
-    run with attention_mask=ones, so both sides read the padding and the gate
-    could not see the defect. No torch, no laion_clap -- onnxruntime +
-    transformers only.
+    """Text encoder on the Xenova text_model.onnx. The graph has no
+    attention_mask, so each prompt is encoded alone at its true length, which
+    matches laion_clap's masked result (test_text_parity.py).
     """
 
     def __init__(self, model_path: str = ONNX_TEXT_MODEL_PATH):

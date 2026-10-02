@@ -86,9 +86,8 @@ def _read_csv(path: str) -> list[dict]:
 # MagnaTagATune similarity triplets (Law et al. 2009)
 # --------------------------------------------------------------------------
 def load_mtt(root: str) -> EvalSet:
-    """Odd-one-out triplets. A triplet is usable when one clip got strictly the
-    most "odd one out" votes and all three clips have audio -- the same rule the
-    new engine's 446-triplet measurement used (run_weighting_v2.py)."""
+    """Odd-one-out triplets, usable when one clip got strictly the most "odd
+    one out" votes and all three clips have audio."""
     base = os.path.join(root, 'mtt')
     comp = _need(os.path.join(base, 'comparisons_final.csv'))
     audio = _need(os.path.join(base, 'audio'))

@@ -1,23 +1,8 @@
 #!/usr/bin/env python
-"""Build-time + ops verification of the CLAP ONNX runtime stack.
-
-Run inside the built image (or on the testbed) with HF_HUB_OFFLINE=1 so the
-baked Hugging Face cache is the ONLY source -- this proves the image boots
-without network access to huggingface.co.
-
-Checks:
-  1. AUDIO: embed the three tracked fixtures through onnx_backend (the exact
-     module the analyzer imports) and require cosine >= 0.999 against
-     expected_onnx_embeddings.npy, which was produced by the VALIDATED
-     pipeline (shipped hf_audio.onnx sha 37df17af..., pocs toolchain,
-     torch_fallback_count == 0). Catches preprocessing/runtime-stack drift
-     (transformers/numpy/onnxruntime versions) that a sha gate cannot.
-  2. torch_fallback_count must be 0 -- ONNX did the work.
-  3. TEXT: load the Xenova text_model.onnx + baked roberta-base tokenizer,
-     embed two prompts, assert shape/norm and that they are distinguishable.
-
-Usage: python3 verify_runtime.py <fixtures_dir>
-Exit 0 = PASS (prints per-fixture cosines); anything else = FAIL.
+"""Verifies the CLAP ONNX stack offline (HF_HUB_OFFLINE=1): the fixtures must
+embed at cosine >= 0.999 to expected_onnx_embeddings.npy with no torch
+fallback, and two text prompts must embed distinguishably.
+Usage: python3 verify_runtime.py <fixtures_dir>; exit 0 = pass.
 """
 import os
 import sys

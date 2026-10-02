@@ -1,11 +1,7 @@
 """
-GPU-onnx runtime install/verify.
-
-The analyzer process owns the install: it is the runtime's consumer and the
-only side with pip in every deployment shape. The backend's only writes are
-the DB toggle and enabled.json; every fact recorded in state.json is written
-here. Standard library only at import time — nobody who leaves the toggle off
-pays (G8).
+Installs and verifies the optional GPU ONNX runtime. The analyzer owns every
+fact in state.json; the backend only writes the toggle and enabled.json.
+Stdlib only at import, so nobody who leaves the toggle off pays for it.
 """
 
 import ctypes

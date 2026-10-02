@@ -1,19 +1,9 @@
 #!/usr/bin/env python3
 """
-torch.onnx.export for the HF ClapAudioModelWithProjection (laion/clap-htsat-unfused).
-
-Input is the HF log-mel spectrogram [1, 1, 1001, 64] (batch, channels, height,
-width) plus the `is_longer` boolean flag.  Opset 17 and the dynamic axes below
-are intentionally fixed: the shipped sha 37df17af... depends on them.
-
-The output path is
-parameterised via the --out CLI arg (default: this file's directory /
-hf_audio.onnx).  The source checkpoint directory is parameterised via --src
-(default: loaded by name from_pretrained("laion/clap-htsat-unfused")).
-
-Usage:
-    python3 export_onnx.py --src /path/to/ckpt --out hf_audio.onnx
-    ONNX_OUT=hf_audio.onnx python3 export_onnx.py
+Exports HF ClapAudioModelWithProjection (laion/clap-htsat-unfused) to ONNX.
+Inputs: log-mel [1, 1, 1001, 64] and `is_longer`. Opset 17 and the dynamic
+axes are fixed; the shipped model (sha 37df17af...) depends on them.
+Usage: python3 export_onnx.py [--src ckpt_dir] [--out path], or set ONNX_OUT.
 """
 import argparse
 import os
