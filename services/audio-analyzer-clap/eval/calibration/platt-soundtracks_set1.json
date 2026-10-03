@@ -1,0 +1,295 @@
+{
+  "t_shipped": 15.0,
+  "fit_on": "soundtracks_set1",
+  "n_triplets": 446,
+  "axes": {
+    "valence": {
+      "fit": {
+        "a": 15.909,
+        "b": 0.758,
+        "converged": true
+      },
+      "nll_fit_set": {
+        "shipped": 231.9,
+        "fitted": 213.3
+      },
+      "triplet_agreement_axis_distance": {
+        "shipped": 0.5717,
+        "fitted": 0.5538
+      },
+      "saturation_mtt_clips": {
+        "shipped_t15": {
+          "median": 0.6165,
+          "p05": 0.1425,
+          "p95": 0.8788,
+          "frac_ge_0.99": 0.0,
+          "frac_le_0.01": 0.0
+        },
+        "fitted": {
+          "median": 0.7794,
+          "p05": 0.2415,
+          "p95": 0.9458,
+          "frac_ge_0.99": 0.0,
+          "frac_le_0.01": 0.0
+        }
+      }
+    },
+    "arousal": {
+      "fit": {
+        "a": 13.501,
+        "b": -1.227,
+        "converged": true
+      },
+      "nll_fit_set": {
+        "shipped": 182.7,
+        "fitted": 143.6
+      },
+      "triplet_agreement_axis_distance": {
+        "shipped": 0.5942,
+        "fitted": 0.6704
+      },
+      "saturation_mtt_clips": {
+        "shipped_t15": {
+          "median": 0.9195,
+          "p05": 0.2713,
+          "p95": 0.9985,
+          "frac_ge_0.99": 0.2169,
+          "frac_le_0.01": 0.0
+        },
+        "fitted": {
+          "median": 0.7242,
+          "p05": 0.1075,
+          "p95": 0.9904,
+          "frac_ge_0.99": 0.054,
+          "frac_le_0.01": 0.0
+        }
+      }
+    }
+  },
+  "verify": {
+    "deam": {
+      "valence": {
+        "n": 1802,
+        "spearman": {
+          "shipped": 0.4115,
+          "fitted": 0.4115
+        },
+        "ece": {
+          "shipped": 0.2447,
+          "fitted": 0.35
+        },
+        "saturation": {
+          "shipped_t15": {
+            "median": 0.8042,
+            "p05": 0.3076,
+            "p95": 0.9388,
+            "frac_ge_0.99": 0.0,
+            "frac_le_0.01": 0.0
+          },
+          "fitted": {
+            "median": 0.9052,
+            "p05": 0.4745,
+            "p95": 0.9748,
+            "frac_ge_0.99": 0.0022,
+            "frac_le_0.01": 0.0
+          }
+        }
+      },
+      "arousal": {
+        "n": 1802,
+        "spearman": {
+          "shipped": 0.6422,
+          "fitted": 0.6422
+        },
+        "ece": {
+          "shipped": 0.4019,
+          "fitted": 0.2721
+        },
+        "saturation": {
+          "shipped_t15": {
+            "median": 0.9697,
+            "p05": 0.4435,
+            "p95": 0.9987,
+            "frac_ge_0.99": 0.2863,
+            "frac_le_0.01": 0.0
+          },
+          "fitted": {
+            "median": 0.869,
+            "p05": 0.1929,
+            "p95": 0.9913,
+            "frac_ge_0.99": 0.0633,
+            "frac_le_0.01": 0.0
+          }
+        }
+      }
+    },
+    "memo2496": {
+      "valence": {
+        "n": 2496,
+        "spearman": {
+          "shipped": 0.5808,
+          "fitted": 0.5808
+        },
+        "ece": {
+          "shipped": 0.0514,
+          "fitted": 0.1617
+        },
+        "saturation": {
+          "shipped_t15": {
+            "median": 0.5743,
+            "p05": 0.0886,
+            "p95": 0.91,
+            "frac_ge_0.99": 0.0,
+            "frac_le_0.01": 0.0004
+          },
+          "fitted": {
+            "median": 0.7458,
+            "p05": 0.1527,
+            "p95": 0.9613,
+            "frac_ge_0.99": 0.0,
+            "frac_le_0.01": 0.0
+          }
+        }
+      },
+      "arousal": {
+        "n": 2496,
+        "spearman": {
+          "shipped": 0.7911,
+          "fitted": 0.7911
+        },
+        "ece": {
+          "shipped": 0.2803,
+          "fitted": 0.1505
+        },
+        "saturation": {
+          "shipped_t15": {
+            "median": 0.9468,
+            "p05": 0.1259,
+            "p95": 0.9991,
+            "frac_ge_0.99": 0.2752,
+            "frac_le_0.01": 0.0
+          },
+          "fitted": {
+            "median": 0.7966,
+            "p05": 0.0487,
+            "p95": 0.9941,
+            "frac_ge_0.99": 0.103,
+            "frac_le_0.01": 0.0004
+          }
+        }
+      }
+    },
+    "soundtracks_set1": {
+      "valence": {
+        "n": 360,
+        "spearman": {
+          "shipped": 0.4908,
+          "fitted": 0.4908
+        },
+        "ece": {
+          "shipped": 0.1556,
+          "fitted": 0.0754
+        },
+        "saturation": {
+          "shipped_t15": {
+            "median": 0.3001,
+            "p05": 0.0962,
+            "p95": 0.7247,
+            "frac_ge_0.99": 0.0,
+            "frac_le_0.01": 0.0
+          },
+          "fitted": {
+            "median": 0.4652,
+            "p05": 0.1655,
+            "p95": 0.8563,
+            "frac_ge_0.99": 0.0,
+            "frac_le_0.01": 0.0
+          }
+        }
+      },
+      "arousal": {
+        "n": 360,
+        "spearman": {
+          "shipped": 0.7715,
+          "fitted": 0.7715
+        },
+        "ece": {
+          "shipped": 0.1595,
+          "fitted": 0.0494
+        },
+        "saturation": {
+          "shipped_t15": {
+            "median": 0.7455,
+            "p05": 0.0999,
+            "p95": 0.9944,
+            "frac_ge_0.99": 0.1472,
+            "frac_le_0.01": 0.0
+          },
+          "fitted": {
+            "median": 0.4354,
+            "p05": 0.039,
+            "p95": 0.9689,
+            "frac_ge_0.99": 0.0056,
+            "frac_le_0.01": 0.0028
+          }
+        }
+      }
+    },
+    "soundtracks_set2": {
+      "valence": {
+        "n": 110,
+        "spearman": {
+          "shipped": 0.5693,
+          "fitted": 0.5693
+        },
+        "ece": {
+          "shipped": 0.2341,
+          "fitted": 0.1364
+        },
+        "saturation": {
+          "shipped_t15": {
+            "median": 0.2234,
+            "p05": 0.0517,
+            "p95": 0.6261,
+            "frac_ge_0.99": 0.0,
+            "frac_le_0.01": 0.0
+          },
+          "fitted": {
+            "median": 0.3629,
+            "p05": 0.0888,
+            "p95": 0.7867,
+            "frac_ge_0.99": 0.0,
+            "frac_le_0.01": 0.0
+          }
+        }
+      },
+      "arousal": {
+        "n": 110,
+        "spearman": {
+          "shipped": 0.8445,
+          "fitted": 0.8445
+        },
+        "ece": {
+          "shipped": 0.1139,
+          "fitted": 0.0906
+        },
+        "saturation": {
+          "shipped_t15": {
+            "median": 0.6536,
+            "p05": 0.0646,
+            "p95": 0.9948,
+            "frac_ge_0.99": 0.1,
+            "frac_le_0.01": 0.0
+          },
+          "fitted": {
+            "median": 0.3417,
+            "p05": 0.0258,
+            "p95": 0.9706,
+            "frac_ge_0.99": 0.0091,
+            "frac_le_0.01": 0.0091
+          }
+        }
+      }
+    }
+  }
+}

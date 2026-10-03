@@ -83,6 +83,13 @@ CONTROL_CHANNEL = 'audio:clap:control'
 # Model version identifier
 MODEL_VERSION = 'laion-clap-music-v1'
 
+# Zero-shot V/A mapping: score = sigmoid(a * margin + b). Platt parameters
+# fitted on the labelled eval sets (fit on Memo2496, chosen by leave-one-out
+# transfer: unseen-set ECE 0.19/0.02/0.16/0.25 valence, 0.10/0.03/0.15/0.20
+# arousal vs shipped 0.24/0.05/0.16/0.23 and 0.40/0.28/0.16/0.11). Refit with
+# eval/calibrate_platt.py; full report in eval/calibration/.
+VA_CALIB = {'valence': (12.738, -0.172), 'arousal': (12.449, -2.309)}
+
 # Audio processing: sample the whole track with several short windows.
 # Five 10-second windows (at 10/30/50/70/90% of the duration) capture the
 # intro/verse/chorus/bridge/outro better than one mid-song slice, and the
@@ -573,16 +580,13 @@ class CLAPAnalyzer:
 
         avg_happy = _avg_sim(self._happy_text_embs)
         avg_sad = _avg_sim(self._sad_text_embs)
-        T = 15
-        exp_happy = np.exp(avg_happy * T)
-        exp_sad = np.exp(avg_sad * T)
-        valence = float(exp_happy / (exp_happy + exp_sad))
+        a, b = VA_CALIB['valence']
+        valence = float(1.0 / (1.0 + np.exp(-(a * (avg_happy - avg_sad) + b))))
 
         avg_high = _avg_sim(self._high_energy_text_embs)
         avg_low = _avg_sim(self._low_energy_text_embs)
-        exp_high = np.exp(avg_high * T)
-        exp_low = np.exp(avg_low * T)
-        arousal = float(exp_high / (exp_high + exp_low))
+        a, b = VA_CALIB['arousal']
+        arousal = float(1.0 / (1.0 + np.exp(-(a * (avg_high - avg_low) + b))))
 
         return (
             round(max(0.0, min(1.0, valence)), 3),
