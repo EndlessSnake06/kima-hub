@@ -64,8 +64,20 @@ beforeAll(async () => {
     await addTrack("trk_missing", "alb_pub", axis([0, 1], [3, 0.01]), [0.1, 0.2, 0.3], new Date());
 });
 
-afterAll(() => {
+afterAll(async () => {
     config.publicVibe = original;
+    // The test DB is shared by every file in the run; these ids are not
+    // prefixed, so they are listed and removed one by one.
+    await prisma.$executeRawUnsafe(
+        `DELETE FROM track_embeddings WHERE track_id = ANY($1)`,
+        ["trk_a", "trk_b", "trk_c", "trk_unmapped", "trk_unanalysed", "trk_suggested", "trk_missing"],
+    );
+    await prisma.$executeRawUnsafe(
+        `DELETE FROM "Track" WHERE id = ANY($1)`,
+        ["trk_a", "trk_b", "trk_c", "trk_unmapped", "trk_unanalysed", "trk_suggested", "trk_missing"],
+    );
+    await prisma.$executeRawUnsafe(`DELETE FROM "Album" WHERE id = ANY($1)`, ["alb_pub", "alb_disc"]);
+    await prisma.$executeRawUnsafe(`DELETE FROM "Artist" WHERE id = $1`, "art_pub");
 });
 
 describe("public library export", () => {

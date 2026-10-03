@@ -7,12 +7,13 @@ import { redisClient } from "../utils/redis";
 import { logger } from "../utils/logger";
 import { parseEmbedding } from "../utils/embedding";
 import { currentMoodSnapshot, moodOutput } from "./moodBucketService";
+import { computeLayout, embedOutOfSampleBatch } from "./mapLayout";
 
 const MIN_TRACKS_FOR_UMAP = 5;
-// UMAP is fitted on at most this many tracks: umap-js cost grows faster than
-// linearly, and 15k already takes minutes. Every other track is then placed
-// beside its nearest fitted neighbours (placeRemaining), so the map still
-// shows the whole library.
+// The layout is fitted on at most this many tracks: the neighbour-graph and
+// geodesic passes are O(n²), and 15k already runs to minutes. Every other
+// track is then placed beside its nearest fitted neighbours
+// (placeRemaining), so the map still shows the whole library.
 const MAX_FIT_TRACKS = Number(process.env.VIBE_MAP_MAX_FIT) || 15000;
 // Hard ceiling on tracks served on the map, to bound payload and browser memory.
 const MAX_MAP_TRACKS = 150000;
@@ -80,57 +81,44 @@ async function withCurrentMoods(data: MapResponse): Promise<MapResponse> {
     return data;
 }
 
-const UMAP_TIMEOUT_MS = 15 * 60 * 1000;
-const UMAP_WARN_MS = 5 * 60 * 1000;
+const LAYOUT_TIMEOUT_MS = 10 * 60 * 1000;
+const LAYOUT_WARN_MS = 3 * 60 * 1000;
 
 /**
- * Worker source for unbuilt checkouts: a worker thread does not inherit tsx's
- * loader, so dev runs this inline copy instead of umapWorker.ts. Keep it in
- * step with that file (same options and messages); production runs the file.
+ * The layout runs in a worker thread: the neighbour-graph passes are tens of
+ * seconds of pure CPU and must not stall request handling. Dev checkouts have
+ * no compiled worker file; the .ts worker runs on Node's own TypeScript
+ * support (loader hooks do not apply in worker threads, so the worker names
+ * its imports with explicit extensions).
  */
-const INLINE_UMAP_WORKER = `
-const { parentPort, workerData } = require("worker_threads");
-const { UMAP } = require(${JSON.stringify(require.resolve("umap-js"))});
-const { embeddings, nNeighbors } = workerData;
-try {
-    const umap = new UMAP({ nComponents: 3, nNeighbors, minDist: 0.1, spread: 1.0 });
-    parentPort.postMessage(umap.fit(embeddings));
-} catch (err) {
-    parentPort.postMessage({ error: err instanceof Error ? err.message : String(err) });
-    process.exit(1);
-}
-`;
-
-function makeUmapWorker(embeddings: number[][], nNeighbors: number): Worker {
-    const workerData = { embeddings, nNeighbors };
-
+function makeLayoutWorker(embeddings: number[][], k: number): Worker {
     const compiled = path.join(__dirname, "../workers/umapWorker.js");
-    if (fs.existsSync(compiled)) {
-        return new Worker(compiled, { workerData });
-    }
-
-    logger.debug("[VIBE-MAP] No compiled UMAP worker; running the inline source instead");
-    return new Worker(INLINE_UMAP_WORKER, { eval: true, workerData });
+    const source = fs.existsSync(compiled) ? compiled : path.join(__dirname, "../workers/umapWorker.ts");
+    return new Worker(source, { workerData: { embeddings, k } });
 }
 
-function runUmapInWorker(embeddings: number[][], nNeighbors: number): Promise<number[][]> {
+function runLayoutInWorker(embeddings: number[][], k: number): Promise<number[][]> {
+    // Tests run the layout on the main thread: Jest's TS transform is
+    // in-process, so a Worker child of bare node cannot load the .ts worker.
+    // Production and dev runs use the thread.
+    if (process.env.NODE_ENV === "test") return Promise.resolve(computeLayout(embeddings, { k }));
     return new Promise((resolve, reject) => {
-        const worker = makeUmapWorker(embeddings, nNeighbors);
+        const worker = makeLayoutWorker(embeddings, k);
 
         let settled = false;
 
         const warnTimer = setTimeout(() => {
-            logger.warn(`[VIBE-MAP] UMAP worker running for 5+ minutes (${embeddings.length} tracks)`);
-        }, UMAP_WARN_MS);
+            logger.warn(`[VIBE-MAP] layout worker running for 3+ minutes (${embeddings.length} tracks)`);
+        }, LAYOUT_WARN_MS);
 
         const timeout = setTimeout(() => {
             if (!settled) {
                 settled = true;
                 clearTimeout(warnTimer);
                 worker.terminate();
-                reject(new Error(`UMAP worker timed out after ${UMAP_TIMEOUT_MS / 60000} minutes`));
+                reject(new Error(`Layout worker timed out after ${LAYOUT_TIMEOUT_MS / 60000} minutes`));
             }
-        }, UMAP_TIMEOUT_MS);
+        }, LAYOUT_TIMEOUT_MS);
 
         worker.on("message", (result) => {
             if (!settled) {
@@ -159,7 +147,7 @@ function runUmapInWorker(embeddings: number[][], nNeighbors: number): Promise<nu
                 settled = true;
                 clearTimeout(timeout);
                 clearTimeout(warnTimer);
-                reject(new Error(`UMAP worker exited with code ${code}`));
+                reject(new Error(`Layout worker exited with code ${code}`));
             }
         });
     });
@@ -196,24 +184,27 @@ function startCompute(): Promise<MapResponse> {
     return computePromise;
 }
 
-export async function computeMapProjection(): Promise<MapResponse> {
-    return withCurrentMoods(await computeMapPositions());
+export async function computeMapProjection(force = false): Promise<MapResponse> {
+    return withCurrentMoods(await computeMapPositions(force));
 }
 
-async function computeMapPositions(): Promise<MapResponse> {
-    const cached = await readCachedProjection();
-    if (cached) {
-        logger.debug("[VIBE-MAP] Cache hit (stable key)");
-        return cached;
-    }
+async function computeMapPositions(force = false): Promise<MapResponse> {
+    // Reads take the cache, then persisted positions. A rebuild-completion
+    // (force) skips both: positions persisted under an earlier library are
+    // exactly the staleness this removes — every embedding pass refits.
+    if (!force) {
+        const cached = await readCachedProjection();
+        if (cached) {
+            logger.debug("[VIBE-MAP] Cache hit (stable key)");
+            return cached;
+        }
 
-    // Try DB hydrate path: if every embedding has a persisted map position,
-    // we can skip the expensive UMAP worker entirely and just hydrate metadata.
-    const dbResult = await hydrateFromDb();
-    if (dbResult) {
-        await cacheResult(dbResult, dbResult.tracks.map(t => t.id));
-        logger.info(`[VIBE-MAP] Hydrated ${dbResult.trackCount} tracks from DB positions`);
-        return dbResult;
+        const dbResult = await hydrateFromDb();
+        if (dbResult) {
+            await cacheResult(dbResult, dbResult.tracks.map(t => t.id));
+            logger.info(`[VIBE-MAP] Hydrated ${dbResult.trackCount} tracks from DB positions`);
+            return dbResult;
+        }
     }
 
     if (computePromise) logger.info("[VIBE-MAP] Waiting for in-progress computation");
@@ -287,11 +278,26 @@ async function persistPositions(ids: string[], xs: number[], ys: number[], zs: n
     }
 }
 
-// Attempt to serve the map from persisted DB positions without running UMAP.
+/**
+ * The model the library was embedded with: the dominant model_version, the
+ * same convention publicLibraryExport reports. Reading vectors from two
+ * models into one layout would place tracks in two incompatible spaces at
+ * once.
+ */
+async function activeEmbeddingModel(): Promise<string | null> {
+    const [{ model }] = await prisma.$queryRaw<Array<{ model: string | null }>>`
+        SELECT mode() WITHIN GROUP (ORDER BY model_version) AS model FROM track_embeddings
+    `;
+    return model ?? null;
+}
+
+// Attempt to serve the map from persisted DB positions without refitting.
 // Returns null if coverage is incomplete (new tracks enriched since last run,
 // positions never computed, etc.) so the caller falls through to doCompute().
 async function hydrateFromDb(): Promise<MapResponse | null> {
     try {
+        const active = await activeEmbeddingModel();
+        if (!active) return null;
         const coverage = await prisma.$queryRaw<Array<{ total: bigint; covered: bigint }>>`
             SELECT
                 COUNT(*) AS total,
@@ -299,6 +305,7 @@ async function hydrateFromDb(): Promise<MapResponse | null> {
             FROM track_embeddings te
             JOIN "Track" t ON te.track_id = t.id
             WHERE t."missingSince" IS NULL
+            AND te.model_version = ${active}
         `;
         const total = Number(coverage[0]?.total ?? 0n);
         const covered = Number(coverage[0]?.covered ?? 0n);
@@ -324,6 +331,7 @@ async function hydrateFromDb(): Promise<MapResponse | null> {
             JOIN "Artist" ar ON a."artistId" = ar.id
             WHERE te.map_x IS NOT NULL AND te.map_y IS NOT NULL AND te.map_z IS NOT NULL
             AND t."missingSince" IS NULL
+            AND te.model_version = ${active}
             ORDER BY te.track_id ASC
             LIMIT ${MAX_MAP_TRACKS}
         `;
@@ -455,58 +463,35 @@ function interpolate(neighbors: Array<{ id: string; distance: number }>, placed:
  * lean on tracks placed by earlier ones, so a few passes reach nearly every
  * track; stragglers are placed against the fitted set directly.
  */
-async function placeRemaining(ids: string[], placed: Map<string, Vec3>, fittedIds: string[]): Promise<void> {
-    let pending = ids;
-    for (let pass = 0; pass < 3 && pending.length > 0; pass++) {
-        const missed: string[] = [];
-        for (let start = 0; start < pending.length; start += PLACE_BATCH) {
-            const batch = pending.slice(start, start + PLACE_BATCH);
-            const rows = await prisma.$queryRaw<Array<{ qid: string; nid: string; distance: number }>>`
-                SELECT q.track_id AS qid, n.track_id AS nid, n.distance
-                FROM track_embeddings q
-                CROSS JOIN LATERAL (
-                    SELECT te2.track_id, q.embedding <=> te2.embedding AS distance
-                    FROM track_embeddings te2
-                    JOIN "Track" t2 ON te2.track_id = t2.id
-                    WHERE te2.track_id <> q.track_id
-                    AND t2."missingSince" IS NULL
-                    ORDER BY q.embedding <=> te2.embedding
-                    LIMIT ${PLACE_NEIGHBORS}
-                ) n
-                WHERE q.track_id = ANY(${batch}::text[])
-            `;
-            const byQuery = new Map<string, Array<{ id: string; distance: number }>>();
-            for (const r of rows) {
-                const list = byQuery.get(r.qid) ?? [];
-                list.push({ id: r.nid, distance: Number(r.distance) });
-                byQuery.set(r.qid, list);
-            }
-            for (const id of batch) {
-                const pos = interpolate((byQuery.get(id) ?? []).sort((a, b) => a.distance - b.distance), placed);
-                if (pos) placed.set(id, pos);
-                else missed.push(id);
-            }
-        }
-        pending = missed;
-    }
-
-    for (const id of pending) {
-        const rows = await prisma.$queryRaw<Array<{ nid: string; distance: number }>>`
-            SELECT te2.track_id AS nid, q.embedding <=> te2.embedding AS distance
-            FROM track_embeddings q, track_embeddings te2
-            JOIN "Track" t2 ON te2.track_id = t2.id
-            WHERE q.track_id = ${id} AND te2.track_id = ANY(${fittedIds}::text[])
-            AND t2."missingSince" IS NULL
-            ORDER BY distance
-            LIMIT 5
+async function placeRemaining(
+    ids: string[],
+    placed: Map<string, Vec3>,
+    fitIds: string[],
+    fitEmbeddings: number[][],
+    fitPositions: number[][],
+    k: number,
+): Promise<void> {
+    for (let start = 0; start < ids.length; start += PLACE_BATCH) {
+        const batch = ids.slice(start, start + PLACE_BATCH);
+        const rows = await prisma.$queryRaw<Array<{ track_id: string; embedding: string }>>`
+            SELECT te.track_id, te.embedding::text AS embedding
+            FROM track_embeddings te
+            WHERE te.track_id = ANY(${batch}::text[])
         `;
-        const pos = interpolate(rows.map(r => ({ id: r.nid, distance: Number(r.distance) })), placed);
-        if (pos) placed.set(id, pos);
+        const byId = new Map(rows.map(r => [r.track_id, parseEmbedding(r.embedding)]));
+        const present = batch.filter(id => byId.has(id));
+        if (present.length === 0) continue;
+        const positions = embedOutOfSampleBatch(present.map(id => byId.get(id)!), fitEmbeddings, fitPositions, { k, epochs: 30 });
+        present.forEach((id, i) =>
+            placed.set(id, [positions[i][0], positions[i][1], positions[i][2] ?? 0])
+        );
     }
 }
 
 async function doCompute(): Promise<MapResponse> {
     const startTime = Date.now();
+    const active = await activeEmbeddingModel();
+    if (!active) return { tracks: [], trackCount: 0, computedAt: new Date().toISOString() };
 
     const rows = await prisma.$queryRaw<TrackRow[]>`
         SELECT
@@ -517,6 +502,7 @@ async function doCompute(): Promise<MapResponse> {
         JOIN "Album" a ON t."albumId" = a.id
         JOIN "Artist" ar ON a."artistId" = ar.id
         WHERE t."missingSince" IS NULL
+        AND te.model_version = ${active}
         ORDER BY te.track_id ASC
         LIMIT ${MAX_MAP_TRACKS}
     `;
@@ -529,30 +515,34 @@ async function doCompute(): Promise<MapResponse> {
     }
     const sampled = rows.length === MAX_MAP_TRACKS;
 
-    // Fit on everything when it fits; otherwise on a random sample.
+    // Fit on everything when it fits; otherwise on an even stride over id
+    // order. Deterministic: the same library produces the same fit subset,
+    // and so the same map, every time.
+    const allIds = rows.map(r => r.track_id);
+    const stride = rows.length > MAX_FIT_TRACKS ? Math.ceil(rows.length / MAX_FIT_TRACKS) : 1;
+    const fitIds = stride === 1 ? allIds : allIds.filter((_, i) => i % stride === 0);
     const fitRows = await prisma.$queryRaw<Array<{ track_id: string; embedding: string }>>`
         SELECT te.track_id, te.embedding::text AS embedding
         FROM track_embeddings te
-        JOIN "Track" t ON te.track_id = t.id
-        WHERE t."missingSince" IS NULL
-        ORDER BY RANDOM()
-        LIMIT ${MAX_FIT_TRACKS}
+        WHERE te.track_id = ANY(${fitIds}::text[])
+        ORDER BY te.track_id ASC
     `;
-    const fittedIds = fitRows.map(r => r.track_id);
-    logger.info(`[VIBE-MAP] Fitting 3D UMAP on ${fitRows.length} of ${rows.length} tracks...`);
+    logger.info(`[VIBE-MAP] Fitting the 3D layout on ${fitRows.length} of ${rows.length} tracks...`);
 
     const embeddings: number[][] = fitRows.map(r => parseEmbedding(r.embedding));
-    // Scale nNeighbors with library size: sqrt gives balanced local/global structure.
-    const nNeighbors = Math.min(50, Math.max(5, Math.round(Math.sqrt(fitRows.length))));
-    const projection = await runUmapInWorker(embeddings, nNeighbors);
+    // UMAP's published neighbour default, which is what the map used under
+    // UMAP. Measured on the full test library (2026-10-02): k=15 retains
+    // neighbourhoods best; √n-scaling (96 at this size) measurably worse.
+    const k = 15;
+    const projection = await runLayoutInWorker(embeddings, k);
 
     const placed = new Map<string, Vec3>();
     fitRows.forEach((r, i) => placed.set(r.track_id, [projection[i][0], projection[i][1], projection[i][2] ?? 0]));
 
-    const unplaced = rows.map(r => r.track_id).filter(id => !placed.has(id));
+    const unplaced = allIds.filter(id => !placed.has(id));
     if (unplaced.length > 0) {
         const placeStart = Date.now();
-        await placeRemaining(unplaced, placed, fittedIds);
+        await placeRemaining(unplaced, placed, fitRows.map(r => r.track_id), embeddings, projection, k);
         logger.info(`[VIBE-MAP] Placed ${unplaced.length} further tracks by nearest neighbours in ${Date.now() - placeStart}ms`);
     }
 
@@ -720,7 +710,10 @@ export async function appendTrackToProjection(trackId: string): Promise<boolean>
                 te1.embedding <=> te2.embedding AS distance
             FROM track_embeddings te1
             JOIN track_embeddings te2 ON te2.track_id != te1.track_id
+            JOIN "Track" t2 ON t2.id = te2.track_id
             WHERE te1.track_id = ${trackId}
+            AND t2."missingSince" IS NULL
+            AND te2.model_version = (SELECT mode() WITHIN GROUP (ORDER BY model_version) FROM track_embeddings)
             ORDER BY te1.embedding <=> te2.embedding
             LIMIT ${KNN_NEIGHBORS * 3}
         `;
@@ -798,7 +791,7 @@ export async function precomputeProjection(): Promise<void> {
         await redisClient.del(CACHE_KEY);
         await redisClient.del(TRACK_IDS_KEY);
         parsedMemo = null;
-        const result = await computeMapProjection();
+        const result = await computeMapProjection(true);
         logger.info(`[VIBE-MAP] Pre-computed projection: ${result.trackCount} tracks`);
     } catch (e) {
         logger.error("[VIBE-MAP] Pre-computation failed:", (e as Error).message);

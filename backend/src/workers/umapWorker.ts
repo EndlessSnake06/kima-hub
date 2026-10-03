@@ -1,23 +1,19 @@
 import { parentPort, workerData } from "worker_threads";
-import { UMAP } from "umap-js";
 
-const { embeddings, nNeighbors } = workerData as {
-    embeddings: number[][];
-    nNeighbors: number;
-};
+// Loader hooks do not apply in worker threads, so the module is named with
+// the extension the running shape actually has on disk: .js when compiled,
+// .ts when Node's own type support is running this file.
+const layoutModule = typeof __filename === "string" ? "../services/mapLayout.js" : "../services/mapLayout.ts";
 
-try {
-    const umap = new UMAP({
-        nComponents: 3,
-        nNeighbors,
-        minDist: 0.1,
-        spread: 1.0,
-    });
+const { embeddings, k } = workerData as { embeddings: number[][]; k: number };
 
-    const projection = umap.fit(embeddings);
-    parentPort?.postMessage(projection);
-} catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    parentPort?.postMessage({ error: message });
-    process.exit(1);
-}
+(async () => {
+    try {
+        const { computeLayout } = (await import(layoutModule)) as typeof import("../services/mapLayout");
+        parentPort?.postMessage(computeLayout(embeddings, { k }));
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        parentPort?.postMessage({ error: message });
+        process.exit(1);
+    }
+})();

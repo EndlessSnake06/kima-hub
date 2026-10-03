@@ -123,6 +123,18 @@ describe("grep gate: no embedding query without the eligibility fragment", () =>
 
 describe("library eligibility at the read side", () => {
     beforeAll(seed);
+    // The test DB is shared by every file in the run; leaving these rows makes
+    // other files' queue sweeps see eleven extra due embeddings.
+    afterAll(async () => {
+        await prisma.$executeRawUnsafe(`DELETE FROM track_embeddings WHERE track_id LIKE $1`, "trk\\_elig\\_%");
+        for (const [table, pattern] of [
+            ["Track", "trk\\_elig\\_%"],
+            ["Album", "alb\\_elig\\_%"],
+            ["Artist", "art\\_elig\\_%"],
+        ] as const) {
+            await prisma.$executeRawUnsafe(`DELETE FROM "${table}" WHERE id LIKE $1`, pattern);
+        }
+    });
 
     it("keeps the missing file out of similar tracks", async () => {
         const similar = await findSimilarTracks("trk_elig_0", 20);

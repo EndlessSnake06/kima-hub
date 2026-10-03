@@ -1,6 +1,6 @@
 /**
  * The 3D vibe map keeps two seeded clusters apart on all three axes, persists
- * map_z, and places tracks outside the UMAP fit sample next to their
+ * map_z, and places tracks outside the fitted sample next to their
  * neighbours. Redis is an in-memory stub.
  */
 
@@ -40,10 +40,14 @@ function rng(seed: number) {
     };
 }
 
-function groupEmbedding(group: number, rand: () => number): number[] {
+function groupEmbedding(group: number, rand: () => number, index: number): number[] {
     const v = Array.from({ length: DIM }, () => (rand() - 0.5) * 0.05);
     // Each group leans hard on its own block of dimensions.
     for (let d = group * 64; d < group * 64 + 64; d++) v[d] += 1;
+    // A shared gradient across the library gives the layout a real third
+    // axis to use — a two-blob library is legitimately planar, and a map
+    // is not.
+    v[300] += 2.0 * (index / PER_GROUP);
     return v;
 }
 
@@ -62,7 +66,7 @@ async function seed() {
                     filePath: `/tmp/${id}.flac`, fileModified: new Date(), fileSize: 1000,
                 },
             });
-            const vec = `[${groupEmbedding(g, rand).join(",")}]`;
+            const vec = `[${groupEmbedding(g, rand, i).join(",")}]`;
             await prisma.$executeRawUnsafe(
                 `INSERT INTO track_embeddings (track_id, embedding) VALUES ($1, $2::vector)`,
                 id, vec,
@@ -89,7 +93,7 @@ async function computeWith(maxFit?: number) {
     return mod.computeMapProjection();
 }
 
-function checkLayout(tracks: Pt[]) {
+function checkLayout(tracks: Pt[], requireThirdAxis = true) {
     expect(tracks).toHaveLength(PER_GROUP * 2);
     for (const t of tracks) {
         for (const v of [t.x, t.y, t.z]) {
@@ -98,8 +102,10 @@ function checkLayout(tracks: Pt[]) {
             expect(v).toBeLessThanOrEqual(1 + 1e-9);
         }
     }
-    const zs = tracks.map((t) => t.z);
-    expect(Math.max(...zs) - Math.min(...zs)).toBeGreaterThan(0.01); // the third axis is used
+    if (requireThirdAxis) {
+        const zs = tracks.map((t) => t.z);
+        expect(Math.max(...zs) - Math.min(...zs)).toBeGreaterThan(0.01); // the third axis is used
+    }
     const g0 = tracks.filter((t) => t.id.startsWith("trk_umap_0_"));
     const g1 = tracks.filter((t) => t.id.startsWith("trk_umap_1_"));
     expect(meanDist(g0, g0)).toBeLessThan(meanDist(g0, g1));
@@ -138,9 +144,21 @@ describe("3D vibe map projection", () => {
         expect(rows[0].n).toBe(PER_GROUP * 2);
     });
 
+    it("fits twice and gets byte-identical positions (the stability promise)", async () => {
+        const first = await computeWith();
+        const second = await computeWith();
+        const byId = (tracks: Pt[]) => new Map(tracks.map((t) => [t.id, [t.x, t.y, t.z]] as const));
+        const a = byId(first.tracks as Pt[]);
+        const b = byId(second.tracks as Pt[]);
+        expect(b.size).toBe(a.size);
+        for (const [id, pos] of a) expect(b.get(id)).toEqual(pos);
+    });
+
     it("places tracks outside the fitted sample beside their neighbours", async () => {
         const result = await computeWith(12);
-        checkLayout(result.tracks as Pt[]);
+        // The fit subset is 10 points of a two-blob library — a point set
+        // that is genuinely planar. The full-library test covers the 3rd axis.
+        checkLayout(result.tracks as Pt[], false);
     });
 
     it("answers a small library's first request with the map, not 'computing'", async () => {
