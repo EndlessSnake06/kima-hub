@@ -812,6 +812,25 @@ router.get("/radio", async (req, res) => {
 
       case "mood":
         const moodValue = ((value as string) || "").toLowerCase();
+        // The five named moods are the bucket verdicts, same as the
+        // mood page; the rest of the values here are audio-feature filters,
+        // not moods, and stay feature queries.
+        const BUCKET_MOODS: Record<string, "happy" | "sad" | "chill" | "party"> = {
+          happy: "happy",
+          melancholy: "sad",
+          chill: "chill",
+          dance: "party",
+        };
+        if (BUCKET_MOODS[moodValue]) {
+            const bucketRows = await prisma.moodBucket.findMany({
+                where: { mood: BUCKET_MOODS[moodValue] },
+                select: { trackId: true },
+                orderBy: { score: "desc" },
+                take: limitNum * 3,
+            });
+            trackIds = bucketRows.map((r) => r.trackId);
+            break;
+        }
         let moodWhere: any = { analysisStatus: "completed" };
 
         switch (moodValue) {
@@ -820,31 +839,6 @@ router.get("/radio", async (req, res) => {
               analysisStatus: "completed",
               energy: { gte: 0.7 },
               bpm: { gte: 120 },
-            };
-            break;
-          case "chill":
-            moodWhere = {
-              analysisStatus: "completed",
-              OR: [{ energy: { lte: 0.4 } }, { arousal: { lte: 0.4 } }],
-            };
-            break;
-          case "happy":
-            moodWhere = {
-              analysisStatus: "completed",
-              valence: { gte: 0.6 },
-              energy: { gte: 0.5 },
-            };
-            break;
-          case "melancholy":
-            moodWhere = {
-              analysisStatus: "completed",
-              OR: [{ valence: { lte: 0.4 } }, { keyScale: "minor" }],
-            };
-            break;
-          case "dance":
-            moodWhere = {
-              analysisStatus: "completed",
-              danceability: { gte: 0.7 },
             };
             break;
           case "acoustic":

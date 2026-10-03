@@ -1421,7 +1421,9 @@ class AnalysisWorker:
     
     def _save_results(self, track_id: str, file_path: str, features: Dict[str, Any]):
         """Save analysis results. instrumentalness and acousticness are left
-        alone: CLAP is their only writer, and a re-analysis would null them."""
+        alone: CLAP is their only writer, and a re-analysis would null them.
+        V/A land in their own raw columns; the shared pair mirrors the raw
+        until CLAP finishes and recomputes it from both raws."""
         cursor = self.db.get_cursor()
         try:
             cursor.execute("""
@@ -1438,6 +1440,8 @@ class AnalysisWorker:
                     danceability = %s,
                     valence = %s,
                     arousal = %s,
+                    "deamValence" = %s,
+                    "deamArousal" = %s,
                     "moodTags" = %s,
                     "essentiaGenres" = %s,
                     "moodHappy" = %s,
@@ -1465,6 +1469,8 @@ class AnalysisWorker:
                 features['loudness'],
                 features['dynamicRange'],
                 features['danceability'],
+                features['valence'],
+                features['arousal'],
                 features['valence'],
                 features['arousal'],
                 features['moodTags'],

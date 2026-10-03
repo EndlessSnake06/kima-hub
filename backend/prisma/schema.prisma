@@ -719,6 +719,10 @@ model Track {
   danceability                Float?
   valence                     Float?
   arousal                     Float?
+  deamValence                 Float?
+  deamArousal                 Float?
+  clapValenceRaw              Float?
+  clapArousalRaw              Float?
   instrumentalness            Float?
   acousticness                Float?
   speechiness                 Float?

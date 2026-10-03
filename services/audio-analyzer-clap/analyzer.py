@@ -843,44 +843,34 @@ class BullMQVibeWorker:
         instrumentalness: float, acousticness: float,
         clap_valence: float, clap_arousal: float
     ):
-        """Update all CLAP-derived features on the Track, blending V/A with DEAM if available."""
+        """Write CLAP's own features and raw V/A, and recompute the shared
+        pair from the stored raws. The pair is a pure function of the
+        raw columns -- recomputing it at every embedding completion is
+        idempotent, so a rebuild can no longer erode it, and DEAM's value is
+        never read from the blended pair."""
         conn = self._db_pool.getconn()
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cursor:
-                # Read existing DEAM-derived V/A (written by Essentia analyzer phase)
-                cursor.execute(
-                    'SELECT valence, arousal FROM "Track" WHERE id = %s',
-                    (track_id,)
-                )
-                row = cursor.fetchone()
-                deam_valence = row['valence'] if row else None
-                deam_arousal = row['arousal'] if row else None
-
-                # Blend: DEAM + CLAP if DEAM available, else pure CLAP
-                if deam_valence is not None:
-                    final_valence = round(0.7 * deam_valence + 0.3 * clap_valence, 3)
-                else:
-                    final_valence = clap_valence
-
-                if deam_arousal is not None:
-                    final_arousal = round(0.5 * deam_arousal + 0.5 * clap_arousal, 3)
-                else:
-                    final_arousal = clap_arousal
-
                 cursor.execute(
                     """UPDATE "Track"
                     SET instrumentalness = %s, acousticness = %s,
-                        valence = %s, arousal = %s
+                        "clapValenceRaw" = %s, "clapArousalRaw" = %s,
+                        valence = COALESCE(
+                            ROUND((0.7 * "deamValence" + 0.3 * %s)::numeric, 3)::float8, %s),
+                        arousal = COALESCE(
+                            ROUND((0.5 * "deamArousal" + 0.5 * %s)::numeric, 3)::float8, %s)
                     WHERE id = %s""",
                     (instrumentalness, acousticness,
-                     final_valence, final_arousal, track_id),
+                     clap_valence, clap_arousal,
+                     clap_valence, clap_valence,
+                     clap_arousal, clap_arousal,
+                     track_id),
                 )
             conn.commit()
             logger.debug(
                 f"CLAP features for {track_id}: instr={instrumentalness}, "
-                f"acoustic={acousticness}, "
-                f"valence={final_valence} (deam={deam_valence}, clap={clap_valence}), "
-                f"arousal={final_arousal} (deam={deam_arousal}, clap={clap_arousal})"
+                f"acoustic={acousticness}, clap raw V/A=({clap_valence}, {clap_arousal}); "
+                f"pair recomputed from raw columns"
             )
         except Exception as e:
             logger.error(f"Failed to update CLAP features for {track_id}: {e}")
