@@ -226,7 +226,23 @@ const QUICK_COMPUTE_WAIT_MS = 2000;
 export async function getMapProjectionState(): Promise<MapProjectionState> {
     const state = await getMapPositionsState();
     if (state.status !== "ready") return state;
-    return { status: "ready", data: await withCurrentMoods(state.data) };
+    const data = await withCurrentMoods(state.data);
+    return { status: "ready", data: await withoutMissingTracks(data) };
+}
+
+// The cached projection was built when every track in it had a file. A file
+// that went missing afterwards stays in the cached list until the next rebuild;
+// drop it here so the map honours the library-eligibility rule at read time.
+async function withoutMissingTracks(data: MapResponse): Promise<MapResponse> {
+    const missing = await prisma.track.findMany({
+        where: { missingSince: { not: null } },
+        select: { id: true },
+    });
+    if (missing.length === 0) return data;
+    const gone = new Set(missing.map((m) => m.id));
+    const tracks = data.tracks.filter((t) => !gone.has(t.id));
+    if (tracks.length === data.tracks.length) return data;
+    return { ...data, tracks, trackCount: tracks.length };
 }
 
 async function getMapPositionsState(): Promise<MapProjectionState> {

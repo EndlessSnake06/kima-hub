@@ -10,6 +10,8 @@ import { prisma } from "../../utils/db";
 import { findSimilarTracks } from "../hybridSimilarity";
 import { generateSongPath } from "../songPath";
 import { generateChillMix } from "../mixes/moodMixes";
+import { getMapProjectionState } from "../umapProjection";
+import { redisClient } from "../../utils/redis";
 import { syncMoodBuckets } from "../../workers/moodBucketWorker";
 
 jest.mock("../../utils/redis", () => ({
@@ -162,6 +164,33 @@ describe("library eligibility at the read side", () => {
         const mix = await generateChillMix("u_elig", "2026-10-02");
         expect(mix).not.toBeNull();
         expect(mix!.trackIds).not.toContain(MISSING);
+    });
+
+    it("keeps it out of a map served from the cache", async () => {
+        // Positions are fitted over the library as it was; the cache is the
+        // one read path that can outlive a file, so the filter runs at read.
+        const cached = {
+            tracks: [MISSING, "trk_elig_0"].map((id, i) => ({
+                id, x: 0.1 * i, y: 0.2 * i, z: 0.3 * i,
+                title: id === MISSING ? "E 11" : "E 0",
+                artist: "x", artistId: "a", albumId: "b", coverUrl: null,
+                dominantMood: "neutral", moodScore: 0.5, moods: {},
+                energy: 0.3, valence: 0.1,
+            })),
+            trackCount: 2,
+            computedAt: new Date().toISOString(),
+        };
+        jest.mocked(redisClient.get).mockImplementation(async (key) =>
+            String(key) === "vibe:map:v4:projection" ? JSON.stringify(cached) : null);
+        try {
+            const state = await getMapProjectionState();
+            expect(state.status).toBe("ready");
+            if (state.status !== "ready") return;
+            expect(state.data.tracks.map((t) => t.id)).toEqual(["trk_elig_0"]);
+            expect(state.data.trackCount).toBe(1);
+        } finally {
+            jest.mocked(redisClient.get).mockImplementation(async () => null);
+        }
     });
 
     it("brings the track back to everything when the file returns", async () => {
