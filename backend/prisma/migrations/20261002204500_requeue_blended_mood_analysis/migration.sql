@@ -8,8 +8,11 @@ WHERE "analysisStatus" = 'completed'
   AND "vibeAnalysisStatus" = 'completed'
   AND "deamValence" IS NULL;
 
+-- retryable = true: a record closed as success under the old code carries
+-- retryable = false, and the due query only offers retryable records. Without
+-- this the re-queue would silently skip every such track.
 UPDATE "TrackStage"
-SET status = 'pending', "nextRetryAt" = NULL,
+SET status = 'pending', "nextRetryAt" = NULL, retryable = true,
     "lastErrorCode" = NULL, "lastErrorMessage" = NULL, "failureClass" = NULL
 WHERE stage = 'analysis' AND status = 'done'
   AND "trackId" IN (
