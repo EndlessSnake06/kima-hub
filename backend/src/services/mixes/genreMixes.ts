@@ -5,6 +5,7 @@ import {
     getEffectiveYear,
     getDecadeFromYear,
 } from "../../utils/dateFilters";
+import { NOT_MISSING } from "../../utils/libraryEligibility";
 import {
     ProgrammaticMix,
     getMixColor,
@@ -21,7 +22,7 @@ export async function generateEraMix(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const albums = await prisma.album.findMany({
-        where: { tracks: { some: {} } },
+        where: { tracks: { some: NOT_MISSING } },
         select: { year: true, originalYear: true, displayYear: true },
     });
 
@@ -41,7 +42,8 @@ export async function generateEraMix(
     const selectedDecade = decadeArray[decadeSeed % decadeArray.length];
 
     const tracks = await prisma.track.findMany({
-        where: {
+where: {
+...NOT_MISSING,
             album: getDecadeWhereClause(selectedDecade),
         },
         include: {
@@ -188,7 +190,8 @@ export async function generatePartyMix(
 
     if (tracks.length < 15) {
         const audioTracks = await prisma.track.findMany({
-            where: {
+where: {
+...NOT_MISSING,
                 analysisStatus: "completed",
                 OR: [
                     { danceability: { gte: 0.7 } },
@@ -270,7 +273,8 @@ export async function generateWorkoutMix(
     let tracks: any[] = [];
 
     const enhancedTracks = await prisma.track.findMany({
-        where: {
+where: {
+...NOT_MISSING,
             analysisStatus: "completed",
             analysisMode: "enhanced",
             AND: [
@@ -291,7 +295,8 @@ export async function generateWorkoutMix(
     if (tracks.length < 15) {
         logger.debug(`[WORKOUT MIX] Falling back to Standard mode`);
         const audioTracks = await prisma.track.findMany({
-            where: {
+where: {
+...NOT_MISSING,
                 analysisStatus: "completed",
                 OR: [
                     {
@@ -454,7 +459,8 @@ export async function generateFocusMix(
 
     if (tracks.length < 15) {
         const audioTracks = await prisma.track.findMany({
-            where: {
+where: {
+...NOT_MISSING,
                 analysisStatus: "completed",
                 instrumentalness: { gte: 0.5 },
                 energy: { gte: 0.2, lte: 0.7 },

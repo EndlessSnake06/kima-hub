@@ -8,6 +8,7 @@ import {
     seededShuffle,
     findTracksByGenrePatterns,
 } from "./helpers";
+import { NOT_MISSING } from "../../utils/libraryEligibility";
 
 const TRACK_LIMIT = 20;
 const MIN_TRACKS_DAILY = 8;
@@ -20,7 +21,8 @@ export async function generateChillMix(
     today: string
 ): Promise<ProgrammaticMix | null> {
     let tracks = await prisma.track.findMany({
-        where: {
+where: {
+...NOT_MISSING,
             analysisStatus: "completed",
             analysisMode: "enhanced",
             AND: [
@@ -38,7 +40,8 @@ export async function generateChillMix(
     if (tracks.length < MIN_TRACKS_DAILY) {
         logger.debug(`[CHILL MIX] Falling back to Standard mode`);
         tracks = await prisma.track.findMany({
-            where: {
+where: {
+...NOT_MISSING,
                 analysisStatus: "completed",
                 AND: [
                     { energy: { lte: 0.55 } },
@@ -102,7 +105,8 @@ export async function generateHighEnergyMix(
     let tracks: any[] = [];
 
     const audioTracks = await prisma.track.findMany({
-        where: {
+where: {
+...NOT_MISSING,
             analysisStatus: "completed",
             energy: { gte: 0.7 },
             bpm: { gte: 120 },
@@ -173,7 +177,8 @@ export async function generateLateNightMix(
     today: string
 ): Promise<ProgrammaticMix | null> {
     let tracks = await prisma.track.findMany({
-        where: {
+where: {
+...NOT_MISSING,
             analysisStatus: "completed",
             analysisMode: "enhanced",
             AND: [
@@ -194,7 +199,8 @@ export async function generateLateNightMix(
     if (tracks.length < MIN_TRACKS_DAILY) {
         logger.debug(`[LATE NIGHT MIX] Falling back to Standard mode`);
         tracks = await prisma.track.findMany({
-            where: {
+where: {
+...NOT_MISSING,
                 analysisStatus: "completed",
                 AND: [
                     { energy: { lte: 0.45 } },
@@ -258,7 +264,8 @@ export async function generateHappyMix(
     let tracks: any[] = [];
 
     const enhancedTracks = await prisma.track.findMany({
-        where: {
+where: {
+...NOT_MISSING,
             analysisStatus: "completed",
             analysisMode: "enhanced",
             moodHappy: { gte: 0.6 },
@@ -272,7 +279,8 @@ export async function generateHappyMix(
 
     if (tracks.length < 15) {
         const standardTracks = await prisma.track.findMany({
-            where: {
+where: {
+...NOT_MISSING,
                 analysisStatus: "completed",
                 valence: { gte: 0.6 },
                 energy: { gte: 0.5 },
@@ -349,7 +357,8 @@ export async function generateMelancholyMix(
     let tracks: any[] = [];
 
     const enhancedTracks = await prisma.track.findMany({
-        where: {
+where: {
+...NOT_MISSING,
             analysisStatus: "completed",
             analysisMode: "enhanced",
             moodSad: { gte: 0.5 },
@@ -367,7 +376,8 @@ export async function generateMelancholyMix(
     } else {
         logger.debug(`[MELANCHOLY MIX] Falling back to Standard mode`);
         const audioTracks = await prisma.track.findMany({
-            where: {
+where: {
+...NOT_MISSING,
                 analysisStatus: "completed",
                 valence: { lte: 0.35 },
                 energy: { lte: 0.6 },
@@ -467,7 +477,8 @@ export async function generateDanceFloorMix(
     let tracks: any[] = [];
 
     const audioTracks = await prisma.track.findMany({
-        where: {
+where: {
+...NOT_MISSING,
             analysisStatus: "completed",
             danceability: { gte: 0.7 },
             bpm: { gte: 110, lte: 140 },
@@ -539,7 +550,8 @@ export async function generateAcousticMix(
     let tracks: any[] = [];
 
     const audioTracks = await prisma.track.findMany({
-        where: {
+where: {
+...NOT_MISSING,
             analysisStatus: "completed",
             acousticness: { gte: 0.6 },
             energy: { gte: 0.3, lte: 0.6 },
@@ -609,7 +621,8 @@ export async function generateInstrumentalMix(
     let tracks: any[] = [];
 
     const audioTracks = await prisma.track.findMany({
-        where: {
+where: {
+...NOT_MISSING,
             analysisStatus: "completed",
             instrumentalness: { gte: 0.7 },
             energy: { gte: 0.3, lte: 0.6 },
@@ -680,7 +693,8 @@ export async function generateRoadTripMix(
     let tracks: any[] = [];
 
     const taggedTracks = await prisma.track.findMany({
-        where: {
+where: {
+...NOT_MISSING,
             // Moods come from audio analysis only. With nothing in the energetic or
             // upbeat moods, the genre and audio fallbacks below answer.
             OR: [
@@ -695,7 +709,8 @@ export async function generateRoadTripMix(
 
     if (tracks.length < 15) {
         const audioTracks = await prisma.track.findMany({
-            where: {
+where: {
+...NOT_MISSING,
                 analysisStatus: "completed",
                 energy: { gte: 0.5, lte: 0.8 },
                 bpm: { gte: 100, lte: 130 },
@@ -773,7 +788,8 @@ export async function generateSadGirlSundays(
     if (dayOfWeek !== 0) return null;
 
     const tracks = await prisma.track.findMany({
-        where: {
+where: {
+...NOT_MISSING,
             analysisStatus: "completed",
             OR: [
                 {
@@ -819,7 +835,8 @@ export async function generateMainCharacterEnergy(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
-        where: {
+where: {
+...NOT_MISSING,
             analysisStatus: "completed",
             OR: [
                 {
@@ -860,7 +877,8 @@ export async function generateVillainEra(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
-        where: {
+where: {
+...NOT_MISSING,
             analysisStatus: "completed",
             OR: [
                 {
@@ -902,7 +920,8 @@ export async function generate3AMThoughts(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
-        where: {
+where: {
+...NOT_MISSING,
             analysisStatus: "completed",
             AND: [
                 { arousal: { lte: 0.4 } },
@@ -945,7 +964,8 @@ export async function generateHotGirlWalk(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
-        where: {
+where: {
+...NOT_MISSING,
             analysisStatus: "completed",
             OR: [
                 {
@@ -992,7 +1012,8 @@ export async function generateRageCleaning(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
-        where: {
+where: {
+...NOT_MISSING,
             analysisStatus: "completed",
             OR: [
                 {
@@ -1042,7 +1063,8 @@ export async function generateGoldenHour(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
-        where: {
+where: {
+...NOT_MISSING,
             analysisStatus: "completed",
             OR: [
                 {
@@ -1083,7 +1105,8 @@ export async function generateShowerKaraoke(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
-        where: {
+where: {
+...NOT_MISSING,
             analysisStatus: "completed",
             AND: [
                 { instrumentalness: { lte: 0.35 } },
@@ -1120,7 +1143,8 @@ export async function generateInMyFeelings(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
-        where: {
+where: {
+...NOT_MISSING,
             analysisStatus: "completed",
             OR: [
                 {
@@ -1161,7 +1185,8 @@ export async function generateMidnightDrive(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
-        where: {
+where: {
+...NOT_MISSING,
             analysisStatus: "completed",
             AND: [
                 { energy: { gte: 0.3, lte: 0.65 } },
@@ -1203,7 +1228,8 @@ export async function generateCoffeeShopVibes(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
-        where: {
+where: {
+...NOT_MISSING,
             analysisStatus: "completed",
             AND: [
                 { energy: { lte: 0.55 } },
@@ -1245,7 +1271,8 @@ export async function generateRomanticizeYourLife(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
-        where: {
+where: {
+...NOT_MISSING,
             analysisStatus: "completed",
             OR: [
                 {
@@ -1286,7 +1313,8 @@ export async function generateThatGirlEra(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
-        where: {
+where: {
+...NOT_MISSING,
             analysisStatus: "completed",
             AND: [
                 { valence: { gte: 0.55 } },
@@ -1323,7 +1351,8 @@ export async function generateUnhinged(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
-        where: {
+where: {
+...NOT_MISSING,
             analysisStatus: "completed",
             OR: [
                 { energy: { gte: 0.85 } },
@@ -1366,7 +1395,8 @@ export async function generateDeepCuts(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
-        where: {
+where: {
+...NOT_MISSING,
             plays: {
                 none: {},
             },
@@ -1384,6 +1414,7 @@ export async function generateDeepCuts(
 
     if (tracks.length < 15) {
         const lowPlayTracks = await prisma.track.findMany({
+        where: NOT_MISSING,
             include: {
                 album: { select: { coverUrl: true } },
                 _count: { select: { plays: true } },
@@ -1453,7 +1484,8 @@ export async function generateKeyJourney(
     ];
 
     const tracks = await prisma.track.findMany({
-        where: {
+where: {
+...NOT_MISSING,
             analysisStatus: "completed",
             key: { not: null },
         },
@@ -1510,7 +1542,8 @@ export async function generateTempoFlow(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
-        where: {
+where: {
+...NOT_MISSING,
             analysisStatus: "completed",
             bpm: { not: null },
         },
@@ -1570,7 +1603,8 @@ export async function generateVocalDetox(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
-        where: {
+where: {
+...NOT_MISSING,
             analysisStatus: "completed",
             instrumentalness: { gte: 0.75 },
         },
@@ -1606,7 +1640,8 @@ export async function generateMinorKeyMix(
     if (dayOfWeek !== 1) return null;
 
     const tracks = await prisma.track.findMany({
-        where: {
+where: {
+...NOT_MISSING,
             analysisStatus: "completed",
             keyScale: "minor",
             energy: { gte: 0.45 },
@@ -1658,6 +1693,7 @@ export async function generateMoodOnDemand(
 ): Promise<ProgrammaticMix | null> {
     const where: any = {
         analysisStatus: "completed",
+        ...NOT_MISSING,
     };
 
     const mlMoodParams = [
@@ -1674,7 +1710,8 @@ export async function generateMoodOnDemand(
     let useEnhancedMode = false;
     if (usesMLMoods) {
         const enhancedCount = await prisma.track.count({
-            where: {
+where: {
+...NOT_MISSING,
                 analysisStatus: "completed",
                 analysisMode: "enhanced",
             },

@@ -1,6 +1,7 @@
 import { prisma } from "../utils/db";
 import { logger } from "../utils/logger";
 import { redisClient } from "../utils/redis";
+import { NOT_MISSING } from "../utils/libraryEligibility";
 
 export function normalizeCacheQuery(query: string): string {
     return query.trim().toLowerCase().replace(/\s+/g, " ");
@@ -306,6 +307,7 @@ export class SearchService {
                     contains: query,
                     mode: "insensitive",
                 },
+                ...NOT_MISSING,
             },
             select: {
                 id: true,
@@ -372,6 +374,7 @@ export class SearchService {
         LEFT JOIN "Album" a ON t."albumId" = a.id
         LEFT JOIN "Artist" ar ON a."artistId" = ar.id
         WHERE t."searchVector" @@ to_tsquery('english', ${tsquery})
+        AND t."missingSince" IS NULL
         ORDER BY rank DESC, t.title ASC
         LIMIT ${limit}
         OFFSET ${offset}

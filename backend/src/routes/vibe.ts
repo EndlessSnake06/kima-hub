@@ -214,6 +214,7 @@ router.post("/alchemy", requireAuth, async (req, res) => {
                 JOIN "Album" a ON t."albumId" = a.id
                 JOIN "Artist" ar ON a."artistId" = ar.id
                 WHERE te.track_id != ALL(${allInputIds})
+                AND t."missingSince" IS NULL
                 ORDER BY te.embedding <=> ${result}::vector
                 LIMIT ${limit}
             `,

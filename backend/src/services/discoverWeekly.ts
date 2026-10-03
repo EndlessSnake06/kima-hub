@@ -36,6 +36,7 @@ import {
 import { shuffleArray } from "../utils/shuffle";
 import { config as appConfig } from "../config";
 import { eventBus } from "./eventBus";
+import { NOT_MISSING } from "../utils/libraryEligibility";
 
 interface RecommendedAlbum {
     artistName: string;
@@ -885,6 +886,7 @@ class DiscoverWeeklyService {
             if (criteria.albumMbid) {
                 tracks = await prisma.track.findMany({
                     where: {
+                    ...NOT_MISSING,
                         album: { rgMbid: criteria.albumMbid },
                     },
                     include: {
@@ -902,6 +904,7 @@ class DiscoverWeeklyService {
             if (tracks.length === 0) {
                 tracks = await prisma.track.findMany({
                     where: {
+                    ...NOT_MISSING,
                         album: {
                             title: {
                                 equals: criteria.albumTitle,
@@ -1067,6 +1070,7 @@ class DiscoverWeeklyService {
         if (seedArtistNames.length > 0 || seedArtistMbids.length > 0) {
             const libraryTracks = await prisma.track.findMany({
                 where: {
+                ...NOT_MISSING,
                     album: {
                         artist: {
                             OR: [
@@ -1135,6 +1139,7 @@ class DiscoverWeeklyService {
             // Exclude albums already used
             const popularLibraryTracks = await prisma.track.findMany({
                 where: {
+                ...NOT_MISSING,
                     album: {
                         location: LIBRARY_LOCATION,
                         id: { notIn: Array.from(usedAlbumIds) }, // 1 per album
@@ -1536,6 +1541,7 @@ class DiscoverWeeklyService {
                 if (albumMbid) {
                     tracks = await prisma.track.findMany({
                         where: {
+                        ...NOT_MISSING,
                             album: { rgMbid: albumMbid },
                         },
                         include: {
@@ -1556,6 +1562,7 @@ class DiscoverWeeklyService {
                     );
                     tracks = await prisma.track.findMany({
                         where: {
+                        ...NOT_MISSING,
                             album: {
                                 title: {
                                     equals: albumTitle,

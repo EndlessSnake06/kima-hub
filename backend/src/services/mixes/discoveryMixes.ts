@@ -3,6 +3,7 @@ import { logger } from "../../utils/logger";
 import { normalizeArtistName } from "../artistIdentity";
 import { getSimilarArtists } from "../artistSimilarity";
 import { LIBRARY_LOCATION } from "../libraryFilters";
+import { NOT_MISSING } from "../../utils/libraryEligibility";
 import {
     ProgrammaticMix,
     getMixColor,
@@ -36,7 +37,7 @@ export async function generateTopTracksMix(
 
     const trackIds = playStats.map((p) => p.trackId);
     const tracks = await prisma.track.findMany({
-        where: { id: { in: trackIds } },
+        where: { id: { in: trackIds }, ...NOT_MISSING },
         include: {
             album: { select: { coverUrl: true } },
         },
@@ -68,7 +69,8 @@ export async function generateRediscoverMix(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const allTracks = await prisma.track.findMany({
-        where: {
+where: {
+...NOT_MISSING,
             album: { location: LIBRARY_LOCATION },
         },
         take: 5000,
@@ -235,7 +237,7 @@ export async function generateRandomDiscoveryMix(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const totalAlbums = await prisma.album.count({
-        where: { tracks: { some: {} } },
+        where: { tracks: { some: NOT_MISSING } },
     });
 
     if (totalAlbums < 10) return null;
@@ -243,7 +245,7 @@ export async function generateRandomDiscoveryMix(
     const seed = getSeededRandom(`random-${today}`) % totalAlbums;
 
     const randomAlbums = await prisma.album.findMany({
-        where: { tracks: { some: {} } },
+        where: { tracks: { some: NOT_MISSING } },
         include: {
             tracks: {
                 include: {

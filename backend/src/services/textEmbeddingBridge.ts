@@ -205,6 +205,7 @@ export async function searchTracksByEmbedding(
             JOIN "Track" t ON te.track_id = t.id
             JOIN "Album" a ON t."albumId" = a.id
             JOIN "Artist" ar ON a."artistId" = ar.id
+            WHERE t."missingSince" IS NULL
             ORDER BY te.embedding <=> ${vector}::vector
             LIMIT ${limit}
         `,

@@ -295,8 +295,10 @@ async function hydrateFromDb(): Promise<MapResponse | null> {
         const coverage = await prisma.$queryRaw<Array<{ total: bigint; covered: bigint }>>`
             SELECT
                 COUNT(*) AS total,
-                COUNT(*) FILTER (WHERE map_x IS NOT NULL AND map_y IS NOT NULL AND map_z IS NOT NULL) AS covered
-            FROM track_embeddings
+                COUNT(*) FILTER (WHERE te.map_x IS NOT NULL AND te.map_y IS NOT NULL AND te.map_z IS NOT NULL) AS covered
+            FROM track_embeddings te
+            JOIN "Track" t ON te.track_id = t.id
+            WHERE t."missingSince" IS NULL
         `;
         const total = Number(coverage[0]?.total ?? 0n);
         const covered = Number(coverage[0]?.covered ?? 0n);
@@ -321,6 +323,7 @@ async function hydrateFromDb(): Promise<MapResponse | null> {
             JOIN "Album" a ON t."albumId" = a.id
             JOIN "Artist" ar ON a."artistId" = ar.id
             WHERE te.map_x IS NOT NULL AND te.map_y IS NOT NULL AND te.map_z IS NOT NULL
+            AND t."missingSince" IS NULL
             ORDER BY te.track_id ASC
             LIMIT ${MAX_MAP_TRACKS}
         `;
@@ -464,7 +467,9 @@ async function placeRemaining(ids: string[], placed: Map<string, Vec3>, fittedId
                 CROSS JOIN LATERAL (
                     SELECT te2.track_id, q.embedding <=> te2.embedding AS distance
                     FROM track_embeddings te2
+                    JOIN "Track" t2 ON te2.track_id = t2.id
                     WHERE te2.track_id <> q.track_id
+                    AND t2."missingSince" IS NULL
                     ORDER BY q.embedding <=> te2.embedding
                     LIMIT ${PLACE_NEIGHBORS}
                 ) n
@@ -489,7 +494,9 @@ async function placeRemaining(ids: string[], placed: Map<string, Vec3>, fittedId
         const rows = await prisma.$queryRaw<Array<{ nid: string; distance: number }>>`
             SELECT te2.track_id AS nid, q.embedding <=> te2.embedding AS distance
             FROM track_embeddings q, track_embeddings te2
+            JOIN "Track" t2 ON te2.track_id = t2.id
             WHERE q.track_id = ${id} AND te2.track_id = ANY(${fittedIds}::text[])
+            AND t2."missingSince" IS NULL
             ORDER BY distance
             LIMIT 5
         `;
@@ -509,6 +516,7 @@ async function doCompute(): Promise<MapResponse> {
         JOIN "Track" t ON te.track_id = t.id
         JOIN "Album" a ON t."albumId" = a.id
         JOIN "Artist" ar ON a."artistId" = ar.id
+        WHERE t."missingSince" IS NULL
         ORDER BY te.track_id ASC
         LIMIT ${MAX_MAP_TRACKS}
     `;
@@ -526,6 +534,7 @@ async function doCompute(): Promise<MapResponse> {
         SELECT te.track_id, te.embedding::text AS embedding
         FROM track_embeddings te
         JOIN "Track" t ON te.track_id = t.id
+        WHERE t."missingSince" IS NULL
         ORDER BY RANDOM()
         LIMIT ${MAX_FIT_TRACKS}
     `;

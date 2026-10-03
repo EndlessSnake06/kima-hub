@@ -120,6 +120,7 @@ async function findSimilarClapOnly(
                     JOIN "Album" a ON t."albumId" = a.id
                     JOIN "Artist" ar ON a."artistId" = ar.id
                     WHERE te.track_id != ${trackId}
+                    AND t."missingSince" IS NULL
                     -- S2: source is read only through the scalar subqueries above, so an
                     -- unanalysed seed (empty CTE) used to give every row a NULL distance
                     -- and answer with ~limit arbitrary tracks. EXISTS over the CTE turns
@@ -260,7 +261,7 @@ async function findSimilarFeaturesOnly(
                 JOIN "Album" a ON t."albumId" = a.id
                 JOIN "Artist" ar ON a."artistId" = ar.id
                 CROSS JOIN source s
-                WHERE t.id != ${trackId}
+                WHERE t.id != ${trackId} AND t."missingSince" IS NULL
             ),
             scored AS (
                 SELECT

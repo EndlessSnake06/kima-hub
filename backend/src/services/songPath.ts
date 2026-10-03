@@ -170,6 +170,7 @@ async function fetchBatchCandidates(
                     JOIN "Album" a ON t."albumId" = a.id
                     JOIN "Artist" ar ON a."artistId" = ar.id
                     WHERE te.track_id != ALL(${excluded})
+                    AND t."missingSince" IS NULL
                     ORDER BY te.embedding <=> ${emb}::vector
                     LIMIT ${candidatesPerWaypoint}
                 `;

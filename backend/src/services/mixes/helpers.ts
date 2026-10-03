@@ -1,4 +1,5 @@
 import { prisma } from "../../utils/db";
+import { NOT_MISSING } from "../../utils/libraryEligibility";
 
 export interface ProgrammaticMix {
     id: string;
@@ -174,7 +175,8 @@ export async function findTracksByGenrePatterns(
         genreRows.length === 0
             ? []
             : await prisma.track.findMany({
-                  where: {
+where: {
+...NOT_MISSING,
                       trackGenres: {
                           some: {
                               genreId: { in: genreRows.map((g) => g.id) },
@@ -203,7 +205,8 @@ export async function findTracksByGenrePatterns(
     }
 
     const albumTracks = await prisma.track.findMany({
-        where: {
+where: {
+...NOT_MISSING,
             album: {
                 OR: [
                     { genres: { not: { equals: null } } },

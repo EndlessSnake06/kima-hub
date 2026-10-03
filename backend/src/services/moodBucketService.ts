@@ -8,6 +8,7 @@
 import { logger } from "../utils/logger";
 import { prisma } from "../utils/db";
 import { shuffleArray } from "../utils/shuffle";
+import { NOT_MISSING } from "../utils/libraryEligibility";
 
 // A track carries a mood when its head says yes (P >= 0.5) and it sits in the
 // library's top fifth for that mood. With five moods this leaves about 30% of
@@ -160,6 +161,7 @@ async function librarySignature(): Promise<{ signature: string; pending: number 
             COUNT(*) FILTER (WHERE "analysisStatus" IN ('pending', 'queued', 'processing')) AS pending,
             MAX("analyzedAt") AS latest
         FROM "Track"
+        WHERE "missingSince" IS NULL
     `;
     const r = rows[0];
     return {
@@ -177,6 +179,7 @@ async function buildSnapshot(signature: string, pending: number): Promise<MoodSn
             moodRelaxed: { not: null },
             moodAggressive: { not: null },
             moodParty: { not: null },
+            ...NOT_MISSING,
         },
         select: {
             id: true,
