@@ -143,7 +143,8 @@ class DatabaseConnection:
 
         self.conn = psycopg2.connect(
             self.url,
-            options="-c client_encoding=UTF8"
+            options="-c client_encoding=UTF8",
+            application_name="audio-analyzer",
         )
         self.conn.set_client_encoding('UTF8')
         self.conn.autocommit = False

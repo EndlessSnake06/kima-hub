@@ -601,7 +601,8 @@ def load_configured_workers() -> int:
         return NUM_WORKERS
     conn = None
     try:
-        conn = psycopg2.connect(DATABASE_URL, connect_timeout=5)
+        conn = psycopg2.connect(DATABASE_URL, connect_timeout=5,
+                       application_name="clap-analyzer")
         with conn.cursor() as cur:
             cur.execute('SELECT "clapWorkers" FROM "SystemSettings" WHERE id = %s', ("default",))
             row = cur.fetchone()
@@ -678,6 +679,7 @@ class BullMQVibeWorker:
             maxconn=pool_size,
             dsn=DATABASE_URL,
             options="-c client_encoding=UTF8",
+            application_name="clap-analyzer",
         )
         logger.info(f"Connected to PostgreSQL (pool size: {pool_size})")
 
