@@ -1,7 +1,8 @@
 /**
- * A track carries a mood when its head says yes (>= 0.5) and it is in the
- * library's top STANDOUT_SHARE for it. Buckets fill only after analysis and CLAP
- * both finish, re-sort when the library changes, and match the vibe map.
+ * A track carries a mood when its head leans that way (> 0.5) — the verdict
+ * is membership, library rank is display only (CLAP is not a mood signal and
+ * must not gate the buckets). Buckets fill once a track is analysed, refresh
+ * when the library changes, and match the vibe map.
  */
 
 const store = new Map<string, string>();
@@ -54,7 +55,7 @@ describe("classifyMoods (pure)", () => {
         expect(dist.rank("moodHappy", 0.45)).toBeCloseTo(0.5);
     });
 
-    it("gives a mood only to a track in the library's top fifth whose head says yes", () => {
+    it("gives a mood to a track whose head leans that way", () => {
         const v = classifyMoods({ ...quiet, moodParty: 0.9 }, dist);
         expect(v.dominant).toBe("moodParty");
         expect(v.moods).toEqual(["moodParty"]);
@@ -139,15 +140,17 @@ describe("mood buckets (database)", () => {
         await prisma.$disconnect();
     });
 
-    it("sorts every analysed track on the first run, bucketing only tracks with CLAP done", async () => {
+    it("sorts every analysed track on the first run, bucketing by the verdict alone", async () => {
         expect(await syncMoodBuckets()).toBe(true);
-        const buckets = await prisma.moodBucket.findMany({ orderBy: [{ mood: "asc" }, { trackId: "asc" }] });
+        // The worker DB is shared: judge only the rows this seed created.
+        const buckets = (await prisma.moodBucket.findMany({ orderBy: [{ mood: "asc" }, { trackId: "asc" }] }))
+            .filter((b) => b.trackId.startsWith("trk_mood_"));
         expect(buckets.map((b) => `${b.mood}:${b.trackId}`)).toEqual([
             "chill:trk_mood_4",
             "party:trk_mood_0",
             "party:trk_mood_1",
             "party:trk_mood_2",
-            // trk_mood_3 stands out too, but its CLAP analysis is not done
+            "party:trk_mood_3",
         ]);
         for (const b of buckets) expect(b.score).toBeGreaterThanOrEqual(0.8);
     });
@@ -156,13 +159,13 @@ describe("mood buckets (database)", () => {
         expect(await syncMoodBuckets()).toBe(false);
     });
 
-    it("re-sorts when a track's CLAP finishes, and reports tracks awaiting analysis", async () => {
+    it("a track's CLAP finishing changes no bucket (CLAP is not a mood signal), and pending tracks are reported", async () => {
         await prisma.track.update({ where: { id: "trk_mood_3" }, data: { vibeAnalysisStatus: "completed" } });
-        expect(await syncMoodBuckets()).toBe(true);
-        expect(await prisma.moodBucket.count({ where: { mood: "party" } })).toBe(4);
+        expect(await syncMoodBuckets()).toBe(false);
+        expect(await prisma.moodBucket.count({ where: { mood: "party", trackId: { startsWith: "trk_mood_" } } })).toBe(4);
         const presets = await moodBucketService.getMoodPresets();
         expect(presets.map((p) => p.name)).toEqual(["Upbeat", "Melancholic", "Calm", "Intense", "Energetic"]);
-        expect(presets.find((p) => p.id === "party")!.trackCount).toBe(4);
+        expect(presets.find((p) => p.id === "party")!.trackCount).toBeGreaterThanOrEqual(4);
         // Other suites in this Jest worker may leave pending rows; count them all.
         const pending = await prisma.track.count({ where: { analysisStatus: { in: ["pending", "queued", "processing"] } } });
         expect(pending).toBeGreaterThanOrEqual(1);

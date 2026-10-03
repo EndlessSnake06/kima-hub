@@ -175,8 +175,8 @@ export async function findTracksByGenrePatterns(
         genreRows.length === 0
             ? []
             : await prisma.track.findMany({
-where: {
-...NOT_MISSING,
+                      where: {
+                      ...NOT_MISSING,
                       trackGenres: {
                           some: {
                               genreId: { in: genreRows.map((g) => g.id) },
@@ -205,8 +205,8 @@ where: {
     }
 
     const albumTracks = await prisma.track.findMany({
-where: {
-...NOT_MISSING,
+            where: {
+            ...NOT_MISSING,
             album: {
                 OR: [
                     { genres: { not: { equals: null } } },

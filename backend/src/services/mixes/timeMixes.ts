@@ -27,8 +27,8 @@ async function generateSundayMix(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
-where: {
-...NOT_MISSING,
+            where: {
+            ...NOT_MISSING,
             analysisStatus: "completed",
             energy: { lte: 0.5 },
             acousticness: { gte: 0.5 },
@@ -64,8 +64,8 @@ async function generateMondayMix(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
-where: {
-...NOT_MISSING,
+            where: {
+            ...NOT_MISSING,
             analysisStatus: "completed",
             energy: { gte: 0.6 },
             valence: { gte: 0.5 },
@@ -101,8 +101,8 @@ async function generateFridayMix(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
-where: {
-...NOT_MISSING,
+            where: {
+            ...NOT_MISSING,
             analysisStatus: "completed",
             danceability: { gte: 0.7 },
             energy: { gte: 0.6 },

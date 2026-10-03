@@ -1,8 +1,12 @@
 /**
  * Decides a track's mood from five Essentia heads: happy (Upbeat), sad
- * (Melancholic), relaxed (Calm), aggressive (Intense), party (Energetic). The
- * heads are uncalibrated, so each mood is the track's rank on that head within
- * the library, and buckets rebuild whenever the analysed library changes.
+ * (Melancholic), relaxed (Calm), aggressive (Intense), party (Energetic).
+ * A track carries a mood when its head says yes (P > 0.5 — the model leans
+ * that way at all), absolute per track, no tuned constant, no dependence on
+ * what else the library holds. Library rank is display only (the dominant
+ * label's winner, map colouring), never a membership filter: rank-based
+ * membership made a track's moods change when unrelated music was added.
+ * Buckets rebuild whenever the analysed library changes.
  */
 
 import { logger } from "../utils/logger";
@@ -10,14 +14,11 @@ import { prisma } from "../utils/db";
 import { shuffleArray } from "../utils/shuffle";
 import { NOT_MISSING } from "../utils/libraryEligibility";
 
-// A track carries a mood when its head says yes (P >= 0.5) and it sits in the
-// library's top fifth for that mood. With five moods this leaves about 30% of
-// tracks with no single mood.
-const STANDOUT_SHARE = 0.2;
-// The heads' own yes/no boundary (two-class softmax argmax), not a tuned value.
-// It never binds at 0.2 on the sample (every head says yes for >= 20.5% of
-// tracks); it stops a library with few, say, upbeat tracks from labelling its
-// least-gloomy fifth "Upbeat" anyway.
+// The heads' own lean: strictly more likely than not (two-class softmax
+// argmax), not a tuned value. Exactly 0.5 is the model not leaning either
+// way, so it carries no mood. Every head leans yes for >= 20.5% of a real
+// (MOOD-HEADS-2026-09-30), and it is what stops a dirge-heavy library from
+// labelling its least-gloomy tracks "Upbeat": a dirge scores ~0.2.
 const HEAD_DECISION = 0.5;
 
 export const MOODS = [
@@ -61,7 +62,7 @@ export interface MoodView {
     score: number;
     /** Library rank (0..1) per mood; empty when UNANALYZED. */
     ranks: Partial<Record<MoodField, number>>;
-    /** Every mood the track has (head says yes AND top STANDOUT_SHARE). */
+    /** Every mood the track has (head says yes). */
     moods: MoodField[];
 }
 
@@ -124,7 +125,7 @@ export function classifyMoods(row: MoodValues, dist: MoodDistribution): MoodView
         const value = row[f] as number;
         const r = dist.rank(f, value);
         ranks[f] = r;
-        if (value >= HEAD_DECISION && r >= 1 - STANDOUT_SHARE) {
+        if (value > HEAD_DECISION) {
             moods.push(f);
             if (r > score) {
                 dominant = f;
@@ -136,11 +137,9 @@ export function classifyMoods(row: MoodValues, dist: MoodDistribution): MoodView
 }
 
 export interface MoodSnapshot {
-    /** Changes whenever the analysed library (or its CLAP coverage) changes. */
+    /** Changes whenever the analysed library changes. */
     signature: string;
     views: Map<string, MoodView>;
-    /** Tracks whose CLAP analysis is complete -- the only ones bucketed. */
-    clapDone: Set<string>;
     /** Tracks still waiting for mood values. */
     pending: number;
 }
@@ -150,14 +149,12 @@ let building: Promise<MoodSnapshot> | null = null;
 
 async function librarySignature(): Promise<{ signature: string; pending: number }> {
     const rows = await prisma.$queryRaw<
-        Array<{ analysed: bigint; clap: bigint; pending: bigint; latest: Date | null }>
+        Array<{ analysed: bigint; pending: bigint; latest: Date | null }>
     >`
         SELECT
             COUNT(*) FILTER (WHERE "analysisStatus" = 'completed' AND "moodHappy" IS NOT NULL
                 AND "moodSad" IS NOT NULL AND "moodRelaxed" IS NOT NULL
                 AND "moodAggressive" IS NOT NULL AND "moodParty" IS NOT NULL) AS analysed,
-            COUNT(*) FILTER (WHERE "analysisStatus" = 'completed' AND "moodHappy" IS NOT NULL
-                AND "vibeAnalysisStatus" = 'completed') AS clap,
             COUNT(*) FILTER (WHERE "analysisStatus" IN ('pending', 'queued', 'processing')) AS pending,
             MAX("analyzedAt") AS latest
         FROM "Track"
@@ -165,7 +162,7 @@ async function librarySignature(): Promise<{ signature: string; pending: number 
     `;
     const r = rows[0];
     return {
-        signature: `${r?.analysed ?? 0}:${r?.clap ?? 0}:${r?.latest?.toISOString() ?? ""}`,
+        signature: `${r?.analysed ?? 0}:${r?.latest?.toISOString() ?? ""}`,
         pending: Number(r?.pending ?? 0),
     };
 }
@@ -183,7 +180,6 @@ async function buildSnapshot(signature: string, pending: number): Promise<MoodSn
         },
         select: {
             id: true,
-            vibeAnalysisStatus: true,
             moodHappy: true,
             moodSad: true,
             moodRelaxed: true,
@@ -193,12 +189,10 @@ async function buildSnapshot(signature: string, pending: number): Promise<MoodSn
     });
     const dist = new MoodDistribution(rows);
     const views = new Map<string, MoodView>();
-    const clapDone = new Set<string>();
     for (const row of rows) {
         views.set(row.id, classifyMoods(row, dist));
-        if (row.vibeAnalysisStatus === "completed") clapDone.add(row.id);
     }
-    return { signature, views, clapDone, pending };
+    return { signature, views, pending };
 }
 
 /**
@@ -242,15 +236,15 @@ export function moodOutput(view: MoodView | undefined): {
 
 class MoodBucketService {
     /**
-     * Rebuild every bucket from the snapshot: one row per mood a track has, scored
-     * by rank, for tracks with both mood values and CLAP complete. One transaction,
-     * so readers never see a half-built table.
+     * Rebuild every bucket from the snapshot: one row per mood the verdict gives
+     * a track, scored by its library rank (ordering only). One transaction, so
+     * readers never see a half-built table.
      */
     async rebuildBuckets(snap: MoodSnapshot): Promise<{ tracks: number; assignments: number }> {
         const rows: { trackId: string; mood: MoodType; score: number }[] = [];
         let tracks = 0;
         for (const [trackId, view] of snap.views) {
-            if (!snap.clapDone.has(trackId) || view.moods.length === 0) continue;
+            if (view.moods.length === 0) continue;
             tracks++;
             for (const field of view.moods) {
                 const mood = MOODS.find((m) => m.field === field)!;

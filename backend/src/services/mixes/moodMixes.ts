@@ -9,9 +9,38 @@ import {
     findTracksByGenrePatterns,
 } from "./helpers";
 import { NOT_MISSING } from "../../utils/libraryEligibility";
+import type { MoodType } from "../moodBucketService";
 
 const TRACK_LIMIT = 20;
 const MIN_TRACKS_DAILY = 8;
+
+/**
+ * The mood path of a mix: the bucket pool, the same rule the mood page
+ * uses — the head's verdict plus the library-rank share, no fixed
+ * score cutoffs. `extraWhere` carries the non-mood flavour a generator
+ * adds (tempo, energy); it never re-introduces a mood threshold.
+ */
+async function poolTracksForMood(
+    mood: MoodType,
+    extraWhere: Record<string, unknown>,
+    take: number
+) {
+    const bucket = await prisma.moodBucket.findMany({
+        where: { mood },
+        select: { trackId: true },
+        take: 1000,
+    });
+    if (bucket.length === 0) return [];
+    return prisma.track.findMany({
+        where: {
+            id: { in: bucket.map((b) => b.trackId) },
+            ...NOT_MISSING,
+            ...extraWhere,
+        },
+        include: { album: { select: { coverUrl: true } } },
+        take,
+    });
+}
 const MIN_TRACKS_WEEKLY = 15;
 const DAILY_TRACK_LIMIT = 10;
 const WEEKLY_TRACK_LIMIT = 20;
@@ -20,28 +49,16 @@ export async function generateChillMix(
     _userId: string,
     today: string
 ): Promise<ProgrammaticMix | null> {
-    let tracks = await prisma.track.findMany({
-where: {
-...NOT_MISSING,
-            analysisStatus: "completed",
-            analysisMode: "enhanced",
-            AND: [
-                { moodRelaxed: { gte: 0.5 } },
-                { moodAggressive: { lte: 0.3 } },
-                { energy: { lte: 0.55 } },
-            ],
-        },
-        include: { album: { select: { coverUrl: true } } },
-        take: 100,
-    });
+    // Mood path: the bucket pool, flavoured by low energy.
+    let tracks = await poolTracksForMood("chill", { energy: { lte: 0.55 } }, 100);
 
-    logger.debug(`[CHILL MIX] Enhanced mode: Found ${tracks.length} tracks`);
+    logger.debug(`[CHILL MIX] Bucket mode: Found ${tracks.length} tracks`);
 
     if (tracks.length < MIN_TRACKS_DAILY) {
         logger.debug(`[CHILL MIX] Falling back to Standard mode`);
         tracks = await prisma.track.findMany({
-where: {
-...NOT_MISSING,
+                where: {
+                ...NOT_MISSING,
                 analysisStatus: "completed",
                 AND: [
                     { energy: { lte: 0.55 } },
@@ -105,8 +122,8 @@ export async function generateHighEnergyMix(
     let tracks: any[] = [];
 
     const audioTracks = await prisma.track.findMany({
-where: {
-...NOT_MISSING,
+            where: {
+            ...NOT_MISSING,
             analysisStatus: "completed",
             energy: { gte: 0.7 },
             bpm: { gte: 120 },
@@ -176,21 +193,12 @@ export async function generateLateNightMix(
     _userId: string,
     today: string
 ): Promise<ProgrammaticMix | null> {
-    let tracks = await prisma.track.findMany({
-where: {
-...NOT_MISSING,
-            analysisStatus: "completed",
-            analysisMode: "enhanced",
-            AND: [
-                { moodRelaxed: { gte: 0.5 } },
-                { moodAggressive: { lte: 0.4 } },
-                { energy: { lte: 0.5 } },
-                { bpm: { lte: 110 } },
-            ],
-        },
-        include: { album: { select: { coverUrl: true } } },
-        take: 100,
-    });
+    // Mood path: the bucket pool, flavoured by late-night tempo.
+    let tracks = await poolTracksForMood(
+        "chill",
+        { energy: { lte: 0.5 }, bpm: { lte: 110 } },
+        100
+    );
 
     logger.debug(
         `[LATE NIGHT MIX] Enhanced mode: Found ${tracks.length} tracks`
@@ -199,8 +207,8 @@ where: {
     if (tracks.length < MIN_TRACKS_DAILY) {
         logger.debug(`[LATE NIGHT MIX] Falling back to Standard mode`);
         tracks = await prisma.track.findMany({
-where: {
-...NOT_MISSING,
+                where: {
+                ...NOT_MISSING,
                 analysisStatus: "completed",
                 AND: [
                     { energy: { lte: 0.45 } },
@@ -263,24 +271,16 @@ export async function generateHappyMix(
 ): Promise<ProgrammaticMix | null> {
     let tracks: any[] = [];
 
-    const enhancedTracks = await prisma.track.findMany({
-where: {
-...NOT_MISSING,
-            analysisStatus: "completed",
-            analysisMode: "enhanced",
-            moodHappy: { gte: 0.6 },
-            moodSad: { lte: 0.3 },
-        },
-        include: { album: { select: { coverUrl: true } } },
-        take: 100,
-    });
-    tracks = enhancedTracks;
-    logger.debug(`[HAPPY MIX] Enhanced mode: Found ${tracks.length} tracks`);
+    // Mood path: the bucket pool — head verdict and library rank,
+    // no fixed cutoffs.
+    const bucketTracks = await poolTracksForMood("happy", {}, 100);
+    tracks = bucketTracks;
+    logger.debug(`[HAPPY MIX] Bucket mode: Found ${tracks.length} tracks`);
 
     if (tracks.length < 15) {
         const standardTracks = await prisma.track.findMany({
-where: {
-...NOT_MISSING,
+                where: {
+                ...NOT_MISSING,
                 analysisStatus: "completed",
                 valence: { gte: 0.6 },
                 energy: { gte: 0.5 },
@@ -356,19 +356,10 @@ export async function generateMelancholyMix(
 ): Promise<ProgrammaticMix | null> {
     let tracks: any[] = [];
 
-    const enhancedTracks = await prisma.track.findMany({
-where: {
-...NOT_MISSING,
-            analysisStatus: "completed",
-            analysisMode: "enhanced",
-            moodSad: { gte: 0.5 },
-            moodHappy: { lte: 0.4 },
-        },
-        include: { album: { select: { coverUrl: true } } },
-        take: 150,
-    });
+    // Mood path: the bucket pool.
+    const enhancedTracks = await poolTracksForMood("sad", {}, 150);
     logger.debug(
-        `[MELANCHOLY MIX] Enhanced mode: Found ${enhancedTracks.length} tracks`
+        `[MELANCHOLY MIX] Bucket mode: Found ${enhancedTracks.length} tracks`
     );
 
     if (enhancedTracks.length >= 15) {
@@ -376,8 +367,8 @@ where: {
     } else {
         logger.debug(`[MELANCHOLY MIX] Falling back to Standard mode`);
         const audioTracks = await prisma.track.findMany({
-where: {
-...NOT_MISSING,
+                where: {
+                ...NOT_MISSING,
                 analysisStatus: "completed",
                 valence: { lte: 0.35 },
                 energy: { lte: 0.6 },
@@ -477,8 +468,8 @@ export async function generateDanceFloorMix(
     let tracks: any[] = [];
 
     const audioTracks = await prisma.track.findMany({
-where: {
-...NOT_MISSING,
+            where: {
+            ...NOT_MISSING,
             analysisStatus: "completed",
             danceability: { gte: 0.7 },
             bpm: { gte: 110, lte: 140 },
@@ -550,8 +541,8 @@ export async function generateAcousticMix(
     let tracks: any[] = [];
 
     const audioTracks = await prisma.track.findMany({
-where: {
-...NOT_MISSING,
+            where: {
+            ...NOT_MISSING,
             analysisStatus: "completed",
             acousticness: { gte: 0.6 },
             energy: { gte: 0.3, lte: 0.6 },
@@ -621,8 +612,8 @@ export async function generateInstrumentalMix(
     let tracks: any[] = [];
 
     const audioTracks = await prisma.track.findMany({
-where: {
-...NOT_MISSING,
+            where: {
+            ...NOT_MISSING,
             analysisStatus: "completed",
             instrumentalness: { gte: 0.7 },
             energy: { gte: 0.3, lte: 0.6 },
@@ -693,8 +684,8 @@ export async function generateRoadTripMix(
     let tracks: any[] = [];
 
     const taggedTracks = await prisma.track.findMany({
-where: {
-...NOT_MISSING,
+            where: {
+            ...NOT_MISSING,
             // Moods come from audio analysis only. With nothing in the energetic or
             // upbeat moods, the genre and audio fallbacks below answer.
             OR: [
@@ -709,8 +700,8 @@ where: {
 
     if (tracks.length < 15) {
         const audioTracks = await prisma.track.findMany({
-where: {
-...NOT_MISSING,
+                where: {
+                ...NOT_MISSING,
                 analysisStatus: "completed",
                 energy: { gte: 0.5, lte: 0.8 },
                 bpm: { gte: 100, lte: 130 },
@@ -788,8 +779,8 @@ export async function generateSadGirlSundays(
     if (dayOfWeek !== 0) return null;
 
     const tracks = await prisma.track.findMany({
-where: {
-...NOT_MISSING,
+            where: {
+            ...NOT_MISSING,
             analysisStatus: "completed",
             OR: [
                 {
@@ -835,8 +826,8 @@ export async function generateMainCharacterEnergy(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
-where: {
-...NOT_MISSING,
+            where: {
+            ...NOT_MISSING,
             analysisStatus: "completed",
             OR: [
                 {
@@ -877,8 +868,8 @@ export async function generateVillainEra(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
-where: {
-...NOT_MISSING,
+            where: {
+            ...NOT_MISSING,
             analysisStatus: "completed",
             OR: [
                 {
@@ -920,8 +911,8 @@ export async function generate3AMThoughts(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
-where: {
-...NOT_MISSING,
+            where: {
+            ...NOT_MISSING,
             analysisStatus: "completed",
             AND: [
                 { arousal: { lte: 0.4 } },
@@ -964,8 +955,8 @@ export async function generateHotGirlWalk(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
-where: {
-...NOT_MISSING,
+            where: {
+            ...NOT_MISSING,
             analysisStatus: "completed",
             OR: [
                 {
@@ -1012,8 +1003,8 @@ export async function generateRageCleaning(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
-where: {
-...NOT_MISSING,
+            where: {
+            ...NOT_MISSING,
             analysisStatus: "completed",
             OR: [
                 {
@@ -1063,8 +1054,8 @@ export async function generateGoldenHour(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
-where: {
-...NOT_MISSING,
+            where: {
+            ...NOT_MISSING,
             analysisStatus: "completed",
             OR: [
                 {
@@ -1105,8 +1096,8 @@ export async function generateShowerKaraoke(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
-where: {
-...NOT_MISSING,
+            where: {
+            ...NOT_MISSING,
             analysisStatus: "completed",
             AND: [
                 { instrumentalness: { lte: 0.35 } },
@@ -1143,8 +1134,8 @@ export async function generateInMyFeelings(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
-where: {
-...NOT_MISSING,
+            where: {
+            ...NOT_MISSING,
             analysisStatus: "completed",
             OR: [
                 {
@@ -1185,8 +1176,8 @@ export async function generateMidnightDrive(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
-where: {
-...NOT_MISSING,
+            where: {
+            ...NOT_MISSING,
             analysisStatus: "completed",
             AND: [
                 { energy: { gte: 0.3, lte: 0.65 } },
@@ -1228,8 +1219,8 @@ export async function generateCoffeeShopVibes(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
-where: {
-...NOT_MISSING,
+            where: {
+            ...NOT_MISSING,
             analysisStatus: "completed",
             AND: [
                 { energy: { lte: 0.55 } },
@@ -1271,8 +1262,8 @@ export async function generateRomanticizeYourLife(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
-where: {
-...NOT_MISSING,
+            where: {
+            ...NOT_MISSING,
             analysisStatus: "completed",
             OR: [
                 {
@@ -1313,8 +1304,8 @@ export async function generateThatGirlEra(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
-where: {
-...NOT_MISSING,
+            where: {
+            ...NOT_MISSING,
             analysisStatus: "completed",
             AND: [
                 { valence: { gte: 0.55 } },
@@ -1351,8 +1342,8 @@ export async function generateUnhinged(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
-where: {
-...NOT_MISSING,
+            where: {
+            ...NOT_MISSING,
             analysisStatus: "completed",
             OR: [
                 { energy: { gte: 0.85 } },
@@ -1395,8 +1386,8 @@ export async function generateDeepCuts(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
-where: {
-...NOT_MISSING,
+            where: {
+            ...NOT_MISSING,
             plays: {
                 none: {},
             },
@@ -1484,8 +1475,8 @@ export async function generateKeyJourney(
     ];
 
     const tracks = await prisma.track.findMany({
-where: {
-...NOT_MISSING,
+            where: {
+            ...NOT_MISSING,
             analysisStatus: "completed",
             key: { not: null },
         },
@@ -1542,8 +1533,8 @@ export async function generateTempoFlow(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
-where: {
-...NOT_MISSING,
+            where: {
+            ...NOT_MISSING,
             analysisStatus: "completed",
             bpm: { not: null },
         },
@@ -1603,8 +1594,8 @@ export async function generateVocalDetox(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
-where: {
-...NOT_MISSING,
+            where: {
+            ...NOT_MISSING,
             analysisStatus: "completed",
             instrumentalness: { gte: 0.75 },
         },
@@ -1640,8 +1631,8 @@ export async function generateMinorKeyMix(
     if (dayOfWeek !== 1) return null;
 
     const tracks = await prisma.track.findMany({
-where: {
-...NOT_MISSING,
+            where: {
+            ...NOT_MISSING,
             analysisStatus: "completed",
             keyScale: "minor",
             energy: { gte: 0.45 },
@@ -1671,6 +1662,7 @@ where: {
 }
 
 export type MoodOnDemandParams = {
+    mood?: MoodType;
     valence?: { min?: number; max?: number };
     energy?: { min?: number; max?: number };
     danceability?: { min?: number; max?: number };
@@ -1696,81 +1688,34 @@ export async function generateMoodOnDemand(
         ...NOT_MISSING,
     };
 
-    const mlMoodParams = [
-        "moodHappy",
-        "moodSad",
-        "moodRelaxed",
-        "moodAggressive",
-        "moodParty",
+    // Mood path: the named mood selects the bucket pool — the
+    // head verdict is the membership, no score cutoffs. Legacy callers pass
+    // the head columns (moodHappy: { min: … }); they name the same mood and
+    // their thresholds are ignored.
+    const LEGACY_MOOD_PARAMS: [string, MoodType][] = [
+        ["moodHappy", "happy"],
+        ["moodSad", "sad"],
+        ["moodRelaxed", "chill"],
+        ["moodAggressive", "aggressive"],
+        ["moodParty", "party"],
     ];
-    const usesMLMoods = mlMoodParams.some(
-        (key) => params[key as keyof typeof params] !== undefined
-    );
-
-    let useEnhancedMode = false;
-    if (usesMLMoods) {
-        const enhancedCount = await prisma.track.count({
-where: {
-...NOT_MISSING,
-                analysisStatus: "completed",
-                analysisMode: "enhanced",
-            },
+    const mood =
+        params.mood ??
+        LEGACY_MOOD_PARAMS.find(([key]) => (params as any)[key] !== undefined)
+            ?.[1];
+    for (const [key] of LEGACY_MOOD_PARAMS) delete (params as any)[key];
+    if (mood) {
+        const bucket = await prisma.moodBucket.findMany({
+            where: { mood },
+            select: { trackId: true },
         });
-
-        if (enhancedCount >= 15) {
-            where.analysisMode = "enhanced";
-            useEnhancedMode = true;
-        } else {
+        if (bucket.length < MIN_TRACKS_DAILY) {
             logger.debug(
-                `[MoodMixer] Only ${enhancedCount} enhanced tracks, falling back to basic features`
+                `[MoodMixer] Bucket "${mood}" has ${bucket.length} tracks (need ${MIN_TRACKS_DAILY})`
             );
-
-            if (params.moodHappy) {
-                where.valence = where.valence || {};
-                if (params.moodHappy.min !== undefined)
-                    where.valence.gte = Math.max(
-                        where.valence.gte || 0,
-                        params.moodHappy.min
-                    );
-            }
-            if (params.moodSad) {
-                where.valence = where.valence || {};
-                if (params.moodSad.min !== undefined)
-                    where.valence.lte = Math.min(
-                        where.valence.lte || 1,
-                        1 - params.moodSad.min
-                    );
-            }
-            if (params.moodRelaxed) {
-                where.energy = where.energy || {};
-                if (params.moodRelaxed.min !== undefined)
-                    where.energy.lte = Math.min(
-                        where.energy.lte || 1,
-                        1 - params.moodRelaxed.min * 0.5
-                    );
-            }
-            if (params.moodAggressive) {
-                where.energy = where.energy || {};
-                if (params.moodAggressive.min !== undefined)
-                    where.energy.gte = Math.max(
-                        where.energy.gte || 0,
-                        params.moodAggressive.min
-                    );
-            }
-            if (params.moodParty) {
-                where.danceability = where.danceability || {};
-                if (params.moodParty.min !== undefined)
-                    where.danceability.gte = Math.max(
-                        where.danceability.gte || 0,
-                        params.moodParty.min
-                    );
-            }
-            delete params.moodHappy;
-            delete params.moodSad;
-            delete params.moodRelaxed;
-            delete params.moodAggressive;
-            delete params.moodParty;
+            return null;
         }
+        where.id = { in: bucket.map((b) => b.trackId) };
     }
 
     if (params.valence) {
@@ -1841,44 +1786,6 @@ where: {
     if (params.keyScale) {
         where.keyScale = params.keyScale;
     }
-
-    if (params.moodHappy) {
-        where.moodHappy = {};
-        if (params.moodHappy.min !== undefined)
-            where.moodHappy.gte = params.moodHappy.min;
-        if (params.moodHappy.max !== undefined)
-            where.moodHappy.lte = params.moodHappy.max;
-    }
-    if (params.moodSad) {
-        where.moodSad = {};
-        if (params.moodSad.min !== undefined)
-            where.moodSad.gte = params.moodSad.min;
-        if (params.moodSad.max !== undefined)
-            where.moodSad.lte = params.moodSad.max;
-    }
-    if (params.moodRelaxed) {
-        where.moodRelaxed = {};
-        if (params.moodRelaxed.min !== undefined)
-            where.moodRelaxed.gte = params.moodRelaxed.min;
-        if (params.moodRelaxed.max !== undefined)
-            where.moodRelaxed.lte = params.moodRelaxed.max;
-    }
-    if (params.moodAggressive) {
-        where.moodAggressive = {};
-        if (params.moodAggressive.min !== undefined)
-            where.moodAggressive.gte = params.moodAggressive.min;
-        if (params.moodAggressive.max !== undefined)
-            where.moodAggressive.lte = params.moodAggressive.max;
-    }
-    if (params.moodParty) {
-        where.moodParty = {};
-        if (params.moodParty.min !== undefined)
-            where.moodParty.gte = params.moodParty.min;
-        if (params.moodParty.max !== undefined)
-            where.moodParty.lte = params.moodParty.max;
-    }
-    // useEnhancedMode is referenced above; suppress unused variable warning
-    void useEnhancedMode;
 
     const tracks = await prisma.track.findMany({
         where,

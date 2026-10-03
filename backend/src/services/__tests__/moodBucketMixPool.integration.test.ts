@@ -76,6 +76,9 @@ const drawIds = async (mood: MoodType, draws: number, exclude?: string[]) => {
 
 describe("getMoodMix draws from the whole bucket (database)", () => {
     beforeAll(async () => {
+        // The worker DB is shared: buckets are a rebuild-everything table, and
+        // leftover rows from other suites would widen every draw pool.
+        await prisma.moodBucket.deleteMany({});
         await seed();
     });
 

@@ -71,7 +71,8 @@ router.post("/mood", async (req, res) => {
             "arousal",
             "bpm",
             "keyScale",
-            // ML mood predictions
+            // Moods (bucket pool) and legacy head names
+            "mood",
             "moodHappy",
             "moodSad",
             "moodRelaxed",
@@ -144,56 +145,40 @@ router.post("/mood", async (req, res) => {
  * Available mood presets for the UI
  */
 router.get("/mood/presets", asyncHandler(async (req, res) => {
-    // Presets use ML mood predictions for more accurate matching
-    // These mirror the logic used in programmatic mixes (Chill Mix, Party Mix, etc.)
+    // Each preset names a mood (the bucket pool: the head verdict, no score
+    // cutoffs) plus non-mood seasoning (energy, tempo, scale).
     const presets = [
         {
             id: "happy",
             name: "Upbeat",
             color: "from-yellow-400 to-orange-500",
-            params: {
-                moodHappy: { min: 0.5 },
-                moodSad: { max: 0.4 },
-                energy: { min: 0.4 },
-            },
+            params: { mood: "happy", energy: { min: 0.4 } },
         },
         {
             id: "sad",
             name: "Melancholic",
             color: "from-blue-600 to-indigo-700",
-            params: {
-                moodSad: { min: 0.5 },
-                moodHappy: { max: 0.4 },
-                keyScale: "minor",
-            },
+            params: { mood: "sad", keyScale: "minor" },
         },
         {
             id: "chill",
             name: "Calm",
             color: "from-teal-400 to-cyan-500",
-            params: {
-                moodRelaxed: { min: 0.5 },
-                moodAggressive: { max: 0.3 },
-                energy: { max: 0.55 },
-            },
+            params: { mood: "chill", energy: { max: 0.55 } },
         },
         {
             id: "energetic",
             name: "High Energy",
             color: "from-red-500 to-orange-600",
-            params: {
-                arousal: { min: 0.6 },
-                energy: { min: 0.65 },
-                moodRelaxed: { max: 0.4 },
-            },
+            params: { arousal: { min: 0.6 }, energy: { min: 0.65 } },
         },
         {
             id: "focus",
             name: "Focus Mode",
             color: "from-purple-600 to-violet-700",
             params: {
+                mood: "chill",
                 instrumentalness: { min: 0.5 },
-                moodRelaxed: { min: 0.3 },
                 energy: { min: 0.2, max: 0.6 },
             },
         },
@@ -202,7 +187,7 @@ router.get("/mood/presets", asyncHandler(async (req, res) => {
             name: "Energetic",
             color: "from-pink-500 to-rose-600",
             params: {
-                moodParty: { min: 0.5 },
+                mood: "party",
                 danceability: { min: 0.6 },
                 energy: { min: 0.5 },
             },
@@ -220,19 +205,14 @@ router.get("/mood/presets", asyncHandler(async (req, res) => {
             id: "dark",
             name: "Dark & Moody",
             color: "from-gray-700 to-slate-800",
-            params: {
-                moodAggressive: { min: 0.4 },
-                moodHappy: { max: 0.4 },
-                keyScale: "minor",
-            },
+            params: { mood: "aggressive", keyScale: "minor" },
         },
         {
             id: "romantic",
             name: "Romantic",
             color: "from-rose-500 to-pink-600",
             params: {
-                moodRelaxed: { min: 0.3 },
-                moodAggressive: { max: 0.3 },
+                mood: "chill",
                 acousticness: { min: 0.3 },
                 energy: { max: 0.6 },
             },
@@ -244,7 +224,6 @@ router.get("/mood/presets", asyncHandler(async (req, res) => {
             params: {
                 arousal: { min: 0.6 },
                 energy: { min: 0.7 },
-                moodRelaxed: { max: 0.4 },
                 bpm: { min: 110 },
             },
         },
@@ -252,19 +231,14 @@ router.get("/mood/presets", asyncHandler(async (req, res) => {
             id: "sleepy",
             name: "Sleep & Unwind",
             color: "from-indigo-400 to-purple-500",
-            params: {
-                moodRelaxed: { min: 0.5 },
-                energy: { max: 0.35 },
-                moodAggressive: { max: 0.2 },
-            },
+            params: { mood: "chill", energy: { max: 0.35 } },
         },
         {
             id: "confident",
             name: "Confidence Boost",
             color: "from-amber-400 to-orange-500",
             params: {
-                moodHappy: { min: 0.4 },
-                moodParty: { min: 0.3 },
+                mood: "happy",
                 energy: { min: 0.5 },
                 danceability: { min: 0.5 },
             },

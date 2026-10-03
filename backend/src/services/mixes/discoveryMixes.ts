@@ -69,8 +69,8 @@ export async function generateRediscoverMix(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const allTracks = await prisma.track.findMany({
-where: {
-...NOT_MISSING,
+            where: {
+            ...NOT_MISSING,
             album: { location: LIBRARY_LOCATION },
         },
         take: 5000,
