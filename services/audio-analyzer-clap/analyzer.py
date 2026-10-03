@@ -757,7 +757,6 @@ class BullMQVibeWorker:
         logger.info(f"[BullMQ] Processing vibe for track: {track_id}")
 
         loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, self._update_track_status, track_id, "processing")
 
         normalized_path = file_path.replace("\\", "/")
         full_path = os.path.join(MUSIC_PATH, normalized_path)
@@ -766,13 +765,13 @@ class BullMQVibeWorker:
             file_size = os.path.getsize(full_path)
             if file_size == 0:
                 await loop.run_in_executor(
-                    None, self._mark_failed, track_id,
+                    None, self._report_failure, track_id,
                     "Empty file (0 bytes) - likely incomplete download",
                 )
                 raise ValueError("Empty file")
         except OSError:
             await loop.run_in_executor(
-                None, self._mark_failed, track_id, f"File not found: {normalized_path}"
+                None, self._report_failure, track_id, f"File not found: {normalized_path}"
             )
             raise
 
@@ -784,7 +783,7 @@ class BullMQVibeWorker:
 
         if embedding is None:
             await loop.run_in_executor(
-                None, self._mark_failed, track_id, "Failed to generate embedding"
+                None, self._report_failure, track_id, "Failed to generate embedding"
             )
             raise RuntimeError("Embedding generation failed")
 
@@ -807,7 +806,6 @@ class BullMQVibeWorker:
                 instrumentalness, acousticness,
                 clap_valence, clap_arousal
             )
-            await loop.run_in_executor(None, self._update_track_status, track_id, "completed")
             await loop.run_in_executor(None, self._report_success, track_id)
             await job.updateProgress(100)
             logger.info(
@@ -818,25 +816,9 @@ class BullMQVibeWorker:
             return {"trackId": track_id, "status": "complete"}
         else:
             await loop.run_in_executor(
-                None, self._mark_failed, track_id, "Failed to store embedding"
+                None, self._report_failure, track_id, "Failed to store embedding"
             )
             raise RuntimeError("Failed to store embedding")
-
-    def _update_track_status(self, track_id: str, status: str):
-        """Update the track's vibe analysis status (runs in executor thread)."""
-        conn = self._db_pool.getconn()
-        try:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    'UPDATE "Track" SET "vibeAnalysisStatus" = %s WHERE id = %s',
-                    (status, track_id),
-                )
-            conn.commit()
-        except Exception as e:
-            logger.error(f"Failed to update track vibe status: {e}")
-            conn.rollback()
-        finally:
-            self._db_pool.putconn(conn)
 
     def _update_clap_features(
         self, track_id: str,
@@ -878,8 +860,9 @@ class BullMQVibeWorker:
         finally:
             self._db_pool.putconn(conn)
 
-    def _mark_failed(self, track_id: str, error: str):
-        """Mark track as failed and record in enrichment failures (runs in executor thread)."""
+    def _report_failure(self, track_id: str, error: str):
+        """Report a failed embedding to the backend (runs in executor thread).
+        The backend owns every write of a track's state; this writes nothing."""
         track_name = None
         conn = self._db_pool.getconn()
         try:
@@ -887,22 +870,7 @@ class BullMQVibeWorker:
                 cursor.execute('SELECT title FROM "Track" WHERE id = %s', (track_id,))
                 row = cursor.fetchone()
                 track_name = row['title'] if row else None
-                cursor.execute(
-                    """
-                    UPDATE "Track"
-                    SET
-                        "vibeAnalysisStatus" = 'failed',
-                        "vibeAnalysisError" = %s,
-                        "vibeAnalysisRetryCount" = COALESCE("vibeAnalysisRetryCount", 0) + 1
-                    WHERE id = %s
-                    """,
-                    (error[:500], track_id),
-                )
-            conn.commit()
             logger.error(f"Track {track_id} failed: {error}")
-        except Exception as e:
-            logger.error(f"Failed to mark track as failed: {e}")
-            conn.rollback()
         finally:
             # Release connection before making the network call below
             self._db_pool.putconn(conn)

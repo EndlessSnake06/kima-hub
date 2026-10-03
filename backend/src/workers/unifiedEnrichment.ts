@@ -427,6 +427,27 @@ export async function recordStageSuccess(
         source,
         JSON.stringify(evidence ?? { reason: "answered" }),
     );
+    // The backend is the only writer of the status columns; the stage record
+    // is the truth and these are its display mirror.
+    if (stage === "embedding") {
+        await prisma.$executeRawUnsafe(
+            `UPDATE "Track"
+                SET "vibeAnalysisStatus" = 'completed',
+                    "vibeAnalysisError" = NULL,
+                    "vibeAnalysisStatusUpdatedAt" = now()
+              WHERE id = $1`,
+            trackId,
+        );
+    } else if (stage === "analysis") {
+        await prisma.$executeRawUnsafe(
+            `UPDATE "Track"
+                SET "analysisStatus" = 'completed',
+                    "analysisError" = NULL,
+                    "analysisStartedAt" = NULL
+              WHERE id = $1`,
+            trackId,
+        );
+    }
 }
 
 /**
@@ -511,6 +532,18 @@ export async function recordStageFailure(
             message,
             JSON.stringify(waitEvidence),
         );
+        if (stage === "embedding") {
+            // Parked on a rate limit, not failed: the mirror says pending.
+            await prisma.$executeRawUnsafe(
+                `UPDATE "Track"
+                    SET "vibeAnalysisStatus" = 'pending',
+                        "vibeAnalysisError" = $2,
+                        "vibeAnalysisStatusUpdatedAt" = now()
+                  WHERE id = $1`,
+                trackId,
+                message,
+            );
+        }
         return;
     }
 
@@ -568,6 +601,33 @@ export async function recordStageFailure(
         nextRetryAt,
         JSON.stringify({ error: message, ...evidence }),
     );
+    if (stage === "embedding") {
+        await prisma.$executeRawUnsafe(
+            `UPDATE "Track"
+                SET "vibeAnalysisStatus" = $2,
+                    "vibeAnalysisError" = $3,
+                    "vibeAnalysisRetryCount" = $4,
+                    "vibeAnalysisStatusUpdatedAt" = now()
+              WHERE id = $1`,
+            trackId,
+            retryable ? "failed" : "permanently_failed",
+            message.slice(0, 500),
+            attempt,
+        );
+    } else if (stage === "analysis") {
+        await prisma.$executeRawUnsafe(
+            `UPDATE "Track"
+                SET "analysisStatus" = $2,
+                    "analysisError" = $3,
+                    "analysisRetryCount" = $4,
+                    "analysisStartedAt" = NULL
+              WHERE id = $1`,
+            trackId,
+            retryable ? "failed" : "permanently_failed",
+            message.slice(0, 500),
+            attempt,
+        );
+    }
 }
 
 /** Record "the sources have nothing" as a `done` answer with evidence of what
@@ -2339,12 +2399,19 @@ async function reconcileStaleStageRecords(stage: StageName): Promise<void> {
         const rows = await prisma.$queryRawUnsafe<
             Array<{ trackId: string; answer: string; error: string | null }>
         >(
-            `SELECT ts."trackId", t."analysisStatus" AS answer, t."analysisError" AS error
+            `SELECT ts."trackId",
+                    CASE WHEN t."analyzedAt" >= ts."startedAt" THEN 'completed'
+                         ELSE t."analysisStatus" END AS answer,
+                    t."analysisError" AS error
                FROM "TrackStage" ts
                JOIN "Track" t ON t.id = ts."trackId"
               WHERE ts.stage = 'analysis'
                 AND ts.status = 'working'
-                AND t."analysisStatus" IN ('completed', 'failed', 'permanently_failed')`,
+                AND ts."startedAt" IS NOT NULL
+                AND (t."analyzedAt" >= ts."startedAt"
+                     OR (t."analysisStatus" IN ('failed', 'permanently_failed')
+                         AND (t."analysisStartedAt" IS NULL
+                              OR t."analysisStartedAt" >= ts."startedAt")))`,
         );
         for (const row of rows) {
             if (row.answer === "completed") {
@@ -2633,6 +2700,13 @@ export async function executeAudioPhase(): Promise<number> {
                 jobId: item.jobId, // Per-attempt key; the analyzer logs it
             }),
         );
+        await prisma.$executeRawUnsafe(
+            `UPDATE "Track"
+                SET "analysisStatus" = 'processing',
+                    "analysisStartedAt" = now()
+              WHERE id = $1`,
+            item.trackId,
+        );
     });
 }
 
@@ -2710,6 +2784,14 @@ export async function executeVibePhase(): Promise<number> {
             // Per-attempt jobId, so a retry never lands on the dedup marker a
             // failed job still holds.
             { jobId: item.jobId },
+        );
+        await prisma.$executeRawUnsafe(
+            `UPDATE "Track"
+                SET "vibeAnalysisStatus" = 'processing',
+                    "vibeAnalysisStartedAt" = now(),
+                    "vibeAnalysisStatusUpdatedAt" = now()
+              WHERE id = $1`,
+            item.trackId,
         );
     });
 }

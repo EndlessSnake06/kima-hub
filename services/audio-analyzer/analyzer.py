@@ -67,13 +67,11 @@ import redis
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
-# Failure-class routing lives in classifier.py (pure stdlib). analyzer.py
-# must import and call it — the single failure choke point is
-# AnalysisWorker._save_failed, so every failure surface inherits the rule
-# with zero per-site plumbing.
+# Failure classes live in classifier.py (pure stdlib), which the backend
+# mirrors. Decode errors are tagged with their class here so the message the
+# analyzer reports carries the signature the backend's classifier reads.
 from classifier import (
     classify_failure,
-    classify_with_codec,
     tag_error,
     Disposition,
 )
@@ -216,16 +214,6 @@ NUM_WORKERS = _get_workers_from_db()
 # Bump when stored features change meaning, so older rows can be re-queued.
 ESSENTIA_VERSION = '2.1b6-enhanced-v3'
 
-# Same cap and ladder as the backend (STAGE_RETRY_CAP, computeStageRetryWaitMs):
-# an INCONCLUSIVE failure retries after 1 min, 10 min, then 1 h, and the 4th
-# failure closes the record.
-STAGE_RETRY_LADDER_SECONDS = [60, 600, 3600]
-STAGE_RETRY_CAP = 4
-
-
-def compute_stage_retry_wait_seconds(attempt: int) -> int:
-    """Mirror of computeStageRetryWaitMs: the ladder entry for that attempt."""
-    return STAGE_RETRY_LADDER_SECONDS[min(max(1, attempt), 3) - 1]
 # Seconds to allow the single ffmpeg decode before giving up on the track.
 # Replaces PRE_DECODE_PROBE_TIMEOUT: there is no separate integrity probe
 # any more -- the one decode IS the check.
@@ -1314,31 +1302,6 @@ class AnalysisWorker:
         self._process_tracks_parallel(queued_jobs)
         return True
     
-    def _mark_track_processing(self, track_id: str) -> bool:
-        """Claim a track just before its worker starts, keyed on analysis
-        status alone. 'failed' is included because the stage record, not the
-        column, decides whether a track is asked again. Returns True if claimed.
-        """
-        cursor = self.db.get_cursor()
-        try:
-            cursor.execute("""
-                UPDATE "Track"
-                SET "analysisStatus" = 'processing',
-                    "analysisStartedAt" = %s
-                WHERE id = %s
-                  AND "analysisStatus" IN ('pending', 'queued', 'failed')
-            """, (datetime.now(timezone.utc), track_id))
-            claimed = cursor.rowcount > 0
-
-            self.db.commit()
-            return claimed
-        except Exception as e:
-            logger.error(f"Failed to mark track {track_id} as processing: {e}")
-            self.db.rollback()
-            return False
-        finally:
-            cursor.close()
-
     def _process_tracks_parallel(self, tracks: List[Tuple[str, str]]):
         """Process multiple tracks in parallel using the process pool"""
         if not tracks:
@@ -1347,16 +1310,12 @@ class AnalysisWorker:
         self._ensure_pool()
         logger.info(f"Processing batch of {len(tracks)} tracks with {NUM_WORKERS} workers...")
 
-        # Mark tracks processing individually as they are submitted
         start_time = time.time()
         completed = 0
         failed = 0
 
         futures = {}
         for t in tracks:
-            if not self._mark_track_processing(t[0]):
-                logger.debug(f"Track {t[0]} already claimed, skipping")
-                continue
             futures[self.executor.submit(_analyze_track_in_process, t)] = t
 
         try:
@@ -1453,12 +1412,9 @@ class AnalysisWorker:
                     "moodElectronic" = %s,
                     "danceabilityMl" = %s,
                     "analysisMode" = %s,
-                    "analysisStatus" = 'completed',
-                    "analysisStartedAt" = NULL,
                     "analysisVersion" = %s,
-                    "analyzedAt" = %s,
-                    "analysisError" = NULL
-                WHERE id = %s AND "analysisStatus" = 'processing'
+                    "analyzedAt" = %s
+                WHERE id = %s
             """, (
                 features['bpm'],
                 features['beatsCount'],
@@ -1489,44 +1445,9 @@ class AnalysisWorker:
                 track_id
             ))
             if cursor.rowcount == 0:
-                logger.warning(f"Track {track_id} was reset by cleanup before save completed, skipping")
+                logger.warning(f"Track {track_id} was deleted before save completed, skipping")
                 self.db.rollback()
                 return
-            # Settle the analysis stage record: the claim left attempt untouched,
-            # so it advances by one, matching the jobId (track-<id>-analysis-<attempt+1>).
-            cursor.execute("""
-                INSERT INTO "TrackStage"
-                    (id, "trackId", stage, status, source, attempt,
-                     "lastErrorCode", "lastErrorMessage", "failureClass",
-                     retryable, "nextRetryAt", evidence, "startedAt",
-                     "finishedAt", "decidedAt", "decidedBy")
-                VALUES (
-                    md5(%s || ':analysis'), %s, 'analysis', 'done', 'analyzer',
-                    COALESCE((SELECT attempt + 1 FROM "TrackStage"
-                              WHERE "trackId" = %s AND stage = 'analysis'), 1),
-                    NULL, NULL, NULL, false, NULL, %s::jsonb,
-                    (SELECT "startedAt" FROM "TrackStage"
-                     WHERE "trackId" = %s AND stage = 'analysis'),
-                    %s, now(), 'engine')
-                ON CONFLICT ("trackId", stage) DO UPDATE
-                    SET status = 'done',
-                        attempt = EXCLUDED.attempt,
-                        "lastErrorCode" = NULL,
-                        "lastErrorMessage" = NULL,
-                        "failureClass" = NULL,
-                        retryable = false,
-                        "nextRetryAt" = NULL,
-                        evidence = EXCLUDED.evidence,
-                        "finishedAt" = EXCLUDED."finishedAt",
-                        "decidedAt" = now(),
-                        "decidedBy" = 'engine'
-            """, (
-                track_id, track_id, track_id,
-                json.dumps({"analysisMode": features.get('analysisMode', 'standard'),
-                            "essentiaVersion": ESSENTIA_VERSION}),
-                track_id,
-                datetime.now(timezone.utc),
-            ))
 
             self.db.commit()
 
@@ -1549,225 +1470,23 @@ class AnalysisWorker:
             cursor.close()
     
     def _save_failed(self, track_id: str, error: str, is_timeout: bool = False):
-        """Every failure lands here and is classified. DAMAGED, UNSUPPORTED and
-        MULTICANNEL are terminal; INCONCLUSIVE retries on the shared ladder up
-        to STAGE_RETRY_CAP; a batch timeout returns to pending with no penalty.
-        The TrackStage record and the Track column are written in one transaction.
-        """
-        disp, codec = classify_with_codec(error)
-        cursor = self.db.get_cursor()
+        """Report a failure to the backend over the completion channel; the
+        backend classifies it, runs the retry ladder, and owns every write.
+        A batch timeout is not reported: the record's lease timeout re-offers
+        it without consuming an attempt."""
+        if is_timeout:
+            logger.info(f"Track {track_id} batch timeout; the lease re-offers it (no report, no penalty)")
+            return
         try:
-            # INCONCLUSIVE needs the record's current attempt first, as the
-            # backend's recordStageFailure does.
-            inconclusive_retryable = False
-            inconclusive_wait_seconds = None
-            inconclusive_attempt = 0
-            record_closed = False
-            if disp == Disposition.INCONCLUSIVE:
-                cursor.execute("""
-                    SELECT attempt, retryable, status FROM "TrackStage"
-                     WHERE "trackId" = %s AND stage = 'analysis'
-                """, (track_id,))
-                row = cursor.fetchone()
-                current_attempt = (row.get("attempt") or 0) if row else 0
-                inconclusive_attempt = current_attempt + 1
-                # A closed record is never reopened; only the column is settled.
-                record_closed = bool(row) and row.get("status") == "failed" and not row.get("retryable")
-                inconclusive_retryable = (
-                    not record_closed
-                    and inconclusive_attempt < STAGE_RETRY_CAP
-                )
-                inconclusive_wait_seconds = (
-                    compute_stage_retry_wait_seconds(inconclusive_attempt)
-                    if inconclusive_retryable else None
-                )
-
-            if is_timeout:
-                cursor.execute("""
-                    UPDATE "Track"
-                    SET
-                        "analysisStatus" = 'pending',
-                        "analysisError" = %s,
-                        "analysisStartedAt" = NULL
-                    WHERE id = %s AND "analysisStatus" = 'processing'
-                """, (error[:500], track_id))
-            elif disp == Disposition.INCONCLUSIVE and (record_closed or not inconclusive_retryable):
-                # At the cap, or on a closed record, the column turns terminal
-                # to match the record.
-                cursor.execute("""
-                    UPDATE "Track"
-                    SET
-                        "analysisStatus" = 'permanently_failed',
-                        "analysisError" = %s,
-                        "analysisStartedAt" = NULL
-                    WHERE id = %s AND "analysisStatus" = 'processing'
-                """, (error[:500], track_id))
-            elif disp == Disposition.INCONCLUSIVE:
-                cursor.execute("""
-                    UPDATE "Track"
-                    SET
-                        "analysisStatus" = 'failed',
-                        "analysisError" = %s,
-                        "analysisRetryCount" = COALESCE("analysisRetryCount", 0) + 1
-                    WHERE id = %s AND "analysisStatus" = 'processing'
-                """, (error[:500], track_id))
-            else:
-                # Terminal: the answer is decided; do not spend another
-                # attempt on it and do not spend a retry on it either.
-                cursor.execute("""
-                    UPDATE "Track"
-                    SET
-                        "analysisStatus" = 'permanently_failed',
-                        "analysisError" = %s,
-                        "analysisStartedAt" = NULL
-                    WHERE id = %s AND "analysisStatus" = 'processing'
-                """, (tag_error(error, disp, codec)[:500], track_id))
-
-            if cursor.rowcount == 0:
-                logger.warning(f"Track {track_id} was reset by cleanup before failure marked, skipping")
-                self.db.rollback()
-                return
-
-            # Terminal answers close the record; INCONCLUSIVE stays due after a
-            # backoff; a timeout reopens it as pending without spending an attempt.
-            if is_timeout:
-                cursor.execute("""
-                    INSERT INTO "TrackStage"
-                        (id, "trackId", stage, status, source, attempt,
-                         "lastErrorCode", "lastErrorMessage", "failureClass",
-                         retryable, "nextRetryAt", evidence, "startedAt",
-                         "finishedAt", "decidedAt", "decidedBy")
-                    VALUES (
-                        md5(%s || ':analysis'), %s, 'analysis', 'pending', 'analyzer',
-                        COALESCE((SELECT attempt FROM "TrackStage"
-                                  WHERE "trackId" = %s AND stage = 'analysis'), 0),
-                        NULL, %s, NULL, true,
-                        now() + interval '2 minutes', %s::jsonb,
-                        NULL, NULL, now(), 'engine')
-                    ON CONFLICT ("trackId", stage) DO UPDATE
-                        SET status = 'pending',
-                            "lastErrorCode" = NULL,
-                            "lastErrorMessage" = EXCLUDED."lastErrorMessage",
-                            "failureClass" = NULL,
-                            retryable = true,
-                            "nextRetryAt" = EXCLUDED."nextRetryAt",
-                            evidence = EXCLUDED.evidence,
-                            "startedAt" = NULL,
-                            "finishedAt" = NULL,
-                            "decidedAt" = now(),
-                            "decidedBy" = 'engine'
-                """, (
-                    track_id, track_id, track_id,
-                    error[:500],
-                    json.dumps({"timeout": True, "error": error[:500]}),
-                ))
-            elif disp == Disposition.INCONCLUSIVE and record_closed:
-                pass  # a closed record is left as it is
-            elif disp == Disposition.INCONCLUSIVE:
-                # Retryable below STAGE_RETRY_CAP with nextRetryAt on the ladder;
-                # NULL once the cap closes the record.
-                cursor.execute("""
-                    INSERT INTO "TrackStage"
-                        (id, "trackId", stage, status, source, attempt,
-                         "lastErrorCode", "lastErrorMessage", "failureClass",
-                         retryable, "nextRetryAt", evidence, "startedAt",
-                         "finishedAt", "decidedAt", "decidedBy")
-                    VALUES (
-                        md5(%s || ':analysis'), %s, 'analysis', 'failed', 'analyzer',
-                        %s,
-                        NULL, %s, %s, %s,
-                        CASE WHEN %s::int IS NULL THEN NULL
-                             ELSE now() + (%s::int * interval '1 second') END,
-                        %s::jsonb,
-                        NULL, now(), now(), 'engine')
-                    ON CONFLICT ("trackId", stage) DO UPDATE
-                        SET status = 'failed',
-                            attempt = EXCLUDED.attempt,
-                            "lastErrorCode" = NULL,
-                            "lastErrorMessage" = EXCLUDED."lastErrorMessage",
-                            "failureClass" = EXCLUDED."failureClass",
-                            retryable = EXCLUDED.retryable,
-                            "nextRetryAt" = EXCLUDED."nextRetryAt",
-                            evidence = EXCLUDED.evidence,
-                            "startedAt" = NULL,
-                            "finishedAt" = now(),
-                            "decidedAt" = now(),
-                            "decidedBy" = 'engine'
-                """, (
-                    track_id, track_id,
-                    inconclusive_attempt,
-                    error[:500],
-                    'INCONCLUSIVE',
-                    inconclusive_retryable,
-                    inconclusive_wait_seconds,
-                    inconclusive_wait_seconds,
-                    json.dumps({"error": error[:500]}),
-                ))
-            else:
-                cursor.execute("""
-                    INSERT INTO "TrackStage"
-                        (id, "trackId", stage, status, source, attempt,
-                         "lastErrorCode", "lastErrorMessage", "failureClass",
-                         retryable, "nextRetryAt", evidence, "startedAt",
-                         "finishedAt", "decidedAt", "decidedBy")
-                    VALUES (
-                        md5(%s || ':analysis'), %s, 'analysis', 'failed', 'analyzer',
-                        COALESCE((SELECT attempt + 1 FROM "TrackStage"
-                                  WHERE "trackId" = %s AND stage = 'analysis'), 1),
-                        %s, %s, %s, false,
-                        NULL, %s::jsonb,
-                        NULL, now(), now(), 'engine')
-                    ON CONFLICT ("trackId", stage) DO UPDATE
-                        SET status = 'failed',
-                            attempt = EXCLUDED.attempt,
-                            "lastErrorCode" = EXCLUDED."lastErrorCode",
-                            "lastErrorMessage" = EXCLUDED."lastErrorMessage",
-                            "failureClass" = EXCLUDED."failureClass",
-                            retryable = false,
-                            "nextRetryAt" = NULL,
-                            evidence = EXCLUDED.evidence,
-                            "startedAt" = NULL,
-                            "finishedAt" = now(),
-                            "decidedAt" = now(),
-                            "decidedBy" = 'engine'
-                """, (
-                    track_id, track_id, track_id,
-                    disp,
-                    tag_error(error, disp, codec)[:500],
-                    disp,
-                    json.dumps({"error": error[:500], "codec": codec}),
-                ))
-
-            if is_timeout:
-                logger.info(f"Track {track_id} reset to pending (batch timeout, no penalty)")
-            elif disp == Disposition.INCONCLUSIVE:
-                if record_closed:
-                    logger.warning(
-                        f"Track {track_id} analysis record already closed; "
-                        f"left closed (attempt stays {inconclusive_attempt})"
-                    )
-                elif inconclusive_retryable:
-                    logger.info(
-                        f"Track {track_id} failed (attempt "
-                        f"{inconclusive_attempt}/{STAGE_RETRY_CAP}, retry in "
-                        f"{inconclusive_wait_seconds}s)"
-                    )
-                else:
-                    logger.warning(
-                        f"Track {track_id} closed terminally after "
-                        f"{inconclusive_attempt} inconclusive attempts "
-                        f"(cap {STAGE_RETRY_CAP})"
-                    )
-            else:
-                logger.warning(f"Track {track_id} marked permanently_failed ({disp}, source {codec}) -- {error[:160]}")
-
-            self.db.commit()
+            self.redis.publish("audio:analysis:complete", json.dumps({
+                "trackId": track_id,
+                "filePath": "",
+                "status": "failed",
+                "error": error[:500],
+            }))
+            logger.error(f"Reported analysis failure for {track_id}: {error[:200]}")
         except Exception as e:
-            logger.error(f"Failed to mark track as failed: {e}")
-            logger.error(f"Traceback: {traceback.format_exc()}")
-            self.db.rollback()
-        finally:
-            cursor.close()
+            logger.error(f"Failed to report analysis failure for {track_id}: {e}")
 
 
 def main():

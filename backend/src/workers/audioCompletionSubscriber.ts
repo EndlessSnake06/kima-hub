@@ -3,6 +3,7 @@ import { vibeQueue } from "./enrichmentQueues";
 import { prisma } from "../utils/db";
 import { config } from "../config";
 import { logger } from "../utils/logger";
+import { recordStageFailure, recordStageSuccess } from "./unifiedEnrichment";
 
 const CHANNEL = "audio:analysis:complete";
 // Resume vibe embeddings after this many ms of Essentia silence.
@@ -13,6 +14,8 @@ interface AudioCompletionEvent {
     trackId: string;
     filePath: string;
     status: string;
+    /** Present when status is "failed": the analyzer's report of the error. */
+    error?: string;
 }
 
 let subscriber: Redis | null = null;
@@ -114,7 +117,30 @@ export async function startAudioCompletionSubscriber(): Promise<void> {
             return;
         }
 
-        if (event.status !== "complete" || !event.trackId) return;
+        if (!event.trackId) return;
+
+        // The analyzer writes no state; this event is its report, and the
+        // stage record (and the status columns it mirrors) is settled here.
+        if (event.status === "failed") {
+            await recordStageFailure(
+                event.trackId,
+                "analysis",
+                "analyzer",
+                new Error(event.error ?? "analysis failed"),
+                { reported: "audio:analysis:complete" },
+            ).catch((err: Error) =>
+                logger.warn(`[AudioSub] Failed to record analysis failure: ${err.message}`),
+            );
+            return;
+        }
+        if (event.status !== "complete") return;
+
+        await recordStageSuccess(event.trackId, "analysis", "analyzer", {
+            syncedFrom: "audio:analysis:complete",
+            answer: "completed",
+        }).catch((err: Error) =>
+            logger.warn(`[AudioSub] Failed to record analysis success: ${err.message}`),
+        );
 
         // Skip vibe queuing when enrichment is stopped/paused
         if (enrichmentHalted) return;

@@ -321,9 +321,11 @@ describe("per-track stage gating", () => {
                 where: { id: id("stuck") },
                 select: { analysisStatus: true },
             });
-            // The record holds the answer (failed + retryable); the column is
-            // never rewritten to a status the record contradicts.
-            expect(track?.analysisStatus).toBe("pending");
+            // The record is due and retryable, so the dispatch re-offers it and
+            // stamps the column 'processing' for the running attempt (the
+            // backend stamps state, the analyzer reports). Nothing condemned
+            // the track; the record still holds failed + retryable + attempt 5.
+            expect(track?.analysisStatus).toBe("processing");
         });
 
         it("does not flush audio:analysis:queue on a stale analyzer heartbeat", async () => {
