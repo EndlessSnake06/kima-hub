@@ -75,7 +75,7 @@ export function looksLikeBundle(r: { discography?: boolean; releaseTitle?: strin
  * Lidarr uses to link a discography release to albums (ParsingService
  * discography branch), so Kima and Lidarr agree on coverage.
  */
-export function bundleCoversAlbum(releaseTitle?: string, albumTitle: string, albumYear?: number): boolean {
+export function bundleCoversAlbum(releaseTitle: string | undefined, albumTitle: string, albumYear?: number): boolean {
     const rt = (releaseTitle ?? "").toLowerCase();
     if (rt.includes(albumTitle.toLowerCase())) return true;
     if (albumYear && albumYear > 0) {

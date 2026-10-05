@@ -262,9 +262,11 @@ describe("catalog", () => {
         ).toBe(false);
     });
 
-    it("puts the ONNX note and re-embed action in 1.11.0 only", () => {
+    it("puts the ONNX note in 1.11.0 only, with no manual re-embed action", () => {
         // ONNX shipped after 1.10.1. In both windows, closing the first would
-        // show the same note again and look like the close failed.
+        // show the same note again and look like the close failed. The engine
+        // re-queues stale embeddings on its own, so the window carries a note,
+        // not a button.
         const keysOf = (v: string) =>
             catalog.RELEASES.find((r) => r.version === v)!.items.map((i) => i.key);
         expect(keysOf("1.10.1")).not.toContain("clap.onnx");
@@ -272,13 +274,12 @@ describe("catalog", () => {
 
         const release = catalog.RELEASES.find((r) => r.version === "1.11.0");
         expect(release).toBeDefined();
-        expect(keysOf("1.11.0")).toContain("clap.reembed");
-
-        const action = release!.items.find(
+        expect(keysOf("1.11.0")).toContain("clap.onnx");
+        expect(keysOf("1.11.0")).not.toContain("clap.reembed");
+        const action = catalog.RELEASES.flatMap((r) => r.items).find(
             (i): i is Extract<catalog.ReleaseItem, { kind: "action" }> => i.kind === "action" && i.key === "clap.reembed",
         );
-        expect(action?.cta).toBe("Rebuild your embeddings");
-        expect(action?.settingsPath).toBe("/settings#cache");
+        expect(action).toBeUndefined();
     });
 
     it("asks about play repair in 1.10.1 only — the window oldest-first already reaches it", () => {
