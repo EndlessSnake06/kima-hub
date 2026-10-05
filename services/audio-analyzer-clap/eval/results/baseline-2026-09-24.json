@@ -675,10 +675,10 @@
     "engine": {
       "embedder": {
         "kind": "engine",
-        "model_path": "../kima-hub/services/vibe-engine/models/clap_audio_fp32.onnx",
+        "model_path": "kima-hub/services/vibe-engine/models/clap_audio_fp32.onnx",
         "model_sha256": "8233f5c3223a22914b0d09c354dab9f32cb73b92477b2f3b006de919c440a55f",
         "recipe_files": [
-          "../kima-hub/services/vibe-engine/vibe_engine/ear/__init__.py"
+          "kima-hub/services/vibe-engine/vibe_engine/ear/__init__.py"
         ],
         "recipe_sha256": "0bf9b1af15e45510fc27a5b290c146dc621ee3dcd06b4dcc48744851ba88a68a"
       },

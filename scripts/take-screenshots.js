@@ -168,66 +168,67 @@ async function takeDesktopShots(browser) {
     } catch { /* ignore */ }
     await shot(p, "mood-mixer.png");
 
-    // --- Vibe ---
+    // --- Vibe (nebula map, 3D) ---
 
-    // Vibe Map (2D)
     await p.goto(`${BASE_URL}/vibe`);
     await p.waitForLoadState("domcontentloaded");
     console.log("  waiting for vibe canvas (up to 40s)...");
     const canvas = p.locator("canvas").first();
-    const noData = p.locator("text=/No tracks with vibe|Computing music map/i").first();
+    const noData = p.locator("text=/No tracks with vibe analysis|Charting your library/i").first();
     try {
         await Promise.race([
             canvas.waitFor({ timeout: 40_000 }),
             noData.waitFor({ timeout: 40_000 }),
         ]);
     } catch { /* ok */ }
-    await p.waitForTimeout(3000); // let map settle
+    await p.waitForTimeout(6000); // let the nebula settle and stars fade in
     await shot(p, "vibe-map.png");
-    await shot(p, "vibe-overlay.png"); // replace old vibe-overlay slot with current map view
 
-    // Vibe Galaxy (3D)
-    const galaxyRendered = await canvas.count() > 0;
-    if (galaxyRendered) {
-        try {
-            await p.getByRole("button", { name: "Galaxy" }).click();
-            await p.waitForTimeout(4000); // WebGL scene load
-            await shot(p, "vibe-galaxy.png");
-
-            // Back to Map view for subsequent shots
-            await p.getByRole("button", { name: "Map" }).click();
-            await p.waitForTimeout(1500);
-        } catch (e) {
-            console.warn("  [skip] vibe-galaxy.png:", e.message);
-        }
-
-        // Drift panel
-        try {
-            await p.locator('[title="Drift -- journey between two tracks"]').click();
-            await p.waitForTimeout(1000);
-            await shot(p, "vibe-drift.png");
-            // Close
-            const closeBtn = p.locator('[aria-label="Close"], button:has-text("Cancel")').first();
-            if (await closeBtn.isVisible({ timeout: 1000 })) await closeBtn.click();
-            else await p.keyboard.press("Escape");
-            await p.waitForTimeout(500);
-        } catch (e) {
-            console.warn("  [skip] vibe-drift.png:", e.message);
-        }
-
-        // Blend / Alchemy panel
-        try {
-            await p.locator('[title="Blend -- mix tracks to find new vibes"]').click();
-            await p.waitForTimeout(1500);
-            await shot(p, "vibe-blend.png");
-            const closeBtn = p.locator('[aria-label="Close alchemy"]').first();
-            if (await closeBtn.isVisible({ timeout: 1000 })) await closeBtn.click();
-        } catch (e) {
-            console.warn("  [skip] vibe-blend.png:", e.message);
-        }
-    } else {
-        console.warn("  [skip] vibe galaxy/drift/blend -- canvas not rendered");
+    // Search highlight
+    try {
+        await p.getByLabel("Search tracks or artists").click();
+        await p.getByLabel("Search tracks or artists").fill("the");
+        await p.waitForTimeout(2500);
+        await shot(p, "vibe-search.png");
+        await p.getByLabel("Clear search").click();
+    } catch (e) {
+        console.warn("  [skip] vibe-search.png:", e.message);
     }
+
+    // Song Path panel
+    try {
+        await p.getByLabel("Song Path: build a queue that glides from one track to another").click();
+        await p.waitForTimeout(1500);
+        await shot(p, "vibe-songpath.png");
+        await p.keyboard.press("Escape");
+        await p.waitForTimeout(500);
+    } catch (e) {
+        console.warn("  [skip] vibe-songpath.png:", e.message);
+    }
+
+    // Blend panel
+    try {
+        await p.getByLabel("Blend: mix tracks you like (and ones you don't) into a new playlist").click();
+        await p.waitForTimeout(1500);
+        await shot(p, "vibe-blend.png");
+        await p.keyboard.press("Escape");
+    } catch (e) {
+        console.warn("  [skip] vibe-blend.png:", e.message);
+    }
+
+    // --- Stats (new in 1.11) ---
+    await p.goto(`${BASE_URL}/stats`);
+    await p.waitForLoadState("domcontentloaded");
+    await netIdle(p, 6000);
+    await p.waitForTimeout(2500);
+    await shot(p, "desktop-stats.png");
+
+    // --- Discover / similar artists (new in 1.11) ---
+    await p.goto(`${BASE_URL}/discover`);
+    await p.waitForLoadState("domcontentloaded");
+    await netIdle(p, 8000);
+    await p.waitForTimeout(2500);
+    await shot(p, "desktop-discover.png");
 
     await ctx.close();
 }
@@ -272,6 +273,8 @@ async function main() {
         args: [
             "--enable-webgl",
             "--ignore-gpu-blocklist",
+            "--use-gl=angle",
+            "--use-angle=swiftshader",
             "--disable-dev-shm-usage",
         ],
     });

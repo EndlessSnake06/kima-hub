@@ -7,7 +7,7 @@ import importlib.util
 import os
 import sys
 
-SERVICE_DIR = "services/audio-analyzer-clap"
+SERVICE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 _spec = importlib.util.spec_from_file_location("clap_analyzer_under_test", os.path.join(SERVICE_DIR, "analyzer.py"))
 assert _spec and _spec.loader

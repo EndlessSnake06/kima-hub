@@ -62,7 +62,7 @@ services:
             MODEL_IDLE_TIMEOUT: 60
         volumes:
             # Mount your music library - UPDATE THIS PATH
-            - "${MUSIC_PATH:-C:/Users/kevin/Music}:/music:ro"
+            - "${MUSIC_PATH:-./music}:/music:ro"
         depends_on:
             postgres:
                 condition: service_healthy

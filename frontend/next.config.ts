@@ -10,7 +10,8 @@ const nextConfig: NextConfig = {
         root: __dirname,
     },
     
-    // Allow dev origins for local network testing
+    // Dev-server origins. Add your own (e.g. a LAN/tailnet address you browse
+    // from) via KIMA_DEV_ORIGINS="host1,http://host2:3030" — never hard-coded here.
     allowedDevOrigins: [
         "http://127.0.0.1:3030",
         "http://127.0.0.1",
@@ -18,10 +19,7 @@ const nextConfig: NextConfig = {
         "http://localhost:3030",
         "http://localhost",
         "localhost",
-        // Tailnet access — the operator browses the dev server from other
-        // machines over Tailscale (dev-machine = 127.0.0.1).
-        "127.0.0.1",
-        "http://127.0.0.1:3030",
+        ...(process.env.KIMA_DEV_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
     ],
     
     images: {

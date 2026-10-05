@@ -3,7 +3,8 @@
 past the end, no overlap, exactly 5 windows from 50 s, sorted ascending."""
 import sys
 
-sys.path.insert(0, "services/audio-analyzer-clap")
+import os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from analyzer import compute_window_offsets  # noqa: E402
 
 WIN = 10.0

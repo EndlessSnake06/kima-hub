@@ -47,7 +47,7 @@ function unpack(gzipped: Buffer) {
 const original = config.publicVibe;
 
 beforeAll(async () => {
-    config.publicVibe = { token: "t".repeat(32), username: "Kevin O" };
+    config.publicVibe = { token: "t".repeat(32), username: "Vibe Tester" };
     await prisma.artist.create({ data: { id: "art_pub", name: "Pub Artist", identityKey: "a_pub" } });
     await prisma.album.create({
         data: { id: "alb_pub", rgMbid: "rg_pub", artistId: "art_pub", title: "Pub Album", year: 2001, primaryType: "Album" },
@@ -90,7 +90,7 @@ describe("public library export", () => {
     it("lists the mapped tracks with their nearest mapped tracks", async () => {
         const doc = unpack((await refreshLibraryExport()).gzipped);
         expect(doc.version).toBe(1);
-        expect(doc.library).toEqual({ id: "kevin-o", name: "Kevin O", engine: { analyzer: null, embedding: "clap-test" } });
+        expect(doc.library).toEqual({ id: "vibe-tester", name: "Vibe Tester", engine: { analyzer: null, embedding: "clap-test" } });
         expect(doc.artists).toEqual([{ id: "art_pub", name: "Pub Artist" }]);
         expect(doc.albums).toEqual([{ id: "alb_pub", artistId: "art_pub", title: "Pub Album", year: 2001 }]);
         expect(doc.tracks.map((t: any) => t.id)).toEqual(["trk_a", "trk_b", "trk_c"]);

@@ -83,12 +83,75 @@ export const GPU_CHOICE_KEY = "gpu.accelerate";
 
 export const RELEASES: Release[] = [
     {
-        version: "1.12.0",
-        title: "The engine rebuild",
+        version: "1.11.0",
+        title: "No accounts, no keys",
         summary:
-            "Kima's analysis engine was rebuilt from an audit of the whole thing up. What your library's numbers mean didn't change — how they're earned did. Your library is re-analysing itself, and there's nothing for you to do.",
-        date: "2026-09-30",
+            "Last.fm is gone from every feature, and nothing asks you for an account in its place. There's a Stats page, the analyzer is torch-free, and the whole analysis engine was rebuilt — your library re-analyses itself.",
+        date: "2026-10-05",
         items: [
+            {
+                kind: "note",
+                key: "stats.page",
+                label: "New",
+                title: "The Stats page",
+                body:
+                    "What you replay most. Which artists carry half of everything you play. How much of your library has never been heard, and how your habits shift between weeks, months, and all time. " +
+                    "Every figure comes from one shared definition of a listen, so the page, the player, and the API can't drift apart again.",
+            },
+            {
+                kind: "note",
+                key: "player.playcounts",
+                label: "New",
+                title: "Play counts live in the player",
+                body:
+                    "The full player now tells you how many times you've heard the current track, pulled from the same counts the Stats page reads. " +
+                    "Tracks you haven't played yet say so instead of showing a zero.",
+            },
+            {
+                kind: "note",
+                key: "lastfm.gone",
+                label: "Changed",
+                title: "Last.fm is gone. Nothing to set up",
+                body:
+                    "Similar artists come from ListenBrainz's worldwide listening data, with Deezer related artists as fallback. Names and aliases resolve " +
+                    "through MusicBrainz, biographies through Wikidata, album artwork through Deezer and Cover Art Archive. No API keys, no account, " +
+                    "nothing to configure. Tracks without an embedded identifier are identified by a title-checked name search; fingerprint lookup runs " +
+                    "only on what that can't settle.",
+            },
+            {
+                kind: "note",
+                key: "clap.onnx",
+                label: "Changed",
+                title: "The vibe analyzer is lighter now",
+                body:
+                    "Swapped the audio analyzer to ONNX — lighter, torch-free, byte-reproducible, and it runs on Apple silicon. The old fingerprints no " +
+                    "longer line up with it; the re-analysis note below says what happens next.",
+            },
+            {
+                kind: "action",
+                key: "moods.mixes",
+                title: "Your mood mix needs rebuilding",
+                body:
+                    "Moods were being read backwards: calm tracks could land in Intense, sad ones in Upbeat. That's fixed, and every track's mood is being re-analysed. " +
+                    "Your saved mood mix was picked from the old, wrong moods.\n\n" +
+                    "Rebuild clears it; pick a mood in the Mood Mixer on the home page to make a fresh one. Keep leaves it exactly as it is. " +
+                    "If you like it as it is, save it as a playlist first — then you can rebuild and still keep those tracks.",
+                cta: "Rebuild",
+                ifClosed: "If you close now, your mood mix stays as it is.",
+                requires: "savedMoodMix",
+            },
+            {
+                kind: "action",
+                key: "moods.mixes.retired",
+                title: "Your old mood mix can't be shown any more",
+                body:
+                    "Moods were being read backwards, and fixing that left five moods: Upbeat, Melancholic, Calm, Intense and Energetic. " +
+                    "Your saved mood mix was made under one that's gone, so Kima can't show it any more. Its tracks are all still in your library.\n\n" +
+                    "Save it as a playlist to keep those tracks together, or remove it. Nothing is deleted until you pick one.",
+                cta: "Save as playlist",
+                ifClosed: "If you close now, nothing is deleted, and you'll be asked again next time.",
+                requires: "retiredMoodMix",
+            },
             {
                 kind: "note",
                 key: "engine.identification",
@@ -127,84 +190,8 @@ export const RELEASES: Release[] = [
                 body:
                     "The new engine writes a new analysis version, so every track is quietly re-queued: audio analysis first, then embeddings, then the vibe map. " +
                     "It runs in the background and will take a while on a large library; everything keeps working with last-known values while it catches up. " +
-                    "Progress lives in Settings, under Library Enrichment. If you said yes to GPU acceleration in the previous window, the download goes first " +
+                    "Progress lives in Settings, under Library Enrichment. If you turn on GPU acceleration in this window, the download goes first " +
                     "and the embedding pass runs on the card.",
-            },
-        ],
-    },
-    {
-        version: "1.11.0",
-        title: "A page that knows your habits",
-        summary:
-            "There's a Stats page now, and it only counts what you actually listened to. The analyzer got lighter too, and there's a one-off repair for plays the old rule got wrong.",
-        date: "2026-09-17",
-        items: [
-            {
-                kind: "note",
-                key: "stats.page",
-                label: "New",
-                title: "The Stats page",
-                body:
-                    "What you replay most. Which artists carry half of everything you play. How much of your library has never been heard, and how your habits shift between weeks, months, and all time. " +
-                    "Every figure comes from one shared definition of a listen, so the page, the player, and the API can't drift apart again.",
-            },
-            {
-                kind: "note",
-                key: "player.playcounts",
-                label: "New",
-                title: "Play counts live in the player",
-                body:
-                    "The full player now tells you how many times you've heard the current track, pulled from the same counts the Stats page reads. " +
-                    "Tracks you haven't played yet say so instead of showing a zero.",
-            },
-            {
-                kind: "note",
-                key: "clap.onnx",
-                label: "Changed",
-                title: "The vibe analyzer is lighter now",
-                body:
-                    "Swapped the audio analyzer to ONNX — lighter and more stable across devices, including Apple silicon. Existing fingerprints are outdated.",
-            },
-            {
-                kind: "action",
-                key: "moods.mixes",
-                title: "Your mood mix needs rebuilding",
-                body:
-                    "Moods were being read backwards: calm tracks could land in Intense, sad ones in Upbeat. That's fixed, and every track's mood is being re-analysed. " +
-                    "Your saved mood mix was picked from the old, wrong moods.\n\n" +
-                    "Rebuild clears it; pick a mood in the Mood Mixer on the home page to make a fresh one. Keep leaves it exactly as it is. " +
-                    "If you like it as it is, save it as a playlist first — then you can rebuild and still keep those tracks.",
-                cta: "Rebuild",
-                ifClosed: "If you close now, your mood mix stays as it is.",
-                requires: "savedMoodMix",
-            },
-            {
-                kind: "action",
-                key: "moods.mixes.retired",
-                title: "Your old mood mix can't be shown any more",
-                body:
-                    "Moods were being read backwards, and fixing that left five moods: Upbeat, Melancholic, Calm, Intense and Energetic. " +
-                    "Your saved mood mix was made under one that's gone, so Kima can't show it any more. Its tracks are all still in your library.\n\n" +
-                    "Save it as a playlist to keep those tracks together, or remove it. Nothing is deleted until you pick one.",
-                cta: "Save as playlist",
-                ifClosed: "If you close now, nothing is deleted, and you'll be asked again next time.",
-                requires: "retiredMoodMix",
-            },
-            {
-                kind: "action",
-                key: "clap.reembed",
-                title: "Rebuild your embeddings",
-                body:
-                    "The old fingerprints were made with the previous analyzer, so they no longer line up with the new one. Rebuilding them makes similarity search " +
-                    "and the vibe features accurate again.\n\n" +
-                    "It re-embeds every track, which is CPU-intensive and can take a long time on a large library. Your music and everything else about it is untouched.",
-                cta: "Rebuild your embeddings",
-                settingsPath: "/settings#cache",
-                runsFromWindow: true,
-                confirmTitle: "Rebuild your embeddings?",
-                confirmMessage:
-                    "This wipes all vibe embeddings and re-embeds every track with the new analyzer. It runs in the background on your server; a large library can take hours. Your music files are untouched.",
-                confirmLabel: "Rebuild embeddings",
             },
             {
                 kind: "choice",

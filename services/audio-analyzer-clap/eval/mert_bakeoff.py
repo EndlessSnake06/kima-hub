@@ -189,7 +189,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument('--model', default='m-a-p/MERT-v1-95M')
     ap.add_argument('--backend', default='hf', choices=['hf', 'clap-onnx', 'muq', 'onnx-v1'])
-    ap.add_argument('--data', default='~/kima-eval-data')
+    ap.add_argument('--data', default=os.environ.get('KIMA_EVAL_DATA', './kima-eval-data'))
     ap.add_argument('--sets', nargs='+', default=['mtt_triplets', 'soundtracks_set1',
                                                   'isovat', 'deam', 'memo2496'])
     ap.add_argument('--workers', type=int, default=6)

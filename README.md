@@ -76,7 +76,7 @@ Thanks for your patience while I work through this.
     -   Discovery (lesser-played gems)
     -   Favorites (most played)
     -   Dynamic genre and decade stations generated from your library
--   **Discover Weekly** - Weekly playlists of new music tailored to your listening habits (requires Lidarr)
+-   **Discover Weekly** - Weekly playlists of new music tailored to your listening habits, seeded from your ListenBrainz-scrobbled history (requires Lidarr for the auto-download)
 -   **Artist recommendations** - Find similar artists based on what you already love
 -   **Artist name resolution** - Smart alias lookup via MusicBrainz (e.g., "of mice" → "Of Mice & Men")
 -   **Discography sorting** - Sort artist albums by year or date added
@@ -107,27 +107,25 @@ Thanks for your patience while I work through this.
 
 ### The Vibe System
 
-The centerpiece of music discovery in Kima. Your entire library is analyzed by a CLAP neural network and projected into a 2D/3D space where similar-sounding tracks cluster together. The result is a living map of your music collection you can explore, search, and navigate.
+The centerpiece of music discovery in Kima. Your entire library is embedded by a CLAP audio model and projected into a 3D space where similar-sounding tracks cluster together. The result is a nebula of your music: stars for tracks, drifting backdrop stars for depth, colored by mood. The map, the search, and the player's "keep the vibe going" mode all read from the same vectors.
 
-**Music Map** -- the default 2D view. Every track in your library is a point on the map, colored by mood cluster. Zoom and pan to explore. Click any track to inspect it; double-click to play it immediately.
-
-<p align="center">
-  <img src="assets/screenshots/vibe-map.png" alt="Vibe Music Map" width="800">
-</p>
-
-**Galaxy View** -- the same data rendered as a 3D star field. Orbit, zoom, and fly through your library. Switch between Map and Galaxy with the toggle in the top-left corner.
+**The map** -- every track in your library, rendered in 3D. Zoom and fly to explore. Search is native to the map: type a song, an artist, or a description ("quiet and rainy", "fast and loud") and the matching stars light up while the rest dim. Click a track to inspect it; double-click to play.
 
 <p align="center">
-  <img src="assets/screenshots/vibe-galaxy.png" alt="Vibe Galaxy" width="800">
+  <img src="assets/screenshots/vibe-map.png" alt="Vibe Map" width="800">
 </p>
-
-**Drift** -- pick any two tracks as start and end points and Kima plots a smooth path through the audio space between them. The resulting queue travels gradually from one sonic neighborhood to the other.
 
 <p align="center">
-  <img src="assets/screenshots/vibe-drift.png" alt="Vibe Drift -- Song Path" width="800">
+  <img src="assets/screenshots/vibe-search.png" alt="Vibe Search" width="800">
 </p>
 
-**Blend** -- add multiple tracks and let Kima find the centroid in audio space. The result is a queue of tracks that blend all of the inputs together into something new.
+**Song Path** -- pick a start track and an end track, and Kima builds a queue that glides between them through audio space: a DJ-quality continuous mix that travels gradually from one sonic neighborhood to the other.
+
+<p align="center">
+  <img src="assets/screenshots/vibe-songpath.png" alt="Song Path" width="800">
+</p>
+
+**Blend** -- add multiple tracks and Kima finds the centroid in audio space. The result is a queue of tracks that blend all of the inputs together into something new.
 
 <p align="center">
   <img src="assets/screenshots/vibe-blend.png" alt="Vibe Blend" width="800">
@@ -136,11 +134,11 @@ The centerpiece of music discovery in Kima. Your entire library is analyzed by a
 **Additional features:**
 
 -   **Text search** - Type any descriptor ("loud and fast", "rainy day piano") to highlight matching tracks on the map
--   **Right-click context menu** - Vibe from any track (similar-track queue), find similar (highlight on map), or start a Drift
+-   **Right-click context menu** - Vibe from any track (similar-track queue), find similar (highlight on map), or start a Song Path
 -   **Labels** - Toggle track/artist labels on the map
 -   **Keep The Vibe Going** - From the player, activate vibe mode to continuously queue tracks that match what's playing
 
-**Mood Mixer** -- pick a mood preset (Happy, Energetic, Chill, Focus, Party, Acoustic, Melancholy, Sad, Aggressive) to instantly generate a playlist calibrated to that sound. Moods are derived from audio analysis of your actual library, not genre tags.
+**Mood Mixer** -- pick a mood preset (Upbeat, Melancholic, Calm, Intense, Energetic) to instantly generate a playlist calibrated to that sound, tuned to your music's continuity. Moods are derived from audio analysis of your actual library, not genre tags.
 
 <p align="center">
   <img src="assets/screenshots/mood-mixer.png" alt="Mood Mixer" width="800">
@@ -358,7 +356,7 @@ Production-ready releases. Updated when new stable versions are released.
 ```bash
 docker pull chevron7locked/kima:latest
 # or specific version
-docker pull chevron7locked/kima:v1.10.0
+docker pull chevron7locked/kima:v1.11.0
 ```
 
 ### 🔴 Pre-release (Development)
@@ -368,7 +366,7 @@ because someone deliberately cut it, not because a clock struck 4am.
 They live on GitHub's registry; Docker Hub carries stable releases only.
 
 ⚠️ **Not recommended for production** — may be unstable or broken. A pre-release
-build labels itself in the interface (`v1.10.0-prerelease`) so you can always
+build labels itself in the interface (`v1.11.0-prerelease`) so you can always
 tell which channel a running instance came from.
 
 ```bash
@@ -515,7 +513,7 @@ The CLAP (Contrastive Language-Audio Pretraining) service generates embeddings f
 
 -   PostgreSQL with pgvector extension (included in `pgvector/pgvector:pg16` image)
 -   2-4GB RAM per worker
--   CLAP model downloads automatically on first build (~700MB)
+-   The audio tower ships in the image as a pinned ONNX export — no PyTorch, no model download at runtime
 
 ### Configuration
 
@@ -860,14 +858,13 @@ Your listening progress is saved automatically, so you can pause on one device a
 **Exploring the map:**
 
 1. Navigate to **Vibe** in the sidebar
-2. Your library loads as a 2D music map -- similar-sounding tracks cluster together
-3. Click any point to inspect the track; double-click to play it
-4. Switch to **Galaxy** view for a 3D star-field perspective
-5. Use the **Search** bar to highlight tracks matching a text description
+2. Your library loads as a 3D nebula -- similar-sounding tracks cluster together
+3. Click any star to inspect the track; double-click to play it
+4. Use the **Search** bar to light up tracks matching a song, artist, or text description
 
-**Drift -- journey between two tracks:**
+**Song Path -- journey between two tracks:**
 
-1. Click **Drift** in the toolbar
+1. Click **Song Path** in the toolbar
 2. Search for and select a start track, then an end track
 3. Click **Generate Path** -- Kima queues a smooth sonic journey between them
 
