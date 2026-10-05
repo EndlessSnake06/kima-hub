@@ -97,9 +97,11 @@ RUN pip3 install --no-cache-dir --break-system-packages \
     'pgvector>=0.2.0' \
     'python-dotenv>=1.0.0' \
     'requests>=2.31.0' \
-    'bullmq==2.19.5' \
+    # 2.26.0 is the latest 2.x binding (Worker API the analyzer imports); its
+    # msgpack==1.2.1 pin is the GHSA-6v7p-g79w-8964 fixed release.
+    'bullmq==2.26.0' \
     'yt-dlp>=2024.12.0' \
-    # Floor the transitive msgpack (bullmq/librosa): 1.1.x carries GHSA-6v7p-g79w-8964.
+    # Floor the transitive msgpack: <1.2.1 carries GHSA-6v7p-g79w-8964.
     'msgpack>=1.2.1'
 
 # ML dependencies -- ONNX for CLAP (audio + text), tensorflow/essentia for MusiCNN.
