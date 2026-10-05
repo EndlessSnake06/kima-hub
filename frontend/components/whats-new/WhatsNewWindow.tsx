@@ -7,7 +7,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { X, Check, Loader2 } from "lucide-react";
+import { X, Check, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 
@@ -50,16 +50,23 @@ interface Release {
 export function WhatsNewWindow({
     release,
     onClose,
+    onDismiss,
     renderAction,
 }: {
     release: Release;
     onClose: () => void;
+    /**
+     * Records the closing server-side. The gate passes one that closes every
+     * release merged into this window; the default records just this release.
+     */
+    onDismiss?: () => Promise<void>;
     /** An `action` item supplies its own body; the window only frames it. */
     renderAction?: (item: Extract<ReleaseItem, { kind: "action" }>) => React.ReactNode;
 }) {
     const [choices, setChoices] = useState<Record<string, boolean>>({});
     const [closing, setClosing] = useState(false);
     const [closeError, setCloseError] = useState<string | null>(null);
+    const [page, setPage] = useState(0);
     const dialogRef = useRef<HTMLDivElement>(null);
 
     const asks = release.items.filter((i) => i.kind === "choice");
@@ -77,14 +84,15 @@ export function WhatsNewWindow({
         setClosing(true);
         setCloseError(null);
         try {
-            await api.post(`/whats-new/${release.version}/dismiss`, {});
+            if (onDismiss) await onDismiss();
+            else await api.post(`/whats-new/${release.version}/dismiss`, {});
         } catch {
             setClosing(false);
             setCloseError("Couldn't record that. Check your connection and press Done again.");
             return;
         }
         onClose();
-    }, [release.version, onClose, closing]);
+    }, [release.version, onDismiss, onClose, closing]);
 
     // Escape closes, and closing is a real answer -- same path as the button, so
     // the two can never diverge. While a nested confirm is open (the
@@ -131,6 +139,17 @@ export function WhatsNewWindow({
         };
     }, [release.version]);
 
+    // Arrow keys page, so the window reads as one paged dialogue rather than
+    // a scroll; Escape and Done still close the whole thing from any page.
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === "ArrowLeft") setPage((p) => Math.max(0, p - 1));
+            else if (e.key === "ArrowRight") setPage((p) => Math.min(release.items.length - 1, p + 1));
+        };
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, [release.items.length]);
+
     const answer = async (key: string, enabled: boolean) => {
         setChoices((c) => ({ ...c, [key]: enabled }));
         try {
@@ -138,6 +157,67 @@ export function WhatsNewWindow({
         } catch {
             setChoices((c) => { const n = { ...c }; delete n[key]; return n; });
         }
+    };
+
+    // One item per page; the pager in the footer walks them oldest first.
+    const renderPage = (item: ReleaseItem) => {
+        if (item.kind === "note") {
+            return (
+                <section className="flex flex-col gap-1.5">
+                    {item.label && (
+                        <p className="text-[0.625rem] uppercase tracking-[0.12em] text-[var(--text-muted)]">
+                            {item.label}
+                        </p>
+                    )}
+                    <h3 className="text-base font-semibold text-white text-balance">{item.title}</h3>
+                    <Body text={item.body} />
+                </section>
+            );
+        }
+
+        if (item.kind === "action") {
+            return (
+                <section className="flex flex-col gap-3">
+                    <div className="flex flex-col gap-1.5">
+                        <h3 className="text-base font-semibold text-white text-balance">{item.title}</h3>
+                        <Body text={item.body} />
+                    </div>
+                    {renderAction?.(item)}
+                    {item.settingsPath && (
+                        <p className="text-xs text-[var(--text-muted)]">
+                            This lives in Settings too, if you&rsquo;d rather do it later.
+                        </p>
+                    )}
+                </section>
+            );
+        }
+
+        const answered = choices[item.key];
+        return (
+            <section className="flex flex-col gap-3 rounded-xl border border-white/10 bg-[var(--bg-tertiary)] p-4">
+                <div className="flex flex-col gap-1.5">
+                    <h3 className="text-base font-semibold text-white text-balance">{item.title}</h3>
+                    <Body text={item.body} />
+                    {item.discloses && (
+                        <p className="mt-1 text-xs leading-relaxed text-[var(--text-muted)]">
+                            <span className="text-white/70">What actually leaves your server:</span> {item.discloses}
+                        </p>
+                    )}
+                </div>
+                <div className="flex gap-2">
+                    <ChoiceButton
+                        selected={answered === true}
+                        onClick={() => answer(item.key, true)}
+                        label="Turn it on"
+                    />
+                    <ChoiceButton
+                        selected={answered === false}
+                        onClick={() => answer(item.key, false)}
+                        label="No thanks"
+                    />
+                </div>
+            </section>
+        );
     };
 
     return (
@@ -183,65 +263,7 @@ export function WhatsNewWindow({
                 </header>
 
                 <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-7">
-                    {release.items.map((item) => {
-                        if (item.kind === "note") {
-                            return (
-                                <section key={item.key} className="flex flex-col gap-1.5">
-                                    {item.label && (
-                                        <p className="text-[0.625rem] uppercase tracking-[0.12em] text-[var(--text-muted)]">
-                                            {item.label}
-                                        </p>
-                                    )}
-                                    <h3 className="text-base font-semibold text-white text-balance">{item.title}</h3>
-                                    <Body text={item.body} />
-                                </section>
-                            );
-                        }
-
-                        if (item.kind === "action") {
-                            return (
-                                <section key={item.key} className="flex flex-col gap-3">
-                                    <div className="flex flex-col gap-1.5">
-                                        <h3 className="text-base font-semibold text-white text-balance">{item.title}</h3>
-                                        <Body text={item.body} />
-                                    </div>
-                                    {renderAction?.(item)}
-                                    {item.settingsPath && (
-                                        <p className="text-xs text-[var(--text-muted)]">
-                                            This lives in Settings too, if you&rsquo;d rather do it later.
-                                        </p>
-                                    )}
-                                </section>
-                            );
-                        }
-
-                        const answered = choices[item.key];
-                        return (
-                            <section key={item.key} className="flex flex-col gap-3 rounded-xl border border-white/10 bg-[var(--bg-tertiary)] p-4">
-                                <div className="flex flex-col gap-1.5">
-                                    <h3 className="text-base font-semibold text-white text-balance">{item.title}</h3>
-                                    <Body text={item.body} />
-                                    {item.discloses && (
-                                        <p className="mt-1 text-xs leading-relaxed text-[var(--text-muted)]">
-                                            <span className="text-white/70">What actually leaves your server:</span> {item.discloses}
-                                        </p>
-                                    )}
-                                </div>
-                                <div className="flex gap-2">
-                                    <ChoiceButton
-                                        selected={answered === true}
-                                        onClick={() => answer(item.key, true)}
-                                        label="Turn it on"
-                                    />
-                                    <ChoiceButton
-                                        selected={answered === false}
-                                        onClick={() => answer(item.key, false)}
-                                        label="No thanks"
-                                    />
-                                </div>
-                            </section>
-                        );
-                    })}
+                    {renderPage(release.items[page])}
                 </div>
 
                 <footer className="shrink-0 px-6 py-4 border-t border-white/10 flex items-center justify-between gap-4">
@@ -261,16 +283,43 @@ export function WhatsNewWindow({
                                   : "You can change your mind in Settings whenever."}
                         </p>
                     </div>
-                    <Button
-                        variant="primary"
-                        onClick={close}
-                        disabled={closing}
-                        data-autofocus
-                        data-testid="whatsnew-done"
-                        className="shrink-0"
-                    >
-                        {closing ? "Saving..." : unanswered > 0 && asks.length > 0 ? "Close" : "Done"}
-                    </Button>
+                    <div className="flex items-center gap-2 shrink-0">
+                        {release.items.length > 1 && (
+                            <div className="flex items-center gap-1" data-testid="whatsnew-pager">
+                                <button
+                                    type="button"
+                                    onClick={() => setPage((p) => p - 1)}
+                                    disabled={page === 0}
+                                    aria-label="Previous item"
+                                    className="w-11 h-11 flex items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-white hover:bg-white/5 transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                                >
+                                    <ChevronLeft className="w-5 h-5" />
+                                </button>
+                                <span className="text-xs tabular-nums text-[var(--text-muted)] min-w-14 text-center">
+                                    {page + 1} of {release.items.length}
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => setPage((p) => Math.min(release.items.length - 1, p + 1))}
+                                    disabled={page === release.items.length - 1}
+                                    aria-label="Next item"
+                                    className="w-11 h-11 flex items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-white hover:bg-white/5 transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                                >
+                                    <ChevronRight className="w-5 h-5" />
+                                </button>
+                            </div>
+                        )}
+                        <Button
+                            variant="primary"
+                            onClick={close}
+                            disabled={closing}
+                            data-autofocus
+                            data-testid="whatsnew-done"
+                            className="shrink-0"
+                        >
+                            {closing ? "Saving..." : unanswered > 0 && asks.length > 0 ? "Close" : "Done"}
+                        </Button>
+                    </div>
                 </footer>
             </div>
         </div>

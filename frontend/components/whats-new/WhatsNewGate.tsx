@@ -1,11 +1,13 @@
 "use client";
 
 /**
- * Shows unclosed releases oldest first, one at a time. The server decides what
- * is pending; nothing is recorded locally, so a second device still asks.
+ * Shows every release the user has not closed, in one window that pages
+ * through the pending items oldest first. The server decides what is pending;
+ * nothing is recorded locally, so a second device still asks.
  */
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { WhatsNewWindow } from "./WhatsNewWindow";
@@ -44,9 +46,10 @@ function fetchPending(): Promise<Release[]> {
 
 export function WhatsNewGate() {
     const [queue, setQueue] = useState<Release[]>([]);
-    // "Take me to it" defers the remaining windows for this tab, so they don't
-    // follow the user to the page. sessionStorage survives the gate remounting on
-    // navigation and clears with the tab; the windows return next visit.
+    // "Take me to it" defers the rest of the window for this tab, so it does
+    // not follow the user to the page. sessionStorage survives the gate
+    // remounting on navigation and clears with the tab; the pages return next
+    // visit.
     const [deferred, setDeferred] = useState(() => {
         if (typeof window === "undefined") return false;
         return window.sessionStorage.getItem("whatsnew.deferred") === "1";
@@ -72,10 +75,17 @@ export function WhatsNewGate() {
     }, []);
 
     if (queue.length === 0 || deferred) return null;
-    const [current, ...rest] = queue;
+    const latest = queue[queue.length - 1];
+    // One window for the whole queue: the newest release's header, every
+    // pending item, oldest first.
+    const merged = { ...latest, items: queue.flatMap((r) => r.items) };
 
-    const reembed = current.items.find(
-        (i): i is Extract<typeof current.items[number], { kind: "action"; runsFromWindow?: boolean }> =>
+    // flatMap keeps the item objects, so key lookup finds a page's own release.
+    const versionOf = (key: string) =>
+        queue.find((r) => r.items.some((i) => i.key === key))?.version ?? latest.version;
+
+    const reembed = merged.items.find(
+        (i): i is Extract<typeof merged.items[number], { kind: "action"; runsFromWindow?: boolean }> =>
             i.kind === "action" && i.runsFromWindow === true,
     );
 
@@ -95,12 +105,18 @@ export function WhatsNewGate() {
         }
     };
 
+    // Done closes every pending release in the queue, not just the header's:
+    // a window that pages through two releases must record both closings.
+    const dismissAll = async () => {
+        for (const r of queue) await api.post(`/whats-new/${r.version}/dismiss`, {});
+    };
+
     return (
         <>
             <WhatsNewWindow
-                key={current.version}
-                release={current}
-                onClose={() => setQueue(rest)}
+                release={merged}
+                onDismiss={dismissAll}
+                onClose={() => setQueue([])}
                 renderAction={(item) =>
                 item.key === "moods.mixes" || item.key === "moods.mixes.retired" ? (
                     // Rebuild / keep / save as playlist, or for a mix under a
@@ -110,18 +126,19 @@ export function WhatsNewGate() {
                 ) : item.key === "plays.repair" ? (
                     // The review lives on the stats page and stays there. A
                     // dialogue is a bad place to work through forty tracks, and
-                    // a second copy of a destructive tool is worse.
-                    <a
+                    // a second copy of a destructive tool is worse. Link, not
+                    // <a>: the app router swaps the page in place, no reload.
+                    <Link
                         href="/stats#false-starts"
                         onClick={() => {
                             window.sessionStorage.setItem("whatsnew.deferred", "1");
                             setDeferred(true);
-                            void api.post(`/whats-new/${current.version}/dismiss`, {});
+                            void api.post(`/whats-new/${versionOf(item.key)}/dismiss`, {});
                         }}
                         className="self-start h-11 px-4 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-white text-sm font-medium flex items-center transition-colors"
                     >
                         {item.cta}
-                    </a>
+                    </Link>
                 ) : item.runsFromWindow ? (
                     <div className="flex flex-col gap-2">
                         {started === item.key ? (
