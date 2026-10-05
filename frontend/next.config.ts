@@ -121,4 +121,13 @@ const nextConfig: NextConfig = {
     },
 };
 
-export default withBundleAnalyzer(nextConfig);
+// The bundle analyzer is a devDependency, stripped from production images.
+// Next awaits a promise-returning config export, so load it lazily: prod
+// boots never reference the package. ANALYZE=true (dev) gets the report.
+export default async function (): Promise<NextConfig> {
+    if (process.env.ANALYZE === "true") {
+        const { default: withBundleAnalyzer } = await import("@next/bundle-analyzer");
+        return withBundleAnalyzer({ enabled: true })(nextConfig);
+    }
+    return nextConfig;
+}
