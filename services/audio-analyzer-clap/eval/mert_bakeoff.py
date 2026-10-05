@@ -42,12 +42,24 @@ _SR = SR
 def _init_worker(model_id: str, backend: str) -> None:
     # Module-level so the pool can pickle it by reference (nested functions
     # cannot be pickled, not even with the fork start method).
-    import torch
     os.environ['TOKENIZERS_PARALLELISM'] = 'false'
-    torch.set_num_threads(2)
     global _MODEL, _BACKEND, _SR
     _BACKEND = backend
-    if backend == 'clap-onnx':
+    if backend == 'onnx-v1':
+        # The shipped tower itself, through the shipped ONNX backend.
+        from onnx_backend import OnnxCLAPBackend, CLAP_SAMPLE_RATE
+        _MODEL = OnnxCLAPBackend()
+        _MODEL.load_model()
+        _SR = CLAP_SAMPLE_RATE
+    elif backend == 'muq':
+        # The checkpoint ships a fairseq-style config transformers won't map;
+        # the official package carries the architecture itself.
+        import torch
+        torch.set_num_threads(2)
+        from muq import MuQ
+        _MODEL = MuQ.from_pretrained(model_id)
+        _MODEL.eval()
+    elif backend == 'clap-onnx':
         # The larger sibling of the shipped model: its ONNX audio tower and
         # its own ClapFeatureExtractor frontend (48 kHz), same deal the
         # shipped analyzer gives the v1 weights.
@@ -59,6 +71,8 @@ def _init_worker(model_id: str, backend: str) -> None:
                   ClapFeatureExtractor.from_pretrained(model_id))
         _SR = _MODEL[1].sampling_rate
     else:
+        import torch
+        torch.set_num_threads(2)
         from transformers import AutoModel
         # MERT ships its modeling code in the repo; eval-only, never in the image.
         _MODEL = AutoModel.from_pretrained(model_id, trust_remote_code=True)
@@ -79,20 +93,37 @@ def _embed_one(item):
             vecs.append(_embed_window(seg))
         v = np.mean(vecs, axis=0).astype(np.float32)
         v /= np.linalg.norm(v) + 1e-12
-        return key, v, ''
+        w = np.stack(vecs).astype(np.float32)
+        # Short tracks tile to 5 windows so the cache array stays rectangular,
+        # matching precompute_mels' padding.
+        while len(w) < 5:
+            w = np.concatenate([w, w[:1]])
+        w = w[:5] / (np.linalg.norm(w, axis=1, keepdims=True) + 1e-12)
+        return key, v, w, ''
     except Exception as e:
-        return key, None, f'{type(e).__name__}: {e}'[:200]
+        return key, None, None, f'{type(e).__name__}: {e}'[:200]
 
 
 def _embed_window(seg):
+    if _BACKEND == 'onnx-v1':
+        return _MODEL.embed_audio(seg)
     if _BACKEND == 'clap-onnx':
         sess, fe = _MODEL
         mel = fe(raw_speech=seg, sampling_rate=_SR, return_tensors='np')['input_features']
         return sess.run(None, {sess.get_inputs()[0].name: mel.astype('float32')})[0][0]
     import torch
     with torch.no_grad():
-        out = _MODEL(input_values=torch.from_numpy(seg).unsqueeze(0))
-    return out.last_hidden_state.mean(dim=1)[0].numpy()
+        x = torch.from_numpy(seg).unsqueeze(0)
+        for kw in ('input_values', 'wavs', 'x'):
+            try:
+                out = _MODEL(**{kw: x})
+                break
+            except TypeError:
+                continue
+    hs = out.last_hidden_state
+    if hs is None:
+        hs = out.hidden_states[-1]
+    return hs.mean(dim=1)[0].numpy()
 
 
 def _embed_all(model_id: str, sets: dict, workers: int, retry_failed: bool, backend: str) -> dict:
@@ -102,10 +133,12 @@ def _embed_all(model_id: str, sets: dict, workers: int, retry_failed: bool, back
     out = {}
     for name, es in sets.items():
         cp = _cache_paths(slug, name)
-        embs, fails = ({}, {})
+        embs, wins, fails = ({}, {}, {})
         if os.path.exists(cp):
             z = np.load(cp)
             embs = {str(k): v for k, v in zip(z['ids'], z['emb'])}
+            if 'win' in z:
+                wins = {str(k): w for k, w in zip(z['ids'], z['win'])}
             fails = {str(k): str(r) for k, r in zip(z['fail_ids'], z['fail_reasons'])}
         todo = [(i, p) for i, p in zip(es.ids, es.paths)
                 if i not in embs and (retry_failed or i not in fails)]
@@ -116,20 +149,22 @@ def _embed_all(model_id: str, sets: dict, workers: int, retry_failed: bool, back
             # is unsafe on macOS; the workers are module-level so spawn pickles fine
             with ProcessPoolExecutor(max_workers=workers, initializer=_init_worker,
                                      initargs=(model_id, backend)) as ex:
-                for key, v, err in ex.map(_embed_one, todo, chunksize=8):
+                for key, v, w, err in ex.map(_embed_one, todo, chunksize=8):
                     if v is None:
                         fails[key] = err
                     else:
-                        embs[key] = v
+                        embs[key], wins[key] = v, w
                     done += 1
                     if done % 200 == 0:
                         print(f'[{name}] {done}/{len(todo)}', flush=True)
             keys = sorted(embs)
             os.makedirs(os.path.dirname(cp), exist_ok=True)
-            np.savez_compressed(cp, ids=np.array(keys),
-                                emb=np.stack([embs[k] for k in keys]),
-                                fail_ids=np.array(sorted(fails)),
-                                fail_reasons=np.array([fails[k] for k in sorted(fails)]))
+            save = dict(ids=np.array(keys), emb=np.stack([embs[k] for k in keys]),
+                        fail_ids=np.array(sorted(fails)),
+                        fail_reasons=np.array([fails[k] for k in sorted(fails)]))
+            if len(wins) == len(embs):
+                save['win'] = np.stack([wins[k] for k in keys])
+            np.savez_compressed(cp, **save)
         out[name] = embs
     return out
 
@@ -153,7 +188,7 @@ def v1_cache_embeddings(set_name: str) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument('--model', default='m-a-p/MERT-v1-95M')
-    ap.add_argument('--backend', default='hf', choices=['hf', 'clap-onnx'])
+    ap.add_argument('--backend', default='hf', choices=['hf', 'clap-onnx', 'muq', 'onnx-v1'])
     ap.add_argument('--data', default='~/kima-eval-data')
     ap.add_argument('--sets', nargs='+', default=['mtt_triplets', 'soundtracks_set1',
                                                   'isovat', 'deam', 'memo2496'])
