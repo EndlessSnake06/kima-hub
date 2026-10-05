@@ -78,7 +78,12 @@ export function judgeQueueItem(item: LidarrQueueItem, now = Date.now()): QueueVe
 export async function removeFailedDownload(
     downloadId: string,
     reason: string,
-    opts: { searchAgain: boolean; blocklist?: boolean; item?: { id: number; title?: string } }
+    opts: {
+        searchAgain: boolean;
+        blocklist?: boolean;
+        item?: { id: number; title?: string };
+        removeFromClient?: boolean;
+    }
 ): Promise<boolean> {
     const claim = await prisma.handledDownload.createMany({
         data: [{ downloadId, reason }],
@@ -94,6 +99,7 @@ export async function removeFailedDownload(
             removed = await lidarrService.removeQueueItem(target, {
                 blocklist: opts.blocklist ?? true,
                 skipRedownload: !opts.searchAgain,
+                ...(opts.removeFromClient === false ? { removeFromClient: false } : {}),
             });
         }
     } catch (error: any) {
@@ -132,10 +138,20 @@ async function settle(item: LidarrQueueItem, verdict: QueueVerdict): Promise<boo
         return removeFailedDownload(downloadId, verdict.reason, { searchAgain: true, item });
     }
     if (verdict.action === "owned") {
+        // A bundle import ends "not an upgrade" because Kima already owned
+        // SOME albums in it; the torrent also carries the albums Kima asked
+        // for. Detaching the queue item without deleting the data keeps it
+        // seeding, which tracker-ratio rules on bundle indexers require.
+        const job = await prisma.downloadJob.findFirst({
+            where: { lidarrRef: downloadId },
+            select: { metadata: true },
+        });
+        const bundle = Boolean((job?.metadata as any)?.grabbedAsBundle);
         const removed = await removeFailedDownload(downloadId, verdict.reason, {
             searchAgain: false,
             blocklist: false,
             item,
+            removeFromClient: !bundle,
         });
         if (removed) await simpleDownloadManager.onDownloadComplete(downloadId);
         return removed;

@@ -82,34 +82,39 @@ export async function processStoredEvent(
  */
 async function handleGrab(payload: any): Promise<string | undefined> {
     const downloadId = payload.downloadId;
-    const albumMbid = payload.albums?.[0]?.mbId;
-    const albumTitle = payload.albums?.[0]?.title;
     const artistName = payload.artist?.name;
-    const lidarrAlbumId = payload.albums?.[0]?.id;
-
-    logger.debug(`   Album: ${artistName} - ${albumTitle}`);
-    logger.debug(`   Download ID: ${downloadId}`);
-    logger.debug(`   MBID: ${albumMbid}`);
+    const albums: any[] = payload.albums ?? [];
 
     if (!downloadId) {
         logger.debug(`   Missing downloadId, skipping`);
         return undefined;
     }
-
-    const result = await simpleDownloadManager.onDownloadGrabbed(
-        downloadId,
-        albumMbid || "",
-        albumTitle || "",
-        artistName || "",
-        lidarrAlbumId || 0
-    );
-
-    if (result.matched) {
-        await rejectSingleTrackPost(downloadId, payload.release?.releaseTitle);
-        queueCleaner.start();
-        return result.jobId;
+    if (albums.length === 0) {
+        logger.debug(`   Grab payload lists no albums, skipping`);
+        return undefined;
     }
 
+    // A bundle grab lists every album the release is linked to; the wanted one
+    // is not necessarily first, so each job is matched against all of them.
+    const bundle = albums.length > 1;
+    for (const album of albums) {
+        const result = await simpleDownloadManager.onDownloadGrabbed(
+            downloadId,
+            album?.mbId || "",
+            album?.title || "",
+            artistName || "",
+            album?.id || 0,
+            { bundle }
+        );
+        if (result.matched) {
+            logger.debug(`   Matched job on album "${album?.title}"${bundle ? " (bundle grab)" : ""}`);
+            await rejectSingleTrackPost(downloadId, payload.release?.releaseTitle);
+            queueCleaner.start();
+            return result.jobId;
+        }
+    }
+
+    logger.debug(`   No job asked for any of the ${albums.length} album(s); Lidarr grabbed on its own`);
     return undefined;
 }
 

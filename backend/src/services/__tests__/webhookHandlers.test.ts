@@ -26,7 +26,22 @@ beforeEach(() => jest.clearAllMocks());
 
 it("passes the album id from a Grab", async () => {
     await dispatchWebhookEvent("Grab", { downloadId: "d1", albums: [album], artist });
-    expect(simpleDownloadManager.onDownloadGrabbed).toHaveBeenCalledWith("d1", "rg-1", "Antics", "Interpol", 42);
+    expect(simpleDownloadManager.onDownloadGrabbed).toHaveBeenCalledWith("d1", "rg-1", "Antics", "Interpol", 42, { bundle: false });
+});
+
+it("matches a bundle grab on any of its albums", async () => {
+    (simpleDownloadManager.onDownloadGrabbed as jest.Mock)
+        .mockResolvedValueOnce({ matched: false })
+        .mockResolvedValueOnce({ matched: true, jobId: "j2" });
+    const jobId = await dispatchWebhookEvent("Grab", {
+        downloadId: "d2",
+        albums: [{ id: 1, mbId: "rg-a", title: "Discography" }, { id: 2, mbId: "rg-dm", title: "Dark Metropolis" }],
+        artist,
+    });
+    expect(jobId).toBe("j2");
+    expect(simpleDownloadManager.onDownloadGrabbed).toHaveBeenNthCalledWith(
+        2, "d2", "rg-dm", "Dark Metropolis", "Interpol", 2, { bundle: true }
+    );
 });
 
 it("passes the album id from a Download", async () => {

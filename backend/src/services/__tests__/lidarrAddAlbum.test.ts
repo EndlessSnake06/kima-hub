@@ -146,14 +146,16 @@ describe("a search that grabs nothing", () => {
         expect(searches).toHaveLength(1);
     });
 
-    it("reports the album as owned when every release is rejected for existing files", async () => {
+    it("treats existing-files rejections as availability, not ownership", async () => {
         searchMessage = "Album search completed. 0 reports downloaded.";
         releases = [
             { rejections: ["Existing files meets cutoff: FLAC"] },
             { rejections: ["Existing files on disk is of equal or higher preference: FLAC"] },
         ];
 
-        await expect(addForLibrary()).rejects.toMatchObject({ type: AcquisitionErrorType.ALREADY_OWNED });
+        // Owned means percentOfTracks (checked above), not Lidarr refusing a
+        // release because of files belonging to OTHER albums (bundle rejections).
+        await expect(addForLibrary()).rejects.toMatchObject({ type: AcquisitionErrorType.NO_RELEASES_AVAILABLE });
     });
 
     it("names the top rejection reasons when nothing was approved", async () => {

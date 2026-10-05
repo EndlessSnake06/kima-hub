@@ -63,6 +63,33 @@ const DISCOVERY_TAG_LABEL = "lidify-discovery";
 const NOTHING_GRABBED = /\b0 reports downloaded/;
 // Lidarr's rejections for a release no better than the files it already has.
 const EXISTING_FILES = /^Existing files\b/i;
+
+/** A multi-album release: Lidarr's discography flag, or a title advertising N releases. */
+export function looksLikeBundle(r: { discography?: boolean; releaseTitle?: string }): boolean {
+    return r.discography === true || /\(\s*\d+\s+releases?\b/i.test(r.releaseTitle ?? "");
+}
+
+/**
+ * Does the bundle's title claim the wanted album? Title mention, or a year
+ * range ("2017-2024") that contains the album's release year — the same basis
+ * Lidarr uses to link a discography release to albums (ParsingService
+ * discography branch), so Kima and Lidarr agree on coverage.
+ */
+export function bundleCoversAlbum(releaseTitle?: string, albumTitle: string, albumYear?: number): boolean {
+    const rt = (releaseTitle ?? "").toLowerCase();
+    if (rt.includes(albumTitle.toLowerCase())) return true;
+    if (albumYear && albumYear > 0) {
+        const m = rt.match(/(\d{4})\s*(?:-|–|—|to)\s*(\d{4})/);
+        if (m && albumYear >= Number(m[1]) && albumYear <= Number(m[2])) return true;
+    }
+    return false;
+}
+
+function formatBytes(n?: number): string {
+    if (!n && n !== 0) return "unknown size";
+    const mb = n / (1024 * 1024);
+    return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${Math.round(mb)} MB`;
+}
 const RELEASE_SEARCH_TIMEOUT_MS = 90_000;
 
 /** Connection failures, 5xx and Lidarr's SQLite lock clear on their own. */
@@ -592,6 +619,13 @@ class LidarrService {
                     return updatedAlbum;
                 }
 
+                // Discover stays album-scoped: a bundle would import the
+                // artist's whole discography off a single discovery request.
+                if (!isDiscovery && (await this.tryBundleGrab(artist.id, updatedAlbum))) {
+                    logger.debug(`   Bundle grab started for "${updatedAlbum.title}"`);
+                    return updatedAlbum;
+                }
+
                 const baseAlbumTitle = stripAlbumEdition(albumTitle);
                 const baseMatch =
                     !isDiscovery && baseAlbumTitle !== albumTitle && baseAlbumTitle.length > 2
@@ -609,6 +643,10 @@ class LidarrService {
                 });
                 const baseResult = await this.runAlbumSearch(baseMatch.id);
                 if (NOTHING_GRABBED.test(baseResult.message ?? "")) {
+                    if (!isDiscovery && (await this.tryBundleGrab(artist.id, baseMatch))) {
+                        logger.debug(`   Bundle grab started for "${baseMatch.title}"`);
+                        return baseMatch;
+                    }
                     throw await this.nothingGrabbedError(baseMatch.id, baseMatch.title);
                 }
                 logger.debug(`   Base album download started: ${baseMatch.title}`);
@@ -646,9 +684,65 @@ class LidarrService {
     }
 
     /**
-     * Why a search grabbed nothing, from Lidarr's own release list: every release
-     * rejected for existing files means the library already has the album.
+     * The album's search grabbed nothing. If the album lives inside a bundle —
+     * a multi-album release Lidarr refused only because OTHER albums in it are
+     * already owned — grab the bundle directly, the way Lidarr's own
+     * "download anyway" button does (POST /api/v1/release, valid within 30
+     * minutes of the search that listed it). Returns true when the grab started.
+     * Rejections other than "existing files" (quality, seeders, blocklist) mean
+     * Kima leaves the release alone.
      */
+    async tryBundleGrab(artistId: number, album: { title: string; releaseDate?: string; id: number }): Promise<boolean> {
+        let releases: any[] = [];
+        try {
+            releases = (
+                await this.client!.get("/api/v1/release", {
+                    params: { artistId },
+                    timeout: RELEASE_SEARCH_TIMEOUT_MS,
+                })
+            ).data ?? [];
+        } catch (error: any) {
+            logger.warn(`   Bundle scan for artist ${artistId} failed: ${error.message}`);
+            return false;
+        }
+
+        const year = album.releaseDate ? Number(album.releaseDate.slice(0, 4)) : undefined;
+        const ceilingMB = (await getSystemSettings())?.lidarrBundleMaxSizeMB ?? 0;
+        const candidates = releases.filter(
+            (r) =>
+                looksLikeBundle(r) &&
+                (r.rejections ?? []).length > 0 &&
+                (r.rejections ?? []).every((m: string) => EXISTING_FILES.test(m)) &&
+                bundleCoversAlbum(r.releaseTitle, album.title, year)
+        );
+        if (candidates.length === 0) return false;
+
+        const ceiling = ceilingMB > 0 ? ceilingMB * 1024 * 1024 : Infinity;
+        const fitting = candidates.filter((r) => (r.size ?? 0) <= ceiling);
+        fitting.sort(
+            (a, b) =>
+                (a.size ?? Infinity) - (b.size ?? Infinity) ||
+                (b.statistics?.seeders ?? 0) - (a.statistics?.seeders ?? 0)
+        );
+        if (fitting.length === 0) {
+            logger.debug(`   ${candidates.length} bundle(s) cover "${album.title}" but exceed the size ceiling`);
+            return false;
+        }
+        const pick = fitting[0];
+
+        try {
+            await this.client!.post("/api/v1/release", {
+                guid: pick.guid,
+                indexerId: pick.indexerId,
+            });
+        } catch (error: any) {
+            logger.warn(`   Bundle grab rejected (${error.response?.status}): ${pick.releaseTitle}`);
+            return false;
+        }
+        logger.debug(`   Bundle grabbed: "${pick.releaseTitle}" (${formatBytes(pick.size)})`);
+        return true;
+    }
+
     private async nothingGrabbedError(albumId: number, albumTitle: string): Promise<AcquisitionError> {
         let releases: { rejections?: string[] }[] = [];
         try {
@@ -667,10 +761,14 @@ class LidarrService {
             releases.length > 0 &&
             releases.every((r) => (r.rejections ?? []).length > 0 && r.rejections!.every((m) => EXISTING_FILES.test(m)));
         if (owned) {
+            // "Existing files" on the ALBUM's own release list is not proof the
+            // album is complete (percentOfTracks is, checked in addAlbum): with
+            // bundle releases the rejection often belongs to OTHER albums the
+            // release is linked to. Report it as availability, recoverable.
             return new AcquisitionError(
-                `Already in Lidarr: ${reasons[0]}`,
-                AcquisitionErrorType.ALREADY_OWNED,
-                false
+                `All releases for "${albumTitle}" rejected as existing files`,
+                AcquisitionErrorType.NO_RELEASES_AVAILABLE,
+                true
             );
         }
 
@@ -1312,7 +1410,7 @@ class LidarrService {
      */
     async removeQueueItem(
         item: { id: number; title?: string },
-        opts: { blocklist: boolean; skipRedownload: boolean }
+        opts: { blocklist: boolean; skipRedownload: boolean; removeFromClient?: boolean }
     ): Promise<boolean> {
         await this.ensureInitialized();
 
@@ -1321,8 +1419,9 @@ class LidarrService {
         }
 
         try {
+            const { removeFromClient = true, ...queueOpts } = opts;
             await this.client.delete(`/api/v1/queue/${item.id}`, {
-                params: { removeFromClient: true, ...opts },
+                params: { removeFromClient, ...queueOpts },
             });
             logger.debug(`[LIDARR] Removed from queue: ${item.title ?? item.id}`);
             return true;

@@ -184,6 +184,23 @@ describe("sweep outcomes that are not failures", () => {
         expect((await prisma.downloadJob.findUniqueOrThrow({ where: { id: "lf_job" } })).status).toBe("completed");
         expect((await prisma.downloadJob.findUniqueOrThrow({ where: { id: "lf_job2" } })).status).toBe("processing");
     });
+
+    it("keeps a bundle torrent seeding: owned cleanup detaches without deleting data", async () => {
+        await processing("lf_job3", "dl-bundle");
+        await prisma.downloadJob.update({
+            where: { id: "lf_job3" },
+            data: { metadata: { grabbedAsBundle: true } },
+        });
+        getQueueItems.mockResolvedValue([
+            item(6, "dl-bundle", {
+                trackedDownloadState: "importFailed",
+                statusMessages: [{ title: "x", messages: ["Not an upgrade for existing track file(s)"] }],
+            }),
+        ]);
+
+        expect((await sweepFailedDownloads()).removed).toBe(1);
+        expect(removeItem.mock.calls[0][1]).toEqual({ blocklist: false, skipRedownload: true, removeFromClient: false });
+    });
 });
 
 describe("judgeQueueItem", () => {

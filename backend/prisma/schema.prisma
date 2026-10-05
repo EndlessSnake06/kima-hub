@@ -648,6 +648,9 @@ model SystemSettings {
   lidarrEnabled               Boolean  @default(true)
   lidarrUrl                   String?  @default("http://localhost:8686")
   lidarrApiKey                String?
+  /// Cap on the size (MB) of a release Kima may grab as a bundle fallback when
+  /// an album is only available inside a multi-album torrent. 0 = no cap.
+  lidarrBundleMaxSizeMB       Int      @default(0)
   openaiEnabled               Boolean  @default(false)
   openaiApiKey                String?
   openaiModel                 String?  @default("gpt-4")

@@ -681,7 +681,8 @@ class SimpleDownloadManager {
         albumMbid: string,
         albumTitle: string,
         artistName: string,
-        lidarrAlbumId: number
+        lidarrAlbumId: number,
+        opts?: { bundle?: boolean }
     ): Promise<{ matched: boolean; jobId?: string }> {
         logger.debug(`[DOWNLOAD] Grabbed: ${artistName} - ${albumTitle} (${downloadId})`);
 
@@ -717,6 +718,7 @@ class SimpleDownloadManager {
                                 downloadId,
                                 lidarrMbid: albumMbid,
                                 grabbedAt,
+                                ...(opts?.bundle ? { grabbedAsBundle: true } : {}),
                             },
                         },
                     });

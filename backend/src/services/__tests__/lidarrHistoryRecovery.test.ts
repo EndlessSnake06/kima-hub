@@ -73,7 +73,7 @@ it("builds a Grab with the album list and release title", async () => {
 
     await recoverMissedEvents("http://lidarr", "key");
     expect(simpleDownloadManager.onDownloadGrabbed).toHaveBeenCalledWith(
-        "dl-3", "rg-1", "Antics", "Interpol", 42
+        "dl-3", "rg-1", "Antics", "Interpol", 42, { bundle: false }
     );
 });
 
