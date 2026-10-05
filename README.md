@@ -6,7 +6,7 @@
 
 A self-hosted, on-demand audio streaming platform that brings the Spotify experience to your personal music library.
 
-Kima is built for music lovers who want the convenience of streaming services without sacrificing ownership of their library. Point it at your music collection, and Kima handles the rest: artist discovery, personalized playlists, podcast subscriptions, and and it fits the tools you already run, like Lidarr and Audiobookshelf.
+Kima is built for music lovers who want the convenience of streaming services without sacrificing ownership of their library. Point it at your music collection, and Kima handles the rest: artist discovery, personalized playlists, podcast subscriptions. It fits the tools you already run, like Lidarr and Audiobookshelf.
 
 ![Kima Home Screen](assets/screenshots/desktop-home.png)
 
@@ -238,6 +238,11 @@ The TV interface is automatically enabled when accessing Kima from an Android TV
 ---
 
 ## Quick Start
+
+The image ships for both x86-64 and ARM (so: Linux boxes, NAS units, and Intel
+and Apple Silicon Macs). Nothing in Kima requires a GPU, a particular CPU
+vendor, or PyTorch; the GPU section below is an optional speed-up, not a
+requirement.
 
 ### One Command Install
 
