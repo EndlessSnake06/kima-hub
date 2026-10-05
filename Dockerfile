@@ -6,8 +6,8 @@
 # CLAP ONNX BUILDER STAGE
 # Exports hf_audio.onnx (sha256 37df17afb9881569c4f50e5b691167aa54586418059701a74a54934514969972)
 # from the PUBLIC laion/clap-htsat-unfused checkpoint with a pinned toolchain.
-# Byte-reproducibility PROVEN on linux/amd64 and linux/arm64 (2026-09-16,
-# probes under ~/onnx-repro): same pins -> same bytes.
+# Byte-reproducibility PROVEN on linux/amd64 and linux/arm64 (2026-09-16):
+# same pins -> same bytes.
 # The sha gate below fails the build on any drift -- upstream checkpoint
 # revision, toolchain version, or export script change.
 FROM python:3.11-slim AS clap-onnx-builder
@@ -43,8 +43,13 @@ RUN python3 export_onnx.py --src ckpt --out hf_audio.onnx \
 
 FROM node:24-slim
 
+# Point-release the base layer before anything is installed: the node:24-slim
+# digest on the build cache predates the current bookworm security updates
+# (trivy found 42 fixable HIGH/CRIT in the Debian layer of rc-* images).
+RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/* && apt-get update
+
 # Add PostgreSQL 16 repository (Debian Bookworm only has PG15 by default)
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get install -y --no-install-recommends \
     gnupg lsb-release curl ca-certificates && \
     echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list && \
     curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg && \
@@ -93,7 +98,9 @@ RUN pip3 install --no-cache-dir --break-system-packages \
     'python-dotenv>=1.0.0' \
     'requests>=2.31.0' \
     'bullmq==2.19.5' \
-    'yt-dlp>=2024.12.0'
+    'yt-dlp>=2024.12.0' \
+    # Floor the transitive msgpack (bullmq/librosa): 1.1.x carries GHSA-6v7p-g79w-8964.
+    'msgpack>=1.2.1'
 
 # ML dependencies -- ONNX for CLAP (audio + text), tensorflow/essentia for MusiCNN.
 # The PyTorch stack (torch/torchaudio/torchvision/laion-clap) is NOT installed:
@@ -351,14 +358,23 @@ ENV NEXT_PUBLIC_BACKEND_URL=http://127.0.0.1:3006
 ARG NEXT_PUBLIC_BUILD_TYPE=""
 ENV NEXT_PUBLIC_BUILD_TYPE=${NEXT_PUBLIC_BUILD_TYPE}
 
-RUN MALLOC_ARENA_MAX=1 NODE_OPTIONS="--max-old-space-size=2048" npm run build
+# Drop dev dependencies after the build: the runtime needs only next + react,
+# and the dev tree ships advisories the app never executes (the braces chain).
+RUN MALLOC_ARENA_MAX=1 NODE_OPTIONS="--max-old-space-size=2048" npm run build \
+    && npm prune --omit=dev && npm cache clean --force
 
 # ============================================
 # SECURITY HARDENING
 # ============================================
 # Remove dangerous tools and build dependencies AFTER all builds are complete
 # Keep: bash (supervisor), gosu (postgres user switching), python3 (audio analyzer)
-RUN apt-get purge -y --auto-remove build-essential python3-dev 2>/dev/null || true && \
+# npm/npx are build-time tools: the node image ships its own copy at
+# /usr/local/lib/node_modules/npm, and trivy scored that tree CRITICAL (tar,
+# undici, ip-address). Nothing in the running app may invoke npm — the
+# supervisor launches node/next/prisma directly — so the tree is deleted.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
+        /usr/local/bin/yarn /usr/local/bin/yarnpkg 2>/dev/null || true && \
+    apt-get purge -y --auto-remove build-essential python3-dev 2>/dev/null || true && \
     rm -f /usr/bin/wget /bin/wget 2>/dev/null || true && \
     rm -f /usr/bin/curl /bin/curl 2>/dev/null || true && \
     rm -f /usr/bin/nc /bin/nc /usr/bin/ncat /usr/bin/netcat 2>/dev/null || true && \
@@ -419,7 +435,7 @@ directory=/app/backend
 priority=30
 
 [program:frontend]
-command=/bin/bash -c "sleep 10 && cd /app/frontend && npm start"
+command=/bin/bash -c "sleep 10 && cd /app/frontend && exec node node_modules/next/dist/bin/next start -H 0.0.0.0 -p 3030"
 autostart=true
 autorestart=true
 stdout_logfile=/dev/stdout
@@ -573,27 +589,17 @@ MIGRATIONS_EXIST=$(gosu postgres psql -d kima -tAc "SELECT EXISTS (SELECT FROM i
 # Check if User table exists (indicates existing data)
 USER_TABLE_EXIST=$(gosu postgres psql -d kima -tAc "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'User')" 2>/dev/null || echo "f")
 
-# Resolve the soulseekFallback/primaryFailureFallback column split before
-# `prisma migrate deploy` runs. This REPLACES the old boot hack that INSERTed a
-# fake _prisma_migrations row on every start (163 accumulated on prod; the
-# rename was suppressed forever, so the condition never went false).
-#
-# Why psql instead of relying on the migration alone: the bogus rows in
-# _prisma_migrations mark the 20250101000000 rename as APPLIED, so
-# `migrate deploy` skips it and would also skip the new 20260916000000
-# corrective migration ONLY on databases where it already ran. Running the
-# resolution here, guarded, means every boot converges to the correct state
-# (column resolved + bogus rows gone) and the corrective migration remains a
-# no-op everywhere it has already run. The `|| true` keeps a wedge in this
-# legacy-compat step from ever blocking boot; the corrective migration logs
-# what it did via RAISE NOTICE.
+# Resolve the soulseekFallback column split before migrate deploy, idempotent:
+# on databases carrying legacy fake _prisma_migrations rows, deploy alone would
+# skip the corrective migration. `|| true` keeps this compat step off the
+# boot-critical path; the migration itself logs via RAISE NOTICE.
 echo "Resolving soulseekFallback column split (idempotent)..."
 gosu postgres psql -d kima -f /app/backend/prisma/migrations/20260916000000_resolve_soulseek_fallback_split/migration.sql 2>&1 || true
 
 if [ "$MIGRATIONS_EXIST" = "t" ]; then
     # Normal migration flow - migrations table exists
     echo "Migration history found, running migrate deploy..."
-    if ! npx prisma migrate deploy 2>&1; then
+    if ! node node_modules/prisma/build/index.js migrate deploy 2>&1; then
         echo "FATAL: Database migration failed! Check logs above."
         exit 1
     fi
@@ -602,16 +608,16 @@ elif [ "$USER_TABLE_EXIST" = "t" ]; then
     echo "Existing database detected without migration history."
     echo "Creating baseline from current schema..."
     # Mark the init migration as already applied (baseline)
-    npx prisma migrate resolve --applied 20241130000000_init 2>&1 || true
+    node node_modules/prisma/build/index.js migrate resolve --applied 20241130000000_init 2>&1 || true
     # Now run any subsequent migrations
-    if ! npx prisma migrate deploy 2>&1; then
+    if ! node node_modules/prisma/build/index.js migrate deploy 2>&1; then
         echo "FATAL: Migration after baseline failed!"
         exit 1
     fi
 else
     # Fresh database - run migrations normally
     echo "Fresh database detected, running initial migrations..."
-    if ! npx prisma migrate deploy 2>&1; then
+    if ! node node_modules/prisma/build/index.js migrate deploy 2>&1; then
         echo "FATAL: Initial migration failed. Check database connection and schema."
         exit 1
     fi
