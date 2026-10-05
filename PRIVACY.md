@@ -1,16 +1,18 @@
 # Privacy
 
-Kima is software that runs on your machine. That fact is the whole privacy story, so here is the concrete version of it.
+Kima is software that runs on your machine. This page says exactly what it does with data, and what I, the author, receive from your instance: nothing.
 
-## What I collect: nothing
+## Nothing is collected, by design
 
-No telemetry. No analytics. No crash reporting. No "help us improve" pings. I run no Kima server that receives anything, and I keep no account system for Kima. The parts of a typical app that do this simply are not in this codebase. I have no way of knowing you exist, and I have no interest in finding out.
+No telemetry. No analytics. No crash reporting. No "help us improve" pings. No update checker that phones a server. The parts that do the phoning home in a typical app are not present in this codebase, and the app sends nothing to me from your install.
 
-This is an operator-level app: you run it, you own it, you see everything it does. Nothing here phones home to me, and nothing I ship controls your instance.
+Accounts in Kima are local to your instance, the way accounts on a file server are local to it. Your usernames, passwords, sessions, and two-factor secrets live in your database and nowhere else. There is no Kima sign-in, no license check, no registration, and no server of mine your instance talks to.
+
+The exceptions are the boring infrastructure kind: pulling the Docker image counts as a pull on Docker Hub, and this repository counts GitHub traffic the way any project's does. That is all I get from your installation, and it's the same for every download of any open-source software.
 
 ## What your server talks to, and why
 
-Kima reaches out to third-party services for features you use, in the same way your current streaming apps do. These calls go out from your machine, so your IP address travels with them like it does with any website visit:
+Kima reaches out to third-party services for features you use, the same way your current streaming apps do. These calls go out from your machine, so your IP address travels with them like it does with any website visit:
 
 | Service | Why Kima calls it | What goes out |
 |---|---|---|
@@ -23,13 +25,15 @@ Kima reaches out to third-party services for features you use, in the same way y
 | Deezer, Spotify, YouTube | Playlist import and previews | Only the playlist links you paste, using credentials you supply |
 | Lidarr, Soulseek, Audiobookshelf | Downloads and audiobooks | Your own servers, your own network |
 
-Every feature-level call is aimed at a lookup: a name, a fingerprint, a playlist link. Your play history and library listings never leave your machine in any of these flows. Metadata enrichment can be paused per source in settings, and features you never touch (podcasts, imports, scrobbling) never make a call.
+Every one of these calls is a lookup: a name, a fingerprint, a playlist link. The only flows that carry what you listen to are services you deliberately connect, scrobbling to your own ListenBrainz account being the obvious one. Play history and your library listing stay in your database everywhere else. Metadata enrichment can be paused per source in settings, and features you never touch (podcasts, imports, scrobbling) never make a call.
 
 Your browser also fetches some album art directly from remote CDNs when the artwork shown came from Deezer or the Cover Art Archive. Same story: an image request from your browser to a public CDN, carrying the album it's for.
 
 ## What is stored, and where
 
-Everything Kima knows lives in your database, on your machine: your library, play counts, playlists, sessions, and the service credentials you choose to store (encrypted at rest with a key that lives in your config, not anywhere near me). The `/api/metrics` endpoint exists for monitoring tools you run yourself; it serves your machine and talks to nobody. Backups, retention, and who else sees any of it are entirely yours.
+Everything Kima knows lives in your database, on your machine: your library, play counts, playlists, sessions, and the service credentials you choose to store (encrypted at rest with a key that lives in your config, nowhere near me). The `/api/metrics` endpoint exists for monitoring tools you run yourself; it serves your machine and talks to nobody. Backups, retention, and who else sees any of it are entirely yours.
+
+One consequence of Kima being software you run: if you host it for family, friends, or the public, you are the data controller for that instance. Access, retention, and deletion are yours to administer, and this policy binds them to nobody else.
 
 ## The one future thing, said before it exists
 
