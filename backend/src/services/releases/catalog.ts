@@ -86,7 +86,7 @@ export const RELEASES: Release[] = [
         version: "1.11.0",
         title: "No accounts, no keys",
         summary:
-            "Last.fm is gone from every feature, and nothing asks you for an account in its place. There's a Stats page, the analyzer is torch-free, and the whole analysis engine was rebuilt — your library re-analyses itself.",
+            "Last.fm is gone from every feature, and nothing asks you for an account in its place. There's a Stats page, the analyzer is torch-free, and the whole analysis engine was rebuilt. Your library re-analyses itself.",
         date: "2026-10-05",
         items: [
             {
@@ -124,7 +124,7 @@ export const RELEASES: Release[] = [
                 label: "Changed",
                 title: "The vibe analyzer is lighter now",
                 body:
-                    "Swapped the audio analyzer to ONNX — lighter, torch-free, byte-reproducible, and it runs on Apple silicon. The old fingerprints no " +
+                    "Swapped the audio analyzer to ONNX: lighter, torch-free, byte-reproducible, and it runs on Apple silicon. The old fingerprints no " +
                     "longer line up with it; the re-analysis note below says what happens next.",
             },
             {
@@ -135,7 +135,7 @@ export const RELEASES: Release[] = [
                     "Moods were being read backwards: calm tracks could land in Intense, sad ones in Upbeat. That's fixed, and every track's mood is being re-analysed. " +
                     "Your saved mood mix was picked from the old, wrong moods.\n\n" +
                     "Rebuild clears it; pick a mood in the Mood Mixer on the home page to make a fresh one. Keep leaves it exactly as it is. " +
-                    "If you like it as it is, save it as a playlist first — then you can rebuild and still keep those tracks.",
+                    "If you like it as it is, save it as a playlist first. Then you can rebuild and still keep those tracks.",
                 cta: "Rebuild",
                 ifClosed: "If you close now, your mood mix stays as it is.",
                 requires: "savedMoodMix",
@@ -159,7 +159,7 @@ export const RELEASES: Release[] = [
                 title: "Identification starts with the name",
                 body:
                     "Every track's question now opens with the cheap, honest one: the tags and filename it already carries are searched against the recording they name, " +
-                    "and the match is checked against the music you actually own before it's believed. Fingerprinting — the slow, rate-limited route — is saved for what " +
+                    "and the match is checked against the music you actually own before it's believed. Fingerprinting, the slow and rate-limited route, is saved for what " +
                     "that can't settle. Measured on the tracks that had always gone unidentified, four in five came home on the first pass.",
             },
             {
@@ -199,7 +199,7 @@ export const RELEASES: Release[] = [
                 title: "Run embedding rebuilds on an NVIDIA GPU",
                 body:
                     "Rebuilding embeddings is the heaviest job your server runs. If Kima's container can see an NVIDIA graphics card, that job can run on the card " +
-                    "instead of the processor — measured about 1.5× faster on the embedding step itself — and your CPU is free for the rest of Kima while the rebuild runs.\n\n" +
+                    "instead of the processor (measured about 1.5x faster on the embedding step itself), and your CPU is free for the rest of Kima while the rebuild runs.\n\n" +
                     "Switching it on part-way through a rebuild is safe: tracks that are already embedded stay embedded, and the rest run faster as soon as the analyzer " +
                     "restarts. Turning it off removes the download. You can also change this later in Settings, under Library Enrichment.",
                 discloses:

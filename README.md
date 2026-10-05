@@ -6,7 +6,7 @@
 
 A self-hosted, on-demand audio streaming platform that brings the Spotify experience to your personal music library.
 
-Kima is built for music lovers who want the convenience of streaming services without sacrificing ownership of their library. Point it at your music collection, and Kima handles the rest: artist discovery, personalized playlists, podcast subscriptions, and seamless integration with tools you already use like Lidarr and Audiobookshelf.
+Kima is built for music lovers who want the convenience of streaming services without sacrificing ownership of their library. Point it at your music collection, and Kima handles the rest: artist discovery, personalized playlists, podcast subscriptions, and and it fits the tools you already run, like Lidarr and Audiobookshelf.
 
 ![Kima Home Screen](assets/screenshots/desktop-home.png)
 
@@ -20,7 +20,7 @@ Kima is built for music lovers who want the convenience of streaming services wi
 
 Kima works around it, and the workarounds hold: audio is routed through an AudioContext that claims the session more durably than a bare `<audio>` element, the session is re-claimed on foreground and route changes, and every wait in the recovery ladder has a deadline. But that machinery exists because the platform breaks the ordinary path, not because the ordinary path was wrong. A native app needs none of it.
 
-The PWA isn't going anywhere and stays fully supported — Android users in particular lose nothing by staying on it.
+The PWA isn't going anywhere and stays fully supported, and Android users in particular lose nothing by staying on it.
 
 Thanks for your patience while I work through this.
 
@@ -43,6 +43,7 @@ Thanks for your patience while I work through this.
 -   [Administration](#administration)
 -   [Architecture](#architecture)
 -   [Roadmap](#roadmap)
+-   [Privacy](#privacy)
 -   [License](#license)
 -   [Acknowledgments](#acknowledgments)
 
@@ -107,7 +108,7 @@ Thanks for your patience while I work through this.
 
 ### The Vibe System
 
-The centerpiece of music discovery in Kima. Your entire library is embedded by a CLAP audio model and projected into a 3D space where similar-sounding tracks cluster together. The result is a nebula of your music: stars for tracks, drifting backdrop stars for depth, colored by mood. The map, the search, and the player's "keep the vibe going" mode all read from the same vectors.
+Everything in your library gets embedded by a CLAP audio model and projected into a 3D space where similar-sounding tracks cluster together. The result is a nebula of your music: stars for tracks, drifting backdrop stars for depth, colored by mood. The map, the search, and the player's "keep the vibe going" mode all read from the same vectors.
 
 **The map** -- every track in your library, rendered in 3D. Zoom and fly to explore. Search is native to the map: type a song, an artist, or a description ("quiet and rainy", "fast and loud") and the matching stars light up while the rest dim. Click a track to inspect it; double-click to play.
 
@@ -361,11 +362,11 @@ docker pull chevron7locked/kima:v1.11.0
 
 ### 🔴 Pre-release (Development)
 
-Unreleased builds, published on demand rather than on a timer — one exists
+Unreleased builds, published on demand rather than on a timer. One exists
 because someone deliberately cut it, not because a clock struck 4am.
 They live on GitHub's registry; Docker Hub carries stable releases only.
 
-⚠️ **Not recommended for production** — may be unstable or broken. A pre-release
+⚠️ **Not recommended for production**: may be unstable or broken. A pre-release
 build labels itself in the interface (`v1.11.0-prerelease`) so you can always
 tell which channel a running instance came from.
 
@@ -373,13 +374,13 @@ tell which channel a running instance came from.
 docker pull ghcr.io/chevron7locked/kima:prerelease
 ```
 
-`:prerelease` always points at the newest one — pull it again whenever you want
+`:prerelease` always points at the newest one; pull it again whenever you want
 to move up.
 
 **In Compose, the registry prefix is required.** Stable images come from Docker
 Hub, which Docker assumes by default, so `chevron7locked/kima:latest` resolves.
 Pre-releases live on GitHub's registry and will not resolve without the
-`ghcr.io/` prefix — a bare `kima:prerelease` sends Docker looking on Docker Hub
+`ghcr.io/` prefix; a bare `kima:prerelease` sends Docker looking on Docker Hub
 for an image that isn't there.
 
 ```yaml
@@ -389,14 +390,14 @@ services:
 ```
 
 Every build is also tagged with its commit (`:prerelease-a1b2c3d`). You don't
-need it to follow the channel — it's there for pinning a known-good build or
+need it to follow the channel. It's there for pinning a known-good build or
 for saying which one you were on in a bug report.
 
 ⚠️ **Point it at a fresh data volume, not your live one.** A pre-release runs
 any new database migrations on first boot, and Prisma migrations don't roll
 back. Once they've applied, the older image can no longer read that database.
 Use a separate volume and a separate port to run one alongside your real
-instance — or take a backup first if you're deliberately upgrading in place.
+instance, or take a backup first if you're deliberately upgrading in place.
 
 > **The old `chevron7locked/kima:nightly` tag is retired.** It was last built
 > successfully on 2026-08-12 and is not updated any more. If you are running it,
@@ -513,7 +514,7 @@ The CLAP (Contrastive Language-Audio Pretraining) service generates embeddings f
 
 -   PostgreSQL with pgvector extension (included in `pgvector/pgvector:pg16` image)
 -   2-4GB RAM per worker
--   The audio tower ships in the image as a pinned ONNX export — no PyTorch, no model download at runtime
+-   The audio tower ships in the image as a pinned ONNX export. No PyTorch, no model download at runtime
 
 ### Configuration
 
@@ -1063,15 +1064,22 @@ Kima consists of several components working together:
 
 ## Roadmap
 
-Kima is under active development. Here's what's planned:
+Kima is under active development. What's on the board, roughly in order:
 
--   **Native Mobile App** - React Native application for iOS and Android
+-   **Native iOS app** - built and in testing, targeting an October release. Android follows after.
+-   **Custom embedding model** - the shipped analyzer is a general-purpose audio model. The one in the works is trained on music, for exactly the jobs Kima asks of it: the map, the search, the mood mixes.
+-   **Shared embedding store** - a public database of precomputed embeddings so a fresh install can skip re-analyzing music that's already been analyzed elsewhere and have a working vibe map on day one. It's the first feature with a data footprint, and [PRIVACY.md](PRIVACY.md) says exactly what it will and won't send before it ships.
 -   **Offline Mode** - Download tracks for offline playback
 -   **Windows Executable** - Standalone app for Windows users who prefer not to use Docker
 
 Contributions and suggestions are welcome.
 
 ---
+
+## Privacy
+
+Kima collects nothing. There is no telemetry, no analytics, no phone-home, and no Kima server that receives anything: the app runs entirely on your machine, and the only network calls are the metadata lookups the features you use make from your server (the full table is in [PRIVACY.md](PRIVACY.md)). The one planned feature with a data footprint, the shared embedding store, is described there too, before it exists.
+
 
 ## License
 
