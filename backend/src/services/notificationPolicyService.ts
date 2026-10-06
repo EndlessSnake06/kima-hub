@@ -23,12 +23,12 @@ class NotificationPolicyService {
      * Evaluate whether a notification should be sent for a download job.
      *
      * @param jobId - The download job ID
-     * @param eventType - The type of event (complete, failed, retry, timeout)
+     * @param eventType - The type of event (complete, failed, retry)
      * @returns Decision on whether to send notification
      */
     async evaluateNotification(
         jobId: string,
-        eventType: "complete" | "failed" | "retry" | "timeout"
+        eventType: "complete" | "failed" | "retry"
     ): Promise<NotificationDecision> {
         logger.debug(
             `[NOTIFICATION-POLICY] Evaluating: ${jobId} (${eventType})`
@@ -154,21 +154,6 @@ class NotificationPolicyService {
             };
         }
 
-        if (eventType === "timeout") {
-            const inRetryWindow = await this.isInRetryWindow(job);
-            if (inRetryWindow) {
-                return {
-                    shouldNotify: false,
-                    reason: "Still in retry window - extending timeout",
-                };
-            }
-            // Timeout expired and out of retry window - let caller handle failure
-            return {
-                shouldNotify: false,
-                reason: "Timeout expired - caller should mark as failed",
-            };
-        }
-
         return {
             shouldNotify: false,
             reason: "Processing job - no notification needed",
@@ -182,7 +167,7 @@ class NotificationPolicyService {
         job: any,
         eventType: string
     ): Promise<NotificationDecision> {
-        if (eventType !== "failed" && eventType !== "timeout") {
+        if (eventType !== "failed") {
             return {
                 shouldNotify: false,
                 reason: "Invalid event type for failed job",

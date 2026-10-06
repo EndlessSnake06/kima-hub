@@ -204,6 +204,21 @@ it.each([
     expect(note?.message).toMatch(message);
 });
 
+it("fails a no-source job once its timeout passes instead of extending it again", async () => {
+    jest.spyOn(simpleDownloadManager as any, "tryNextAlbumFromArtist").mockResolvedValue({ retried: false });
+    const sixMinutesAgo = new Date(Date.now() - 6 * 60 * 1000).toISOString();
+    await prisma.downloadJob.update({
+        where: { id: "sdm_start" },
+        data: { status: "processing", metadata: { startedAt: sixMinutesAgo } },
+    });
+
+    await simpleDownloadManager.markStaleJobsAsFailed(null);
+
+    const job = await row();
+    expect(job.status).toBe("failed");
+    expect(job.error).toMatch(/No sources found/);
+});
+
 it("takes the download another user's job already has running", async () => {
     await prisma.downloadJob.create({
         data: {

@@ -1419,45 +1419,14 @@ class SimpleDownloadManager {
         for (const job of staleJobs) {
             const metadata = (job.metadata as any) || {};
 
-            try {
-                const policyDecision =
-                    await notificationPolicyService.evaluateNotification(
-                        job.id,
-                        "timeout"
-                    );
-
-                if (
-                    policyDecision.reason.includes("retry window") ||
-                    policyDecision.reason.includes("extending timeout")
-                ) {
-                    logger.debug(
-                        `   ${job.subject}: ${policyDecision.reason} - extending timeout`
-                    );
-                    await prisma.downloadJob.update({
-                        where: { id: job.id },
-                        data: {
-                            metadata: {
-                                ...metadata,
-                                startedAt: new Date().toISOString(),
-                                timeoutExtendedByPolicy: true,
-                            },
-                        },
-                    });
-                    continue; // Skip to next job
-                }
-            } catch (policyError) {
-                logger.error(
-                    `   Failed to evaluate policy for ${job.id}:`,
-                    policyError
-                );
-            }
-
             const hasLidarrRef = !!job.lidarrRef;
             const errorMessage = hasLidarrRef
                 ? `Import failed - download stuck for ${
                       this.IMPORT_TIMEOUT_MS / 60000
                   } minutes`
-                : `No sources found - no indexer results`;
+                : metadata.lastError
+                  ? `${metadata.lastError} - no other release found`
+                  : `No sources found - no indexer results`;
 
             logger.debug(
                 `   Timing out: ${job.subject} (${
