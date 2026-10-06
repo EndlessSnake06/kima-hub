@@ -74,8 +74,8 @@ const SERVICE_CONFIGS: ServiceConfig = {
         baseDelay: 1000,
     },
     lrclib: {
-        intervalCap: 2, // LRCLIB - conservative
-        interval: 1000,
+        intervalCap: 1, // LRCLIB documents 20 requests/minute
+        interval: 3000,
         concurrency: 1,
         maxRetries: 1,
         baseDelay: 1000,
@@ -284,11 +284,13 @@ class GlobalRateLimiter {
         baseDelay: number,
         error?: any
     ): number {
-        // Check for Retry-After header
+        // Check for Retry-After header. A header of 0 means the server is not
+        // telling us when to come back -- an immediate retry is exactly what
+        // rate limiting punishes, so fall through to exponential backoff.
         const retryAfter = error?.response?.headers?.["retry-after"];
         if (retryAfter) {
             const parsed = parseInt(retryAfter, 10);
-            if (!isNaN(parsed)) {
+            if (!isNaN(parsed) && parsed > 0) {
                 return parsed * 1000; // Convert to ms
             }
         }
