@@ -6,7 +6,7 @@
  * untouched choice, and the window says so when there is a choice to answer.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { X, Check, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
@@ -68,6 +68,13 @@ export function WhatsNewWindow({
     const [closeError, setCloseError] = useState<string | null>(null);
     const [page, setPage] = useState(0);
     const dialogRef = useRef<HTMLDivElement>(null);
+    const bodyRef = useRef<HTMLDivElement>(null);
+
+    // Paging swaps content in place: land at the top of the new page before
+    // the browser paints, so the swap never shows a scroll swing first.
+    useLayoutEffect(() => {
+        bodyRef.current?.scrollTo(0, 0);
+    }, [page]);
 
     const asks = release.items.filter((i) => i.kind === "choice");
     const unanswered = asks.filter((i) => choices[i.key] === undefined).length;
@@ -262,7 +269,7 @@ export function WhatsNewWindow({
                     </div>
                 </header>
 
-                <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-7">
+                <div ref={bodyRef} className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-7">
                     {renderPage(release.items[page])}
                 </div>
 
