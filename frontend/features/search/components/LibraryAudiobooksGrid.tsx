@@ -1,5 +1,6 @@
 import { Book } from "lucide-react";
 import { MediaCard } from "@/components/cards/MediaCard";
+import { cascadeStyle } from "@/lib/motion";
 import { Audiobook } from "../types";
 import { api } from "@/lib/api";
 
@@ -14,6 +15,7 @@ export function LibraryAudiobooksGrid({
         <div
             className="grid-media"
             data-tv-section="search-results-audiobooks"
+            style={cascadeStyle(Math.min(audiobooks.length, 6))}
         >
             {audiobooks.slice(0, 6).map((audiobook, index) => (
                 <MediaCard

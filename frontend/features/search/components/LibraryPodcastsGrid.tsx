@@ -1,5 +1,6 @@
 import { Music } from "lucide-react";
 import { MediaCard } from "@/components/cards/MediaCard";
+import { cascadeStyle } from "@/lib/motion";
 import { Podcast } from "../types";
 import { api } from "@/lib/api";
 
@@ -9,7 +10,7 @@ interface LibraryPodcastsGridProps {
 
 export function LibraryPodcastsGrid({ podcasts }: LibraryPodcastsGridProps) {
     return (
-        <div className="grid-media" data-tv-section="search-results-podcasts">
+        <div className="grid-media" data-tv-section="search-results-podcasts" style={cascadeStyle(Math.min(podcasts.length, 6))}>
             {podcasts.slice(0, 6).map((podcast, index) => {
                 const subtitle =
                     podcast.episodeCount && podcast.episodeCount > 0

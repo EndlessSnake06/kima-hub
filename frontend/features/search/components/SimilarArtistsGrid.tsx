@@ -1,5 +1,6 @@
 import { Music } from "lucide-react";
 import { MediaCard } from "@/components/cards/MediaCard";
+import { cascadeStyle } from "@/lib/motion";
 import { DiscoverResult } from "../types";
 import { api } from "@/lib/api";
 import { formatListeners } from "@/lib/format";
@@ -20,6 +21,7 @@ export function SimilarArtistsGrid({
             <div
                 className="grid-media"
                 data-tv-section="search-results-artists"
+                style={cascadeStyle(Math.min(similarArtists.length, 6))}
             >
                 {similarArtists.map((result, index) => {
                     const artistId = result.mbid || encodeURIComponent(result.name);

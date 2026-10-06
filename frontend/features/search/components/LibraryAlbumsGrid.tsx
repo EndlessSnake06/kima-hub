@@ -1,6 +1,7 @@
 import { Disc3 } from "lucide-react";
 import { api } from "@/lib/api";
 import { MediaCard } from "@/components/cards/MediaCard";
+import { cascadeStyle } from "@/lib/motion";
 import { Album } from "../types";
 
 interface LibraryAlbumsGridProps {
@@ -9,7 +10,7 @@ interface LibraryAlbumsGridProps {
 
 export function LibraryAlbumsGrid({ albums }: LibraryAlbumsGridProps) {
     return (
-        <div className="grid-media" data-tv-section="search-results-albums">
+        <div className="grid-media" data-tv-section="search-results-albums" style={cascadeStyle(Math.min(albums.length, 6))}>
             {albums.slice(0, 6).map((album, index) => (
                 <MediaCard
                     key={album.id}
