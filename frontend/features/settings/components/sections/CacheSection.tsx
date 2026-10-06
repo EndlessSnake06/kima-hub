@@ -1063,7 +1063,7 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                             <input
                                 type="range"
                                 min={1}
-                                max={8}
+                                max={workersConfig?.cpuCores ?? 8}
                                 aria-label="Audio Analysis Workers"
                                 value={workersConfig?.workers ?? 2}
                                 disabled={isWorkersLoading}
@@ -1106,7 +1106,7 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                             <input
                                 type="range"
                                 min={1}
-                                max={8}
+                                max={clapWorkersConfig?.cpuCores ?? 8}
                                 aria-label="Vibe Embedding Workers"
                                 value={clapWorkersConfig?.workers ?? 2}
                                 disabled={isClapWorkersLoading}

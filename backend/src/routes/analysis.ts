@@ -208,8 +208,7 @@ router.get("/workers", requireAuth, requireAdmin, async (req, res) => {
         const currentWorkers = settings?.audioAnalyzerWorkers || 2;
         const online = await analyzerIsOnline("audio:worker:heartbeat");
 
-        // Recommended: 50% of CPU cores, min 2, max 8
-        const recommended = Math.max(2, Math.min(8, Math.floor(cpuCores / 2)));
+        const recommended = Math.max(2, Math.floor(cpuCores / 2));
 
         res.json({
             workers: currentWorkers,
@@ -231,10 +230,11 @@ router.get("/workers", requireAuth, requireAdmin, async (req, res) => {
 router.put("/workers", requireAuth, requireAdmin, async (req, res) => {
     try {
         const { workers } = req.body;
+        const cpuCores = os.cpus().length;
         
-        if (typeof workers !== 'number' || workers < 1 || workers > 8) {
-            return res.status(400).json({ 
-                error: "Workers must be a number between 1 and 8" 
+        if (typeof workers !== 'number' || workers < 1 || workers > cpuCores) {
+            return res.status(400).json({
+                error: `Workers must be a number between 1 and ${cpuCores}`
             });
         }
         
@@ -255,8 +255,7 @@ router.put("/workers", requireAuth, requireAdmin, async (req, res) => {
             workers,
         );
 
-        const cpuCores = os.cpus().length;
-        const recommended = Math.max(2, Math.min(8, Math.floor(cpuCores / 2)));
+        const recommended = Math.max(2, Math.floor(cpuCores / 2));
 
         logger.info(
             `Audio analyzer workers set to ${workers} (delivered to ${delivered} listener(s))`,
@@ -287,7 +286,7 @@ router.get("/clap-workers", requireAuth, requireAdmin, async (req, res) => {
         const currentWorkers = settings?.clapWorkers || 2;
         const online = await analyzerIsOnline("clap:worker:heartbeat");
 
-        const recommended = Math.max(1, Math.min(8, Math.floor(cpuCores / 2)));
+        const recommended = Math.max(1, Math.floor(cpuCores / 2));
 
         res.json({
             workers: currentWorkers,
@@ -309,10 +308,11 @@ router.get("/clap-workers", requireAuth, requireAdmin, async (req, res) => {
 router.put("/clap-workers", requireAuth, requireAdmin, async (req, res) => {
     try {
         const { workers } = req.body;
+        const cpuCores = os.cpus().length;
 
-        if (typeof workers !== 'number' || workers < 1 || workers > 8) {
+        if (typeof workers !== 'number' || workers < 1 || workers > cpuCores) {
             return res.status(400).json({
-                error: "CLAP workers must be a number between 1 and 8"
+                error: `CLAP workers must be a number between 1 and ${cpuCores}`
             });
         }
 
@@ -333,8 +333,7 @@ router.put("/clap-workers", requireAuth, requireAdmin, async (req, res) => {
             workers,
         );
 
-        const cpuCores = os.cpus().length;
-        const recommended = Math.max(1, Math.min(8, Math.floor(cpuCores / 2)));
+        const recommended = Math.max(1, Math.floor(cpuCores / 2));
 
         logger.info(
             `CLAP analyzer workers set to ${workers} (delivered to ${delivered} listener(s))`,

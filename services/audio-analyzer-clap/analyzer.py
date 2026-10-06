@@ -607,7 +607,7 @@ def load_configured_workers() -> int:
             cur.execute('SELECT "clapWorkers" FROM "SystemSettings" WHERE id = %s', ("default",))
             row = cur.fetchone()
         if row and row[0]:
-            configured = max(1, min(8, int(row[0])))
+            configured = max(1, min(os.cpu_count() or 8, int(row[0])))
             logger.info(f"Worker concurrency from SystemSettings.clapWorkers: {configured}")
             return configured
     except Exception as e:
@@ -639,13 +639,13 @@ class BullMQVibeWorker:
         # different thread.
         self._concurrency_lock = threading.Lock()
         self._desired_concurrency = (
-            max(1, min(8, int(concurrency))) if concurrency else load_configured_workers()
+            max(1, min(os.cpu_count() or 8, int(concurrency))) if concurrency else load_configured_workers()
         )
         self._active_concurrency = None
 
     def set_concurrency(self, count: int) -> int:
         """Ask the worker to run `count` jobs at once. Applied within seconds."""
-        count = max(1, min(8, int(count)))
+        count = max(1, min(os.cpu_count() or 8, int(count)))
         with self._concurrency_lock:
             self._desired_concurrency = count
         return count

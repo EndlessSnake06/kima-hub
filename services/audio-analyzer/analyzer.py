@@ -196,8 +196,7 @@ def _get_workers_from_db() -> int:
         
         if result and result['audioAnalyzerWorkers'] is not None:
             workers = int(result['audioAnalyzerWorkers'])
-            # Validate range (1-8)
-            workers = max(1, min(8, workers))
+            workers = max(1, min(os.cpu_count() or 8, workers))
             logger.info(f"Loaded worker count from database: {workers}")
             return workers
         else:
@@ -208,7 +207,6 @@ def _get_workers_from_db() -> int:
         logger.warning(f"Failed to fetch worker count from database: {e}")
         logger.info("Falling back to env var or default")
         return int(os.getenv('NUM_WORKERS', str(DEFAULT_WORKERS)))
-# Two workers fit any machine's memory.
 DEFAULT_WORKERS = 2
 # Try to load from database first, fall back to env var or default
 NUM_WORKERS = _get_workers_from_db()
