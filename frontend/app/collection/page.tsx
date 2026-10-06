@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAudioControls } from "@/lib/audio-controls-context";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -53,8 +53,7 @@ export default function LibraryPage() {
     const [sortBy, setSortBy] = useState<SortOption>("name");
     const [itemsPerPage, setItemsPerPage] = useState<number>(40);
 
-    // Track previous page to detect pagination changes
-    const prevPageRef = useRef(currentPage);
+    const shownPageRef = useRef(currentPage);
 
     // Last total seen per tab. A query that fails on its first load has no
     // data; the latch keeps the pager standing on the last real count instead
@@ -117,18 +116,6 @@ export default function LibraryPage() {
         (activeTab === "tracks" && tracksQuery.isLoading);
 
 
-    // Scroll to top when page changes (after data loads)
-    useEffect(() => {
-        if (prevPageRef.current !== currentPage) {
-            prevPageRef.current = currentPage;
-            // Scroll the main content container, not the window
-            const mainContent = document.getElementById("main-content");
-            if (mainContent) {
-                mainContent.scrollTo({ top: 0, behavior: "instant" });
-            }
-        }
-    }, [currentPage]);
-
     // `fresh` is undefined while the query has no data (loading, or a failed
     // first load). The latch keeps the last real total, and totalPages is
     // floored at 1 so the pager never disappears.
@@ -145,6 +132,17 @@ export default function LibraryPage() {
         activeTab === "artists" ? artistsQuery
         : activeTab === "albums" ? albumsQuery
         : tracksQuery;
+
+    // The previous page stays on screen until the next one arrives, so the
+    // jump to the top waits for the swap; scrolling on the click shows the
+    // old page's top for the length of the request.
+    const pageDataReady =
+        activeQuery.data !== undefined && !activeQuery.isPlaceholderData;
+    useLayoutEffect(() => {
+        if (!pageDataReady || shownPageRef.current === currentPage) return;
+        shownPageRef.current = currentPage;
+        document.getElementById("main-content")?.scrollTo({ top: 0, behavior: "instant" });
+    }, [pageDataReady, currentPage]);
 
     const pagination = useMemo(
         () => ({
@@ -395,40 +393,45 @@ export default function LibraryPage() {
                     />
                 </div>
 
-                {activeTab === "artists" && (
-                    <ArtistsGrid
-                        key={gridKey}
-                        artists={artists}
-                        isLoading={isLoading}
-                        onPlay={playArtist}
-                        onDelete={handleDeleteArtist}
-                        gridKey={gridKey}
-                    />
-                )}
+                <div
+                    aria-busy={activeQuery.isPlaceholderData}
+                    className={`transition-opacity duration-150 ${activeQuery.isPlaceholderData ? "opacity-50" : ""}`}
+                >
+                    {activeTab === "artists" && (
+                        <ArtistsGrid
+                            key={gridKey}
+                            artists={artists}
+                            isLoading={isLoading}
+                            onPlay={playArtist}
+                            onDelete={handleDeleteArtist}
+                            gridKey={gridKey}
+                        />
+                    )}
 
-                {activeTab === "albums" && (
-                    <AlbumsGrid
-                        key={gridKey}
-                        albums={albums}
-                        isLoading={isLoading}
-                        onPlay={playAlbum}
-                        onDelete={handleDeleteAlbum}
-                        gridKey={gridKey}
-                    />
-                )}
+                    {activeTab === "albums" && (
+                        <AlbumsGrid
+                            key={gridKey}
+                            albums={albums}
+                            isLoading={isLoading}
+                            onPlay={playAlbum}
+                            onDelete={handleDeleteAlbum}
+                            gridKey={gridKey}
+                        />
+                    )}
 
-                {activeTab === "tracks" && (
-                    <TracksList
-                        key={gridKey}
-                        tracks={tracks}
-                        isLoading={isLoading}
-                        onPlay={handlePlayTracks}
-                        onAddToQueue={addTrackToQueue}
-                        onAddToPlaylist={addTrackToPlaylist}
-                        onDelete={handleDeleteTrack}
-                        gridKey={gridKey}
-                    />
-                )}
+                    {activeTab === "tracks" && (
+                        <TracksList
+                            key={gridKey}
+                            tracks={tracks}
+                            isLoading={isLoading}
+                            onPlay={handlePlayTracks}
+                            onAddToQueue={addTrackToQueue}
+                            onAddToPlaylist={addTrackToPlaylist}
+                            onDelete={handleDeleteTrack}
+                            gridKey={gridKey}
+                        />
+                    )}
+                </div>
 
                 {activeQuery.isError && !isLoading && (
                     <div
