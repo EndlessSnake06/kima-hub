@@ -140,13 +140,14 @@ const MAX_CATALOGUE_CHECKS = 3;
  */
 export async function resolveArtistMbid(
     artistName: string,
-    albumTitles?: string[]
+    albumTitles?: string[],
+    opts: { interactive?: boolean } = {}
 ): Promise<Outcome<ResolvedArtist>> {
     const query = stripArtistSuffixes(artistName);
     const wanted = normalizeArtistName(query);
     if (!wanted) return absent({ artistName });
 
-    const found = await musicBrainzService.searchArtist(query, 10);
+    const found = await musicBrainzService.searchArtist(query, 10, opts);
     if (found.kind !== "answered") return found;
 
     const named = found.value.filter((candidate: any) =>
@@ -173,7 +174,8 @@ export async function resolveArtistMbid(
         const catalogue = await musicBrainzService.getReleaseGroups(
             candidate.id,
             ["album", "ep", "single"],
-            100
+            100,
+            opts
         );
         if (catalogue.kind === "absent") continue;
         if (catalogue.kind !== "answered") return catalogue;

@@ -8,7 +8,7 @@
 import axios from "axios";
 import { logger } from "../utils/logger";
 import { redisClient } from "../utils/redis";
-import { rateLimiter } from "./rateLimiter";
+import { INTERACTIVE_PRIORITY, rateLimiter } from "./rateLimiter";
 import { USER_AGENT } from "../config";
 import { prisma } from "../utils/db";
 import { decrypt, isEncryptedFormat } from "../utils/encryption";
@@ -74,15 +74,20 @@ class ListenBrainzService {
     private async rateLimitedGet<T = any>(
         path: string,
         params: Record<string, unknown>,
-        token?: string | null
+        token?: string | null,
+        priority = 0
     ): Promise<T> {
-        return rateLimiter.execute("listenbrainz", async () => {
-            const res = await this.client.get<T>(path, {
-                params,
-                ...(token ? { headers: { Authorization: `Token ${token}` } } : {}),
-            });
-            return res.data;
-        });
+        return rateLimiter.execute(
+            "listenbrainz",
+            async () => {
+                const res = await this.client.get<T>(path, {
+                    params,
+                    ...(token ? { headers: { Authorization: `Token ${token}` } } : {}),
+                });
+                return res.data;
+            },
+            { priority }
+        );
     }
 
     /**
@@ -94,7 +99,8 @@ class ListenBrainzService {
     async getSimilarArtists(
         artistMbid: string,
         artistName: string,
-        limit = 30
+        limit = 30,
+        opts: { interactive?: boolean } = {}
     ): Promise<SimilarArtist[]> {
         const cacheKey = `lb:similar:${artistMbid || artistName}:${limit}`;
         try {
@@ -113,7 +119,9 @@ class ListenBrainzService {
                     max_recordings_per_artist: 2,
                     pop_begin: 0,
                     pop_end: 100,
-                }
+                },
+                undefined,
+                opts.interactive ? INTERACTIVE_PRIORITY : 0
             );
 
             if (!data || typeof data !== "object" || "error" in data) {

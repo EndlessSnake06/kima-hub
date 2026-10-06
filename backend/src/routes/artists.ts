@@ -150,7 +150,9 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
 
         // If we have a name but no MBID, search for it
         if (!mbid && artistName) {
-            const found = await resolveArtistMbid(artistName);
+            const found = await resolveArtistMbid(artistName, undefined, {
+                interactive: true,
+            });
             if (found.kind === "answered") {
                 mbid = found.value.mbid;
                 artistName = found.value.name;
@@ -170,7 +172,9 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
         // With an MBID but no name, ask MusicBrainz. Similar-artist tiles link MBIDs
         // of merged or deleted artists, so `absent` (and a failed call) answer 404.
         if (mbid && !artistName) {
-            const mbArtist = await musicBrainzService.getArtist(mbid);
+            const mbArtist = await musicBrainzService.getArtist(mbid, undefined, {
+                interactive: true,
+            });
             if (mbArtist.kind === "answered") {
                 artistName = mbArtist.value.name;
             } else if (mbArtist.kind === "absent") {
@@ -194,11 +198,12 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
             ? await withTimeout(
                   (await import("../services/wikidata")).wikidataService.getArtistInfo(
                       artistName,
-                      mbid
+                      mbid,
+                      { interactive: true }
                   ),
                   8000,
                   "Wikidata getArtistInfo timed out"
-              )
+              ).catch(() => null)
             : { summary: null, heroUrl: null };
         const bio = wdInfo?.summary || null;
 
@@ -210,6 +215,7 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
         const artworkPromise = findArtistArtwork({
             name: artistName,
             mbid: mbid || undefined,
+            interactive: true,
         })
             .then((r) => r?.url ?? null)
             .catch(() => null);
@@ -217,9 +223,9 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
         // Discography from MusicBrainz (parallel)
         const discographyPromise = (async (): Promise<any[]> => {
             if (!mbid) return [];
-            const rgs = await musicBrainzService.getReleaseGroups(
-                mbid
-            );
+            const rgs = await musicBrainzService.getReleaseGroups(mbid, undefined, undefined, {
+                interactive: true,
+            });
             if (rgs.kind !== "answered") {
                 logger.debug(
                     `[Discovery] discography for ${artistName}: ${
@@ -312,7 +318,8 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
         const similarList = await getSimilarArtists(
             mbid || "",
             artistName,
-            10
+            10,
+            { interactive: true }
         );
         const similarArtists = await Promise.all(
             similarList.map(async (s) => {
@@ -321,6 +328,7 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
                         await findArtistArtwork({
                             name: s.name,
                             mbid: s.mbid || undefined,
+                            interactive: true,
                         })
                     )?.url ?? null;
 
@@ -339,7 +347,7 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
         if (mbid) {
             const mbArtist = await musicBrainzService.getArtist(mbid, [
                 "genres",
-            ]);
+            ], { interactive: true });
             if (mbArtist.kind === "answered") {
                 tags = (mbArtist.value.genres || [])
                     .sort((a: any, b: any) => (b.count || 0) - (a.count || 0))

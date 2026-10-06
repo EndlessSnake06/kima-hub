@@ -8,6 +8,14 @@
 import PQueue from "p-queue";
 import { logger } from "../utils/logger";
 
+/**
+ * Queue priority for work a person is waiting on (a page view). Background
+ * enrichment queues at 0; during a full-library pass this is what keeps an
+ * artist page from sitting behind thousands of queued sweep calls on the
+ * 1-req/s services.
+ */
+export const INTERACTIVE_PRIORITY = 10;
+
 interface RateLimitConfig {
     /** Requests per interval */
     intervalCap: number;

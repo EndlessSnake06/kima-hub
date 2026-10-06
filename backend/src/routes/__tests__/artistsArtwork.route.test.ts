@@ -151,6 +151,7 @@ describe("the discovery routes and the pictures they promise", () => {
                 MBID,
                 "Perturbator",
                 10,
+                { interactive: true },
             );
             expect(mockFindArtistArtwork).toHaveBeenCalledWith(
                 expect.objectContaining({ name: "Carpenter Brut", mbid: "sim-1" }),

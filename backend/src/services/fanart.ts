@@ -3,7 +3,7 @@ import { logger } from "../utils/logger";
 import { redisClient } from "../utils/redis";
 import { getSystemSettings } from "../utils/systemSettings";
 import { USER_AGENT } from "../config";
-import { rateLimiter } from "./rateLimiter";
+import { INTERACTIVE_PRIORITY, rateLimiter } from "./rateLimiter";
 
 /**
  * Fanart.tv artist images, album covers and backgrounds
@@ -62,15 +62,24 @@ class FanartService {
      * rate limiter (service key "fanart") instead of calling the axios
      * instance directly.
      */
-    private fanartGet(url: string, config?: AxiosRequestConfig): Promise<AxiosResponse> {
-        return rateLimiter.execute("fanart", () => this.client.get(url, config));
+    private fanartGet(
+        url: string,
+        config?: AxiosRequestConfig,
+        priority = 0
+    ): Promise<AxiosResponse> {
+        return rateLimiter.execute("fanart", () => this.client.get(url, config), {
+            priority,
+        });
     }
 
     /**
      * Get artist images (background, thumbnail, logo)
      * Returns the highest quality artist image available
      */
-    async getArtistImage(mbid: string): Promise<string | null> {
+    async getArtistImage(
+        mbid: string,
+        opts: { interactive?: boolean } = {}
+    ): Promise<string | null> {
         await this.ensureInitialized();
 
         // Early exit if no API key - don't log every time (reduces log spam)
@@ -94,9 +103,11 @@ class FanartService {
 
         try {
             logger.debug(`  Fetching from Fanart.tv...`);
-            const response = await this.fanartGet(`/music/${mbid}`, {
-                params: { api_key: this.apiKey },
-            });
+            const response = await this.fanartGet(
+                `/music/${mbid}`,
+                { params: { api_key: this.apiKey } },
+                opts.interactive ? INTERACTIVE_PRIORITY : 0
+            );
 
             const data = response.data;
 

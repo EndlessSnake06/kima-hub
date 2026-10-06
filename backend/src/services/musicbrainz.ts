@@ -1,7 +1,7 @@
 import axios, { AxiosInstance } from "axios";
 import { logger } from "../utils/logger";
 import { redisClient } from "../utils/redis";
-import { rateLimiter } from "./rateLimiter";
+import { INTERACTIVE_PRIORITY, rateLimiter } from "./rateLimiter";
 import { sourcePauseController } from "./sourcePauseController";
 import {
     Outcome,
@@ -49,10 +49,14 @@ class MusicBrainzService {
      * several calls (searchRecording, searchAlbum) cannot exceed the
      * 1 req/s limit.
      */
-    private async rateLimitedGet(url: string, config?: any): Promise<any> {
-        return rateLimiter.execute("musicbrainz", () =>
-            this.client.get(url, config)
-        );
+    private async rateLimitedGet(
+        url: string,
+        config?: any,
+        priority = 0
+    ): Promise<any> {
+        return rateLimiter.execute("musicbrainz", () => this.client.get(url, config), {
+            priority,
+        });
     }
 
     /**
@@ -175,14 +179,17 @@ class MusicBrainzService {
 
     async searchArtist(
         query: string,
-        limit = 10
+        limit = 10,
+        opts: { interactive?: boolean } = {}
     ): Promise<Outcome<any[]>> {
         const cacheKey = `mb:search:artist:${query}:${limit}`;
         return this.cachedOutcome(cacheKey, async () => {
             try {
-                const response = await this.rateLimitedGet("/artist", {
-                    params: { query, limit, fmt: "json" },
-                });
+                const response = await this.rateLimitedGet(
+                    "/artist",
+                    { params: { query, limit, fmt: "json" } },
+                    opts.interactive ? INTERACTIVE_PRIORITY : 0
+                );
                 const artists: any[] = response.data.artists || [];
                 if (artists.length === 0) {
                     return absent({ query, limit, hits: 0 });
@@ -196,14 +203,17 @@ class MusicBrainzService {
 
     async getArtist(
         mbid: string,
-        includes: string[] = ["url-rels", "tags"]
+        includes: string[] = ["url-rels", "tags"],
+        opts: { interactive?: boolean } = {}
     ): Promise<Outcome<any>> {
         const cacheKey = `mb:artist:${mbid}:${includes.join(",")}`;
         return this.cachedOutcome(cacheKey, async () => {
             try {
-                const response = await this.rateLimitedGet(`/artist/${mbid}`, {
-                    params: { inc: includes.join("+"), fmt: "json" },
-                });
+                const response = await this.rateLimitedGet(
+                    `/artist/${mbid}`,
+                    { params: { inc: includes.join("+"), fmt: "json" } },
+                    opts.interactive ? INTERACTIVE_PRIORITY : 0
+                );
                 return answered(response.data, {
                     mbid,
                     includes,
@@ -218,19 +228,24 @@ class MusicBrainzService {
     async getReleaseGroups(
         artistMbid: string,
         types: string[] = ["album", "ep"],
-        limit = 100
+        limit = 100,
+        opts: { interactive?: boolean } = {}
     ): Promise<Outcome<any[]>> {
         const cacheKey = `mb:rg:${artistMbid}:${types.join(",")}:${limit}`;
         return this.cachedOutcome(cacheKey, async () => {
             try {
-                const response = await this.rateLimitedGet("/release-group", {
-                    params: {
-                        artist: artistMbid,
-                        type: types.join("|"),
-                        limit,
-                        fmt: "json",
+                const response = await this.rateLimitedGet(
+                    "/release-group",
+                    {
+                        params: {
+                            artist: artistMbid,
+                            type: types.join("|"),
+                            limit,
+                            fmt: "json",
+                        },
                     },
-                });
+                    opts.interactive ? INTERACTIVE_PRIORITY : 0
+                );
                 const groups: any[] = response.data["release-groups"] || [];
                 if (groups.length === 0) {
                     return absent({ artistMbid, types, limit, hits: 0 });

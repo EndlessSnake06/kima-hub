@@ -393,6 +393,7 @@ router.get("/artists/:id", async (req, res) => {
             effectiveMbid,
             ["album", "ep"],
             100,
+            { interactive: true },
           );
           if (fetched.kind === "answered") {
             releaseGroups = fetched.value;

@@ -49,6 +49,8 @@ export interface ArtistArtworkQuery {
     name: string;
     mbid?: string | null;
     candidateUrl?: string | null;
+    /** Set on page-view calls so the fanart.tv queue runs this ahead of enrichment work. */
+    interactive?: boolean;
 }
 
 export interface ArtworkResult {
@@ -90,7 +92,9 @@ const ARTIST_SOURCES: Source<ArtistArtworkQuery>[] = [
     {
         name: "fanart",
         find: (q) =>
-            isRealMbid(q.mbid) ? fanartService.getArtistImage(q.mbid!) : Promise.resolve(null),
+            isRealMbid(q.mbid)
+                ? fanartService.getArtistImage(q.mbid!, { interactive: q.interactive })
+                : Promise.resolve(null),
     },
     {
         name: "deezer",

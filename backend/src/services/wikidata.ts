@@ -3,7 +3,7 @@ import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from "axios";
 import { logger } from "../utils/logger";
 import { redisClient } from "../utils/redis";
 import { USER_AGENT } from "../config";
-import { rateLimiter } from "./rateLimiter";
+import { INTERACTIVE_PRIORITY, rateLimiter } from "./rateLimiter";
 
 interface WikidataResult {
     summary?: string;
@@ -27,14 +27,22 @@ class WikidataService {
      * global rate limiter (service key "wikidata") instead of calling the
      * axios instance directly.
      */
-    private wikidataGet(url: string, config?: AxiosRequestConfig): Promise<AxiosResponse> {
-        return rateLimiter.execute("wikidata", () => this.client.get(url, config));
+    private wikidataGet(
+        url: string,
+        config?: AxiosRequestConfig,
+        priority = 0
+    ): Promise<AxiosResponse> {
+        return rateLimiter.execute("wikidata", () => this.client.get(url, config), {
+            priority,
+        });
     }
 
     async getArtistInfo(
         artistName: string,
-        mbid: string
+        mbid: string,
+        opts: { interactive?: boolean } = {}
     ): Promise<WikidataResult> {
+        const priority = opts.interactive ? INTERACTIVE_PRIORITY : 0;
         const cacheKey = `wikidata:${mbid}`;
 
         try {
@@ -48,7 +56,7 @@ class WikidataService {
 
         try {
             // Step 1: Query Wikidata for the MusicBrainz ID
-            const wikidataId = await this.getWikidataIdFromMBID(mbid);
+            const wikidataId = await this.getWikidataIdFromMBID(mbid, priority);
 
             if (!wikidataId) {
                 logger.debug(`No Wikidata entry found for ${artistName}`);
@@ -57,8 +65,12 @@ class WikidataService {
 
             // Step 2: one EntityData fetch answers both — the sitelink
             // title feeds the Wikipedia summary, the P18 claim the image.
-            const entity = await this.getEntity(wikidataId);
-            const summary = await this.getSummaryFromEntity(wikidataId, entity);
+            const entity = await this.getEntity(wikidataId, priority);
+            const summary = await this.getSummaryFromEntity(
+                wikidataId,
+                entity,
+                priority
+            );
             const heroUrl = this.getImageFromEntity(wikidataId, entity);
 
             const result: WikidataResult = { summary, heroUrl };
@@ -81,7 +93,10 @@ class WikidataService {
         }
     }
 
-    private async getWikidataIdFromMBID(mbid: string): Promise<string | null> {
+    private async getWikidataIdFromMBID(
+        mbid: string,
+        priority = 0
+    ): Promise<string | null> {
         const sparqlQuery = `
       SELECT ?item WHERE {
         ?item wdt:P434 "${mbid}" .
@@ -89,12 +104,16 @@ class WikidataService {
       LIMIT 1
     `;
 
-        const response = await this.wikidataGet("https://query.wikidata.org/sparql", {
-            params: {
-                query: sparqlQuery,
-                format: "json",
+        const response = await this.wikidataGet(
+            "https://query.wikidata.org/sparql",
+            {
+                params: {
+                    query: sparqlQuery,
+                    format: "json",
+                },
             },
-        });
+            priority
+        );
 
         const bindings = response.data.results?.bindings || [];
         if (bindings.length === 0) return null;
@@ -103,10 +122,15 @@ class WikidataService {
         return itemUrl.split("/").pop() || null;
     }
 
-    private async getEntity(wikidataId: string): Promise<any | null> {
+    private async getEntity(
+        wikidataId: string,
+        priority = 0
+    ): Promise<any | null> {
         try {
             const response = await this.wikidataGet(
-                `https://www.wikidata.org/wiki/Special:EntityData/${wikidataId}.json`
+                `https://www.wikidata.org/wiki/Special:EntityData/${wikidataId}.json`,
+                undefined,
+                priority
             );
             return response.data.entities?.[wikidataId] ?? null;
         } catch (error) {
@@ -120,7 +144,8 @@ class WikidataService {
 
     private async getSummaryFromEntity(
         wikidataId: string,
-        entity: any | null
+        entity: any | null,
+        priority = 0
     ): Promise<string | undefined> {
         try {
             const enWikiTitle = entity?.sitelinks?.enwiki?.title;
@@ -130,7 +155,9 @@ class WikidataService {
             // Get article summary from Wikipedia API
             const summaryResponse = await this.wikidataGet(
                 "https://en.wikipedia.org/api/rest_v1/page/summary/" +
-                    encodeURIComponent(enWikiTitle)
+                    encodeURIComponent(enWikiTitle),
+                undefined,
+                priority
             );
 
             return summaryResponse.data.extract;

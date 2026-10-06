@@ -102,7 +102,8 @@ export async function rebuildArtistCentroid(
 export async function getSimilarArtists(
     artistMbid: string,
     artistName: string,
-    limit = 30
+    limit = 30,
+    opts: { interactive?: boolean } = {}
 ): Promise<SimilarArtistWithLibrary[]> {
     const cacheKey = `artist-similar:${artistMbid || artistName}:${limit}`;
     try {
@@ -121,7 +122,7 @@ export async function getSimilarArtists(
     const [lb, dz] = await Promise.all([
         hasMbid
             ? listenBrainzService
-                  .getSimilarArtists(artistMbid, artistName, limit)
+                  .getSimilarArtists(artistMbid, artistName, limit, opts)
                   .catch((err) => {
                       logger.warn(
                           `[ArtistSimilarity] ListenBrainz path failed for ${artistName}:`,
