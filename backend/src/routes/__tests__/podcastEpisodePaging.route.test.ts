@@ -134,6 +134,34 @@ describe('podcast episode paging', () => {
         expect(args.skip).toBe(100);
     });
 
+    it('pages from the oldest end when asked, on both endpoints', async () => {
+        (prisma.podcast.findUnique as jest.Mock).mockResolvedValue({
+            id: 'p1', title: 'x', author: '', description: '',
+            imageUrl: null, feedUrl: '', episodes: episodes(50),
+        });
+        (prisma.podcastEpisode.findMany as jest.Mock).mockResolvedValue(episodes(50));
+
+        await request(app).get('/podcasts/p1?order=oldest');
+        const detailArgs = (prisma.podcast.findUnique as jest.Mock).mock.calls[0][0];
+        expect(detailArgs.include.episodes.orderBy).toEqual({ publishedAt: 'asc' });
+
+        await request(app).get('/podcasts/p1/episodes?order=oldest');
+        const pageArgs = (prisma.podcastEpisode.findMany as jest.Mock).mock.calls[0][0];
+        expect(pageArgs.orderBy).toEqual({ publishedAt: 'asc' });
+    });
+
+    it('keeps newest-first as the default order', async () => {
+        (prisma.podcast.findUnique as jest.Mock).mockResolvedValue({
+            id: 'p1', title: 'x', author: '', description: '',
+            imageUrl: null, feedUrl: '', episodes: episodes(50),
+        });
+
+        await request(app).get('/podcasts/p1');
+
+        const args = (prisma.podcast.findUnique as jest.Mock).mock.calls[0][0];
+        expect(args.include.episodes.orderBy).toEqual({ publishedAt: 'desc' });
+    });
+
     it('refuses episodes for a podcast the user is not subscribed to', async () => {
         (prisma.podcastSubscription.findUnique as jest.Mock).mockResolvedValue(null);
 

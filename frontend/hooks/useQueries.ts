@@ -329,17 +329,22 @@ export function usePodcastsQuery() {
 }
 
 /** Resolves to null when the podcast is not subscribed (404), so the page can show a preview. */
-export function usePodcastQuery(id: string | undefined) {
+export function usePodcastQuery(
+    id: string | undefined,
+    order: "newest" | "oldest" = "newest"
+) {
     // Numeric IDs are iTunes IDs, not database CUIDs - skip subscription lookup
     const isItunesId = !!id && /^\d+$/.test(id);
     return useQuery({
-        queryKey: queryKeys.podcast(id || ""),
+        // The order is part of the key: "oldest" must fetch a different page,
+        // not just re-sort the newest one.
+        queryKey: [...queryKeys.podcast(id || ""), order],
         queryFn: async () => {
             if (!id) throw new Error("Podcast ID is required");
             if (isItunesId) return null; // iTunes ID - go straight to preview mode
 
             try {
-                return await api.getPodcast(id);
+                return await api.getPodcast(id, { order, limit: 200 });
             } catch (error) {
                 // If podcast not found (404), return null to allow preview mode
                 const err = error as { status?: number; message?: string };
@@ -357,6 +362,7 @@ export function usePodcastQuery(id: string | undefined) {
         enabled: !!id,
         staleTime: 5 * 60 * 1000, // 5 minutes
         retry: false, // Don't retry 404 errors
+        placeholderData: (previousData) => previousData,
     });
 }
 

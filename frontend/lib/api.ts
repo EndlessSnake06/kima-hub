@@ -1275,8 +1275,17 @@ class ApiClient {
         return this.request<ApiData[]>("/podcasts");
     }
 
-    async getPodcast(id: string) {
-        return this.request<ApiData>(`/podcasts/${id}`, { silent404: true });
+    async getPodcast(
+        id: string,
+        params?: { order?: "newest" | "oldest"; limit?: number }
+    ) {
+        const query = new URLSearchParams();
+        if (params?.order) query.set("order", params.order);
+        if (params?.limit) query.set("limit", String(params.limit));
+        const suffix = query.size > 0 ? `?${query}` : "";
+        return this.request<ApiData>(`/podcasts/${id}${suffix}`, {
+            silent404: true,
+        });
     }
 
     async previewPodcast(itunesId: string) {

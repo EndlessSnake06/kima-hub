@@ -14,9 +14,19 @@ export function usePodcastData() {
   const { isAuthenticated } = useAuth();
   const podcastId = params.id as string;
 
+  const [sortOrder, setSortOrder] = useState<"newest" | "oldest">(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem(
+        `kima_podcast_sort_order_${podcastId}`
+      );
+      return (saved as "newest" | "oldest") || "newest";
+    }
+    return "newest";
+  });
+
   // Use React Query hook for podcast
   const { data: podcast, isLoading: isPodcastLoading, refetch } =
-    usePodcastQuery(podcastId);
+    usePodcastQuery(podcastId, sortOrder);
 
   // Listen for podcast-progress-updated event (fired when playback starts/updates or episode marked complete)
   useEffect(() => {
@@ -32,15 +42,6 @@ export function usePodcastData() {
   const [previewLoadState, setPreviewLoadState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [similarPodcasts, setSimilarPodcasts] = useState<SimilarPodcast[]>([]);
-  const [sortOrder, setSortOrder] = useState<"newest" | "oldest">(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem(
-        `kima_podcast_sort_order_${podcastId}`
-      );
-      return (saved as "newest" | "oldest") || "newest";
-    }
-    return "newest";
-  });
 
   // Reset preview/error state when navigating between podcasts so a previous
   // page's error UI does not sticky-state into the next podcast's view.
@@ -137,14 +138,8 @@ export function usePodcastData() {
       )
     : [];
 
-  // Sort episodes based on selected order
-  const sortedEpisodes = podcast
-    ? [...podcast.episodes].sort((a: Episode, b: Episode) => {
-        const dateA = new Date(a.publishedAt).getTime();
-        const dateB = new Date(b.publishedAt).getTime();
-        return sortOrder === "newest" ? dateB - dateA : dateA - dateB;
-      })
-    : [];
+  // The server pages from the end that was asked for; render in the order it arrived.
+  const sortedEpisodes = podcast ? [...podcast.episodes] : [];
 
   // Determine loading state:
   // - Loading if podcast query is loading

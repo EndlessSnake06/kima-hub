@@ -598,11 +598,21 @@ function parseEpisodePage(query: Record<string, unknown>): {
     return { limit, offset };
 }
 
+/**
+ * Which end of the catalogue a page is taken from. "oldest" must decide the
+ * page on the server: re-sorting a newest-first page client-side can only
+ * ever show the oldest of the newest page, never the true oldest.
+ */
+function parseEpisodeOrder(query: Record<string, unknown>): "asc" | "desc" {
+    return query.order === "oldest" ? "asc" : "desc";
+}
+
 /** GET /podcasts/:id: a podcast the user subscribes to, with one page of episodes. */
 router.get("/:id", requireAuth, async (req, res) => {
     try {
         const { id } = req.params;
         const { limit, offset } = parseEpisodePage(req.query);
+        const order = parseEpisodeOrder(req.query);
 
         const subscription = await prisma.podcastSubscription.findUnique({
             where: {
@@ -623,7 +633,7 @@ router.get("/:id", requireAuth, async (req, res) => {
             where: { id },
             include: {
                 episodes: {
-                    orderBy: { publishedAt: "desc" },
+                    orderBy: { publishedAt: order },
                     take: limit,
                     skip: offset,
                     include: {
@@ -706,6 +716,7 @@ router.get("/:id/episodes", requireAuth, async (req, res) => {
     try {
         const { id } = req.params;
         const { limit, offset } = parseEpisodePage(req.query);
+        const order = parseEpisodeOrder(req.query);
 
         const subscription = await prisma.podcastSubscription.findUnique({
             where: {
@@ -722,7 +733,7 @@ router.get("/:id/episodes", requireAuth, async (req, res) => {
         const [episodes, total] = await Promise.all([
             prisma.podcastEpisode.findMany({
                 where: { podcastId: id },
-                orderBy: { publishedAt: "desc" },
+                orderBy: { publishedAt: order },
                 take: limit,
                 skip: offset,
                 include: {
