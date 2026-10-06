@@ -200,16 +200,16 @@ const confirmMeta: Record<
     { title: string; message: string; confirmText: string }
 > = {
     retryFailedAndBlocked: {
-        title: "Retry Failed and Blocked?",
+        title: "Retry What Didn't Work?",
         message:
-        "This re-queues every track that is still owed an answer -- failed, blocked, or never asked. Done answers are not re-asked and nothing is wiped; the queue simply takes the work again.",
-        confirmText: "Retry Failed and Blocked",
+        "Kima goes back over every track that's missing something: a match it failed to find, a scan that died, a question it never got to ask. Tracks that came out complete are left alone, and nothing is deleted.",
+        confirmText: "Retry What Didn't Work",
     },
     redecideEverything: {
-        title: "Re-decide Everything?",
+        title: "Start Over on Everything?",
         message:
-        "This re-opens every stage question, answered or not, so the sweep asks again. It never re-runs AcoustID over a track that already has a recording match, and it deletes no answers -- only the queue's own state moves.",
-        confirmText: "Re-decide Everything",
+        "Kima goes through the whole library from the top, the way it did on a fresh install, and re-checks every answer it kept. A track that already has a match won't be fingerprinted twice, and nothing is deleted. Expect a full re-analysis pass: a big library takes hours.",
+        confirmText: "Start Over on Everything",
     },
 };
 
@@ -260,7 +260,7 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
     const [redeciding, setRedeciding] = useState(false);
     const [retryingFailed, setRetryingFailed] = useState(false);
     const [retryResult, setRetryResult] = useState<{ reset: number } | null>(null);
-    const [queueResult, setQueueResult] = useState<number | null>(null);
+    const [queueResult, setQueueResult] = useState<"retry" | "everything" | null>(null);
     const [confirmTarget, setConfirmTarget] = useState<ConfirmTarget>(null);
     const [maintenanceOpen, setMaintenanceOpen] = useState(false);
     const [cleanupResult, setCleanupResult] = useState<{
@@ -525,12 +525,14 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
         setRetryingAll(true);
         setError(null);
         try {
-            const result = await api.retryFailedAndBlocked();
-            setQueueResult(result.queued);
+            await api.retryFailedAndBlocked();
+            setQueueResult("retry");
             refetchProgress();
+            void queryClient.invalidateQueries({ queryKey: ["enrichment-failure-counts"] });
+            void queryClient.invalidateQueries({ queryKey: ["enrichment-failures-inline"] });
         } catch (err) {
             console.error("Retry failed and blocked error:", err);
-            setError("Failed to re-queue failed and blocked work");
+            setError("Couldn't queue the retry. Try again.");
         } finally {
             setRetryingAll(false);
         }
@@ -540,12 +542,14 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
         setRedeciding(true);
         setError(null);
         try {
-            const result = await api.redecideEverything();
-            setQueueResult(result.reopened);
+            await api.redecideEverything();
+            setQueueResult("everything");
             refetchProgress();
+            void queryClient.invalidateQueries({ queryKey: ["enrichment-failure-counts"] });
+            void queryClient.invalidateQueries({ queryKey: ["enrichment-failures-inline"] });
         } catch (err) {
             console.error("Re-decide everything error:", err);
-            setError("Failed to re-open stage questions");
+            setError("Couldn't start the fresh pass. Try again.");
         } finally {
             setRedeciding(false);
         }
@@ -788,7 +792,7 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                                 className="px-3 py-2.5 min-h-[44px] text-xs tabular-nums bg-white/5 border border-white/10 text-[var(--text-secondary)] rounded-lg
                                 hover:bg-white/10 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                             >
-                                {retryingAll ? "Re-queuing..." : "Retry failed and blocked"}
+                                {retryingAll ? "Queuing..." : "Retry what didn't work"}
                             </button>
                             {currentUser?.role === "admin" && (
                                 <button
@@ -799,12 +803,14 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                                     className="px-3 py-2.5 min-h-[44px] text-xs tabular-nums bg-white/5 border border-white/10 text-[var(--text-secondary)] rounded-lg
                                     hover:bg-white/10 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                                 >
-                                    {redeciding ? "Re-opening..." : "Re-decide everything"}
+                                    {redeciding ? "Queuing..." : "Start over on everything"}
                                 </button>
                             )}
                             {queueResult !== null && (
-                                <span className="self-center text-xs tabular-nums text-success">
-                                    Re-queued {queueResult} stage questions
+                                <span className="self-center text-xs text-success" data-testid="enrichment-queue-result">
+                                    {queueResult === "retry"
+                                        ? "Queued. Kima picks the unfinished tracks back up."
+                                        : "Queued. Kima goes through the whole library again, starting now."}
                                 </span>
                             )}
 
