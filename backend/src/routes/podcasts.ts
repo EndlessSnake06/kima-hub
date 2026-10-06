@@ -75,9 +75,10 @@ router.get("/", requireAuth, async (req, res) => {
                               currentTime: ep.progress[0].currentTime,
                               progress:
                                   ep.progress[0].duration > 0
-                                      ? (ep.progress[0].currentTime /
-                                            ep.progress[0].duration) *
-                                        100
+                                      ? Math.min(
+                                            100,
+                                            (ep.progress[0].currentTime / ep.progress[0].duration) * 100,
+                                        )
                                       : 0,
                               isFinished: ep.progress[0].isFinished,
                               lastPlayedAt: ep.progress[0].lastPlayedAt,
@@ -660,9 +661,10 @@ router.get("/:id", requireAuth, async (req, res) => {
                       currentTime: episode.progress[0].currentTime,
                       progress:
                           episode.progress[0].duration > 0
-                              ? (episode.progress[0].currentTime /
-                                    episode.progress[0].duration) *
-                                100
+                              ? Math.min(
+                                    100,
+                                    (episode.progress[0].currentTime / episode.progress[0].duration) * 100,
+                                )
                               : 0,
                       isFinished: episode.progress[0].isFinished,
                       lastPlayedAt: episode.progress[0].lastPlayedAt,
@@ -747,9 +749,10 @@ router.get("/:id/episodes", requireAuth, async (req, res) => {
                           currentTime: episode.progress[0].currentTime,
                           progress:
                               episode.progress[0].duration > 0
-                                  ? (episode.progress[0].currentTime /
-                                        episode.progress[0].duration) *
-                                    100
+                                  ? Math.min(
+                                        100,
+                                        (episode.progress[0].currentTime / episode.progress[0].duration) * 100,
+                                    )
                                   : 0,
                           isFinished: episode.progress[0].isFinished,
                           lastPlayedAt: episode.progress[0].lastPlayedAt,
@@ -1555,7 +1558,7 @@ router.post("/:podcastId/episodes/:episodeId/progress", requireAuth, async (req,
                 currentTime: progress.currentTime,
                 progress:
                     progress.duration > 0
-                        ? (progress.currentTime / progress.duration) * 100
+                        ? Math.min(100, (progress.currentTime / progress.duration) * 100)
                         : 0,
                 isFinished: progress.isFinished,
             },
