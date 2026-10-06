@@ -187,6 +187,7 @@ export default function PodcastDetailPage() {
                                 }
                                 onPlay={(episode) => handlePlayEpisode(episode, podcast)}
                                 onMarkComplete={handleMarkEpisodeComplete}
+                                fallbackCoverUrl={podcast?.coverUrl}
                             />
                         </div>
                     )}

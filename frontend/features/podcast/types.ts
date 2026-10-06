@@ -13,6 +13,7 @@ export interface Episode {
     publishedAt: string;
     episodeNumber?: number;
     season?: number;
+    imageUrl?: string;
     progress?: EpisodeProgress;
 }
 

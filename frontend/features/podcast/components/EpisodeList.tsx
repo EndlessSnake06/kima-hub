@@ -1,14 +1,168 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { Play, Pause, Check, ArrowUpDown, CheckCircle, ChevronDown, ChevronUp } from "lucide-react";
+/**
+ * The episode shelf: filter by what you've heard, grouped by season (or by
+ * month when a feed has no seasons). Progress never exceeds 100% and lives on
+ * the artwork, so a row says "played 62%" once, not twice.
+ */
+
+import { useMemo, useState } from "react";
+import { Play, Pause, Check, ArrowUpDown, CheckCircle, ChevronDown, ChevronUp, Disc3 } from "lucide-react";
 import DOMPurify from "dompurify";
 import { cn } from "@/lib/cn";
 import { Episode } from "../types";
 import { formatDuration } from "@/lib/format";
 import { formatDate } from "../utils";
 import { SectionHeader } from "@/components/ui/SectionHeader";
+import { CachedImage } from "@/components/ui/CachedImage";
 import { cascadeStyle } from "@/lib/motion";
+
+/** Feeds advertise durations that drift; a listened-past-the-end row shows 100, not 107. */
+const clampPercent = (p: number) => Math.min(100, Math.max(0, Math.round(p)));
+
+type Filter = "all" | "unplayed" | "inProgress" | "finished";
+
+function listenState(ep: Episode): Filter {
+    if (ep.progress?.isFinished) return "finished";
+    if (ep.progress && ep.progress.currentTime > 0) return "inProgress";
+    return "unplayed";
+}
+
+function EpisodeRow({
+    episode,
+    index,
+    fallbackCoverUrl,
+    isCurrentEpisode,
+    isPlaying,
+    onPlayPause,
+    onMarkComplete,
+}: {
+    episode: Episode;
+    index: number;
+    fallbackCoverUrl?: string;
+    isCurrentEpisode: boolean;
+    isPlaying: boolean;
+    onPlayPause: (episode: Episode) => void;
+    onMarkComplete?: (episodeId: string, duration: number) => void;
+}) {
+    const [expanded, setExpanded] = useState(false);
+    const percent = episode.progress ? clampPercent(episode.progress.progress) : 0;
+    const finished = Boolean(episode.progress?.isFinished);
+    const hasDescription = Boolean(episode.description?.trim());
+    const cover = episode.imageUrl || fallbackCoverUrl;
+
+    const metaBits = [
+        formatDate(episode.publishedAt),
+        formatDuration(episode.duration),
+        episode.season != null ? `S${episode.season} E${episode.episodeNumber ?? ""}`.trimEnd() : undefined,
+    ].filter(Boolean) as string[];
+
+    return (
+        <div
+            className={cn(
+                "group rounded-xl transition-colors animate-rise [animation-delay:calc(var(--i)*var(--stagger))]",
+                isCurrentEpisode ? "bg-white/[0.06]" : "hover:bg-white/[0.03]",
+            )}
+            style={{ "--i": index } as React.CSSProperties}
+        >
+            <div className="grid grid-cols-[56px_minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5">
+                {/* Artwork carries play and progress; the tap target is the whole tile. */}
+                <button
+                    type="button"
+                    onClick={() => onPlayPause(episode)}
+                    aria-label={`${isCurrentEpisode && isPlaying ? "Pause" : "Play"} ${episode.title}`}
+                    className="relative w-14 h-14 shrink-0 rounded-lg overflow-hidden bg-[var(--color-type-podcast)]/20 border border-white/10 focus-visible:outline-2 focus-visible:outline-brand"
+                >
+                    {cover ? (
+                        <CachedImage src={cover} alt="" sizes="56px" fill className="object-cover" />
+                    ) : (
+                        <Disc3 className="absolute inset-0 m-auto w-6 h-6 text-white/40" />
+                    )}
+                    <span
+                        className={cn(
+                            "absolute inset-0 flex items-center justify-center bg-black/45 transition-opacity",
+                            isCurrentEpisode ? "opacity-100" : "opacity-0 group-hover:opacity-100 touch-reveal",
+                        )}
+                    >
+                        {isCurrentEpisode && isPlaying ? (
+                            <Pause className="w-5 h-5 text-white" />
+                        ) : (
+                            <Play className="w-5 h-5 text-white fill-current ml-0.5" />
+                        )}
+                    </span>
+                    {percent > 0 && !finished && (
+                        <span className="absolute bottom-0 left-0 right-0 h-[3px] bg-black/60">
+                            <span className="block h-full bg-brand" style={{ width: `${percent}%` }} />
+                        </span>
+                    )}
+                </button>
+
+                <button
+                    type="button"
+                    onClick={() => setExpanded((e) => !e)}
+                    aria-expanded={expanded}
+                    className="min-w-0 text-left rounded-md focus-visible:outline-2 focus-visible:outline-brand"
+                >
+                    <h3
+                        className={cn(
+                            "text-sm font-semibold leading-snug tracking-tight line-clamp-2",
+                            isCurrentEpisode ? "text-brand" : "text-white",
+                        )}
+                    >
+                        {episode.title}
+                    </h3>
+                    <p className="mt-0.5 text-xs tabular-nums text-[var(--text-muted)] truncate">
+                        {metaBits.join(" · ")}
+                        {finished && (
+                            <span className="ml-2 inline-flex items-center gap-1 align-middle text-[var(--color-success)]">
+                                <Check className="w-3 h-3" />
+                                Finished
+                            </span>
+                        )}
+                        {!finished && percent > 0 && (
+                            <span className="ml-2 align-middle text-brand">{percent}%</span>
+                        )}
+                    </p>
+                </button>
+
+                <div className="flex items-center gap-1 shrink-0">
+                    {onMarkComplete && !finished && (
+                        <button
+                            type="button"
+                            onClick={() => onMarkComplete(episode.id, episode.duration)}
+                            className="opacity-0 group-hover:opacity-100 p-2 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-white transition-all touch-reveal"
+                            title="Mark as complete"
+                            aria-label={`Mark ${episode.title} as complete`}
+                        >
+                            <CheckCircle className="w-4 h-4" />
+                        </button>
+                    )}
+                    {hasDescription && (
+                        <button
+                            type="button"
+                            onClick={() => setExpanded((e) => !e)}
+                            aria-label={expanded ? "Hide description" : "Show description"}
+                            className="p-2 rounded-lg text-[var(--text-muted)] hover:text-white hover:bg-white/10 transition-colors"
+                        >
+                            {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            {expanded && hasDescription && (
+                <div className="px-3 pb-3 pl-[80px]">
+                    <div
+                        className="text-xs leading-relaxed text-[var(--text-secondary)] max-w-3xl"
+                        dangerouslySetInnerHTML={{
+                            __html: DOMPurify.sanitize(episode.description || ""),
+                        }}
+                    />
+                </div>
+            )}
+        </div>
+    );
+}
 
 interface EpisodeListProps {
     episodes: Episode[];
@@ -19,221 +173,7 @@ interface EpisodeListProps {
     onPlayPause: (episode: Episode) => void;
     onPlay: (episode: Episode) => void;
     onMarkComplete?: (episodeId: string, duration: number) => void;
-}
-
-function EpisodeRow({
-    episode,
-    index,
-    isCurrentEpisode,
-    isPlaying,
-    onPlayPause,
-    onPlay,
-    onMarkComplete,
-}: {
-    episode: Episode;
-    index: number;
-    isCurrentEpisode: boolean;
-    isPlaying: boolean;
-    onPlayPause: (episode: Episode) => void;
-    onPlay: (episode: Episode) => void;
-    onMarkComplete?: (episodeId: string, duration: number) => void;
-}) {
-    const lastTapRef = useRef<{ time: number; index: number }>({ time: 0, index: -1 });
-    const [expanded, setExpanded] = useState(false);
-    const isInProgress =
-        episode.progress &&
-        !episode.progress.isFinished &&
-        episode.progress.currentTime > 0;
-    const hasDescription = episode.description && episode.description.trim().length > 0;
-
-    return (
-        <div
-            className={cn(
-                "group relative rounded-lg transition-all",
-                isCurrentEpisode
-                    ? "bg-white/5"
-                    : "border border-transparent hover:bg-white/[0.03] hover:border-white/5",
-                "animate-rise [animation-delay:calc(var(--i)*var(--stagger))]",
-            )}
-            style={{ "--i": index } as unknown as React.CSSProperties}
-        >
-            {/* Progress bar */}
-            {episode.progress && episode.progress.progress > 0 && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white/5 rounded-full overflow-hidden">
-                    <div
-                        className="h-full bg-brand/60 transition-all"
-                        style={{
-                            width: `${episode.progress.progress}%`,
-                        }}
-                    />
-                </div>
-            )}
-
-            <div
-                data-track-index={index}
-                onDoubleClick={() => {
-                    if (isCurrentEpisode) {
-                        onPlayPause(episode);
-                    } else {
-                        onPlay(episode);
-                    }
-                }}
-                onTouchEnd={(e) => {
-                    const idx = Number(e.currentTarget.dataset.trackIndex);
-                    if (isNaN(idx)) return;
-                    const now = Date.now();
-                    if (now - lastTapRef.current.time < 300 && lastTapRef.current.index === idx) {
-                        if (isCurrentEpisode) {
-                            onPlayPause(episode);
-                        } else {
-                            onPlay(episode);
-                        }
-                        lastTapRef.current = { time: 0, index: -1 };
-                    } else {
-                        lastTapRef.current = { time: now, index: idx };
-                    }
-                }}
-                className={cn(
-                    "grid grid-cols-[40px_minmax(0,1fr)_auto_auto] md:grid-cols-[40px_minmax(200px,3fr)_minmax(100px,2fr)_auto_auto] gap-4 items-center px-3 py-2 rounded-lg transition-all group",
-                    isCurrentEpisode ? "cursor-pointer" : "cursor-pointer"
-                )}
-            >
-                {/* Number / Play/Pause */}
-                <div className="flex items-center justify-center shrink-0">
-                    {episode.progress?.isFinished ? (
-                        <Check className="w-4 h-4 text-[var(--color-brand)]" />
-                    ) : (
-                        <>
-                            <span
-                                className={cn(
-                                    "text-xs",
-                                    isCurrentEpisode && isPlaying
-                                        ? "hidden"
-                                        : "group-hover:hidden",
-                                    isCurrentEpisode
-                                        ? "font-bold text-[var(--color-brand)]"
-                                        : "text-[var(--text-muted)]"
-                                )}
-                            >
-                                {index + 1}
-                            </span>
-                            {isCurrentEpisode && isPlaying ? (
-                                <Pause
-                                    className="w-4 h-4 text-[var(--color-brand)] cursor-pointer animate-pulse"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        onPlayPause(episode);
-                                    }}
-                                />
-                            ) : (
-                                <Play
-                                    className={cn(
-                                        "w-4 h-4 cursor-pointer",
-                                        isCurrentEpisode
-                                            ? "text-[var(--color-brand)]"
-                                            : "text-white hidden group-hover:block"
-                                    )}
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        onPlayPause(episode);
-                                    }}
-                                />
-                            )}
-                        </>
-                    )}
-                </div>
-
-                {/* Episode Info (Title + metadata chips) */}
-                <div className="min-w-0 overflow-hidden">
-                    <h3
-                        className={cn(
-                            "font-bold truncate text-sm tracking-tight",
-                            isCurrentEpisode ? "text-[var(--color-brand)]" : "text-white"
-                        )}
-                    >
-                        {episode.title}
-                    </h3>
-                    <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                        {/* Status chip: finished */}
-                        {episode.progress?.isFinished && (
-                            <span className="inline-flex items-center t-eyebrow leading-none">
-                                ✓&nbsp;Finished
-                            </span>
-                        )}
-                        {/* Status chip: in-progress */}
-                        {isInProgress && episode.progress && (
-                            <span className="inline-flex items-center t-eyebrow leading-none text-[var(--color-brand)]">
-                                {Math.floor(episode.progress.progress)}%
-                            </span>
-                        )}
-                        {/* Meta: date */}
-                        <span className="t-meta leading-none">{formatDate(episode.publishedAt)}</span>
-                        {/* Meta: season/episode */}
-                        {episode.season && (
-                            <>
-                                <span className="t-meta leading-none">|</span>
-                                <span className="t-meta leading-none">S{episode.season}</span>
-                            </>
-                        )}
-                        {episode.episodeNumber && (
-                            <>
-                                <span className="t-meta leading-none">|</span>
-                                <span className="t-meta leading-none">E{episode.episodeNumber}</span>
-                            </>
-                        )}
-                    </div>
-                </div>
-
-                {/* Duration */}
-                <span className="t-meta shrink-0 text-right">
-                    {formatDuration(episode.duration)}
-                </span>
-
-                {/* Expand description */}
-                {hasDescription && (
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            setExpanded(!expanded);
-                        }}
-                        className="p-1.5 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-white/60 transition-all shrink-0"
-                    >
-                        {expanded ? (
-                            <ChevronUp className="w-3.5 h-3.5" />
-                        ) : (
-                            <ChevronDown className="w-3.5 h-3.5" />
-                        )}
-                    </button>
-                )}
-
-                {/* Complete Button */}
-                {onMarkComplete && !episode.progress?.isFinished && (
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onMarkComplete(episode.id, episode.duration);
-                        }}
-                        className="opacity-0 group-hover:opacity-100 group-hover:translate-y-0 translate-y-1 transition-[opacity,transform] duration-150 p-1.5 rounded-lg hover:bg-white/10 shrink-0"
-                        title="Mark as complete"
-                    >
-                        <CheckCircle className="w-4 h-4 text-[var(--text-muted)] hover:text-[var(--color-brand)] transition-colors" />
-                    </button>
-                )}
-
-                {/* Expanded description */}
-                {expanded && hasDescription && (
-                    <div className="col-span-full px-3 pb-3 pt-0">
-                        <div
-                            className="text-xs text-[var(--text-muted)] leading-relaxed max-w-3xl line-clamp-6"
-                            dangerouslySetInnerHTML={{
-                                __html: DOMPurify.sanitize(episode.description || ""),
-                            }}
-                        />
-                    </div>
-                )}
-            </div>
-        </div>
-    );
+    fallbackCoverUrl?: string;
 }
 
 export function EpisodeList({
@@ -243,58 +183,107 @@ export function EpisodeList({
     isEpisodePlaying,
     isPlaying,
     onPlayPause,
-    onPlay,
     onMarkComplete,
+    fallbackCoverUrl,
 }: EpisodeListProps) {
-    const sortButton = (
-        <button
-            onClick={() =>
-                onSortOrderChange(
-                    sortOrder === "newest" ? "oldest" : "newest"
-                )
-            }
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 text-xs tabular-nums text-[var(--text-secondary)] hover:text-white transition-all"
-        >
-            <ArrowUpDown className="w-3.5 h-3.5" />
-            {sortOrder === "newest" ? "Newest" : "Oldest"}
-        </button>
-    );
+    const [filter, setFilter] = useState<Filter>("all");
+
+    const counts = useMemo(() => {
+        const c = { all: episodes.length, unplayed: 0, inProgress: 0, finished: 0 };
+        for (const ep of episodes) c[listenState(ep)] += 1;
+        return c;
+    }, [episodes]);
+
+    const groups = useMemo(() => {
+        const visible = episodes.filter((ep) => filter === "all" || listenState(ep) === filter);
+        const map = new Map<string, Episode[]>();
+        for (const ep of visible) {
+            const key =
+                ep.season != null
+                    ? `Season ${ep.season}`
+                    : new Date(ep.publishedAt).toLocaleDateString("en", { month: "long", year: "numeric" });
+            (map.get(key) ?? map.set(key, []).get(key)!).push(ep);
+        }
+        return [...map.entries()];
+    }, [episodes, filter]);
+
+    let runningIndex = 0; // cascade position across groups, so the animation window spans the page
 
     return (
         <section>
-            <SectionHeader title="All Episodes" action={sortButton} type="podcast" />
+            <SectionHeader
+                title="Episodes"
+                type="podcast"
+                action={
+                    <button
+                        onClick={() => onSortOrderChange(sortOrder === "newest" ? "oldest" : "newest")}
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 text-xs text-[var(--text-secondary)] hover:text-white transition-colors"
+                    >
+                        <ArrowUpDown className="w-3.5 h-3.5" />
+                        {sortOrder === "newest" ? "Newest" : "Oldest"}
+                    </button>
+                }
+            />
 
-            {/* Table header (desktop only) */}
-            <div className="hidden md:grid grid-cols-[40px_minmax(200px,3fr)_minmax(100px,2fr)_auto_auto] gap-4 px-3 py-2 text-xs text-[var(--text-muted)] border-b border-white/10 mb-1">
-                <span className="text-center">#</span>
-                <span>Title</span>
-                <span className="text-right">Duration</span>
-                <span className="w-8" />
-                <span className="w-8" />
-            </div>
-
-            {/* Mobile column labels */}
-            <div className="md:hidden grid grid-cols-[40px_1fr_auto_auto] gap-4 px-3 py-1 text-micro uppercase tracking-wider text-[var(--text-muted)]">
-                <span>#</span>
-                <span>Title</span>
-                <span className="text-right">Duration</span>
-                <span className="w-8" />
-            </div>
-
-            <div className="space-y-0.5" style={cascadeStyle(episodes.length)}>
-                {episodes.map((episode, index) => (
-                    <EpisodeRow
-                        key={episode.id}
-                        episode={episode}
-                        index={index}
-                        isCurrentEpisode={isEpisodePlaying(episode.id)}
-                        isPlaying={isPlaying}
-                        onPlayPause={onPlayPause}
-                        onPlay={onPlay}
-                        onMarkComplete={onMarkComplete}
-                    />
+            <div className="flex flex-wrap gap-1.5 px-3 pb-3" role="tablist" aria-label="Filter episodes">
+                {(
+                    [
+                        ["all", "All"],
+                        ["unplayed", "Unplayed"],
+                        ["inProgress", "In progress"],
+                        ["finished", "Finished"],
+                    ] as [Filter, string][]
+                ).map(([key, label]) => (
+                    <button
+                        key={key}
+                        role="tab"
+                        aria-selected={filter === key}
+                        onClick={() => setFilter(key)}
+                        className={cn(
+                            "px-3 py-1.5 rounded-full text-xs tabular-nums border transition-colors",
+                            filter === key
+                                ? "bg-brand/15 border-brand/40 text-brand"
+                                : "bg-white/[0.03] border-white/10 text-[var(--text-secondary)] hover:text-white hover:border-white/20",
+                        )}
+                    >
+                        {label}
+                        <span className="ml-1.5 opacity-60">{counts[key]}</span>
+                    </button>
                 ))}
             </div>
+
+            {groups.length === 0 ? (
+                <p className="px-3 py-8 text-sm text-[var(--text-muted)]">Nothing in this filter.</p>
+            ) : (
+                <div style={cascadeStyle(Math.min(groups.reduce((n, [, g]) => n + g.length, 0), 40))}>
+                    {groups.map(([label, group]) => (
+                        <div key={label} className="pb-2">
+                            <div className="sticky top-0 z-[5] flex items-baseline gap-2 px-3 py-2 bg-[var(--bg-secondary)]/95 backdrop-blur-sm">
+                                <h4 className="text-[0.6875rem] uppercase tracking-[0.12em] text-[var(--text-muted)]">
+                                    {label}
+                                </h4>
+                                <span className="text-[0.6875rem] tabular-nums text-[var(--text-muted)] opacity-60">
+                                    {group.length}
+                                </span>
+                            </div>
+                            <div className="space-y-0.5">
+                                {group.map((episode) => (
+                                    <EpisodeRow
+                                        key={episode.id}
+                                        episode={episode}
+                                        index={runningIndex++}
+                                        fallbackCoverUrl={fallbackCoverUrl}
+                                        isCurrentEpisode={isEpisodePlaying(episode.id)}
+                                        isPlaying={isPlaying}
+                                        onPlayPause={onPlayPause}
+                                        onMarkComplete={onMarkComplete}
+                                    />
+                                ))}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
         </section>
     );
 }
