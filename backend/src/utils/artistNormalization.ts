@@ -48,11 +48,24 @@ export function sanitizeTagString(value: string | null | undefined): string {
 
 
 
+// Words that mark another edition of the same album, matched as whole words.
+const EDITION_WORD =
+    /\b(?:deluxe|remaster(?:ed)?|expanded|anniversary|bonus|special|limited|collector'?s?|platinum|edition|version|original|soundtrack|motion picture|explicit|clean|mono|stereo|recording|import|japan(?:ese)?|uk|us)\b/i;
+// Words that mark a different recording, which is a different album even when
+// an edition word sits beside them: "(Live Edition)", "(Acoustic Version)".
+const OTHER_RECORDING =
+    /\b(?:live|remix(?:es|ed)?|mix|acoustic|unplugged|sessions?|demos?|instrumentals?|karaoke|covers?|reworked|reimagined|orchestral|symphonic|stripped)\b/i;
+
+function isEditionMarker(text: string): boolean {
+    return EDITION_WORD.test(text) && !OTHER_RECORDING.test(text);
+}
+
 /**
- * Strip edition/version suffixes from album titles for better search matching
- * "In A Time Lapse (Deluxe Edition)" → "In A Time Lapse"
- * "Abbey Road (2019 Remaster)" → "Abbey Road"
- * "Dark Side of the Moon [Remastered]" → "Dark Side of the Moon"
+ * Strip edition markers from an album title, keeping anything that names a
+ * different recording:
+ * "In A Time Lapse (Deluxe Edition)" -> "In A Time Lapse",
+ * "Abbey Road - 2019 Remaster" -> "Abbey Road",
+ * "Get Born (Live)" stays "Get Born (Live)".
  */
 export function stripAlbumEdition(title: string): string {
     // Guard against ReDoS - skip regex for excessively long inputs
@@ -61,24 +74,15 @@ export function stripAlbumEdition(title: string): string {
     }
 
     return title
-        // Remove parenthetical edition/version markers
-        .replace(
-            /\s*\([^)]*(?:deluxe|remaster|expanded|anniversary|bonus|special|limited|collector|platinum|edition|version|original|soundtrack|motion picture|super deluxe|explicit|clean|mono|stereo|remix|live|acoustic|unplugged|sessions?|recording|import|japan|uk|us)\s*[^)]*\)\s*/gi,
-            ""
+        .replace(/\s*\(([^)]*)\)\s*/g, (group, inner) => (isEditionMarker(inner) ? " " : group))
+        .replace(/\s*\[([^\]]*)\]\s*/g, (group, inner) => (isEditionMarker(inner) ? " " : group))
+        .replace(/\s*[-–—:]\s*((?:\d{4}\s+)?[^-–—:]*)$/, (tail, inner) =>
+            /^(?:\d{4}\s+)?(?:deluxe|remaster|expanded|anniversary|bonus|special|limited|collector|platinum|edition|version|original|mono|stereo)/i.test(inner) && isEditionMarker(inner)
+                ? ""
+                : tail
         )
-        // Remove bracketed edition markers
-        .replace(
-            /\s*\[[^\]]*(?:deluxe|remaster|expanded|anniversary|bonus|special|limited|collector|platinum|edition|version|original|soundtrack|motion picture|super deluxe|explicit|clean|mono|stereo|remix|live|acoustic|unplugged|sessions?|recording|import|japan|uk|us)\s*[^\]]*\]\s*/gi,
-            ""
-        )
-        // Remove trailing dash content with edition keywords
-        .replace(
-            /\s*[-–—:]\s*(?:\d{4}\s+)?(?:deluxe|remaster|expanded|anniversary|bonus|special|limited|collector|platinum|edition|version|original|mono|stereo|remix|live|acoustic).*$/gi,
-            ""
-        )
-        // Remove trailing year in parentheses (often indicates remaster year)
+        // A trailing year in parentheses is usually a remaster's
         .replace(/\s*\(\d{4}\)\s*$/, "")
-        // Clean up any double spaces or trailing whitespace
         .replace(/\s+/g, " ")
         .trim();
 }

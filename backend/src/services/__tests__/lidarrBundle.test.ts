@@ -1,111 +1,168 @@
 /**
- * Bundle fallback: an album only available inside a multi-album release is
- * grabbed through Lidarr's manual-grab endpoint when the album search found
- * nothing; bundles refused for any other reason are left alone; the size
- * ceiling (0 = off) is honored; "Existing files" rejections are a bundle
- * signal, not proof of ownership.
+ * Bundles against a real Lidarr's answers (recorded run "bundle": "Guess Who's
+ * a Mess" already owned, then "I Don't Know What I'm Doing" asked for, with only
+ * a discography release out there). The release Lidarr listed is recognised by
+ * Lidarr's own fields and grabbed when the album search found nothing; its grab
+ * links both albums' jobs; the album it brought completes and the one it brought
+ * no files for is a failed release, in either order, without touching the other
+ * job; Kima then searches for that album itself and never grabs a bundle for it
+ * again; and the size ceiling holds.
  */
 
-import { AcquisitionErrorType, bundleCoversAlbum, lidarrService, looksLikeBundle } from "../lidarr";
+import { prisma } from "../../utils/db";
+import { redisClient, waitForRedisReady } from "../../utils/redis";
+import { loadRecording, startMusicBrainzReplay, type ReplayServer } from "../../__tests__/helpers/musicbrainzReplay";
+import { loadScenario, startLidarrReplay, type LidarrReplay } from "../../__tests__/helpers/lidarrReplay";
+import { closeEngineConnections } from "../../__tests__/helpers/engineConnections";
 
-let ceilingMB = 0;
-jest.mock("../../utils/systemSettings", () => ({
-    getSystemSettings: jest.fn(async () => ({ lidarrBundleMaxSizeMB: ceilingMB })),
-}));
+jest.setTimeout(60_000);
 
-const ARTIST_MBID = "artist-mbid";
-const artist = { id: 5, artistName: "Interpol", foreignArtistId: ARTIST_MBID, tags: [] };
-const album = {
-    id: 7, artistId: 5, title: "Dark Metropolis", foreignAlbumId: "rg-dm",
-    monitored: false, releases: [{ id: 1 }], statistics: { trackFileCount: 3 },
-    releaseDate: "2019-05-01",
-};
+const USER = "bundle_user";
+const IDK = { mbid: "10e85e9b-0f07-33d4-a927-18a273f86eca", title: "I Don't Know What I'm Doing" };
+const run = loadScenario("bundle");
+const discography = (run.exchanges.find((e) => e.path.startsWith("/api/v1/release?artistId"))!.response as any[])[0];
+const [grab, idkImported, gwamImported] = run.webhooks;
+const seqOf = (method: string, path: string, after = 0) => run.exchanges.find((e) => e.seq > after && e.method === method && e.path === path)!.seq;
 
-const bundle = (over: Record<string, unknown> = {}) => ({
-    guid: "guid-1", indexerId: 3, discography: true,
-    releaseTitle: "Vector Seven - Discography 2017-2024, FLAC (21 releases)",
-    size: 2.6e9, statistics: { seeders: 9 },
-    rejections: ["Existing files meets cutoff: Lossless"],
-    ...over,
+let mb: ReplayServer;
+let lidarr: LidarrReplay;
+let lidarrModule: typeof import("../lidarr");
+let manager: typeof import("../simpleDownloadManager").simpleDownloadManager;
+let dispatch: typeof import("../webhookHandlers").dispatchWebhookEvent;
+let useLidarr: typeof import("../../__tests__/helpers/lidarrSettings").useLidarr;
+
+beforeAll(async () => {
+    await waitForRedisReady();
+    mb = await startMusicBrainzReplay(loadRecording("lidarr-pipeline"));
+    // Read when the MusicBrainz service is built, so it goes in before the pipeline is loaded.
+    process.env.MUSICBRAINZ_BASE_URL = mb.url;
+    lidarrModule = await import("../lidarr");
+    ({ simpleDownloadManager: manager } = await import("../simpleDownloadManager"));
+    ({ dispatchWebhookEvent: dispatch } = await import("../webhookHandlers"));
+    ({ useLidarr } = await import("../../__tests__/helpers/lidarrSettings"));
+    await prisma.user.deleteMany({ where: { id: USER } });
+    await prisma.user.create({ data: { id: USER, username: USER, passwordHash: "x", role: "user", tokenVersion: 0 } });
 });
 
-let artistReleases: ReturnType<typeof bundle>[];
-const client = { get: jest.fn(), post: jest.fn(), put: jest.fn(), delete: jest.fn() };
-const service = lidarrService as any;
+beforeEach(async () => {
+    lidarr = await startLidarrReplay(run);
+    await useLidarr(lidarr.url);
+    await redisClient.del(`mb:rg:${IDK.mbid}`);
+});
 
-beforeEach(() => {
-    jest.restoreAllMocks();
-    Object.values(client).forEach((fn) => fn.mockReset());
-    ceilingMB = 0;
-    artistReleases = [];
-    client.get.mockImplementation(async (url: string) => {
-        if (url.startsWith("/api/v1/album?artistId=")) return { data: [album] };
-        if (url === "/api/v1/album/7") return { data: album };
-        if (url.startsWith("/api/v1/command/")) return { data: { status: "completed", message: "Album search completed. 0 reports downloaded." } };
-        if (url.startsWith("/api/v1/release?artistId=") || url === "/api/v1/release") return { data: artistReleases };
-        return { data: [] };
+afterEach(async () => {
+    await lidarr.close();
+    await prisma.downloadJob.deleteMany({ where: { userId: USER } });
+    await prisma.notification.deleteMany({ where: { userId: USER } });
+    await prisma.handledDownload.deleteMany({});
+});
+
+afterAll(async () => {
+    (await import("../../jobs/queueCleaner")).queueCleaner.stop();
+    await prisma.user.deleteMany({ where: { id: USER } });
+    await mb.close();
+    delete process.env.MUSICBRAINZ_BASE_URL;
+    await closeEngineConnections();
+});
+
+async function request() {
+    const job = await prisma.downloadJob.create({
+        data: {
+            userId: USER, subject: `Brad Sucks - ${IDK.title}`, type: "album", targetMbid: IDK.mbid, status: "pending",
+            metadata: { artistName: "Brad Sucks", albumTitle: IDK.title, downloadType: "library", rootFolderPath: "/music" },
+        },
     });
-    client.put.mockImplementation(async (_url: string, body: unknown) => ({ data: body }));
-    client.post.mockResolvedValue({ data: { id: 1 } });
-    jest.spyOn(service, "ensureInitialized").mockResolvedValue(undefined);
-    service.enabled = true;
-    service.client = client;
-    jest.spyOn(service, "getArtistList").mockResolvedValue([artist]);
-});
+    await manager.startDownload(job.id, "Brad Sucks", IDK.title, IDK.mbid, USER);
+    return () => prisma.downloadJob.findUniqueOrThrow({ where: { id: job.id } });
+}
 
-const addAlbum = () => lidarrService.addAlbum("rg-dm", "Interpol", "Dark Metropolis", "/music", ARTIST_MBID, false);
-
-it("recognizes bundles", () => {
-    expect(looksLikeBundle({ discography: true })).toBe(true);
-    expect(looksLikeBundle({ releaseTitle: "A - (2 releases: Focus Infinity / Delta City)" })).toBe(true);
-    expect(looksLikeBundle({ releaseTitle: "A - Album (2019) [FLAC]" })).toBe(false);
-});
-
-it("covers albums by title mention or year range", () => {
-    expect(bundleCoversAlbum("X - Discography 2017-2024 (21 releases)", "Dark Metropolis", 2019)).toBe(true);
-    expect(bundleCoversAlbum("X - Discography 2017-2018 (5 releases)", "Dark Metropolis", 2019)).toBe(false);
-    expect(bundleCoversAlbum("X - Dark Metropolis / Electric Blood (2 releases)", "Dark Metropolis")).toBe(true);
-    expect(bundleCoversAlbum("X - Other Stuff (3 releases)", "Dark Metropolis", 2019)).toBe(false);
+it("recognises Lidarr's discography release by its own fields and its year range", () => {
+    expect(lidarrModule.looksLikeBundle(discography)).toBe(true);
+    expect(lidarrModule.bundleCoversAlbum(discography.title, IDK.title, 2003)).toBe(true);
+    expect(lidarrModule.bundleCoversAlbum(discography.title, "Naturally", 2024)).toBe(false);
 });
 
 it("grabs the bundle when the album search found nothing", async () => {
-    artistReleases = [bundle()];
-    await expect(addAlbum()).resolves.toMatchObject({ title: "Dark Metropolis" });
-    expect(client.post).toHaveBeenCalledWith("/api/v1/release", { guid: "guid-1", indexerId: 3 });
+    lidarr.replay(seqOf("POST", "/api/v1/release"));
+    const job = await request();
+
+    const grabbed = lidarr.asked.find((a) => a.method === "POST" && a.path === "/api/v1/release");
+    expect(grabbed?.body).toEqual({ guid: discography.guid, indexerId: discography.indexerId });
+    expect((await job()).status).toBe("processing");
 });
 
-it("leaves a bundle alone when any rejection is not about existing files", async () => {
-    artistReleases = [bundle({ rejections: ["Existing files meets cutoff: Lossless", "Invalid quality"] })];
-    await expect(addAlbum()).rejects.toMatchObject({ type: AcquisitionErrorType.NO_RELEASES_AVAILABLE });
-    expect(client.post).not.toHaveBeenCalledWith("/api/v1/release", expect.anything());
+it("stays under the size ceiling the admin set", async () => {
+    await useLidarr(lidarr.url, { lidarrBundleMaxSizeMB: 10 });
+    lidarr.replay(Math.max(...run.exchanges.map((e) => e.seq)));
+    const job = await request();
+
+    expect(lidarr.asked.some((a) => a.method === "POST" && a.path === "/api/v1/release")).toBe(false);
+    expect((await job()).status).toBe("failed");
 });
 
-it("honors the size ceiling", async () => {
-    ceilingMB = 1000;
-    artistReleases = [bundle()];
-    await expect(addAlbum()).rejects.toMatchObject({ type: AcquisitionErrorType.NO_RELEASES_AVAILABLE });
-    expect(client.post).not.toHaveBeenCalledWith("/api/v1/release", expect.anything());
+async function bothRequested() {
+    lidarr.replay(seqOf("POST", "/api/v1/release"));
+    const idk = await request();
+    const gwamAlbum = grab.payload.albums.find((a: any) => a.title !== IDK.title);
+    const created = await prisma.downloadJob.create({
+        data: {
+            userId: USER, subject: `Brad Sucks - ${gwamAlbum.title}`, type: "album", status: "processing", attempts: 1,
+            targetMbid: gwamAlbum.mbId, lidarrAlbumId: gwamAlbum.id, metadata: { artistName: "Brad Sucks", albumTitle: gwamAlbum.title },
+        },
+    });
+    const gwam = () => prisma.downloadJob.findUniqueOrThrow({ where: { id: created.id } });
+
+    await dispatch("Grab", grab.payload);
+    expect((await idk()).lidarrRef).toBe(grab.payload.downloadId);
+    expect((await gwam()).lidarrRef).toBe(grab.payload.downloadId);
+    // Lidarr as it stood after both imports and Kima's search for the album that got nothing.
+    lidarr.at(Math.max(...run.exchanges.map((e) => e.seq)));
+    return { idk, gwam };
+}
+
+function failedRelease(row: Awaited<ReturnType<typeof prisma.downloadJob.findUniqueOrThrow>>) {
+    expect(row).toMatchObject({ status: "processing", attempts: 2, lidarrRef: null });
+    expect((row.metadata as any).lastError).toBe(`Lidarr found no tracks of "${IDK.title}" in the download`);
+    expect((row.metadata as any).searchCommandId).toBeDefined();
+}
+
+it("links both albums' jobs; the album with no files is a failed release, the other is untouched and then completes", async () => {
+    const { idk, gwam } = await bothRequested();
+    expect(idkImported.payload.trackFiles).toEqual([]);
+    expect(gwamImported.payload.trackFiles.length).toBeGreaterThan(0);
+
+    await dispatch("Download", idkImported.payload);
+    failedRelease(await idk());
+    expect(await gwam()).toMatchObject({ status: "processing", attempts: 1, lidarrRef: grab.payload.downloadId });
+    expect(lidarr.asked.some((a) => a.path.startsWith("/api/v1/history/failed/"))).toBe(false);
+
+    await dispatch("Download", gwamImported.payload);
+    expect((await gwam()).status).toBe("completed");
 });
 
-it("prefers the smallest covering bundle, then most seeders", async () => {
-    artistReleases = [
-        bundle({ guid: "big", size: 5e9, statistics: { seeders: 50 } }),
-        bundle({ guid: "small-few", size: 2e9, statistics: { seeders: 1 } }),
-        bundle({ guid: "small-many", size: 2e9, statistics: { seeders: 30 } }),
-    ];
-    await addAlbum();
-    expect(client.post).toHaveBeenCalledWith("/api/v1/release", { guid: "small-many", indexerId: 3 });
+it("still fails the album with no files when the other album's import came first", async () => {
+    const { idk, gwam } = await bothRequested();
+
+    await dispatch("Download", gwamImported.payload);
+    expect((await gwam()).status).toBe("completed");
+    await dispatch("Download", idkImported.payload);
+    failedRelease(await idk());
 });
 
-it("reports existing-files-only as availability, not ownership", async () => {
-    artistReleases = [bundle({ discography: false, releaseTitle: "Vector Seven - Other Box (2 releases)",
-        rejections: ["Existing files on disk is of equal or higher preference: FLAC v1"] })];
-    await expect(addAlbum()).rejects.toMatchObject({ type: AcquisitionErrorType.NO_RELEASES_AVAILABLE });
-});
+it("searches again without a second bundle, and says which release failed when nothing else is found", async () => {
+    const { idk } = await bothRequested();
+    await dispatch("Download", idkImported.payload);
+    const searchCommandId = ((await idk()).metadata as any).searchCommandId;
+    expect(run.exchanges.some((e) => e.path === `/api/v1/command/${searchCommandId}`)).toBe(true);
 
-it("never bundle-grabs for Discover", async () => {
-    artistReleases = [bundle()];
-    await lidarrService.addAlbum("rg-dm", "Interpol", "Dark Metropolis", "/music", ARTIST_MBID, true)
-        .catch(() => undefined);
-    expect(client.post).not.toHaveBeenCalledWith("/api/v1/release", expect.anything());
+    lidarr.at(Math.max(...run.exchanges.map((e) => e.seq)));
+    const asked = lidarr.asked.length;
+    await manager.checkWaitingJobs(await lidarrModule.lidarrService.getReconciliationSnapshot());
+
+    const row = await idk();
+    expect(row.status).toBe("failed");
+    expect(row.error).toBe(`Lidarr found no tracks of "${IDK.title}" in the download - no other release found`);
+    const after = lidarr.asked.slice(asked);
+    expect(after.some((a) => a.path.startsWith("/api/v1/release?artistId"))).toBe(false);
+    expect(after.some((a) => a.method === "POST" && a.path === "/api/v1/release")).toBe(false);
 });

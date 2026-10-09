@@ -1,372 +1,145 @@
 /**
- * POST /webhooks/lidarr: the Lidarr-disabled guard, secret check, event types
- * and missing fields. Processing runs after the 200, so only the HTTP surface
- * and the calls into mocked services are checked.
+ * POST /webhooks/lidarr on the real test database, fed the events a real
+ * Lidarr sent in recorded runs: an event is stored once and acted on once,
+ * Lidarr's secret is checked when one is set, nothing is done while Lidarr is
+ * off, and requests without the secret are rate-limited.
  */
 
-// All mocks must be before imports
-jest.mock('../../utils/db', () => ({
-    prisma: {
-        systemSettings: { findUnique: jest.fn() },
-        webhookEvent: { create: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
-        downloadJob: { findUnique: jest.fn() },
-    },
-}));
+import express from "express";
+import request from "supertest";
+import { prisma } from "../../utils/db";
+import { encryptField } from "../../utils/encryption";
+import { invalidateSystemSettingsCache } from "../../utils/systemSettings";
+import { loadScenario, startLidarrReplay, type LidarrReplay } from "../../__tests__/helpers/lidarrReplay";
+import { closeEngineConnections } from "../../__tests__/helpers/engineConnections";
+import webhookRoutes from "../webhooks";
+import { queueCleaner } from "../../jobs/queueCleaner";
 
-jest.mock('../../utils/logger', () => ({
-    logger: { error: jest.fn(), warn: jest.fn(), info: jest.fn(), debug: jest.fn() },
-}));
+const USER = "webhook_route_user";
+const complete = loadScenario("complete");
+const grab = complete.webhooks.find((w) => w.eventType === "Grab")!.payload;
+const download = complete.webhooks.find((w) => w.eventType === "Download")!.payload;
+const importFailure = loadScenario("missing-tracks").webhooks.find((w) => w.eventType === "ImportFailure")!.payload;
 
-jest.mock('../../workers/queues', () => ({
-    scanQueue: { add: jest.fn().mockResolvedValue({}) },
-}));
-
-jest.mock('../../services/simpleDownloadManager', () => ({
-    simpleDownloadManager: {
-        onDownloadGrabbed: jest.fn().mockResolvedValue({ matched: false }),
-        onDownloadComplete: jest.fn().mockResolvedValue({ jobId: null }),
-        onImportFailed: jest.fn().mockResolvedValue({ jobId: null }),
-    },
-}));
-
-jest.mock('../../jobs/queueCleaner', () => ({
-    queueCleaner: { start: jest.fn() },
-}));
-
-jest.mock('../../utils/systemSettings', () => ({
-    getSystemSettings: jest.fn(),
-    invalidateSystemSettingsCache: jest.fn(),
-}));
-
-jest.mock('../../services/webhookEventStore', () => ({
-    webhookEventStore: {
-        storeEvent: jest.fn(),
-        markProcessed: jest.fn(),
-        markFailed: jest.fn(),
-    },
-}));
-
-jest.mock('../../utils/metrics', () => ({
-    webhookEventsTotal: { inc: jest.fn() },
-    webhookProcessingDuration: { observe: jest.fn() },
-}));
-
-import express from 'express';
-import request from 'supertest';
-import webhookRoutes from '../../routes/webhooks';
-import { getSystemSettings } from '../../utils/systemSettings';
-import { webhookEventStore } from '../../services/webhookEventStore';
-import { simpleDownloadManager } from '../../services/simpleDownloadManager';
-
-function makeApp() {
-    const app = express();
-    app.use(express.json());
-    app.use('/webhooks', webhookRoutes);
-    return app;
+function app() {
+    const a = express();
+    a.use(express.json());
+    a.use("/webhooks", webhookRoutes);
+    return a;
 }
 
-const ENABLED_SETTINGS = {
-    lidarrEnabled: true,
-    lidarrUrl: 'http://lidarr:8686',
-    lidarrApiKey: 'test-api-key',
-    lidarrWebhookSecret: null,
-};
+// Lidarr as it stood after the recorded import, so Kima can count the album's tracks.
+let lidarr: LidarrReplay;
 
-const STORED_EVENT = {
-    id: 'evt-id-1',
-    eventId: 'hash-abc',
-    source: 'lidarr',
-    eventType: 'Grab',
-    payload: {},
-    processed: false,
-    processedAt: null,
-    correlationId: null,
-    error: null,
-    retryCount: 0,
-    createdAt: new Date(),
-};
+async function settings(data: Record<string, unknown>) {
+    const row = { lidarrEnabled: true, lidarrUrl: lidarr.url, lidarrApiKey: encryptField("key"), lidarrWebhookSecret: null, ...data };
+    await prisma.systemSettings.upsert({ where: { id: "default" }, create: { id: "default", ...row }, update: row });
+    invalidateSystemSettingsCache();
+}
 
-describe('GET /webhooks/lidarr/verify', () => {
-    let app: express.Application;
+async function processed(eventId: string) {
+    for (let i = 0; i < 50; i++) {
+        const row = await prisma.webhookEvent.findUniqueOrThrow({ where: { id: eventId } });
+        if (row.processed || row.error) return row;
+        await new Promise((r) => setTimeout(r, 100));
+    }
+    throw new Error(`event ${eventId} was never processed`);
+}
 
-    beforeAll(() => { app = makeApp(); });
+const lidarrEvents = () => prisma.webhookEvent.deleteMany({ where: { source: "lidarr" } });
 
-    it('returns 200 with status ok', async () => {
-        const res = await request(app).get('/webhooks/lidarr/verify');
-        expect(res.status).toBe(200);
-        expect(res.body.status).toBe('ok');
-        expect(res.body.service).toBe('kima');
-        expect(res.body.timestamp).toBeDefined();
-    });
+beforeAll(async () => {
+    lidarr = await startLidarrReplay(complete);
+    await prisma.user.deleteMany({ where: { id: USER } });
+    await prisma.user.create({ data: { id: USER, username: USER, passwordHash: "x", role: "user", tokenVersion: 0 } });
 });
 
-describe('POST /webhooks/lidarr -- Lidarr disabled', () => {
-    let app: express.Application;
-
-    beforeAll(() => { app = makeApp(); });
-    beforeEach(() => { jest.clearAllMocks(); });
-
-    it('returns 202 ignored when Lidarr is not enabled', async () => {
-        (getSystemSettings as jest.Mock).mockResolvedValue({
-            lidarrEnabled: false,
-            lidarrUrl: null,
-            lidarrApiKey: null,
-            lidarrWebhookSecret: null,
-        });
-
-        const res = await request(app)
-            .post('/webhooks/lidarr')
-            .send({ eventType: 'Grab' });
-
-        expect(res.status).toBe(202);
-        expect(res.body.ignored).toBe(true);
-        expect(res.body.reason).toBe('lidarr-disabled');
-    });
-
-    it('returns 202 when settings are null', async () => {
-        (getSystemSettings as jest.Mock).mockResolvedValue(null);
-
-        const res = await request(app)
-            .post('/webhooks/lidarr')
-            .send({ eventType: 'Test' });
-
-        expect(res.status).toBe(202);
-    });
+beforeEach(async () => {
+    await lidarrEvents();
+    await prisma.downloadJob.deleteMany({ where: { userId: USER } });
+    await settings({});
 });
 
-describe('POST /webhooks/lidarr -- webhook secret validation', () => {
-    let app: express.Application;
-
-    beforeAll(() => { app = makeApp(); });
-    beforeEach(() => { jest.clearAllMocks(); });
-
-    it('returns 401 when a webhook secret is configured and none is provided', async () => {
-        (getSystemSettings as jest.Mock).mockResolvedValue({
-            ...ENABLED_SETTINGS,
-            lidarrWebhookSecret: 'my-super-secret',
-        });
-
-        const res = await request(app)
-            .post('/webhooks/lidarr')
-            .send({ eventType: 'Test' });
-
-        expect(res.status).toBe(401);
-        expect(res.body.error).toMatch(/Unauthorized/i);
-    });
-
-    it('returns 401 when the provided secret does not match', async () => {
-        (getSystemSettings as jest.Mock).mockResolvedValue({
-            ...ENABLED_SETTINGS,
-            lidarrWebhookSecret: 'my-super-secret',
-        });
-
-        const res = await request(app)
-            .post('/webhooks/lidarr')
-            .set('x-webhook-secret', 'wrong-secret')
-            .send({ eventType: 'Test' });
-
-        expect(res.status).toBe(401);
-    });
-
-    it('accepts the request when the correct secret is provided', async () => {
-        (getSystemSettings as jest.Mock).mockResolvedValue({
-            ...ENABLED_SETTINGS,
-            lidarrWebhookSecret: 'correct-secret',
-        });
-        (webhookEventStore.storeEvent as jest.Mock).mockResolvedValue({ event: STORED_EVENT, created: true });
-        (webhookEventStore.markProcessed as jest.Mock).mockResolvedValue(undefined);
-
-        const res = await request(app)
-            .post('/webhooks/lidarr')
-            .set('x-webhook-secret', 'correct-secret')
-            .send({ eventType: 'Test' });
-
-        expect(res.status).toBe(200);
-    });
+afterAll(async () => {
+    queueCleaner.stop();
+    await lidarr.close();
+    await lidarrEvents();
+    await prisma.downloadJob.deleteMany({ where: { userId: USER } });
+    await prisma.user.deleteMany({ where: { id: USER } });
+    await closeEngineConnections();
 });
 
-describe('POST /webhooks/lidarr -- event handling', () => {
-    let app: express.Application;
-
-    beforeAll(() => { app = makeApp(); });
-    beforeEach(() => { jest.clearAllMocks(); });
-
-    it('stores event and returns 200 with eventId for a Grab event', async () => {
-        (getSystemSettings as jest.Mock).mockResolvedValue(ENABLED_SETTINGS);
-        (webhookEventStore.storeEvent as jest.Mock).mockResolvedValue({ event: STORED_EVENT, created: true });
-        (webhookEventStore.markProcessed as jest.Mock).mockResolvedValue(undefined);
-
-        const payload = {
-            eventType: 'Grab',
-            downloadId: 'dl-abc-123',
-            artist: { name: 'Radiohead' },
-            albums: [{ id: 1, title: 'OK Computer', mbId: 'mbid-ok-computer' }],
-        };
-
-        const res = await request(app)
-            .post('/webhooks/lidarr')
-            .send(payload);
-
-        expect(res.status).toBe(200);
-        expect(res.body.success).toBe(true);
-        expect(res.body.eventId).toBe('evt-id-1');
-        expect(webhookEventStore.storeEvent).toHaveBeenCalledWith('lidarr', 'Grab', payload);
-    });
-
-    it('does not process an event Lidarr sent again', async () => {
-        (getSystemSettings as jest.Mock).mockResolvedValue(ENABLED_SETTINGS);
-        (webhookEventStore.storeEvent as jest.Mock).mockResolvedValue({ event: { ...STORED_EVENT, eventType: 'Download' }, created: false });
-
-        const res = await request(app)
-            .post('/webhooks/lidarr')
-            .send({ eventType: 'Download', downloadId: 'dl-xyz', album: { id: 2, mbId: 'mbid-lateralus' } });
-        await new Promise((resolve) => setImmediate(resolve));
-
-        expect(res.status).toBe(200);
-        expect(simpleDownloadManager.onDownloadComplete).not.toHaveBeenCalled();
-    });
-
-    it('stores and returns 200 for a Download event', async () => {
-        (getSystemSettings as jest.Mock).mockResolvedValue(ENABLED_SETTINGS);
-        const downloadEvent = { ...STORED_EVENT, eventType: 'Download' };
-        (webhookEventStore.storeEvent as jest.Mock).mockResolvedValue({ event: downloadEvent, created: true });
-        (webhookEventStore.markProcessed as jest.Mock).mockResolvedValue(undefined);
-
-        const res = await request(app)
-            .post('/webhooks/lidarr')
-            .send({
-                eventType: 'Download',
-                downloadId: 'dl-xyz',
-                artist: { name: 'Tool' },
-                album: { id: 2, title: 'Lateralus', mbId: 'mbid-lateralus' },
-            });
-
-        expect(res.status).toBe(200);
-        expect(res.body.success).toBe(true);
-    });
-
-    it('handles ImportFailure event without error', async () => {
-        (getSystemSettings as jest.Mock).mockResolvedValue(ENABLED_SETTINGS);
-        const failEvent = { ...STORED_EVENT, eventType: 'ImportFailure' };
-        (webhookEventStore.storeEvent as jest.Mock).mockResolvedValue({ event: failEvent, created: true });
-        (webhookEventStore.markProcessed as jest.Mock).mockResolvedValue(undefined);
-
-        const res = await request(app)
-            .post('/webhooks/lidarr')
-            .send({
-                eventType: 'ImportFailure',
-                downloadId: 'dl-fail-1',
-                message: 'CRC check failed',
-                album: { title: 'Some Album' },
-            });
-
-        expect(res.status).toBe(200);
-        expect(simpleDownloadManager.onImportFailed).toHaveBeenCalled();
-    });
-
-    it('handles Health event (no-op) without error', async () => {
-        (getSystemSettings as jest.Mock).mockResolvedValue(ENABLED_SETTINGS);
-        const healthEvent = { ...STORED_EVENT, eventType: 'Health' };
-        (webhookEventStore.storeEvent as jest.Mock).mockResolvedValue({ event: healthEvent, created: true });
-        (webhookEventStore.markProcessed as jest.Mock).mockResolvedValue(undefined);
-
-        const res = await request(app)
-            .post('/webhooks/lidarr')
-            .send({ eventType: 'Health' });
-
-        expect(res.status).toBe(200);
-    });
-
-    it('handles Test event (no-op) without error', async () => {
-        (getSystemSettings as jest.Mock).mockResolvedValue(ENABLED_SETTINGS);
-        const testEvent = { ...STORED_EVENT, eventType: 'Test' };
-        (webhookEventStore.storeEvent as jest.Mock).mockResolvedValue({ event: testEvent, created: true });
-        (webhookEventStore.markProcessed as jest.Mock).mockResolvedValue(undefined);
-
-        const res = await request(app)
-            .post('/webhooks/lidarr')
-            .send({ eventType: 'Test' });
-
-        expect(res.status).toBe(200);
-    });
-
-    it('handles unknown event types gracefully (logs debug, no crash)', async () => {
-        (getSystemSettings as jest.Mock).mockResolvedValue(ENABLED_SETTINGS);
-        const unknownEvent = { ...STORED_EVENT, eventType: 'UnknownFutureEvent' };
-        (webhookEventStore.storeEvent as jest.Mock).mockResolvedValue({ event: unknownEvent, created: true });
-        (webhookEventStore.markProcessed as jest.Mock).mockResolvedValue(undefined);
-
-        const res = await request(app)
-            .post('/webhooks/lidarr')
-            .send({ eventType: 'UnknownFutureEvent' });
-
-        expect(res.status).toBe(200);
-        expect(res.body.success).toBe(true);
-    });
-
-    it('handles missing downloadId in Grab gracefully', async () => {
-        (getSystemSettings as jest.Mock).mockResolvedValue(ENABLED_SETTINGS);
-        (webhookEventStore.storeEvent as jest.Mock).mockResolvedValue({ event: STORED_EVENT, created: true });
-        (webhookEventStore.markProcessed as jest.Mock).mockResolvedValue(undefined);
-
-        // No downloadId -- simpleDownloadManager should not be called
-        const res = await request(app)
-            .post('/webhooks/lidarr')
-            .send({
-                eventType: 'Grab',
-                artist: { name: 'Radiohead' },
-                albums: [{ title: 'OK Computer' }],
-                // downloadId intentionally absent
-            });
-
-        expect(res.status).toBe(200);
-        expect(simpleDownloadManager.onDownloadGrabbed).not.toHaveBeenCalled();
-    });
-
-    it('returns 500 when storeEvent throws', async () => {
-        (getSystemSettings as jest.Mock).mockResolvedValue(ENABLED_SETTINGS);
-        (webhookEventStore.storeEvent as jest.Mock).mockRejectedValue(new Error('DB down'));
-
-        const res = await request(app)
-            .post('/webhooks/lidarr')
-            .send({ eventType: 'Grab' });
-
-        expect(res.status).toBe(500);
-        expect(res.body.error).toBe('Webhook processing failed');
-    });
+it("answers the verification request", async () => {
+    const res = await request(app()).get("/webhooks/lidarr/verify");
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("ok");
 });
 
-describe('POST /webhooks/lidarr -- rate limit', () => {
-    let app: express.Application;
+it("ignores events while Lidarr is turned off, storing nothing", async () => {
+    await settings({ lidarrEnabled: false });
+    const res = await request(app()).post("/webhooks/lidarr").send(grab);
+    expect(res.status).toBe(202);
+    expect(res.body.reason).toBe("lidarr-disabled");
+    expect(await prisma.webhookEvent.count({ where: { source: "lidarr" } })).toBe(0);
+});
 
-    beforeAll(() => { app = makeApp(); });
-    beforeEach(() => {
-        jest.clearAllMocks();
-        (getSystemSettings as jest.Mock).mockResolvedValue({
-            ...ENABLED_SETTINGS,
-            lidarrWebhookSecret: 'correct-secret',
-        });
-        (webhookEventStore.storeEvent as jest.Mock).mockResolvedValue({ event: STORED_EVENT, created: true });
+it("refuses a missing or wrong secret once one is set, and takes the right one", async () => {
+    await settings({ lidarrWebhookSecret: encryptField("the-secret") });
+    expect((await request(app()).post("/webhooks/lidarr").send(grab)).status).toBe(401);
+    expect((await request(app()).post("/webhooks/lidarr").set("x-webhook-secret", "wrong").send(grab)).status).toBe(401);
+    expect((await request(app()).post("/webhooks/lidarr").set("x-webhook-secret", "the-secret").send(grab)).status).toBe(200);
+});
+
+it("stores a grab, links the job waiting for its album and acts on a repeat only once", async () => {
+    const lidarrAlbumId = grab.albums[0].id;
+    const job = await prisma.downloadJob.create({
+        data: {
+            userId: USER, subject: "Brad Sucks - Guess Who’s a Mess", type: "album", status: "processing",
+            targetMbid: grab.albums[0].mbId, lidarrAlbumId, metadata: { artistName: "Brad Sucks", albumTitle: "Guess Who’s a Mess" },
+        },
     });
 
-    it('never limits requests carrying the secret, and limits the rest', async () => {
-        for (let i = 0; i < 130; i++) {
-            const res = await request(app)
-                .post('/webhooks/lidarr')
-                .set('x-webhook-secret', 'correct-secret')
-                .send({ eventType: 'Test' });
-            expect(res.status).toBe(200);
-        }
+    const first = await request(app()).post("/webhooks/lidarr").send(grab);
+    expect(first.status).toBe(200);
+    await processed(first.body.eventId);
+    expect((await prisma.downloadJob.findUniqueOrThrow({ where: { id: job.id } })).lidarrRef).toBe(grab.downloadId);
 
-        const statuses: number[] = [];
-        for (let i = 0; i < 130; i++) {
-            const res = await request(app)
-                .post('/webhooks/lidarr')
-                .set('x-webhook-secret', 'wrong-secret')
-                .send({ eventType: 'Test' });
-            statuses.push(res.status);
-        }
-        expect(statuses.filter((s) => s === 429).length).toBeGreaterThan(0);
-        expect(statuses.filter((s) => s !== 401 && s !== 429)).toEqual([]);
+    const again = await request(app()).post("/webhooks/lidarr").send(grab);
+    expect(again.body.eventId).toBe(first.body.eventId);
+    expect(await prisma.webhookEvent.count({ where: { source: "lidarr" } })).toBe(1);
+
+    const done = await request(app()).post("/webhooks/lidarr").send(download);
+    await processed(done.body.eventId);
+    expect((await prisma.downloadJob.findUniqueOrThrow({ where: { id: job.id } })).status).toBe("completed");
+});
+
+it("takes Lidarr's import-failure event without counting an attempt; the queue judge decides", async () => {
+    const job = await prisma.downloadJob.create({
+        data: {
+            userId: USER, subject: "Brad Sucks - Guess Who’s a Mess", type: "album", status: "processing", attempts: 1,
+            targetMbid: importFailure.album.mbId, lidarrAlbumId: importFailure.album.id, lidarrRef: importFailure.downloadId,
+            metadata: { artistName: "Brad Sucks", albumTitle: "Guess Who’s a Mess" },
+        },
     });
+
+    const res = await request(app()).post("/webhooks/lidarr").send(importFailure);
+    expect(res.status).toBe(200);
+    expect((await processed(res.body.eventId)).error).toBeNull();
+
+    const row = await prisma.downloadJob.findUniqueOrThrow({ where: { id: job.id } });
+    expect(row).toMatchObject({ status: "processing", attempts: 1, lidarrRef: importFailure.downloadId });
+});
+
+it("never limits requests carrying the secret, and limits the rest", async () => {
+    await settings({ lidarrWebhookSecret: encryptField("the-secret") });
+    for (let i = 0; i < 130; i++) {
+        const res = await request(app()).post("/webhooks/lidarr").set("x-webhook-secret", "the-secret").send({ eventType: "Test" });
+        expect(res.status).toBe(200);
+    }
+    const statuses: number[] = [];
+    for (let i = 0; i < 130; i++) {
+        statuses.push((await request(app()).post("/webhooks/lidarr").set("x-webhook-secret", "wrong").send({ eventType: "Test" })).status);
+    }
+    expect(statuses.filter((s) => s === 429).length).toBeGreaterThan(0);
+    expect(statuses.filter((s) => s !== 401 && s !== 429)).toEqual([]);
 });

@@ -461,6 +461,7 @@ router.delete("/clear-all", async (req, res) => {
             where.status = status as string;
         }
 
+        await simpleDownloadManager.cancelJobs(await prisma.downloadJob.findMany({ where }));
         const result = await prisma.downloadJob.deleteMany({ where });
 
         logger.debug(
@@ -598,6 +599,8 @@ router.delete("/:id", async (req, res) => {
         const { id } = req.params;
         const userId = req.user!.id;
 
+        const jobs = await prisma.downloadJob.findMany({ where: { id, userId } });
+        await simpleDownloadManager.cancelJobs(jobs);
         const result = await prisma.downloadJob.deleteMany({
             where: {
                 id,

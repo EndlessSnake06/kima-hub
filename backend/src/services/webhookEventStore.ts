@@ -39,31 +39,23 @@ class WebhookEventStore {
     ): Promise<{ event: StoredWebhookEvent; created: boolean }> {
         const generatedEventId = eventId || this.generateEventId(source, payload);
 
-        try {
-            const event = await prisma.webhookEvent.create({
-                data: {
-                    eventId: generatedEventId,
-                    source,
-                    eventType,
-                    payload,
-                },
-            });
-
-            logger.debug(`[WEBHOOK-STORE] Stored ${source} event: ${eventType} (${event.id})`);
-            return { event: event as StoredWebhookEvent, created: true };
-        } catch (error: any) {
-            if (error.code === 'P2002' && error.meta?.target?.includes('eventId')) {
-                logger.debug(`[WEBHOOK-STORE] Duplicate event ignored: ${generatedEventId}`);
-                const existing = await prisma.webhookEvent.findUnique({
-                    where: { eventId: generatedEventId },
-                });
-                if (!existing) {
-                    throw new Error('Duplicate event but not found in database');
-                }
-                return { event: existing as StoredWebhookEvent, created: false };
-            }
-            throw error;
+        const { count } = await prisma.webhookEvent.createMany({
+            data: [{ eventId: generatedEventId, source, eventType, payload }],
+            skipDuplicates: true,
+        });
+        const event = await prisma.webhookEvent.findUniqueOrThrow({ where: { eventId: generatedEventId } });
+        if (count === 0) {
+            logger.debug(`[WEBHOOK-STORE] Duplicate event ignored: ${generatedEventId}`);
+            return { event: event as StoredWebhookEvent, created: false };
         }
+        logger.debug(`[WEBHOOK-STORE] Stored ${source} event: ${eventType} (${event.id})`);
+        return { event: event as StoredWebhookEvent, created: true };
+    }
+
+    /** Whether an event is already stored, under the id `storeEvent` would give it. */
+    async isStored(source: string, payload: WebhookEventPayload): Promise<boolean> {
+        const eventId = this.generateEventId(source, payload);
+        return (await prisma.webhookEvent.count({ where: { eventId } })) > 0;
     }
 
     /**
@@ -159,12 +151,14 @@ class WebhookEventStore {
     }
 
     /**
-     * Generate a unique event ID from payload
-     * Uses downloadId + eventType for Lidarr events
+     * The event's id: for Lidarr its type and download id, plus the album for an
+     * import event, since Lidarr sends one per album a download carries (a bundle
+     * carries several); anything else by a hash of its payload.
      */
     private generateEventId(source: string, payload: WebhookEventPayload): string {
         if (source === 'lidarr' && payload.downloadId) {
-            return `${source}-${payload.eventType}-${payload.downloadId}`;
+            const album = payload.eventType === "Download" || payload.eventType === "ImportFailure" ? payload.album?.id : undefined;
+            return `${source}-${payload.eventType}-${payload.downloadId}${album ? `-${album}` : ""}`;
         }
 
         const payloadStr = JSON.stringify(payload);

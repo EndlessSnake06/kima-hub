@@ -1,201 +1,86 @@
 /**
- * WebhookEventStore Tests
- *
- * Tests event storage, deduplication, ID generation, and state transitions.
- * Prisma is mocked -- this verifies service logic, not DB persistence.
+ * The webhook event store on the real test database: each event is stored
+ * once, a repeat comes back as the stored row, Lidarr events are keyed by
+ * type and download id, and processing state, retries and cleanup act on the rows.
  */
 
-jest.mock('../../utils/db', () => ({
-    prisma: {
-        webhookEvent: {
-            create: jest.fn(),
-            findUnique: jest.fn(),
-            findMany: jest.fn(),
-            update: jest.fn(),
-            deleteMany: jest.fn(),
-        },
-    },
-}));
-
-jest.mock('../../utils/logger', () => ({
-    logger: { error: jest.fn(), warn: jest.fn(), info: jest.fn(), debug: jest.fn() },
-}));
-
-import { webhookEventStore } from "../webhookEventStore";
 import { prisma } from "../../utils/db";
+import { webhookEventStore } from "../webhookEventStore";
+import { closeEngineConnections } from "../../__tests__/helpers/engineConnections";
 
-const BASE_EVENT = {
-    id: "event-abc-123",
-    eventId: "test-abc123456789abcd",
-    source: "test",
-    eventType: "TestEvent",
-    payload: { eventType: "TestEvent" },
-    processed: false,
-    processedAt: null,
-    correlationId: null,
-    error: null,
-    retryCount: 0,
-    createdAt: new Date(),
-};
+const SOURCE = "store-test";
+const grab = (downloadId: string) => ({ eventType: "Grab", downloadId, albums: [{ id: 4, title: "Guess Who’s a Mess" }] });
 
-describe("WebhookEventStore", () => {
-    beforeEach(() => {
-        jest.clearAllMocks();
-    });
+const clean = () => prisma.webhookEvent.deleteMany({ where: { source: { in: [SOURCE, "lidarr"] }, eventId: { contains: "store-test" } } });
 
-    describe("storeEvent", () => {
-        it("stores a new event and returns it", async () => {
-            (prisma.webhookEvent.create as jest.Mock).mockResolvedValue(BASE_EVENT);
+beforeEach(clean);
+afterAll(async () => {
+    await clean();
+    await prisma.webhookEvent.deleteMany({ where: { source: SOURCE } });
+    await closeEngineConnections();
+});
 
-            const { event: result, created } = await webhookEventStore.storeEvent("test", "TestEvent", {
-                eventType: "TestEvent",
-            });
+it("stores a new event once and hands a repeat back as the stored row", async () => {
+    const first = await webhookEventStore.storeEvent(SOURCE, "Test", { eventType: "Test", note: "store-test" });
+    const again = await webhookEventStore.storeEvent(SOURCE, "Test", { eventType: "Test", note: "store-test" });
 
-            expect(created).toBe(true);
-            expect(prisma.webhookEvent.create).toHaveBeenCalledTimes(1);
-            expect(result.id).toBe(BASE_EVENT.id);
-            expect(result.source).toBe("test");
-            expect(result.processed).toBe(false);
-            expect(result.retryCount).toBe(0);
-        });
+    expect(first.created).toBe(true);
+    expect(again.created).toBe(false);
+    expect(again.event.id).toBe(first.event.id);
+    expect(await prisma.webhookEvent.count({ where: { source: SOURCE } })).toBe(1);
+});
 
-        it("returns existing event on P2002 duplicate -- dedup without crashing", async () => {
-            const dupError = Object.assign(new Error("Unique constraint"), {
-                code: "P2002",
-                meta: { target: ["eventId"] },
-            });
-            (prisma.webhookEvent.create as jest.Mock).mockRejectedValue(dupError);
-            (prisma.webhookEvent.findUnique as jest.Mock).mockResolvedValue(BASE_EVENT);
+it("keys a Lidarr event by its type and download id, and an import by its album too", async () => {
+    const grabbed = await webhookEventStore.storeEvent("lidarr", "Grab", grab("store-test-dl-1"));
+    const imported = (album: number) =>
+        webhookEventStore.storeEvent("lidarr", "Download", { eventType: "Download", downloadId: "store-test-dl-1", album: { id: album } });
+    const first = await imported(4);
+    const second = await imported(5);
+    const repeat = await webhookEventStore.storeEvent("lidarr", "Grab", grab("store-test-dl-1"));
 
-            const { event: result, created } = await webhookEventStore.storeEvent(
-                "lidarr",
-                "Grab",
-                { eventType: "Grab", downloadId: "123" },
-                "lidarr-Grab-123"
-            );
+    expect(grabbed.event.eventId).toBe("lidarr-Grab-store-test-dl-1");
+    expect(first.event.eventId).toBe("lidarr-Download-store-test-dl-1-4");
+    expect(second.created).toBe(true);
+    expect((await imported(4)).created).toBe(false);
+    expect(repeat.created).toBe(false);
+});
 
-            expect(created).toBe(false);
-            expect(result.id).toBe(BASE_EVENT.id);
-            expect(prisma.webhookEvent.findUnique).toHaveBeenCalledWith({
-                where: { eventId: "lidarr-Grab-123" },
-            });
-        });
+it("keys any other event by a hash of its payload", async () => {
+    const { event } = await webhookEventStore.storeEvent(SOURCE, "Test", { eventType: "Test", note: "store-test hash" });
+    expect(event.eventId).toMatch(/^store-test-[0-9a-f]{16}$/);
+});
 
-        it("throws on non-dedup Prisma errors -- does not swallow failures", async () => {
-            (prisma.webhookEvent.create as jest.Mock).mockRejectedValue(
-                new Error("DB connection lost")
-            );
+it("records processing, failures and retries on the row", async () => {
+    const { event } = await webhookEventStore.storeEvent(SOURCE, "Test", { eventType: "Test", note: "store-test state" });
 
-            await expect(
-                webhookEventStore.storeEvent("test", "TestEvent", { eventType: "TestEvent" })
-            ).rejects.toThrow("DB connection lost");
-        });
+    await webhookEventStore.markFailed(event.id, "Lidarr timed out");
+    await webhookEventStore.markFailed(event.id, "Lidarr timed out again");
+    let row = await prisma.webhookEvent.findUniqueOrThrow({ where: { id: event.id } });
+    expect(row.retryCount).toBe(2);
+    expect(row.error).toBe("Lidarr timed out again");
+    expect((await webhookEventStore.getUnprocessedEvents(SOURCE, 3)).map((e) => e.id)).toEqual([event.id]);
+    expect(await webhookEventStore.getUnprocessedEvents(SOURCE, 2)).toEqual([]);
 
-        it("auto-generates lidarr eventId as source-eventType-downloadId", async () => {
-            (prisma.webhookEvent.create as jest.Mock).mockResolvedValue({
-                ...BASE_EVENT,
-                eventId: "lidarr-Grab-dl-456",
-                source: "lidarr",
-                eventType: "Grab",
-            });
+    await webhookEventStore.markProcessed(event.id, "job-1");
+    row = await prisma.webhookEvent.findUniqueOrThrow({ where: { id: event.id } });
+    expect(row.processed).toBe(true);
+    expect(row.processedAt).toBeInstanceOf(Date);
+    expect(row.correlationId).toBe("job-1");
+    expect(await webhookEventStore.getUnprocessedEvents(SOURCE)).toEqual([]);
+});
 
-            await webhookEventStore.storeEvent("lidarr", "Grab", {
-                eventType: "Grab",
-                downloadId: "dl-456",
-            });
+it("leaves an event stored moments ago to the route still processing it", async () => {
+    const { event } = await webhookEventStore.storeEvent(SOURCE, "Test", { eventType: "Test", note: "store-test fresh" });
+    expect(await webhookEventStore.getUnprocessedEvents(SOURCE, 3, 60_000)).toEqual([]);
+    expect((await webhookEventStore.getUnprocessedEvents(SOURCE, 3, 0)).map((e) => e.id)).toEqual([event.id]);
+});
 
-            const callArg = (prisma.webhookEvent.create as jest.Mock).mock.calls[0][0];
-            expect(callArg.data.eventId).toBe("lidarr-Grab-dl-456");
-        });
+it("deletes events older than the cutoff whether processed or not", async () => {
+    const old = await webhookEventStore.storeEvent(SOURCE, "Test", { eventType: "Test", note: "store-test old" });
+    const fresh = await webhookEventStore.storeEvent(SOURCE, "Test", { eventType: "Test", note: "store-test new" });
+    await prisma.webhookEvent.update({ where: { id: old.event.id }, data: { createdAt: new Date(Date.now() - 31 * 86_400_000) } });
 
-        it("generates a hash-based eventId for non-lidarr events (no downloadId)", async () => {
-            (prisma.webhookEvent.create as jest.Mock).mockResolvedValue(BASE_EVENT);
-
-            await webhookEventStore.storeEvent("test", "TestEvent", {
-                eventType: "TestEvent",
-            });
-
-            const callArg = (prisma.webhookEvent.create as jest.Mock).mock.calls[0][0];
-            // ID must be "test-<16 hex chars>"
-            expect(callArg.data.eventId).toMatch(/^test-[0-9a-f]{16}$/);
-        });
-    });
-
-    describe("markProcessed", () => {
-        it("sets processed=true and processedAt, stores correlationId", async () => {
-            (prisma.webhookEvent.update as jest.Mock).mockResolvedValue({});
-
-            await webhookEventStore.markProcessed("event-abc-123", "job-xyz");
-
-            expect(prisma.webhookEvent.update).toHaveBeenCalledWith({
-                where: { id: "event-abc-123" },
-                data: expect.objectContaining({
-                    processed: true,
-                    correlationId: "job-xyz",
-                }),
-            });
-            // processedAt must be a Date
-            const data = (prisma.webhookEvent.update as jest.Mock).mock.calls[0][0].data;
-            expect(data.processedAt).toBeInstanceOf(Date);
-        });
-    });
-
-    describe("markFailed", () => {
-        it("increments retryCount and stores error message", async () => {
-            (prisma.webhookEvent.update as jest.Mock).mockResolvedValue({});
-
-            await webhookEventStore.markFailed("event-abc-123", "connection timeout");
-
-            expect(prisma.webhookEvent.update).toHaveBeenCalledWith({
-                where: { id: "event-abc-123" },
-                data: {
-                    error: "connection timeout",
-                    retryCount: { increment: 1 },
-                },
-            });
-        });
-    });
-
-    describe("getUnprocessedEvents", () => {
-        it("queries for unprocessed events below retry limit, filtered by source", async () => {
-            (prisma.webhookEvent.findMany as jest.Mock).mockResolvedValue([]);
-
-            await webhookEventStore.getUnprocessedEvents("lidarr");
-
-            expect(prisma.webhookEvent.findMany).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    where: expect.objectContaining({
-                        processed: false,
-                        retryCount: { lt: 3 },
-                        source: "lidarr",
-                    }),
-                })
-            );
-        });
-
-        it("queries without source filter when source is not provided", async () => {
-            (prisma.webhookEvent.findMany as jest.Mock).mockResolvedValue([]);
-
-            await webhookEventStore.getUnprocessedEvents();
-
-            const call = (prisma.webhookEvent.findMany as jest.Mock).mock.calls[0][0];
-            // source should NOT be in the where clause
-            expect(call.where.source).toBeUndefined();
-        });
-    });
-
-    describe("cleanupOldEvents", () => {
-        it("deletes every event older than the cutoff, processed or out of retries", async () => {
-            (prisma.webhookEvent.deleteMany as jest.Mock).mockResolvedValue({ count: 5 });
-
-            const deleted = await webhookEventStore.cleanupOldEvents(30);
-
-            expect(deleted).toBe(5);
-            const call = (prisma.webhookEvent.deleteMany as jest.Mock).mock.calls[0][0];
-            expect(Object.keys(call.where)).toEqual(["createdAt"]);
-            const cutoff = call.where.createdAt.lt as Date;
-            const daysAgo = (Date.now() - cutoff.getTime()) / (1000 * 60 * 60 * 24);
-            expect(daysAgo).toBeCloseTo(30, 0);
-        });
-    });
+    expect(await webhookEventStore.cleanupOldEvents(30)).toBeGreaterThanOrEqual(1);
+    expect(await prisma.webhookEvent.findUnique({ where: { id: old.event.id } })).toBeNull();
+    expect(await prisma.webhookEvent.findUnique({ where: { id: fresh.event.id } })).not.toBeNull();
 });

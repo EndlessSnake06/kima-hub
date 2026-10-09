@@ -4,8 +4,6 @@ type SSEEventType =
     | "notification"
     | "notification:cleared"
     | "notification:read"
-    | "download:progress"
-    | "download:queued"
     | "download:complete"
     | "download:failed"
     | "search:result"

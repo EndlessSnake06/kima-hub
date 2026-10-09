@@ -6,6 +6,7 @@ type NotificationType =
     | "system"
     | "download_complete"
     | "download_failed"
+    | "download_waiting"
     | "playlist_ready"
     | "import_complete"
     | "error";
@@ -238,6 +239,18 @@ class NotificationService {
             metadata: { subject, error },
         });
     }
+    /** A download Lidarr is holding for the user to import or remove; a repeat for the same album replaces the row. */
+    async notifyDownloadWaiting(userId: string, subject: string, reason: string) {
+        return this.create({
+            userId,
+            type: "download_waiting",
+            title: "Waiting in Lidarr",
+            message: `${subject}: ${reason}. It is waiting in Lidarr's queue for you to import or remove.`,
+            metadata: { subject, reason },
+            groupKey: `download-waiting:${subject}`,
+        });
+    }
+
     /**
      * Notify user that a Spotify import completed
      */

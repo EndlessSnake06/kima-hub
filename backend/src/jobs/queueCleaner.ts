@@ -1,7 +1,6 @@
 import { prisma } from "../utils/db";
 import { logger } from "../utils/logger";
 import { getSystemSettings } from "../utils/systemSettings";
-import { sweepFailedDownloads } from "../services/lidarrFailures";
 import { requestScan } from "../workers/scanRequest";
 import { simpleDownloadManager } from "../services/simpleDownloadManager";
 import { artistIdentityKey } from "../services/artistIdentity";
@@ -85,24 +84,7 @@ class QueueCleanerService {
                 return;
             }
 
-            // PART 0: Check for stale downloads (timed out)
-            const staleCount =
-                await simpleDownloadManager.markStaleJobsAsFailed();
-            if (staleCount > 0) {
-                logger.debug(`⏰ Cleaned up ${staleCount} stale download(s)`);
-                this.emptyQueueChecks = 0; // Reset counter
-            }
-
-            // Complete jobs whose album is already in the library, for missed Lidarr webhooks.
-            const localReconcileResult = await this.reconcileWithLocalLibrary();
-            if (localReconcileResult.reconciled > 0) {
-                logger.debug(
-                    `✓ Reconciled ${localReconcileResult.reconciled} job(s) with local library`
-                );
-                this.emptyQueueChecks = 0; // Reset counter
-            }
-
-            // PART 0.5: Check for stuck discovery batches (batch-level timeout)
+            // Discover batches past their deadline
             const discoverWeeklyService = await this.getDiscoverWeeklyService();
             const stuckBatchCount =
                 await discoverWeeklyService.checkStuckBatches();
@@ -113,7 +95,7 @@ class QueueCleanerService {
                 this.emptyQueueChecks = 0; // Reset counter
             }
 
-            // PART 0.6: Check for stuck Spotify import jobs (scanning timeout)
+            // Spotify imports stuck scanning or downloading
             const stuckImportCount = await this.checkStuckSpotifyImports();
             if (stuckImportCount > 0) {
                 logger.debug(
@@ -122,20 +104,14 @@ class QueueCleanerService {
                 this.emptyQueueChecks = 0;
             }
 
-            const swept = await sweepFailedDownloads();
-            if (swept.removed > 0) {
-                logger.debug(`[CLEANUP] Removed ${swept.removed} failed download(s)`);
-                this.emptyQueueChecks = 0;
-            }
-
-            // Stop once nothing is queued or swept
+            // Stop once nothing is queued
             const activeJobs = await prisma.downloadJob.count({
                 where: {
                     status: { in: ["pending", "processing"] },
                 },
             });
 
-            const hadActivity = swept.removed > 0 || activeJobs > 0;
+            const hadActivity = activeJobs > 0;
 
             if (!hadActivity) {
                 this.emptyQueueChecks++;
@@ -248,31 +224,43 @@ class QueueCleanerService {
     }
 
     /**
-     * Complete pending and processing jobs whose album is now in the library, and
-     * tell their users. Covers imports no Lidarr event reported. An album counts
-     * when the artist matches and the title matches ignoring edition.
+     * Complete jobs Lidarr is not fetching whose album the library already
+     * holds: the same album id, or the same artist and title once edition
+     * words are set aside (owning another edition counts). Covers albums that
+     * arrived some other way, and requests for an album already owned.
      */
     async reconcileWithLocalLibrary(): Promise<{ reconciled: number }> {
-        const activeJobs = await prisma.downloadJob.findMany({
-            where: { status: { in: ["pending", "processing"] } },
-        });
-        const wanted = activeJobs.filter((job) => {
+        // A job Lidarr is fetching is settled by what Lidarr says about its album.
+        const wanted = (
+            await prisma.downloadJob.findMany({
+                where: { status: { in: ["pending", "processing"] }, lidarrAlbumId: null },
+            })
+        ).filter((job) => {
             const meta = (job.metadata as any) ?? {};
-            return meta.artistName && meta.albumTitle;
+            return job.targetMbid || (meta.artistName && meta.albumTitle);
         });
         if (wanted.length === 0) return { reconciled: 0 };
 
+        const names = [...new Set(wanted.map((job) => (job.metadata as any)?.artistName).filter(Boolean))] as string[];
         const localAlbums = await prisma.album.findMany({
-            where: { tracks: { some: {} } },
-            select: { title: true, artist: { select: { name: true } } },
+            where: {
+                tracks: { some: {} },
+                OR: [
+                    { rgMbid: { in: wanted.map((job) => job.targetMbid).filter((m): m is string => !!m) } },
+                    { artist: { name: { in: names, mode: "insensitive" } } },
+                ],
+            },
+            select: { rgMbid: true, title: true, artist: { select: { name: true } } },
         });
-        const owned = new Set(
-            localAlbums.map((a) => `${artistIdentityKey(a.artist.name)}|${editionlessKey(a.title)}`)
-        );
+        const mbids = new Set(localAlbums.map((a) => a.rgMbid));
+        const owned = new Set(localAlbums.map((a) => `${artistIdentityKey(a.artist.name)}|${editionlessKey(a.title)}`));
 
         const found = wanted.filter((job) => {
-            const meta = job.metadata as any;
-            return owned.has(`${artistIdentityKey(meta.artistName)}|${editionlessKey(meta.albumTitle)}`);
+            const meta = (job.metadata as any) ?? {};
+            return (
+                (!!job.targetMbid && mbids.has(job.targetMbid)) ||
+                (!!meta.artistName && !!meta.albumTitle && owned.has(`${artistIdentityKey(meta.artistName)}|${editionlessKey(meta.albumTitle)}`))
+            );
         });
         const reconciled = await simpleDownloadManager.completeJobs(found);
         if (reconciled > 0) {

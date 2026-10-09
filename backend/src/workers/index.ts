@@ -38,8 +38,11 @@ import { sweepFailedDownloads } from "../services/lidarrFailures";
 import { queueCleaner } from "../jobs/queueCleaner";
 import { enrichmentStateService } from "../services/enrichmentState";
 
-// Track timeouts for cleanup
-const timeouts: NodeJS.Timeout[] = [];
+// One pending timer per self-rescheduling cycle, so handles never pile up; shutdown clears them.
+const timers = new Map<string, NodeJS.Timeout>();
+function schedule(name: string, run: () => void, ms: number) {
+    timers.set(name, setTimeout(run, ms));
+}
 
 // BullMQ workers for scan and discover queues
 const scanWorker = new Worker("library-scan-v2", processScan, {
@@ -152,7 +155,6 @@ startLibrarySyncCron();
 // Running guards to prevent pile-up when tasks take longer than their interval
 let dataIntegrityRunning = false;
 let reconciliationRunning = false;
-let lidarrCleanupRunning = false;
 
 // Self-rescheduling data integrity check (prevents pile-up on slow runs)
 async function runDataIntegrityCycle() {
@@ -164,16 +166,18 @@ async function runDataIntegrityCycle() {
         logger.error("Data integrity check failed:", err);
     } finally {
         dataIntegrityRunning = false;
-        timeouts.push(setTimeout(runDataIntegrityCycle, 24 * 60 * 60 * 1000));
+        schedule("data-integrity", runDataIntegrityCycle, 24 * 60 * 60 * 1000);
     }
 }
 
 // First run 10 seconds after startup
-timeouts.push(setTimeout(runDataIntegrityCycle, 10000));
+schedule("data-integrity", runDataIntegrityCycle, 10000);
 logger.debug("Data integrity check scheduled (every 24 hours, self-rescheduling)");
 
-// Matches active downloads against Lidarr and the library. Each cycle schedules
-// the next when it finishes, and does nothing while no download is active.
+// The one place downloads move outside webhooks. Each cycle reads Lidarr once,
+// completes what arrived before judging anything else, then acts on the queue,
+// follows replaced downloads and checks jobs still waiting for one. It schedules
+// the next cycle when it finishes and does nothing while no download is active.
 async function runReconciliationCycle() {
     if (reconciliationRunning) return;
     reconciliationRunning = true;
@@ -184,117 +188,32 @@ async function runReconciliationCycle() {
         if (activeJobs === 0) return;
 
         const { lidarrService } = await import("../services/lidarr");
-        const snapshot = await withTimeout(
-            lidarrService.getReconciliationSnapshot(),
-            30000,
-            "getReconciliationSnapshot timed out"
-        );
-
-        const staleCount = await withTimeout(
-            simpleDownloadManager.markStaleJobsAsFailed(snapshot),
-            120000,
-            "markStaleJobsAsFailed timed out"
-        );
-        if (staleCount && staleCount > 0) {
-            logger.debug(
-                `Periodic cleanup: marked ${staleCount} stale download(s) as failed`
-            );
-        }
-
-        const lidarrResult = await withTimeout(
-            simpleDownloadManager.reconcileWithLidarr(snapshot),
-            120000,
-            "reconcileWithLidarr timed out"
-        );
-        if (lidarrResult && lidarrResult.reconciled > 0) {
-            logger.debug(
-                `Periodic reconcile: ${lidarrResult.reconciled} job(s) matched in Lidarr`
-            );
-        }
-
-        const localResult = await withTimeout(
-            queueCleaner.reconcileWithLocalLibrary(),
-            120000,
-            "reconcileWithLocalLibrary timed out"
-        );
-        if (localResult && localResult.reconciled > 0) {
-            logger.debug(
-                `Periodic reconcile: ${localResult.reconciled} job(s) matched in local library`
-            );
-        }
-
-        const syncResult = await withTimeout(
-            simpleDownloadManager.syncWithLidarrQueue(snapshot),
-            120000,
-            "syncWithLidarrQueue timed out"
-        );
-        if (syncResult && syncResult.cancelled > 0) {
-            logger.debug(
-                `Periodic sync: ${syncResult.cancelled} job(s) synced with Lidarr queue`
-            );
+        const snapshot = await withTimeout(lidarrService.getReconciliationSnapshot(), 30000, "Lidarr snapshot timed out");
+        const steps: [string, () => Promise<unknown>][] = [
+            ["complete from Lidarr", () => simpleDownloadManager.reconcileWithLidarr(snapshot)],
+            ["complete from the library", () => queueCleaner.reconcileWithLocalLibrary()],
+            ["judge Lidarr's queue", () => (snapshot ? sweepFailedDownloads(snapshot) : Promise.resolve())],
+            ["follow replaced downloads", () => simpleDownloadManager.syncWithLidarrQueue(snapshot)],
+            ["check waiting jobs", () => simpleDownloadManager.checkWaitingJobs(snapshot)],
+        ];
+        // Each step stands alone: one that fails must not stop the others this cycle.
+        for (const [name, step] of steps) {
+            try {
+                await withTimeout(step(), 120000, `${name} timed out`);
+            } catch (err) {
+                logger.error(`Download reconciliation: ${name} failed:`, err);
+            }
         }
     } catch (err) {
-        logger.error(
-            "Periodic download cleanup/reconciliation failed:",
-            err
-        );
+        logger.error("Download reconciliation failed:", err);
     } finally {
         reconciliationRunning = false;
-        // Schedule next run AFTER this one completes (prevents pile-up)
-        timeouts.push(setTimeout(runReconciliationCycle, 2 * 60 * 1000));
+        schedule("reconciliation", runReconciliationCycle, 2 * 60 * 1000);
     }
 }
 
-// First reconciliation run 2 minutes after startup
-timeouts.push(setTimeout(runReconciliationCycle, 2 * 60 * 1000));
-logger.debug("Stale download cleanup scheduled (every 2 minutes, self-rescheduling)");
-
-// Self-rescheduling Lidarr queue cleanup (replaces setInterval to prevent pile-up)
-async function runLidarrCleanupCycle() {
-    if (lidarrCleanupRunning) return;
-    lidarrCleanupRunning = true;
-    try {
-        const result = await withTimeout(
-            sweepFailedDownloads(),
-            180000,
-            "sweepFailedDownloads timed out"
-        );
-        if (result && result.removed > 0) {
-            logger.debug(
-                `Periodic Lidarr cleanup: removed ${result.removed} stuck download(s)`
-            );
-        }
-    } catch (err) {
-        logger.error("Lidarr queue cleanup failed:", err);
-    } finally {
-        lidarrCleanupRunning = false;
-        // Schedule next run AFTER this one completes (prevents pile-up)
-        timeouts.push(setTimeout(runLidarrCleanupCycle, 5 * 60 * 1000));
-    }
-}
-
-// First Lidarr cleanup 5 minutes after startup (initial cleanup at 30s is separate)
-timeouts.push(setTimeout(runLidarrCleanupCycle, 5 * 60 * 1000));
-logger.debug("Lidarr queue cleanup scheduled (every 5 minutes, self-rescheduling)");
-
-// Run initial Lidarr cleanup 30 seconds after startup (to catch any stuck items)
-timeouts.push(
-    setTimeout(async () => {
-        try {
-            logger.debug("Running initial Lidarr queue cleanup...");
-            const result = await sweepFailedDownloads();
-            if (result.removed > 0) {
-                logger.debug(
-                    `Initial cleanup: removed ${result.removed} stuck download(s)`
-                );
-            } else {
-                logger.debug("Initial cleanup: queue is clean");
-            }
-        } catch (err) {
-            logger.error("Initial Lidarr cleanup failed:", err);
-        }
-    }, 30 * 1000) // 30 seconds after startup
-);
+schedule("reconciliation", runReconciliationCycle, 2 * 60 * 1000);
+logger.debug("Download reconciliation scheduled (every 2 minutes, self-rescheduling)");
 
 /**
  * Gracefully shutdown all workers and cleanup resources
@@ -326,10 +245,10 @@ export async function shutdownWorkers(): Promise<void> {
     stopLibrarySyncCron();
 
     // Clear all timeouts
-    for (const timeout of timeouts) {
+    for (const timeout of timers.values()) {
         clearTimeout(timeout);
     }
-    timeouts.length = 0;
+    timers.clear();
 
     // Close workers first so in-flight jobs complete, then close queues
     await Promise.all([scanWorker.close(), discoverWorker.close(), importWorker.close()]);

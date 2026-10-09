@@ -4,14 +4,24 @@
  * wants it.
  */
 
-jest.mock("../lidarr", () => ({
-    lidarrService: { unmonitorAlbum: jest.fn() },
-}));
-
 import { prisma } from "../../utils/db";
-import { lidarrService } from "../lidarr";
+import { loadScenario, startLidarrReplay, type LidarrReplay } from "../../__tests__/helpers/lidarrReplay";
+import { useLidarr } from "../../__tests__/helpers/lidarrSettings";
 import { simpleDownloadManager } from "../simpleDownloadManager";
 import { closeEngineConnections } from "../../__tests__/helpers/engineConnections";
+
+// Lidarr's real answer to "stop monitoring this album", recorded when a cancel asked it.
+const recorded = loadScenario("stalled-then-cancelled");
+let lidarr: LidarrReplay;
+const unmonitored = () =>
+    lidarr.asked.filter((a) => a.method === "PUT" && a.path === "/api/v1/album/monitor").map((a) => (a.body as any).albumIds);
+
+beforeEach(async () => {
+    lidarr = await startLidarrReplay(recorded);
+    await useLidarr(lidarr.url);
+});
+
+afterEach(() => lidarr.close());
 
 const ALICE = "sdm_shared_alice";
 const BOB = "sdm_shared_bob";
@@ -28,7 +38,7 @@ const job = (id: string, userId: string, data: Record<string, unknown> = {}) =>
             attempts: 1,
             targetMbid: "rg-antics",
             lidarrAlbumId: ALBUM,
-            metadata: { artistName: "Interpol", albumTitle: "Antics", noFallback: true },
+            metadata: { artistName: "Interpol", albumTitle: "Antics" },
             ...data,
         },
     });
@@ -44,7 +54,6 @@ beforeAll(async () => {
 
 afterEach(async () => {
     await prisma.downloadJob.deleteMany({ where: { userId: { in: [ALICE, BOB] } } });
-    (lidarrService.unmonitorAlbum as jest.Mock).mockReset();
 });
 
 afterAll(async () => {
@@ -93,7 +102,7 @@ it("counts one failure against each job and keeps searching", async () => {
     expect(result.searchAgain).toBe(true);
     expect((await row("sdm_a")).attempts).toBe(2);
     expect((await row("sdm_b")).attempts).toBe(2);
-    expect(lidarrService.unmonitorAlbum).not.toHaveBeenCalled();
+    expect(unmonitored()).toEqual([]);
 });
 
 it("keeps the album monitored while another user's job still wants it", async () => {
@@ -103,7 +112,7 @@ it("keeps the album monitored while another user's job still wants it", async ()
     const result = await simpleDownloadManager.onImportFailed("dl-1", "Import failed");
 
     expect(result.searchAgain).toBe(true);
-    expect(lidarrService.unmonitorAlbum).not.toHaveBeenCalled();
+    expect(unmonitored()).toEqual([]);
     expect((await row("sdm_a")).status).toBe("failed");
     expect((await row("sdm_b")).status).toBe("processing");
 });
@@ -115,15 +124,14 @@ it("unmonitors the album once no job wants it", async () => {
     const result = await simpleDownloadManager.onImportFailed("dl-1", "Import failed");
 
     expect(result.searchAgain).toBe(false);
-    expect(lidarrService.unmonitorAlbum).toHaveBeenCalledTimes(1);
-    expect(lidarrService.unmonitorAlbum).toHaveBeenCalledWith(ALBUM);
+    expect(unmonitored()).toEqual([[ALBUM]]);
 });
 
 it("restarts the clock on a job that searches again", async () => {
     const started = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     await job("sdm_a", ALICE, {
         lidarrRef: "dl-1",
-        metadata: { artistName: "Interpol", albumTitle: "Antics", noFallback: true, startedAt: started },
+        metadata: { artistName: "Interpol", albumTitle: "Antics", startedAt: started },
     });
 
     await simpleDownloadManager.onImportFailed("dl-1", "Import failed");

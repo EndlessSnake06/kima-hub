@@ -1,50 +1,54 @@
 /**
- * Lidarr queue removal has one owner: each download id is deleted at most once,
- * the sweep touches only downloads of Kima jobs, and only a real failure counts
- * as an attempt.
+ * The queue judge and Kima's one removal path, on the real test database and
+ * Lidarr's own queue items from recorded runs: missing tracks are parked and
+ * left alone, junk is removed with a blocklist so Lidarr tries the next
+ * release (or left to the user's own setup when the switch is off), a
+ * download is removed at most once, and only downloads of Kima jobs are touched.
  */
 
-jest.mock("../lidarr", () => ({
-    lidarrService: { getQueueItems: jest.fn(), removeQueueItem: jest.fn(), unmonitorAlbum: jest.fn() },
-}));
-
 import { prisma } from "../../utils/db";
-import { lidarrService } from "../lidarr";
-import { judgeQueueItem, rejectSingleTrackPost, removeFailedDownload, sweepFailedDownloads } from "../lidarrFailures";
+import { loadScenario, startLidarrReplay, type LidarrReplay, type LidarrScenario } from "../../__tests__/helpers/lidarrReplay";
+import { useLidarr } from "../../__tests__/helpers/lidarrSettings";
 import { closeEngineConnections } from "../../__tests__/helpers/engineConnections";
+import { judgeQueueItem, rejectSingleTrackPost, removeFailedDownload, sweepFailedDownloads } from "../lidarrFailures";
+import { lidarrService } from "../lidarr";
+import type { LidarrQueueItem } from "../../types/lidarr";
 
 const USER = "lf_user";
-const getQueueItems = lidarrService.getQueueItems as jest.Mock;
-const removeItem = lidarrService.removeQueueItem as jest.Mock;
+const junkRun = loadScenario("junk-removed");
+const parkedRun = loadScenario("missing-tracks");
 
-const item = (id: number, downloadId: string, extra: Record<string, unknown> = {}) => ({
-    id,
-    downloadId,
-    title: downloadId,
-    status: "completed",
-    trackedDownloadStatus: "ok",
-    trackedDownloadState: "importPending",
-    statusMessages: [],
-    ...extra,
-});
+/** The first queue reply in a run holding an item in this state, and that item. */
+function queued(run: LidarrScenario, state: (item: LidarrQueueItem) => boolean) {
+    for (const e of run.exchanges) {
+        const records: LidarrQueueItem[] = (e.response as any)?.records ?? [];
+        const item = e.path.startsWith("/api/v1/queue") ? records.find(state) : undefined;
+        if (item) return { seq: e.seq, item };
+    }
+    throw new Error(`no such queue item in ${run.name}`);
+}
 
-const ids = ["dl-1", "dl-2", "dl-mine", "dl-other", "dl-info", "dl-post", "dl-owned"];
+const executable = queued(junkRun, (q) => q.statusMessages.some((sm) => sm.title.includes("executable")));
+const missing = queued(parkedRun, (q) => q.trackedDownloadState === "importFailed");
+
+let lidarr: LidarrReplay;
 
 beforeAll(async () => {
     await prisma.user.deleteMany({ where: { id: USER } });
-    await prisma.user.create({
-        data: { id: USER, username: USER, passwordHash: "x", role: "user", tokenVersion: 0 },
-    });
+    await prisma.user.create({ data: { id: USER, username: USER, passwordHash: "x", role: "user", tokenVersion: 0 } });
 });
 
-beforeEach(() => {
-    getQueueItems.mockReset();
-    removeItem.mockReset().mockResolvedValue(true);
+beforeEach(async () => {
+    lidarr = await startLidarrReplay(junkRun);
+    lidarr.at(executable.seq + 2);
+    await useLidarr(lidarr.url);
 });
 
 afterEach(async () => {
-    await prisma.handledDownload.deleteMany({ where: { downloadId: { in: ids } } });
+    await lidarr.close();
+    await prisma.handledDownload.deleteMany({});
     await prisma.downloadJob.deleteMany({ where: { userId: USER } });
+    await prisma.notification.deleteMany({ where: { userId: USER } });
 });
 
 afterAll(async () => {
@@ -52,197 +56,101 @@ afterAll(async () => {
     await closeEngineConnections();
 });
 
-describe("removeFailedDownload", () => {
-    it("deletes a download from Lidarr once however many callers ask", async () => {
-        const target = { id: 7, title: "x" };
-        const results = await Promise.all([
-            removeFailedDownload("dl-1", "a", { searchAgain: true, item: target }),
-            removeFailedDownload("dl-1", "b", { searchAgain: true, item: target }),
-            removeFailedDownload("dl-1", "c", { searchAgain: true, item: target }),
-        ]);
-
-        expect(results.filter(Boolean)).toHaveLength(1);
-        expect(removeItem).toHaveBeenCalledTimes(1);
+const job = (lidarrRef: string, attempts = 1) =>
+    prisma.downloadJob.create({
+        data: {
+            userId: USER, subject: "Brad Sucks - Out of It", type: "album", status: "processing", attempts,
+            targetMbid: "16f30346-886a-3144-9377-cbfceb32fd34", lidarrRef, lidarrAlbumId: 120,
+            metadata: { artistName: "Brad Sucks", albumTitle: "Out of It" },
+        },
     });
 
-    it("lets a later caller try again when Lidarr refused the delete", async () => {
-        removeItem.mockResolvedValueOnce(false);
-        const target = { id: 7 };
+const deletes = () => lidarr.asked.filter((a) => a.method === "DELETE");
 
-        expect(await removeFailedDownload("dl-2", "a", { searchAgain: true, item: target })).toBe(false);
-        expect(await removeFailedDownload("dl-2", "a", { searchAgain: true, item: target })).toBe(true);
-        expect(removeItem).toHaveBeenCalledTimes(2);
+describe("judgeQueueItem on Lidarr's own queue items", () => {
+    it("parks a download missing tracks", () => {
+        expect(judgeQueueItem(missing.item)).toEqual({ action: "parked", reason: "Tracks missing" });
     });
 
-    it("tells Lidarr not to search again when the caller is giving up", async () => {
-        await removeFailedDownload("dl-1", "a", { searchAgain: false, item: { id: 7 } });
-        expect(removeItem).toHaveBeenCalledWith({ id: 7 }, { blocklist: true, skipRedownload: true });
+    it("calls a download holding an executable junk, from the status title Lidarr writes it in", () => {
+        expect(judgeQueueItem(executable.item)).toEqual({ action: "junk", reason: "Caution: Found executable file" });
     });
 
-    it("releases the claim when the download is not in Lidarr's queue", async () => {
-        getQueueItems.mockResolvedValue([]);
-
-        expect(await removeFailedDownload("dl-1", "a", { searchAgain: true })).toBe(false);
-        expect(await prisma.handledDownload.count({ where: { downloadId: "dl-1" } })).toBe(0);
-    });
-});
-
-describe("rejectSingleTrackPost", () => {
-    it("blocklists a single-track post and lets Lidarr search for the album", async () => {
-        getQueueItems.mockResolvedValue([item(9, "dl-post")]);
-
-        expect(await rejectSingleTrackPost("dl-post", '[11 of 19] "01 Jenny Was a Friend.flac" yEnc')).toBe(true);
-        expect(removeItem).toHaveBeenCalledWith(
-            expect.objectContaining({ id: 9 }),
-            { blocklist: true, skipRedownload: false }
-        );
-    });
-
-    it("leaves a whole album release alone", async () => {
-        expect(await rejectSingleTrackPost("dl-post", "The Killers - Hot Fuss (2004) [FLAC]")).toBe(false);
-        expect(removeItem).not.toHaveBeenCalled();
+    it("turns away a single-track post by its title", () => {
+        expect(judgeQueueItem({ ...executable.item, title: "Brad Sucks - Out of It [03/11] - 03 Feel Free.mp3" })?.action).toBe("reject");
     });
 });
 
 describe("sweepFailedDownloads", () => {
-    it("removes only Kima's failed downloads and counts each against its job", async () => {
-        await prisma.downloadJob.create({
-            data: { id: "lf_job", userId: USER, subject: "s", type: "album", status: "processing", lidarrRef: "dl-mine", attempts: 1 },
-        });
-        await prisma.downloadJob.create({
-            data: { id: "lf_job2", userId: USER, subject: "s2", type: "album", status: "processing", lidarrRef: "dl-info" },
-        });
-        getQueueItems.mockResolvedValue([
-            item(1, "dl-mine", { trackedDownloadState: "importFailed" }),
-            item(2, "dl-other", { trackedDownloadState: "importFailed" }),
-            item(3, "dl-info", {
-                trackedDownloadStatus: "warning",
-                trackedDownloadState: "downloading",
-                statusMessages: [{ title: "x", messages: ["Indexer is slow"] }],
-            }),
-        ]);
+    it("removes junk with a blocklist, lets Lidarr search again and counts the attempt", async () => {
+        const mine = await job(executable.item.downloadId, 2);
 
-        const first = await sweepFailedDownloads();
-        const second = await sweepFailedDownloads();
+        const snapshot = await lidarrService.getReconciliationSnapshot();
+        expect((await sweepFailedDownloads(snapshot)).removed).toBe(1);
 
-        expect(first.removed).toBe(1);
-        expect(second.removed).toBe(0);
-        expect(removeItem).toHaveBeenCalledTimes(1);
-        expect(removeItem.mock.calls[0]).toEqual([
-            expect.objectContaining({ downloadId: "dl-mine" }),
-            { blocklist: true, skipRedownload: false },
+        expect(deletes().map((d) => d.path)).toEqual([
+            `/api/v1/queue/${executable.item.id}?removeFromClient=true&blocklist=true&skipRedownload=false`,
         ]);
-        const job = await prisma.downloadJob.findUniqueOrThrow({ where: { id: "lf_job" } });
-        expect(job.lidarrRef).toBeNull();
-        expect((job.metadata as any).previousDownloadIds).toEqual(["dl-mine"]);
+        const row = await prisma.downloadJob.findUniqueOrThrow({ where: { id: mine.id } });
+        expect(row.attempts).toBe(3);
+        expect(row.lidarrRef).toBeNull();
+        expect((row.metadata as any).previousDownloadIds).toEqual([executable.item.downloadId]);
     });
 
-    it("tells Lidarr to stop searching once the job reaches its retry limit", async () => {
-        await prisma.downloadJob.create({
-            data: {
-                id: "lf_job", userId: USER, subject: "s", type: "album", status: "processing",
-                lidarrRef: "dl-mine", attempts: 3, metadata: { noFallback: true },
-            },
-        });
-        getQueueItems.mockResolvedValue([item(1, "dl-mine", { trackedDownloadState: "importFailed" })]);
+    it("leaves junk to the user's own setup when the switch is off, and the job waits", async () => {
+        await useLidarr(lidarr.url, { lidarrRemoveJunk: false });
+        const mine = await job(executable.item.downloadId);
 
-        expect((await sweepFailedDownloads()).removed).toBe(1);
-        expect(removeItem.mock.calls[0][1]).toEqual({ blocklist: true, skipRedownload: true });
-        expect((await prisma.downloadJob.findUniqueOrThrow({ where: { id: "lf_job" } })).status).toBe("failed");
+        await sweepFailedDownloads(await lidarrService.getReconciliationSnapshot());
+
+        expect(deletes()).toEqual([]);
+        const row = await prisma.downloadJob.findUniqueOrThrow({ where: { id: mine.id } });
+        expect(row.status).toBe("processing");
+        expect((row.metadata as any).parked).toBe("Caution: Found executable file");
+    });
+
+    it("never touches a download no Kima job owns", async () => {
+        await sweepFailedDownloads(await lidarrService.getReconciliationSnapshot());
+        expect(deletes()).toEqual([]);
     });
 });
 
-describe("sweep outcomes that are not failures", () => {
-    const processing = (id: string, lidarrRef: string) =>
-        prisma.downloadJob.create({
-            data: { id, userId: USER, subject: id, type: "album", status: "processing", lidarrRef, attempts: 1 },
-        });
-
-    it("rejects a single-track post without counting an attempt", async () => {
-        await processing("lf_job", "dl-post");
-        getQueueItems.mockResolvedValue([item(4, "dl-post", { title: "[10 of 19] \"02 Mr. Brightside.flac\"" })]);
-
-        expect((await sweepFailedDownloads()).removed).toBe(1);
-        expect(removeItem.mock.calls[0][1]).toEqual({ blocklist: true, skipRedownload: false });
-        const job = await prisma.downloadJob.findUniqueOrThrow({ where: { id: "lf_job" } });
-        expect(job.attempts).toBe(1);
-        expect((job.metadata as any)?.previousDownloadIds).toBeUndefined();
-    });
-
-    it("completes the job when Lidarr says the library already has the album", async () => {
-        await processing("lf_job", "dl-owned");
-        await processing("lf_job2", "dl-other");
-        getQueueItems.mockResolvedValue([
-            item(5, "dl-owned", {
-                trackedDownloadState: "importFailed",
-                statusMessages: [{ title: "x", messages: ["Not an upgrade for existing album file(s)"] }],
-            }),
-        ]);
-
-        expect((await sweepFailedDownloads()).removed).toBe(1);
-        expect(removeItem.mock.calls[0][1]).toEqual({ blocklist: false, skipRedownload: true });
-        expect((await prisma.downloadJob.findUniqueOrThrow({ where: { id: "lf_job" } })).status).toBe("completed");
-        expect((await prisma.downloadJob.findUniqueOrThrow({ where: { id: "lf_job2" } })).status).toBe("processing");
-    });
-
-    it("keeps a bundle torrent seeding: owned cleanup detaches without deleting data", async () => {
-        await processing("lf_job3", "dl-bundle");
-        await prisma.downloadJob.update({
-            where: { id: "lf_job3" },
-            data: { metadata: { grabbedAsBundle: true } },
-        });
-        getQueueItems.mockResolvedValue([
-            item(6, "dl-bundle", {
-                trackedDownloadState: "importFailed",
-                statusMessages: [{ title: "x", messages: ["Not an upgrade for existing track file(s)"] }],
-            }),
-        ]);
-
-        expect((await sweepFailedDownloads()).removed).toBe(1);
-        expect(removeItem.mock.calls[0][1]).toEqual({ blocklist: false, skipRedownload: true, removeFromClient: false });
+describe("removeFailedDownload", () => {
+    it("removes a download once however many callers ask", async () => {
+        const reason = "Caution: Found executable file";
+        expect(await removeFailedDownload(executable.item.downloadId, reason, { searchAgain: true })).toBe(true);
+        expect(await removeFailedDownload(executable.item.downloadId, reason, { searchAgain: true })).toBe(false);
+        expect(deletes()).toHaveLength(1);
     });
 });
 
-describe("judgeQueueItem", () => {
-    const partial = (addedMinutesAgo: number) =>
-        item(1, "d", {
-            trackedDownloadState: "importFailed",
-            added: new Date(Date.now() - addedMinutesAgo * 60_000).toISOString(),
-            statusMessages: [{ title: "t", messages: ["Has missing tracks"] }],
-        }) as any;
+describe("rejectSingleTrackPost", () => {
+    const post = "Brad Sucks - Out of It [03/11] - 03 Feel Free.mp3";
 
-    it("gives a partial import 15 minutes to finish", () => {
-        expect(judgeQueueItem(partial(5))).toBeNull();
-        expect(judgeQueueItem(partial(16))).toEqual({ action: "failed", reason: "Has missing tracks" });
+    it("turns a single-track post away at grab time when Kima removes junk", async () => {
+        expect(await rejectSingleTrackPost(executable.item.downloadId, post)).toBe(true);
+        expect(deletes()).toHaveLength(1);
     });
 
-    it("waits 15 minutes for an archive to be extracted before counting a failure", () => {
-        const awaiting = (addedMinutesAgo: number) =>
-            item(1, "d", {
-                trackedDownloadStatus: "warning",
-                added: new Date(Date.now() - addedMinutesAgo * 60_000).toISOString(),
-                statusMessages: [{ title: "t", messages: ["Found archive file, might need to be extracted"] }],
-            }) as any;
-
-        expect(judgeQueueItem(awaiting(5))).toBeNull();
-        expect(judgeQueueItem(awaiting(16))).toEqual({ action: "failed", reason: "Import blocked" });
+    it("leaves it to the user's own setup when the switch is off", async () => {
+        await useLidarr(lidarr.url, { lidarrRemoveJunk: false });
+        expect(await rejectSingleTrackPost(executable.item.downloadId, post)).toBe(false);
+        expect(deletes()).toEqual([]);
     });
 
-    it("counts an import Lidarr cannot do without a person as a failure at once", () => {
-        const blocked = item(1, "d", {
-            trackedDownloadStatus: "warning",
-            added: new Date().toISOString(),
-            statusMessages: [{ title: "t", messages: ["Unknown Artist"] }],
-        }) as any;
+    it("leaves a whole album release alone", async () => {
+        expect(await rejectSingleTrackPost(executable.item.downloadId, executable.item.title)).toBe(false);
+        expect(deletes()).toEqual([]);
+    });
+});
 
-        expect(judgeQueueItem(blocked)).toEqual({ action: "failed", reason: "Import blocked" });
+describe("single-track posts, hi-res albums and dates", () => {
+    it("never mistakes a hi-res album's bit depth and sample rate for a track number", () => {
+        expect(judgeQueueItem({ ...executable.item, title: "Brad Sucks - Out of It [24/96] FLAC" })?.action).not.toBe("reject");
+        expect(judgeQueueItem({ ...executable.item, title: "Brad Sucks - Out of It (2008) [16/44]" })?.action).not.toBe("reject");
     });
 
-    it("ignores a status message that is not a failure", () => {
-        for (const message of ["Indexer is slow", "Sample rate 48kHz"]) {
-            expect(
-                judgeQueueItem(item(1, "d", { statusMessages: [{ title: "t", messages: [message] }] }) as any)
-            ).toBeNull();
-        }
+    it("never mistakes a month and year for a track number", () => {
+        expect(judgeQueueItem({ ...executable.item, title: "Brad Sucks - Out of It [05/2012]" })?.action).not.toBe("reject");
     });
 });

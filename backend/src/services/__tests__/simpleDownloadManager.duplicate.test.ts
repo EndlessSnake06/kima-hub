@@ -1,7 +1,8 @@
 /**
- * A failing job is completed instead when another job already brought in the
- * same album: same release-group id, or the same artist and title. Any other
- * completed job is not a duplicate.
+ * A failing job is completed instead when another job brought in the same
+ * album, by its release-group id, while it was running. One completed before
+ * it started proves nothing now; another album id is another album; a job
+ * without an id has no duplicate.
  */
 
 import { prisma } from "../../utils/db";
@@ -12,7 +13,7 @@ const USER = "sdm_dup_user";
 const completeFromDuplicate = (job: unknown): Promise<boolean> =>
     (simpleDownloadManager as any).completeFromDuplicate(job);
 
-const job = (id: string, status: string, targetMbid: string | null, artistName: string, albumTitle: string) =>
+const job = (id: string, status: string, targetMbid: string | null, artistName: string, albumTitle: string, completedAt?: Date) =>
     prisma.downloadJob.create({
         data: {
             id,
@@ -21,6 +22,8 @@ const job = (id: string, status: string, targetMbid: string | null, artistName: 
             type: "album",
             status,
             targetMbid,
+            completedAt: completedAt ?? (status === "completed" ? new Date() : null),
+            createdAt: status === "completed" ? undefined : new Date(Date.now() - 60_000),
             metadata: { artistName, albumTitle },
         },
     });
@@ -58,16 +61,23 @@ it("completes from a job with the same release-group id", async () => {
     expect((done.metadata as any).mergedWithJob).toBe("sdm_dup_twin");
 });
 
-it("completes from a job with the same artist and title in any case", async () => {
-    await job("sdm_dup_twin", "completed", "rg-elsewhere", " low ", "TRUST");
-    const failing = await job("sdm_dup_me", "processing", null, "Low", "Trust");
+it("does not complete from a job with the same artist and title but another album id", async () => {
+    await job("sdm_dup_twin", "completed", "rg-elsewhere", "Low", "Trust");
+    const failing = await job("sdm_dup_me", "processing", "rg-me", "Low", "Trust");
 
-    expect(await completeFromDuplicate(failing)).toBe(true);
+    expect(await completeFromDuplicate(failing)).toBe(false);
 });
 
-it("does not match on an empty title", async () => {
-    await job("sdm_dup_twin", "completed", "rg-elsewhere", "Low", "");
-    const failing = await job("sdm_dup_me", "processing", null, "Low", "");
+it("never completes a job that has no album id", async () => {
+    await job("sdm_dup_twin", "completed", null, "Low", "Trust");
+    const failing = await job("sdm_dup_me", "processing", null, "Low", "Trust");
+
+    expect(await completeFromDuplicate(failing)).toBe(false);
+});
+
+it("does not count a copy that arrived before the job started", async () => {
+    await job("sdm_dup_twin", "completed", "rg-me", "Low", "Trust", new Date(Date.now() - 3600_000));
+    const failing = await job("sdm_dup_me", "processing", "rg-me", "Low", "Trust");
 
     expect(await completeFromDuplicate(failing)).toBe(false);
 });

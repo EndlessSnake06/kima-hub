@@ -28,9 +28,14 @@ export async function dispatchWebhookEvent(
         case "Download":
             return handleDownload(payload);
 
+        // Lidarr sends ImportFailure when an import stops short. Whether that is a
+        // parked download or junk only the queue item's status says, so the
+        // watcher's queue judge decides; counting it here would count it twice.
         case "ImportFailure":
+            return undefined;
+
         case "DownloadFailure":
-            return handleImportFailure(payload);
+            return handleDownloadFailure(payload);
 
         case "AlbumDelete":
             return handleAlbumDelete(payload);
@@ -77,12 +82,11 @@ export async function processStoredEvent(
 }
 
 /**
- * Handle Grab event (download started by Lidarr).
- * Kicks the queue cleaner so the stuck-queue sweep notices the grab.
+ * Lidarr grabbed a release: every job on any album the release covers takes
+ * the download (a bundle covers several), and the queue cleaner starts.
  */
 async function handleGrab(payload: any): Promise<string | undefined> {
     const downloadId = payload.downloadId;
-    const artistName = payload.artist?.name;
     const albums: any[] = payload.albums ?? [];
 
     if (!downloadId) {
@@ -94,28 +98,26 @@ async function handleGrab(payload: any): Promise<string | undefined> {
         return undefined;
     }
 
-    // A bundle grab lists every album the release is linked to; the wanted one
-    // is not necessarily first, so each job is matched against all of them.
     const bundle = albums.length > 1;
+    let firstJobId: string | undefined;
     for (const album of albums) {
         const result = await simpleDownloadManager.onDownloadGrabbed(
             downloadId,
             album?.mbId || "",
             album?.title || "",
-            artistName || "",
+            payload.artist?.name || "",
             album?.id || 0,
             { bundle }
         );
-        if (result.matched) {
-            logger.debug(`   Matched job on album "${album?.title}"${bundle ? " (bundle grab)" : ""}`);
-            await rejectSingleTrackPost(downloadId, payload.release?.releaseTitle);
-            queueCleaner.start();
-            return result.jobId;
-        }
+        if (result.matched) firstJobId ??= result.jobId;
     }
-
-    logger.debug(`   No job asked for any of the ${albums.length} album(s); Lidarr grabbed on its own`);
-    return undefined;
+    if (!firstJobId) {
+        logger.debug(`   No job asked for any of the ${albums.length} album(s); Lidarr grabbed on its own`);
+        return undefined;
+    }
+    await rejectSingleTrackPost(downloadId, payload.release?.releaseTitle);
+    queueCleaner.start();
+    return firstJobId;
 }
 
 /**
@@ -140,13 +142,8 @@ async function handleDownload(payload: any): Promise<string | undefined> {
         return undefined;
     }
 
-    const result = await simpleDownloadManager.onDownloadComplete(
-        downloadId,
-        albumMbid,
-        artistName,
-        albumTitle,
-        lidarrAlbumId
-    );
+    const filesImported: number | undefined = Array.isArray(payload.trackFiles) ? payload.trackFiles.length : undefined;
+    const result = await simpleDownloadManager.onDownloadComplete(downloadId, albumMbid, lidarrAlbumId, albumTitle, filesImported);
 
     if (result.jobId) {
         const downloadJob = await prisma.downloadJob.findUnique({
@@ -165,39 +162,29 @@ async function handleDownload(payload: any): Promise<string | undefined> {
         });
 
         return result.jobId;
-    } else {
-        logger.debug(`   No matching job, triggering full scan anyway...`);
-        await requestScan({
-            source: "lidarr-import-external",
-        });
-        return undefined;
     }
+    if (filesImported === 0) return undefined;
+    logger.debug(`   No matching job, triggering full scan anyway...`);
+    await requestScan({
+        source: "lidarr-import-external",
+    });
+    return undefined;
 }
 
 /**
- * Handle import failure with automatic retry.
+ * A download failed in Lidarr: the download client gave up on it, or it was
+ * removed with a blocklist. Counted against its jobs; Lidarr searches again by itself.
  */
-async function handleImportFailure(
-    payload: any
-): Promise<string | undefined> {
+async function handleDownloadFailure(payload: any): Promise<string | undefined> {
     const downloadId = payload.downloadId;
-    const albumMbid = payload.album?.mbId;
-    const albumTitle = payload.album?.title;
-    const reason = payload.message || "Import failed";
-
-    logger.debug(`   Album: ${albumTitle}`);
-    logger.debug(`   Download ID: ${downloadId}`);
-    logger.debug(`   Reason: ${reason}`);
-
     if (!downloadId) {
         logger.debug(`   Missing downloadId, skipping`);
         return undefined;
     }
-
     const result = await simpleDownloadManager.onImportFailed(
         downloadId,
-        reason,
-        albumMbid
+        payload.message || "Download failed",
+        payload.album?.mbId
     );
     return result.jobId;
 }

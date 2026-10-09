@@ -46,6 +46,7 @@ const systemSettingsSchema = z.object({
   lidarrWebhookSecret: z.string().nullable().optional(),
   lidarrQualityProfileId: z.number().int().positive().nullable().optional(),
   lidarrMetadataProfileId: z.number().int().positive().nullable().optional(),
+  lidarrRemoveJunk: z.boolean().optional(),
 
   // AI Services
   openaiEnabled: z.boolean().optional(),

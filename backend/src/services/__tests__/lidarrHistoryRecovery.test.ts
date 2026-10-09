@@ -1,128 +1,140 @@
 /**
- * Lidarr history fills in webhooks that never arrived: each record is handled
- * once, under the same event id a webhook would have used.
+ * Missed webhooks are recovered from Lidarr's history, here the history a real
+ * Lidarr returned in the recorded missing-tracks run, on the real test
+ * database: a missed grab links its job once under the webhook's own event id,
+ * an event already delivered is left alone, Lidarr's import-incomplete record
+ * counts no attempt, and the read reaches back to the oldest active download.
+ * From the recorded bundle run: a grab covering two albums is recovered as one
+ * grab listing both, each album's finished import carries the files Lidarr's
+ * history shows for it (none for the album the bundle brought nothing of), and
+ * the file history is read only for imports not stored yet.
  */
 
-jest.mock("../lidarr", () => ({ getHistorySince: jest.fn() }));
-jest.mock("../simpleDownloadManager", () => ({
-    simpleDownloadManager: {
-        onDownloadGrabbed: jest.fn().mockResolvedValue({ matched: false }),
-        onDownloadComplete: jest.fn().mockResolvedValue({ jobId: "job-1" }),
-        onImportFailed: jest.fn().mockResolvedValue({}),
-        onAlbumDeleted: jest.fn(),
-    },
-}));
-jest.mock("../lidarrFailures", () => ({ rejectSingleTrackPost: jest.fn() }));
-jest.mock("../../jobs/queueCleaner", () => ({ queueCleaner: { start: jest.fn() } }));
-
 import { prisma } from "../../utils/db";
-import { getHistorySince } from "../lidarr";
-import { simpleDownloadManager } from "../simpleDownloadManager";
-import { webhookEventStore } from "../webhookEventStore";
-import { recoverMissedEvents } from "../lidarrHistoryRecovery";
+import { loadScenario, startLidarrReplay, type LidarrReplay } from "../../__tests__/helpers/lidarrReplay";
 import { closeEngineConnections } from "../../__tests__/helpers/engineConnections";
+import { recoverMissedEvents } from "../lidarrHistoryRecovery";
+import { queueCleaner } from "../../jobs/queueCleaner";
 
-const history = getHistorySince as jest.Mock;
-const record = (downloadId: string | undefined, data: Record<string, string> = {}, id = 1) => ({
-    id,
-    albumId: 42,
-    downloadId,
-    eventType: "downloadImported",
-    sourceTitle: "Interpol - Antics (2004) [FLAC]",
-    date: new Date().toISOString(),
-    data,
-    album: { id: 42, title: "Antics", foreignAlbumId: "rg-1" },
-    artist: { artistName: "Interpol" },
+const USER = "history_recovery_user";
+const recorded = loadScenario("missing-tracks");
+const grab = recorded.webhooks.find((w) => w.eventType === "Grab")!.payload;
+const historyRead = recorded.exchanges.find((e) => e.path.includes("/history/since") && e.path.includes("eventType=7"))!;
+
+let lidarr: LidarrReplay;
+
+beforeAll(async () => {
+    await prisma.user.deleteMany({ where: { id: USER } });
+    await prisma.user.create({ data: { id: USER, username: USER, passwordHash: "x", role: "user", tokenVersion: 0 } });
 });
-const onlyType = (type: number, records: unknown[]) =>
-    history.mockImplementation(async (_u, _k, _since, eventType) => (eventType === type ? records : []));
 
 beforeEach(async () => {
-    jest.clearAllMocks();
     await prisma.webhookEvent.deleteMany({ where: { source: "lidarr" } });
+    lidarr = await startLidarrReplay(recorded);
+    lidarr.at(historyRead.seq);
+});
+
+afterEach(async () => {
+    await lidarr.close();
+    await prisma.downloadJob.deleteMany({ where: { userId: USER } });
 });
 
 afterAll(async () => {
+    queueCleaner.stop();
     await prisma.webhookEvent.deleteMany({ where: { source: "lidarr" } });
+    await prisma.user.deleteMany({ where: { id: USER } });
     await closeEngineConnections();
 });
 
-it("handles a missed import once, under the webhook's event id", async () => {
-    onlyType(8, [record("dl-1")]);
+const waitingJob = (createdAt = new Date()) =>
+    prisma.downloadJob.create({
+        data: {
+            userId: USER, subject: "Brad Sucks - Guess Who’s a Mess", type: "album", status: "processing",
+            targetMbid: grab.albums[0].mbId, lidarrAlbumId: grab.albums[0].id, createdAt, attempts: 1,
+            metadata: { artistName: "Brad Sucks", albumTitle: "Guess Who’s a Mess" },
+        },
+    });
 
-    expect(await recoverMissedEvents("http://lidarr", "key")).toBe(1);
-    expect(await recoverMissedEvents("http://lidarr", "key")).toBe(0);
+it("links the job to a grab whose webhook never arrived, under the webhook's event id, once", async () => {
+    const job = await waitingJob();
 
-    expect(simpleDownloadManager.onDownloadComplete).toHaveBeenCalledTimes(1);
-    expect(simpleDownloadManager.onDownloadComplete).toHaveBeenCalledWith("dl-1", "rg-1", "Interpol", "Antics", 42);
-    const stored = await prisma.webhookEvent.findUniqueOrThrow({ where: { eventId: "lidarr-Download-dl-1" } });
-    expect(stored.processed).toBe(true);
+    expect(await recoverMissedEvents(lidarr.url, "key")).toBe(2);
+    expect(await recoverMissedEvents(lidarr.url, "key")).toBe(0);
+
+    const row = await prisma.downloadJob.findUniqueOrThrow({ where: { id: job.id } });
+    expect(row.lidarrRef).toBe(grab.downloadId);
+    expect(row.attempts).toBe(1);
+    expect(await prisma.webhookEvent.findUnique({ where: { eventId: `lidarr-Grab-${grab.downloadId}` } })).not.toBeNull();
 });
 
 it("leaves an event the webhook already delivered alone", async () => {
-    const { event } = await webhookEventStore.storeEvent("lidarr", "Download", { eventType: "Download", downloadId: "dl-2" });
-    onlyType(8, [record("dl-2")]);
-
-    expect(await recoverMissedEvents("http://lidarr", "key")).toBe(0);
-    expect(simpleDownloadManager.onDownloadComplete).not.toHaveBeenCalled();
-    expect((await prisma.webhookEvent.findUniqueOrThrow({ where: { id: event.id } })).processed).toBe(false);
-});
-
-it("builds a Grab with the album list and release title", async () => {
-    onlyType(1, [record("dl-3")]);
-
-    await recoverMissedEvents("http://lidarr", "key");
-    expect(simpleDownloadManager.onDownloadGrabbed).toHaveBeenCalledWith(
-        "dl-3", "rg-1", "Antics", "Interpol", 42, { bundle: false }
-    );
-});
-
-it("passes the download failure's message", async () => {
-    onlyType(4, [record("dl-4", { message: "Download client removed the item" })]);
-
-    await recoverMissedEvents("http://lidarr", "key");
-    expect(simpleDownloadManager.onImportFailed).toHaveBeenCalledWith("dl-4", "Download client removed the item", "rg-1");
-});
-
-it("skips records without a download id", async () => {
-    onlyType(8, [record(undefined)]);
-
-    expect(await recoverMissedEvents("http://lidarr", "key")).toBe(0);
-    expect(await prisma.webhookEvent.count({ where: { source: "lidarr" } })).toBe(0);
-});
-
-it("reads from 10 minutes before the newest event, never more than 7 days back", async () => {
-    history.mockResolvedValue([]);
-    const day = 24 * 60 * 60 * 1000;
-
-    await recoverMissedEvents("http://lidarr", "key");
-    const floor = history.mock.calls[0][2] as Date;
-    expect(Math.abs(Date.now() - 7 * day - floor.getTime())).toBeLessThan(5000);
-
-    const { event } = await webhookEventStore.storeEvent("lidarr", "Grab", { eventType: "Grab", downloadId: "dl-5" });
-    history.mockClear();
-    await recoverMissedEvents("http://lidarr", "key");
-    const since = history.mock.calls[0][2] as Date;
-    expect(event.createdAt.getTime() - since.getTime()).toBe(10 * 60 * 1000);
-    expect(history.mock.calls.map((c) => c[3])).toEqual([1, 8, 4, 7]);
-});
-
-it("replays missed events in the order Lidarr recorded them", async () => {
-    const byType: Record<number, unknown[]> = {
-        1: [record("dl-a", {}, 1), record("dl-b", {}, 3)],
-        4: [record("dl-a", { message: "stalled" }, 2), record("dl-b", { message: "stalled" }, 4)],
-    };
-    history.mockImplementation(async (_u, _k, _since, eventType) => byType[eventType] ?? []);
-    const order: string[] = [];
-    (simpleDownloadManager.onDownloadGrabbed as jest.Mock).mockImplementation(async (id: string) => {
-        order.push(`grab ${id}`);
-        return { matched: true };
+    await prisma.webhookEvent.create({
+        data: { eventId: `lidarr-Grab-${grab.downloadId}`, source: "lidarr", eventType: "Grab", payload: grab, processed: true },
     });
-    (simpleDownloadManager.onImportFailed as jest.Mock).mockImplementation(async (id: string) => {
-        order.push(`fail ${id}`);
-        return {};
+    expect(await recoverMissedEvents(lidarr.url, "key")).toBe(1);
+});
+
+it("reads back to the oldest active download when it started before the newest event", async () => {
+    const started = new Date(Date.now() - 3 * 3600_000);
+    await waitingJob(started);
+    await prisma.webhookEvent.create({
+        data: { eventId: "lidarr-newest", source: "lidarr", eventType: "Test", payload: {}, processed: true },
     });
 
-    expect(await recoverMissedEvents("http://lidarr", "key")).toBe(4);
-    expect(order).toEqual(["grab dl-a", "fail dl-a", "grab dl-b", "fail dl-b"]);
+    await recoverMissedEvents(lidarr.url, "key");
+
+    const read = lidarr.asked.find((a) => a.path.includes("/history/since"))!;
+    const since = new Date(new URLSearchParams(read.path.split("?")[1]).get("date")!);
+    expect(since.getTime()).toBeLessThanOrEqual(started.getTime());
+});
+
+describe("a bundle's history", () => {
+    const bundle = loadScenario("bundle");
+    const bundleGrab = bundle.webhooks.find((w) => w.eventType === "Grab")!.payload;
+    const lastSeq = Math.max(...bundle.exchanges.map((e) => e.seq));
+    const stored = (id: string) => prisma.webhookEvent.findUniqueOrThrow({ where: { eventId: id } });
+
+    // The setup download that brought the owned album was imported, and its
+    // events stored, before the bundle; the live server had them already.
+    const earlier = (type: number) =>
+        (bundle.exchanges.find((e) => e.path.includes("/history/since") && e.path.includes(`eventType=${type}&`))!.response as any[])
+            .filter((record) => record.downloadId !== bundleGrab.downloadId);
+
+    beforeEach(async () => {
+        await lidarr.close();
+        lidarr = await startLidarrReplay(bundle);
+        lidarr.at(lastSeq);
+        for (const [eventType, record] of [
+            ...earlier(1).map((r) => ["Grab", r] as const),
+            ...earlier(8).map((r) => ["Download", r] as const),
+        ]) {
+            const eventId = eventType === "Grab" ? `lidarr-Grab-${record.downloadId}` : `lidarr-Download-${record.downloadId}-${record.albumId}`;
+            await prisma.webhookEvent.upsert({
+                where: { eventId },
+                create: { eventId, source: "lidarr", eventType, payload: {}, processed: true },
+                update: {},
+            });
+        }
+    });
+
+    it("recovers the grab once, listing every album, and each import with that album's own files", async () => {
+        await recoverMissedEvents(lidarr.url, "key");
+
+        const recoveredGrab = (await stored(`lidarr-Grab-${bundleGrab.downloadId}`)).payload as any;
+        expect(recoveredGrab.albums.map((a: any) => a.id).sort()).toEqual(bundleGrab.albums.map((a: any) => a.id).sort());
+        for (const album of bundleGrab.albums) {
+            const recorded = bundle.webhooks.find((w) => w.eventType === "Download" && w.payload.album.id === album.id)!.payload;
+            const recovered = (await stored(`lidarr-Download-${bundleGrab.downloadId}-${album.id}`)).payload as any;
+            expect(recovered.trackFiles).toHaveLength(recorded.trackFiles.length);
+        }
+    });
+
+    it("reads Lidarr's file history only for imports it has not stored yet", async () => {
+        await recoverMissedEvents(lidarr.url, "key");
+        const reads = () => lidarr.asked.filter((a) => a.path.includes("eventType=3")).length;
+        const before = reads();
+
+        await recoverMissedEvents(lidarr.url, "key");
+        expect(reads()).toBe(before);
+    });
 });

@@ -69,6 +69,8 @@ class LidarrHealthMonitor {
             const settings = await getSystemSettings();
             if (!settings?.lidarrEnabled || !settings.lidarrUrl || !settings.lidarrApiKey) {
                 await this.recover("off");
+                const { simpleDownloadManager } = await import("./simpleDownloadManager");
+                await simpleDownloadManager.failHeldDownloads();
                 return delay;
             }
             const reason = await this.probe(settings.lidarrUrl, settings.lidarrApiKey);

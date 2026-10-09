@@ -143,6 +143,9 @@ export interface LidarrQueueItem {
   trackedDownloadStatus: string;
   trackedDownloadState: string;
   statusMessages: { title: string; messages: string[] }[];
+  albumId?: number;
+  /** The download client's own warning, such as "The download is stalled with no connections". */
+  errorMessage?: string;
   sizeleft?: number;
   size?: number;
   added?: string;
