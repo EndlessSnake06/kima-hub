@@ -21,14 +21,34 @@ import { LibraryToolbar } from "@/features/library/components/LibraryToolbar";
 import { ArtistsGrid } from "@/features/library/components/ArtistsGrid";
 import { AlbumsGrid } from "@/features/library/components/AlbumsGrid";
 import { TracksList } from "@/features/library/components/TracksList";
+import { DEFAULT_REFINE, PER_PAGE_OPTIONS, sortOptionsFor } from "@/features/library/components/RefinePanel";
 import { Pagination } from "@/components/ui/Pagination";
 import { latchTotal, parsePageParam } from "@/lib/pagination";
+import { scrollMainToTop } from "@/lib/scroll";
 
-function libraryUrl(tab: Tab, page?: number): string {
+const FILTERS: LibraryFilter[] = ["owned", "discovery", "all"];
+
+interface LibraryView {
+    filter: LibraryFilter;
+    sortBy: SortOption;
+    itemsPerPage: number;
+}
+const DEFAULT_VIEW: LibraryView = DEFAULT_REFINE;
+
+/** The address carries tab, page, filter, sort and page size, so refresh and Back keep them; defaults are left out. */
+function libraryUrl(tab: Tab, page: number, view: LibraryView): string {
     const params = new URLSearchParams();
     params.set("tab", tab);
-    if (page && page > 1) params.set("page", String(page));
+    if (page > 1) params.set("page", String(page));
+    if (view.filter !== DEFAULT_VIEW.filter) params.set("filter", view.filter);
+    if (view.sortBy !== DEFAULT_VIEW.sortBy) params.set("sort", view.sortBy);
+    if (view.itemsPerPage !== DEFAULT_VIEW.itemsPerPage) params.set("per", String(view.itemsPerPage));
     return `/collection?${params.toString()}`;
+}
+
+/** The address's value when it is one of the choices, else the default. */
+function oneOf<T extends string | number>(raw: string | null, choices: readonly T[], fallback: T): T {
+    return choices.find((choice) => String(choice) === raw) ?? fallback;
 }
 
 export default function LibraryPage() {
@@ -46,12 +66,16 @@ export default function LibraryPage() {
     // pager math never sees NaN.
     const currentPage = parsePageParam(searchParams.get("page"));
 
-    // Filter state (owned = your library, discovery = discovery weekly artists)
-    const [filter, setFilter] = useState<LibraryFilter>("owned");
-
-    // Sort and pagination state
-    const [sortBy, setSortBy] = useState<SortOption>("name");
-    const [itemsPerPage, setItemsPerPage] = useState<number>(40);
+    // Filter (owned = your library, discovery = discovery weekly artists), sort
+    // and page size live in the URL too; the tracks tab shows owned tracks only.
+    const filter: LibraryFilter =
+        activeTab === "tracks" ? "owned" : oneOf(searchParams.get("filter"), FILTERS, DEFAULT_VIEW.filter);
+    const sortBy = oneOf(
+        searchParams.get("sort"),
+        sortOptionsFor(activeTab).map((opt) => opt.value),
+        DEFAULT_VIEW.sortBy,
+    );
+    const itemsPerPage = oneOf(searchParams.get("per"), PER_PAGE_OPTIONS, DEFAULT_VIEW.itemsPerPage);
 
     const shownPageRef = useRef(currentPage);
 
@@ -141,7 +165,7 @@ export default function LibraryPage() {
     useLayoutEffect(() => {
         if (!pageDataReady || shownPageRef.current === currentPage) return;
         shownPageRef.current = currentPage;
-        document.getElementById("main-content")?.scrollTo({ top: 0, behavior: "instant" });
+        scrollMainToTop();
     }, [pageDataReady, currentPage]);
 
     const pagination = useMemo(
@@ -187,39 +211,26 @@ export default function LibraryPage() {
     // entrance animation. Declared above the effects that set it.
     const [gridKey, setGridKey] = useState(0);
 
-    // A tab switch pushes a page-less URL, so the page resets on its own; here
-    // the tracks tab resets its filter and the grid remounts to replay its entrance.
+    // A tab switch pushes a page-less URL, so the page resets on its own; the
+    // grid remounts to replay its entrance.
     const [shownTab, setShownTab] = useState(activeTab);
     if (shownTab !== activeTab) {
         setShownTab(activeTab);
-        if (activeTab === "tracks") setFilter("owned");
         setGridKey((k) => k + 1);
     }
 
-    // Changing filter/sort/page-size invalidates the current page number, so
-    // the URL loses it and the grid remounts. Done in the handlers, not an
-    // effect on the state, so the URL rewrite only happens on user action.
-    const resetView = useCallback(() => {
-        setGridKey((k) => k + 1);
-        if (currentPage !== 1) {
-            router.replace(libraryUrl(activeTab, 1), { scroll: false });
-        }
-    }, [activeTab, currentPage, router]);
-
-    const changeFilter = useCallback((next: LibraryFilter) => {
-        setFilter(next);
-        resetView();
-    }, [resetView]);
-
-    const changeSort = useCallback((next: SortOption) => {
-        setSortBy(next);
-        resetView();
-    }, [resetView]);
-
-    const changeItemsPerPage = useCallback((next: number) => {
-        setItemsPerPage(next);
-        resetView();
-    }, [resetView]);
+    // Changing filter/sort/page-size starts again at page 1 and remounts the
+    // grid. Done in the handlers, so the URL changes only on user action.
+    const changeView = useCallback(
+        (next: Partial<LibraryView>) => {
+            setGridKey((k) => k + 1);
+            router.replace(libraryUrl(activeTab, 1, { filter, sortBy, itemsPerPage, ...next }), { scroll: false });
+        },
+        [activeTab, filter, sortBy, itemsPerPage, router],
+    );
+    const changeFilter = useCallback((next: LibraryFilter) => changeView({ filter: next }), [changeView]);
+    const changeSort = useCallback((next: SortOption) => changeView({ sortBy: next }), [changeView]);
+    const changeItemsPerPage = useCallback((next: number) => changeView({ itemsPerPage: next }), [changeView]);
 
     // A ?page= past the end is moved back to the last real page once a response
     // lands. The URL stays the single source of truth, so one empty frame shows.
@@ -230,9 +241,9 @@ export default function LibraryPage() {
         currentPage > pagination.totalPages;
     useEffect(() => {
         if (outOfRange) {
-            router.replace(libraryUrl(activeTab, pagination.totalPages), { scroll: false });
+            router.replace(libraryUrl(activeTab, pagination.totalPages, { filter, sortBy, itemsPerPage }), { scroll: false });
         }
-    }, [outOfRange, activeTab, pagination.totalPages, router]);
+    }, [outOfRange, activeTab, pagination.totalPages, filter, sortBy, itemsPerPage, router]);
 
     // Get total items and pages from pagination
     const totalItems = pagination.total;
@@ -249,17 +260,21 @@ export default function LibraryPage() {
     // Change tab function
     const changeTab = useCallback(
         (tab: Tab) => {
-            router.push(libraryUrl(tab, 1), { scroll: false });
+            // The tracks tab shows owned tracks only and starts the filter over;
+            // a sort the next tab does not offer starts over too.
+            const nextFilter = tab === "tracks" ? DEFAULT_VIEW.filter : filter;
+            const nextSort = sortOptionsFor(tab).some((opt) => opt.value === sortBy) ? sortBy : DEFAULT_VIEW.sortBy;
+            router.push(libraryUrl(tab, 1, { filter: nextFilter, sortBy: nextSort, itemsPerPage }), { scroll: false });
         },
-        [router],
+        [filter, sortBy, itemsPerPage, router],
     );
 
     // Update page with URL state — the URL is the page's only storage.
     const updatePage = useCallback(
         (page: number) => {
-            router.push(libraryUrl(activeTab, page), { scroll: false });
+            router.push(libraryUrl(activeTab, page, { filter, sortBy, itemsPerPage }), { scroll: false });
         },
-        [activeTab, router],
+        [activeTab, filter, sortBy, itemsPerPage, router],
     );
 
     // Helper to convert library Track to audio context Track format

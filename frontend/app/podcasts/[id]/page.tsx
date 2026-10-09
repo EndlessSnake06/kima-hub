@@ -3,6 +3,9 @@
 import DOMPurify from "dompurify";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { useImageColor } from "@/hooks/useImageColor";
+import { api } from "@/lib/api";
+import { notify } from "@/lib/notify";
+import type { Episode } from "@/features/podcast/types";
 
 import { usePodcastData } from "@/features/podcast/hooks/usePodcastData";
 import { usePodcastActions } from "@/features/podcast/hooks/usePodcastActions";
@@ -32,6 +35,10 @@ export default function PodcastDetailPage() {
         setSortOrder,
         inProgressEpisodes,
         sortedEpisodes,
+        episodesUpdating,
+        hasMore,
+        loadMore,
+        loadingMore,
     } = usePodcastData();
 
     const { colors } = useImageColor(colorExtractionImage);
@@ -86,16 +93,20 @@ export default function PodcastDetailPage() {
 
     const isSubscribed = !!podcast;
     const episodeCount = podcast
-        ? podcast.episodes.length
+        ? podcast.episodeTotal ?? podcast.episodes.length
         : previewData?.episodeCount || 0;
 
-    const handlePlayLatest = () => {
-        if (sortedEpisodes.length > 0 && podcast) {
-            // Play the most recent unfinished episode, or the latest episode
-            const unfinished = sortedEpisodes.find(
-                (ep) => !ep.progress?.isFinished
-            );
-            handlePlayEpisode(unfinished || sortedEpisodes[0], podcast);
+    // The most recent unfinished episode, or the latest; the list shown oldest
+    // first holds the oldest page, so the newest is asked for.
+    const handlePlayLatest = async () => {
+        if (!podcast) return;
+        try {
+            const newest: Episode[] =
+                sortOrder === "newest" ? sortedEpisodes : (await api.getPodcast(podcast.id, { order: "newest", limit: 20 })).episodes;
+            const pick = newest.find((ep) => !ep.progress?.isFinished) ?? newest[0];
+            if (pick) handlePlayEpisode(pick, podcast, newest);
+        } catch (error) {
+            notify.error("Couldn't load the latest episode", { message: error instanceof Error ? error.message : undefined });
         }
     };
 
@@ -188,6 +199,10 @@ export default function PodcastDetailPage() {
                                 onPlay={(episode) => handlePlayEpisode(episode, podcast)}
                                 onMarkComplete={handleMarkEpisodeComplete}
                                 fallbackCoverUrl={podcast?.coverUrl}
+                                total={episodeCount}
+                                updating={episodesUpdating}
+                                onLoadMore={hasMore ? () => loadMore() : undefined}
+                                loadingMore={loadingMore}
                             />
                         </div>
                     )}

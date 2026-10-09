@@ -82,8 +82,8 @@ export function OverlayPlayer() {
     const shuffle = shuffleState(hasMedia, playbackType, activeOperation.type);
 
 
-    // Swipe handlers for track skipping. Only a clearly sideways swipe counts, so
-    // scrolling the lyrics with a little drift never skips the track.
+    // A sideways swipe on the artwork skips the track; the seek bar and other
+    // controls are outside it. Only a clearly sideways swipe counts.
     const handleTouchStart = (e: React.TouchEvent) => {
         touchStartX.current = e.touches[0].clientX;
         touchStartY.current = e.touches[0].clientY;
@@ -120,9 +120,6 @@ export function OverlayPlayer() {
     return (
         <div
             className="fixed inset-0 bg-gradient-to-b from-[#141210] via-[#0a0a0a] to-[#000000] z-(--z-overlay) flex flex-col overflow-hidden"
-            onTouchStart={isMobileOrTablet ? handleTouchStart : undefined}
-            onTouchMove={isMobileOrTablet ? handleTouchMove : undefined}
-            onTouchEnd={isMobileOrTablet ? handleTouchEnd : undefined}
         >
             <div
                 className="flex items-center justify-between px-4 py-3 flex-shrink-0"
@@ -158,6 +155,9 @@ export function OverlayPlayer() {
                             transform: `translateX(${swipeOffset * 0.5}px)`,
                             opacity: 1 - Math.abs(swipeOffset) / 200,
                         }}
+                        onTouchStart={isMobileOrTablet ? handleTouchStart : undefined}
+                        onTouchMove={isMobileOrTablet ? handleTouchMove : undefined}
+                        onTouchEnd={isMobileOrTablet ? handleTouchEnd : undefined}
                     >
                         <div
                             className={cn(
@@ -242,7 +242,7 @@ export function OverlayPlayer() {
                         )}
                         <PlayCountLine
                             trackId={playbackType === "track" ? currentTrack?.id : null}
-                            className="block text-sm truncate mt-1"
+                            className="mt-1"
                         />
 
                     </div>

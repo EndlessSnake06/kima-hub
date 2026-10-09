@@ -571,26 +571,14 @@ export default function OnboardingPage() {
                                                         setSubmitting(false);
                                                     }
                                                 }}
-                                                onKeyDown={(e) => {
-                                                    if (e.key === "Enter") {
-                                                        e.currentTarget.click();
-                                                    }
-                                                }}
                                                 disabled={submitting}
-                                                tabIndex={0}
                                                 className="flex-1 bg-white/5 border border-white/10 text-[var(--text-secondary)] font-medium py-3.5 rounded-lg hover:bg-white/10 transition-all disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-brand/30"
                                             >
                                                 Finish without integrations
                                             </button>
                                             <button
                                                 onClick={handleNextStep}
-                                                onKeyDown={(e) =>
-                                                    e.key === "Enter" &&
-                                                    !submitting &&
-                                                    handleNextStep()
-                                                }
                                                 disabled={submitting}
-                                                tabIndex={0}
                                                 className="flex-1 py-3.5 bg-brand text-black font-bold rounded-lg hover:bg-brand-hover transition-all disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-brand/30"
                                             >
                                                 {submitting ?

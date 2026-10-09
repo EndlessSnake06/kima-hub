@@ -83,6 +83,19 @@ export function useNotifications() {
     };
 }
 
+/** Finished and failed downloads; SSE download events refresh it. */
+export function useDownloadHistory() {
+    const { isAuthenticated } = useAuth();
+    const { data: history = EMPTY_DOWNLOADS, isLoading } = useQuery<DownloadHistoryItem[]>({
+        queryKey: ["download-history"],
+        queryFn: () => api.getDownloadHistory() as Promise<DownloadHistoryItem[]>,
+        enabled: isAuthenticated,
+        // Not playback-related, so it may refresh when the window regains focus.
+        refetchOnWindowFocus: true,
+    });
+    return { history, isLoading };
+}
+
 /**
  * Hook for active downloads. Updates are driven by SSE events
  * (download:complete, download:failed) invalidating the query cache.

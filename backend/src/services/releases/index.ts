@@ -8,7 +8,7 @@
 import { ChoiceDecidedBy } from "@prisma/client";
 import { prisma } from "../../utils/db";
 import { logger } from "../../utils/logger";
-import { RELEASES, choicesIn, findRelease, type Release, type ReleaseItem } from "./catalog";
+import { GPU_CHOICE_KEY, RELEASES, choicesIn, findRelease, type Release, type ReleaseItem } from "./catalog";
 import { MOOD_MIX_RELEASE, moodMixState, type MoodMixState } from "./moodMixes";
 
 export { findRelease, GPU_CHOICE_KEY } from "./catalog";
@@ -40,10 +40,62 @@ export async function pendingReleases(userId: string): Promise<Release[]> {
     // order: the array is edited newest-entry-first by habit, and a reader
     // who has been away for three versions must meet them in the order they
     // happened, answering the older consent questions before the newer ones.
-    const pending = RELEASES.filter((r) => !seen.has(r.version)).sort((a, b) =>
-        a.date === b.date ? a.version.localeCompare(b.version) : a.date < b.date ? -1 : 1,
-    );
+    const pending = RELEASES.filter((r) => !seen.has(r.version)).sort(byDate);
+    const out = await forUser(userId, pending);
 
+    // A mix under a mood 1.11 removed cannot be shown, so closing the window
+    // must not be the last word on it: until the user saves or removes it,
+    // the question comes back on the next visit, on its own.
+    if (seen.has(MOOD_MIX_RELEASE)) {
+        const release = findRelease(MOOD_MIX_RELEASE);
+        const retired = release?.items.find((i) => i.kind === "action" && i.requires === "retiredMoodMix");
+        const s = retired ? await moodMixState(userId) : undefined;
+        if (release && retired && s?.mix?.retired && s.decision === null && s.playlist === null) {
+            out.push({
+                ...release,
+                note: undefined,
+                title: "One thing left from 1.11",
+                summary: "Your old mood mix is still waiting for an answer.",
+                items: [retired],
+            });
+        }
+    }
+    return out;
+}
+
+const byDate = (a: Release, b: Release) =>
+    a.date === b.date ? a.version.localeCompare(b.version) : a.date < b.date ? -1 : 1;
+
+/**
+ * The newest release as this user would be shown it, closed or not, to read
+ * again, with what is already settled: each choice's answer (the GPU one is the
+ * setting as it stands, whoever changed it) and the mood-mix question once the
+ * user decided it.
+ */
+export async function currentReleaseFor(
+    userId: string,
+): Promise<{ release: Release; answers: Record<string, boolean>; done: string[] } | undefined> {
+    const newest = [...RELEASES].sort(byDate).at(-1);
+    if (!newest) return undefined;
+    const [release] = await forUser(userId, [newest]);
+    const asked = choicesIn(release).map((c) => c.key);
+    const rows = await prisma.releaseChoice.findMany({ where: { userId, key: { in: asked } }, select: { key: true, enabled: true } });
+    const answers: Record<string, boolean> = Object.fromEntries(rows.map((row) => [row.key, row.enabled]));
+    if (asked.includes(GPU_CHOICE_KEY)) {
+        const settings = await prisma.systemSettings.findUnique({ where: { id: "default" }, select: { gpuOnnxEnabled: true } });
+        answers[GPU_CHOICE_KEY] = settings?.gpuOnnxEnabled ?? false;
+    }
+    const done: string[] = [];
+    const mixItems = release.items.filter((i) => i.key === "moods.mixes" || i.key === "moods.mixes.retired").map((i) => i.key);
+    if (mixItems.length > 0) {
+        const state = await moodMixState(userId);
+        if (state.decision !== null || state.playlist !== null) done.push(...mixItems);
+    }
+    return { release, answers, done };
+}
+
+/** The releases with only the items that apply to this user. */
+async function forUser(userId: string, releases: Release[]): Promise<Release[]> {
     // Items that only apply to some users are dropped for the rest: asking
     // someone with no mood mix to rebuild it would be noise, and asking a
     // non-admin to switch a system-wide setting they cannot change would be
@@ -67,28 +119,10 @@ export async function pendingReleases(userId: string): Promise<Release[]> {
     };
 
     const out: Release[] = [];
-    for (const r of pending) {
+    for (const r of releases) {
         const items: ReleaseItem[] = [];
         for (const i of r.items) if (await applies(i, r)) items.push(i);
         out.push(items.length === r.items.length ? r : { ...r, items });
-    }
-
-    // A mix under a mood 1.11 removed cannot be shown, so closing the window
-    // must not be the last word on it: until the user saves or removes it,
-    // the question comes back on the next visit, on its own.
-    if (seen.has(MOOD_MIX_RELEASE)) {
-        const release = findRelease(MOOD_MIX_RELEASE);
-        const retired = release?.items.find((i) => i.kind === "action" && i.requires === "retiredMoodMix");
-        const s = retired ? await mixState() : undefined;
-        if (release && retired && s?.mix?.retired && s.decision === null && s.playlist === null) {
-            out.push({
-                ...release,
-                note: undefined,
-                title: "One thing left from 1.11",
-                summary: "Your old mood mix is still waiting for an answer.",
-                items: [retired],
-            });
-        }
     }
     return out;
 }

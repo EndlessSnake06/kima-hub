@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useQueryClient, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import type { DiscoverPlaylist, DiscoverConfig } from '../types';
 
@@ -14,7 +14,6 @@ interface BatchStatus {
 }
 
 export function useDiscoverData() {
-  const queryClient = useQueryClient();
   const [playlist, setPlaylist] = useState<DiscoverPlaylist | null>(null);
   const [config, setConfig] = useState<DiscoverConfig | null>(null);
   const [loading, setLoading] = useState(true);
@@ -23,16 +22,14 @@ export function useDiscoverData() {
   const wasActiveRef = useRef(false);
   const generationStartTimeRef = useRef<number | null>(null);
 
-  // SSE-populated batch status (populated by useEventSource via queryClient.setQueryData)
-  const { data: sseBatchStatus } = useQuery<BatchStatus | null>({
+  // The server's batch status. SSE events update it as they arrive; while a batch
+  // runs it is also read again every 30 s, so a missed event cannot leave the
+  // page showing "generating" after the batch has ended.
+  const { data: batchStatus = null, refetch: refetchBatchStatus } = useQuery<BatchStatus | null>({
     queryKey: ["discover-batch-status"],
-    queryFn: () => queryClient.getQueryData<BatchStatus>(["discover-batch-status"]) ?? null,
-    staleTime: Infinity,
-    refetchOnWindowFocus: false,
+    queryFn: () => api.getDiscoverBatchStatus(),
+    refetchInterval: (query) => (query.state.data?.active ? 30_000 : false),
   });
-
-  // Derive batchStatus from SSE data or use null
-  const batchStatus = sseBatchStatus || null;
 
   const loadData = useCallback(async () => {
     setLoadError(false);
@@ -50,25 +47,16 @@ export function useDiscoverData() {
     }
   }, []);
 
-  // Check initial batch status on mount (one-time fetch)
-  const checkBatchStatus = useCallback(async () => {
-    try {
-      const status = await api.getDiscoverBatchStatus();
-      // Seed the React Query cache so SSE has a baseline
-      queryClient.setQueryData(["discover-batch-status"], status);
-      return status;
-    } catch (error) {
-      console.error('Failed to check batch status:', error);
-      setPendingGeneration(false);
-      return null;
-    }
-  }, [queryClient]);
+  const refreshBatchStatus = useCallback(async () => {
+    const { data, error } = await refetchBatchStatus();
+    if (error) setPendingGeneration(false);
+    return data ?? null;
+  }, [refetchBatchStatus]);
 
   // Initial load
   useEffect(() => {
     const init = async () => {
       setLoading(true);
-      await checkBatchStatus();
       await loadData();
       setTimeout(() => { setLoading(false); }, 100);
     };
@@ -114,21 +102,6 @@ export function useDiscoverData() {
     }
   }, [batchStatus, loadData, pendingGeneration]);
 
-  // Stale batch detection - clear stuck "active" state after 5 minutes
-  useEffect(() => {
-    if (!batchStatus?.active) return;
-
-    const timeout = setTimeout(() => {
-      // If still active after 5 minutes, assume stale and clear
-      console.warn('[DiscoverWeekly] Batch stuck active for 5 minutes - clearing stale state');
-      queryClient.setQueryData(["discover-batch-status"], { active: false, status: null, batchId: null });
-      setPendingGeneration(false);
-      loadData();
-    }, 5 * 60 * 1000); // 5 minutes
-
-    return () => clearTimeout(timeout);
-  }, [batchStatus?.active, queryClient, loadData]);
-
   // Mark when generation starts
   const markGenerationStart = useCallback(() => {
     generationStartTimeRef.current = Date.now();
@@ -157,7 +130,7 @@ export function useDiscoverData() {
     loadError,
     reloadData: loadData,
     batchStatus,
-    refreshBatchStatus: checkBatchStatus,
+    refreshBatchStatus,
     setPendingGeneration,
     markGenerationStart,
     updateTrackLiked,

@@ -16,6 +16,7 @@ import { formatDate } from "../utils";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { CachedImage } from "@/components/ui/CachedImage";
 import { cascadeStyle } from "@/lib/motion";
+import { GradientSpinner } from "@/components/ui/GradientSpinner";
 
 /** Feeds advertise durations that drift; a listened-past-the-end row shows 100, not 107. */
 const clampPercent = (p: number) => Math.min(100, Math.max(0, Math.round(p)));
@@ -174,6 +175,12 @@ interface EpisodeListProps {
     onPlay: (episode: Episode) => void;
     onMarkComplete?: (episodeId: string, duration: number) => void;
     fallbackCoverUrl?: string;
+    /** Every episode the podcast has, loaded or not. */
+    total: number;
+    /** The list is being fetched again in a new order. */
+    updating?: boolean;
+    onLoadMore?: () => void;
+    loadingMore?: boolean;
 }
 
 export function EpisodeList({
@@ -185,14 +192,20 @@ export function EpisodeList({
     onPlayPause,
     onMarkComplete,
     fallbackCoverUrl,
+    total,
+    updating,
+    onLoadMore,
+    loadingMore,
 }: EpisodeListProps) {
     const [filter, setFilter] = useState<Filter>("all");
 
+    // Listen-state counts cover every episode only once all are loaded.
+    const allLoaded = !onLoadMore;
     const counts = useMemo(() => {
-        const c = { all: episodes.length, unplayed: 0, inProgress: 0, finished: 0 };
+        const c = { all: total, unplayed: 0, inProgress: 0, finished: 0 };
         for (const ep of episodes) c[listenState(ep)] += 1;
         return c;
-    }, [episodes]);
+    }, [episodes, total]);
 
     const groups = useMemo(() => {
         const visible = episodes.filter((ep) => filter === "all" || listenState(ep) === filter);
@@ -247,13 +260,19 @@ export function EpisodeList({
                         )}
                     >
                         {label}
-                        <span className="ml-1.5 opacity-60">{counts[key]}</span>
+                        {(key === "all" || allLoaded) && <span className="ml-1.5 opacity-60">{counts[key]}</span>}
                     </button>
                 ))}
             </div>
 
-            {groups.length === 0 ? (
-                <p className="px-3 py-8 text-sm text-[var(--text-muted)]">Nothing in this filter.</p>
+            {updating ? (
+                <div className="flex justify-center py-8" aria-busy="true">
+                    <GradientSpinner size="sm" />
+                </div>
+            ) : groups.length === 0 ? (
+                <p className="px-3 py-8 text-sm text-[var(--text-muted)]">
+                    {allLoaded ? "Nothing in this filter." : "Nothing in this filter among the episodes loaded so far."}
+                </p>
             ) : (
                 <div style={cascadeStyle(Math.min(groups.reduce((n, [, g]) => n + g.length, 0), 40))}>
                     {groups.map(([label, group]) => (
@@ -282,6 +301,19 @@ export function EpisodeList({
                             </div>
                         </div>
                     ))}
+                </div>
+            )}
+
+            {onLoadMore && !updating && (
+                <div className="flex justify-center px-3 pt-2 pb-4">
+                    <button
+                        type="button"
+                        onClick={onLoadMore}
+                        disabled={loadingMore}
+                        className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs tabular-nums text-[var(--text-secondary)] transition-colors hover:border-white/20 hover:bg-white/10 hover:text-white disabled:opacity-50"
+                    >
+                        {loadingMore ? "Loading…" : `Show more (${total - episodes.length} left)`}
+                    </button>
                 </div>
             )}
         </section>

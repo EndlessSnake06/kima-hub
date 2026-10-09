@@ -4,7 +4,8 @@
  * home 2m, playlists 1m.
  */
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMemo } from "react";
+import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 
 export const queryKeys = {
@@ -328,23 +329,30 @@ export function usePodcastsQuery() {
     });
 }
 
-/** Resolves to null when the podcast is not subscribed (404), so the page can show a preview. */
+// The most episodes the server returns in one page.
+const EPISODE_PAGE = 200;
+
+/**
+ * Resolves to null when the podcast is not subscribed (404), so the page can show
+ * a preview. Episodes arrive a page at a time; `data.episodes` holds every page
+ * loaded so far and `loadMore` fetches the next.
+ */
 export function usePodcastQuery(
     id: string | undefined,
     order: "newest" | "oldest" = "newest"
 ) {
     // Numeric IDs are iTunes IDs, not database CUIDs - skip subscription lookup
     const isItunesId = !!id && /^\d+$/.test(id);
-    return useQuery({
+    const query = useInfiniteQuery({
         // The order is part of the key: "oldest" must fetch a different page,
         // not just re-sort the newest one.
         queryKey: [...queryKeys.podcast(id || ""), order],
-        queryFn: async () => {
+        queryFn: async ({ pageParam }) => {
             if (!id) throw new Error("Podcast ID is required");
             if (isItunesId) return null; // iTunes ID - go straight to preview mode
 
             try {
-                return await api.getPodcast(id, { order, limit: 200 });
+                return await api.getPodcast(id, { order, limit: EPISODE_PAGE, offset: pageParam });
             } catch (error) {
                 // If podcast not found (404), return null to allow preview mode
                 const err = error as { status?: number; message?: string };
@@ -359,11 +367,41 @@ export function usePodcastQuery(
                 throw error;
             }
         },
+        initialPageParam: 0,
+        getNextPageParam: (last, pages) => {
+            const loaded = pages.reduce((n, page) => n + (page?.episodes.length ?? 0), 0);
+            return last && loaded < (last.episodeTotal ?? 0) ? loaded : undefined;
+        },
         enabled: !!id,
         staleTime: 5 * 60 * 1000, // 5 minutes
         retry: false, // Don't retry 404 errors
-        placeholderData: (previousData) => previousData,
+        // The other order of the same podcast keeps its page on screen meanwhile;
+        // another podcast does not show this one's.
+        placeholderData: (previousData, previousQuery) =>
+            previousQuery?.queryKey[1] === id ? previousData : undefined,
     });
+
+    // One object per set of pages, so effects keyed on it run when episodes
+    // change, not on every render. An episode published between two page
+    // reads would appear on both; it is kept once.
+    const data = useMemo(() => {
+        const first = query.data?.pages[0];
+        if (!first) return first;
+        const seen = new Set<string>();
+        const episodes = query.data!.pages
+            .flatMap((page) => page?.episodes ?? [])
+            .filter((episode: { id: string }) => !seen.has(episode.id) && !!seen.add(episode.id));
+        return { ...first, episodes };
+    }, [query.data]);
+    return {
+        data,
+        isLoading: query.isLoading,
+        isPlaceholderData: query.isPlaceholderData,
+        refetch: query.refetch,
+        hasMore: query.hasNextPage,
+        loadMore: query.fetchNextPage,
+        loadingMore: query.isFetchingNextPage,
+    };
 }
 
 export function useTopPodcastsQuery(limit: number = 20, genreId?: number) {
@@ -511,7 +549,8 @@ export function useMoveTrackInPlaylistMutation() {
             const previous = queryClient.getQueryData(queryKeys.playlist(variables.playlistId));
             queryClient.setQueryData(queryKeys.playlist(variables.playlistId), (old: Record<string, unknown> | undefined) => {
                 if (!old || !Array.isArray(old.items)) return old;
-                const items = old.items as Array<Record<string, unknown>>;
+                // A copy: the cached list is also `previous`, restored if the move fails.
+                const items = [...(old.items as Array<Record<string, unknown>>)];
                 const idx = items.findIndex((item) => item.id === variables.itemId);
                 if (idx === -1) return old;
                 const [moved] = items.splice(idx, 1);

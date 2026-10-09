@@ -9,6 +9,8 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { notify } from "@/lib/notify";
 import { KimaMark } from "@/components/ui/KimaMark";
+import { APP_VERSION } from "@/lib/version";
+import { openWhatsNew } from "@/components/whats-new/WhatsNewGate";
 
 interface MobileSidebarProps {
     isOpen: boolean;
@@ -215,6 +217,18 @@ export function MobileSidebar({ isOpen, onClose }: MobileSidebarProps) {
                 </nav>
 
                 <div className="border-t border-white/[0.06] p-3">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            onClose();
+                            openWhatsNew();
+                        }}
+                        className="w-full flex items-center gap-3 px-3 py-3 rounded-lg text-[var(--text-muted)] hover:text-white hover:bg-white/5 transition-colors duration-200"
+                    >
+                        <span className="text-sm">
+                            What&apos;s new in <span className="text-brand/80">v{APP_VERSION}</span>
+                        </span>
+                    </button>
                     <button
                         onClick={handleLogout}
                         className="w-full flex items-center gap-3 px-3 py-3 rounded-lg text-danger-light hover:brightness-125 hover:bg-danger/10 transition-colors duration-200"

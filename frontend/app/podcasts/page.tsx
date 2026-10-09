@@ -16,6 +16,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { CachedImage } from "@/components/ui/CachedImage";
 import { MediaCard } from "@/components/cards/MediaCard";
+import { scrollMainToTop } from "@/lib/scroll";
 
 const getProxiedImageUrl = (imageUrl: string | undefined): string | null => {
     if (!imageUrl) return null;
@@ -70,6 +71,10 @@ export default function PodcastsPage() {
     const [sortBy, setSortBy] = useState<SortOption>("title");
     const [itemsPerPage, setItemsPerPage] = useState<number>(50);
     const [currentPage, setCurrentPage] = useState(1);
+    const showPage = (page: number) => {
+        setCurrentPage(page);
+        scrollMainToTop();
+    };
 
     const isLoading = isLoadingPodcasts || isLoadingTopPodcasts;
     const [isRefreshingAll, setIsRefreshingAll] = useState(false);
@@ -412,7 +417,7 @@ export default function PodcastsPage() {
                             <Pagination
                                 currentPage={currentPage}
                                 totalPages={totalPages}
-                                onPageChange={setCurrentPage}
+                                onPageChange={showPage}
                                 label="My podcasts"
                                 className="mt-8"
                             />

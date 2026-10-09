@@ -59,10 +59,13 @@ export function usePodcastActions(podcastId: string, sortedEpisodes?: Episode[])
     }, [podcastId, router, queryClient]);
 
     const handlePlayEpisode = useCallback(
-        (episode: Episode, podcast: Podcast) => {
-            // Build episode queue from sorted episodes
-            if (sortedEpisodes && sortedEpisodes.length > 0) {
-                setPodcastEpisodeQueue(sortedEpisodes);
+        (episode: Episode, podcast: Podcast, around: Episode[] | undefined = sortedEpisodes) => {
+            // The queue is saved in the browser: 200 episodes around the one
+            // played, from the list it was picked from.
+            if (around && around.length > 0) {
+                const at = Math.max(0, around.findIndex((e) => e.id === episode.id));
+                const start = Math.max(0, Math.min(at - 100, around.length - 200));
+                setPodcastEpisodeQueue(around.slice(start, start + 200));
             }
             
             playPodcast({
@@ -112,10 +115,8 @@ export function usePodcastActions(podcastId: string, sortedEpisodes?: Episode[])
                     true
                 );
                 
-                // Invalidate podcast query to refresh UI
-                queryClient.invalidateQueries({
-                    queryKey: queryKeys.podcast(podcastId)
-                });
+                // A fresh read after the write, so the episode shows as played.
+                queryClient.invalidateQueries({ queryKey: queryKeys.podcast(podcastId) });
                 
                 // Dispatch event for real-time UI updates
                 dispatchQueryEvent("podcast-progress-updated");

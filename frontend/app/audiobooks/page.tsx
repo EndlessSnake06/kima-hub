@@ -25,6 +25,7 @@ import { shuffleArray } from "@/lib/shuffle";
 import { Pagination } from "@/components/ui/Pagination";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { Button } from "@/components/ui/Button";
+import { scrollMainToTop } from "@/lib/scroll";
 
 interface Audiobook {
     id: string;
@@ -67,6 +68,10 @@ export default function AudiobooksPage() {
     const [groupBySeries, setGroupBySeries] = useState(false);
     const [itemsPerPage, setItemsPerPage] = useState<number>(50);
     const [currentPage, setCurrentPage] = useState(1);
+    const showPage = (page: number) => {
+        setCurrentPage(page);
+        scrollMainToTop();
+    };
 
     const isConfigured = !(
         audiobooksData &&
@@ -610,7 +615,7 @@ export default function AudiobooksPage() {
                     <Pagination
                         currentPage={currentPage}
                         totalPages={totalPages}
-                        onPageChange={setCurrentPage}
+                        onPageChange={showPage}
                         label="Audiobooks"
                         className="mt-0"
                     />

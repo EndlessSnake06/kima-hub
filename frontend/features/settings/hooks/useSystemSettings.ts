@@ -33,6 +33,7 @@ const defaultSystemSettings: SystemSettings = {
     soulseekConcurrentDownloads: 4,
     lidarrQualityProfileId: null,
     lidarrMetadataProfileId: null,
+    lidarrRemoveJunk: true,
     // Download preferences
     downloadSource: "soulseek",
     primaryFailureFallback: "none",

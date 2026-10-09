@@ -23,6 +23,15 @@ const SORT_OPTIONS: { label: string; value: SortOption }[] = [
     { label: "Most Tracks", value: "tracks" },
 ];
 
+/** The sorts a tab offers: year for albums, track count for artists. */
+export function sortOptionsFor(tab: Tab) {
+    return SORT_OPTIONS.filter((opt) => {
+        if (opt.value === "recent") return tab === "albums";
+        if (opt.value === "tracks") return tab === "artists";
+        return true;
+    });
+}
+
 // Human-readable labels -- backend filter values ("owned"/"discovery") unchanged
 const FILTER_OPTIONS: { label: string; description: string; value: LibraryFilter }[] = [
     {
@@ -42,10 +51,15 @@ const FILTER_OPTIONS: { label: string; description: string; value: LibraryFilter
     },
 ];
 
-const PER_PAGE_OPTIONS = [24, 40, 80, 200];
+export const PER_PAGE_OPTIONS = [24, 40, 80, 200];
+
+/** What the collection shows when the address names nothing else. */
+export const DEFAULT_REFINE = { filter: "owned" as LibraryFilter, sortBy: "name" as SortOption, itemsPerPage: 40 };
 
 function isNonDefault(filter: LibraryFilter, sortBy: SortOption, itemsPerPage: number): boolean {
-    return filter !== "owned" || sortBy !== "name" || itemsPerPage !== 40;
+    return (
+        filter !== DEFAULT_REFINE.filter || sortBy !== DEFAULT_REFINE.sortBy || itemsPerPage !== DEFAULT_REFINE.itemsPerPage
+    );
 }
 
 export function RefinePanel({
@@ -98,12 +112,7 @@ export function RefinePanel({
         return () => document.removeEventListener("keydown", handleKeyDown);
     }, [open]);
 
-    // Visible sort options depend on active tab
-    const sortOptions = SORT_OPTIONS.filter((opt) => {
-        if (opt.value === "recent") return activeTab === "albums";
-        if (opt.value === "tracks") return activeTab === "artists";
-        return true;
-    });
+    const sortOptions = sortOptionsFor(activeTab);
 
     return (
         <div className="relative">

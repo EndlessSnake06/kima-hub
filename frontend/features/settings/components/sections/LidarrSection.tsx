@@ -114,6 +114,18 @@ export function LidarrSection({ settings, onUpdate, onTest, isTesting }: LidarrS
                         </div>
                     </div>
 
+                    <SettingsRow
+                        label="Remove junk downloads"
+                        description="When a download has no usable music or is the wrong album, remove it so Lidarr tries the next release. Turn off if your own Lidarr setup already handles this"
+                        htmlFor="lidarr-remove-junk"
+                    >
+                        <SettingsToggle
+                            id="lidarr-remove-junk"
+                            checked={settings.lidarrRemoveJunk}
+                            onChange={(checked) => onUpdate({ lidarrRemoveJunk: checked })}
+                        />
+                    </SettingsRow>
+
                     {hasProfiles && (
                         <>
                             <SettingsRow

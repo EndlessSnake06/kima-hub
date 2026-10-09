@@ -1,37 +1,21 @@
 "use client";
 
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Trash2, RotateCcw, History } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
-import { DownloadRow, RowAction, type DownloadRowItem } from "./DownloadRow";
-
-type DownloadHistory = DownloadRowItem;
+import { useDownloadHistory, type DownloadHistoryItem } from "@/hooks/useNotifications";
+import { DownloadRow, RowAction } from "./DownloadRow";
 
 export function HistoryTab() {
-    const [history, setHistory] = useState<DownloadHistory[]>([]);
-    const [loading, setLoading] = useState(true);
+    const queryClient = useQueryClient();
+    const { history, isLoading: loading } = useDownloadHistory();
     const [retrying, setRetrying] = useState<Set<string>>(new Set());
+    const [retryFailed, setRetryFailed] = useState<Record<string, string>>({});
 
-    const fetchHistory = async () => {
-        try {
-            const data = await api.getDownloadHistory();
-            setHistory(data);
-        } catch (error) {
-            console.error("Failed to fetch download history:", error);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        fetchHistory();
-
-        // Refresh on window focus
-        const handleFocus = () => fetchHistory();
-        window.addEventListener("focus", handleFocus);
-        return () => window.removeEventListener("focus", handleFocus);
-    }, []);
+    const setHistory = (update: (prev: DownloadHistoryItem[]) => DownloadHistoryItem[]) =>
+        queryClient.setQueryData<DownloadHistoryItem[]>(["download-history"], (prev = []) => update(prev));
 
     const handleClear = async (id: string) => {
         try {
@@ -45,22 +29,23 @@ export function HistoryTab() {
     const handleClearAll = async () => {
         try {
             await api.clearAllDownloadHistory();
-            setHistory([]);
+            setHistory(() => []);
         } catch (error) {
             console.error("Failed to clear all history:", error);
         }
     };
 
     const handleRetry = async (id: string) => {
+        setRetrying((prev) => new Set(prev).add(id));
+        setRetryFailed(({ [id]: _, ...rest }) => rest);
         try {
-            setRetrying((prev) => new Set(prev).add(id));
             const result = await api.retryFailedDownload(id);
-            if (result.success) {
-                // Remove from history (it's now in active)
-                setHistory((prev) => prev.filter((h) => h.id !== id));
-            }
+            if (!result.success) throw new Error("The retry did not start");
+            setHistory((prev) => prev.filter((h) => h.id !== id));
+            queryClient.invalidateQueries({ queryKey: ["active-downloads"] });
         } catch (error) {
-            console.error("Failed to retry download:", error);
+            const reason = error instanceof Error ? error.message : "The retry did not start";
+            setRetryFailed((prev) => ({ ...prev, [id]: `Retry failed: ${reason}` }));
         } finally {
             setRetrying((prev) => {
                 const next = new Set(prev);
@@ -111,6 +96,7 @@ export function HistoryTab() {
                                 key={item.id}
                                 item={item}
                                 tone="failed"
+                                notice={retryFailed[item.id]}
                                 actions={
                                     <>
                                         <RowAction

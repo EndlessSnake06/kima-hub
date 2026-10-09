@@ -135,6 +135,9 @@ export default function SyncPage() {
             try {
                 const scanResult = await api.scanLibrary();
                 if (!mounted) return;
+                // Every manual scan has the same job id; the last scan's status
+                // must not stand in for this one.
+                queryClient.removeQueries({ queryKey: ["scan-status", scanResult.jobId] });
                 setScanJobId(scanResult.jobId);
             } catch (err: unknown) {
                 console.error("Sync error:", err);
@@ -146,7 +149,7 @@ export default function SyncPage() {
 
         startSync();
         return () => { mounted = false; };
-    }, []);
+    }, [queryClient]);
 
     // Handle post-scan side effects (audiobook sync, redirect)
     useEffect(() => {

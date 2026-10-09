@@ -7,6 +7,7 @@ import {
     ListMusic,
     AlertCircle,
     CheckCircle,
+    Clock,
     ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -30,6 +31,8 @@ export function NotificationsTab() {
             case "download_failed":
             case "error":
                 return <AlertCircle className="w-4 h-4 text-danger-light" />;
+            case "download_waiting":
+                return <Clock className="w-4 h-4 text-warning" />;
             case "playlist_ready":
             case "import_complete":
                 return <ListMusic className="w-4 h-4 text-brand" />;

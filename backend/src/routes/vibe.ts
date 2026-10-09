@@ -8,6 +8,7 @@ import { requireAuth } from "../middleware/auth";
 import { UserFacingError } from "../utils/errors";
 import { findSimilarTracks } from "../services/hybridSimilarity";
 import { getVibeMap, type MapResponse } from "../services/vibeMap";
+import { currentMoodSnapshot, moodOutput } from "../services/moodBucketService";
 import { generateSongPath } from "../services/songPath";
 import { searchTracksByText } from "../services/textEmbeddingBridge";
 import { SELF_SCORE, blendSelfScore } from "../services/matching/formula";
@@ -301,6 +302,20 @@ router.post("/search", requireAuth, async (req, res) => {
             });
         }
         res.status(500).json({ error: "Failed to search tracks by vibe" });
+    }
+});
+
+/**
+ * GET /api/vibe/mood/:trackId
+ * The track's dominant mood, the same one that colours its star on the map.
+ */
+router.get("/mood/:trackId", requireAuth, async (req, res) => {
+    try {
+        const snap = await currentMoodSnapshot();
+        res.json({ dominantMood: moodOutput(snap.views.get(req.params.trackId)).dominantMood });
+    } catch (error) {
+        logger.error("Track mood error:", error);
+        res.status(500).json({ error: "Failed to read the track's mood" });
     }
 });
 

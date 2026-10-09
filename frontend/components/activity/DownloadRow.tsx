@@ -50,15 +50,19 @@ export function DownloadRow({
     item,
     tone,
     actions,
+    notice,
 }: {
     item: DownloadRowItem;
     tone: Tone;
     actions: ReactNode;
+    /** The outcome of an action taken on the row, shown on it. */
+    notice?: string;
 }) {
     const album = text(item.metadata?.albumTitle);
     const artist = text(item.metadata?.artistName);
     const title = album && artist ? album : item.subject;
     const source = text(item.metadata?.statusText);
+    const progress = typeof item.metadata?.progress === "number" ? item.metadata.progress : undefined;
     const lastError = tone === "active" ? text(item.metadata?.lastError) : item.error;
     const cover = useAlbumCover(item.targetMbid, item.type === "album");
     const FallbackIcon = item.type === "album" ? Disc3 : Music;
@@ -80,7 +84,11 @@ export function DownloadRow({
                     )}
                     {tone === "active" && (
                         <span className="absolute inset-x-0 bottom-0 h-[3px] overflow-hidden bg-black/60" aria-hidden>
-                            <span className="block h-full w-1/3 animate-sweep bg-brand" />
+                            {progress === undefined ? (
+                                <span className="block h-full w-1/3 animate-sweep bg-brand" />
+                            ) : (
+                                <span className="block h-full bg-brand transition-[width]" style={{ width: `${progress}%` }} />
+                            )}
                         </span>
                     )}
                     {tone === "completed" && (
@@ -103,8 +111,7 @@ export function DownloadRow({
                     <p className="truncate text-xs leading-4 text-[var(--text-muted)] tabular-nums">
                         {[
                             album && artist ? artist : undefined,
-                            tone === "active" ? STATUS_LABEL[item.status] ?? item.status : undefined,
-                            tone === "active" ? source : undefined,
+                            tone === "active" ? source ?? STATUS_LABEL[item.status] ?? item.status : undefined,
                             tone === "failed" ? "Failed" : undefined,
                             when,
                         ]
@@ -114,6 +121,11 @@ export function DownloadRow({
                     {lastError && (
                         <p className="mt-0.5 truncate text-xs leading-4 text-danger-light/80" title={lastError?.toLowerCase()}>
                             {lastError}
+                        </p>
+                    )}
+                    {notice && (
+                        <p role="status" className="mt-0.5 truncate text-xs leading-4 text-danger-light" title={notice.toLowerCase()}>
+                            {notice}
                         </p>
                     )}
                 </div>

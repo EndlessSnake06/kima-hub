@@ -174,7 +174,7 @@ export function FullPlayer() {
                                 link cannot contain another one. */}
                             <PlayCountLine
                                 trackId={playbackType === "track" ? currentTrack?.id : null}
-                                className="block text-xs truncate mt-0.5"
+                                className="mt-0.5"
                             />
                             {/* Vibe match score when in vibe mode */}
                             {activeOperation.type !== 'idle' && vibeMatchScore !== null && (

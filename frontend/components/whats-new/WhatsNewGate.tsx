@@ -2,13 +2,15 @@
 
 /**
  * Shows every release the user has not closed in one window, the newest note
- * first and every pending item oldest first. The server decides what is
+ * first and every pending item oldest first, and the current release again on
+ * request (the version number beside the logo). The server decides what is
  * pending; nothing is recorded locally, so a second device still asks.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
+import { notify } from "@/lib/notify";
 import { useAuth } from "@/lib/auth-context";
 import { WhatsNewWindow, type Release } from "./WhatsNewWindow";
 import { MoodMixChoice } from "./MoodMixChoice";
@@ -41,6 +43,13 @@ function closeAll(): void {
     pendingFetch = Promise.resolve([]);
 }
 
+const OPEN_EVENT = "kima:whats-new-open";
+
+/** Opens the window on the current release again, closed or not (the version number beside the logo). */
+export function openWhatsNew(): void {
+    window.dispatchEvent(new Event(OPEN_EVENT));
+}
+
 export function WhatsNewGate() {
     const [queue, setQueue] = useState<Release[]>([]);
     // Following a link to a page defers the window for this user in this tab, so it
@@ -56,6 +65,9 @@ export function WhatsNewGate() {
     const [wiping, setWiping] = useState(false);
     const [done, setDone] = useState<string[]>([]);
     const [wipeError, setWipeError] = useState<string | null>(null);
+    // What a reopened release already has settled, so the window does not ask again.
+    const [answered, setAnswered] = useState<Record<string, boolean>>({});
+    const reopening = useRef(false);
 
     useEffect(() => {
         let cancelled = false;
@@ -71,6 +83,30 @@ export function WhatsNewGate() {
         })();
         return () => { cancelled = true; };
     }, []);
+
+    useEffect(() => {
+        const reopen = async () => {
+            if (reopening.current) return;
+            reopening.current = true;
+            try {
+                const current = await api.get<{ release: Release; answers: Record<string, boolean>; done: string[] }>(
+                    "/whats-new/current",
+                );
+                if (deferKey) window.sessionStorage.removeItem(deferKey);
+                setDeferredNow((n) => n + 1);
+                setAnswered(current.answers);
+                setDone((d) => [...new Set([...d, ...current.done])]);
+                // Older releases still unread stay ahead of it.
+                setQueue((q) => (q.some((r) => r.version === current.release.version) ? q : [...q, current.release]));
+            } catch {
+                notify.error("Couldn't open what's new");
+            } finally {
+                reopening.current = false;
+            }
+        };
+        window.addEventListener(OPEN_EVENT, reopen);
+        return () => window.removeEventListener(OPEN_EVENT, reopen);
+    }, [deferKey]);
 
     if (queue.length === 0 || deferred) return null;
     const wipe = queue.flatMap((r) => r.items).find((i) => i.kind === "action" && i.run === "wipeEnrichment");
@@ -106,6 +142,7 @@ export function WhatsNewGate() {
         <>
             <WhatsNewWindow
                 releases={queue}
+                answered={answered}
                 onDismiss={dismissAll}
                 onClose={() => { closeAll(); setQueue([]); }}
                 onNavigate={defer}

@@ -25,13 +25,22 @@ export function usePodcastData() {
   });
 
   // Use React Query hook for podcast
-  const { data: podcast, isLoading: isPodcastLoading, refetch } =
-    usePodcastQuery(podcastId, sortOrder);
+  const {
+    data: podcast,
+    isLoading: isPodcastLoading,
+    isPlaceholderData: episodesUpdating,
+    refetch,
+    hasMore,
+    loadMore,
+    loadingMore,
+  } = usePodcastQuery(podcastId, sortOrder);
 
   // Listen for podcast-progress-updated event (fired when playback starts/updates or episode marked complete)
   useEffect(() => {
+    // Progress saves every 15 s while an episode plays; a refetch must not
+    // cancel a "show more" already loading.
     const unsubscribe = subscribeQueryEvent("podcast-progress-updated", () => {
-      refetch();
+      refetch({ cancelRefetch: false });
     });
 
     return unsubscribe;
@@ -62,7 +71,7 @@ export function usePodcastData() {
 
   // Load similar podcasts when podcast data is available
   useEffect(() => {
-    if (!podcast || !isAuthenticated) return;
+    if (!podcast?.id || !isAuthenticated) return;
 
     let cancelled = false;
 
@@ -77,7 +86,7 @@ export function usePodcastData() {
 
     loadSimilarPodcasts();
     return () => { cancelled = true; };
-  }, [podcast, isAuthenticated, podcastId]);
+  }, [podcast?.id, isAuthenticated, podcastId]);
 
   // An unsubscribed podcast is shown from its directory preview instead.
   useEffect(() => {
@@ -163,5 +172,9 @@ export function usePodcastData() {
     setSortOrder,
     inProgressEpisodes,
     sortedEpisodes,
+    episodesUpdating,
+    hasMore,
+    loadMore,
+    loadingMore,
   };
 }

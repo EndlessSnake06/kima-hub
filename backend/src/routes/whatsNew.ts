@@ -8,7 +8,15 @@ import { Router } from "express";
 import { z } from "zod";
 import { requireAuth } from "../middleware/auth";
 import { logger } from "../utils/logger";
-import { UnknownChoiceError, dismissRelease, findRelease, GPU_CHOICE_KEY, pendingReleases, setChoice } from "../services/releases";
+import {
+    UnknownChoiceError,
+    dismissRelease,
+    findRelease,
+    GPU_CHOICE_KEY,
+    pendingReleases,
+    currentReleaseFor,
+    setChoice,
+} from "../services/releases";
 import { setGpuToggles } from "../services/gpuRuntime";
 import {
     MoodMixCannotKeepError,
@@ -28,6 +36,18 @@ router.get("/pending", async (req, res) => {
     } catch (error) {
         logger.error("[WhatsNew] pending failed:", error);
         res.status(500).json({ error: "Failed to load releases" });
+    }
+});
+
+/** GET /whats-new/current — the newest release with what this user already settled, to read again after closing it. */
+router.get("/current", async (req, res) => {
+    try {
+        const current = await currentReleaseFor(req.user!.id);
+        if (!current) return res.status(404).json({ error: "No release" });
+        res.json(current);
+    } catch (error) {
+        logger.error("[WhatsNew] current failed:", error);
+        res.status(500).json({ error: "Failed to load release" });
     }
 });
 

@@ -39,7 +39,7 @@ export type ReleaseItem =
            */
           ifClosed?: string;
           /**
-           * Show only to users it applies to (the server filters in `pendingReleases`): "savedMoodMix" is a mix
+           * Show only to users it applies to (the server filters in `forUser`): "savedMoodMix" is a mix
            * under a current mood, "retiredMoodMix" one under a mood that no longer exists, "admin" an admin.
            */
           requires?: "savedMoodMix" | "retiredMoodMix" | "admin";

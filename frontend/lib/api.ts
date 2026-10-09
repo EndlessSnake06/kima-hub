@@ -472,11 +472,16 @@ class ApiClient {
                 });
             }
 
+            // Signing in checks credentials, not a session: its 401 is the server's answer
+            // (wrong password, wrong code), never an expired session to refresh.
+            const signingIn = endpoint === "/auth/login";
+
             // Handle 401 with token refresh (retry once)
             if (
                 response.status === 401 &&
                 _retryCount === 0 &&
-                endpoint !== "/auth/refresh"
+                endpoint !== "/auth/refresh" &&
+                !signingIn
             ) {
                 const refreshResult = await this.refreshAccessToken();
 
@@ -501,7 +506,7 @@ class ApiClient {
             }
 
             if (response.status === 401) {
-                const err = new Error("Not authenticated");
+                const err = new Error(signingIn ? String(error.error || "Sign-in failed") : "Not authenticated");
                 (err as ApiError).status = response.status;
                 (err as ApiError).data = error;
                 throw err;
@@ -1286,11 +1291,12 @@ class ApiClient {
 
     async getPodcast(
         id: string,
-        params?: { order?: "newest" | "oldest"; limit?: number }
+        params?: { order?: "newest" | "oldest"; limit?: number; offset?: number }
     ) {
         const query = new URLSearchParams();
         if (params?.order) query.set("order", params.order);
         if (params?.limit) query.set("limit", String(params.limit));
+        if (params?.offset) query.set("offset", String(params.offset));
         const suffix = query.size > 0 ? `?${query}` : "";
         return this.request<ApiData>(`/podcasts/${id}${suffix}`, {
             silent404: true,

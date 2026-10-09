@@ -289,7 +289,7 @@ export function MiniPlayer() {
                                                 </p>
                                                 <PlayCountLine
                                                     trackId={countedTrackId}
-                                                    className="block text-xs leading-tight mt-0.5 shrink-0"
+                                                    className="mt-0.5 shrink-0"
                                                 />
                                             </div>
                                         </>

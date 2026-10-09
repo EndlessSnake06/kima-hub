@@ -4,7 +4,6 @@ import "./globals.css";
 import { AuthProvider } from "@/lib/auth-context";
 import { FeaturesProvider } from "@/lib/features-context";
 import { DownloadProvider } from "@/lib/download-context";
-import { DownloadProgressProvider } from "@/lib/download-progress-context";
 import { ConditionalAudioProvider } from "@/components/providers/ConditionalAudioProvider";
 import { AuthenticatedLayout } from "@/components/layout/AuthenticatedLayout";
 import { QueryProvider } from "@/lib/query-client";
@@ -70,17 +69,15 @@ export default function RootLayout({
                     <AuthProvider>
                         <FeaturesProvider>
                             <QueryProvider>
-                                <DownloadProgressProvider>
-                                    <DownloadProvider>
-                                            <ConditionalAudioProvider>
-                                                <ActivityPanelSettingsProvider>
-                                                    <AuthenticatedLayout>
-                                                        {children}
-                                                    </AuthenticatedLayout>
-                                                </ActivityPanelSettingsProvider>
-                                            </ConditionalAudioProvider>
-                                    </DownloadProvider>
-                                </DownloadProgressProvider>
+                                <DownloadProvider>
+                                    <ConditionalAudioProvider>
+                                        <ActivityPanelSettingsProvider>
+                                            <AuthenticatedLayout>
+                                                {children}
+                                            </AuthenticatedLayout>
+                                        </ActivityPanelSettingsProvider>
+                                    </ConditionalAudioProvider>
+                                </DownloadProvider>
                             </QueryProvider>
                         </FeaturesProvider>
                     </AuthProvider>

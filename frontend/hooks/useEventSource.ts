@@ -3,7 +3,6 @@
 import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
-import { useDownloadProgress } from "@/lib/download-progress-context";
 import { searchResultStore } from "@/lib/search-result-store";
 import { api, getApiBaseUrl } from "@/lib/api";
 
@@ -16,7 +15,6 @@ function getSSEBaseUrl(): string {
 export function useEventSource() {
     const { isAuthenticated } = useAuth();
     const queryClient = useQueryClient();
-    const { updateProgress, clearProgress } = useDownloadProgress();
     const eventSourceRef = useRef<EventSource | null>(null);
     const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const reconnectAttemptsRef = useRef(0);
@@ -54,22 +52,7 @@ export function useEventSource() {
                                 queryClient.invalidateQueries({ queryKey: ["playlists"] });
                             }
                             break;
-                        case "download:progress":
-                            updateProgress(data.jobId, {
-                                bytesReceived: data.bytesReceived,
-                                totalBytes: data.totalBytes,
-                                filename: data.filename,
-                            });
-                            break;
-                        case "download:queued":
-                            updateProgress(data.jobId, {
-                                queuePosition: data.position,
-                                username: data.username,
-                                filename: data.filename,
-                            });
-                            break;
                         case "download:complete":
-                            clearProgress(data.jobId);
                             queryClient.invalidateQueries({ queryKey: ["active-downloads"] });
                             queryClient.invalidateQueries({ queryKey: ["download-history"] });
                             queryClient.invalidateQueries({ queryKey: ["notifications"] });
@@ -78,7 +61,6 @@ export function useEventSource() {
                             }
                             break;
                         case "download:failed":
-                            clearProgress(data.jobId);
                             queryClient.invalidateQueries({ queryKey: ["active-downloads"] });
                             queryClient.invalidateQueries({ queryKey: ["download-history"] });
                             queryClient.invalidateQueries({ queryKey: ["notifications"] });
@@ -200,5 +182,5 @@ export function useEventSource() {
                 eventSourceRef.current = null;
             }
         };
-    }, [isAuthenticated, queryClient, updateProgress, clearProgress]);
+    }, [isAuthenticated, queryClient]);
 }

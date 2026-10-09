@@ -61,6 +61,7 @@ export function WhatsNewWindow({
     renderAction,
     onNavigate,
     done = [],
+    answered,
 }: {
     /** Every release the user has not closed, oldest first. */
     releases: Release[];
@@ -73,8 +74,10 @@ export function WhatsNewWindow({
     onNavigate?: () => void;
     /** Action items the user has already taken. */
     done?: string[];
+    /** Choices already answered, when a closed release is read again. */
+    answered?: Record<string, boolean>;
 }) {
-    const [choices, setChoices] = useState<Record<string, boolean>>({});
+    const [choices, setChoices] = useState<Record<string, boolean>>(answered ?? {});
     const [closing, setClosing] = useState(false);
     const [closeError, setCloseError] = useState<string | null>(null);
     const [openKey, setOpenKey] = useState<string | null>(null);

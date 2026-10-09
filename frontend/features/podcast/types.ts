@@ -27,6 +27,7 @@ export interface Podcast {
     genres?: string[];
     feedUrl?: string;
     episodes: Episode[];
+    episodeTotal?: number;
 }
 
 export interface PodcastPreview {

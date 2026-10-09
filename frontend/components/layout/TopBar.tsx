@@ -17,12 +17,14 @@ import { cn } from "@/lib/cn";
 import { api } from "@/lib/api";
 import { notify } from "@/lib/notify";
 import { useDownloadContext } from "@/lib/download-context";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useIsMobile, useIsTablet } from "@/hooks/useMediaQuery";
 import { useAuth } from "@/lib/auth-context";
-import { useQueryClient } from "@tanstack/react-query";
 import { APP_VERSION } from "@/lib/version";
+import { openWhatsNew } from "@/components/whats-new/WhatsNewGate";
 import { KimaMark } from "@/components/ui/KimaMark";
+
+const scanEnded = (status?: string) => status === "completed" || status === "failed";
 
 export function TopBar() {
     const pathname = usePathname();
@@ -41,7 +43,9 @@ export function TopBar() {
     const searchInputRef = useRef<HTMLInputElement | null>(null);
     const queryClient = useQueryClient();
 
-    // SSE-populated scan status (populated by useEventSource via queryClient.setQueryData)
+    // The scan's state from the server. SSE events update it as they arrive; it
+    // is also read every 2 s until the scan ends, so a missed event cannot leave
+    // the button spinning. A job the queue no longer holds has ended.
     const { data: scanStatus } = useQuery<{
         status: string;
         progress: number;
@@ -49,18 +53,24 @@ export function TopBar() {
         error?: string;
     } | null>({
         queryKey: ["scan-status", scanJobId],
-        queryFn: () => queryClient.getQueryData(["scan-status", scanJobId]) ?? null,
+        queryFn: async () => {
+            try {
+                return { ...(await api.getScanStatus(scanJobId!)), jobId: scanJobId! };
+            } catch (error) {
+                if ((error as { status?: number }).status === 404) return { status: "completed", progress: 100, jobId: scanJobId! };
+                throw error;
+            }
+        },
         enabled: !!scanJobId,
-        staleTime: Infinity,
-        refetchOnWindowFocus: false,
+        refetchInterval: (query) => (scanEnded(query.state.data?.status) ? false : 2000),
     });
 
-    const isPolling = !!scanJobId && (!scanStatus || scanStatus.status === "active");
+    const isPolling = !!scanJobId && !scanEnded(scanStatus?.status);
 
     // Handle scan completion/failure
     useEffect(() => {
         if (!scanStatus || !scanJobId) return;
-        if (scanStatus.status === "completed" || scanStatus.status === "failed") {
+        if (scanEnded(scanStatus.status)) {
             setScanJobId(null);
         }
     }, [scanStatus, scanJobId]);
@@ -80,6 +90,9 @@ export function TopBar() {
 
         try {
             const response = await api.scanLibrary();
+            // Every manual scan has the same job id; the last scan's "completed"
+            // must not stand in for this one.
+            queryClient.removeQueries({ queryKey: ["scan-status", response.jobId] });
             setScanJobId(response.jobId);
         } catch (error) {
             console.error("Failed to trigger library scan:", error);
@@ -277,9 +290,15 @@ export function TopBar() {
                         >
                             <KimaMark size={32} className="group-hover:scale-105 transition-transform" />
                         </Link>
-                        <span className="ml-2 px-1.5 py-0.5 text-micro font-medium text-[var(--text-muted)] bg-white/5 rounded border border-white/10">
+                        <button
+                            type="button"
+                            onClick={openWhatsNew}
+                            aria-label={`what's new in v${APP_VERSION}`}
+                            title={`what's new in v${APP_VERSION}`}
+                            className="ml-2 px-1.5 py-0.5 text-micro font-medium text-brand/80 bg-brand/[0.06] rounded border border-brand/25 transition-colors hover:text-brand hover:bg-brand/10 hover:border-brand/50 focus-visible:outline-2 focus-visible:outline-brand"
+                        >
                             v{APP_VERSION}
-                        </span>
+                        </button>
                     </div>
 
                     {/* Center - Home & Search */}
