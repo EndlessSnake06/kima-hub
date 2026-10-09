@@ -7,7 +7,7 @@ import { getSystemSettings, invalidateSystemSettingsCache } from "../utils/syste
 import { eventBus } from "../services/eventBus";
 import { startEnrichmentNow, recordStageSuccess, recordStageFailure } from "../workers/unifiedEnrichment";
 import os from "os";
-import { timingSafeEqual } from "crypto";
+import { isInternalSecret } from "../utils/internalSecret";
 import { reopenable } from "../services/missingFileStages";
 
 /**
@@ -63,15 +63,6 @@ async function dispatchWorkerCount(
         );
     }
     return { online, delivered };
-}
-
-/** The shared secret the analyzers send, compared in constant time. */
-function isInternalSecret(value: unknown): boolean {
-    const expected = process.env.INTERNAL_API_SECRET;
-    if (!expected || typeof value !== "string") return false;
-    const given = Buffer.from(value);
-    const wanted = Buffer.from(expected);
-    return given.length === wanted.length && timingSafeEqual(given, wanted);
 }
 
 const router = Router();
@@ -370,12 +361,12 @@ router.put("/clap-workers", requireAuth, requireAdmin, async (req, res) => {
  * Record a vibe embedding failure (called by CLAP analyzer)
  */
 router.post("/vibe/failure", async (req, res) => {
-    // Internal endpoint - verify shared secret from CLAP analyzer
-    if (!isInternalSecret(req.headers["x-internal-secret"])) {
-        return res.status(403).json({ error: "Forbidden" });
-    }
-
     try {
+        // Internal endpoint: only the analyzers know this server's secret.
+        if (!(await isInternalSecret(req.headers["x-internal-secret"]))) {
+            return res.status(403).json({ error: "Forbidden" });
+        }
+
         const { trackId, trackName, errorMessage, errorCode, jobId } = req.body;
 
         if (!trackId) {
@@ -522,12 +513,12 @@ router.post("/vibe/start", requireAuth, requireAdmin, async (req, res) => {
  * Resolve failure records when a vibe embedding succeeds (called by CLAP analyzer)
  */
 router.post("/vibe/success", async (req, res) => {
-    // Internal endpoint - verify shared secret from CLAP analyzer
-    if (!isInternalSecret(req.headers["x-internal-secret"])) {
-        return res.status(403).json({ error: "Forbidden" });
-    }
-
     try {
+        // Internal endpoint: only the analyzers know this server's secret.
+        if (!(await isInternalSecret(req.headers["x-internal-secret"]))) {
+            return res.status(403).json({ error: "Forbidden" });
+        }
+
         const { trackId, jobId } = req.body;
 
         if (!trackId) {

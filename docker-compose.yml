@@ -38,9 +38,6 @@ services:
             # CORS
             ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:3030}
 
-            # Internal API secret for service-to-service auth
-            INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:-kima-internal-secret-change-me}
-
             # Lidarr webhook callback URL - how Lidarr can reach Kima
             # Use backend:3006 for same-network communication, or external IP:3030 for external Lidarr
             KIMA_CALLBACK_URL: ${KIMA_CALLBACK_URL:-http://backend:3006}
@@ -303,7 +300,6 @@ services:
             # the analyzer refuse to embed rather than fall back.
             CLAP_BACKEND: ${CLAP_BACKEND:-onnx}
             DATA_DIR: /
-            INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:-kima-internal-secret-change-me}
         volumes:
             - ${MUSIC_PATH:-./music}:/music:ro
             - gpu_runtime_data:/gpu-onnx

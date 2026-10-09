@@ -13,6 +13,7 @@ import time
 import logging
 import gc
 import asyncio
+import secrets
 import threading
 from typing import Optional, Tuple
 import traceback
@@ -80,6 +81,7 @@ VIBE_QUEUE_NAME = 'enrichment-vibe'  # BullMQ queue consumed by BullMQVibeWorker
 TEXT_EMBED_CHANNEL = 'audio:text:embed'
 TEXT_EMBED_RESPONSE_PREFIX = 'audio:text:embed:response:'
 CONTROL_CHANNEL = 'audio:clap:control'
+INTERNAL_SECRET_KEY = 'kima:internal-secret'
 
 # Model version identifier
 MODEL_VERSION = 'laion-clap-htsat-unfused-v1'
@@ -721,6 +723,13 @@ class BullMQVibeWorker:
             )
             raise RuntimeError("Failed to store embedding")
 
+    def _internal_secret(self) -> str:
+        """The backend's secret for these reports: made at random once per server and kept in the Redis both
+        share (backend `utils/internalSecret.ts`); whichever side needs it first makes it."""
+        self._redis_client.set(INTERNAL_SECRET_KEY, secrets.token_hex(32), nx=True)
+        value = self._redis_client.get(INTERNAL_SECRET_KEY)
+        return value.decode() if isinstance(value, bytes) else (value or "")
+
     def _report_failure(self, job_id: str, track_id: str, error: str):
         """Report a failed embedding to the backend (runs in executor thread).
         The backend owns every write of a track's state; this writes nothing."""
@@ -740,7 +749,7 @@ class BullMQVibeWorker:
         try:
             headers = {
                 "Content-Type": "application/json",
-                "X-Internal-Secret": os.getenv("INTERNAL_API_SECRET", "")
+                "X-Internal-Secret": self._internal_secret()
             }
             requests.post(
                 f"{BACKEND_URL}/api/analysis/vibe/failure",
@@ -762,7 +771,7 @@ class BullMQVibeWorker:
         try:
             headers = {
                 "Content-Type": "application/json",
-                "X-Internal-Secret": os.getenv("INTERNAL_API_SECRET", "")
+                "X-Internal-Secret": self._internal_secret()
             }
             requests.post(
                 f"{BACKEND_URL}/api/analysis/vibe/success",

@@ -41,17 +41,6 @@ jest.mock("../../workers/enrichmentQueues", () => {
         closeEnrichmentQueues: jest.fn(async () => undefined),
     };
 });
-jest.mock("ioredis", () =>
-    jest.fn().mockImplementation(() => ({
-        on: jest.fn(),
-        get: jest.fn(async () => null),
-        set: jest.fn(async () => "OK"),
-        del: jest.fn(async () => 1),
-        publish: jest.fn(async () => 1),
-        quit: jest.fn(async () => undefined),
-        status: "ready",
-    })),
-);
 // The real scheduler is the point of these tests; the podcast worker it boots
 // pulls the podcast routes and their rate limiters, which are not under test.
 jest.mock("../../workers/podcastEnrichmentWorker", () => ({
@@ -63,10 +52,17 @@ import request from "supertest";
 
 import { prisma } from "../../utils/db";
 import analysisRouter from "../analysis";
+import { internalSecret } from "../../utils/internalSecret";
+import { waitForRedisReady } from "../../utils/redis";
 
 jest.setTimeout(30_000);
 
-const SECRET = "report-test-secret";
+// This server's secret, the one the analyzers read from the same Redis.
+let secret = "";
+beforeAll(async () => {
+    await waitForRedisReady();
+    secret = await internalSecret();
+});
 const PREFIX = "vrep";
 const id = (n: string) => `${PREFIX}_${n}`;
 
@@ -105,14 +101,11 @@ async function unseed(n: string) {
 }
 
 describe("vibe report endpoints (the analyzer reports, the backend writes)", () => {
-    beforeAll(() => { process.env.INTERNAL_API_SECRET = SECRET; });
-    afterAll(() => { delete process.env.INTERNAL_API_SECRET; });
-
     it("a success report closes the record and mirrors completed", async () => {
         const trackId = await seedTrack("ok");
         const res = await request(app)
             .post("/api/analysis/vibe/success")
-            .set("x-internal-secret", SECRET)
+            .set("x-internal-secret", secret)
             .send({ trackId });
         expect(res.status).toBe(200);
 
@@ -128,7 +121,7 @@ describe("vibe report endpoints (the analyzer reports, the backend writes)", () 
         const trackId = await seedTrack("retry");
         const res = await request(app)
             .post("/api/analysis/vibe/failure")
-            .set("x-internal-secret", SECRET)
+            .set("x-internal-secret", secret)
             .send({ trackId, errorMessage: "onnx runtime aborted", errorCode: "VIBE_EMBEDDING_FAILED" });
         expect(res.status).toBe(200);
 
@@ -145,7 +138,7 @@ describe("vibe report endpoints (the analyzer reports, the backend writes)", () 
         const trackId = await seedTrack("dmg");
         await request(app)
             .post("/api/analysis/vibe/failure")
-            .set("x-internal-secret", SECRET)
+            .set("x-internal-secret", secret)
             .send({ trackId, errorMessage: "corrupted audio data in decode", errorCode: "VIBE_EMBEDDING_FAILED" });
 
         const record = await prisma.trackStage.findFirst({ where: { trackId, stage: "embedding" } });
@@ -157,13 +150,15 @@ describe("vibe report endpoints (the analyzer reports, the backend writes)", () 
         await unseed("dmg");
     });
 
-    it("reports without the secret are refused and write nothing", async () => {
+    it("reports without this server's secret are refused and write nothing", async () => {
         const trackId = await seedTrack("guard");
-        const res = await request(app)
-            .post("/api/analysis/vibe/failure")
-            .set("x-internal-secret", "wrong")
-            .send({ trackId, errorMessage: "anything" });
-        expect(res.status).toBe(403);
+        for (const wrong of ["wrong", "kima-internal-aio", "kima-internal-secret-change-me"]) {
+            const res = await request(app)
+                .post("/api/analysis/vibe/failure")
+                .set("x-internal-secret", wrong)
+                .send({ trackId, errorMessage: "anything" });
+            expect(res.status).toBe(403);
+        }
 
         const record = await prisma.trackStage.findFirst({ where: { trackId, stage: "embedding" } });
         expect(record?.status).toBe("working");

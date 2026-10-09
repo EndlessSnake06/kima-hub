@@ -88,8 +88,19 @@ jobs:
                     --health-interval 10s
                     --health-timeout 5s
                     --health-retries 5
+            # Queues, locks and the analyzers' report secret run on a real Redis in the tests too.
+            redis:
+                image: redis:7-alpine
+                ports:
+                    - 6379:6379
+                options: >-
+                    --health-cmd "redis-cli ping"
+                    --health-interval 10s
+                    --health-timeout 5s
+                    --health-retries 5
         env:
             DATABASE_URL: postgresql://test:test@localhost:5433/kima_v1_test
+            REDIS_URL: redis://localhost:6379
         steps:
             - uses: actions/checkout@v4
 
@@ -114,6 +125,18 @@ jobs:
     python-analyzer-tests:
         name: Python Analyzer Tests
         runs-on: ubuntu-latest
+        services:
+            redis:
+                image: redis:7-alpine
+                ports:
+                    - 6379:6379
+                options: >-
+                    --health-cmd "redis-cli ping"
+                    --health-interval 10s
+                    --health-timeout 5s
+                    --health-retries 5
+        env:
+            REDIS_URL: redis://localhost:6379
         steps:
             - uses: actions/checkout@v4
 
@@ -145,7 +168,7 @@ jobs:
               # tests PyTorch too); the image build runs verify_runtime.py against the
               # real model instead.
               run: >-
-                  python -m pytest test_gpu_nobody_pays.py test_gpu_switch.py test_one_thread.py test_ship_blocker.py
+                  python -m pytest test_gpu_nobody_pays.py test_gpu_switch.py test_reports.py test_one_thread.py test_ship_blocker.py
                   test_window_offsets.py test_window_sweep.py -v
                   --deselect test_ship_blocker.py::test_ensure_onnx_backend_eagerly_loads_model
 

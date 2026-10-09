@@ -395,3 +395,14 @@ def test_a_runtime_without_cuda_libraries_adds_no_empty_entry_to_the_library_pat
         lines = dict(line.split("=", 1) for line in out.splitlines() if "=" in line)
         assert lines.get("KIMA_GPU_RUNTIME") == "1"
         assert lines.get("LD_LIBRARY_PATH") == start, lines.get("LD_LIBRARY_PATH")
+
+
+def test_a_fresh_install_runs_the_sound_vector_workers_the_settings_page_shows():
+    with open(os.path.join(REPO, "backend", "prisma", "schema.prisma")) as f:
+        schema_default = int(re.search(r"clapWorkers\s+Int\s+@default\((\d+)\)", f.read()).group(1))
+    with open(os.path.join(SERVICE_DIR, "analyzer.py")) as f:
+        code_default = int(re.search(r"NUM_WORKERS = int\(os.getenv\('NUM_WORKERS', '(\d+)'\)\)", f.read()).group(1))
+    with open(os.path.join(REPO, "Dockerfile")) as f:
+        program = re.search(r"\[program:audio-analyzer-clap\][^\[]*", f.read()).group(0)
+    assert code_default == schema_default
+    assert "NUM_WORKERS" not in program, "the all-in-one image overrides the sound-vector worker default"
