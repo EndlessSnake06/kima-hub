@@ -16,8 +16,14 @@ process.env.SETTINGS_ENCRYPTION_KEY ??= '/pqt6ujDwltWiWSK1uSkpQOfwXQpORT0CWScZ8m
 process.env.MUSIC_PATH ??= '/music';
 
 // Always redirect each worker onto its own database (`<base>_w<id>`, created by
-// test-global-setup.cjs). Jest sets JEST_WORKER_ID in every mode, including
-// --runInBand.
+// test-global-setup.cjs) and its own Redis database (numbered by worker; Redis
+// has 16, so jest.config.js runs at most 15 workers). Jest sets JEST_WORKER_ID
+// in every mode, including --runInBand.
 if (process.env.JEST_WORKER_ID) {
+    const worker = Number(process.env.JEST_WORKER_ID);
+    if (worker > 15) throw new Error(`Redis has 16 databases; worker ${worker} has none. Run at most 15 workers.`);
     process.env.DATABASE_URL = workerDatabaseUrl(process.env.DATABASE_URL, process.env.JEST_WORKER_ID);
+    const redis = new URL(process.env.REDIS_URL);
+    redis.pathname = `/${worker}`;
+    process.env.REDIS_URL = redis.toString();
 }

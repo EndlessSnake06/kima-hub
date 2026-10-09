@@ -1,18 +1,6 @@
 import { Queue } from "bullmq";
-import type { ConnectionOptions } from "bullmq";
 import { logger } from "../utils/logger";
-import { config } from "../config";
-
-function getConnectionOptions(): ConnectionOptions {
-    const url = new URL(config.redisUrl);
-    return {
-        host: url.hostname,
-        port: parseInt(url.port, 10) || 6379,
-        password: url.password || undefined,
-        maxRetriesPerRequest: null,
-        enableReadyCheck: false,
-    };
-}
+import { queueConnection } from "./queueConnection";
 
 const defaultJobOptions = {
     removeOnComplete: 100,
@@ -23,17 +11,17 @@ const defaultJobOptions = {
 
 // v2 suffix avoids key conflict with old Bull v4 data still in Redis
 export const scanQueue = new Queue("library-scan-v2", {
-    connection: getConnectionOptions(),
+    connection: queueConnection(),
     defaultJobOptions,
 });
 
 export const discoverQueue = new Queue("discover-weekly-v2", {
-    connection: getConnectionOptions(),
+    connection: queueConnection(),
     defaultJobOptions,
 });
 
 export const importQueue = new Queue("playlist-import", {
-    connection: getConnectionOptions(),
+    connection: queueConnection(),
     defaultJobOptions: {
         ...defaultJobOptions,
         attempts: 1, // Import jobs should not auto-retry (downloads are not idempotent)

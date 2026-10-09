@@ -12,6 +12,8 @@ module.exports = {
     setupFilesAfterEnv: ['<rootDir>/src/__mocks__/clientReaper.cjs'],
     // Runs once, in its own process, before any worker starts.
     globalSetup: '<rootDir>/src/__mocks__/test-global-setup.cjs',
+    // Each worker takes one of Redis's 16 databases (test-env.cjs), so at most 15.
+    maxWorkers: Math.min(15, Math.max(1, require('os').availableParallelism() - 1)),
     roots: ['<rootDir>/src'],
     testMatch: ['**/__tests__/**/*.test.ts'],
     moduleFileExtensions: ['ts', 'js', 'json'],
