@@ -320,6 +320,60 @@ describe('Admin-only routes', () => {
 
 // ── DELETE /auth/account ──────────────────────────────────────────────────────
 
+describe('POST /auth/change-password', () => {
+    let app: express.Application;
+    beforeAll(() => { app = createTestApp(); });
+    beforeEach(() => { jest.clearAllMocks(); clearUserCache(); });
+
+    it('answers a wrong current password with 400, not the signed-out 401', async () => {
+        const token = jwt.sign(
+            { userId: 'user-abc-123', username: 'testuser', role: 'user', tokenVersion: 1 },
+            TEST_SECRET,
+            { expiresIn: '24h' },
+        );
+        // mockReset: an earlier test can leave a queued one-off answer behind.
+        (prisma.user.findUnique as jest.Mock).mockReset().mockResolvedValue({
+            ...BASE_USER,
+            passwordHash: await hashedPassword('right-password'),
+        });
+
+        const res = await request(app)
+            .post('/auth/change-password')
+            .set('Authorization', `Bearer ${token}`)
+            .send({ currentPassword: 'wrong-password', newPassword: 'new-password-1' });
+
+        expect(res.status).toBe(400);
+        expect(res.body.error).toBe('Current password is incorrect');
+    });
+
+    it('keeps this device signed in with tokens for the new version and refuses the old ones', async () => {
+        const oldToken = jwt.sign(
+            { userId: BASE_USER.id, username: BASE_USER.username, role: 'user', tokenVersion: 1 },
+            TEST_SECRET,
+            { expiresIn: '24h' },
+        );
+        const stored = { ...BASE_USER, role: 'user', tokenVersion: 1, passwordHash: await hashedPassword('right-password') };
+        (prisma.user.findUnique as jest.Mock).mockReset().mockImplementation(async () => stored);
+        (prisma.user.update as jest.Mock).mockReset().mockImplementation(async () => {
+            stored.tokenVersion = 2;
+            return { id: stored.id, username: stored.username, role: stored.role, tokenVersion: 2 };
+        });
+
+        const res = await request(app)
+            .post('/auth/change-password')
+            .set('Authorization', `Bearer ${oldToken}`)
+            .send({ currentPassword: 'right-password', newPassword: 'new-password-1' });
+
+        expect(res.status).toBe(200);
+        expect((jwt.verify(res.body.token, TEST_SECRET) as { tokenVersion: number }).tokenVersion).toBe(2);
+        expect(typeof res.body.refreshToken).toBe('string');
+        const withNew = await request(app).get('/auth/me').set('Authorization', `Bearer ${res.body.token}`);
+        expect(withNew.status).toBe(200);
+        const withOld = await request(app).get('/auth/me').set('Authorization', `Bearer ${oldToken}`);
+        expect(withOld.status).toBe(401);
+    });
+});
+
 describe('DELETE /auth/account', () => {
     let app: express.Application;
 
@@ -349,10 +403,6 @@ describe('DELETE /auth/account', () => {
             async (fn: (tx: unknown) => Promise<unknown>) =>
                 fn({
                     user: { count: jest.fn().mockResolvedValue(2), delete: prisma.user.delete },
-                    // UserMoodMix and DiscoveryBatch have no cascade, so the route
-                    // clears them before deleting the user.
-                    userMoodMix: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
-                    discoveryBatch: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
                 })
         );
 

@@ -4,13 +4,11 @@
  * database is mocked; the integration test covers the real schema.
  */
 
-const mockExecuteRaw = jest.fn();
-const mockTransaction = jest.fn();
+const mockQueryRaw = jest.fn();
 
 jest.mock("../../utils/db", () => ({
     prisma: {
-        $transaction: (fn: (tx: unknown) => Promise<unknown>) =>
-            mockTransaction(fn),
+        $queryRaw: (...args: unknown[]) => mockQueryRaw(...args),
     },
 }));
 
@@ -25,29 +23,24 @@ jest.mock("../../utils/logger", () => ({
 
 import { checkEmbeddingWritePath } from "../embeddingsHealth";
 
-/** Make the probe's statement fail the way a real Postgres would. */
-function statementFailsWith(error: Error) {
-    mockExecuteRaw.mockRejectedValueOnce(error);
+/** Make the probe's statement fail the way Prisma reports a raw-query failure from Postgres. */
+function statementFailsWith(code: string, message: string) {
+    mockQueryRaw.mockRejectedValueOnce(
+        Object.assign(new Error(`Raw query failed. Code: \`${code}\`. Message: \`${message}\``), {
+            code: "P2010",
+            meta: { code, message },
+        }),
+    );
 }
 
 beforeEach(() => {
-    mockExecuteRaw.mockReset();
-    mockTransaction.mockReset();
-    // Prisma's interactive transaction hands the callback a client; the probe
-    // only ever uses tx.$executeRaw.
-    mockTransaction.mockImplementation(
-        async (fn: (tx: unknown) => Promise<unknown>) =>
-            fn({ $executeRaw: mockExecuteRaw }),
-    );
+    mockQueryRaw.mockReset();
+    mockQueryRaw.mockResolvedValue([{ "QUERY PLAN": "Insert on track_embeddings" }]);
 });
 
 describe("checkEmbeddingWritePath", () => {
     it("reports the missing constraint when Postgres refuses the ON CONFLICT target", async () => {
-        statementFailsWith(
-            new Error(
-                'there is no unique or exclusion constraint matching the ON CONFLICT specification',
-            ),
-        );
+        statementFailsWith("42P10", "there is no unique or exclusion constraint matching the ON CONFLICT specification");
 
         const result = await checkEmbeddingWritePath(true);
 
@@ -56,27 +49,10 @@ describe("checkEmbeddingWritePath", () => {
         // The detail must name the repair, because it is read by an operator
         // staring at a broken vibe map, not by a program.
         expect(result.detail).toContain("20260915000000_track_embeddings_constraint_repair");
-        expect(mockExecuteRaw).toHaveBeenCalledTimes(1);
+        expect(mockQueryRaw).toHaveBeenCalledTimes(1);
     });
 
-    it("classifies the raw SQLSTATE 42P10 the same way", async () => {
-        statementFailsWith(new Error("ERROR: 42P10"));
-
-        const result = await checkEmbeddingWritePath(true);
-
-        expect(result.ok).toBe(false);
-        expect(result.reason).toBe("missing_unique_constraint");
-    });
-
-    it("passes when the foreign key rejects the probe row", async () => {
-        // A foreign key rejection means the ON CONFLICT target resolved -- the
-        // database is enforcing integrity, which is exactly what we are asking.
-        statementFailsWith(
-            new Error(
-                'insert or update on table "track_embeddings" violates foreign key constraint "track_embeddings_track_id_fkey"',
-            ),
-        );
-
+    it("passes when the upsert can be planned", async () => {
         const result = await checkEmbeddingWritePath(true);
 
         expect(result.ok).toBe(true);
@@ -84,9 +60,7 @@ describe("checkEmbeddingWritePath", () => {
     });
 
     it("reports a missing table distinctly", async () => {
-        statementFailsWith(
-            new Error('relation "track_embeddings" does not exist'),
-        );
+        statementFailsWith("42P01", 'relation "track_embeddings" does not exist');
 
         const result = await checkEmbeddingWritePath(true);
 
@@ -95,36 +69,31 @@ describe("checkEmbeddingWritePath", () => {
     });
 
     it("reports anything else as probe_failed with the message attached", async () => {
-        statementFailsWith(new Error("connection terminated unexpectedly"));
+        statementFailsWith("42703", 'column "model_version" of relation "track_embeddings" does not exist');
 
         const result = await checkEmbeddingWritePath(true);
 
         expect(result.ok).toBe(false);
         expect(result.reason).toBe("probe_failed");
-        expect(result.detail).toContain("connection terminated unexpectedly");
+        expect(result.detail).toContain("model_version");
     });
 
-    it("always carries the probe inside a transaction, and never commits a row", async () => {
-        mockExecuteRaw.mockResolvedValue(1);
+    it("only plans the upsert, never runs it", async () => {
+        await checkEmbeddingWritePath(true);
 
-        const result = await checkEmbeddingWritePath(true);
-
-        // $transaction was used (so the statement cannot persist) and the probe
-        // rolled itself back rather than reporting the write as valid.
-        expect(mockTransaction).toHaveBeenCalledTimes(1);
-        expect(result.ok).toBe(true);
+        const sql = (mockQueryRaw.mock.calls[0][0] as TemplateStringsArray).join("?");
+        expect(sql.trim().startsWith("EXPLAIN INSERT INTO track_embeddings")).toBe(true);
+        expect(sql).not.toMatch(/EXPLAIN\s*\(?\s*ANALYZE\b/i);
     });
 
     it("caches the verdict briefly, and force bypasses the cache", async () => {
-        mockExecuteRaw.mockResolvedValue(1);
-
         await checkEmbeddingWritePath(true);
-        const callsAfterFirst = mockExecuteRaw.mock.calls.length;
+        const callsAfterFirst = mockQueryRaw.mock.calls.length;
 
         await checkEmbeddingWritePath();
-        expect(mockExecuteRaw.mock.calls.length).toBe(callsAfterFirst);
+        expect(mockQueryRaw.mock.calls.length).toBe(callsAfterFirst);
 
         await checkEmbeddingWritePath(true);
-        expect(mockExecuteRaw.mock.calls.length).toBe(callsAfterFirst + 1);
+        expect(mockQueryRaw.mock.calls.length).toBe(callsAfterFirst + 1);
     });
 });

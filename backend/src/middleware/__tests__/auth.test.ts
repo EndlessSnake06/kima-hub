@@ -125,7 +125,7 @@ describe('requireAuth', () => {
 
     it('returns 401 when Bearer token is empty string', async () => {
         const req = mockReq({ headers: { authorization: 'Bearer ' } });
-        const { res, status, json } = mockRes();
+        const { res, status } = mockRes();
         const next = mockNext();
 
         await requireAuth(req, res, next);

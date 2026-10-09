@@ -39,10 +39,14 @@ const mockLookupByIsrc = jest.fn().mockResolvedValue(noData);
 const mockGetAlbumCatalogue = jest.fn().mockResolvedValue(noData);
 jest.mock("../services/musicbrainz", () => ({
     musicBrainzService: {
-        searchRecording: (...args: unknown[]) => mockSearchRecording(...args),
-        getRecordingIsrc: (...args: unknown[]) => mockGetRecordingIsrc(...args),
+        identifyRecording: (...args: unknown[]) => mockSearchRecording(...args),
         getRecordingGenres: (...args: unknown[]) => mockGetRecordingGenres(...args),
-        lookupByIsrc: (...args: unknown[]) => mockLookupByIsrc(...args),
+        // The real one makes one request for both; here it answers from the two mocks.
+        getRecordingIsrcAndGenres: async (id: string) => ({
+            isrc: await mockGetRecordingIsrc(id),
+            genres: await mockGetRecordingGenres(id),
+        }),
+        lookupRecordingsByIsrc: (...args: unknown[]) => mockLookupByIsrc(...args),
         getAlbumCatalogue: (...args: unknown[]) => mockGetAlbumCatalogue(...args),
         normalizeForSearch: (s: string) => s,
     },
@@ -161,8 +165,7 @@ const id = (n: string) => `${PREFIX}_${n}`;
 /**
  * A realistic stand-in for a real fpcalc output: same shape (base64url of
  * the chromaprint bits, "AQAD" prefix) and same size. ~3.4 kB for a
- * ~3-minute track — the pinned size, chosen because it is what
- * a real 30-second-per-track fingerprint sweep actually stores.
+ * ~3-minute track, what a real fingerprint sweep stores.
  */
 function realisticFingerprint(seed: string, length = 3400): string {
     const alphabet =
@@ -198,7 +201,8 @@ async function putTrack(data: {
         data: { id: id("art"), name: "Test Artist", identityKey: id("a") },
     });
     await prisma.album.create({
-        data: { id: id("alb"), rgMbid: id("rg"), artistId: id("art"), title: "Test Album", primaryType: "Album" },
+        // A real-shaped release-group id, so the album's tracklist is asked (and answers nothing here).
+        data: { id: id("alb"), rgMbid: "5b11f4ce-a62d-471e-81fc-a69a8278c7da", artistId: id("art"), title: "Test Album", primaryType: "Album" },
     });
     await prisma.track.create({
         data: {
@@ -273,7 +277,7 @@ describe("AcoustID: the fingerprint is the fingerprint stage's stored answer", (
         // Never a second fpcalc run — the recording stage reads what the
         // fingerprint stage stored.
         expect(mockFingerprintFile).not.toHaveBeenCalled();
-        expect(mockLookup).toHaveBeenCalledWith(200, FINGERPRINT);
+        expect(mockLookup).toHaveBeenCalledWith(200, FINGERPRINT, { title: "Test Track" });
 
         const track = await prisma.track.findUnique({
             where: { id: id("t1") },
@@ -300,9 +304,9 @@ describe("AcoustID: the fingerprint is the fingerprint stage's stored answer", (
         expect(record.failureClass).toBeNull();
         expect(record.nextRetryAt).toBeNull();
         expect(record.evidence.reason).toBe(
-            "sources have no recording for this track",
+            "no source has a recording that is this track",
         );
-        expect(record.evidence.asked).toEqual(["mb-search", "acoustid"]);
+        expect(record.evidence.asked).toEqual(["album-catalogue", "mb-search", "acoustid"]);
     });
 
     it("no stored fingerprint anywhere: the step refuses — no fpcalc, no fake answer", async () => {
@@ -378,15 +382,15 @@ describe("AcoustID: a matched recording is stored in Track.recordingMbid", () =>
 
         const record = await getStage();
         expect(record.status).toBe("done");
-        // The answer's provenance: the fingerprint stage's stored value.
-        expect(record.source).toBe("stored");
+        // The answer came from AcoustID, asked with the fingerprint stage's stored value.
+        expect(record.source).toBe("acoustid");
         expect(record.evidence).toEqual(
-            expect.objectContaining({ recordingMbid: RECORDING }),
+            expect.objectContaining({ recordingMbid: RECORDING, fingerprintFrom: "stored" }),
         );
     });
 });
 
-describe("AcoustID: the 2026-09-24 identification order", () => {
+describe("AcoustID: the identification order", () => {
     afterEach(async () => {
         await wipe();
     });
@@ -422,19 +426,16 @@ describe("AcoustID: the 2026-09-24 identification order", () => {
     it("runs the title-checked MusicBrainz search before AcoustID when there are no tags", async () => {
         mockParseFile.mockResolvedValue({ common: {}, format: { duration: 200 } });
         mockSearchRecording.mockResolvedValue(
-            answeredWith({
-                trackMbid: MB_TRACK,
-                albumName: "Test Album",
-                albumMbid: id("rg"),
-                artistMbid: "artist-mbid",
-            }),
+            answeredWith({ id: MB_TRACK, title: "Test Track", lengthMs: 200000, artists: ["Test Artist"] }),
         );
         await putTrack({ isrc: null });
 
         await enrichSingleTrack(id("t1"));
 
         // The search answered, so AcoustID is never asked and fpcalc never runs.
-        expect(mockSearchRecording).toHaveBeenCalledWith("Test Track", "Test Artist");
+        expect(mockSearchRecording).toHaveBeenCalledWith(
+            expect.objectContaining({ title: "Test Track", artists: ["Test Artist"] }),
+        );
         expect(mockLookup).not.toHaveBeenCalled();
         expect(mockFingerprintFile).not.toHaveBeenCalled();
 
@@ -473,7 +474,7 @@ describe("AcoustID: the 2026-09-24 identification order", () => {
         // of running fpcalc again.
         expect(mockSearchRecording).toHaveBeenCalled();
         expect(mockFingerprintFile).not.toHaveBeenCalled();
-        expect(mockLookup).toHaveBeenCalledWith(200, TAGGED_FINGERPRINT);
+        expect(mockLookup).toHaveBeenCalledWith(200, TAGGED_FINGERPRINT, { title: "Test Track" });
 
         const track = await prisma.track.findUnique({
             where: { id: id("t1") },
@@ -483,15 +484,10 @@ describe("AcoustID: the 2026-09-24 identification order", () => {
         expect(track?.acoustidFingerprint).toBe(TAGGED_FINGERPRINT);
     });
 
-    it("does not identify a track that already has an ISRC", async () => {
+    it("identifies a track by its ISRC when the ISRC's recording is the track", async () => {
         mockParseFile.mockResolvedValue({ common: {}, format: { duration: 200 } });
         mockLookupByIsrc.mockResolvedValue(
-            answeredWith({
-                recordingId: RECORDING,
-                title: "Test Track",
-                artistName: "Test Artist",
-                artistMbid: "artist-mbid",
-            }),
+            answeredWith([{ id: RECORDING, title: "Test Track", lengthMs: 200000, artists: ["Test Artist"] }]),
         );
         mockGetRecordingGenres.mockResolvedValue(
             answeredWith({
@@ -532,7 +528,9 @@ describe("AcoustID: the 2026-09-24 identification order", () => {
         expect(mockFingerprintFile).not.toHaveBeenCalled();
         expect(mockLookup).not.toHaveBeenCalled();
         // The name search still answers what it can.
-        expect(mockSearchRecording).toHaveBeenCalledWith("Test Track", "Test Artist");
+        expect(mockSearchRecording).toHaveBeenCalledWith(
+            expect.objectContaining({ title: "Test Track", artists: ["Test Artist"] }),
+        );
         const record = await getStage();
         // The fpcalc flag gates the FINGERPRINT stage, not this one. With no
         // fingerprint anywhere the step refuses (waiting is the gate's job):

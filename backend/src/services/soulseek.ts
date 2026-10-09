@@ -23,6 +23,7 @@ import {
     soulseekDownloadDuration
 } from "../utils/metrics";
 import { sourcePauseController } from "./sourcePauseController";
+import { soulseekConfigured } from "../utils/soulseekConfigured";
 
 export interface SearchResult {
     user: string;
@@ -598,9 +599,12 @@ class SoulseekService {
     async isAvailable(): Promise<boolean> {
         try {
             const settings = await this.getSettings();
-            // slskd mode is available without Kima-side credentials.
-            if (settings.mode === 'slskd') return !!settings.slskdUrl;
-            return !!(settings.username && settings.password);
+            return soulseekConfigured({
+                soulseekMode: settings.mode,
+                slskdUrl: settings.slskdUrl,
+                soulseekUsername: settings.username,
+                soulseekPassword: settings.password,
+            });
         } catch {
             return false;
         }

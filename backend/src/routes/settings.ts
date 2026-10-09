@@ -100,7 +100,7 @@ router.post("/", async (req, res) => {
 });
 
 // POST /settings/cleanup-stale-jobs
-router.post("/cleanup-stale-jobs", requireAdmin, async (req, res) => {
+router.post("/cleanup-stale-jobs", requireAdmin, async (_req, res) => {
     try {
         const result = await staleJobCleanupService.cleanupAll();
 

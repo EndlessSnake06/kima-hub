@@ -171,10 +171,9 @@ export async function resolveArtistMbid(
     }
 
     for (const candidate of named.slice(0, MAX_CATALOGUE_CHECKS)) {
-        const catalogue = await musicBrainzService.getReleaseGroups(
+        const catalogue = await musicBrainzService.getAllReleaseGroups(
             candidate.id,
             ["album", "ep", "single"],
-            100,
             opts
         );
         if (catalogue.kind === "absent") continue;

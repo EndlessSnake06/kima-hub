@@ -9,8 +9,9 @@ import {
   invalidateEnrichmentProgress,
   retryFailedAndBlocked,
   redecideEverything,
-  triggerEnrichmentNow,
+  startEnrichmentNow,
 } from "../workers/unifiedEnrichment";
+import { wipeEnrichment } from "../services/enrichmentRestart";
 import { enrichmentStateService } from "../services/enrichmentState";
 import { enrichmentFailureService } from "../services/enrichmentFailureService";
 import {
@@ -35,7 +36,7 @@ const router = Router();
  * GET /enrichment/progress
  * Get comprehensive enrichment progress (artists, track tags, audio analysis)
  */
-router.get("/progress", requireAuth, async (req, res) => {
+router.get("/progress", requireAuth, async (_req, res) => {
   try {
     const progress = await getEnrichmentProgress();
     res.json(progress);
@@ -49,7 +50,7 @@ router.get("/progress", requireAuth, async (req, res) => {
  * GET /enrichment/status
  * Get detailed enrichment state (running, paused, etc.)
  */
-router.get("/status", requireAuth, async (req, res) => {
+router.get("/status", requireAuth, async (_req, res) => {
   try {
     const state = await enrichmentStateService.getState();
     const base = state || { status: "idle", currentPhase: null };
@@ -70,7 +71,7 @@ router.get("/status", requireAuth, async (req, res) => {
  * POST /enrichment/pause
  * Pause the enrichment process
  */
-router.post("/pause", requireAuth, requireAdmin, async (req, res) => {
+router.post("/pause", requireAuth, requireAdmin, async (_req, res) => {
   try {
     const state = await enrichmentStateService.pause();
     res.json({
@@ -86,7 +87,7 @@ router.post("/pause", requireAuth, requireAdmin, async (req, res) => {
  * POST /enrichment/resume
  * Resume a paused enrichment process
  */
-router.post("/resume", requireAuth, requireAdmin, async (req, res) => {
+router.post("/resume", requireAuth, requireAdmin, async (_req, res) => {
   try {
     const state = await enrichmentStateService.resume();
     res.json({
@@ -102,7 +103,7 @@ router.post("/resume", requireAuth, requireAdmin, async (req, res) => {
  * POST /enrichment/stop
  * Stop the enrichment process
  */
-router.post("/stop", requireAuth, requireAdmin, async (req, res) => {
+router.post("/stop", requireAuth, requireAdmin, async (_req, res) => {
   try {
     const state = await enrichmentStateService.stop();
     res.json({
@@ -119,7 +120,7 @@ router.post("/stop", requireAuth, requireAdmin, async (req, res) => {
  * Re-queue every stage question still owed an answer. Nothing is reset: done
  * answers are not re-asked and terminal ones wait for a human. Admin only.
  */
-router.post("/retry-failed-and-blocked", requireAuth, requireAdmin, async (req, res) => {
+router.post("/retry-failed-and-blocked", requireAuth, requireAdmin, async (_req, res) => {
   try {
     const work = await retryFailedAndBlocked();
     invalidateEnrichmentProgress();
@@ -142,7 +143,7 @@ router.post("/retry-failed-and-blocked", requireAuth, requireAdmin, async (req, 
  * Re-open every stage question so the sweep asks again. Deletes no answers and
  * never re-runs AcoustID on a track that has a recordingMbid. Admin only.
  */
-router.post("/re-decide-everything", requireAuth, requireAdmin, async (req, res) => {
+router.post("/re-decide-everything", requireAuth, requireAdmin, async (_req, res) => {
   try {
     const { reopened } = await redecideEverything();
     invalidateEnrichmentProgress();
@@ -158,15 +159,32 @@ router.post("/re-decide-everything", requireAuth, requireAdmin, async (req, res)
   }
 });
 
+/**
+ * POST /enrichment/wipe-and-rerun
+ * Clear what the enrichment steps worked out and run them again from the start
+ * (services/enrichmentRestart.ts). The library, file identities and everything
+ * people made stay. Admin only.
+ */
+router.post("/wipe-and-rerun", requireAuth, requireAdmin, async (_req, res) => {
+  try {
+    const wiped = await wipeEnrichment();
+    invalidateEnrichmentProgress();
+    void startEnrichmentNow();
+    res.json(wiped);
+  } catch (error) {
+    logger.error("Wipe and re-run enrichment error:", error);
+    res.status(500).json({ error: "Failed to wipe and re-run enrichment" });
+  }
+});
 
 /**
  * POST /enrichment/sync
  * Trigger incremental enrichment (only processes pending items)
  * Fast sync that picks up new content without re-processing everything
  */
-router.post("/sync", requireAuth, requireAdmin, async (req, res) => {
+router.post("/sync", requireAuth, requireAdmin, async (_req, res) => {
   try {
-    const result = await triggerEnrichmentNow();
+    const result = await startEnrichmentNow();
 
     res.json({
       message: "Incremental sync started",
@@ -287,7 +305,7 @@ router.get("/failures", requireAuth, async (req, res) => {
  * GET /enrichment/failures/counts
  * Get failure counts by type
  */
-router.get("/failures/counts", requireAuth, async (req, res) => {
+router.get("/failures/counts", requireAuth, async (_req, res) => {
   try {
     const counts = await enrichmentFailureService.getFailureCounts();
     res.json(counts);
@@ -398,7 +416,7 @@ router.post("/retry", requireAuth, requireAdmin, async (req, res) => {
       if (artistIdsToReset.length > 0) {
         await prisma.artist.updateMany({
           where: { id: { in: artistIdsToReset } },
-          data: { enrichmentStatus: "pending" },
+          data: { enrichmentStatus: "pending", enrichmentFailures: 0 },
         });
       }
     } catch (error) {
@@ -869,7 +887,7 @@ router.post("/tracks/:id/reset", requireAuth, async (req, res) => {
  * GET /enrichment/concurrency
  * Get current enrichment concurrency configuration
  */
-router.get("/concurrency", requireAuth, async (req, res) => {
+router.get("/concurrency", requireAuth, async (_req, res) => {
   try {
     const settings = await getSystemSettings();
     const concurrency = settings?.enrichmentConcurrency || 1;

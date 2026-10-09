@@ -143,7 +143,7 @@ const SEARCH_STRATEGIES: SearchStrategy[] = [
     },
     {
         name: "title-only-aggressive",
-        buildQuery: (artist, track) => {
+        buildQuery: (_artist, track) => {
             const normalizedTitle = normalizeTrackTitle(track, 'aggressive');
             return normalizedTitle.trim();
         },
@@ -151,7 +151,7 @@ const SEARCH_STRATEGIES: SearchStrategy[] = [
     },
     {
         name: "album-title",
-        buildQuery: (artist, track, album) => {
+        buildQuery: (_artist, track, album) => {
             if (!album) return "";
             const normalizedTitle = normalizeTrackTitle(track, 'moderate');
             return `${album} ${normalizedTitle}`.trim();

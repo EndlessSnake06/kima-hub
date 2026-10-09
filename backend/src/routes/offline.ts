@@ -125,9 +125,9 @@ const completeDownloadSchema = z.object({
 
 // Upper bound in MB per second of audio per tier, with headroom above the
 // tier's nominal bitrate (a 3-minute "low" file can't honestly exceed
-// ~5.4 MB, the bound allows 5.4; original/FLAC gets the widest margin).
+// ~5.4 MB, the bound allows 5.4). Original is the untouched file.
 const maxMbPerSecond: Record<"original" | "high" | "medium" | "low", number> = {
-    original: 0.15, // ≈ 240 kbps sustained, covers high-bitrate FLAC
+    original: 1.2,  // 24-bit/192 kHz stereo PCM is 1.152 MB/s
     high: 0.06,     // nominal 320 kbps
     medium: 0.04,   // nominal 192 kbps
     low: 0.03,      // nominal 128 kbps
@@ -155,7 +155,7 @@ router.post("/tracks/:id/complete", async (req, res) => {
         }
 
         const plausibleMaxMb = track.duration * maxMbPerSecond[quality];
-        if (fileSizeMb > plausibleMaxMb) {
+        if (track.duration > 0 && fileSizeMb > plausibleMaxMb) {
             return res.status(400).json({
                 error: `fileSizeMb ${fileSizeMb} exceeds the maximum ${plausibleMaxMb.toFixed(1)} MB for a ${track.duration}s ${quality} track`,
             });

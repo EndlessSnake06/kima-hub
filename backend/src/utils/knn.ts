@@ -3,11 +3,11 @@ import { prisma } from "./db";
 
 /**
  * hnsw.ef_search for a KNN query. The HNSW walk returns at most ef_search
- * candidates (default 40) and WHERE exclusions are applied after it, so use
- * twice the limit plus the excluded count, at least 100 and at most pgvector's 1000.
+ * candidates (default 40) and WHERE filters apply after it, so use twice the
+ * limit, at least 100 and at most pgvector's 1000.
  */
-export function efFor(limit: number, excluded: number): number {
-    return Math.min(1000, Math.max(2 * limit + excluded, 100));
+export function efFor(limit: number): number {
+    return Math.min(1000, Math.max(2 * limit, 100));
 }
 
 /**

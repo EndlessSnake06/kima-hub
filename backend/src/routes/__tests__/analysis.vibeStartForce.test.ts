@@ -5,17 +5,17 @@
  */
 
 jest.mock("../../middleware/auth", () => ({
-    requireAuth: (req: unknown, _res: unknown, next: () => void) => next(),
-    requireAdmin: (req: unknown, _res: unknown, next: () => void) => next(),
-    optionalAuth: (req: unknown, _res: unknown, next: () => void) => next(),
-    authed: () => (req: unknown, _res: unknown, next: () => void) => next(),
+    requireAuth: (_req: unknown, _res: unknown, next: () => void) => next(),
+    requireAdmin: (_req: unknown, _res: unknown, next: () => void) => next(),
+    optionalAuth: (_req: unknown, _res: unknown, next: () => void) => next(),
+    authed: () => (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 
 const mockTriggerEnrichmentNow = jest.fn().mockResolvedValue({
     artists: 0, tracks: 0, audioQueued: 0,
 });
 jest.mock("../../workers/unifiedEnrichment", () => ({
-    triggerEnrichmentNow: (...a: unknown[]) => mockTriggerEnrichmentNow(...a),
+    startEnrichmentNow: (...a: unknown[]) => mockTriggerEnrichmentNow(...a),
     recordStageSuccess: jest.fn().mockResolvedValue(undefined),
     recordStageFailure: jest.fn().mockResolvedValue(undefined),
     recordStageAbsent: jest.fn().mockResolvedValue(undefined),
@@ -41,11 +41,6 @@ jest.mock("../../utils/redis", () => ({
         on: jest.fn(),
         status: "ready",
     },
-}));
-
-jest.mock("../../services/umapProjection", () => ({
-    appendTrackToProjection: jest.fn().mockResolvedValue(undefined),
-    precomputeProjection: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock("../../utils/systemSettings", () => ({
@@ -138,12 +133,12 @@ async function embeddingRows(trackId: string): Promise<{ model_version: string }
 }
 
 async function embeddingStageRows(): Promise<
-    { trackId: string; status: string; attempt: number; finishedAt: Date | null; retryable: boolean }[]
+    { trackId: string; status: string; attempt: number; failures: number; finishedAt: Date | null; retryable: boolean }[]
 > {
     return prisma.$queryRawUnsafe<
-        { trackId: string; status: string; attempt: number; finishedAt: Date | null; retryable: boolean }[]
+        { trackId: string; status: string; attempt: number; failures: number; finishedAt: Date | null; retryable: boolean }[]
     >(
-        `SELECT ts."trackId" AS "trackId", ts.status, ts.attempt, ts."finishedAt", ts.retryable
+        `SELECT ts."trackId" AS "trackId", ts.status, ts.attempt, ts.failures, ts."finishedAt", ts.retryable
            FROM "TrackStage" ts WHERE ts.stage = 'embedding' AND ts."trackId" LIKE $1
           ORDER BY ts."trackId"`,
         `${PREFIX}_%`,
@@ -201,7 +196,7 @@ describe("POST /api/analysis/vibe/start force=true re-decides without deleting",
         expect(rows).toHaveLength(2);
         for (const row of rows) {
             expect(row.status).toBe("pending");
-            expect(row.attempt).toBe(0);
+            expect(row.failures).toBe(0);
             expect(row.finishedAt).toBeNull();
             expect(row.retryable).toBe(true);
         }

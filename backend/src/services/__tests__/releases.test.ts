@@ -20,6 +20,8 @@ jest.mock("../../utils/db", () => {
             // pendingReleases reads the role only for items that require an
             // admin; the shipped catalog has one, so these tests answer as one.
             user: { findUnique: jest.fn().mockResolvedValue({ role: "admin" }) },
+            // Whether the library has enrichment from before a release's date.
+            $queryRaw: jest.fn().mockResolvedValue([{ older: true }]),
             $transaction: jest.fn(async (fn: (t: unknown) => unknown) => fn(tx)),
             __tx: tx,
         },
@@ -41,11 +43,12 @@ const ASKING = {
     summary: "",
     date: "2026-01-01",
     items: [
-        { kind: "note" as const, key: "n", title: "", body: "" },
+        { kind: "note" as const, key: "n", title: "", summary: "", body: "" },
         {
             kind: "choice" as const,
             key: "social.network",
             title: "",
+            summary: "",
             body: "",
             defaultValue: false as const,
         },
@@ -53,6 +56,7 @@ const ASKING = {
             kind: "choice" as const,
             key: "commons.contribute",
             title: "",
+            summary: "",
             body: "",
             defaultValue: false as const,
         },
@@ -262,24 +266,33 @@ describe("catalog", () => {
         ).toBe(false);
     });
 
-    it("puts the ONNX note in 1.11.0 only, with no manual re-embed action", () => {
-        // ONNX shipped after 1.10.1. In both windows, closing the first would
-        // show the same note again and look like the close failed. The engine
-        // re-queues stale embeddings on its own, so the window carries a note,
-        // not a button.
-        const keysOf = (v: string) =>
-            catalog.RELEASES.find((r) => r.version === v)!.items.map((i) => i.key);
-        expect(keysOf("1.10.1")).not.toContain("clap.onnx");
-        expect(keysOf("1.10.1")).not.toContain("clap.reembed");
+    it("opens 1.11.0 on Kevin's note and asks admins to wipe and re-run enrichment", () => {
+        const release = catalog.RELEASES.find((r) => r.version === "1.11.0")!;
+        expect(release.note?.from).toBe("Kevin");
+        expect(release.note?.body).toMatch(/complete wipe and rerun/);
+        const wipe = release.items.find((i) => i.key === "engine.wipe");
+        expect(wipe).toMatchObject({ kind: "action", run: "wipeEnrichment", requires: "admin" });
+        expect(catalog.RELEASES.find((r) => r.version === "1.10.1")!.items.some((i) => i.key === "engine.wipe")).toBe(false);
+    });
 
-        const release = catalog.RELEASES.find((r) => r.version === "1.11.0");
-        expect(release).toBeDefined();
-        expect(keysOf("1.11.0")).toContain("clap.onnx");
-        expect(keysOf("1.11.0")).not.toContain("clap.reembed");
-        const action = catalog.RELEASES.flatMap((r) => r.items).find(
-            (i): i is Extract<catalog.ReleaseItem, { kind: "action" }> => i.kind === "action" && i.key === "clap.reembed",
-        );
-        expect(action).toBeUndefined();
+    it("offers the wipe to an upgraded library and not to a fresh install", async () => {
+        jest.restoreAllMocks();
+        prisma.releaseAcknowledgement.findMany.mockResolvedValue([]);
+        prisma.user.findUnique.mockResolvedValue({ role: "admin" });
+        moodMixState.mockResolvedValue({ mix: null, decision: null, playlist: null });
+        const keys = async () => (await pendingReleases("u1")).find((r) => r.version === "1.11.0")!.items.map((i) => i.key);
+        prisma.$queryRaw.mockResolvedValue([{ older: true }]);
+        expect(await keys()).toContain("engine.wipe");
+        prisma.$queryRaw.mockResolvedValue([{ older: false }]);
+        expect(await keys()).not.toContain("engine.wipe");
+    });
+
+    it("gives every item a one-line summary and links only to pages inside the app", () => {
+        for (const item of catalog.RELEASES.flatMap((r) => r.items)) {
+            expect(item.summary.length).toBeGreaterThan(0);
+            expect(item.summary).not.toMatch(/\n/);
+            for (const link of item.links ?? []) expect(link.href).toMatch(/^\/[a-z]/);
+        }
     });
 
     it("asks about play repair in 1.10.1 only — the window oldest-first already reaches it", () => {

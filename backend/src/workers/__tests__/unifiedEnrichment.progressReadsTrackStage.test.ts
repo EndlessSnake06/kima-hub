@@ -104,8 +104,6 @@ jest.mock("../../services/trackIdentity", () => ({
 jest.mock("../../services/musicbrainz", () => ({
     musicBrainzService: {
         searchRecording: jest.fn().mockResolvedValue(null),
-        lookupByIsrc: jest.fn().mockResolvedValue(null),
-        getRecordingIsrc: jest.fn().mockResolvedValue(null),
         getRecordingGenres: jest.fn().mockResolvedValue(null),
     },
 }));
@@ -113,16 +111,6 @@ jest.mock("../../services/musicbrainz", () => ({
 jest.mock("../../services/acoustidIdentification", () => ({
     identifyTrackByAcoustid: jest.fn().mockResolvedValue(null),
     persistAcoustidFingerprint: jest.fn().mockResolvedValue(undefined),
-}));
-
-jest.mock("../../services/umapProjection", () => ({
-    precomputeProjection: jest.fn().mockResolvedValue(undefined),
-    appendTrackToProjection: jest.fn().mockResolvedValue(undefined),
-}));
-
-jest.mock("../../services/artistSimilarity", () => ({
-    MIN_LOCAL_TRACKS: 5,
-    rebuildArtistCentroid: jest.fn().mockResolvedValue({ trackCount: 0 }),
 }));
 
 jest.mock("../../services/sourcePauseController", () => ({
@@ -152,6 +140,7 @@ jest.mock("../../workers/podcastEnrichmentWorker", () => ({
 
 import { prisma } from "../../utils/db";
 import {
+    closeOrphanedDependents,
     getEnrichmentProgress,
     invalidateEnrichmentProgress,
 } from "../../workers/unifiedEnrichment";
@@ -233,7 +222,7 @@ async function wipe(): Promise<void> {
     await prisma.$executeRawUnsafe(`DELETE FROM "track_embeddings" WHERE track_id LIKE $1`, `${PREFIX}_%`);
     await prisma.$executeRawUnsafe(`DELETE FROM "Track" WHERE id LIKE $1`, `${PREFIX}_%`);
     await prisma.$executeRawUnsafe(`DELETE FROM "Album" WHERE id = $1`, id("alb"));
-    await prisma.$executeRawUnsafe(`DELETE FROM "Artist" WHERE id = $1`, id("art"));
+    await prisma.$executeRawUnsafe(`DELETE FROM "Artist" WHERE id LIKE $1`, `${PREFIX}_%`);
 }
 
 beforeEach(async () => {
@@ -374,6 +363,57 @@ describe("getEnrichmentProgress", () => {
 
         expect(progress.clapEmbeddings.pending).toBe(0);
         expect(progress.clapEmbeddings.waitingMissing).toBe(1);
+        expect(progress.isFullyComplete).toBe(true);
+    });
+
+    async function settledLibrary(trackId: string): Promise<void> {
+        await seedTrack(trackId, { recording: "done", analysis: "done", embedding: "done" });
+        await putStage(trackId, "fingerprint", "done");
+        await prisma.artist.update({ where: { id: id("art") }, data: { enrichmentStatus: "completed" as never } });
+    }
+
+    it("is not complete while an identification answer is still due a retry or in flight", async () => {
+        await settledLibrary(id("retrying"));
+        await putStage(id("retrying"), "recording", "failed", { retryable: true });
+        invalidateEnrichmentProgress();
+        let progress = await getEnrichmentProgress();
+        expect(progress.coreComplete).toBe(false);
+        expect(progress.isFullyComplete).toBe(false);
+
+        await putStage(id("retrying"), "recording", "working");
+        invalidateEnrichmentProgress();
+        progress = await getEnrichmentProgress();
+        expect(progress.coreComplete).toBe(false);
+        expect(progress.isFullyComplete).toBe(false);
+    });
+
+    it("is not complete while an artist with albums is due a retry; an artist with none is not owed", async () => {
+        await settledLibrary(id("artistdue"));
+        await prisma.artist.create({ data: { id: id("loner"), name: "No Albums", identityKey: id("l") } });
+        invalidateEnrichmentProgress();
+        expect((await getEnrichmentProgress()).isFullyComplete).toBe(true);
+
+        await prisma.artist.update({ where: { id: id("art") }, data: { enrichmentStatus: "failed" as never } });
+        invalidateEnrichmentProgress();
+        const progress = await getEnrichmentProgress();
+        expect(progress.artists.owed).toBe(1);
+        expect(progress.coreComplete).toBe(false);
+    });
+
+    it("counts a record a person set aside as closed, and closes what needed its answer", async () => {
+        await settledLibrary(id("dismissed"));
+        await putStage(id("dismissed"), "analysis", "blocked", { retryable: false });
+        await putStage(id("dismissed"), "embedding", "pending");
+        await closeOrphanedDependents();
+        invalidateEnrichmentProgress();
+        const progress = await getEnrichmentProgress();
+
+        expect(progress.audioAnalysis.pending).toBe(0);
+        expect(progress.clapEmbeddings.pending).toBe(0);
+        const embedding = await prisma.trackStage.findUnique({
+            where: { trackId_stage: { trackId: id("dismissed"), stage: "embedding" } },
+        });
+        expect(embedding?.lastErrorCode).toBe("DEPENDENCY_CLOSED");
         expect(progress.isFullyComplete).toBe(true);
     });
 });

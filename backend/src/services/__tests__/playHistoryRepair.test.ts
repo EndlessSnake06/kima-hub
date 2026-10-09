@@ -14,11 +14,12 @@ const { prisma } = require("../../utils/db");
 const T0 = new Date("2026-03-01T12:00:00Z").getTime();
 
 /** A play `atSeconds` into the session, of a track `duration` long. */
-function play(id: string, atSeconds: number, duration: number, trackId = "t1") {
+function play(id: string, atSeconds: number, duration: number, trackId = "t1", heard = false) {
     return {
         id,
         trackId,
         playedAt: new Date(T0 + atSeconds * 1000),
+        heard,
         track: {
             title: id,
             displayTitle: null,
@@ -107,5 +108,20 @@ describe("collapseCandidates", () => {
     it("removes nothing from a single-row listen", async () => {
         given([play("a", 0, 200)]);
         expect(collapseCandidates(await listensOf("u1"))).toEqual([]);
+    });
+});
+
+describe("plays recorded under the listen rule", () => {
+    it("are never judged skipped, however soon the next play follows", async () => {
+        // A 240s track counted after 120s heard, then the next track counted 90s later.
+        given([play("a", 0, 240, "t1", true), play("b", 90, 180, "t2", true)]);
+        const [first] = await listensOf("u1");
+        expect(first.verdict).toBe("heard");
+    });
+
+    it("leave an older row with the same gaps judged as before", async () => {
+        given([play("a", 0, 240, "t1"), play("b", 90, 180, "t2")]);
+        const [first] = await listensOf("u1");
+        expect(first.verdict).toBe("skipped");
     });
 });

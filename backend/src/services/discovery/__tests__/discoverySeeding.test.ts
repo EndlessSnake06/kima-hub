@@ -1,4 +1,4 @@
-import { DiscoverySeeding, SeedArtist } from '../discoverySeeding';
+import { DiscoverySeeding } from '../discoverySeeding';
 import { prisma } from '../../../utils/db';
 import { lidarrService } from '../../lidarr';
 

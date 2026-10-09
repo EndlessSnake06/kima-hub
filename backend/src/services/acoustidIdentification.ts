@@ -1,8 +1,8 @@
 /**
- * Track identification order: the file's `musicbrainz_recordingid` tag, then
- * the caller's title-checked MusicBrainz name search, then AcoustID with the
- * tagged or stored fingerprint. fpcalc never runs here. An `acoustid_id` tag
- * names a fingerprint cluster, not a recording, so it is never a recordingMbid.
+ * The file's own identity tags, and AcoustID with the tagged or stored
+ * fingerprint: the first and last steps of track identification. fpcalc never
+ * runs here. An `acoustid_id` tag names a fingerprint cluster, not a recording,
+ * so it is never a recordingMbid.
  */
 
 import { parseFile } from "music-metadata";
@@ -32,12 +32,17 @@ export interface IdentityTags {
     recordingMbid: string | null;
     /** An `acoustid_fingerprint` tag, or null when the file has none. */
     fingerprint: string | null;
+    /** The track's own artist tags (not the album artist): who the track is credited to. */
+    artists: string[];
     /** `track.duration`, or the file's own duration when that is unset. */
     duration: number;
 }
 
 export interface TrackIdentification {
-    source: "file_tag" | "stored";
+    /** `file_tag`: the file's recording id tag; `acoustid`: an AcoustID fingerprint match. */
+    source: "file_tag" | "acoustid";
+    /** For an AcoustID answer, where its fingerprint came from. */
+    fingerprintFrom?: "file tag" | "stored";
     /** The matched recording MBID (only reachable via `answered`). */
     recordingMbid: string;
     artistMbid?: string;
@@ -92,6 +97,10 @@ export async function readIdentityTags(
             // Never trust an acoustid_id tag as a recording id -- it names
             // AcoustID's own cluster, a different namespace.
             fingerprint: firstTag(common.acoustid_fingerprint),
+            artists: [
+                ...(Array.isArray(common.artists) ? (common.artists as unknown[]) : []),
+                common.artist,
+            ].filter((a): a is string => typeof a === "string" && a.trim() !== ""),
             duration:
                 track.duration > 0
                     ? track.duration
@@ -121,9 +130,9 @@ export async function identifyTrackByAcoustid(
         // The file's tags are unreadable, but a stored fingerprint can
         // still drive the lookup — with the duration the scanner measured.
         if (stored?.fingerprint) {
-            return askAcoustid(track, stored.fingerprint, track.duration, "stored");
+            return askAcoustid(track, stored.fingerprint, track.duration, "stored_fingerprint");
         }
-        acoustidTrackIdentityTotal.inc({ path: "file_tag", outcome: "refused" });
+        acoustidTrackIdentityTotal.inc({ path: "no_fingerprint", outcome: "refused" });
         // No stored fingerprint and no readable tags: nothing to ask with.
         // A refusal, not an answer — fpcalc is never run here; the
         // fingerprint stage owns that question.
@@ -141,7 +150,7 @@ export async function identifyTrackByAcoustid(
     // answers with no network call at all.
     if (known.recordingMbid) {
         acoustidTrackIdentityTotal.inc({
-            path: "file_tag",
+            path: "recording_tag",
             outcome: "resolved",
         });
         return answered(
@@ -150,26 +159,24 @@ export async function identifyTrackByAcoustid(
                 recordingMbid: known.recordingMbid,
                 fingerprint: known.fingerprint ?? undefined,
             },
-            { path: "file_tag", source: "file tag musicbrainz_recordingid" }
+            { path: "recording_tag", source: "file tag musicbrainz_recordingid" }
         );
     }
 
-    // Path 2: the tag's fingerprint, else the STORED one — the fingerprint
-    // stage's answer; recomputing it would spend a second fpcalc run on a
-    // number we already have, and the two decode paths disagreed about
-    // damaged files.
+    // Path 2: the tag's fingerprint, else the fingerprint stage's stored answer. fpcalc is never run
+    // here: the stage owns that question, and one decode path keeps damaged files answered one way.
     if (known.fingerprint) {
-        return askAcoustid(track, known.fingerprint, known.duration, "file_tag");
+        return askAcoustid(track, known.fingerprint, known.duration, "tag_fingerprint");
     }
     if (stored?.fingerprint) {
-        return askAcoustid(track, stored.fingerprint, known.duration, "stored");
+        return askAcoustid(track, stored.fingerprint, known.duration, "stored_fingerprint");
     }
 
     // No fingerprint anywhere: refuse the question rather than fake an
     // answer. The recording stage is gated on the fingerprint question
     // being settled, so this is unreachable from the engine — a guard,
     // not a wait: waiting is the gate's job, and fpcalc is never run here.
-    acoustidTrackIdentityTotal.inc({ path: "stored", outcome: "refused" });
+    acoustidTrackIdentityTotal.inc({ path: "no_fingerprint", outcome: "refused" });
     return {
         kind: "permanent",
         error: {
@@ -180,22 +187,21 @@ export async function identifyTrackByAcoustid(
     };
 }
 
-/**
- * One lookup with a fingerprint in hand. `path` labels the metric; `source`
- * records `file_tag` for a tagged fingerprint, `stored` for the stage's answer.
- */
+/** One lookup with a fingerprint in hand; `path` names where the fingerprint came from, in the metric and
+ * in the answer's `fingerprintFrom`. */
 async function askAcoustid(
     track: IdentifiableTrack,
     fingerprint: string,
     duration: number,
-    path: "file_tag" | "stored"
+    path: "tag_fingerprint" | "stored_fingerprint"
 ): Promise<Outcome<TrackIdentification>> {
-    const result = await acoustidService.lookup(duration, fingerprint);
+    const result = await acoustidService.lookup(duration, fingerprint, { title: track.title });
     if (result.kind === "answered") {
         acoustidTrackIdentityTotal.inc({ path, outcome: "resolved" });
         return answered(
             {
-                source: path,
+                source: "acoustid",
+                fingerprintFrom: path === "tag_fingerprint" ? "file tag" : "stored",
                 ...toIdentification(result.value),
                 fingerprint,
             },

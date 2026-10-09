@@ -118,12 +118,12 @@ describe("identifyTrackByAcoustid: what it trusts from tags", () => {
 
         const out = await identifyTrackByAcoustid(track("a.flac"));
 
-        expect(mockLookup).toHaveBeenCalledWith(200, "TAGFP");
+        expect(mockLookup).toHaveBeenCalledWith(200, "TAGFP", { title: "Song" });
         expect(mockFingerprintFile).not.toHaveBeenCalled();
         expect(out.kind).toBe("answered");
         if (out.kind === "answered") {
             expect(out.value).toEqual(
-                expect.objectContaining({ source: "file_tag", fingerprint: "TAGFP" }),
+                expect.objectContaining({ source: "acoustid", fingerprintFrom: "file tag", fingerprint: "TAGFP" }),
             );
         }
     });
@@ -138,12 +138,12 @@ describe("identifyTrackByAcoustid: the stored fingerprint", () => {
         });
 
         // One lookup with the fingerprint the stage already measured.
-        expect(mockLookup).toHaveBeenCalledWith(200, "STOREDFP");
+        expect(mockLookup).toHaveBeenCalledWith(200, "STOREDFP", { title: "Song" });
         expect(mockFingerprintFile).not.toHaveBeenCalled();
         expect(out.kind).toBe("answered");
         if (out.kind === "answered") {
             expect(out.value).toEqual(
-                expect.objectContaining({ source: "stored", fingerprint: "STOREDFP" }),
+                expect.objectContaining({ source: "acoustid", fingerprintFrom: "stored", fingerprint: "STOREDFP" }),
             );
         }
     });
@@ -155,11 +155,11 @@ describe("identifyTrackByAcoustid: the stored fingerprint", () => {
             fingerprint: "STOREDFP",
         });
 
-        expect(mockLookup).toHaveBeenCalledWith(200, "STOREDFP");
+        expect(mockLookup).toHaveBeenCalledWith(200, "STOREDFP", { title: "Song" });
         expect(mockFingerprintFile).not.toHaveBeenCalled();
         expect(out.kind).toBe("answered");
         if (out.kind === "answered") {
-            expect(out.value).toEqual(expect.objectContaining({ source: "stored" }));
+            expect(out.value).toEqual(expect.objectContaining({ source: "acoustid", fingerprintFrom: "stored" }));
         }
     });
 

@@ -1,6 +1,6 @@
 /**
  * Keeps MoodBucket in step with the library. When the mood signature
- * (analysed count, CLAP-complete count, latest analysis) changes, every bucket
+ * (analysed count, latest analysis) changes, every bucket
  * is rebuilt: moods are ranked within the library, so one track shifts all the
  * others. Tracks enter buckets once both analyses are complete.
  */

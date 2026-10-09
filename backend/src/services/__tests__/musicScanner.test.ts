@@ -33,7 +33,7 @@ jest.mock('../../services/artistCountsService', () => ({
 }));
 
 jest.mock('../../services/imageStorage', () => ({
-    checkLocalArtistImage: jest.fn(),
+    findLocalArtistImage: jest.fn(),
 }));
 
 // AcoustID identification stack (imported by musicScanner). featureDetection

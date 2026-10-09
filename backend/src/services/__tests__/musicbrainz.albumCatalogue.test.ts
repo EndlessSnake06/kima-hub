@@ -82,24 +82,39 @@ describe("getAlbumCatalogue on real MusicBrainz responses", () => {
         expect(out.value.originalYear).toBe(2001);
         expect(out.value.label).toBe("Parlophone");
 
-        // Genres are the release group's tags — the real record carries
-        // club/dance with 4 votes; count-0 tags must not appear.
-        const clubDance = out.value.genres.find((g) => g.name === "club/dance");
-        expect(clubDance).toEqual({ name: "club/dance", count: 4 });
+        // The album's genres are the release group's curated genres, with their votes.
+        expect(out.value.genres).toContainEqual({ name: "dance", count: 3 });
         expect(out.value.genres.every((g) => g.count > 0)).toBe(true);
 
-        // The tracklist is the release's real one: 14 tracks, and the
-        // first row carries the actual recording id, length, ISRCs, and
-        // per-recording tags from the response.
+        // The tracklist is the release's real one: 14 tracks, the first row with its recording id, position,
+        // length, ISRCs, curated genres and credit.
         expect(out.value.recordings).toHaveLength(14);
         const oneMoreTime = out.value.recordings[0];
         expect(oneMoreTime).toMatchObject({
             recordingId: "60fa767a-d85d-4991-82bc-4294e0b11ae7",
             title: "One More Time",
+            position: 1,
             durationMs: 320746,
         });
         expect(oneMoreTime.isrcs).toContain("GBDUW0000053");
-        expect(oneMoreTime.genres).toContainEqual({ name: "club/dance", count: 7 });
+        expect(oneMoreTime.genres).toContainEqual({ name: "dance", count: 4 });
+        expect(oneMoreTime.artists).toEqual(["Daft Punk"]);
+    });
+
+    it("keeps every name a track is credited to (the credit as written, the artist and its sort name)", async () => {
+        const credited = JSON.parse(JSON.stringify(releaseFixture));
+        credited.media[0].tracks[0]["artist-credit"] = [
+            { name: "Daft Punk", joinphrase: " feat. ", artist: { name: "Daft Punk", "sort-name": "Daft Punk" } },
+            { name: "Romanthony", joinphrase: "", artist: { name: "Romanthony", "sort-name": "Romanthony" } },
+        ];
+        mockGet.mockImplementation(async (url: string) =>
+            url.startsWith("/release-group/") ? { data: rgFixture } : { data: credited },
+        );
+
+        const out = await musicBrainzService.getAlbumCatalogue(RG_MBID);
+
+        if (out.kind !== "answered") throw new Error(`expected answered, got ${out.kind}`);
+        expect(out.value.recordings[0].artists).toEqual(["Daft Punk", "Romanthony", "Daft Punk feat. Romanthony"]);
     });
 
     it("asks the two requests with exactly the increments the contract needs", async () => {
@@ -107,13 +122,23 @@ describe("getAlbumCatalogue on real MusicBrainz responses", () => {
 
         expect(mockGet).toHaveBeenCalledTimes(2);
         expect(mockGet).toHaveBeenNthCalledWith(1, `/release-group/${RG_MBID}`, {
-            params: { inc: "releases+tags", fmt: "json" },
+            params: { inc: "releases+genres", fmt: "json" },
         });
-        // isrcs is only served together with recordings — requesting one
-        // without the other returns nothing (verified against the API).
+        // ISRCs, genres and credits per track come only with `recordings`.
         expect(mockGet).toHaveBeenNthCalledWith(2, `/release/${EARLIEST_RELEASE}`, {
-            params: { inc: "recordings+isrcs+labels+tags", fmt: "json" },
+            params: { inc: "recordings+isrcs+labels+genres+artist-credits", fmt: "json" },
         });
+    });
+
+    it("picks the earliest official release whatever order MusicBrainz lists them in", async () => {
+        const shuffled = { ...rgFixture, releases: [...rgFixture.releases].reverse() };
+        mockGet.mockImplementation(async (url: string) =>
+            url.startsWith("/release-group/") ? { data: shuffled } : { data: releaseFixture },
+        );
+
+        await musicBrainzService.getAlbumCatalogue(RG_MBID);
+
+        expect(mockGet).toHaveBeenNthCalledWith(2, `/release/${EARLIEST_RELEASE}`, expect.anything());
     });
 
     it("answers `absent` for a made-up release-group id (real 404 → Not Found)", async () => {

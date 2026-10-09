@@ -68,7 +68,7 @@ setInterval(() => {
 }, 60000);
 
 // Middleware to check if Soulseek credentials are configured
-async function requireSoulseekConfigured(req: any, res: any, next: any) {
+async function requireSoulseekConfigured(_req: any, res: any, next: any) {
     try {
         const available = await soulseekService.isAvailable();
 
@@ -89,7 +89,7 @@ async function requireSoulseekConfigured(req: any, res: any, next: any) {
  * GET /soulseek/status
  * Check connection status
  */
-router.get("/status", requireAuth, async (req, res) => {
+router.get("/status", requireAuth, async (_req, res) => {
     try {
         const available = await soulseekService.isAvailable();
 
@@ -121,7 +121,7 @@ router.post(
     "/connect",
     requireAuth,
     requireSoulseekConfigured,
-    async (req, res) => {
+    async (_req, res) => {
         try {
             await soulseekService.connect();
 
@@ -492,7 +492,7 @@ router.post(
  * POST /soulseek/disconnect
  * Disconnect from Soulseek network
  */
-router.post("/disconnect", requireAuth, async (req, res) => {
+router.post("/disconnect", requireAuth, async (_req, res) => {
     try {
         soulseekService.disconnect();
         res.json({ success: true, message: "Disconnected" });

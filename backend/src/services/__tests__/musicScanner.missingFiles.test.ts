@@ -37,7 +37,7 @@ jest.mock("../../services/artistCountsService", () => ({
     backfillAllArtistCounts: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock("../../services/imageStorage", () => ({
-    checkLocalArtistImage: jest.fn().mockResolvedValue(null),
+    findLocalArtistImage: jest.fn().mockResolvedValue(null),
 }));
 
 import fs from "fs";
@@ -106,7 +106,7 @@ async function seedChildren(trackId: string): Promise<void> {
     });
     await prisma.$executeRawUnsafe(
         `INSERT INTO track_embeddings (track_id, embedding, model_version)
-         VALUES ($1, $2::vector, 'laion-clap-music')`,
+         VALUES ($1, $2::vector, 'laion-clap-htsat-unfused-v1')`,
         trackId,
         "[" + Array.from({ length: 512 }, () => 0.1).join(",") + "]",
     );
@@ -264,7 +264,7 @@ describe("stage records follow the file", () => {
 
     function stageRow(trackId: string, stage: string) {
         return prisma.trackStage.findUnique({
-            where: { id: `${trackId}__${stage}` },
+            where: { trackId_stage: { trackId, stage } },
         });
     }
 
@@ -336,7 +336,7 @@ describe("stage records follow the file", () => {
 
         const rec = await stageRow(trackId, "recording");
         expect(rec?.status).toBe("pending");
-        expect(rec?.attempt).toBe(0);
+        expect(rec?.failures).toBe(0);
         expect(rec?.failureClass).toBeNull();
         expect(rec?.finishedAt).toBeNull();
 

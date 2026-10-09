@@ -3,7 +3,7 @@ import path from "path";
 import { withRetry } from "../utils/async";
 import pLimit from "p-limit";
 import * as fuzz from "fuzzball";
-import { spotifyService, SpotifyTrack, SpotifyPlaylist } from "./spotify";
+import { spotifyService, SpotifyTrack } from "./spotify";
 import { logger } from "../utils/logger";
 import { musicBrainzService } from "./musicbrainz";
 import { deezerService } from "./deezer";
@@ -12,7 +12,7 @@ import {
 } from "../utils/playlistLogger";
 import { notificationService } from "./notificationService";
 import { getSystemSettings } from "../utils/systemSettings";
-import { prisma } from "../utils/db";
+import { prisma, Prisma } from "../utils/db";
 import { LIBRARY_ALBUM_WHERE, LIBRARY_LOCATION } from "./libraryFilters";
 import { redisClient } from "../utils/redis";
 import PQueue from "p-queue";
@@ -33,11 +33,9 @@ import { M3UEntry } from "./m3uParser";
 import {
   matchTrackToLibrary,
   type MatchCandidate,
-  type SourceTrack,
 } from "./trackMatching";
 import {
   normalizeString,
-  normalizeApostrophes,
   stripTrackSuffix,
   normalizeTrackTitle,
 } from "../utils/normalization";
@@ -302,6 +300,24 @@ function notifyImportFailed(job: ImportJob): void {
     .catch((e) => logger.error(`[Spotify Import] Job ${job.id}: failure notification failed:`, e));
 }
 
+
+/** Library tracks whose artist's name begins with one of `words` (the candidate pool both import paths match against). */
+function tracksOfArtistsStartingWith(words: string[]): Prisma.TrackWhereInput {
+  return {
+    album: {
+      artist: {
+        OR: words.flatMap((w) => [
+          { normalizedName: { equals: w, mode: "insensitive" as const } },
+          { normalizedName: { startsWith: `${w} `, mode: "insensitive" as const } },
+        ]),
+      },
+    },
+  };
+}
+
+/** Titles this short ("Intro", "Home") are too common to match without the artist. */
+const MIN_TITLE_ONLY_LENGTH = 10;
+
 class SpotifyImportService {
   private activeImportControllers = new Map<string, AbortController>();
 
@@ -481,11 +497,7 @@ class SpotifyImportService {
     }
     const artistMbid = artist.value.mbid;
 
-    const catalogue = await musicBrainzService.getReleaseGroups(
-      artistMbid,
-      ["album", "ep", "single"],
-      100,
-    );
+    const catalogue = await musicBrainzService.getAllReleaseGroups(artistMbid, ["album", "ep", "single"]);
     if (catalogue.kind !== "answered") return { artistMbid, albumMbid: null };
     const match = catalogue.value.find((rg: any) => titlesAgree(rg.title, albumName));
     return { artistMbid, albumMbid: match?.id ?? null };
@@ -574,10 +586,11 @@ class SpotifyImportService {
           `${logPrefix} Looking up: "${track.title}" by ${track.artist}...`,
         );
 
-        const recordingInfo = await musicBrainzService.searchRecording(
-          normalizedTitle,
-          track.artist,
-        );
+        const recordingInfo = await musicBrainzService.searchRecording({
+          title: normalizedTitle,
+          artists: [track.artist],
+          durationSec: Math.round(track.durationMs / 1000),
+        });
 
         if (recordingInfo.kind === "answered") {
           const result = {
@@ -795,10 +808,11 @@ class SpotifyImportService {
                 );
               }
 
-              const recordingInfo = await musicBrainzService.searchRecording(
-                normalizedTrackTitle,
-                artistName,
-              );
+              const recordingInfo = await musicBrainzService.searchRecording({
+                title: normalizedTrackTitle,
+                artists: [artistName],
+                durationSec: Math.round(track.durationMs / 1000),
+              });
 
               if (recordingInfo.kind === "answered") {
                 resolvedAlbumName = recordingInfo.value.albumName;
@@ -1786,16 +1800,7 @@ class SpotifyImportService {
     };
     const allLibraryTracks: TrackWithRelations[] = allArtistFirstWords.length > 0
       ? await prisma.track.findMany({
-          where: {
-            album: {
-              artist: {
-                normalizedName: {
-                  in: allArtistFirstWords,
-                  mode: "insensitive",
-                },
-              },
-            },
-          },
+          where: tracksOfArtistsStartingWith(allArtistFirstWords),
           include: { album: { include: { artist: { select: { name: true, normalizedName: true } } } } },
         }) as TrackWithRelations[]
       : [];
@@ -1854,7 +1859,6 @@ class SpotifyImportService {
     const unmatchedForTitleOnly: Array<{
       pendingTrack: typeof job.pendingTracks[number];
       trackIndex: number;
-      cleanedTitle: string;
       strippedTitle: string;
     }> = [];
 
@@ -1892,7 +1896,6 @@ class SpotifyImportService {
       const normalizedArtist = normalizeArtistName(pendingTrack.artist);
       const artistFirstWord = normalizedArtist.split(" ")[0];
       const strippedTitle = stripTrackSuffix(pendingTrack.title);
-      const normalizedTitle = normalizeApostrophes(pendingTrack.title);
       const cleanedTitle = normalizeTrackTitle(pendingTrack.title);
 
       logger?.log(`   Matching: "${pendingTrack.title}" by ${pendingTrack.artist}`);
@@ -1914,9 +1917,9 @@ class SpotifyImportService {
           `   ✓ Matched: "${pendingTrack.title}" -> track ${match.candidate.id} (${match.matchType} ${match.confidence}%)`,
         );
         logger?.logTrackMatch(trackIndex, job.tracksTotal, pendingTrack.title, pendingTrack.artist, true, match.candidate.id);
-      } else if (cleanedTitle.length >= 10) {
+      } else if (cleanedTitle.length >= MIN_TITLE_ONLY_LENGTH) {
         // Defer to Strategy 6 batch (title-only, no artist constraint)
-        unmatchedForTitleOnly.push({ pendingTrack, trackIndex, cleanedTitle, strippedTitle });
+        unmatchedForTitleOnly.push({ pendingTrack, trackIndex, strippedTitle });
       } else {
         const artistWord = artistFirstWord.toLowerCase();
         if (artistExistsSet.has(artistWord)) {
@@ -1951,7 +1954,7 @@ class SpotifyImportService {
         artistName: t.album.artist.name,
       }));
 
-      for (const { pendingTrack, trackIndex: tIdx, cleanedTitle } of unmatchedForTitleOnly) {
+      for (const { pendingTrack, trackIndex: tIdx } of unmatchedForTitleOnly) {
         // Same ladder, pool widened to any artist (title-only fallback).
         const match = matchTrackToLibrary(
           { title: pendingTrack.title, artist: pendingTrack.artist },
@@ -2131,11 +2134,6 @@ class SpotifyImportService {
     job.progress = 100;
     job.updatedAt = new Date();
 
-    // Fire-and-forget genre enrichment for matched tracks with ISRCs
-    this.enrichMatchedTrackGenres(job).catch((err) =>
-      logger?.warn(`Genre enrichment failed: ${err.message}`),
-    );
-
     await saveImportJob(job);
 
     logger?.debug(`[Spotify Import] Job ${job.id} completed:`);
@@ -2170,66 +2168,6 @@ class SpotifyImportService {
 
     // Clean up job logger to prevent memory leak
     jobLoggers.delete(job.id);
-  }
-
-  private async enrichMatchedTrackGenres(job: ImportJob): Promise<void> {
-    const logger = jobLoggers.get(job.id);
-
-    const tracksWithIsrc = await prisma.track.findMany({
-      where: {
-        isrc: { not: null },
-        trackGenres: { none: {} },
-        playlistItems: job.createdPlaylistId
-          ? { some: { playlistId: job.createdPlaylistId } }
-          : undefined,
-      },
-      select: { id: true, isrc: true, title: true },
-      take: 200,
-    });
-
-    if (tracksWithIsrc.length === 0) return;
-    logger?.debug(
-      `Enriching genres for ${tracksWithIsrc.length} tracks via MusicBrainz ISRC`,
-    );
-
-    let enriched = 0;
-    for (const track of tracksWithIsrc) {
-      const recording = await musicBrainzService.lookupByIsrc(track.isrc!);
-      if (recording.kind !== "answered") {
-        if (recording.kind !== "absent") {
-          logger?.debug(
-            `ISRC lookup for ${track.title}: ${failureCause(recording)}`,
-          );
-        }
-        continue;
-      }
-
-      const genreData = await musicBrainzService.getRecordingGenres(
-        recording.value.recordingId,
-      );
-      if (genreData.kind !== "answered") {
-        if (genreData.kind !== "absent") {
-          logger?.debug(
-            `Genre lookup for ${track.title}: ${failureCause(genreData)}`,
-          );
-        }
-        continue;
-      }
-      if (genreData.value.genres.length === 0) continue;
-
-      const topGenres = genreData.value.genres
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 5)
-        .map((g) => g.name);
-
-      await trackIdentityService.populateTrackGenres(track.id, topGenres);
-
-      enriched++;
-    }
-
-    logger?.debug(
-      `Genre enrichment complete: ${enriched}/${tracksWithIsrc.length} tracks enriched`,
-    );
   }
 
   /**
@@ -2475,7 +2413,7 @@ class SpotifyImportService {
    * Remove all DB and Redis artifacts for an import job.
    * Does NOT touch downloaded files on disk (those become part of the library).
    */
-  private async cleanupImportArtifacts(jobId: string, userId: string): Promise<void> {
+  private async cleanupImportArtifacts(jobId: string, _userId: string): Promise<void> {
     // Delete all download jobs associated with this import
     await prisma.downloadJob.deleteMany({
       where: {
@@ -2645,20 +2583,10 @@ class SpotifyImportService {
         const dbArtist = normalizeArtistName(pendingTrack.spotifyArtist);
         const artistFirstWord = dbArtist.split(" ")[0];
 
-        // Candidate pools are per path; the matching ladder is services/trackMatching.
+        // Same pool and ladder as the import itself (services/trackMatching).
         const artistCandidateRows = await prisma.track.findMany({
-          where: {
-            album: {
-              artist: {
-                normalizedName: {
-                  contains: artistFirstWord,
-                  mode: "insensitive",
-                },
-              },
-            },
-          },
+          where: tracksOfArtistsStartingWith([artistFirstWord]),
           include: { album: { include: { artist: true } } },
-          take: 50,
         });
         const artistCandidates: MatchCandidate[] = artistCandidateRows.map((t) => ({
           id: t.id,
@@ -2676,16 +2604,16 @@ class SpotifyImportService {
           artistCandidates,
         );
 
-        // Compilation fallback (same as before): candidates with the exact
-        // stripped title under ANY artist — e.g. Various Artists releases.
-        if (!match) {
+        // Title-only fallback, as in the import: any artist (compilations,
+        // Various Artists), and only for titles long enough to be distinctive.
+        if (!match && normalizeTrackTitle(pendingTrack.spotifyTitle).length >= MIN_TITLE_ONLY_LENGTH) {
           const strippedTitle = stripTrackSuffix(pendingTrack.spotifyTitle);
           const titleCandidateRows = await prisma.track.findMany({
             where: {
-              title: { equals: strippedTitle, mode: "insensitive" },
+              title: { contains: strippedTitle.split(" ").slice(0, 4).join(" "), mode: "insensitive" },
             },
             include: { album: { include: { artist: true } } },
-            take: 10,
+            take: 500,
           });
           const titleCandidates: MatchCandidate[] = titleCandidateRows.map((t) => ({
             id: t.id,

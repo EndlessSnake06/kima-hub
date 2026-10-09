@@ -110,8 +110,6 @@ jest.mock("../services/trackIdentity", () => ({
 jest.mock("../services/musicbrainz", () => ({
     musicBrainzService: {
         searchRecording: jest.fn().mockResolvedValue(null),
-        lookupByIsrc: jest.fn().mockResolvedValue(null),
-        getRecordingIsrc: jest.fn().mockResolvedValue(null),
         getRecordingGenres: jest.fn().mockResolvedValue(null),
     },
 }));
@@ -119,16 +117,6 @@ jest.mock("../services/musicbrainz", () => ({
 jest.mock("../services/acoustidIdentification", () => ({
     identifyTrackByAcoustid: jest.fn().mockResolvedValue(null),
     persistAcoustidFingerprint: jest.fn().mockResolvedValue(undefined),
-}));
-
-jest.mock("../services/umapProjection", () => ({
-    precomputeProjection: jest.fn().mockResolvedValue(undefined),
-    appendTrackToProjection: jest.fn().mockResolvedValue(undefined),
-}));
-
-jest.mock("../services/artistSimilarity", () => ({
-    MIN_LOCAL_TRACKS: 5,
-    rebuildArtistCentroid: jest.fn().mockResolvedValue({ trackCount: 0 }),
 }));
 
 jest.mock("../services/sourcePauseController", () => ({
@@ -377,10 +365,15 @@ describe("getNextWork over TrackStage", () => {
         expect(new Set(keys).size).toBe(keys.length);
         expect(keys.filter((k) => k.endsWith("/analysis")).length).toBe(6);
 
-        // The records are claimed, so the next scheduled run is not handed
-        // the same attempt again.
+        // The records it claimed are not handed out again; the rest wait for room.
+        const claimed = await prisma.$queryRawUnsafe<Array<{ trackId: string }>>(
+            `SELECT "trackId" FROM "TrackStage" WHERE stage = 'analysis' AND status = 'working' AND "trackId" LIKE $1`,
+            `${id("t")}%`,
+        );
+        expect(claimed.length).toBeGreaterThan(0);
         const second = await getNextWork(50);
-        expect(second.filter((w) => w.trackId.startsWith(id("t"))).length).toBe(0);
+        const claimedIds = new Set(claimed.map((r) => r.trackId));
+        expect(second.some((w) => w.stage === "analysis" && claimedIds.has(w.trackId))).toBe(false);
     });
 });
 
@@ -423,7 +416,7 @@ describe("redecideEverything", () => {
         });
         await prisma.$executeRawUnsafe(
             `INSERT INTO track_embeddings (track_id, embedding, model_version, analyzed_at)
-             VALUES ($1, $2::vector, 'laion-clap-music', now())
+             VALUES ($1, $2::vector, 'laion-clap-htsat-unfused-v1', now())
              ON CONFLICT (track_id) DO NOTHING`,
             id("keep"), `[${Array.from({ length: 512 }, (_, i) => (i % 7) / 7).join(",")}]`,
         );
@@ -546,7 +539,7 @@ describe("the removed controls", () => {
         await putStage(id("answered"), "fingerprint", "done", {});
         await prisma.$executeRawUnsafe(
             `INSERT INTO track_embeddings (track_id, embedding, model_version, analyzed_at)
-             VALUES ($1, $2::vector, 'laion-clap-music', now())
+             VALUES ($1, $2::vector, 'laion-clap-htsat-unfused-v1', now())
              ON CONFLICT (track_id) DO NOTHING`,
             id("answered"), `[${Array.from({ length: 512 }, (_, i) => (i % 7) / 7).join(",")}]`,
         );

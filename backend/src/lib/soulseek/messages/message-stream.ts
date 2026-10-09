@@ -11,7 +11,7 @@ const MAX_MESSAGE_SIZE = 8 * 1024 * 1024
 export class MessageStream extends stream.Writable {
   rest: Buffer | undefined
 
-  _write(chunk: Buffer, enc: BufferEncoding, next: (error?: Error | null) => void) {
+  _write(chunk: Buffer, _enc: BufferEncoding, next: (error?: Error | null) => void) {
     this.read(this.rest ? Buffer.concat([this.rest, chunk]) : chunk)
     next()
   }

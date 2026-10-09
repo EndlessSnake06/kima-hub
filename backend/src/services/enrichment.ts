@@ -9,6 +9,7 @@ import { titlesAgree } from "./albumIdentity";
 import { resolveArtistMbid } from "./artistCorrection";
 import { prisma } from "../utils/db";
 import { musicBrainzService } from "./musicbrainz";
+import { topVoted } from "../utils/votes";
 import { failureCause } from "../utils/outcome";
 import { findAlbumArtwork, findArtistArtwork } from "./artwork";
 import { downloadAndStoreImage, isNativePath } from "./imageStorage";
@@ -365,10 +366,7 @@ class EnrichmentService {
                 );
                 if (chain.kind === "answered") {
                     if (chain.value.genres.length > 0) {
-                        enrichmentData.genres = [...chain.value.genres]
-                            .sort((a, b) => b.count - a.count)
-                            .slice(0, 5)
-                            .map((g) => g.name);
+                        enrichmentData.genres = topVoted(chain.value.genres, 5);
                     }
                     if (chain.value.label) {
                         enrichmentData.label = chain.value.label;
@@ -521,9 +519,9 @@ class EnrichmentService {
         }
         if (data.releaseDate) {
             // Store original release date in dedicated field
-            updateData.originalYear = data.releaseDate.getFullYear();
+            updateData.originalYear = data.releaseDate.getUTCFullYear();
             // Also update year for backward compatibility (but originalYear takes precedence)
-            updateData.year = data.releaseDate.getFullYear();
+            updateData.year = data.releaseDate.getUTCFullYear();
         }
         if (data.label) updateData.label = data.label;
         if (data.genres && data.genres.length > 0) {

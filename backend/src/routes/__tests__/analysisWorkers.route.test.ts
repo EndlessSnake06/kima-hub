@@ -23,10 +23,10 @@ jest.mock('../../middleware/auth', () => ({
 jest.mock('../../services/eventBus', () => ({ eventBus: { publish: jest.fn() } }));
 jest.mock('../../workers/unifiedEnrichment', () => ({
     triggerEnrichmentNow: jest.fn(),
+    startEnrichmentNow: jest.fn(),
     recordStageSuccess: jest.fn(),
     recordStageFailure: jest.fn(),
 }));
-jest.mock('../../services/umapProjection', () => ({ appendTrackToProjection: jest.fn() }));
 
 import express from 'express';
 import os from 'os';

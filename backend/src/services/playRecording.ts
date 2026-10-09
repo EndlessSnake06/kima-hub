@@ -38,13 +38,8 @@ export type PlayOutcome =
     | { recorded: true; playId: string }
     | { recorded: false; reason: "too-short" | "not-enough-listened" | "duplicate" | "unknown-track" };
 
-/**
- * How many seconds of a track must be heard before it counts.
- *
- * Returns `null` when the track can never qualify, which is a different answer
- * from "a very large number" — callers should not be able to satisfy it by
- * listening harder.
- */
+/** Seconds of a track that must be heard before it counts, or `null` when it can never qualify (not a very large
+ * number: listening longer cannot satisfy it). */
 export function requiredListenSeconds(durationSeconds: number | null | undefined): number | null {
     if (durationSeconds == null || !Number.isFinite(durationSeconds) || durationSeconds <= 0) {
         // Unknown length. Demand the upper bound rather than waving it through.
@@ -198,7 +193,7 @@ export async function recordPlay(
         if (recent) return { recorded: false, reason: "duplicate" } as const;
 
         const play = await tx.play.create({
-            data: { userId, trackId, source, ...(playedAt ? { playedAt } : {}) },
+            data: { userId, trackId, source, heard: true, ...(playedAt ? { playedAt } : {}) },
             select: { id: true },
         });
         return { recorded: true, playId: play.id } as const;

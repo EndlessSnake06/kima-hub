@@ -9,7 +9,7 @@ const router = Router();
  * GET /api/system/features
  * Returns which analyzer features are available based on running services
  */
-router.get("/features", requireAuth, async (req, res) => {
+router.get("/features", requireAuth, async (_req, res) => {
     try {
         const features = await featureDetection.getFeatures();
         res.json(features);

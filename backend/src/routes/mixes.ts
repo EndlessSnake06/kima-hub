@@ -144,7 +144,7 @@ router.post("/mood", async (req, res) => {
 /**
  * Available mood presets for the UI
  */
-router.get("/mood/presets", asyncHandler(async (req, res) => {
+router.get("/mood/presets", asyncHandler(async (_req, res) => {
     // Each preset names a mood (the bucket pool: the head verdict, no score
     // cutoffs) plus non-mood seasoning (energy, tempo, scale).
     const presets = [
@@ -287,7 +287,7 @@ router.post("/mood/save-preferences", async (req, res) => {
     }
 });
 
-router.get("/mood/buckets/presets", async (req, res) => {
+router.get("/mood/buckets/presets", async (_req, res) => {
     try {
         const presets = await moodBucketService.getMoodPresets();
         res.json(presets);

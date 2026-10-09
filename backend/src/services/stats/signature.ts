@@ -7,6 +7,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../../utils/db";
 import { listenRows, type Period } from "./listens";
 import { spellingsOf } from "./playable";
+import { safeZone } from "./listening";
 
 /** Two plays closer together than this belong to the same sitting. */
 const SESSION_GAP_SECONDS = 900;
@@ -40,7 +41,7 @@ export async function signature(
     timezone = "UTC",
     period: Period = "all",
 ): Promise<Signature> {
-    const tz = /^[A-Za-z0-9_+\-/]{1,64}$/.test(timezone) ? timezone : "UTC";
+    const tz = await safeZone(timezone);
 
     const [conc, habit, era, keys, owned, played, hourly] = await Promise.all([
         prisma.$queryRaw<Array<{ for_half: number; for_eighty: number; distinct: number }>>(Prisma.sql`
@@ -73,7 +74,7 @@ export async function signature(
             y AS (SELECT coalesce(a."displayYear", a.year) yr FROM p JOIN "Album" a ON a.id = p."albumId"
                   WHERE coalesce(a."displayYear", a.year) IS NOT NULL)
             SELECT CASE WHEN yr >= date_part('year', now()) - 1 THEN 'the last two years'
-                        WHEN yr >= 2015 THEN '2015 to 2024'
+                        WHEN yr >= 2015 THEN '2015 to ' || (date_part('year', now()) - 2)::int
                         WHEN yr >= 2000 THEN '2000 to 2014'
                         ELSE 'before 2000' END AS label,
                    count(*)::int AS plays,
@@ -157,10 +158,10 @@ export async function signature(
         ownedVsPlayed: [lib?.energy, lib?.valence, lib?.inst, lib?.bpm,
                         mine?.energy, mine?.valence, mine?.inst, mine?.bpm]
             .every((v) => typeof v === "number" && Number.isFinite(v)) ? [
-            { label: "how hard it hits", owned: lib.energy, played: mine.energy, unit: "ratio" },
-            { label: "how bright it sounds", owned: lib.valence, played: mine.valence, unit: "ratio" },
-            { label: "how instrumental", owned: lib.inst, played: mine.inst, unit: "ratio" },
-            { label: "beats a minute", owned: lib.bpm, played: mine.bpm, unit: "bpm" },
+            { label: "energy", owned: lib.energy, played: mine.energy, unit: "ratio" },
+            { label: "brightness", owned: lib.valence, played: mine.valence, unit: "ratio" },
+            { label: "instrumental", owned: lib.inst, played: mine.inst, unit: "ratio" },
+            { label: "bpm", owned: lib.bpm, played: mine.bpm, unit: "bpm" },
         ] : [],
         hourly: hourly.map((h) => ({ hour: h.hour, plays: h.plays, energy: h.energy })),
     };

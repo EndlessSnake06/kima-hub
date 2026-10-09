@@ -430,7 +430,7 @@ router.post("/import/m3u", m3uImportLimiter, (req, res, next) => {
  * GET /api/spotify/import/session-log
  * Get the current session log for debugging import issues
  */
-router.get("/import/session-log", async (req, res) => {
+router.get("/import/session-log", async (_req, res) => {
     try {
         const log = readSessionLog();
         const logPath = getSessionLogPath();

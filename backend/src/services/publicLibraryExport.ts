@@ -1,8 +1,8 @@
 /**
  * The owned library as one gzipped JSON document for chevron7.io: every present
  * track with a map position, its raw 3-axis position, moods, energy, valence and
- * its nearest tracks by CLAP cosine. Rebuilt only when the library's fingerprint
- * changes, in the background; the fingerprint doubles as the ETag.
+ * its nearest tracks by the matching formula. Rebuilt only when the library's
+ * fingerprint changes, in the background; the fingerprint doubles as the ETag.
  */
 import crypto from "crypto";
 import { promisify } from "util";
@@ -12,15 +12,14 @@ import { prisma } from "../utils/db";
 import { logger } from "../utils/logger";
 import { config } from "../config";
 import { MOODS, NEUTRAL, UNANALYZED, refreshMoodSnapshot } from "./moodBucketService";
+import { SELF_SCORE } from "./matching/formula";
+import { neighbourListsInWorker } from "./matching/neighbours";
+import { matchingContext } from "./matching/rank";
 
 const gzip = promisify(zlib.gzip);
 
 const EXPORT_VERSION = 1;
 const NEIGHBOURS = 8;
-const NEIGHBOUR_BATCH = 500;
-/** Index candidates fetched per track before excluded tracks are filtered out. */
-const NEIGHBOUR_CANDIDATES = 40;
-const BUILD_TIMEOUT_MS = 10 * 60 * 1000;
 
 export interface LibraryExport {
     etag: string;
@@ -38,18 +37,18 @@ interface TrackRow {
     year: number | null;
     artistId: string;
     artistName: string;
-    map_x: number;
-    map_y: number;
-    map_z: number;
+    x: number;
+    y: number;
+    z: number;
 }
 
 const MAPPED = Prisma.sql`
     FROM track_embeddings te
+    JOIN matching_map m ON m.track_id = te.track_id AND m.embedded_at = te.analyzed_at
     JOIN "Track" t ON t.id = te.track_id
     JOIN "Album" a ON a.id = t."albumId"
     JOIN "Artist" ar ON ar.id = a."artistId"
-    WHERE te.map_x IS NOT NULL AND te.map_y IS NOT NULL AND te.map_z IS NOT NULL
-      AND a.location = 'LIBRARY' AND t."missingSince" IS NULL
+    WHERE a.location = 'LIBRARY' AND t."missingSince" IS NULL
 `;
 
 const OWNED_TRACKS = Prisma.sql`
@@ -59,18 +58,27 @@ const OWNED_TRACKS = Prisma.sql`
 
 const MOOD_ID_BY_FIELD = new Map<string, string>(MOODS.map((m) => [m.field, m.id]));
 
+interface Build {
+    fingerprint: string;
+    promise: Promise<LibraryExport>;
+    /** One follow-up build, shared by every caller that saw a newer library while this one ran. */
+    next?: Promise<LibraryExport>;
+}
+
 let cached: LibraryExport | null = null;
-let building: { fingerprint: string; promise: Promise<LibraryExport> } | null = null;
+let building: Build | null = null;
 
 async function fingerprint(moodSignature: string): Promise<string> {
     const [row] = await prisma.$queryRaw<Array<Record<string, unknown>>>`
         SELECT
             COUNT(*) AS n,
-            SUM(te.map_x) AS sx, SUM(te.map_y) AS sy, SUM(te.map_z) AS sz,
+            -- Every write to the map stamps this; sums of coordinates can match for two different maps.
+            (SELECT "mapUpdatedAt" FROM matching_state WHERE id = 'default') AS "mapAt",
             MAX(te.analyzed_at) AS embedded,
             MAX(t."updatedAt") AS touched,
             SUM(hashtext(a.title || ar.name || COALESCE(a.year::text, ''))) AS names,
-            (${OWNED_TRACKS}) AS total
+            (${OWNED_TRACKS}) AS total,
+            (SELECT "builtAt" FROM matching_state WHERE id = 'default') AS matching
         ${MAPPED}
     `;
     const raw = JSON.stringify([EXPORT_VERSION, row, moodSignature], (_k, v) =>
@@ -79,48 +87,17 @@ async function fingerprint(moodSignature: string): Promise<string> {
     return '"' + crypto.createHash("sha256").update(raw).digest("hex").slice(0, 32) + '"';
 }
 
+/** Each mapped track's nearest mapped tracks by the matching formula, scored 1 for a track against itself. */
 async function nearestNeighbours(ids: string[]): Promise<Map<string, Array<[string, number]>>> {
-    const neighbours = new Map<string, Array<[string, number]>>();
-    // The planner picks a sequential scan for a library this size; turning it
-    // off makes each lookup use the HNSW index (milliseconds instead of ~40ms).
-    await prisma.$transaction(
-        async (tx) => {
-            await tx.$executeRawUnsafe("SET LOCAL enable_seqscan = off");
-            for (let i = 0; i < ids.length; i += NEIGHBOUR_BATCH) {
-                const batch = ids.slice(i, i + NEIGHBOUR_BATCH);
-                const rows = await tx.$queryRaw<Array<{ id: string; neighbour: string; similarity: number }>>`
-                    SELECT a.track_id AS id, n.track_id AS neighbour, n.similarity
-                    FROM track_embeddings a
-                    CROSS JOIN LATERAL (
-                        SELECT c.track_id, c.similarity
-                        FROM (
-                            SELECT b.track_id, 1 - (b.embedding <=> a.embedding) AS similarity
-                            FROM track_embeddings b
-                            WHERE b.track_id <> a.track_id
-                            ORDER BY b.embedding <=> a.embedding
-                            LIMIT ${NEIGHBOUR_CANDIDATES}
-                        ) c
-                        JOIN track_embeddings ce ON ce.track_id = c.track_id
-                        JOIN "Track" ct ON ct.id = c.track_id
-                        JOIN "Album" ca ON ca.id = ct."albumId"
-                        WHERE ce.map_x IS NOT NULL AND ce.map_y IS NOT NULL AND ce.map_z IS NOT NULL
-                          AND ca.location = 'LIBRARY' AND ct."missingSince" IS NULL
-                        ORDER BY c.similarity DESC
-                        LIMIT ${NEIGHBOURS}
-                    ) n
-                    WHERE a.track_id = ANY(${batch})
-                    ORDER BY a.track_id, n.similarity DESC
-                `;
-                for (const row of rows) {
-                    let list = neighbours.get(row.id);
-                    if (!list) neighbours.set(row.id, (list = []));
-                    list.push([row.neighbour, round(row.similarity, 4)]);
-                }
-            }
-        },
-        { timeout: BUILD_TIMEOUT_MS, maxWait: BUILD_TIMEOUT_MS }
-    );
-    return neighbours;
+    const ctx = await matchingContext(ids);
+    if (!ctx) return new Map();
+    const tracks = ids.flatMap((id) => ctx.tracks.get(id) ?? []);
+    const lists = await neighbourListsInWorker(tracks, ctx.state.genres, ctx.state.genreWeight ** 2, NEIGHBOURS);
+    const scaled = new Map<string, Array<[string, number]>>();
+    for (const [id, list] of lists) {
+        scaled.set(id, list.map(([neighbour, score]) => [neighbour, round(score / SELF_SCORE, 4)]));
+    }
+    return scaled;
 }
 
 function libraryId(): string {
@@ -141,7 +118,7 @@ async function build(etag: string): Promise<LibraryExport> {
             t.id, COALESCE(t."displayTitle", t.title) AS title, t.duration, t.energy, t.valence,
             a.id AS "albumId", a.title AS "albumTitle", a.year,
             ar.id AS "artistId", ar.name AS "artistName",
-            te.map_x, te.map_y, te.map_z
+            m.x, m.y, m.z
         ${MAPPED}
         ORDER BY t.id
     `;
@@ -170,7 +147,7 @@ async function build(etag: string): Promise<LibraryExport> {
             artistId: r.artistId,
             albumId: r.albumId,
             duration: r.duration,
-            xyz: [round(r.map_x, 5), round(r.map_y, 5), round(r.map_z, 5)],
+            xyz: [round(r.x, 5), round(r.y, 5), round(r.z, 5)],
             mood: dominant,
             moods: (view?.moods ?? []).map((f) => MOOD_ID_BY_FIELD.get(f)).filter(Boolean),
             energy: r.energy === null ? null : round(r.energy, 3),
@@ -200,23 +177,33 @@ async function build(etag: string): Promise<LibraryExport> {
     return { etag, gzipped };
 }
 
-/** The export for the library as it is now, built once per change however many callers ask at once. */
+/**
+ * The export for the library as it is now. One build runs at a time: callers that see
+ * a newer library than the running build's share one follow-up build, which starts
+ * when the running one ends and builds the library as it is then.
+ */
 export async function refreshLibraryExport(): Promise<LibraryExport> {
     const { snapshot } = await refreshMoodSnapshot();
     const etag = await fingerprint(snapshot.signature);
     if (cached?.etag === etag) return cached;
-    if (building?.fingerprint !== etag) {
-        const promise = build(etag).then((result) => {
+    if (building) {
+        if (building.fingerprint === etag) return building.promise;
+        building.next ??= building.promise.then(refreshLibraryExport, refreshLibraryExport);
+        return building.next;
+    }
+    const current: Build = {
+        fingerprint: etag,
+        promise: build(etag).then((result) => {
             cached = result;
             return result;
-        });
-        building = { fingerprint: etag, promise };
-        promise.then(
-            () => { if (building?.promise === promise) building = null; },
-            () => { if (building?.promise === promise) building = null; }
-        );
-    }
-    return building.promise;
+        }),
+    };
+    building = current;
+    const settle = () => {
+        if (building === current) building = null;
+    };
+    current.promise.then(settle, settle);
+    return current.promise;
 }
 
 /**

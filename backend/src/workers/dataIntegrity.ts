@@ -403,7 +403,7 @@ export async function runDataIntegrityCheck(): Promise<IntegrityReport> {
 // CLI entry point
 if (require.main === module) {
     runDataIntegrityCheck()
-        .then((report) => {
+        .then(() => {
             logger.debug("\nData integrity check completed successfully");
             process.exit(0);
         })

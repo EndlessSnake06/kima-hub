@@ -284,14 +284,14 @@ class GlobalRateLimiter {
         baseDelay: number,
         error?: any
     ): number {
-        // Check for Retry-After header. A header of 0 means the server is not
-        // telling us when to come back -- an immediate retry is exactly what
-        // rate limiting punishes, so fall through to exponential backoff.
+        // A Retry-After of 0 says nothing about when to come back and an immediate retry is what rate limiting
+        // punishes, so it falls through to backoff. A wait past the cap is not slept through in one request;
+        // the stage's own retry ladder asks again later.
         const retryAfter = error?.response?.headers?.["retry-after"];
         if (retryAfter) {
             const parsed = parseInt(retryAfter, 10);
             if (!isNaN(parsed) && parsed > 0) {
-                return parsed * 1000; // Convert to ms
+                return Math.min(parsed * 1000, 60000);
             }
         }
 

@@ -182,6 +182,7 @@ export async function generateArtistSimilarMix(
                 albums: {
                     include: {
                         tracks: {
+                            where: NOT_MISSING,
                             include: {
                                 album: { select: { coverUrl: true } },
                             },

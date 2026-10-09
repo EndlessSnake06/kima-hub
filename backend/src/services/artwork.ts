@@ -139,11 +139,8 @@ async function firstAnswer<Q>(
 }
 
 /**
- * Is there really a picture at this address?
- *
- * Only ever asked about an address a caller was handed, never one a source
- * returned. A timeout or a server error is not an answer -- treating it as one
- * would drop a good cover over a blip -- so only a clear "not found" counts.
+ * Whether a picture loads at this address (one a caller was handed, never one a source returned). A timeout or
+ * server error is no answer, so only a clear "not found" counts as no.
  */
 async function addressLoads(url: string): Promise<boolean> {
     if (await validateUrlForFetch(url)) return false;
@@ -304,25 +301,59 @@ const DEFAULT_BUDGET_MS = 3000;
  * `read` and `write` adapt the caller's shape. Whatever is unanswered at the
  * deadline is sent without art and finished in the background for the next view.
  */
-export async function withAlbumArtwork<T>(
+export function withAlbumArtwork<T>(
     items: T[],
     read: (item: T) => AlbumArtworkQuery,
     write: (item: T, coverUrl: string | null) => T,
     options: { budgetMs?: number } = {},
 ): Promise<T[]> {
+    return withArtwork(items, read, write, {
+        usable: (q) => !!(q.artistName && q.albumTitle),
+        key: albumKey,
+        find: findAlbumArtwork,
+        budgetMs: options.budgetMs,
+    });
+}
+
+/** The same for a list of artists. */
+export function withArtistArtwork<T>(
+    items: T[],
+    read: (item: T) => ArtistArtworkQuery,
+    write: (item: T, imageUrl: string | null) => T,
+    options: { budgetMs?: number } = {},
+): Promise<T[]> {
+    return withArtwork(items, read, write, {
+        usable: (q) => !!q.name,
+        key: artistKey,
+        find: findArtistArtwork,
+        budgetMs: options.budgetMs,
+    });
+}
+
+async function withArtwork<T, Q>(
+    items: T[],
+    read: (item: T) => Q,
+    write: (item: T, url: string | null) => T,
+    how: {
+        usable: (q: Q) => boolean;
+        key: (q: Q) => string;
+        find: (q: Q) => Promise<ArtworkResult | null>;
+        budgetMs?: number;
+    },
+): Promise<T[]> {
     if (items.length === 0) return items;
 
-    const budgetMs = options.budgetMs ?? DEFAULT_BUDGET_MS;
+    const budgetMs = how.budgetMs ?? DEFAULT_BUDGET_MS;
     const queries = items.map(read);
     const answers = new Map<string, string | null>();
 
     // One lookup per distinct record, however many times it is listed.
-    const distinct = new Map<string, AlbumArtworkQuery>();
+    const distinct = new Map<string, Q>();
     for (const q of queries) {
-        if (q.artistName && q.albumTitle) distinct.set(albumKey(q), q);
+        if (how.usable(q)) distinct.set(how.key(q), q);
     }
 
-    const unresolved: [string, AlbumArtworkQuery][] = [];
+    const unresolved: [string, Q][] = [];
     await Promise.all(
         [...distinct].map(async ([key, q]) => {
             const hit = await remembered(key);
@@ -332,13 +363,13 @@ export async function withAlbumArtwork<T>(
     );
 
     // Unanswered at the deadline: send nothing rather than the caller's candidate,
-    // which is an unchecked archive address that may 404 in the browser. The
-    // background lookups fix it on the next view.
+    // which is an unchecked address that may 404 in the browser. The background
+    // lookups fix it on the next view.
     for (const [key] of unresolved) answers.set(key, null);
 
     const deadline = Date.now() + budgetMs;
     const queue = [...unresolved];
-    const leftover: AlbumArtworkQuery[] = [];
+    const leftover: Q[] = [];
 
     const worker = async () => {
         for (;;) {
@@ -349,7 +380,7 @@ export async function withAlbumArtwork<T>(
                 leftover.push(q);
                 continue;
             }
-            const found = await findAlbumArtwork(q);
+            const found = await how.find(q).catch(() => null);
             answers.set(key, found?.url ?? null);
         }
     };
@@ -358,27 +389,27 @@ export async function withAlbumArtwork<T>(
 
     if (leftover.length > 0) {
         logger.debug(
-            `[Artwork] ${leftover.length} covers ran past the ${budgetMs}ms budget; finishing in the background`,
+            `[Artwork] ${leftover.length} images ran past the ${budgetMs}ms budget; finishing in the background`,
         );
-        void finishLater(leftover);
+        void finishLater(leftover, how.find);
     }
 
     return items.map((item, i) => {
         const q = queries[i];
-        if (!q.artistName || !q.albumTitle) return write(item, null);
-        return write(item, answers.get(albumKey(q)) ?? null);
+        if (!how.usable(q)) return write(item, null);
+        return write(item, answers.get(how.key(q)) ?? null);
     });
 }
 
 /** Answer the stragglers after the response has gone, so the next view is right. */
-async function finishLater(pending: AlbumArtworkQuery[]): Promise<void> {
+async function finishLater<Q>(pending: Q[], find: (q: Q) => Promise<ArtworkResult | null>): Promise<void> {
     const queue = [...pending];
     const worker = async () => {
         for (;;) {
             const q = queue.shift();
             if (!q) return;
             try {
-                await findAlbumArtwork(q);
+                await find(q);
             } catch (error) {
                 logger.debug(`[Artwork] Background lookup failed: ${String(error)}`);
             }

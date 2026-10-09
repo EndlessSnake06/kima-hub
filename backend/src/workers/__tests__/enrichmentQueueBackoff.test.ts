@@ -18,7 +18,10 @@ jest.mock("../enrichmentQueues", () => ({
         VIBE: "enrichment-vibe",
         PODCASTS: "enrichment-podcasts",
     },
-    artistQueue: { add: mockArtistAdd, clean: mockArtistClean, getJob: mockArtistGetJob, resume: jest.fn() },
+    artistQueue: {
+        add: mockArtistAdd, clean: mockArtistClean, getJob: mockArtistGetJob, resume: jest.fn(),
+        getJobCounts: jest.fn().mockResolvedValue({ waiting: 1, active: 0, delayed: 0, prioritized: 0 }),
+    },
     trackQueue: { add: mockTrackAdd, clean: mockTrackClean, getJob: mockTrackGetJob, resume: jest.fn() },
     vibeQueue: { add: jest.fn(), clean: jest.fn(), getJob: jest.fn(), resume: jest.fn() },
     podcastQueue: { add: jest.fn(), clean: jest.fn(), getJob: jest.fn(), resume: jest.fn() },
@@ -71,13 +74,17 @@ jest.mock("../../utils/db", () => ({
         $executeRawUnsafe: jest.fn().mockResolvedValue(1),
     },
 }));
+// The in-flight cap reads each stage's worker count.
+jest.mock("../../utils/systemSettings", () => ({
+    getSystemSettings: jest.fn().mockResolvedValue({ enrichmentConcurrency: 5, audioAnalyzerWorkers: 2, clapWorkers: 2 }),
+}));
 jest.mock("../../utils/logger", () => ({
     logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 import {
     executeArtistsPhase,
-    executeMoodTagsPhase,
+    executeIdentificationPhase,
 } from "../unifiedEnrichment";
 
 // clean(grace, limit, type)
@@ -136,6 +143,23 @@ describe("enrichment phases -- job keys and backoff", () => {
             expect(mockArtistUpdate).not.toHaveBeenCalled(); // not parked "enriching"
         });
 
+        it("an artist left enriching with nothing queued or running is asked again", async () => {
+            const { artistQueue } = jest.requireMock("../enrichmentQueues");
+            artistQueue.getJobCounts.mockResolvedValueOnce({ waiting: 0, active: 0, delayed: 0, prioritized: 0 });
+            await executeArtistsPhase();
+            expect(mockArtistUpdateMany).toHaveBeenCalledWith({
+                where: { enrichmentStatus: "enriching" },
+                data: { enrichmentStatus: "pending" },
+            });
+        });
+
+        it("while jobs are queued, enriching artists are left alone", async () => {
+            await executeArtistsPhase();
+            expect(mockArtistUpdateMany).not.toHaveBeenCalledWith(
+                expect.objectContaining({ where: { enrichmentStatus: "enriching" } }),
+            );
+        });
+
         it("no work: no clean, no queue", async () => {
             mockArtistFindMany.mockResolvedValue([]);
 
@@ -151,7 +175,7 @@ describe("enrichment phases -- job keys and backoff", () => {
             // Selection comes from TrackStage, so there is no marker to clear:
             // a retry gets a fresh jobId instead of waiting for the old one to
             // age out.
-            await executeMoodTagsPhase();
+            await executeIdentificationPhase();
 
             expect(mockTrackClean).not.toHaveBeenCalled();
         });
@@ -166,7 +190,7 @@ describe("enrichment phases -- job keys and backoff", () => {
                 return [];
             });
 
-            await executeMoodTagsPhase();
+            await executeIdentificationPhase();
 
             // Attempt 2 already failed and is retryable, so this is attempt 3.
             expect(mockTrackAdd).toHaveBeenCalledWith(
@@ -179,7 +203,7 @@ describe("enrichment phases -- job keys and backoff", () => {
         it("claims the record instead of parking the entity on a sentinel", async () => {
             // The old code wrote enrichmentTags = ['_queued'] to mark a track
             // in flight; the stage record's `working` status does that now.
-            await executeMoodTagsPhase();
+            await executeIdentificationPhase();
 
             const sentinelWrites = mockTrackUpdateMany.mock.calls.filter(
                 (call) => JSON.stringify(call[0] ?? {}).includes("_queued"),
@@ -188,7 +212,7 @@ describe("enrichment phases -- job keys and backoff", () => {
         });
 
         it("does not select work from Track.enrichmentTags", async () => {
-            await executeMoodTagsPhase();
+            await executeIdentificationPhase();
 
             const recordDriven = mockTrackFindMany.mock.calls.filter(
                 (call) => JSON.stringify(call[0] ?? {}).includes("enrichmentTags"),
@@ -200,7 +224,7 @@ describe("enrichment phases -- job keys and backoff", () => {
             // Nothing owes the recording stage this cycle.
             mockQueryRawUnsafe.mockResolvedValue([]);
 
-            const queued = await executeMoodTagsPhase();
+            const queued = await executeIdentificationPhase();
 
             expect(queued).toBe(0);
             expect(mockTrackAdd).not.toHaveBeenCalled();

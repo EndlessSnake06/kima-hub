@@ -37,9 +37,7 @@ jest.mock("../../services/rateLimiter", () => ({
     },
 }));
 
-// The service lazily imports this (same pattern as the retired Last.fm
-// service used); the mock
-// stands in for the encrypted SystemSettings row.
+// The service lazily imports this; the mock stands in for the encrypted SystemSettings row.
 const mockGetSystemSettings = jest.fn().mockResolvedValue(null);
 jest.mock("../../utils/systemSettings", () => ({
     getSystemSettings: (...args: unknown[]) => mockGetSystemSettings(...args),
@@ -60,22 +58,23 @@ const RECORDING = "8f6a1a2b-3c4d-5e6f-7a8b-9c0d1e2f3a4b";
 const ARTIST = "11111111-1111-1111-1111-111111111111";
 const RG = "0e5df449-0e51-4f4f-9a33-6a17e7c6b717";
 
-/** Live wire shape: results carry recordings; recordings carry the metadata. */
+/** Live wire shape: results carry recordings; recordings carry the metadata and the length (results carry none). */
 function lookupResponse(results: unknown[]) {
     return { data: { status: "ok", results } };
 }
 
-function recordingResult(overrides: Record<string, unknown> = {}) {
+function recordingResult(overrides: Record<string, unknown> = {}, recording: Record<string, unknown> = {}) {
     return {
         id: RECORDING,
         score: 0.92,
-        duration: 200,
         recordings: [
             {
                 id: RECORDING,
                 title: "Song",
+                duration: 200,
                 artists: [{ id: ARTIST, name: "Artist" }],
                 releasegroups: [{ id: RG, title: "Album" }],
+                ...recording,
             },
         ],
         ...overrides,
@@ -120,21 +119,49 @@ describe("acoustidService.lookup", () => {
         }
     });
 
-    it("reports a match whose duration is less than half the queried duration as absent", async () => {
+    it("answers absent when no recording has the track's length", async () => {
         setupClient().mockResolvedValue(
-            lookupResponse([recordingResult({ duration: 60 })]),
+            lookupResponse([recordingResult({ score: 1.0 }, { duration: 60 })]),
         );
-        // 60s record vs 200s query: the |rec−query| > query/2 guard fires —
-        // the source answered, and its answer is "nothing within the window".
-        const res = await acoustidService.lookup(200, "fp");
-        expect(res.kind).toBe("absent");
+        // The source answered, and its answer is "nothing of this length".
+        expect((await acoustidService.lookup(200, "fp")).kind).toBe("absent");
     });
 
-    it("rejects sub-30s matches even at score 1.0", async () => {
+    it("answers a short track with a recording of its own length", async () => {
         setupClient().mockResolvedValue(
-            lookupResponse([recordingResult({ duration: 25, score: 1.0 })]),
+            lookupResponse([recordingResult({ score: 0.98 }, { duration: 22.0 })]),
         );
-        expect((await acoustidService.lookup(200, "fp")).kind).toBe("absent");
+        expect((await acoustidService.lookup(22, "fp")).kind).toBe("answered");
+    });
+
+    it("picks the recording of the track's length, not the first one listed", async () => {
+        setupClient().mockResolvedValue(
+            lookupResponse([{
+                id: "cluster",
+                score: 0.95,
+                recordings: [
+                    { id: "day-6", title: "Day 6", duration: 586 },
+                    { id: "day-2", title: "Day 2", duration: 515.8 },
+                ],
+            }]),
+        );
+        const res = await acoustidService.lookup(515, "fp");
+        expect(res.kind === "answered" && res.value.recordingMbid).toBe("day-2");
+    });
+
+    it("among recordings of the right length, takes the one with the track's title and version", async () => {
+        setupClient().mockResolvedValue(
+            lookupResponse([{
+                id: "cluster",
+                score: 0.95,
+                recordings: [
+                    { id: "live", title: "Song (Live)", duration: 200 },
+                    { id: "studio", title: "Song", duration: 201 },
+                ],
+            }]),
+        );
+        const res = await acoustidService.lookup(200, "fp", { title: "Song" });
+        expect(res.kind === "answered" && res.value.recordingMbid).toBe("studio");
     });
 
     it("skips a bare result with no recordings array (fingerprint-only match)", async () => {
@@ -200,7 +227,7 @@ describe("acoustidService.lookup", () => {
     });
 });
 
-describe("acoustidService key precedence (spec D: pattern of the retired Last.fm key)", () => {
+describe("acoustidService key precedence", () => {
     it("sends the operator's SystemSettings key when one is stored", async () => {
         const post = setupClient();
         post.mockResolvedValue(lookupResponse([]));
@@ -220,7 +247,7 @@ describe("acoustidService key precedence (spec D: pattern of the retired Last.fm
         post.mockResolvedValue(lookupResponse([]));
         mockGetSystemSettings.mockResolvedValue({ acoustidApiKey: "operator-key" });
 
-        await acoustidService.lookup(200, "fp", "explicit-key");
+        await acoustidService.lookup(200, "fp", { clientKey: "explicit-key" });
 
         const body: string = post.mock.calls[0][1];
         expect(body).toContain("client=explicit-key");

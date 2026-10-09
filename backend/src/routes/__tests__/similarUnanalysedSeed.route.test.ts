@@ -49,6 +49,8 @@ jest.mock("../../services/featureDetection", () => ({
 import { prisma } from "../../utils/db";
 import vibeRouter from "../vibe";
 import recommendationsRouter from "../recommendations";
+import { SELF_SCORE } from "../../services/matching/formula";
+import { MATCHING_MODEL, buildMatching } from "../../services/matching/state";
 
 const UNANALYSED_ID = "ctrkuna000000000000000001"; // Track row, NO embedding
 const SEED_ID = "ctrkemb000000000000000001"; // embedded, drives the happy path
@@ -88,10 +90,11 @@ async function seedTrack(id: string) {
 async function seedEmbedding(trackId: string, vector: string) {
     await prisma.$executeRawUnsafe(
         `INSERT INTO track_embeddings (track_id, embedding, model_version, analyzed_at)
-         VALUES ($1, $2::vector, 'laion-clap-music', now())
+         VALUES ($1, $2::vector, $3, now())
          ON CONFLICT (track_id) DO NOTHING`,
         trackId,
         vector,
+        MATCHING_MODEL,
     );
 }
 
@@ -110,6 +113,7 @@ beforeAll(async () => {
     await seedTrack(NEIGHBOUR_ID);
     await seedEmbedding(SEED_ID, UNIT_VECTOR);
     await seedEmbedding(NEIGHBOUR_ID, UNIT_VECTOR);
+    await buildMatching();
 });
 
 afterAll(async () => {
@@ -169,7 +173,9 @@ describe("similar tracks for an unanalysed seed (S2)", () => {
         expect(res.body.sourceTrackId).toBe(SEED_ID);
         expect(res.body.tracks).toHaveLength(1);
         expect(res.body.tracks[0].id).toBe(NEIGHBOUR_ID);
-        expect(res.body.tracks[0].similarity).toBeCloseTo(1, 5);
+        // Both tracks have the same feel, so feel adds nothing and the identical
+        // neighbour scores its sound alone: 1 of the 1.0625 a track with feel scores.
+        expect(res.body.tracks[0].similarity).toBeCloseTo(1 / SELF_SCORE, 5);
         expect(res.body.tracks[0].album.title).toBe(`L ${NEIGHBOUR_ID}`);
         expect(res.body.tracks[0].artist.name).toBe(`A ${NEIGHBOUR_ID}`);
     });

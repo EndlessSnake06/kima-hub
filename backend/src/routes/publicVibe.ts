@@ -7,6 +7,7 @@ import { Router, Request, Response, NextFunction } from "express";
 import crypto from "crypto";
 import fs from "fs";
 import zlib from "zlib";
+import { promisify } from "util";
 import { asyncHandler } from "../middleware/asyncHandler";
 import { prisma } from "../utils/db";
 import { logger } from "../utils/logger";
@@ -53,10 +54,10 @@ interface CoverBytes {
     contentType: string | null;
 }
 
-function readLocalCover(ref: string): CoverBytes | null {
+async function readLocalCover(ref: string): Promise<CoverBytes | null> {
     const file = getLocalImagePath(ref);
     if (!file) return null;
-    const buffer = fs.readFileSync(file);
+    const buffer = await fs.promises.readFile(file);
     return { buffer, etag: etagFor(buffer), contentType: null };
 }
 
@@ -78,7 +79,7 @@ async function resolveCoverBytes(trackId: string): Promise<CoverBytes | null> {
     });
     const album = row?.album;
     if (!album?.coverUrl?.startsWith("native:")) return null;
-    const local = readLocalCover(album.coverUrl);
+    const local = await readLocalCover(album.coverUrl);
     if (local || !album.rgMbid || !album.artist?.name) return local;
 
     const found = await findAlbumArtwork({
@@ -100,6 +101,8 @@ async function resolveCoverBytes(trackId: string): Promise<CoverBytes | null> {
         contentType: response.headers.get("content-type"),
     };
 }
+
+const gunzipAsync = promisify(zlib.gunzip);
 
 const router = Router();
 router.use(requireServiceToken);
@@ -126,7 +129,8 @@ router.get(
             res.header("Content-Encoding", "gzip");
             res.send(library.gzipped);
         } else {
-            res.send(zlib.gunzipSync(library.gzipped));
+            // Rare (most clients take gzip); decompress off the event loop.
+            res.send(await gunzipAsync(library.gzipped));
         }
     }),
 );
@@ -218,7 +222,8 @@ router.get(
             return;
         }
         res.header("Content-Type", resolved.contentType || "image/jpeg");
-        res.header("Cache-Control", "public, immutable, max-age=31536000");
+        // A track's cover can change (a better one found, a user edit): a day, revalidated by ETag.
+        res.header("Cache-Control", "public, max-age=86400");
         res.send(resolved.buffer);
     }),
 );

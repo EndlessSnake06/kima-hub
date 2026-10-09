@@ -53,7 +53,7 @@ subsonicRouter.use(subsonicLimiter);
 
 // Normalize paths: append .view suffix if missing for client compatibility.
 // Some clients (e.g. Musa) send /rest/ping instead of /rest/ping.view.
-subsonicRouter.use((req: Request, res: Response, next) => {
+subsonicRouter.use((req: Request, _res: Response, next) => {
     if (!req.path.endsWith(".view")) {
         req.url = req.path + ".view" + (req.url.includes("?") ? req.url.substring(req.url.indexOf("?")) : "");
     }

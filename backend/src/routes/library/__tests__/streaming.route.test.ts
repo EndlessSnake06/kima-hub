@@ -39,6 +39,7 @@ jest.mock('../../../config', () => ({
 
 jest.mock('../../../services/audioStreaming', () => ({
     getAudioStreamingService: jest.fn(),
+    isQuality: (v: unknown) => typeof v === 'string' && ['original', 'high', 'medium', 'low'].includes(v),
 }));
 
 import express from 'express';
@@ -49,7 +50,6 @@ import os from 'os';
 import streamingRoutes from '../streaming';
 import { prisma } from '../../../utils/db';
 import { getAudioStreamingService } from '../../../services/audioStreaming';
-import { logger } from '../../../utils/logger';
 
 const TRACK = {
     id: 'track-1',
@@ -205,6 +205,13 @@ describe('the stream endpoint records no plays', () => {
         await request(app).get(`/tracks/${TRACK_CLAIM.id}/stream`).expect(200);
         await new Promise((r) => setTimeout(r, 60));
         expect(prisma.play.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('answers 400 for a quality it does not know, before touching the file', async () => {
+        const res = await request(app).get(`/tracks/${TRACK_CLAIM.id}/stream?quality=ultra`);
+        expect(res.status).toBe(400);
+        const pre = await request(app).post(`/tracks/${TRACK_CLAIM.id}/prewarm?quality=ultra`);
+        expect(pre.status).toBe(400);
     });
 });
 

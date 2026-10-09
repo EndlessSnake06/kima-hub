@@ -8,6 +8,7 @@
 import { prisma } from "../../utils/db";
 import { featureDetection } from "../../services/featureDetection";
 import { findSimilarTracks } from "../hybridSimilarity";
+import { MATCHING_MODEL, buildMatching } from "../matching/state";
 
 jest.mock("../../services/featureDetection", () => ({
     featureDetection: { getFeatures: jest.fn() },
@@ -41,10 +42,11 @@ async function seedEmbedding(trackId: string, vector: string) {
     // (%s::vector). Prisma cannot write Unsupported("vector") columns.
     await prisma.$executeRawUnsafe(
         `INSERT INTO track_embeddings (track_id, embedding, model_version, analyzed_at)
-         VALUES ($1, $2::vector, 'laion-clap-music', now())
+         VALUES ($1, $2::vector, $3, now())
          ON CONFLICT (track_id) DO NOTHING`,
         trackId,
         vector,
+        MATCHING_MODEL,
     );
 }
 
@@ -213,6 +215,7 @@ describe("hybridSimilarity diversification (DB, shipped functions)", () => {
             }
         }
 
+        await buildMatching();
         const rows = await findSimilarTracks(seed, 20);
 
         // Full requested length is still reachable: 2 (seed's album, capped)
@@ -261,6 +264,7 @@ describe("hybridSimilarity diversification (DB, shipped functions)", () => {
             await seedEmbedding(`trk_cap_solo_soloSecond_${i}`, unitVectorAt(0.95, 2));
         }
 
+        await buildMatching();
         const rows = await findSimilarTracks("trk_cap_solo_sa0", 10);
 
         // 15 candidates exist, but only 4 may come from one artist — and
@@ -304,6 +308,7 @@ describe("hybridSimilarity diversification (DB, shipped functions)", () => {
             }
         }
 
+        await buildMatching();
         const rows = await findSimilarTracks("trk_cap_exact_sa0", 20);
 
         // Album-thinning alone would leave 2 (nearest album) + 2 + 2 + 2 = 8
@@ -314,8 +319,7 @@ describe("hybridSimilarity diversification (DB, shipped functions)", () => {
         expect(maxCount(countsBy(rows, (r) => r.artistId))).toBeLessThanOrEqual(4);
     });
 
-    // 50 = 1 from the seed album + 3 more from its artist + 46 scattered, which
-    // needs more than the default hnsw.ef_search of 40.
+    // 50 = 1 from the seed album + 3 more from its artist + 46 scattered.
     it("fills a 50-track list from one 60-track album plus scattered albums", async () => {
         setMode("hybrid");
         await seedCrowdedLibrary({
@@ -341,6 +345,7 @@ describe("hybridSimilarity diversification (DB, shipped functions)", () => {
             }
         }
 
+        await buildMatching();
         const rows = await findSimilarTracks("trk_cap_fill_sa0", 50);
 
         expect(rows).toHaveLength(50);

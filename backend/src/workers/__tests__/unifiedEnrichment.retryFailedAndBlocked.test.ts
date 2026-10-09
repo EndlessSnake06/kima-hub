@@ -109,8 +109,6 @@ jest.mock("../../services/trackIdentity", () => ({
 jest.mock("../../services/musicbrainz", () => ({
     musicBrainzService: {
         searchRecording: jest.fn().mockResolvedValue(null),
-        lookupByIsrc: jest.fn().mockResolvedValue(null),
-        getRecordingIsrc: jest.fn().mockResolvedValue(null),
         getRecordingGenres: jest.fn().mockResolvedValue(null),
     },
 }));
@@ -118,16 +116,6 @@ jest.mock("../../services/musicbrainz", () => ({
 jest.mock("../../services/acoustidIdentification", () => ({
     identifyTrackByAcoustid: jest.fn().mockResolvedValue(null),
     persistAcoustidFingerprint: jest.fn().mockResolvedValue(undefined),
-}));
-
-jest.mock("../../services/umapProjection", () => ({
-    precomputeProjection: jest.fn().mockResolvedValue(undefined),
-    appendTrackToProjection: jest.fn().mockResolvedValue(undefined),
-}));
-
-jest.mock("../../services/artistSimilarity", () => ({
-    MIN_LOCAL_TRACKS: 5,
-    rebuildArtistCentroid: jest.fn().mockResolvedValue({ trackCount: 0 }),
 }));
 
 jest.mock("../../services/sourcePauseController", () => ({

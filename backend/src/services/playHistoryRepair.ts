@@ -62,6 +62,7 @@ export async function listensOf(userId: string): Promise<Listen[]> {
             id: true,
             trackId: true,
             playedAt: true,
+            heard: true,
             track: {
                 select: {
                     title: true,
@@ -87,6 +88,8 @@ export async function listensOf(userId: string): Promise<Listen[]> {
     // its row for deletion. Same rule as `stats/listens.ts`.
     const listenStartedAt = new Map<string, number>();
     const out: Listen[] = [];
+    // A listen with a row the listen rule recorded was heard, whatever its gaps say.
+    const recordedHeard = new Set<Listen>();
 
     plays.forEach((p, i) => {
         const window = Math.max(MIN_LISTEN_WINDOW_SECONDS, p.track.duration);
@@ -102,6 +105,7 @@ export async function listensOf(userId: string): Promise<Listen[]> {
             listen.playIds.push(p.id);
             listen.spanSeconds = (p.playedAt.getTime() - listen.startedAt.getTime()) / 1000;
             listen.gapAfterSeconds = gapAfterRow[i];
+            if (p.heard) recordedHeard.add(listen);
         } else {
             const listen: Listen = {
                 trackId: p.trackId,
@@ -118,14 +122,16 @@ export async function listensOf(userId: string): Promise<Listen[]> {
             };
             open.set(p.trackId, listen);
             out.push(listen);
-            // Only a row that opens a listen becomes the anchor. Advancing this
-            // on every row is the bug described above.
+            if (p.heard) recordedHeard.add(listen);
+            // Only a row that opens a listen becomes the anchor.
             listenStartedAt.set(p.trackId, p.playedAt.getTime());
         }
     });
 
     for (const listen of out) {
-        listen.verdict = judge(listen.spanSeconds, listen.gapAfterSeconds, listen.requiredSeconds);
+        listen.verdict = recordedHeard.has(listen)
+            ? "heard"
+            : judge(listen.spanSeconds, listen.gapAfterSeconds, listen.requiredSeconds);
     }
     return out;
 }
@@ -335,8 +341,10 @@ export async function removeFalseStarts(
 /** Stop raising these tracks. Deletes nothing; counting is unaffected. */
 export async function ignoreTracks(userId: string, trackIds: string[]): Promise<{ ignored: number }> {
     if (trackIds.length === 0) return { ignored: 0 };
+    // An id that is no track (deleted since the audit listed it, or made up) is skipped, not a failure.
+    const tracks = await prisma.track.findMany({ where: { id: { in: trackIds } }, select: { id: true } });
     const { count } = await prisma.playAuditIgnore.createMany({
-        data: trackIds.map((trackId) => ({ userId, trackId })),
+        data: tracks.map((t) => ({ userId, trackId: t.id })),
         skipDuplicates: true,
     });
     logger.info(`[PlayAudit] ${userId} ignored ${count} track(s)`);

@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from "axios";
 import { logger } from "../utils/logger";
+import { isMbid } from "./artistIdentity";
 import { redisClient } from "../utils/redis";
 import { USER_AGENT } from "../config";
 import { INTERACTIVE_PRIORITY, rateLimiter } from "./rateLimiter";
@@ -37,11 +38,16 @@ class WikidataService {
         });
     }
 
+    /**
+     * The artist's Wikipedia summary and Wikidata image, `{}` when Wikidata has
+     * no entry or the entry has neither; null when a source failed to answer, so
+     * the caller keeps what it has and asks again later. Only answers are cached.
+     */
     async getArtistInfo(
         artistName: string,
         mbid: string,
         opts: { interactive?: boolean } = {}
-    ): Promise<WikidataResult> {
+    ): Promise<WikidataResult | null> {
         const priority = opts.interactive ? INTERACTIVE_PRIORITY : 0;
         const cacheKey = `wikidata:${mbid}`;
 
@@ -58,22 +64,17 @@ class WikidataService {
             // Step 1: Query Wikidata for the MusicBrainz ID
             const wikidataId = await this.getWikidataIdFromMBID(mbid, priority);
 
-            if (!wikidataId) {
+            let result: WikidataResult = {};
+            if (wikidataId) {
+                // One EntityData fetch answers both: the sitelink title feeds the
+                // Wikipedia summary, the P18 claim the image.
+                const entity = await this.getEntity(wikidataId, priority);
+                const summary = await this.getSummaryFromEntity(entity, priority);
+                const heroUrl = this.getImageFromEntity(wikidataId, entity);
+                result = { summary, heroUrl };
+            } else {
                 logger.debug(`No Wikidata entry found for ${artistName}`);
-                return {};
             }
-
-            // Step 2: one EntityData fetch answers both — the sitelink
-            // title feeds the Wikipedia summary, the P18 claim the image.
-            const entity = await this.getEntity(wikidataId, priority);
-            const summary = await this.getSummaryFromEntity(
-                wikidataId,
-                entity,
-                priority
-            );
-            const heroUrl = this.getImageFromEntity(wikidataId, entity);
-
-            const result: WikidataResult = { summary, heroUrl };
 
             // Cache for 30 days
             try {
@@ -88,8 +89,8 @@ class WikidataService {
 
             return result;
         } catch (error) {
-            logger.error(`Wikidata fetch failed for ${artistName}:`, error);
-            return {};
+            logger.warn(`Wikidata fetch failed for ${artistName}; asked again later: ${error instanceof Error ? error.message : String(error)}`);
+            return null;
         }
     }
 
@@ -97,6 +98,8 @@ class WikidataService {
         mbid: string,
         priority = 0
     ): Promise<string | null> {
+        // Only an id of MusicBrainz's own shape goes into the query text.
+        if (!isMbid(mbid)) return null;
         const sparqlQuery = `
       SELECT ?item WHERE {
         ?item wdt:P434 "${mbid}" .
@@ -122,51 +125,29 @@ class WikidataService {
         return itemUrl.split("/").pop() || null;
     }
 
-    private async getEntity(
-        wikidataId: string,
-        priority = 0
-    ): Promise<any | null> {
-        try {
-            const response = await this.wikidataGet(
-                `https://www.wikidata.org/wiki/Special:EntityData/${wikidataId}.json`,
-                undefined,
-                priority
-            );
-            return response.data.entities?.[wikidataId] ?? null;
-        } catch (error) {
-            logger.error(
-                `Failed to fetch Wikidata entity ${wikidataId}:`,
-                error
-            );
-            return null;
-        }
+    private async getEntity(wikidataId: string, priority = 0): Promise<any | null> {
+        const response = await this.wikidataGet(
+            `https://www.wikidata.org/wiki/Special:EntityData/${wikidataId}.json`,
+            undefined,
+            priority
+        );
+        return response.data.entities?.[wikidataId] ?? null;
     }
 
-    private async getSummaryFromEntity(
-        wikidataId: string,
-        entity: any | null,
-        priority = 0
-    ): Promise<string | undefined> {
+    /** The English Wikipedia summary; undefined when the entry has no English article. */
+    private async getSummaryFromEntity(entity: any | null, priority = 0): Promise<string | undefined> {
+        const enWikiTitle = entity?.sitelinks?.enwiki?.title;
+        if (!enWikiTitle) return undefined;
         try {
-            const enWikiTitle = entity?.sitelinks?.enwiki?.title;
-
-            if (!enWikiTitle) return undefined;
-
-            // Get article summary from Wikipedia API
             const summaryResponse = await this.wikidataGet(
-                "https://en.wikipedia.org/api/rest_v1/page/summary/" +
-                    encodeURIComponent(enWikiTitle),
+                "https://en.wikipedia.org/api/rest_v1/page/summary/" + encodeURIComponent(enWikiTitle),
                 undefined,
                 priority
             );
-
             return summaryResponse.data.extract;
-        } catch (error) {
-            logger.error(
-                `Failed to get Wikipedia summary for ${wikidataId}:`,
-                error
-            );
-            return undefined;
+        } catch (error: any) {
+            if (error?.response?.status === 404) return undefined;
+            throw error;
         }
     }
 
@@ -175,11 +156,11 @@ class WikidataService {
         entity: any | null
     ): string | undefined {
         try {
-            const imageProperty = entity?.claims?.P18; // P18 is "image"
-
-            if (!imageProperty || imageProperty.length === 0) return undefined;
-
-            const imageName = imageProperty[0].mainsnak?.datavalue?.value;
+            // P18 is "image". A preferred-rank claim is the one Wikidata recommends;
+            // a deprecated one is known to be wrong.
+            const claims: any[] = (entity?.claims?.P18 ?? []).filter((c: any) => c?.rank !== "deprecated");
+            const claim = claims.find((c) => c?.rank === "preferred") ?? claims[0];
+            const imageName = claim?.mainsnak?.datavalue?.value;
             if (!imageName) return undefined;
 
             // Convert to Wikimedia Commons URL

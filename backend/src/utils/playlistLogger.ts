@@ -104,12 +104,10 @@ function formatLogLine(level: string, message: string): string {
 }
 
 class PlaylistLogger {
-    private jobId: string;
     private logFile: string;
     private buffer: string[] = [];
 
     constructor(jobId: string) {
-        this.jobId = jobId;
         ensureLogsDir();
         
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');

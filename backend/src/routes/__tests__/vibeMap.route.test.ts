@@ -1,7 +1,7 @@
 /**
- * GET /api/vibe/map never waits on a computation: it serves the map (gzipped when
- * accepted), answers 202 while computing, or 500 after a failure. Failure and
- * boundary paths first.
+ * GET /api/vibe/map never waits on a computation: it serves the positions the
+ * similarity step stored (gzipped when accepted), answers 202 until the first
+ * layout exists, or 500 when reading fails.
  */
 
 import express from "express";
@@ -19,8 +19,8 @@ jest.mock("../../middleware/auth", () => ({
 }));
 
 const mockState = jest.fn();
-jest.mock("../../services/umapProjection", () => ({
-    getMapProjectionState: () => mockState(),
+jest.mock("../../services/vibeMap", () => ({
+    getVibeMap: () => mockState(),
 }));
 
 import vibeRouter from "../vibe";
@@ -41,22 +41,23 @@ function app() {
 }
 
 const MAP = {
-    tracks: [{ id: "t1", x: 0.1, y: 0.2, z: 0.3, title: "One", artist: "A" }],
+    tracks: [{ id: "t1", x: 0.1, y: 0.2, z: 0.3, colour: 0.4, title: "One", artist: "A" }],
     trackCount: 1,
     computedAt: "2026-09-23T00:00:00.000Z",
+    moodSignature: "m1",
 };
 
 describe("GET /api/vibe/map", () => {
     beforeEach(() => mockState.mockReset());
 
-    it("reports a failed computation as a 500", async () => {
-        mockState.mockResolvedValue({ status: "failed", message: "UMAP worker exited with code 1" });
+    it("reports a failed read as a 500", async () => {
+        mockState.mockRejectedValue(new Error("connection lost"));
         const res = await request(app()).get("/api/vibe/map");
         expect(res.status).toBe(500);
-        expect(res.body.error).toMatch(/Failed to compute/);
+        expect(res.body.error).toMatch(/Failed to read the vibe map/);
     });
 
-    it("answers 'computing' straight away while the layout is being built", async () => {
+    it("answers 'computing' straight away until the first layout exists", async () => {
         mockState.mockResolvedValue({ status: "computing" });
         const res = await request(app()).get("/api/vibe/map");
         expect(res.status).toBe(202);

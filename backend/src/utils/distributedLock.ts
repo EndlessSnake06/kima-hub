@@ -38,6 +38,38 @@ class DistributedLock {
     }
   }
 
+  /**
+   * Keep a held lock alive by renewing its expiry every third of `ttlMs` until the returned
+   * stop is called. A process that dies stops renewing, so its lock frees within `ttlMs`.
+   */
+  keepAlive(key: string, ttlMs: number): () => void {
+    const lockKey = `lock:${key}`;
+    const script = `
+      if redis.call("get", KEYS[1]) == ARGV[1] then
+        return redis.call("pexpire", KEYS[1], ARGV[2])
+      else
+        return 0
+      end
+    `;
+    let timer: NodeJS.Timeout | null = null;
+    const schedule = () => {
+      timer = setTimeout(async () => {
+        try {
+          await this.redis.eval(script, 1, lockKey, this.lockValue, String(ttlMs));
+        } catch {
+          // A missed renewal is retried on the next tick; the lock lasts ttlMs.
+        }
+        if (timer) schedule();
+      }, Math.max(1, Math.floor(ttlMs / 3)));
+      timer.unref();
+    };
+    schedule();
+    return () => {
+      if (timer) clearTimeout(timer);
+      timer = null;
+    };
+  }
+
   async withLock<T>(
     key: string,
     ttlMs: number,

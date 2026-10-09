@@ -108,8 +108,6 @@ jest.mock("../../services/trackIdentity", () => ({
 jest.mock("../../services/musicbrainz", () => ({
     musicBrainzService: {
         searchRecording: jest.fn().mockResolvedValue(null),
-        lookupByIsrc: jest.fn().mockResolvedValue(null),
-        getRecordingIsrc: jest.fn().mockResolvedValue(null),
         getRecordingGenres: jest.fn().mockResolvedValue(null),
     },
 }));
@@ -117,16 +115,6 @@ jest.mock("../../services/musicbrainz", () => ({
 jest.mock("../../services/acoustidIdentification", () => ({
     identifyTrackByAcoustid: jest.fn().mockResolvedValue(null),
     persistAcoustidFingerprint: jest.fn().mockResolvedValue(undefined),
-}));
-
-jest.mock("../../services/umapProjection", () => ({
-    precomputeProjection: jest.fn().mockResolvedValue(undefined),
-    appendTrackToProjection: jest.fn().mockResolvedValue(undefined),
-}));
-
-jest.mock("../../services/artistSimilarity", () => ({
-    MIN_LOCAL_TRACKS: 5,
-    rebuildArtistCentroid: jest.fn().mockResolvedValue({ trackCount: 0 }),
 }));
 
 jest.mock("../../services/sourcePauseController", () => ({
@@ -270,9 +258,9 @@ async function seedTrack(
 
 async function stageRow(trackId: string, stage: string) {
     const rows = await prisma.$queryRawUnsafe<
-        Array<{ status: string; attempt: number; decidedBy: string | null }>
+        Array<{ status: string; failures: number; decidedBy: string | null }>
     >(
-        `SELECT status, attempt, "decidedBy" FROM "TrackStage"
+        `SELECT status, failures, "decidedBy" FROM "TrackStage"
           WHERE "trackId" = $1 AND stage = $2`,
         trackId, stage,
     );
@@ -343,8 +331,22 @@ describe("redecideEverything", () => {
         expect((await stageRow(id("unknown"), "embedding"))?.status).toBe("pending");
 
         // Re-opened records carry no stale decision and are due immediately.
-        expect((await stageRow(id("unknown"), "analysis"))?.attempt).toBe(0);
+        expect((await stageRow(id("unknown"), "analysis"))?.failures).toBe(0);
         expect((await stageRow(id("unknown"), "analysis"))?.decidedBy).toBeNull();
+    });
+
+    it("leaves a missing file's status columns closed, as its records are", async () => {
+        await seedTrack(id("gone"), { analysis: "done", embedding: "done" });
+        await prisma.track.update({
+            where: { id: id("gone") },
+            data: { missingSince: new Date(), analysisStatus: "completed" } as never,
+        });
+
+        await redecideEverything();
+
+        expect((await stageRow(id("gone"), "analysis"))?.status).toBe("failed");
+        const track = await prisma.track.findUniqueOrThrow({ where: { id: id("gone") } });
+        expect(track.analysisStatus).toBe("permanently_failed");
     });
 
     it("re-opens a record that was parked `blocked` as well as one that failed terminally", async () => {

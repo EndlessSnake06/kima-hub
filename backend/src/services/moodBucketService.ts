@@ -1,12 +1,7 @@
 /**
- * Decides a track's mood from five Essentia heads: happy (Upbeat), sad
- * (Melancholic), relaxed (Calm), aggressive (Intense), party (Energetic).
- * A track carries a mood when its head says yes (P > 0.5 — the model leans
- * that way at all), absolute per track, no tuned constant, no dependence on
- * what else the library holds. Library rank is display only (the dominant
- * label's winner, map colouring), never a membership filter: rank-based
- * membership made a track's moods change when unrelated music was added.
- * Buckets rebuild whenever the analysed library changes.
+ * A track's moods from five Essentia heads: happy (Upbeat), sad (Melancholic), relaxed (Calm), aggressive (Intense),
+ * party (Energetic). A track has a mood when its head gives P > 0.5, whatever else the library holds; library rank is
+ * display only (the dominant label, map colouring), never membership. Buckets rebuild when the analysed library changes.
  */
 
 import { logger } from "../utils/logger";
@@ -16,9 +11,8 @@ import { NOT_MISSING } from "../utils/libraryEligibility";
 
 // The heads' own lean: strictly more likely than not (two-class softmax
 // argmax), not a tuned value. Exactly 0.5 is the model not leaning either
-// way, so it carries no mood. Every head leans yes for >= 20.5% of a real
-// (MOOD-HEADS-2026-09-30), and it is what stops a dirge-heavy library from
-// labelling its least-gloomy tracks "Upbeat": a dirge scores ~0.2.
+// way, so it carries no mood. It stops a dirge-heavy library from labelling
+// its least-gloomy tracks "Upbeat": a dirge scores ~0.2.
 const HEAD_DECISION = 0.5;
 
 export const MOODS = [

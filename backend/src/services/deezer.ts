@@ -157,8 +157,9 @@ class DeezerService {
                 return artist?.picture_xl || artist?.picture_big || artist?.picture_medium || null;
             });
         } catch (error: any) {
-            logger.error(`Deezer artist image error for ${artistName}:`, error.message);
-            return null;
+            // A failed request is not "no image": the caller must not remember it as one.
+            logger.warn(`Deezer artist image error for ${artistName}:`, error.message);
+            throw error;
         }
     }
 
@@ -209,8 +210,9 @@ class DeezerService {
                 return results;
             });
         } catch (error: any) {
-            logger.error(`Deezer related artists error for ${artistName}:`, error.message);
-            return [];
+            // An error is not "no related artists": the caller decides what a failed source means.
+            logger.warn(`Deezer related artists error for ${artistName}: ${error.message}`);
+            throw error;
         }
     }
 
@@ -255,8 +257,9 @@ class DeezerService {
                 return match.cover_xl || match.cover_big || match.cover_medium || null;
             });
         } catch (error: any) {
-            logger.error(`Deezer album cover error for ${artistName} - ${albumName}:`, error.message);
-            return null;
+            // A failed request is not "no cover": the caller must not remember it as one.
+            logger.warn(`Deezer album cover error for ${artistName} - ${albumName}:`, error.message);
+            throw error;
         }
     }
 

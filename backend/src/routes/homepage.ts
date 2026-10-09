@@ -3,7 +3,6 @@ import { logger } from "../utils/logger";
 import { requireAuthOrToken } from "../middleware/auth";
 import { prisma } from "../utils/db";
 import { redisClient } from "../utils/redis";
-import { LIBRARY_LOCATION } from "../services/libraryFilters";
 
 const router = Router();
 

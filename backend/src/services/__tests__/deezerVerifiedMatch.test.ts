@@ -149,3 +149,11 @@ describe("deezerService.getRelatedArtists — verified seed only", () => {
         ).resolves.toBe("https://deezer/p.mp3");
     });
 });
+
+describe("a failed request is not a 'no'", () => {
+    it("rejects instead of answering null, so artwork does not remember 'no cover'", async () => {
+        mockRateLimitedGet.mockRejectedValue(new Error("timeout of 5000ms exceeded"));
+        await expect(deezerService.getAlbumCover("Some Artist", "Some Album")).rejects.toThrow("timeout");
+        await expect(deezerService.getArtistImage("Some Artist")).rejects.toThrow("timeout");
+    });
+});

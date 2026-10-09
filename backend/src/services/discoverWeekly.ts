@@ -8,7 +8,6 @@ import { normalizeArtistName } from "./artistIdentity";
 import { hasRealMbid } from "./artistIdentity";
 import { titlesAgree } from "./albumIdentity";
 import type { SeedArtist } from "./discovery/discoverySeeding";
-import { Prisma } from "@prisma/client";
 import { prisma } from "../utils/db";
 import { removeFailedDownload } from "./lidarrFailures";
 import {
@@ -22,7 +21,6 @@ import { updateBatchStatus } from "./discovery/optimisticBatchUpdate";
 import { removeDiscoveryArtist } from "./discovery/lidarrRemoval";
 import { lidarrService } from "./lidarr";
 import { requestScan } from "../workers/scanRequest";
-import { subWeeks } from "date-fns";
 import { resolveGenerationWeekStart } from "../lib/discoveryWeek";
 import { getSystemSettings } from "../utils/systemSettings";
 import { discoveryLogger } from "./discoveryLogger";
@@ -56,7 +54,8 @@ const TIER_DISTRIBUTION = {
     wildcard: 0.1, // 10% from deep cuts (variety)
 };
 
-// Tier thresholds over similarity scores, which mostly fall between 0.5 and 0.7.
+// Tier thresholds over similar-artist scores (0.5 to 0.95 from the sources, moved at most 0.1 by the
+// library's re-rank; artistSimilarity.ts).
 const TIER_THRESHOLDS = {
     high: 0.65,       // >=65% match
     medium: 0.50,     // 50-65% match
@@ -66,10 +65,7 @@ const TIER_THRESHOLDS = {
     minimum: 0.20,    // Don't recommend anything below this (allows deep cuts)
 };
 
-/**
- * Tier for a similarity score. Scores for similar artists cluster around
- * 0.5-0.7: High >= 0.65, Medium >= 0.50, Explore >= 0.35, else Wild Card.
- */
+/** The tier a similar-artist score falls in (TIER_THRESHOLDS). */
 function getTierFromSimilarity(
     similarity: number
 ): "high" | "medium" | "explore" | "wildcard" {
@@ -1023,7 +1019,7 @@ class DiscoverWeeklyService {
 
         // Select 1 random track from each album
         const onePerAlbum: typeof allTracks = [];
-        for (const [albumId, tracks] of tracksByAlbum) {
+        for (const tracks of tracksByAlbum.values()) {
             const randomTrack =
                 tracks[Math.floor(Math.random() * tracks.length)];
             onePerAlbum.push(randomTrack);
@@ -2355,89 +2351,6 @@ class DiscoverWeeklyService {
     }
 
     /**
-     * Get user's top genres from listening history
-     */
-    private async getUserTopGenres(userId: string): Promise<string[]> {
-        try {
-            // Get recent plays - only the genre fields are read below, so
-            // select just those instead of pulling full Track/Album/Artist
-            // rows via `include` (DB-8).
-            const recentPlays = await prisma.play.findMany({
-                where: {
-                    userId,
-                    playedAt: { gte: subWeeks(new Date(), 12) }, // Last 3 months
-                },
-                select: {
-                    track: {
-                        select: {
-                            album: {
-                                select: {
-                                    artist: {
-                                        select: { genres: true, userGenres: true },
-                                    },
-                                },
-                            },
-                        },
-                    },
-                },
-                take: 500,
-            });
-
-            // Collect genres from artists (stored as tags)
-            // MERGE canonical genres + user-added genres
-            const genreCounts = new Map<string, number>();
-
-            for (const play of recentPlays) {
-                const artist = play.track?.album?.artist;
-                if (!artist) continue;
-
-                // Collect canonical genres
-                if (artist.genres) {
-                    const genres = Array.isArray(artist.genres)
-                        ? artist.genres
-                        : ((artist.genres as string) || "")
-                              .split(",")
-                              .map((g: string) => g.trim());
-
-                    for (const genre of genres) {
-                        if (genre && typeof genre === "string") {
-                            genreCounts.set(
-                                genre.toLowerCase(),
-                                (genreCounts.get(genre.toLowerCase()) || 0) + 1
-                            );
-                        }
-                    }
-                }
-
-                // Also collect user-added genres (metadata override system)
-                if (artist.userGenres) {
-                    const userGenres = Array.isArray(artist.userGenres)
-                        ? artist.userGenres
-                        : [];
-
-                    for (const genre of userGenres) {
-                        if (genre && typeof genre === "string") {
-                            genreCounts.set(
-                                genre.toLowerCase(),
-                                (genreCounts.get(genre.toLowerCase()) || 0) + 1
-                            );
-                        }
-                    }
-                }
-            }
-
-            // Sort by count and return top genres
-            return Array.from(genreCounts.entries())
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 10)
-                .map(([genre]) => genre);
-        } catch (error) {
-            logger.error("Error getting user genres:", error);
-            return [];
-        }
-    }
-
-    /**
      * Check if candidate provides sufficient variety from recent picks.
      * Prevents consecutive similar artists (e.g., 5 shoegaze bands in a row).
      */
@@ -2838,7 +2751,6 @@ class DiscoverWeeklyService {
             logger.debug(
                 `\n   === Filling remaining slots (NEW artists only) ===`
             );
-            const remaining = similarArtistTarget - recommendations.length;
             const allRemaining = [
                 ...byTier.high,
                 ...byTier.medium,

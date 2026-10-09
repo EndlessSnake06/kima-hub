@@ -34,6 +34,7 @@ jest.mock("../../workers/unifiedEnrichment", () => ({
     getEnrichmentProgress: jest.fn(),
     runFullEnrichment: jest.fn(),
     triggerEnrichmentNow: jest.fn(),
+    startEnrichmentNow: jest.fn(),
     invalidateEnrichmentProgress: jest.fn(),
 }));
 jest.mock("../../services/enrichmentFailureService", () => ({

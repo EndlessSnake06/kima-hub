@@ -15,25 +15,42 @@ function shouldLog(level: LogLevel): boolean {
     return LOG_LEVELS[level] >= LOG_LEVELS[currentLevel];
 }
 
+/** A failed HTTP request logged as one line: printed whole, an axios error is the
+ * entire request and socket. The query string is left out: some sources take their
+ * key in it. */
+function describe(arg: unknown): unknown {
+    const err = arg as {
+        isAxiosError?: boolean;
+        message?: string;
+        code?: string;
+        response?: { status?: number };
+        config?: { method?: string; baseURL?: string; url?: string };
+    } | null;
+    if (!err || err.isAxiosError !== true) return arg;
+    const url = `${err.config?.baseURL ?? ""}${err.config?.url ?? ""}`.split("?")[0];
+    const status = err.response?.status ?? err.code ?? "no response";
+    return `${err.message} (${status}, ${(err.config?.method ?? "get").toUpperCase()} ${url})`;
+}
+
 export const logger = {
     debug: (message: string, ...args: any[]) => {
         if (shouldLog('debug')) {
-            console.debug(`[DEBUG] ${message}`, ...args);
+            console.debug(`[DEBUG] ${message}`, ...args.map(describe));
         }
     },
     info: (message: string, ...args: any[]) => {
         if (shouldLog('info')) {
-            console.info(`[INFO] ${message}`, ...args);
+            console.info(`[INFO] ${message}`, ...args.map(describe));
         }
     },
     warn: (message: string, ...args: any[]) => {
         if (shouldLog('warn')) {
-            console.warn(`[WARN] ${message}`, ...args);
+            console.warn(`[WARN] ${message}`, ...args.map(describe));
         }
     },
     error: (message: string, ...args: any[]) => {
         if (shouldLog('error')) {
-            console.error(`[ERROR] ${message}`, ...args);
+            console.error(`[ERROR] ${message}`, ...args.map(describe));
         }
     },
 };

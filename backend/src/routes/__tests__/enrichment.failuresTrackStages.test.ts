@@ -4,9 +4,9 @@
  */
 
 jest.mock("../../middleware/auth", () => ({
-    requireAuth: (req: unknown, _res: unknown, next: () => void) => next(),
-    requireAdmin: (req: unknown, _res: unknown, next: () => void) => next(),
-    optionalAuth: (req: unknown, _res: unknown, next: () => void) => next(),
+    requireAuth: (_req: unknown, _res: unknown, next: () => void) => next(),
+    requireAdmin: (_req: unknown, _res: unknown, next: () => void) => next(),
+    optionalAuth: (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 
 jest.mock("../../utils/logger", () => ({
@@ -31,6 +31,7 @@ jest.mock("../../workers/unifiedEnrichment", () => ({
     retryFailedAndBlocked: jest.fn().mockResolvedValue({ queued: 0 }),
     redecideEverything: jest.fn().mockResolvedValue({ reopened: 0 }),
     triggerEnrichmentNow: jest.fn().mockResolvedValue({ artists: 0, tracks: 0, audioQueued: 0 }),
+    startEnrichmentNow: jest.fn().mockResolvedValue({ artists: 0, tracks: 0, audioQueued: 0 }),
 }));
 
 jest.mock("../../services/enrichmentState", () => ({
@@ -177,5 +178,19 @@ describe("GET /enrichment/failures reads track stages from TrackStage", () => {
         expect(res.status).toBe(200);
         expect(res.body.track).toBe(1);
         expect(res.body.total).toBe(1);
+    });
+
+    it("does not count or list a track whose file is missing as a failure", async () => {
+        await seedFailedRecording(id("t3"));
+        await prisma.$executeRawUnsafe(
+            `UPDATE "TrackStage" SET "failureClass" = 'FILE_MISSING', retryable = false WHERE "trackId" = $1`,
+            id("t3"),
+        );
+
+        const counts = await request(app).get("/api/enrichment/failures/counts");
+        expect(counts.body.track).toBe(0);
+
+        const list = await request(app).get("/api/enrichment/failures").query({ entityType: "track" });
+        expect(list.body.failures.some((f: { entityId: string }) => f.entityId === id("t3"))).toBe(false);
     });
 });

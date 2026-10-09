@@ -28,20 +28,22 @@ const DEFAULT_JOB_OPTIONS = {
     removeOnFail: { count: 500, age: 86400 },
 };
 
+// One delivery per job: the artist's own failure count and the cycle's re-queue run the retries.
 export const artistQueue = new Queue(QUEUE_NAMES.ARTISTS, {
     connection: getConnectionOptions(),
-    defaultJobOptions: DEFAULT_JOB_OPTIONS,
+    defaultJobOptions: { ...DEFAULT_JOB_OPTIONS, attempts: 1 },
 });
 
+// One delivery per job: the stage record runs the retries.
 export const trackQueue = new Queue(QUEUE_NAMES.TRACKS, {
     connection: getConnectionOptions(),
-    defaultJobOptions: DEFAULT_JOB_OPTIONS,
+    defaultJobOptions: { ...DEFAULT_JOB_OPTIONS, attempts: 1 },
 });
 
-// Vibe queue — consumed by the CLAP Python bullmq-python Worker (Phase 3)
+// Consumed by the CLAP analyzer. One delivery per job: the stage record runs the retries.
 export const vibeQueue = new Queue(QUEUE_NAMES.VIBE, {
     connection: getConnectionOptions(),
-    defaultJobOptions: { ...DEFAULT_JOB_OPTIONS, attempts: 2 },
+    defaultJobOptions: { ...DEFAULT_JOB_OPTIONS, attempts: 1 },
 });
 
 export const podcastQueue = new Queue(QUEUE_NAMES.PODCASTS, {

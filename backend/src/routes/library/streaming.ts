@@ -2,7 +2,7 @@ import { Router, Request, Response } from "express";
 import { prisma } from "../../utils/db";
 import { logger } from "../../utils/logger";
 import { config } from "../../config";
-import { getAudioStreamingService } from "../../services/audioStreaming";
+import { getAudioStreamingService, isQuality } from "../../services/audioStreaming";
 import { resolveTrackFilePath } from "./trackPath";
 import path from "path";
 
@@ -55,6 +55,10 @@ router.get("/tracks/:id/stream", async (req, res) => {
     logger.debug("[STREAM] Request received for track:", req.params.id);
     const { quality } = req.query;
     const userId = req.user?.id;
+
+    if (quality !== undefined && !isQuality(quality)) {
+      return res.status(400).json({ error: "quality must be original, high, medium or low" });
+    }
 
     if (!userId) {
       logger.debug("[STREAM] No userId in session - unauthorized");
@@ -143,6 +147,10 @@ router.post("/tracks/:id/prewarm", async (req, res) => {
   try {
     const { quality } = req.query;
     const userId = req.user?.id;
+
+    if (quality !== undefined && !isQuality(quality)) {
+      return res.status(400).json({ error: "quality must be original, high, medium or low" });
+    }
 
     if (!userId) {
       return res.status(401).json({ error: "Unauthorized" });

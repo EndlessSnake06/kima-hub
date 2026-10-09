@@ -172,10 +172,11 @@ class FanartService {
         } catch (error: any) {
             if (error.response?.status === 404) {
                 logger.debug(`Fanart.tv: No images found`);
-            } else {
-                logger.error(`   Fanart.tv error:`, error.message);
+                return null;
             }
-            return null;
+            // A failed request is not "no image": the caller must not remember it as one.
+            logger.warn(`   Fanart.tv error:`, error.message);
+            throw error;
         }
     }
 
@@ -227,8 +228,10 @@ class FanartService {
             }
 
             return imageUrl;
-        } catch (error) {
-            return null;
+        } catch (error: any) {
+            if (error.response?.status === 404) return null;
+            logger.warn(`   Fanart.tv album error:`, error.message);
+            throw error;
         }
     }
 }

@@ -1,6 +1,6 @@
 /**
- * The embedding write probe on the migrated schema: it fails if a migration
- * drops track_embeddings' primary key, foreign key or uniqueness.
+ * The embedding write probe on the migrated schema: it fails, with the right reason, when
+ * track_embeddings is missing, lost its key, or lost a column the upsert writes.
  */
 
 import { prisma } from "../../utils/db";
@@ -30,6 +30,38 @@ describe("embedding write path on a migrated database", () => {
         await checkEmbeddingWritePath(true);
 
         expect(await embeddingRowCount()).toBe(before);
+    });
+
+    it("fails on a table without the key the upsert needs", async () => {
+        await prisma.$executeRawUnsafe(`ALTER TABLE track_embeddings RENAME TO track_embeddings_keep`);
+        try {
+            await prisma.$executeRawUnsafe(
+                `CREATE TABLE track_embeddings (track_id text, embedding vector(512), model_version text, analyzed_at timestamp)`,
+            );
+            const result = await checkEmbeddingWritePath(true);
+            expect(result).toEqual(expect.objectContaining({ ok: false, reason: "missing_unique_constraint" }));
+        } finally {
+            await prisma.$executeRawUnsafe(`DROP TABLE IF EXISTS track_embeddings`);
+            await prisma.$executeRawUnsafe(`ALTER TABLE track_embeddings_keep RENAME TO track_embeddings`);
+        }
+    });
+
+    it("tells a missing table from a missing column", async () => {
+        await prisma.$executeRawUnsafe(`ALTER TABLE track_embeddings RENAME TO track_embeddings_keep`);
+        try {
+            expect(await checkEmbeddingWritePath(true)).toEqual(
+                expect.objectContaining({ ok: false, reason: "table_missing" }),
+            );
+            await prisma.$executeRawUnsafe(
+                `CREATE TABLE track_embeddings (track_id text PRIMARY KEY, embedding vector(512), analyzed_at timestamp)`,
+            );
+            const result = await checkEmbeddingWritePath(true);
+            expect(result).toEqual(expect.objectContaining({ ok: false, reason: "probe_failed" }));
+            expect(result.detail).toContain("model_version");
+        } finally {
+            await prisma.$executeRawUnsafe(`DROP TABLE IF EXISTS track_embeddings`);
+            await prisma.$executeRawUnsafe(`ALTER TABLE track_embeddings_keep RENAME TO track_embeddings`);
+        }
     });
 
     it("keeps the uniqueness the upsert depends on", async () => {

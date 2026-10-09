@@ -1,6 +1,5 @@
 /**
- * Enforced at the read side: a track whose
- * file is gone (missingSince set) must answer absent from every consumer —
+ * A track whose file is gone (missingSince set) must answer absent from every consumer —
  * similar tracks, mood buckets, song paths, mixes — while streaming already
  * refuses it. Clearing the flag brings it back everywhere, with no work.
  */
@@ -10,9 +9,9 @@ import { prisma } from "../../utils/db";
 import { findSimilarTracks } from "../hybridSimilarity";
 import { generateSongPath } from "../songPath";
 import { generateChillMix } from "../mixes/moodMixes";
-import { getMapProjectionState } from "../umapProjection";
-import { redisClient } from "../../utils/redis";
+import { getVibeMap } from "../vibeMap";
 import { syncMoodBuckets } from "../../workers/moodBucketWorker";
+import { MATCHING_MODEL, buildMatching } from "../matching/state";
 
 jest.mock("../../utils/redis", () => ({
     redisClient: {
@@ -79,11 +78,13 @@ async function seed() {
         // two closest pair, so an unfiltered query finds the missing track.
         const v = Array.from({ length: 512 }, (_, d) => (d === i ? 1 : 0.001));
         await prisma.$executeRawUnsafe(
-            `INSERT INTO track_embeddings (track_id, embedding) VALUES ($1, $2::vector)`,
+            `INSERT INTO track_embeddings (track_id, embedding, model_version) VALUES ($1, $2::vector, $3)`,
             id,
             `[${v.join(",")}]`,
+            MATCHING_MODEL,
         );
     }
+    await buildMatching();
 }
 
 /**
@@ -95,15 +96,16 @@ async function seed() {
 describe("grep gate: no embedding query without the eligibility fragment", () => {
     const CONSUMERS = [
         "services/hybridSimilarity.ts",
-        "services/songPath.ts",
+        "services/matching/rank.ts",
         "services/textEmbeddingBridge.ts",
-        "services/umapProjection.ts",
+        "services/vibeMap.ts",
+        "services/matching/map.ts",
         "services/search.ts",
         "routes/vibe.ts",
     ];
-    // Single-seed lookups: the query reads exactly the track the request
-    // names (by id), which streaming refuses if it is gone.
-    const SEED_LOOKUP = /WHERE (te\.|t\.)?(track_id|id) = \$\{/;
+    // Seed lookups: the query reads exactly the tracks the request names (by
+    // id), which streaming refuses if they are gone.
+    const SEED_LOOKUP = /WHERE (te\.|t\.)?(track_id|id) = (ANY\()?\$\{/;
     // Status counters: plain COUNT over the whole table — the counted-and-
     // shown exception of invariant 3, not a consumer of results.
     const STATUS_COUNT = /^\s*SELECT\s+COUNT\(/i;
@@ -112,7 +114,7 @@ describe("grep gate: no embedding query without the eligibility fragment", () =>
         const src = fs.readFileSync(path.join(__dirname, "../..", file), "utf8");
         const templates = [
             ...[...src.matchAll(/\$queryRaw(?:<[^>]*>)?`([\s\S]*?)`/g)].map((m) => m[1]),
-            ...[...src.matchAll(/\$queryRaw(?:<[^>]*>)?\(\s*Prisma\.sql`([\s\S]*?)`/g)].map((m) => m[1]),
+            ...[...src.matchAll(/Prisma\.sql`([\s\S]*?)`/g)].map((m) => m[1]),
         ];
         expect(templates.length).toBeGreaterThan(0); // the scan must find the queries
         for (const sql of templates) {
@@ -166,31 +168,16 @@ describe("library eligibility at the read side", () => {
         expect(mix!.trackIds).not.toContain(MISSING);
     });
 
-    it("keeps it out of a map served from the cache", async () => {
-        // Positions are fitted over the library as it was; the cache is the
-        // one read path that can outlive a file, so the filter runs at read.
-        const cached = {
-            tracks: [MISSING, "trk_elig_0"].map((id, i) => ({
-                id, x: 0.1 * i, y: 0.2 * i, z: 0.3 * i,
-                title: id === MISSING ? "E 11" : "E 0",
-                artist: "x", artistId: "a", albumId: "b", coverUrl: null,
-                dominantMood: "neutral", moodScore: 0.5, moods: {},
-                energy: 0.3, valence: 0.1,
-            })),
-            trackCount: 2,
-            computedAt: new Date().toISOString(),
-        };
-        jest.mocked(redisClient.get).mockImplementation(async (key) =>
-            String(key) === "vibe:map:v4:projection" ? JSON.stringify(cached) : null);
-        try {
-            const state = await getMapProjectionState();
-            expect(state.status).toBe("ready");
-            if (state.status !== "ready") return;
-            expect(state.data.tracks.map((t) => t.id)).toEqual(["trk_elig_0"]);
-            expect(state.data.trackCount).toBe(1);
-        } finally {
-            jest.mocked(redisClient.get).mockImplementation(async () => null);
-        }
+    it("keeps it out of the vibe map", async () => {
+        await prisma.$executeRawUnsafe(
+            `INSERT INTO matching_map (track_id, embedded_at, x, y, z, colour, laid_out)
+             SELECT track_id, analyzed_at, 0.1, 0.2, 0.3, 0.5, true FROM track_embeddings WHERE track_id = ANY($1)`,
+            [MISSING, "trk_elig_0"],
+        );
+        const state = await getVibeMap();
+        expect(state.status).toBe("ready");
+        if (state.status !== "ready") return;
+        expect(state.data.tracks.map((t) => t.id).filter((id) => id.startsWith("trk_elig_"))).toEqual(["trk_elig_0"]);
     });
 
     it("brings the track back to everything when the file returns", async () => {

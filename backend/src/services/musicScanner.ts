@@ -13,11 +13,13 @@ import {
     extractAlbumFromRelativePath,
     sanitizeTagString,
 } from "../utils/artistNormalization";
-import { parseCredit, resolveArtist } from "./artistIdentity";
+import { isMbid, parseCredit, resolveArtist, type ParsedCredit } from "./artistIdentity";
+import { normalizeIsrc } from "./recordingMatch";
 import { resolveAlbum } from "./albumIdentity";
 import { backfillAllArtistCounts } from "./artistCountsService";
-import { checkLocalArtistImage } from "./imageStorage";
+import { findLocalArtistImage } from "./imageStorage";
 import { LIBRARY_LOCATION } from "./libraryFilters";
+import { closeStagesForMissingTracks } from "./missingFileStages";
 
 /**
  * Album identity for a scanned file comes only from its own tags: a release
@@ -41,10 +43,11 @@ async function resolveAlbumIdentity(
     tagRgMbid: string | null | undefined
 ): Promise<{ rgMbid: string | null; via: IdentificationPath }> {
     // The file's own MusicBrainz tag — authoritative, no network, no
-    // fingerprinting.
-    if (tagRgMbid?.trim()) {
+    // fingerprinting. A value that is not a MusicBrainz id is no tag at all.
+    const tagged = tagRgMbid?.trim();
+    if (isMbid(tagged)) {
         identificationCounters["mbid-tag"]++;
-        return { rgMbid: tagRgMbid.trim(), via: "mbid-tag" };
+        return { rgMbid: tagged, via: "mbid-tag" };
     }
 
     // No usable tag: the placeholder stands and the recording stage's
@@ -54,15 +57,25 @@ async function resolveAlbumIdentity(
 }
 
 /**
+ * The MusicBrainz id of a credit's primary artist, from the same tag the name came
+ * from. A tag's ids follow the credit's order, so the first is the primary's only
+ * when there is one id per credited name; a joint name with several ids gets none.
+ */
+function primaryArtistMbid(ids: readonly string[] | undefined, credit: ParsedCredit): string | undefined {
+    if (!ids || ids.length === 0) return undefined;
+    return ids.length === 1 + credit.featured.length ? ids[0] : undefined;
+}
+
+/**
  * A replaced file reopens its stage records as `pending` with evidence "file
- * changed". `blocked` records (a human decision) stay; `working` records finish
- * or time out and come back through the ladder on their own.
+ * changed". `blocked` records (a human decision) stay. A `working` record reopens
+ * too: the job on the old file then holds a stale claim, and its answer is dropped.
  */
 async function reopenStagesForChangedFile(trackId: string): Promise<void> {
     const reopened = await prisma.$executeRaw`
         UPDATE "TrackStage"
            SET status = 'pending',
-               attempt = 0,
+               failures = 0,
                redelivered = 0,
                "nextRetryAt" = NULL,
                "startedAt" = NULL,
@@ -75,40 +88,12 @@ async function reopenStagesForChangedFile(trackId: string): Promise<void> {
                retryable = true,
                evidence = jsonb_build_object('reason', 'file changed')
          WHERE "trackId" = ${trackId}
-           AND status IN ('done', 'failed', 'pending')`;
+           AND status IN ('done', 'failed', 'pending', 'working')`;
     if (reopened > 0) {
         logger.debug(
             `[Scanner] Re-opened ${reopened} stage record(s) for ${trackId}: file changed`
         );
     }
-}
-
-/**
- * Close every open stage record of a flagged-missing track as FILE_MISSING, so
- * `pending` always means work the sweep can do and the hang watchdog does not
- * fire on files that are gone. Runs over every flagged track, not just new ones.
- */
-async function closeStagesForMissingTracks(
-    client: Pick<Prisma.TransactionClient, "$executeRaw">
-): Promise<number> {
-    return client.$executeRaw`
-        UPDATE "TrackStage" ts
-           SET status = 'failed',
-               retryable = false,
-               "nextRetryAt" = NULL,
-               "startedAt" = COALESCE(ts."startedAt", now()),
-               "finishedAt" = COALESCE(ts."finishedAt", now()),
-               "failureClass" = 'FILE_MISSING',
-               "lastErrorCode" = 'FILE_MISSING',
-               "lastErrorMessage" = 'file missing from the library; a scan that finds it again re-opens this record',
-               evidence = jsonb_build_object('reason', 'file missing', 'closure', 'file-missing')
-          WHERE (ts.status = 'pending'
-                 OR (ts.status = 'failed' AND ts.retryable
-                     AND (ts."nextRetryAt" IS NULL
-                          OR ts."nextRetryAt" <= now())))
-            AND ts."trackId" IN (
-                SELECT id FROM "Track" WHERE "missingSince" IS NOT NULL
-            )`;
 }
 
 /**
@@ -123,7 +108,7 @@ async function reopenStagesForReturnedTracks(
     const reopened = await client.$executeRaw`
         UPDATE "TrackStage"
            SET status = 'pending',
-               attempt = 0,
+               failures = 0,
                redelivered = 0,
                "nextRetryAt" = NULL,
                "startedAt" = NULL,
@@ -245,11 +230,7 @@ export class MusicScannerService {
                     const fileModified = stats.mtime;
 
                     // Skip 0-byte files (incomplete downloads, stubs)
-                    if (stats.size === 0) {
-                        filesScanned++;
-                        progress.filesScanned = filesScanned;
-                        return;
-                    }
+                    if (stats.size === 0) return;
 
                     const existingTrack = tracksByPath.get(relativePath);
 
@@ -260,8 +241,6 @@ export class MusicScannerService {
                             existingTrack.fileModified >= fileModified
                         ) {
                             // File hasn't changed, skip
-                            filesScanned++;
-                            progress.filesScanned = filesScanned;
                             return;
                         }
                         // File changed: every recorded answer was computed
@@ -766,16 +745,16 @@ export class MusicScannerService {
         const discSubtitle = sanitizeTagString(discSubtitleInput) || null;
         const duration = Math.floor(metadata.format.duration || 0);
         const mime = metadata.format.codec || "audio/mpeg";
-        const rawIsrc = metadata.common.isrc?.[0] || null;
-        const isrc = rawIsrc?.split(/[;,]/)[0]?.trim() || null;
+        // A tag that is not an ISRC (e.g. "PMEDIA") is dropped, never stored or sent.
+        const isrc = normalizeIsrc(metadata.common.isrc?.[0]?.split(/[;,]/)[0]);
 
-        // Artist and album info
-        // IMPORTANT: Prefer albumartist over artist to keep albums grouped under the primary artist
-        // This prevents featured artists from creating separate album entries
-        // e.g., "Artist A feat. Artist B" track should still be under "Artist A"'s album
-        let rawArtistName = sanitizeTagString(
-            metadata.common.albumartist || metadata.common.artist
-        );
+        // The album artist groups the album under one artist ("A feat. B" tracks stay on A's
+        // album); the track artist stands in when there is none. Each name is paired only with
+        // its own tag's MusicBrainz ids, never the other tag's.
+        const albumArtistTag = sanitizeTagString(metadata.common.albumartist);
+        const trackArtistTag = sanitizeTagString(metadata.common.artist);
+        let rawArtistName = albumArtistTag || trackArtistTag;
+        let nameTag: "albumartist" | "artist" | null = albumArtistTag ? "albumartist" : trackArtistTag ? "artist" : null;
 
         // Folder/filename fallback: If metadata is empty, try to parse from path structure
         if (!rawArtistName || rawArtistName.trim() === "") {
@@ -786,8 +765,10 @@ export class MusicScannerService {
                     `[Scanner] No metadata artist found, using path: "${relativePath}" -> "${parsedArtist}"`
                 );
                 rawArtistName = parsedArtist;
+                nameTag = null;
             } else {
                 rawArtistName = "Unknown Artist";
+                nameTag = null;
                 logger.warn(
                     `[Scanner] Unknown Artist assigned for: ${relativePath} (no metadata, path parse failed)`
                 );
@@ -807,6 +788,7 @@ export class MusicScannerService {
                     `[Scanner] Singles override: "${rawArtistName}" -> "${folderArtist}" for ${relativePath}`
                 );
                 rawArtistName = folderArtist;
+                nameTag = null;
             }
         }
 
@@ -819,13 +801,21 @@ export class MusicScannerService {
         // MusicBrainz id tag first and never splits band names on "&" or "and".
         const credit = parseCredit(
             rawArtistName,
-            metadata.common.artists as string[] | undefined
+            nameTag === "artist" ? (metadata.common.artists as string[] | undefined) : undefined
         );
         const artistName = credit.primary || rawArtistName;
+        const artistMbid = primaryArtistMbid(
+            nameTag === "albumartist"
+                ? metadata.common.musicbrainz_albumartistid
+                : nameTag === "artist"
+                  ? metadata.common.musicbrainz_artistid
+                  : undefined,
+            credit
+        );
 
         let artist = await resolveArtist(prisma, {
             name: artistName,
-            mbid: metadata.common.musicbrainz_artistid?.[0],
+            mbid: artistMbid,
         });
 
         // Prefer better capitalisation when the tag has it and the stored row
@@ -843,19 +833,14 @@ export class MusicScannerService {
 
         // Check for local artist image if none set yet
         if (!artist.heroUrl) {
-            const pathParts = relativePath.split(path.sep);
-            for (let i = pathParts.length - 2; i >= 0; i--) {
-                const candidateDir = pathParts.slice(0, i + 1).join(path.sep);
-                const localImage = await checkLocalArtistImage(musicPath, candidateDir, artist.id);
-                if (localImage) {
-                    const updated = await prisma.artist.updateMany({
-                        where: { id: artist.id, heroUrl: null },
-                        data: { heroUrl: localImage },
-                    });
-                    if (updated.count > 0) {
-                        artist = { ...artist, heroUrl: localImage };
-                    }
-                    break;
+            const localImage = await findLocalArtistImage(musicPath, relativePath, artist.id);
+            if (localImage) {
+                const updated = await prisma.artist.updateMany({
+                    where: { id: artist.id, heroUrl: null },
+                    data: { heroUrl: localImage },
+                });
+                if (updated.count > 0) {
+                    artist = { ...artist, heroUrl: localImage };
                 }
             }
         }

@@ -36,7 +36,8 @@ import {
     UNANALYZED,
 } from "../moodBucketService";
 import { syncMoodBuckets } from "../../workers/moodBucketWorker";
-import { computeMapProjection } from "../umapProjection";
+import { getVibeMap } from "../vibeMap";
+import { MATCHING_MODEL } from "../matching/state";
 
 jest.setTimeout(60_000);
 
@@ -112,8 +113,13 @@ async function seed() {
             },
         });
         await prisma.$executeRawUnsafe(
-            `INSERT INTO track_embeddings (track_id, embedding, map_x, map_y, map_z) VALUES ($1, $2::vector, 0.5, 0.5, 0.5)`,
-            id, `[${Array.from({ length: 512 }, (_, d) => (d === i ? 1 : 0)).join(",")}]`,
+            `INSERT INTO track_embeddings (track_id, embedding, model_version) VALUES ($1, $2::vector, $3)`,
+            id, `[${Array.from({ length: 512 }, (_, d) => (d === i ? 1 : 0)).join(",")}]`, MATCHING_MODEL,
+        );
+        await prisma.$executeRawUnsafe(
+            `INSERT INTO matching_map (track_id, embedded_at, x, y, z, colour, laid_out)
+             SELECT track_id, analyzed_at, 0.5, 0.5, 0.5, 0.5, true FROM track_embeddings WHERE track_id = $1`,
+            id,
         );
     }
     // One track still waiting for analysis.
@@ -124,6 +130,12 @@ async function seed() {
             analysisStatus: "pending",
         },
     });
+}
+
+async function mapTracks() {
+    const state = await getVibeMap();
+    if (state.status !== "ready") throw new Error("the map is not laid out");
+    return state.data.tracks;
 }
 
 describe("mood buckets (database)", () => {
@@ -173,8 +185,7 @@ describe("mood buckets (database)", () => {
     });
 
     it("serves the same decision on the vibe map, and 'unanalyzed' once values are cleared", async () => {
-        let map = await computeMapProjection();
-        const byId = new Map(map.tracks.map((t) => [t.id, t]));
+        const byId = new Map((await mapTracks()).map((t) => [t.id, t]));
         expect(byId.get("trk_mood_0")!.dominantMood).toBe("moodParty");
         expect(byId.get("trk_mood_4")!.dominantMood).toBe("moodRelaxed");
         expect(byId.get("trk_mood_10")!.dominantMood).toBe(NEUTRAL);
@@ -184,8 +195,7 @@ describe("mood buckets (database)", () => {
 
         await prisma.track.update({ where: { id: "trk_mood_0" }, data: { moodParty: null } });
         await syncMoodBuckets();
-        map = await computeMapProjection();
-        expect(map.tracks.find((t) => t.id === "trk_mood_0")!.dominantMood).toBe(UNANALYZED);
+        expect((await mapTracks()).find((t) => t.id === "trk_mood_0")!.dominantMood).toBe(UNANALYZED);
         expect(await prisma.moodBucket.count({ where: { trackId: "trk_mood_0" } })).toBe(0);
     });
 

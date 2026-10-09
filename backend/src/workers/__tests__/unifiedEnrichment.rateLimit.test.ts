@@ -109,9 +109,8 @@ const mockLookupByIsrc = jest.fn();
 
 jest.mock("../../services/musicbrainz", () => ({
     musicBrainzService: {
-        searchRecording: (...a: unknown[]) => mockSearchRecording(...a),
-        lookupByIsrc: (...a: unknown[]) => mockLookupByIsrc(...a),
-        getRecordingIsrc: jest.fn().mockResolvedValue(noData),
+        identifyRecording: (...a: unknown[]) => mockSearchRecording(...a),
+        lookupRecordingsByIsrc: (...a: unknown[]) => mockLookupByIsrc(...a),
         getRecordingGenres: jest.fn().mockResolvedValue(noData),
         getAlbumCatalogue: jest.fn().mockResolvedValue(noData),
     },
@@ -123,16 +122,6 @@ jest.mock("../../services/acoustidIdentification", () => ({
     identifyTrackByAcoustid: (...a: unknown[]) => mockIdentify(...a),
     persistAcoustidFingerprint: jest.fn().mockResolvedValue(undefined),
     readIdentityTags: (...a: unknown[]) => mockReadTags(...a),
-}));
-
-jest.mock("../../services/umapProjection", () => ({
-    precomputeProjection: jest.fn().mockResolvedValue(undefined),
-    appendTrackToProjection: jest.fn().mockResolvedValue(undefined),
-}));
-
-jest.mock("../../services/artistSimilarity", () => ({
-    MIN_LOCAL_TRACKS: 5,
-    rebuildArtistCentroid: jest.fn().mockResolvedValue({ trackCount: 0 }),
 }));
 
 const mockHandleRateLimit = jest.fn();
@@ -315,7 +304,7 @@ describe("an honest no-match", () => {
         expect(stage.failureClass).toBeNull();
         expect(stage.nextRetryAt).toBeNull();
         expect(stage.evidence.reason).toBe(
-            "sources have no recording for this track",
+            "no source has a recording that is this track",
         );
         // The no-match leaves the track exactly as seeded — the record
         // owns the answered question, and moods come from analysis only

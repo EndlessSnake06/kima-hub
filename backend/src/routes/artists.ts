@@ -34,16 +34,14 @@ const DISCOVERY_CACHE_TTL = 24 * 60 * 60; // 24 hours
 router.get("/preview/:artistName/:trackTitle", async (req, res) => {
     try {
         const { artistName, trackTitle } = req.params;
-        const decodedArtist = decodeURIComponent(artistName);
-        const decodedTrack = decodeURIComponent(trackTitle);
 
         logger.debug(
-            `Getting preview for "${decodedTrack}" by ${decodedArtist}`
+            `Getting preview for "${trackTitle}" by ${artistName}`
         );
 
         const previewUrl = await deezerService.getTrackPreview(
-            decodedArtist,
-            decodedTrack
+            artistName,
+            trackTitle
         );
 
         if (previewUrl) {
@@ -60,16 +58,14 @@ router.get("/preview/:artistName/:trackTitle", async (req, res) => {
 router.get("/preview/:artistName/:trackTitle/stream", async (req, res) => {
     try {
         const { artistName, trackTitle } = req.params;
-        const decodedArtist = decodeURIComponent(artistName);
-        const decodedTrack = decodeURIComponent(trackTitle);
 
         logger.debug(
-            `Streaming preview for "${decodedTrack}" by ${decodedArtist}`
+            `Streaming preview for "${trackTitle}" by ${artistName}`
         );
 
         const previewUrl = await deezerService.getFreshTrackPreview(
-            decodedArtist,
-            decodedTrack
+            artistName,
+            trackTitle
         );
 
         if (!previewUrl) {
@@ -146,7 +142,9 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
             );
 
         let mbid: string | null = isMbid ? nameOrMbid : null;
-        let artistName: string = isMbid ? "" : decodeURIComponent(nameOrMbid);
+        let artistName: string = isMbid ? "" : nameOrMbid;
+        // A page built while MusicBrainz failed is served but not cached.
+        let complete = true;
 
         // If we have a name but no MBID, search for it
         if (!mbid && artistName) {
@@ -163,6 +161,7 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
             } else {
                 // A failed search is not "no such artist": serve the page
                 // without the MBID-backed data and say so in the log.
+                complete = false;
                 logger.debug(
                     `[Discovery] MB artist search ${found.kind} for ${artistName}: ${failureCause(found)}`
                 );
@@ -180,6 +179,7 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
             } else if (mbArtist.kind === "absent") {
                 logger.debug(`MusicBrainz does not know artist ${mbid}`);
             } else {
+                complete = false;
                 logger.debug(
                     `MusicBrainz artist lookup ${mbArtist.kind} for ${mbid}: ${failureCause(mbArtist)}`
                 );
@@ -227,6 +227,7 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
                 interactive: true,
             });
             if (rgs.kind !== "answered") {
+                if (rgs.kind !== "absent") complete = false;
                 logger.debug(
                     `[Discovery] discography for ${artistName}: ${
                         rgs.kind === "absent"
@@ -313,8 +314,8 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
             albums = discAlbums;
         }
 
-        // Similar artists: local centroid neighbours, the ListenBrainz dataset
-        // as cold start; images through the artwork cascade (Fanart, Deezer).
+        // Similar artists: ListenBrainz, then Deezer, nudged by the library's matching;
+        // images through the artwork cascade (Fanart, Deezer).
         const similarList = await getSimilarArtists(
             mbid || "",
             artistName,
@@ -378,15 +379,17 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
         };
 
         // Cache discovery response for 24 hours
-        try {
-            await redisClient.setex(
-                cacheKey,
-                DISCOVERY_CACHE_TTL,
-                JSON.stringify(response)
-            );
-            logger.debug(`[Discovery] Cached artist: ${artistName}`);
-        } catch (err) {
-            // Redis errors are non-critical
+        if (complete) {
+            try {
+                await redisClient.setex(
+                    cacheKey,
+                    DISCOVERY_CACHE_TTL,
+                    JSON.stringify(response)
+                );
+                logger.debug(`[Discovery] Cached artist: ${artistName}`);
+            } catch (err) {
+                // Redis errors are non-critical
+            }
         }
 
         res.json(response);
@@ -426,6 +429,8 @@ router.get("/album/:mbid", async (req, res) => {
         let releaseGroup: any = null;
         let release: any = null;
         let releaseGroupId: string = mbid;
+        // A page built while MusicBrainz failed is served but not cached.
+        let complete = true;
 
         // Try as release-group first, then as release.
         const rgOutcome = await musicBrainzService.getReleaseGroup(mbid);
@@ -466,6 +471,7 @@ router.get("/album/:mbid", async (req, res) => {
                 if (rg2.kind === "answered") {
                     releaseGroup = rg2.value;
                 } else {
+                    if (rg2.kind !== "absent") complete = false;
                     logger.debug(
                         `Failed to get release-group ${releaseGroupId}: ${
                             rg2.kind === "absent"
@@ -505,6 +511,7 @@ router.get("/album/:mbid", async (req, res) => {
             if (releaseDetails.kind === "answered") {
                 tracks = releaseDetails.value.media?.[0]?.tracks || [];
             } else {
+                if (releaseDetails.kind !== "absent") complete = false;
                 logger.error(
                     `Failed to get tracks for release ${firstRelease.id}: ${
                         releaseDetails.kind === "absent"
@@ -572,15 +579,17 @@ router.get("/album/:mbid", async (req, res) => {
         };
 
         // Cache discovery response for 24 hours
-        try {
-            await redisClient.setex(
-                cacheKey,
-                DISCOVERY_CACHE_TTL,
-                JSON.stringify(response)
-            );
-            logger.debug(`[Discovery] Cached album: ${albumTitle}`);
-        } catch (err) {
-            // Redis errors are non-critical
+        if (complete) {
+            try {
+                await redisClient.setex(
+                    cacheKey,
+                    DISCOVERY_CACHE_TTL,
+                    JSON.stringify(response)
+                );
+                logger.debug(`[Discovery] Cached album: ${albumTitle}`);
+            } catch (err) {
+                // Redis errors are non-critical
+            }
         }
 
         res.json(response);

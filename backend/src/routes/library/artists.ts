@@ -337,12 +337,11 @@ router.get("/artists/:id", async (req, res) => {
       ownedAlbums: true,
     };
 
-    const decodedName = decodeURIComponent(idParam);
     const artist = await prisma.artist.findFirst({
       where: {
         OR: [
           { id: idParam },
-          { name: { equals: decodedName, mode: "insensitive" } },
+          { name: { equals: idParam, mode: "insensitive" } },
           { mbid: idParam },
         ],
       },
@@ -534,7 +533,7 @@ router.get("/artists/:id", async (req, res) => {
         FROM "Track" t
         JOIN "Album" a ON a.id = t."albumId"
         JOIN "Artist" ar ON ar.id = a."artistId"
-        JOIN "Play" p ON p."trackId" = t.id
+        JOIN "Play" p ON p."trackId" = t.id AND p."userId" = ${userId}
         WHERE a."artistId" = ${artist.id}
         GROUP BY t.id, t.title, t.duration, t."albumId", a.title, a."coverUrl", a."artistId", ar.name
         HAVING COUNT(p.id) > 0
@@ -728,7 +727,7 @@ router.get("/artists/:id", async (req, res) => {
           `[Artist] Using cached similar artists (${similarArtists.length})`,
         );
       } else {
-        logger.debug(`[Artist] Fetching similar artists (local centroid / LB)...`);
+        logger.debug(`[Artist] Fetching similar artists (ListenBrainz, then Deezer)...`);
 
         try {
           const validMbid =
@@ -865,7 +864,6 @@ router.delete("/artists/:id", requireAdmin, async (req, res) => {
       return res.status(404).json({ error: "Artist not found" });
     }
 
-    const { config } = await import("../../config");
     const path = await import("path");
     const fs = await import("fs");
 

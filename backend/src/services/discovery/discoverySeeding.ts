@@ -272,16 +272,18 @@ export class DiscoverySeeding {
                 // Scan the cached owned-album snapshot in-memory instead of a
                 // startsWith/contains query per candidate.
                 const { albums } = await this.getOwnedAlbumIndex();
+                // Both sides normalised the same way: no leading article, no edition suffix.
+                const normTitle = normalizeForMatching(albumTitle);
                 const candidates = albums.filter(
                     (a) =>
                         a.location === 'LIBRARY' &&
-                        a.artistName.toLowerCase().startsWith(artistFirstWord)
+                        normalizeForMatching(a.artistName).startsWith(artistFirstWord)
                 );
 
                 for (const album of candidates) {
                     if (
-                        stringSimilarity(artistName, album.artistName) >= 75 &&
-                        stringSimilarity(albumTitle, album.title) >= 75
+                        stringSimilarity(normArtist, normalizeForMatching(album.artistName)) >= 75 &&
+                        stringSimilarity(normTitle, normalizeForMatching(album.title)) >= 75
                     ) {
                         logger.debug(`[DiscoverySeeding] Fuzzy match: ${artistName} - ${albumTitle} = ${album.artistName} - ${album.title}`);
                         return true;

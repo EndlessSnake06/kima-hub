@@ -14,6 +14,7 @@ import {
 import * as playlistService from "../services/playlistService";
 import { eventBus } from "../services/eventBus";
 import { upstreamHeader } from "../utils/upstreamHeaders";
+import { soulseekConfigured } from "../utils/soulseekConfigured";
 
 const router = Router();
 
@@ -283,7 +284,6 @@ router.put("/:id", requirePlaylistOwner, async (req, res) => {
         if (!req.user) {
             return res.status(401).json({ error: "Unauthorized" });
         }
-        const userId = req.user.id;
         const data = updatePlaylistSchema.parse(req.body);
 
         const playlist = await prisma.playlist.update({
@@ -358,8 +358,6 @@ router.delete("/:id", requirePlaylistOwner, async (req, res) => {
         if (!req.user) {
             return res.status(401).json({ error: "Unauthorized" });
         }
-        const userId = req.user.id;
-
         // Check ownership
         await prisma.playlist.delete({
             where: { id: req.params.id },
@@ -738,8 +736,8 @@ router.post("/:id/pending/retry-all", async (req, res) => {
         if (!settings || !settings.musicPath) {
             return res.status(400).json({ error: "Music path not configured" });
         }
-        if (!settings.soulseekUsername || !settings.soulseekPassword) {
-            return res.status(400).json({ error: "Soulseek credentials not configured" });
+        if (!soulseekConfigured(settings)) {
+            return res.status(400).json({ error: "Soulseek is not configured" });
         }
         const musicPath = settings.musicPath;
 
@@ -980,10 +978,10 @@ router.post("/:id/pending/:trackId/retry", async (req, res) => {
             return res.status(400).json({ error: "Music path not configured" });
         }
 
-        if (!settings?.soulseekUsername || !settings?.soulseekPassword) {
+        if (!soulseekConfigured(settings)) {
             sessionLog(
                 "PENDING-RETRY",
-                `Soulseek credentials not configured`,
+                `Soulseek is not configured`,
                 "WARN"
             );
             await prisma.downloadJob.update({

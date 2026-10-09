@@ -99,20 +99,8 @@ jest.mock("../../services/fpcalc", () => ({
 jest.mock("../../services/musicbrainz", () => ({
     musicBrainzService: {
         searchRecording: jest.fn().mockResolvedValue(null),
-        lookupByIsrc: jest.fn().mockResolvedValue(null),
-        getRecordingIsrc: jest.fn().mockResolvedValue(null),
         getRecordingGenres: jest.fn().mockResolvedValue(null),
     },
-}));
-
-jest.mock("../../services/umapProjection", () => ({
-    precomputeProjection: jest.fn().mockResolvedValue(undefined),
-    appendTrackToProjection: jest.fn().mockResolvedValue(undefined),
-}));
-
-jest.mock("../../services/artistSimilarity", () => ({
-    MIN_LOCAL_TRACKS: 5,
-    rebuildArtistCentroid: jest.fn().mockResolvedValue({ trackCount: 0 }),
 }));
 
 jest.mock("../../workers/audioCompletionSubscriber", () => ({
@@ -251,18 +239,10 @@ async function storedFingerprint(trackId: string): Promise<string | null> {
     return rows[0]?.fingerprint ?? null;
 }
 
-async function embeddingCount(trackId: string): Promise<number> {
-    const rows = await prisma.$queryRawUnsafe<{ n: bigint }[]>(
-        `SELECT count(*)::bigint AS n FROM track_embeddings WHERE track_id = $1`,
-        trackId,
-    );
-    return Number(rows[0].n);
-}
-
 async function seedEmbedding(trackId: string): Promise<void> {
     await prisma.$executeRawUnsafe(
         `INSERT INTO track_embeddings (track_id, embedding, model_version, analyzed_at)
-         VALUES ($1, $2::vector, 'laion-clap-music', now())
+         VALUES ($1, $2::vector, 'laion-clap-htsat-unfused-v1', now())
          ON CONFLICT (track_id) DO NOTHING`,
         trackId,
         `[${Array.from({ length: 512 }, (_, i) => (i % 7) / 7).join(",")}]`,

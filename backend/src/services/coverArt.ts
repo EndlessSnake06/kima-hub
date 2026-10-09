@@ -59,7 +59,9 @@ class CoverArtService {
                 }
                 return null;
             }
-            logger.error(`Cover art error for ${rgMbid}:`, error.message);
+            // Anything but a 404 is a failed request, not "no cover".
+            logger.warn(`Cover art error for ${rgMbid}:`, error.message);
+            throw error;
         }
 
         return null;

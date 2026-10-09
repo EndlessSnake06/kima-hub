@@ -136,7 +136,7 @@ class DataCacheService {
      * Get track cover (uses album cover)
      */
     async getTrackCover(
-        trackId: string,
+        _trackId: string,
         albumId: string,
         rgMbid?: string | null
     ): Promise<string | null> {

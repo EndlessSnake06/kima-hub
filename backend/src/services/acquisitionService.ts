@@ -576,10 +576,13 @@ class AcquisitionService {
                 );
             } else {
                 // Strategy 1: Get track list from MusicBrainz (mbid guaranteed by early guard above)
-                const mbTracks = await musicBrainzService.getAlbumTracks(request.mbid!);
-                if (mbTracks.kind === "answered" && mbTracks.value.length > 0) {
-                    tracks = mbTracks.value;
-                } else if (mbTracks.kind === "answered" || mbTracks.kind === "absent") {
+                const mbTracks = await musicBrainzService.getAlbumCatalogue(request.mbid!);
+                if (mbTracks.kind === "answered") {
+                    tracks = mbTracks.value.recordings.map((rec) => ({
+                        title: rec.title,
+                        position: rec.position ?? undefined,
+                    }));
+                } else if (mbTracks.kind === "absent") {
                     logger.debug(
                         `[Acquisition/Soulseek] MusicBrainz has no tracks; no fallback source`
                     );

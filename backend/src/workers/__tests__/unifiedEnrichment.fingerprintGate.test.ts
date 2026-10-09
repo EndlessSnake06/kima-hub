@@ -109,10 +109,13 @@ jest.mock("../../services/trackIdentity", () => ({
 
 jest.mock("../../services/musicbrainz", () => ({
     musicBrainzService: {
-        searchRecording: jest.fn().mockResolvedValue({ kind: "absent", evidence: { mocked: true } }),
-        lookupByIsrc: jest.fn().mockResolvedValue({ kind: "absent", evidence: { mocked: true } }),
-        getRecordingIsrc: jest.fn().mockResolvedValue({ kind: "absent", evidence: { mocked: true } }),
+        identifyRecording: jest.fn().mockResolvedValue({ kind: "absent", evidence: { mocked: true } }),
+        lookupRecordingsByIsrc: jest.fn().mockResolvedValue({ kind: "absent", evidence: { mocked: true } }),
         getRecordingGenres: jest.fn().mockResolvedValue({ kind: "absent", evidence: { mocked: true } }),
+        getRecordingIsrcAndGenres: jest.fn().mockResolvedValue({
+            isrc: { kind: "absent", evidence: { mocked: true } },
+            genres: { kind: "absent", evidence: { mocked: true } },
+        }),
         getAlbumCatalogue: jest.fn().mockResolvedValue({ kind: "absent", evidence: { mocked: true } }),
     },
 }));
@@ -141,16 +144,6 @@ jest.mock("../../services/fpcalc", () => ({
 // Let the (mocked) fingerprint stage resolve the seeded /tmp paths.
 jest.mock("../../routes/library/trackPath", () => ({
     resolveTrackFilePath: (p: string) => p,
-}));
-
-jest.mock("../../services/umapProjection", () => ({
-    precomputeProjection: jest.fn().mockResolvedValue(undefined),
-    appendTrackToProjection: jest.fn().mockResolvedValue(undefined),
-}));
-
-jest.mock("../../services/artistSimilarity", () => ({
-    MIN_LOCAL_TRACKS: 5,
-    rebuildArtistCentroid: jest.fn().mockResolvedValue({ trackCount: 0 }),
 }));
 
 jest.mock("../../services/sourcePauseController", () => ({
@@ -345,7 +338,8 @@ describe("the fingerprint → recording edge is a gate, not a poll", () => {
         jest.mocked(identifyTrackByAcoustid).mockResolvedValue({
             kind: "answered",
             value: {
-                source: "stored",
+                source: "acoustid",
+                fingerprintFrom: "stored",
                 recordingMbid: "mbid-from-acoustid",
             },
             evidence: { score: 0.9 },
@@ -401,15 +395,14 @@ describe("the fingerprint → recording edge is a gate, not a poll", () => {
         expect(identifyTrackByAcoustid).not.toHaveBeenCalled();
         expect(fpcalcService.fingerprintFile).not.toHaveBeenCalled();
 
-        // The no-match is honest about which steps ran: no fingerprint ever
-        // existed, so AcoustID was skipped — recorded in the evidence.
+        // Every source that can be asked said "nothing"; AcoustID cannot be asked
+        // about a file whose fingerprint question closed for good. The question
+        // closes as answered, saying so, and is not offered again (a changed file
+        // reopens it).
         const row = await stageRow(id("stuck"), "recording");
-        expect(row?.status).toBe("failed");
-        expect(row?.evidence?.["acoustid"]).toBe("skipped");
-
-        // ...and the answer is not immediately re-offered: a no-match rides
-        // its own backoff (and closes at the cap), it does not poll.
-        expect(row?.nextRetryAt).not.toBeNull();
+        expect(row?.status).toBe("done");
+        expect(row?.evidence?.["acoustid"]).toBe("not asked: the file's fingerprint question closed");
+        expect(row?.nextRetryAt).toBeNull();
         const next = await getNextWork(50);
         expect(next.some((w) => w.trackId === id("stuck") && w.stage === "recording")).toBe(false);
     });
@@ -532,5 +525,23 @@ describe("progress: a recording stage parked on an unsettled fingerprint is wait
         expect(progress.trackTags.waiting).toBe(1);
         // Core completion must not be declared while a question is parked.
         expect(progress.coreComplete).toBe(false);
+    });
+
+    it("retry failed and blocked: leaves closed a recording whose fingerprint failed for good", async () => {
+        // No fingerprint can ever arrive, so asking again would skip AcoustID and
+        // close the record exactly as before.
+        await seedTrack(id("nofp"), { recording: "failed" });
+        await putStage(id("nofp"), "recording", "failed", {
+            retryable: false,
+            nextRetryAt: null,
+            evidence: { acoustid: "skipped", error: 'No recording identified for "Track …"' },
+        });
+        await putStage(id("nofp"), "fingerprint", "failed", { retryable: false, nextRetryAt: null });
+
+        await retryFailedAndBlocked(50);
+
+        const recording = await stageRow(id("nofp"), "recording");
+        expect(recording?.status).toBe("failed");
+        expect(recording?.retryable).toBe(false);
     });
 });

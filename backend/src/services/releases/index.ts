@@ -19,13 +19,17 @@ async function isAdminUser(userId: string): Promise<boolean> {
     return user?.role === "admin";
 }
 
-/**
- * Releases this user has not yet closed, oldest first.
- *
- * Oldest first matters: someone who has been away for three versions should read
- * them in the order they happened, and answer the older consent questions before
- * the newer ones that may depend on them.
- */
+/** Whether the library holds enrichment from before `date`: an install upgraded past a release, not a fresh one. */
+async function libraryEnrichedBefore(date: Date): Promise<boolean> {
+    const [row] = await prisma.$queryRaw<Array<{ older: boolean }>>`
+        SELECT EXISTS (SELECT 1 FROM track_embeddings WHERE analyzed_at < ${date})
+            OR EXISTS (SELECT 1 FROM "Track" WHERE "analyzedAt" < ${date}) AS older
+    `;
+    return row?.older === true;
+}
+
+/** Releases this user has not yet closed, oldest first, so someone away for three versions reads them in order and
+ * answers older consent questions before newer ones that may depend on them. */
 export async function pendingReleases(userId: string): Promise<Release[]> {
     const acked = await prisma.releaseAcknowledgement.findMany({
         where: { userId },
@@ -48,7 +52,13 @@ export async function pendingReleases(userId: string): Promise<Release[]> {
     const mixState = async () => (state ??= await moodMixState(userId));
     let roleChecked: boolean | undefined;
     const isAdmin = async () => (roleChecked ??= await isAdminUser(userId));
-    const applies = async (item: ReleaseItem): Promise<boolean> => {
+    const olderLibrary = new Map<string, Promise<boolean>>();
+    const enrichedBefore = (date: string) => {
+        if (!olderLibrary.has(date)) olderLibrary.set(date, libraryEnrichedBefore(new Date(date)));
+        return olderLibrary.get(date)!;
+    };
+    const applies = async (item: ReleaseItem, release: Release): Promise<boolean> => {
+        if (item.kind === "action" && item.olderLibraryOnly && !(await enrichedBefore(release.date))) return false;
         if (!("requires" in item) || !item.requires) return true;
         if (item.requires === "admin") return isAdmin();
         if (item.kind !== "action") return true;
@@ -59,7 +69,7 @@ export async function pendingReleases(userId: string): Promise<Release[]> {
     const out: Release[] = [];
     for (const r of pending) {
         const items: ReleaseItem[] = [];
-        for (const i of r.items) if (await applies(i)) items.push(i);
+        for (const i of r.items) if (await applies(i, r)) items.push(i);
         out.push(items.length === r.items.length ? r : { ...r, items });
     }
 
@@ -73,6 +83,7 @@ export async function pendingReleases(userId: string): Promise<Release[]> {
         if (release && retired && s?.mix?.retired && s.decision === null && s.playlist === null) {
             out.push({
                 ...release,
+                note: undefined,
                 title: "One thing left from 1.11",
                 summary: "Your old mood mix is still waiting for an answer.",
                 items: [retired],
@@ -89,13 +100,8 @@ export async function pendingReleases(userId: string): Promise<Release[]> {
  */
 export class UnknownChoiceError extends Error {}
 
-/**
- * Record an explicit answer to one choice.
- *
- * The key must be a `choice` item of that release; anything else is
- * UnknownChoiceError. Explicit answers are never overwritten by a later
- * dismissal — see `dismissRelease`.
- */
+/** Record an explicit answer to one choice. The key must be a `choice` item of that release (else
+ * UnknownChoiceError); a later dismissal never overwrites an explicit answer (`dismissRelease`). */
 export async function setChoice(params: {
     userId: string;
     version: string;
@@ -173,13 +179,8 @@ export async function dismissRelease(userId: string, version: string): Promise<{
     return { recordedDefaults };
 }
 
-/**
- * Whether a user has opted into something.
- *
- * Absent means never asked, which is not consent. Callers get `false` either
- * way; the distinction only matters for reporting, which reads the table
- * directly.
- */
+/** Whether a user has opted into something. Absent means never asked, which is not consent: `false` either way;
+ * reporting reads the table directly for the difference. */
 export async function hasOptedIn(userId: string, key: string): Promise<boolean> {
     const row = await prisma.releaseChoice.findUnique({
         where: { userId_key: { userId, key } },

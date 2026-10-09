@@ -109,18 +109,18 @@ describe("deezerService.getRelatedArtists", () => {
         expect(result).toEqual([]);
     });
 
-    it("returns [] (never throws) when the search request fails", async () => {
+    it("rejects when the search request fails, so a failed source is not read as no related artists", async () => {
         mockRateLimitedGet.mockRejectedValue(new Error("network down"));
 
-        await expect(deezerService.getRelatedArtists("Seed Artist", 5)).resolves.toEqual([]);
+        await expect(deezerService.getRelatedArtists("Seed Artist", 5)).rejects.toThrow("network down");
     });
 
-    it("returns [] (never throws) when the related request fails", async () => {
+    it("rejects when the related request fails", async () => {
         mockRateLimitedGet.mockImplementation(async (_key: string, url: string) => {
             if (url.includes("/search/artist")) return { data: [{ id: SEED_ID, name: "Seed Artist" }] };
             throw new Error("related endpoint down");
         });
 
-        await expect(deezerService.getRelatedArtists("Seed Artist", 5)).resolves.toEqual([]);
+        await expect(deezerService.getRelatedArtists("Seed Artist", 5)).rejects.toThrow("related endpoint down");
     });
 });

@@ -72,6 +72,8 @@ model Artist {
   lastSynced          DateTime                 @default(now())
   lastEnriched        DateTime?
   enrichmentStatus    String                   @default("pending")
+  /// Failed enrichment attempts in a row; at STAGE_RETRY_CAP the artist becomes unresolvable.
+  enrichmentFailures  Int                      @default(0)
   searchVector        Unsupported("tsvector")?
   similarArtistsJson  Json?
   displayName         String?
@@ -87,7 +89,6 @@ model Artist {
   ownedAlbums         OwnedAlbum[]
   similarFrom         SimilarArtist[]          @relation("FromArtist")
   similarTo           SimilarArtist[]          @relation("ToArtist")
-  artistEmbedding     ArtistEmbedding?
 
   @@index([enrichmentStatus])
   @@index([enrichmentStatus, lastEnriched])
@@ -245,6 +246,7 @@ model DiscoveryBatch {
   completedAt     DateTime?
   version         Int           @default(0)
   jobs            DownloadJob[]
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([createdAt])
   @@index([status])
@@ -418,6 +420,8 @@ model Play {
   trackId  String
   playedAt DateTime     @default(now())
   source   ListenSource @default(LIBRARY)
+  /// Recorded by the listen rule (enough of the track was heard), so a listen by construction.
+  heard    Boolean      @default(false)
   track    Track        @relation(fields: [trackId], references: [id], onDelete: Cascade)
   user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -687,10 +691,10 @@ model SystemSettings {
   soulseekConcurrentDownloads Int      @default(4)
   clapWorkers                 Int      @default(2)
   gpuOnnxEnabled              Boolean  @default(false)
+  /// Runs MusiCNN analysis on the shared GPU runtime; a switch of its own, separate from sound vectors.
+  gpuAnalysisEnabled          Boolean  @default(false)
   soulseekEnabled             Boolean?
   soulseekDownloadPath        String?
-  // ListenBrainz user token (encrypted). Replaces the Last.fm scrobble
-  // stack: submitted via services/listenBrainz.ts when set.
   publicUrl                   String?
   registrationOpen            Boolean  @default(false)
   lidarrQualityProfileId      Int?
@@ -781,33 +785,33 @@ model Track {
   // EnrichmentFailure text; this column holds the recording MBID itself so a
   // re-ask can short-circuit on "already answered". Kept nullable: a track
   // whose lookup found nothing stays null (never a made-up MBID).
-  recordingMbid               String?
+  recordingMbid String?
 
-  corrupt                     Boolean                  @default(false)
+  corrupt           Boolean            @default(false)
   // Set (with the time it was found missing) by a library scan whose directory
   // walk did not see the file; cleared (null) by the next scan that finds it.
   // Null is the normal present-on-disk state. A missing track is never
   // deleted: its plays, likes and stage answers must survive a NAS hiccup,
   // and it is shown as missing rather than offered to streaming/enrichment.
-  missingSince                DateTime?
-  scanStatus                  String                   @default("pending")
-  scanError                   String?
-  scanStartedAt               DateTime?
-  discNumber                  Int?
-  discSubtitle                String?
-  cachedBy                    CachedTrack[]
-  likedBy                     LikedTrack[]
-  moodBuckets                 MoodBucket[]
-  plays                       Play[]
-  playlistItems               PlaylistItem[]
-  album                       Album                    @relation(fields: [albumId], references: [id], onDelete: Cascade)
-  trackGenres                 TrackGenre[]
-  transcodedFiles             TranscodedFile[]
-  subsonicBookmarks           SubsonicBookmark[]
-  trackEmbedding              TrackEmbedding?
-  trackLyrics                 TrackLyrics?
-  playAuditIgnores            PlayAuditIgnore[]
-  trackStages                 TrackStage[]
+  missingSince      DateTime?
+  scanStatus        String             @default("pending")
+  scanError         String?
+  scanStartedAt     DateTime?
+  discNumber        Int?
+  discSubtitle      String?
+  cachedBy          CachedTrack[]
+  likedBy           LikedTrack[]
+  moodBuckets       MoodBucket[]
+  plays             Play[]
+  playlistItems     PlaylistItem[]
+  album             Album              @relation(fields: [albumId], references: [id], onDelete: Cascade)
+  trackGenres       TrackGenre[]
+  transcodedFiles   TranscodedFile[]
+  subsonicBookmarks SubsonicBookmark[]
+  trackEmbedding    TrackEmbedding?
+  trackLyrics       TrackLyrics?
+  playAuditIgnores  PlayAuditIgnore[]
+  trackStages       TrackStage[]
 
   @@index([analysisStatus])
   @@index([scanStatus])
@@ -907,6 +911,7 @@ model User {
   deviceLinkCodes        DeviceLinkCode[]
   discoverExclusions     DiscoverExclusion[]
   discoveryAlbums        DiscoveryAlbum[]
+  discoveryBatches       DiscoveryBatch[]
   dislikedEntities       DislikedEntity[]
   downloadJobs           DownloadJob[]
   hiddenPlaylists        HiddenPlaylist[]
@@ -959,17 +964,17 @@ model UserMoodMix {
 }
 
 model UserSettings {
-  userId          String  @id
-  playbackQuality String  @default("original")
-  wifiOnly        Boolean @default(false)
-  offlineEnabled  Boolean @default(false)
-  maxCacheSizeMb  Int     @default(10240)
+  userId             String  @id
+  playbackQuality    String  @default("original")
+  wifiOnly           Boolean @default(false)
+  offlineEnabled     Boolean @default(false)
+  maxCacheSizeMb     Int     @default(10240)
   // Write-only per-user scrobble credential (encrypted, `xc1.` prefix);
   // never returned in full — see routes/settings.ts.
-  listenbrainzToken String?
+  listenbrainzToken  String?
   // Only read for KIMA_PUBLIC_VIBE_USER: false hides their live listening.
   shareLiveListening Boolean @default(true)
-  user            User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user               User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 /// A Lidarr download Kima removed from the queue; the row stops any other path removing it again.
@@ -1024,25 +1029,64 @@ model TrackEmbedding {
   embedding     Unsupported("vector")
   model_version String                @default("laion-clap-music") @db.VarChar(50)
   analyzed_at   DateTime              @default(now()) @db.Timestamptz(6)
-  map_x         Float?
-  map_y         Float?
-  map_z         Float?
   track         Track                 @relation(fields: [track_id], references: [id], onDelete: Cascade)
+  matchingFeel  MatchingFeel?
+  matchingMap   MatchingMap?
 
   @@index([embedding])
   @@index([model_version])
   @@map("track_embeddings")
 }
 
-model ArtistEmbedding {
-  artistId    String   @id
-  embedding   Unsupported("vector(512)")
-  computedAt  DateTime @default(now()) @db.Timestamptz(6)
-  trackCount  Int      @default(0)
-  artist      Artist   @relation(fields: [artistId], references: [id], onDelete: Cascade)
+/// The feel probe's valence and arousal for a sound vector (services/matching/state.ts);
+/// embedded_at is the analyzed_at of the vector it was computed from.
+model MatchingFeel {
+  track_id    String         @id
+  embedded_at DateTime       @db.Timestamptz(6)
+  probe       String
+  valence     Float          @db.Real
+  arousal     Float          @db.Real
+  embedding   TrackEmbedding @relation(fields: [track_id], references: [track_id], onDelete: Cascade)
 
-  @@index([embedding])
-  @@map("artist_embeddings")
+  @@map("matching_feel")
+}
+
+/// A track's place on the vibe map and its colour (services/matching/map.ts); embedded_at is the
+/// analyzed_at of the sound vector it was computed from. `colour` is 0 (the logo's azure end) to 1 (amber).
+model MatchingMap {
+  track_id    String         @id
+  embedded_at DateTime       @db.Timestamptz(6)
+  x           Float
+  y           Float
+  z           Float
+  colour      Float
+  laid_out    Boolean
+  embedding   TrackEmbedding @relation(fields: [track_id], references: [track_id], onDelete: Cascade)
+
+  @@map("matching_map")
+}
+
+/// The library-wide part of the matching formula, rebuilt by the similarity
+/// enrichment step whenever its inputs change (services/matching/state.ts).
+model MatchingState {
+  id              String    @id @default("default")
+  version         String
+  fingerprint     String
+  trackCount      Int
+  feelMeanValence Float
+  feelMeanArousal Float
+  feelSdValence   Float
+  feelSdArousal   Float
+  soundSpread     Float
+  genreSpread     Float
+  genreWeight     Float
+  genres          Json
+  builtAt         DateTime  @default(now()) @db.Timestamptz(6)
+  mapVersion      String?
+  mapFrame        Json?
+  mapUpdatedAt    DateTime? @db.Timestamptz(6)
+
+  @@map("matching_state")
 }
 
 model TrackLyrics {
@@ -1191,9 +1235,8 @@ model PlayAuditIgnore {
   @@index([userId])
 }
 
-/// One answer per track per stage.
-/// The stage name is the question ("recording", "analysis",
-/// "embedding"); `status` is that question's answer, and `evidence` holds the
+/// One answer per track per stage. The stage name is the question ("recording", "analysis",
+/// "embedding", "fingerprint"); `status` is that question's answer, and `evidence` holds the
 /// probe that produced it. Because the answer lives on the record and not in a
 /// reused Track column, a track that is `failed` or `blocked` at one stage
 /// cannot hold another track's stage behind it — the sweep reads records, so a
@@ -1206,16 +1249,18 @@ model PlayAuditIgnore {
 model TrackStage {
   id               String    @id @default(cuid())
   trackId          String
-  /// Question being answered: "recording" | "analysis" | "embedding".
+  /// Question being answered: "fingerprint" | "recording" | "analysis" | "embedding".
   stage            String
   status           String    @default("pending")
   /// Which producer answers this stage ("analyzer", "clap", "musicbrainz"…).
   source           String?
-  /// Attempts actually made. A timeout does not count as an attempt.
+  /// Claims made: each claim's job id carries it (`claimOf`). Retries are counted by `failures`.
   attempt          Int       @default(0)
   /// Times a claim was re-offered because its lease expired without an
   /// answer (that never consumes an attempt; at 3 the record closes).
   redelivered      Int       @default(0)
+  /// Reported failures of this question; only these use up retries (STAGE_RETRY_CAP).
+  failures         Int       @default(0)
   lastErrorCode    String?
   lastErrorMessage String?
   failureClass     String?
@@ -1241,7 +1286,7 @@ model TrackStage {
   @@map("TrackStage")
 }
 
-/// One record per *source*, so a paused source is one row rather than 2,787
+/// One record per *source*, so a paused source is one row rather than one per waiting track.
 /// A source pause is a fact about MusicBrainz/AcoustID/
 /// ListenBrainz, not about 2,787 tracks that all happen to be waiting on it.
 model SourceAttempt {

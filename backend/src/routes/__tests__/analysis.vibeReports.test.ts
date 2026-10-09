@@ -4,14 +4,10 @@
  */
 
 jest.mock("../../middleware/auth", () => ({
-    requireAuth: (req: unknown, _res: unknown, next: () => void) => next(),
-    requireAdmin: (req: unknown, _res: unknown, next: () => void) => next(),
-    optionalAuth: (req: unknown, _res: unknown, next: () => void) => next(),
-    authed: () => (req: unknown, _res: unknown, next: () => void) => next(),
-}));
-jest.mock("../../services/umapProjection", () => ({
-    appendTrackToProjection: jest.fn().mockResolvedValue(undefined),
-    precomputeProjection: jest.fn().mockResolvedValue(undefined),
+    requireAuth: (_req: unknown, _res: unknown, next: () => void) => next(),
+    requireAdmin: (_req: unknown, _res: unknown, next: () => void) => next(),
+    optionalAuth: (_req: unknown, _res: unknown, next: () => void) => next(),
+    authed: () => (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 jest.mock("../../services/enrichmentFailureService", () => ({
     enrichmentFailureService: {

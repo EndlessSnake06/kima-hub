@@ -32,7 +32,7 @@ import request from 'supertest';
 
 function makeSkipApp() {
     const app = express();
-    app.use((req, _res, next) => {
+    app.use((_req, _res, next) => {
         // Normalize baseUrl/path the way express does under a mount.
         next();
     });

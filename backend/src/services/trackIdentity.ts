@@ -2,6 +2,8 @@ import { prisma } from "../utils/db";
 import { logger } from "../utils/logger";
 import { songLinkService, SongLinkResult } from "./songlink";
 import { musicBrainzService } from "./musicbrainz";
+import { topVoted } from "../utils/votes";
+import { pickRecording } from "./recordingMatch";
 import { failureCause } from "../utils/outcome";
 import { LIBRARY_LOCATION } from "./libraryFilters";
 
@@ -63,26 +65,22 @@ class TrackIdentityService {
         let tags: string[] = [];
 
         if (isrc) {
-            const mbRecording = await musicBrainzService.lookupByIsrc(isrc);
-            if (mbRecording.kind === "answered") {
-                const genreData = await musicBrainzService.getRecordingGenres(
-                    mbRecording.value.recordingId
-                );
+            const mbRecording = await musicBrainzService.lookupRecordingsByIsrc(isrc);
+            const recording =
+                mbRecording.kind === "answered"
+                    ? pickRecording(mbRecording.value, { title, artists: [artist], durationSec: null })
+                    : null;
+            if (recording) {
+                const genreData = await musicBrainzService.getRecordingGenres(recording.id);
                 if (genreData.kind === "answered") {
-                    genres = genreData.value.genres
-                        .sort((a, b) => b.count - a.count)
-                        .slice(0, 5)
-                        .map((g) => g.name);
-                    tags = genreData.value.tags
-                        .sort((a, b) => b.count - a.count)
-                        .slice(0, 10)
-                        .map((t) => t.name);
+                    genres = topVoted(genreData.value.genres, 5);
+                    tags = topVoted(genreData.value.tags, 10);
                 } else if (genreData.kind !== "absent") {
                     logger.debug(
                         `MusicBrainz genre lookup ${genreData.kind} for ISRC ${isrc}: ${failureCause(genreData)}`
                     );
                 }
-            } else if (mbRecording.kind !== "absent") {
+            } else if (mbRecording.kind !== "absent" && mbRecording.kind !== "answered") {
                 logger.debug(
                     `ISRC lookup ${mbRecording.kind} for ${isrc}: ${failureCause(mbRecording)}`
                 );
@@ -124,23 +122,24 @@ class TrackIdentityService {
         }
     }
 
+    /** The track's genres are its identified recording's: this set replaces whatever an earlier answer left. */
     async populateTrackGenres(trackId: string, genreNames: string[]): Promise<void> {
-        if (genreNames.length === 0) return;
-
         await prisma.$transaction(async (tx) => {
+            const ids: string[] = [];
             for (const name of genreNames) {
                 const genre = await tx.genre.upsert({
                     where: { name },
                     create: { name },
                     update: {},
                 });
-
+                ids.push(genre.id);
                 await tx.trackGenre.upsert({
                     where: { trackId_genreId: { trackId, genreId: genre.id } },
                     create: { trackId, genreId: genre.id },
                     update: {},
                 });
             }
+            await tx.trackGenre.deleteMany({ where: { trackId, genreId: { notIn: ids } } });
         });
     }
 

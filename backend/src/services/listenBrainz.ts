@@ -1,8 +1,8 @@
 /**
- * ListenBrainz: similar artists (the artist–artist similarity dataset via
- * /1/lb-radio/artist/<mbid>, which requires pop_begin/pop_end), sitewide top
- * artists, and listen submission with the user's token. LB asks for at most
- * 1 request/s; the 'listenbrainz' rate limiter allows one per 1.1 s.
+ * ListenBrainz: similar artists (its artist-similarity model, read from the Labs
+ * API with the algorithm its own artist pages use), sitewide top artists, and
+ * listen submission with the user's token. LB asks for at most 1 request/s; the
+ * 'listenbrainz' rate limiter allows one per 1.1 s for both hosts.
  */
 
 import axios from "axios";
@@ -31,12 +31,25 @@ export interface ChartArtist {
 }
 
 const LB_BASE = process.env.LISTENBRAINZ_API_URL || "https://api.listenbrainz.org";
+const LB_LABS_BASE = process.env.LISTENBRAINZ_LABS_URL || "https://labs.api.listenbrainz.org";
+/** The model ListenBrainz's artist pages show similar artists from
+ * (listenbrainz-server, webserver/views/entity_pages.py). */
+const SIMILAR_ARTISTS_ALGORITHM =
+    "session_based_days_7500_session_300_contribution_3_threshold_10_limit_100_filter_True_skip_30";
 /** 7 days: similarity data changes slowly. */
 const SIMILAR_TTL = 604800;
+/** 1 day for an artist ListenBrainz has no similarity data for yet. */
+const SIMILAR_EMPTY_TTL = 86400;
 
 class ListenBrainzService {
     private client = axios.create({
         baseURL: LB_BASE,
+        timeout: 10000,
+        headers: { "User-Agent": USER_AGENT },
+    });
+
+    private labs = axios.create({
+        baseURL: LB_LABS_BASE,
         timeout: 10000,
         headers: { "User-Agent": USER_AGENT },
     });
@@ -91,10 +104,10 @@ class ListenBrainzService {
     }
 
     /**
-     * Similar artists from LB's similarity dataset. The dataset publishes listen
-     * counts, not scores, so `match` is the log-scaled count against the batch's
-     * strongest, spread over 0.5–0.95 for the discover-weekly tiers. [] when the
-     * seed has no data; never throws.
+     * Similar artists from ListenBrainz's similarity model, strongest first. The
+     * model's score is spread over 0.5–0.95 against the batch's strongest, the
+     * range the discover-weekly tiers and the library re-rank read. An artist LB
+     * has no data for is remembered for a day; an error is never remembered.
      */
     async getSimilarArtists(
         artistMbid: string,
@@ -102,7 +115,7 @@ class ListenBrainzService {
         limit = 30,
         opts: { interactive?: boolean } = {}
     ): Promise<SimilarArtist[]> {
-        const cacheKey = `lb:similar:${artistMbid || artistName}:${limit}`;
+        const cacheKey = `lb:similar:v2:${artistMbid || artistName}:${limit}`;
         try {
             const cached = await redisClient.get(cacheKey);
             if (cached) return JSON.parse(cached) as SimilarArtist[];
@@ -111,68 +124,41 @@ class ListenBrainzService {
         }
 
         try {
-            const data = await this.rateLimitedGet<Record<string, any>>(
-                `/1/lb-radio/artist/${artistMbid}`,
-                {
-                    mode: "medium",
-                    max_similar_artists: Math.max(8, Math.ceil(limit / 2)),
-                    max_recordings_per_artist: 2,
-                    pop_begin: 0,
-                    pop_end: 100,
-                },
-                undefined,
-                opts.interactive ? INTERACTIVE_PRIORITY : 0
+            const rows = await rateLimiter.execute(
+                "listenbrainz",
+                async () =>
+                    (
+                        await this.labs.get<unknown>("/similar-artists/json", {
+                            params: { artist_mbids: artistMbid, algorithm: SIMILAR_ARTISTS_ALGORITHM },
+                        })
+                    ).data,
+                { priority: opts.interactive ? INTERACTIVE_PRIORITY : 0 }
             );
-
-            if (!data || typeof data !== "object" || "error" in data) {
-                return [];
-            }
-
-            // Group by similar artist; keep the strongest connection per artist.
-            const byArtist = new Map<string, { name: string; mbid: string; count: number }>();
-            for (const entries of Object.values(data)) {
-                if (!Array.isArray(entries)) continue;
-                for (const e of entries) {
-                    const mbid: string = e?.similar_artist_mbid;
-                    const name: string = e?.similar_artist_name;
-                    const count: number = Number(e?.total_listen_count) || 0;
-                    if (!mbid || !name) continue;
-                    if (mbid === artistMbid) continue; // exclude self
-                    const existing = byArtist.get(mbid);
-                    if (!existing || count > existing.count) {
-                        byArtist.set(mbid, { name, mbid, count });
-                    }
-                }
-            }
-
-            const sorted = [...byArtist.values()]
-                .sort((a, b) => b.count - a.count)
+            const similar = (Array.isArray(rows) ? rows : [])
+                .filter((r: any) => r?.artist_mbid && r?.name && r.artist_mbid !== artistMbid && Number(r.score) > 0)
+                .sort((a: any, b: any) => Number(b.score) - Number(a.score))
                 .slice(0, limit);
-            if (sorted.length === 0) return [];
-
-            const maxLog = Math.log1p(sorted[0].count) || 1;
-            const results: SimilarArtist[] = sorted.map((a) => ({
-                name: a.name,
-                mbid: a.mbid,
-                match: Math.min(0.95, Math.max(0.5, 0.5 + (0.45 * Math.log1p(a.count)) / maxLog)),
-                url: `https://listenbrainz.org/artist/${a.mbid}`,
+            const strongest = similar.length > 0 ? Number(similar[0].score) : 1;
+            const results: SimilarArtist[] = similar.map((r: any) => ({
+                name: r.name,
+                mbid: r.artist_mbid,
+                match: 0.5 + (0.45 * Number(r.score)) / strongest,
+                url: `https://listenbrainz.org/artist/${r.artist_mbid}`,
             }));
-
-            if (results.length > 0) {
-                try {
-                    await redisClient.setex(cacheKey, SIMILAR_TTL, JSON.stringify(results));
-                } catch (err) {
-                    logger.warn("Redis set error:", err);
-                }
+            try {
+                await redisClient.setex(
+                    cacheKey,
+                    results.length > 0 ? SIMILAR_TTL : SIMILAR_EMPTY_TTL,
+                    JSON.stringify(results)
+                );
+            } catch (err) {
+                logger.warn("Redis set error:", err);
             }
             return results;
         } catch (error) {
-            // Errors are NOT cached: a failure must not poison 7 days of cache.
-            logger.warn(
-                `ListenBrainz similar-artists error for ${artistName} (${artistMbid}):`,
-                error
-            );
-            return [];
+            // An error is not "no similar artists": the caller decides what a failed source means.
+            logger.warn(`ListenBrainz similar-artists error for ${artistName} (${artistMbid}):`, error);
+            throw error;
         }
     }
 
@@ -230,10 +216,8 @@ class ListenBrainzService {
         listens: Array<{
             artist: string;
             track: string;
-            /** ISO-OSError-style release date or year string, optional. */
+            /** The album title. */
             release?: string;
-            listenMbid?: string;
-            recordingMbid?: string;
             listenedAt: number; // unix seconds
         }>
     ): Promise<boolean> {
@@ -244,25 +228,16 @@ class ListenBrainzService {
         }
 
         try {
+            // https://listenbrainz.readthedocs.io/en/latest/users/json.html
             const payload = {
-                listen_type: "listens",
+                listen_type: listens.length === 1 ? "single" : "import",
                 payload: listens.map((l) => ({
                     listened_at: l.listenedAt,
-                    track: {
+                    track_metadata: {
                         artist_name: l.artist,
                         track_name: l.track,
                         ...(l.release ? { release_name: l.release } : {}),
-                        ...(l.listenMbid ? { additional_info: { media_service: "kima", media_player: "kima", mapping_set_id: l.listenMbid } } : {}),
-                        ...(l.recordingMbid
-                            ? {
-                                  additional_info: {
-                                      media_service: "kima",
-                                      media_player: "kima",
-                                      ...(l.listenMbid ? { mapping_set_id: l.listenMbid } : {}),
-                                      recording_mbid: l.recordingMbid,
-                                  },
-                              }
-                            : {}),
+                        additional_info: { media_player: "kima", submission_client: "kima" },
                     },
                 })),
             };

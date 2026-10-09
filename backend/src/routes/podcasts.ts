@@ -16,8 +16,8 @@ import { upstreamHeader, upstreamHeaderNumber } from "../utils/upstreamHeaders";
 const router = Router();
 
 // Bound the preview RSS fetch so a slow or dead feed returns partial data
-// quickly instead of sitting on the 30s parser timeout and hanging the request
-// (#168). The feed is non-critical for a preview; core data comes from
+// quickly instead of sitting on the 30s parser timeout and hanging the request.
+// The feed is non-critical for a preview; core data comes from
 // iTunes/Deezer, and both call sites already fall through to partial data.
 const PREVIEW_RSS_TIMEOUT_MS = 8000;
 

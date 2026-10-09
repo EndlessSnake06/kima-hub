@@ -1,4 +1,4 @@
-import { parseM3U, M3UEntry } from "../m3uParser";
+import { parseM3U } from "../m3uParser";
 
 describe("M3U Parser", () => {
     it("parses basic M3U (paths only, no metadata)", () => {

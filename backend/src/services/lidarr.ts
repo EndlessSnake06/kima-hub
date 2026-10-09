@@ -1,5 +1,4 @@
 import { AxiosInstance } from "axios";
-import pLimit from "p-limit";
 import { logger } from "../utils/logger";
 import { editionlessKey, titlesAgree } from "./albumIdentity";
 import { config } from "../config";
@@ -8,7 +7,6 @@ import { stripAlbumEdition } from "../utils/artistNormalization";
 import { createLidarrClient } from "./lidarrClient";
 import { sourcePauseController } from "./sourcePauseController";
 import { lidarrHealthMonitor } from "./lidarrHealth";
-import { failureCause } from "../utils/outcome";
 import { UserFacingError } from "../utils/errors";
 import type {
     LidarrAlbum,
@@ -684,13 +682,9 @@ class LidarrService {
     }
 
     /**
-     * The album's search grabbed nothing. If the album lives inside a bundle —
-     * a multi-album release Lidarr refused only because OTHER albums in it are
-     * already owned — grab the bundle directly, the way Lidarr's own
-     * "download anyway" button does (POST /api/v1/release, valid within 30
-     * minutes of the search that listed it). Returns true when the grab started.
-     * Rejections other than "existing files" (quality, seeders, blocklist) mean
-     * Kima leaves the release alone.
+     * Grab a multi-album bundle Lidarr refused only because other albums in it are already owned, as Lidarr's
+     * "download anyway" does (POST /api/v1/release, valid 30 minutes after the search that listed it). Any other
+     * rejection (quality, seeders, blocklist) leaves the release alone. True when the grab started.
      */
     async tryBundleGrab(artistId: number, album: { title: string; releaseDate?: string; id: number }): Promise<boolean> {
         let releases: any[] = [];
@@ -1189,20 +1183,14 @@ class LidarrService {
     }
 
     /**
-     * Get or create the discovery tag
-     * Returns the tag ID, caching it for subsequent calls
+     * The discovery tag's id, created when Lidarr has none. Looked up each time: a
+     * remembered id outlives the tag when someone deletes it in Lidarr.
      */
-    private discoveryTagId: number | null = null;
-
     async getOrCreateDiscoveryTag(): Promise<number | null> {
         await this.ensureInitialized();
 
         if (!this.enabled || !this.client) {
             return null;
-        }
-
-        if (this.discoveryTagId !== null) {
-            return this.discoveryTagId;
         }
 
         try {
@@ -1215,13 +1203,11 @@ class LidarrService {
                 logger.debug(
                     `[LIDARR] Found existing discovery tag (ID: ${existingTag.id})`
                 );
-                this.discoveryTagId = existingTag.id;
                 return existingTag.id;
             }
 
             const newTag = await this.createTag(DISCOVERY_TAG_LABEL);
             if (newTag) {
-                this.discoveryTagId = newTag.id;
                 return newTag.id;
             }
 

@@ -7,9 +7,7 @@
 
 import { logger } from "../utils/logger";
 import { prisma } from "../utils/db";
-
-/** The engine's retry cap (one dispatch plus three retries), for the mapped maxRetries field. */
-const STAGE_RETRY_CAP = 4;
+import { STAGE_RETRY_CAP } from "../workers/stageRetry";
 
 /**
  * The track stages whose failures the failures API serves, and the
@@ -50,6 +48,7 @@ interface StageFailureRow {
     status: string;
     source: string | null;
     attempt: number;
+    failures: number;
     lastErrorCode: string | null;
     lastErrorMessage: string | null;
     evidence: unknown;
@@ -64,7 +63,6 @@ interface StageFailureRow {
  * mapping is the contract: the settings UI renders these fields unchanged.
  */
 function mapStageFailure(row: StageFailureRow): EnrichmentFailure {
-    const failed = row.status === "failed";
     const blocked = row.status === "blocked";
     const lastFailedAt = row.finishedAt ?? row.startedAt ?? new Date(0);
     return {
@@ -74,7 +72,7 @@ function mapStageFailure(row: StageFailureRow): EnrichmentFailure {
         entityName: row.track?.title ?? row.trackId,
         errorMessage: row.lastErrorMessage,
         errorCode: row.lastErrorCode,
-        retryCount: row.attempt,
+        retryCount: row.failures,
         maxRetries: STAGE_RETRY_CAP,
         firstFailedAt: row.startedAt ?? lastFailedAt,
         lastFailedAt,
@@ -93,9 +91,15 @@ function mapStageFailure(row: StageFailureRow): EnrichmentFailure {
     };
 }
 
+/**
+ * A missing file is not a failure: the scan closes its records as FILE_MISSING and
+ * reopens them when the file returns, and progress counts them as waiting.
+ */
+const NOT_FILE_MISSING = { OR: [{ failureClass: null }, { failureClass: { not: "FILE_MISSING" } }] };
+
 /** The TrackStage `where` for the failure list: open failures only. */
 function stageFailureWhere(stages: string[], includeSkipped: boolean): any {
-    const where: any = { stage: { in: stages }, status: "failed" };
+    const where: any = { stage: { in: stages }, status: "failed", ...NOT_FILE_MISSING };
     if (includeSkipped) {
         // Blocked rows are the parked ones (the old "skipped"); only list
         // them when explicitly asked for.
@@ -294,16 +298,16 @@ class EnrichmentFailureService {
                     },
                 }),
                 prisma.trackStage.count({
-                    where: { stage: "recording", status: "failed" },
+                    where: { stage: "recording", status: "failed", ...NOT_FILE_MISSING },
                 }),
                 prisma.trackStage.count({
-                    where: { stage: "analysis", status: "failed" },
+                    where: { stage: "analysis", status: "failed", ...NOT_FILE_MISSING },
                 }),
                 prisma.trackStage.count({
-                    where: { stage: "embedding", status: "failed" },
+                    where: { stage: "embedding", status: "failed", ...NOT_FILE_MISSING },
                 }),
                 prisma.trackStage.count({
-                    where: { stage: "fingerprint", status: "failed" },
+                    where: { stage: "fingerprint", status: "failed", ...NOT_FILE_MISSING },
                 }),
             ]);
 
@@ -404,7 +408,7 @@ class EnrichmentFailureService {
     /**
      * Reset retry count for failures (prepare for retry).
      *
-     * A stage record's retry budget is its `attempt`; the ledger row's is
+     * A stage record's retry budget is its `failures`; the ledger row's is
      * `retryCount`.
      */
     async resetRetryCount(ids: string[]): Promise<number> {
@@ -414,7 +418,7 @@ class EnrichmentFailureService {
         if (stageIds.length > 0) {
             const result = await prisma.trackStage.updateMany({
                 where: { id: { in: stageIds } },
-                data: { attempt: 0 },
+                data: { failures: 0 },
             });
             stageCount = result.count;
         }
@@ -434,17 +438,18 @@ class EnrichmentFailureService {
     }
 
     /**
-     * Reopen TrackStage-backed failures (pending, fresh attempt, error cleared) so
+     * Reopen TrackStage-backed failures (pending, retries restored, error cleared) so
      * the next cycle asks again. Ledger ids are ignored; the /retry route resets artists.
      */
     async retryStageFailures(ids: string[]): Promise<number> {
         const { stageIds } = await this.splitIds(ids);
         if (stageIds.length === 0) return 0;
         const result = await prisma.trackStage.updateMany({
-            where: { id: { in: stageIds }, status: { in: ["failed", "blocked"] } },
+            // A file that is gone stays closed until a scan finds it again.
+            where: { id: { in: stageIds }, status: { in: ["failed", "blocked"] }, track: { missingSince: null } },
             data: {
                 status: "pending",
-                attempt: 0,
+                failures: 0,
                 lastErrorCode: null,
                 lastErrorMessage: null,
                 failureClass: null,
@@ -473,7 +478,7 @@ class EnrichmentFailureService {
                     ? Object.keys(ENTITY_TYPE_BY_STAGE)
                     : STAGES_BY_ENTITY_TYPE[entityType as string] ?? [];
             const result = await prisma.trackStage.updateMany({
-                where: { stage: { in: stages }, status: "failed" },
+                where: { stage: { in: stages }, status: "failed", ...NOT_FILE_MISSING },
                 data: {
                     status: "blocked",
                     retryable: false,
@@ -649,7 +654,7 @@ class EnrichmentFailureService {
       * Resolve failure records for an entity (track/artist) that succeeded.
       * Used when a track's vibe embedding succeeds after previous failures.
       */
-     async resolveByEntity(entityType: "vibe" | "audio", entityId: string): Promise<boolean> {
+     async resolveByEntity(entityType: "vibe" | "audio" | "artist", entityId: string): Promise<boolean> {
          const result = await prisma.enrichmentFailure.updateMany({
              where: {
                  entityType,

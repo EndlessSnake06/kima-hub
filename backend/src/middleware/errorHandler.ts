@@ -69,6 +69,16 @@ export function errorHandler(
         });
     }
 
+    // A request body that cannot be read (bad JSON, too large) is the client's error.
+    const bodyError = err as Error & { type?: unknown; status?: unknown };
+    if (typeof bodyError.type === "string" && bodyError.type.startsWith("entity.")
+        && typeof bodyError.status === "number" && bodyError.status >= 400 && bodyError.status < 500) {
+        logger.warn(`[BodyParser] ${req.method} ${req.path}: ${bodyError.type}`);
+        return res.status(bodyError.status).json({
+            error: bodyError.status === 413 ? "Request body too large" : "Invalid request body",
+        });
+    }
+
     // Log stack trace for unhandled errors
     logger.error("Unhandled error:", err.stack);
 

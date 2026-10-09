@@ -5,9 +5,10 @@ import { redisClient } from "../utils/redis";
 import { requireAuth, requireAdmin } from "../middleware/auth";
 import { getSystemSettings, invalidateSystemSettingsCache } from "../utils/systemSettings";
 import { eventBus } from "../services/eventBus";
-import { triggerEnrichmentNow, recordStageSuccess, recordStageFailure } from "../workers/unifiedEnrichment";
-import { appendTrackToProjection } from "../services/umapProjection";
+import { startEnrichmentNow, recordStageSuccess, recordStageFailure } from "../workers/unifiedEnrichment";
 import os from "os";
+import { timingSafeEqual } from "crypto";
+import { reopenable } from "../services/missingFileStages";
 
 /**
  * Whether an analyzer is running, from the heartbeat timestamp it writes to
@@ -64,13 +65,22 @@ async function dispatchWorkerCount(
     return { online, delivered };
 }
 
+/** The shared secret the analyzers send, compared in constant time. */
+function isInternalSecret(value: unknown): boolean {
+    const expected = process.env.INTERNAL_API_SECRET;
+    if (!expected || typeof value !== "string") return false;
+    const given = Buffer.from(value);
+    const wanted = Buffer.from(expected);
+    return given.length === wanted.length && timingSafeEqual(given, wanted);
+}
+
 const router = Router();
 
 /**
  * POST /api/analysis/retry-failed
  * Retry failed analysis jobs (admin only)
  */
-router.post("/retry-failed", requireAuth, requireAdmin, async (req, res) => {
+router.post("/retry-failed", requireAuth, requireAdmin, async (_req, res) => {
     try {
         // Reopen analysis records: retryable failures become due now, and spent ones
         // (retryable = false) reopen with a fresh budget. The first UPDATE must skip
@@ -81,21 +91,23 @@ router.post("/retry-failed", requireAuth, requireAdmin, async (req, res) => {
                     "lastErrorCode" = NULL, "lastErrorMessage" = NULL,
                     "failureClass" = NULL, "startedAt" = NULL, "finishedAt" = NULL,
                     evidence = jsonb_build_object('reopenedBy', 'retry-failed')
-              WHERE stage = 'analysis' AND status = 'failed' AND retryable = true`,
+              WHERE stage = 'analysis' AND status = 'failed' AND retryable = true
+                AND ${reopenable('"TrackStage"')}`,
         );
         await prisma.$executeRawUnsafe(
             `UPDATE "TrackStage"
-                SET status = 'pending', attempt = 0, "nextRetryAt" = NULL, retryable = true,
+                SET status = 'pending', failures = 0, "nextRetryAt" = NULL, retryable = true,
                     "lastErrorCode" = NULL, "lastErrorMessage" = NULL,
                     "failureClass" = NULL, "startedAt" = NULL, "finishedAt" = NULL,
                     evidence = jsonb_build_object('reopenedBy', 'retry-failed')
-              WHERE stage = 'analysis' AND status = 'failed' AND retryable = false`,
+              WHERE stage = 'analysis' AND status = 'failed' AND retryable = false
+                AND ${reopenable('"TrackStage"')}`,
         );
 
         // Mirror the re-ask on the columns the analyzer claims and the UI
         // reads, so record and columns agree while the retry runs.
         const failedTracks = await prisma.track.updateMany({
-            where: { analysisStatus: "failed" },
+            where: { analysisStatus: "failed", missingSince: null },
             data: {
                 analysisStatus: "pending",
                 analysisError: null,
@@ -105,7 +117,7 @@ router.post("/retry-failed", requireAuth, requireAdmin, async (req, res) => {
         });
 
         const permFailedTracks = await prisma.track.updateMany({
-            where: { analysisStatus: "permanently_failed" },
+            where: { analysisStatus: "permanently_failed", missingSince: null },
             data: {
                 analysisStatus: "pending",
                 analysisError: null,
@@ -201,7 +213,7 @@ router.get("/track/:trackId", requireAuth, async (req, res) => {
  * GET /api/analysis/workers
  * Get current audio analyzer worker configuration
  */
-router.get("/workers", requireAuth, requireAdmin, async (req, res) => {
+router.get("/workers", requireAuth, requireAdmin, async (_req, res) => {
     try {
         const settings = await getSystemSettings();
         const cpuCores = os.cpus().length;
@@ -279,7 +291,7 @@ router.put("/workers", requireAuth, requireAdmin, async (req, res) => {
  * GET /api/analysis/clap-workers
  * Get current CLAP analyzer worker configuration
  */
-router.get("/clap-workers", requireAuth, requireAdmin, async (req, res) => {
+router.get("/clap-workers", requireAuth, requireAdmin, async (_req, res) => {
     try {
         const settings = await getSystemSettings();
         const cpuCores = os.cpus().length;
@@ -359,13 +371,12 @@ router.put("/clap-workers", requireAuth, requireAdmin, async (req, res) => {
  */
 router.post("/vibe/failure", async (req, res) => {
     // Internal endpoint - verify shared secret from CLAP analyzer
-    const internalSecret = req.headers["x-internal-secret"];
-    if (!process.env.INTERNAL_API_SECRET || internalSecret !== process.env.INTERNAL_API_SECRET) {
+    if (!isInternalSecret(req.headers["x-internal-secret"])) {
         return res.status(403).json({ error: "Forbidden" });
     }
 
     try {
-        const { trackId, trackName, errorMessage, errorCode } = req.body;
+        const { trackId, trackName, errorMessage, errorCode, jobId } = req.body;
 
         if (!trackId) {
             return res.status(400).json({ error: "trackId is required" });
@@ -384,6 +395,7 @@ router.post("/vibe/failure", async (req, res) => {
             "clap",
             new Error(errorMessage || "Vibe embedding generation failed"),
             { reportedCode: errorCode, trackName },
+            typeof jobId === "string" ? jobId : undefined,
         );
 
         res.json({ message: "Failure recorded" });
@@ -411,7 +423,7 @@ router.post("/vibe/start", requireAuth, requireAdmin, async (req, res) => {
             await prisma.$executeRawUnsafe(
                 `UPDATE "TrackStage"
                     SET status = 'pending',
-                        attempt = 0,
+                        failures = 0,
                         "lastErrorCode" = NULL,
                         "lastErrorMessage" = NULL,
                         "failureClass" = NULL,
@@ -421,7 +433,8 @@ router.post("/vibe/start", requireAuth, requireAdmin, async (req, res) => {
                         "finishedAt" = NULL,
                         "decidedAt" = NULL,
                         "decidedBy" = NULL
-                  WHERE stage = 'embedding'`,
+                  WHERE stage = 'embedding'
+                    AND ${reopenable('"TrackStage"')}`,
             );
             logger.info(
                 "Re-opened every vibe embedding question for re-generation (existing embeddings stay readable until each is overwritten)",
@@ -446,14 +459,16 @@ router.post("/vibe/start", requireAuth, requireAdmin, async (req, res) => {
                     AND a."trackId" = ts."trackId" AND a.stage = 'analysis' AND a.status = 'done'
                     AND t.id = ts."trackId"
                     AND ts.status <> 'pending'
+                    AND ${reopenable("ts")}
                     AND NOT EXISTS (SELECT 1 FROM track_embeddings te WHERE te.track_id = ts."trackId")
                     ${limit ? `AND ts.ctid IN (
                         SELECT ts2.ctid FROM "TrackStage" ts2
                         JOIN "TrackStage" a2 ON a2."trackId" = ts2."trackId" AND a2.stage = 'analysis' AND a2.status = 'done'
                         WHERE ts2.stage = 'embedding'
                           AND ts2.status <> 'pending'
+                          AND ${reopenable("ts2")}
                           AND NOT EXISTS (SELECT 1 FROM track_embeddings te2 WHERE te2.track_id = ts2."trackId")
-                        LIMIT ${Math.min(Number(limit) || 500, 10000)})` : ""}`,
+                        LIMIT ${Math.min(Math.max(1, Number(limit) || 500), 10000)})` : ""}`,
             );
         }
 
@@ -486,8 +501,8 @@ router.post("/vibe/start", requireAuth, requireAdmin, async (req, res) => {
             });
         }
 
-        // Restart the enrichment cycle so executeVibePhase feeds the queue
-        await triggerEnrichmentNow();
+        // An admin asked for this, so lift any stop and feed the queue now.
+        await startEnrichmentNow();
 
         logger.info(`${queued} tracks owed vibe embedding${force ? " (force reset)" : ""}`);
 
@@ -508,13 +523,12 @@ router.post("/vibe/start", requireAuth, requireAdmin, async (req, res) => {
  */
 router.post("/vibe/success", async (req, res) => {
     // Internal endpoint - verify shared secret from CLAP analyzer
-    const internalSecret = req.headers["x-internal-secret"];
-    if (!process.env.INTERNAL_API_SECRET || internalSecret !== process.env.INTERNAL_API_SECRET) {
+    if (!isInternalSecret(req.headers["x-internal-secret"])) {
         return res.status(403).json({ error: "Forbidden" });
     }
 
     try {
-        const { trackId } = req.body;
+        const { trackId, jobId } = req.body;
 
         if (!trackId) {
             return res.status(400).json({ error: "trackId is required" });
@@ -522,13 +536,12 @@ router.post("/vibe/success", async (req, res) => {
 
         // The embedding stage record is the failure record, so answering it here also
         // clears it from the failures list.
-        await recordStageSuccess(trackId, "embedding", "clap", {
-            outcome: "embedded",
-        });
-
-        // Incrementally add to vibe map projection (non-blocking)
-        appendTrackToProjection(trackId).catch(e =>
-            logger.debug(`[VIBE-MAP] Incremental append skipped for ${trackId}:`, (e as Error).message)
+        await recordStageSuccess(
+            trackId,
+            "embedding",
+            "clap",
+            { outcome: "embedded" },
+            typeof jobId === "string" ? jobId : undefined,
         );
 
         res.json({ message: "Stale failures resolved" });

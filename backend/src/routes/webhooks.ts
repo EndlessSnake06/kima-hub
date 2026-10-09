@@ -35,7 +35,7 @@ async function checkWebhookSecret(req: Request, res: Response, next: NextFunctio
 router.use(checkWebhookSecret, webhookLimiter);
 
 // GET /webhooks/lidarr/verify - Webhook verification endpoint
-router.get("/lidarr/verify", (req, res) => {
+router.get("/lidarr/verify", (_req, res) => {
     logger.debug("[WEBHOOK] Verification request received");
     res.json({
         status: "ok",

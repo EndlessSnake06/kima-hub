@@ -56,7 +56,6 @@ import { spawn } from "child_process";
 import { EventEmitter } from "events";
 import { prisma } from "../../../utils/db";
 import { redisClient } from "../../../utils/redis";
-import { logger } from "../../../utils/logger";
 import { computeWaveformPeaks, PEAK_COUNT } from "../waveform";
 
 // ---------------------------------------------------------------------------
@@ -171,7 +170,7 @@ describe("computeWaveformPeaks", () => {
         const samples = Array.from({ length: 4000 }, () => 32767);
         const pcm = makePcm(samples);
 
-        const { stdout: fakeStdout, process: fakeProc } = makeFakeProcess([pcm]);
+        makeFakeProcess([pcm]);
 
         const peaks = await computeWaveformPeaks("/music/test.mp3");
         expect(peaks).toHaveLength(PEAK_COUNT);
@@ -181,7 +180,7 @@ describe("computeWaveformPeaks", () => {
         const samples = Array.from({ length: 4000 }, () => 32767);
         const pcm = makePcm(samples);
 
-        const { stdout: fakeStdout, process: fakeProc } = makeFakeProcess([pcm]);
+        makeFakeProcess([pcm]);
 
         const peaks = await computeWaveformPeaks("/music/test.mp3");
         for (const v of peaks) {
@@ -194,7 +193,7 @@ describe("computeWaveformPeaks", () => {
         const samples = Array.from({ length: 4000 }, () => 0);
         const pcm = makePcm(samples);
 
-        const { stdout: fakeStdout, process: fakeProc } = makeFakeProcess([pcm]);
+        makeFakeProcess([pcm]);
 
         const peaks = await computeWaveformPeaks("/music/test.mp3");
         for (const v of peaks) {
@@ -211,7 +210,7 @@ describe("computeWaveformPeaks", () => {
         );
         const pcm = makePcm(samples);
 
-        const { stdout: fakeStdout, process: fakeProc } = makeFakeProcess([pcm]);
+        makeFakeProcess([pcm]);
 
         const peaks = await computeWaveformPeaks("/music/test.mp3");
         expect(peaks).toHaveLength(PEAK_COUNT);
@@ -250,7 +249,7 @@ describe("computeWaveformPeaks", () => {
         );
         const pcm = makePcm(samples);
 
-        const { stdout: fakeStdout, process: fakeProc } = makeFakeProcess([pcm]);
+        makeFakeProcess([pcm]);
 
         const peaks = await computeWaveformPeaks("/music/test.mp3");
         expect(peaks).toHaveLength(PEAK_COUNT);
@@ -280,7 +279,7 @@ describe("computeWaveformPeaks", () => {
     });
 
     it("rejects when ffmpeg exits with non-zero code and no data", async () => {
-        const { process: fakeProc } = makeFakeProcess([], 1);
+        makeFakeProcess([], 1);
 
         await expect(computeWaveformPeaks("/music/nonexistent.mp3")).rejects.toThrow(
             "ffmpeg exited 1",
@@ -347,7 +346,7 @@ describe("GET /tracks/:id/waveform", () => {
         const samples = Array.from({ length: 4000 }, () => 32767);
         const pcm = makePcm(samples);
 
-        const { stdout: fakeStdout, process: fakeProc } = makeFakeProcess([pcm]);
+        makeFakeProcess([pcm]);
 
         const res = await request(app).get("/api/library/tracks/track-1/waveform");
         expect(res.status).toBe(200);
@@ -404,7 +403,7 @@ describe("GET /tracks/:id/waveform", () => {
         const samples = Array.from({ length: 4000 }, () => 32767);
         const pcm = makePcm(samples);
 
-        const { stdout: fakeStdout, process: fakeProc } = makeFakeProcess([pcm]);
+        makeFakeProcess([pcm]);
 
         const res = await request(app).get("/api/library/tracks/track-1/waveform");
         expect(res.status).toBe(200);
@@ -427,7 +426,7 @@ describe("GET /tracks/:id/waveform", () => {
         (redisClient.get as jest.Mock).mockResolvedValue(null);
 
         // Create a fake process that exits with an error.
-        const { process: fakeProc } = makeFakeProcess([], 1);
+        makeFakeProcess([], 1);
 
         const res = await request(app).get("/api/library/tracks/track-1/waveform");
         expect(res.status).toBe(500);

@@ -45,10 +45,20 @@ export interface ListeningStats {
     topTracks: Array<{ id: string; title: string; artist: string; plays: number }>;
 }
 
-/** Guard the zone string before it reaches Postgres, which throws on nonsense. */
-function safeZone(tz: string | undefined): string {
-    if (!tz || !/^[A-Za-z0-9_+\-/]{1,64}$/.test(tz)) return "UTC";
-    return tz;
+let postgresZones: Promise<Set<string>> | null = null;
+
+/** A time zone Postgres accepts, or UTC: an unknown zone would make the query throw. Postgres's
+ * own list decides, not the JavaScript runtime's; the two disagree on a few names. */
+export async function safeZone(tz: string | undefined): Promise<string> {
+    if (!tz || tz.length > 64) return "UTC";
+    postgresZones ??= prisma
+        .$queryRaw<{ name: string }[]>`SELECT name FROM pg_timezone_names`
+        .then((rows) => new Set(rows.map((r) => r.name)))
+        .catch((err) => {
+            postgresZones = null;
+            throw err;
+        });
+    return (await postgresZones).has(tz) ? tz : "UTC";
 }
 
 export async function listeningStats(
@@ -56,7 +66,7 @@ export async function listeningStats(
     timezone?: string,
     period: Period = "all",
 ): Promise<ListeningStats> {
-    const tz = safeZone(timezone);
+    const tz = await safeZone(timezone);
 
     const [totals, sources, clockRows, shapeRows, driftRows, artistRows, trackRows] =
         await Promise.all([
@@ -197,7 +207,7 @@ export async function hourDetail(
     // grid was drawn from, or the cell says 109 and the panel lists twelve.
     period: Period = "all",
 ): Promise<HourDetail> {
-    const tz = safeZone(timezone);
+    const tz = await safeZone(timezone);
     const local = Prisma.sql`p."playedAt" AT TIME ZONE 'UTC' AT TIME ZONE ${tz}`;
 
     const [tracks, artists, total] = await Promise.all([

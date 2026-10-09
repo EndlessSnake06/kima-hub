@@ -33,7 +33,6 @@ const mockGetSimilarArtists = jest.fn();
 jest.mock("../../services/artistSimilarity", () => ({
     getSimilarArtists: (...a: unknown[]) => mockGetSimilarArtists(...a),
     enrichSimilarArtists: jest.fn().mockResolvedValue([]),
-    MIN_LOCAL_TRACKS: 3,
 }));
 
 jest.mock("../../services/wikidata", () => ({
@@ -78,6 +77,7 @@ jest.mock("../../services/artwork", () => ({
     findArtistArtwork: (...a: unknown[]) => mockFindArtistArtwork(...a),
 }));
 
+import { redisClient } from "../../utils/redis";
 import express from "express";
 import request from "supertest";
 import artistRoutes from "../artists";
@@ -113,6 +113,18 @@ describe("the discovery routes and the pictures they promise", () => {
     });
 
     describe("GET /artists/discover/:nameOrMbid", () => {
+        it("serves but does not cache a page built while MusicBrainz was failing", async () => {
+            mockGetReleaseGroups.mockResolvedValue({ kind: "transient", error: { message: "timeout" } });
+            const res = await request(makeApp()).get(`/artists/discover/${MBID}`);
+            expect(res.status).toBe(200);
+            expect(redisClient.setex).not.toHaveBeenCalled();
+        });
+
+        it("caches a page MusicBrainz answered in full", async () => {
+            await request(makeApp()).get(`/artists/discover/${MBID}`);
+            expect(redisClient.setex).toHaveBeenCalled();
+        });
+
         it("sends no artist image when no source had one", async () => {
             const res = await request(makeApp()).get(`/artists/discover/${MBID}`);
 

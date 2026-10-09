@@ -3,7 +3,6 @@ import { spawn } from "child_process";
 import { prisma } from "../../utils/db";
 import { redisClient } from "../../utils/redis";
 import { logger } from "../../utils/logger";
-import { config } from "../../config";
 import ffmpegPath from "@ffmpeg-installer/ffmpeg";
 import { resolveTrackFilePath } from "./trackPath";
 

@@ -31,6 +31,7 @@ jest.mock('../../workers/unifiedEnrichment', () => ({
     reRunMoodTagsOnly: jest.fn(),
     resetAllEnrichmentData: jest.fn(),
     triggerEnrichmentNow: jest.fn(),
+    startEnrichmentNow: jest.fn(),
 }));
 jest.mock('../../services/enrichmentState', () => ({ enrichmentStateService: {} }));
 jest.mock('../../services/enrichmentFailureService', () => ({

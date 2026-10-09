@@ -15,7 +15,7 @@ const mockGetReleaseGroups = jest.fn();
 jest.mock("../musicbrainz", () => ({
     musicBrainzService: {
         searchArtist: (...a: unknown[]) => mockSearchArtist(...a),
-        getReleaseGroups: (...a: unknown[]) => mockGetReleaseGroups(...a),
+        getAllReleaseGroups: (...a: unknown[]) => mockGetReleaseGroups(...a),
         normalizeForSearch: (s: string) => s,
     },
 }));

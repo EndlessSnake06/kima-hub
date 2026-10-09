@@ -74,21 +74,20 @@ export function artistSortName(name: string | null | undefined): string {
     return pgTrim(base.replace(PG_LEADING_ARTICLE, "")) || base;
 }
 
-/**
- * Whether the artist has a real MusicBrainz id. Unknown is NULL; the old
- * `temp-` placeholder is still rejected in case a row survived a partial migration.
- */
-export function hasRealMbid(
-    mbid: string | null | undefined
-): mbid is string {
-    return typeof mbid === "string" && mbid.length > 0 && !mbid.startsWith("temp-");
-}
-
 const MBID_FORMAT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** True for a value shaped like a MusicBrainz id; temp- and row ids fail. */
 export function isMbid(value: unknown): value is string {
     return typeof value === "string" && MBID_FORMAT.test(value);
+}
+
+/**
+ * Whether a stored id is a real MusicBrainz id that can be asked about. Unknown is
+ * NULL; a `temp-` placeholder or a malformed tag value fails, so no source is asked
+ * a question it can only refuse.
+ */
+export function hasRealMbid(mbid: string | null | undefined): mbid is string {
+    return isMbid(mbid);
 }
 
 export interface ParsedCredit {

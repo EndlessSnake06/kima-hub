@@ -26,7 +26,7 @@ jest.mock("../../utils/shuffle", () => ({
     shuffleArray: <T,>(arr: T[]): T[] => arr, // Return as-is for predictable order
 }));
 
-import { moodBucketService, VALID_MOODS, MoodType } from "../moodBucketService";
+import { moodBucketService, MoodType } from "../moodBucketService";
 import { prisma } from "../../utils/db";
 
 const USER_ID = "user-test-123";

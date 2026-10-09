@@ -102,7 +102,7 @@ describe("searchTracksByText", () => {
 
         const rows = await pending;
         // Soft duplicate options: the shared client is strict/fail-fast, but
-        // pub/sub must ride out a cold Redis (#197).
+        // pub/sub must ride out a cold Redis.
         expect(duplicateMock).toHaveBeenCalledWith({
             enableOfflineQueue: true,
             maxRetriesPerRequest: null,
@@ -114,7 +114,7 @@ describe("searchTracksByText", () => {
         expect(queryRawMock).not.toHaveBeenCalled();
         expect(txQueryRawMock).toHaveBeenCalledTimes(2);
         // First tx call: the transaction-local ef_search raise, sized from the
-        // requested limit (efFor(25, 0) floors at 100). The is_local=true flag
+        // requested limit (efFor(25) floors at 100). The is_local=true flag
         // is literal SQL text in the template, so it is asserted there.
         const [configStrings, efValue] = txQueryRawMock.mock.calls[0];
         const configSql = configStrings.join(" ");
@@ -123,8 +123,11 @@ describe("searchTracksByText", () => {
         expect(efValue).toBe("100");
         // Ranking is pgvector's ORDER BY on the cosine distance of the SAME
         // interpolated vector used for the selected distance column.
-        const [strings, vectorForSelect, vectorForOrder, limitArg] = txQueryRawMock.mock.calls[1];
+        // Only vectors from the model the query was embedded with are ranked.
+        const [strings, vectorForSelect, model, vectorForOrder, limitArg] = txQueryRawMock.mock.calls[1];
         expect(strings.join(" ")).toContain("ORDER BY te.embedding <=>");
+        expect(strings.join(" ")).toContain("te.model_version =");
+        expect(model).toBe("laion-clap-htsat-unfused-v1");
         expect(vectorForSelect).toBe("[0.1,0.2,-0.3]");
         expect(vectorForOrder).toBe("[0.1,0.2,-0.3]");
         expect(limitArg).toBe(25);

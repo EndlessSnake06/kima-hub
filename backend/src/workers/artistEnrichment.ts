@@ -1,24 +1,86 @@
-import { Artist } from "@prisma/client";
+import { Artist, Prisma } from "@prisma/client";
+import { config } from "../config";
+import { artistsAgree } from "../services/recordingMatch";
 import { logger } from "../utils/logger";
 import { prisma } from "../utils/db";
 import { wikidataService } from "../services/wikidata";
-import { getSimilarArtists } from "../services/artistSimilarity";
+import { findSimilarArtists } from "../services/artistSimilarity";
+import { STAGE_RETRY_CAP } from "./stageRetry";
 import { musicBrainzService } from "../services/musicbrainz";
 import { normalizeArtistName } from "../services/artistIdentity";
 import { hasRealMbid } from "../services/artistIdentity";
 import { findAlbumArtwork, findArtistArtwork } from "../services/artwork";
 import { redisClient } from "../utils/redis";
-import { downloadAndStoreImage, isNativePath, nativeFileExists } from "../services/imageStorage";
+import { downloadAndStoreImage, findLocalArtistImage, isNativePath, nativeFileExists } from "../services/imageStorage";
 import { failureCause } from "../utils/outcome";
 import { resolveArtistMbid } from "../services/artistCorrection";
+import { enrichmentFailureService } from "../services/enrichmentFailureService";
+
+/**
+ * An artist row's MusicBrainz id must name this artist (its name, sort name or an alias agrees with the row's): a track
+ * artist's id tagged under an album artist's name puts another artist's id on the row. Such an id and everything
+ * learned through it are dropped, and the name resolution that follows finds the right one; a local folder image is
+ * kept, and an outage leaves the row as it is.
+ */
+async function dropMbidOfAnotherArtist(artist: Artist, logPrefix: string): Promise<void> {
+    const held = await musicBrainzService.getArtist(artist.mbid!, ["aliases"]);
+    if (held.kind !== "answered" && held.kind !== "absent") return;
+    if (held.kind === "answered") {
+        const names = [
+            held.value?.name,
+            held.value?.["sort-name"],
+            ...((held.value?.aliases ?? []) as Array<{ name?: string; "sort-name"?: string }>).flatMap((a) => [a.name, a["sort-name"]]),
+        ].filter((n): n is string => typeof n === "string" && n !== "");
+        if (artistsAgree([artist.name], names)) return;
+        logger.warn(`${logPrefix} MusicBrainz id ${artist.mbid} names "${held.value?.name}", not this artist: dropped`);
+    } else {
+        logger.warn(`${logPrefix} MusicBrainz does not know id ${artist.mbid}: dropped`);
+    }
+
+    const track = await prisma.track.findFirst({
+        where: { album: { artistId: artist.id } },
+        select: { filePath: true },
+    });
+    const localImage = track
+        ? await findLocalArtistImage(config.music.musicPath, track.filePath, artist.id)
+        : null;
+    await prisma.$transaction([
+        prisma.similarArtist.deleteMany({ where: { fromArtistId: artist.id } }),
+        prisma.artist.update({
+            where: { id: artist.id },
+            data: { mbid: null, summary: null, genres: Prisma.DbNull, similarArtistsJson: Prisma.DbNull, heroUrl: localImage },
+        }),
+    ]);
+    artist.mbid = null;
+    artist.summary = null;
+    artist.heroUrl = localImage;
+}
+
+/** An artist whose enrichment failed: retried by the next cycles until STAGE_RETRY_CAP
+ * failures in a row, then set aside as unresolvable (asked again after a week). */
+export function failedArtistStatus(failuresSoFar: number): { enrichmentStatus: string; enrichmentFailures: number } {
+    const enrichmentFailures = (failuresSoFar || 0) + 1;
+    return {
+        enrichmentStatus: enrichmentFailures >= STAGE_RETRY_CAP ? "unresolvable" : "failed",
+        enrichmentFailures,
+    };
+}
 
 /**
  * Enriches an artist with metadata from Wikidata
  * - Fetches artist bio/summary and hero image from Wikidata
- * - Similar artists from the local centroid / ListenBrainz engine
+ * - Similar artists from ListenBrainz, then Deezer, nudged by the matching formula
  */
 export async function enrichSimilarArtist(artist: Artist): Promise<void> {
     const logPrefix = `[ENRICH ${artist.name}]`;
+    // A MusicBrainz question that got no answer: waiting on its rate limit asks again next cycle
+    // without counting; an outage counts as a failed try (the cap closes it, as for every source).
+    let musicbrainzWaiting = false;
+    let musicbrainzFailed = false;
+    const musicbrainzUnanswered = (kind: string) => {
+        if (kind === "rateLimited") musicbrainzWaiting = true;
+        else musicbrainzFailed = true;
+    };
     logger.debug(`${logPrefix} Starting enrichment (MBID: ${artist.mbid})`);
 
     // Mark as enriching
@@ -32,6 +94,10 @@ export async function enrichSimilarArtist(artist: Artist): Promise<void> {
     let summarySource = "none";
 
     try {
+        if (hasRealMbid(artist.mbid)) {
+            await dropMbidOfAnotherArtist(artist, logPrefix);
+        }
+
         if (!hasRealMbid(artist.mbid)) {
             const albums = await prisma.album.findMany({
                 where: { artistId: artist.id },
@@ -72,6 +138,7 @@ export async function enrichSimilarArtist(artist: Artist): Promise<void> {
                 return;
             } else {
                 // An outage keeps the question open for the next cycle.
+                musicbrainzUnanswered(found.kind);
                 logger.debug(
                     `${logPrefix} MusicBrainz ${found.kind}: ${failureCause(found)}`
                 );
@@ -80,7 +147,8 @@ export async function enrichSimilarArtist(artist: Artist): Promise<void> {
 
         // Try Wikidata first (only if we have a real MBID)
         // Preserve existing heroUrl (e.g., from local file found during scan)
-        let summary = null;
+        let summary: string | null = null;
+        let wikidataFailed = false;
         // Only preserve existing heroUrl if the file actually exists on disk
         let heroUrl = (artist.heroUrl && (!isNativePath(artist.heroUrl) || nativeFileExists(artist.heroUrl)))
             ? artist.heroUrl
@@ -91,30 +159,20 @@ export async function enrichSimilarArtist(artist: Artist): Promise<void> {
             logger.debug(
                 `${logPrefix} Wikidata: Fetching for MBID ${artist.mbid}...`
             );
-            try {
-                const wikidataInfo = await wikidataService.getArtistInfo(
-                    artist.name,
-                    artist.mbid
-                );
-                if (wikidataInfo) {
-                    summary = wikidataInfo.summary;
-                    if (!heroUrl && wikidataInfo.heroUrl) {
-                        heroUrl = wikidataInfo.heroUrl;
-                        imageSource = "wikidata";
-                    }
-                    if (summary) summarySource = "wikidata";
-                    logger.debug(
-                        `${logPrefix} Wikidata: SUCCESS (image: ${
-                            heroUrl ? "yes" : "no"
-                        }, summary: ${summary ? "yes" : "no"})`
-                    );
-                } else {
-                    logger.debug(`${logPrefix} Wikidata: No data returned`);
+            const wikidataInfo = await wikidataService.getArtistInfo(
+                artist.name,
+                artist.mbid
+            );
+            if (wikidataInfo) {
+                summary = wikidataInfo.summary ?? null;
+                if (!heroUrl && wikidataInfo.heroUrl) {
+                    heroUrl = wikidataInfo.heroUrl;
+                    imageSource = "wikidata";
                 }
-            } catch (error: any) {
-                logger.debug(
-                    `${logPrefix} Wikidata: FAILED - ${error?.message || error}`
-                );
+                if (summary) summarySource = "wikidata";
+            } else {
+                // A failed lookup is not "no bio": the stored one stays and the artist is asked again.
+                wikidataFailed = true;
             }
         } else {
             logger.debug(`${logPrefix} Wikidata: Skipped (temp MBID)`);
@@ -152,11 +210,12 @@ export async function enrichSimilarArtist(artist: Artist): Promise<void> {
                     }
                 }
             } else if (mbArtist.kind !== "absent") {
+                musicbrainzUnanswered(mbArtist.kind);
                 logger.debug(`${logPrefix} MusicBrainz genres: ${failureCause(mbArtist)}`);
             }
         }
 
-        // Get similar artists (local centroid / ListenBrainz)
+        // Similar artists (ListenBrainz, then Deezer)
         let similarArtists: Array<{
             name: string;
             mbid?: string;
@@ -166,12 +225,11 @@ export async function enrichSimilarArtist(artist: Artist): Promise<void> {
         try {
             // Filter out temp MBIDs
             const validMbid = hasRealMbid(artist.mbid) ? artist.mbid : "";
-            similarArtists = await getSimilarArtists(
-                validMbid,
-                artist.name
-            );
+            const found = await findSimilarArtists(validMbid, artist.name);
+            similarArtists = found.artists;
+            similarFetchFailed = found.failed;
             logger.debug(
-                `${logPrefix} Similar artists: Found ${similarArtists.length}`
+                `${logPrefix} Similar artists: Found ${similarArtists.length}${found.failed ? " (a source failed)" : ""}`
             );
         } catch (error: any) {
             similarFetchFailed = true;
@@ -225,20 +283,29 @@ export async function enrichSimilarArtist(artist: Artist): Promise<void> {
             ? currentArtist.heroUrl
             : localHeroUrl;
 
+        // A source that failed keeps what was stored before; the artist is asked again.
         await prisma.artist.update({
             where: { id: artist.id },
             data: {
-                summary,
+                ...(wikidataFailed ? {} : { summary }),
                 heroUrl: finalHeroUrl,
-                similarArtistsJson,
+                ...(similarFetchFailed ? {} : { similarArtistsJson }),
                 genres: genres.length > 0 ? genres : undefined,
                 lastEnriched: new Date(),
-                enrichmentStatus: similarFetchFailed ? "failed" : "completed",
+                ...(similarFetchFailed || wikidataFailed || musicbrainzFailed
+                    ? failedArtistStatus(artist.enrichmentFailures)
+                    : musicbrainzWaiting
+                      ? { enrichmentStatus: "pending" }
+                      : { enrichmentStatus: "completed", enrichmentFailures: 0 }),
             },
         });
+        if (!(similarFetchFailed || wikidataFailed || musicbrainzFailed || musicbrainzWaiting)) {
+            // An earlier failure of this artist is answered now; the failures list stops counting it.
+            await enrichmentFailureService.resolveByEntity("artist", artist.id);
+        }
 
         // Store similar artists
-        if (similarArtists.length > 0) {
+        if (!similarFetchFailed && similarArtists.length > 0) {
             // Delete existing similar artist relationships
             await prisma.similarArtist.deleteMany({
                 where: { fromArtistId: artist.id },
@@ -314,10 +381,9 @@ export async function enrichSimilarArtist(artist: Artist): Promise<void> {
             error?.message || error
         );
 
-        // Mark as failed
         await prisma.artist.update({
             where: { id: artist.id },
-            data: { enrichmentStatus: "failed" },
+            data: failedArtistStatus(artist.enrichmentFailures),
         });
 
         throw error;

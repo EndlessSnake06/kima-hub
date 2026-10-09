@@ -137,7 +137,7 @@ router.post("/login", async (req, res) => {
 });
 
 // POST /auth/logout - JWT is stateless, logout is handled client-side
-router.post("/logout", (req, res) => {
+router.post("/logout", (_req, res) => {
     // With JWT, logout is handled by client removing the token
     // No server-side session to destroy
     res.json({ message: "Logged out" });
@@ -244,26 +244,32 @@ router.post("/change-password", requireAuth, authLimiter, async (req, res) => {
 
         const valid = await bcrypt.compare(currentPassword, user.passwordHash);
         if (!valid) {
+            // 401 means "not signed in"; a wrong password from a signed-in user is a bad request.
             return res
-                .status(401)
+                .status(400)
                 .json({ error: "Current password is incorrect" });
         }
 
-        // Update password and increment tokenVersion to invalidate all existing tokens
+        // A new tokenVersion signs out every other device; this one gets fresh tokens.
         const newPasswordHash = await bcrypt.hash(newPassword, 10);
-        await prisma.user.update({
+        const updated = await prisma.user.update({
             where: { id: req.user!.id },
             data: {
                 passwordHash: newPasswordHash,
                 tokenVersion: { increment: 1 },
             },
+            select: { id: true, username: true, role: true, tokenVersion: true },
         });
         // The auth layer caches the user row, and tokenVersion is what revokes
         // issued tokens -- without this the old tokens keep working until the
         // cache TTL elapses.
         invalidateUserCache(req.user!.id);
 
-        res.json({ message: "Password changed successfully" });
+        res.json({
+            message: "Password changed successfully",
+            token: generateToken(updated),
+            refreshToken: generateRefreshToken({ id: updated.id, tokenVersion: updated.tokenVersion }),
+        });
     } catch (error) {
         logger.error("Change password error:", error);
         res.status(500).json({ error: "Failed to change password" });
@@ -271,7 +277,7 @@ router.post("/change-password", requireAuth, authLimiter, async (req, res) => {
 });
 
 // GET /auth/users (Admin only)
-router.get("/users", requireAuth, requireAdmin, async (req, res) => {
+router.get("/users", requireAuth, requireAdmin, async (_req, res) => {
     try {
         const users = await prisma.user.findMany({
             select: {
@@ -361,7 +367,7 @@ router.delete("/users/:id", requireAuth, requireAdmin, async (req, res) => {
                 .json({ error: "Cannot delete your own account" });
         }
 
-        // Delete user (cascade will handle related data)
+        // Every User relation cascades on delete.
         await prisma.user.delete({
             where: { id },
         });
@@ -436,7 +442,7 @@ router.post("/2fa/enable", requireAuth, authLimiter, async (req, res) => {
 
         if (!verified) {
             return res
-                .status(401)
+                .status(400)
                 .json({ error: "Invalid token. Please try again." });
         }
 
@@ -504,7 +510,7 @@ router.post("/2fa/disable", requireAuth, authLimiter, async (req, res) => {
         // Verify password
         const validPassword = await bcrypt.compare(password, user.passwordHash);
         if (!validPassword) {
-            return res.status(401).json({ error: "Invalid password" });
+            return res.status(400).json({ error: "Invalid password" });
         }
 
         // Verify 2FA token
@@ -518,7 +524,7 @@ router.post("/2fa/disable", requireAuth, authLimiter, async (req, res) => {
             });
 
             if (!verified) {
-                return res.status(401).json({ error: "Invalid 2FA token" });
+                return res.status(400).json({ error: "Invalid 2FA token" });
             }
         }
 
@@ -578,13 +584,7 @@ router.delete("/account", requireAuth, async (req, res) => {
                     }
                 }
 
-                // UserMoodMix and DiscoveryBatch carry a bare `userId` with no @relation
-                // / onDelete: Cascade — delete them manually before the user row (there's
-                // no FK to cascade or to violate, so otherwise they orphan).
-                await tx.userMoodMix.deleteMany({ where: { userId: req.user!.id } });
-                await tx.discoveryBatch.deleteMany({ where: { userId: req.user!.id } });
-
-                // Every other User relation cascades on delete.
+                // Every User relation cascades on delete.
                 await tx.user.delete({ where: { id: req.user!.id } });
             },
             { isolationLevel: "Serializable" }

@@ -20,7 +20,7 @@ jest.mock("../../utils/redis", () => ({
 }));
 
 jest.mock("../../services/gpuRuntime", () => ({
-    setGpuEnabled: jest.fn().mockResolvedValue({ enabled: true }),
+    setGpuToggles: jest.fn().mockResolvedValue({ enabled: true }),
 }));
 
 import express from "express";
@@ -28,11 +28,11 @@ import request from "supertest";
 import whatsNewRoutes from "../whatsNew";
 import { prisma } from "../../utils/db";
 import { GPU_CHOICE_KEY } from "../../services/releases/catalog";
-import { setGpuEnabled } from "../../services/gpuRuntime";
+import { setGpuToggles } from "../../services/gpuRuntime";
 
 const PREFIX = "whatsnew-gpu-test";
 
-const setGpuMock = setGpuEnabled as jest.Mock;
+const setGpuMock = setGpuToggles as jest.Mock;
 
 function makeApp() {
     const app = express();
@@ -72,7 +72,7 @@ describe("POST /whats-new/:version/choice — the GPU key", () => {
             .send({ key: GPU_CHOICE_KEY, enabled: true });
 
         expect(res.status).toBe(200);
-        expect(setGpuMock).toHaveBeenCalledWith(true);
+        expect(setGpuMock).toHaveBeenCalledWith({ soundVectors: true });
         const row = await prisma.releaseChoice.findUnique({
             where: { userId_key: { userId: user.id, key: GPU_CHOICE_KEY } },
         });
@@ -104,7 +104,7 @@ describe("POST /whats-new/:version/choice — the GPU key", () => {
             .send({ key: GPU_CHOICE_KEY, enabled: false });
 
         expect(res.status).toBe(200);
-        expect(setGpuMock).toHaveBeenCalledWith(false);
+        expect(setGpuMock).toHaveBeenCalledWith({ soundVectors: false });
     });
 });
 

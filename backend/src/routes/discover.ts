@@ -8,7 +8,6 @@ import { resolveViewWeek, resolveGenerationWeekStart, weekStartKey } from "../li
 import { createLidarrClient } from "../services/lidarrClient";
 import fs from "fs";
 import path from "path";
-import { config } from "../config";
 import { resolveWithinMusicRoot } from "./library/trackPath";
 
 // Static imports for performance
@@ -24,6 +23,7 @@ import {
 } from '../utils/errors';
 import { distributedLock } from '../utils/distributedLock';
 import { LIBRARY_LOCATION } from "../services/libraryFilters";
+import { withArtistArtwork } from "../services/artwork";
 
 const router = Router();
 
@@ -1205,7 +1205,13 @@ router.get("/popular-artists", async (req, res) => {
     try {
         const limit = parseInt(req.query.limit as string) || 20;
 
-        const artists = await listenBrainzService.getTopChartArtists(limit);
+        const chart = await listenBrainzService.getTopChartArtists(limit);
+        // ListenBrainz charts carry no pictures; the artwork door finds them.
+        const artists = await withArtistArtwork(
+            chart,
+            (a) => ({ name: a.name, mbid: a.mbid, interactive: true }),
+            (a, image) => ({ ...a, image }),
+        );
 
         res.json({ artists });
     } catch (error: any) {

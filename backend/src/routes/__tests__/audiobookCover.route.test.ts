@@ -60,7 +60,11 @@ jest.mock("../../services/notificationService", () => ({
 }));
 
 jest.mock("../../config", () => ({
-    config: { music: { musicPath: "/music" } },
+    config: {
+        music: {
+            musicPath: require("path").join(require("os").tmpdir(), `kima-cover-music-${process.pid}`),
+        },
+    },
 }));
 
 import express from "express";
@@ -70,6 +74,11 @@ import os from "os";
 import path from "path";
 import audiobookRoutes from "../../routes/audiobooks";
 import { prisma } from "../../utils/db";
+import { config } from "../../config";
+
+const MUSIC = config.music.musicPath;
+const ALBUM_COVER = path.join(MUSIC, "Artist", "Album", "cover.jpg");
+const ALBUM_COVER_BODY = "an album cover inside the music folder";
 
 // Where the unguarded join would have landed: the route appends ".jpg" itself.
 const PROBE_BODY = "if you can read this, the traversal worked";
@@ -83,7 +92,7 @@ const probeFile = path.join(os.tmpdir(), `kima-cover-traversal-${process.pid}.jp
  */
 function traversingId(): string {
     const withoutExt = probeFile.replace(/\.jpg$/, "");
-    const relative = path.relative("/music/cover-cache/audiobooks", withoutExt);
+    const relative = path.relative(path.join(MUSIC, "cover-cache", "audiobooks"), withoutExt);
     return encodeURIComponent(relative);
 }
 
@@ -100,10 +109,13 @@ describe("GET /audiobooks/:id/cover", () => {
     beforeAll(() => {
         app = makeApp();
         fs.writeFileSync(probeFile, PROBE_BODY);
+        fs.mkdirSync(path.dirname(ALBUM_COVER), { recursive: true });
+        fs.writeFileSync(ALBUM_COVER, ALBUM_COVER_BODY);
     });
 
     afterAll(() => {
         fs.rmSync(probeFile, { force: true });
+        fs.rmSync(MUSIC, { recursive: true, force: true });
     });
 
     beforeEach(() => {
@@ -129,6 +141,14 @@ describe("GET /audiobooks/:id/cover", () => {
         await request(app).get(`/${traversingId()}/cover`);
 
         expect(prisma.audiobook.update).not.toHaveBeenCalled();
+    });
+
+    it("refuses an id that reaches another folder inside the music root", async () => {
+        const id = encodeURIComponent(path.join("..", "..", "Artist", "Album", "cover"));
+        const res = await request(app).get(`/${id}/cover`);
+
+        expect(res.status).toBe(404);
+        expect(res.text).not.toContain(ALBUM_COVER_BODY);
     });
 
     it("still answers 404 for an ordinary id with no cover on disk", async () => {

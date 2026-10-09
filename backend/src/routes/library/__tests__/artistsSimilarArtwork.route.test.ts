@@ -73,7 +73,6 @@ const mockGetSimilarArtists = jest.fn();
 jest.mock("../../../services/artistSimilarity", () => ({
     getSimilarArtists: (...a: any[]) => mockGetSimilarArtists(...a),
     enrichSimilarArtists: jest.fn().mockResolvedValue([]),
-    MIN_LOCAL_TRACKS: 3,
 }));
 
 jest.mock("../../../services/musicbrainz", () => ({

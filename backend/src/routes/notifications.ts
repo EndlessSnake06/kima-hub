@@ -4,6 +4,7 @@ import { notificationService } from "../services/notificationService";
 import { requireAuth } from "../middleware/auth";
 import { prisma } from "../utils/db";
 import { z } from "zod";
+import { soulseekConfigured } from "../utils/soulseekConfigured";
 
 const router = Router();
 
@@ -420,10 +421,7 @@ router.post(
                     });
                 }
 
-                if (
-                    !settings?.soulseekUsername ||
-                    !settings?.soulseekPassword
-                ) {
+                if (!soulseekConfigured(settings)) {
                     await prisma.downloadJob.update({
                         where: { id: newJobRecord.id },
                         data: {

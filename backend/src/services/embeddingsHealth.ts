@@ -2,10 +2,11 @@ import { prisma } from "../utils/db";
 import { logger } from "../utils/logger";
 
 /**
- * Can an embedding be written? Runs the analyzer's own upsert on a track id
- * that cannot exist, in a transaction that is always rolled back. A table
- * missing its keys (rebuilt outside `prisma migrate deploy`) fails with 42P10
- * on every track while every other health check passes.
+ * Can an embedding be written? Plans the analyzer's own upsert with EXPLAIN, which
+ * resolves its ON CONFLICT target without running it: nothing is written and no
+ * error reaches the database log. A table missing its keys (rebuilt outside
+ * `prisma migrate deploy`) fails with 42P10 on every track while every other
+ * health check passes.
  */
 
 export interface EmbeddingWriteCheck {
@@ -18,23 +19,22 @@ export interface EmbeddingWriteCheck {
     checkedAt: string;
 }
 
-/** Marker thrown to force the probe's transaction to roll back. */
-class ProbeRollback extends Error {}
-
 const CACHE_MS = 60_000;
 const PROBE_TRACK_ID = "__kima_embedding_write_probe__";
 
 let cache: { at: number; value: EmbeddingWriteCheck } | null = null;
 
-function classify(error: unknown): Omit<EmbeddingWriteCheck, "checkedAt"> {
+/** Postgres's error code: Prisma carries it in `meta.code` and in its message (`Code: `42P10``). */
+function sqlState(error: unknown): string | undefined {
+    const code = (error as { meta?: { code?: unknown } } | null)?.meta?.code;
+    if (typeof code === "string") return code;
     const message = error instanceof Error ? error.message : String(error);
+    return /Code: `([0-9A-Z]{5})`/.exec(message)?.[1];
+}
 
-    // Postgres raises this at plan time when the ON CONFLICT target has no
-    // unique or exclusion constraint -- the exact field failure.
-    if (
-        message.includes("no unique or exclusion constraint") ||
-        message.includes("42P10")
-    ) {
+function classify(error: unknown): Omit<EmbeddingWriteCheck, "checkedAt"> {
+    const state = sqlState(error);
+    if (state === "42P10") {
         return {
             ok: false,
             reason: "missing_unique_constraint",
@@ -46,24 +46,10 @@ function classify(error: unknown): Omit<EmbeddingWriteCheck, "checkedAt"> {
                 "and runs on startup; if it did not apply, restore the constraint manually.",
         };
     }
-
-    // A foreign key rejection means the constraint inference worked and the
-    // database is enforcing integrity -- that is a pass for this probe.
-    if (
-        message.includes("violates foreign key constraint") ||
-        message.includes("23503")
-    ) {
-        return { ok: true };
+    if (state === "42P01") {
+        return { ok: false, reason: "table_missing", detail: "track_embeddings does not exist" };
     }
-
-    if (message.includes("does not exist") || message.includes("42P01")) {
-        return {
-            ok: false,
-            reason: "table_missing",
-            detail: "track_embeddings does not exist",
-        };
-    }
-
+    const message = error instanceof Error ? error.message : String(error);
     return { ok: false, reason: "probe_failed", detail: message.slice(0, 400) };
 }
 
@@ -71,24 +57,15 @@ async function probe(): Promise<EmbeddingWriteCheck> {
     const checkedAt = new Date().toISOString();
 
     try {
-        await prisma.$transaction(async (tx) => {
-            await tx.$executeRaw`
-                INSERT INTO track_embeddings (track_id, embedding, model_version, analyzed_at)
-                VALUES (${PROBE_TRACK_ID}, array_fill(0.0::real, ARRAY[512])::vector, 'write-probe', now())
-                ON CONFLICT (track_id) DO UPDATE SET
-                    embedding = EXCLUDED.embedding,
-                    model_version = EXCLUDED.model_version,
-                    analyzed_at = EXCLUDED.analyzed_at
-            `;
-            // Reached only if the statement was accepted (which, with the
-            // foreign key in place, requires the id above to exist -- it never
-            // does). Either way nothing is committed.
-            throw new ProbeRollback();
-        });
+        await prisma.$queryRaw`
+            EXPLAIN INSERT INTO track_embeddings (track_id, embedding, model_version, analyzed_at)
+            VALUES (${PROBE_TRACK_ID}, array_fill(0.0::real, ARRAY[512])::vector, 'write-probe', now())
+            ON CONFLICT (track_id) DO UPDATE SET
+                embedding = EXCLUDED.embedding,
+                model_version = EXCLUDED.model_version,
+                analyzed_at = EXCLUDED.analyzed_at
+        `;
     } catch (error) {
-        if (error instanceof ProbeRollback) {
-            return { ok: true, checkedAt };
-        }
         return { ...classify(error), checkedAt };
     }
 

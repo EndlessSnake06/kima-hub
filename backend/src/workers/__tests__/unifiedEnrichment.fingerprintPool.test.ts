@@ -104,20 +104,8 @@ jest.mock("../../services/fpcalc", () => ({
 jest.mock("../../services/musicbrainz", () => ({
     musicBrainzService: {
         searchRecording: jest.fn().mockResolvedValue(null),
-        lookupByIsrc: jest.fn().mockResolvedValue(null),
-        getRecordingIsrc: jest.fn().mockResolvedValue(null),
         getRecordingGenres: jest.fn().mockResolvedValue(null),
     },
-}));
-
-jest.mock("../../services/umapProjection", () => ({
-    precomputeProjection: jest.fn().mockResolvedValue(undefined),
-    appendTrackToProjection: jest.fn().mockResolvedValue(undefined),
-}));
-
-jest.mock("../../services/artistSimilarity", () => ({
-    MIN_LOCAL_TRACKS: 5,
-    rebuildArtistCentroid: jest.fn().mockResolvedValue({ trackCount: 0 }),
 }));
 
 jest.mock("../../workers/audioCompletionSubscriber", () => ({
@@ -241,7 +229,6 @@ describe("the fingerprint stage runs in its own pool", () => {
         const gate = makeGatedFpcalc();
         const tracks = [id("c1"), id("c2"), id("c3"), id("c4")];
         for (const t of tracks) await seedTrack(t);
-        console.error("DBG seeded");
 
         // The dispatch hands out ALL four claims and RETURNS while two
         // fpcalc subprocesses are still running — the old inline producer

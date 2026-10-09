@@ -104,8 +104,6 @@ jest.mock("../../services/trackIdentity", () => ({
 jest.mock("../../services/musicbrainz", () => ({
     musicBrainzService: {
         searchRecording: jest.fn().mockResolvedValue(null),
-        lookupByIsrc: jest.fn().mockResolvedValue(null),
-        getRecordingIsrc: jest.fn().mockResolvedValue(null),
         getRecordingGenres: jest.fn().mockResolvedValue(null),
     },
 }));
@@ -113,16 +111,6 @@ jest.mock("../../services/musicbrainz", () => ({
 jest.mock("../../services/acoustidIdentification", () => ({
     identifyTrackByAcoustid: jest.fn().mockResolvedValue(null),
     persistAcoustidFingerprint: jest.fn().mockResolvedValue(undefined),
-}));
-
-jest.mock("../../services/umapProjection", () => ({
-    precomputeProjection: jest.fn().mockResolvedValue(undefined),
-    appendTrackToProjection: jest.fn().mockResolvedValue(undefined),
-}));
-
-jest.mock("../../services/artistSimilarity", () => ({
-    MIN_LOCAL_TRACKS: 5,
-    rebuildArtistCentroid: jest.fn().mockResolvedValue({ trackCount: 0 }),
 }));
 
 jest.mock("../../services/sourcePauseController", () => ({
@@ -154,9 +142,11 @@ jest.mock("../../workers/podcastEnrichmentWorker", () => ({
 }));
 
 import { prisma } from "../../utils/db";
+import { invalidateSystemSettingsCache } from "../../utils/systemSettings";
 import {
     executeAudioPhase,
     executeVibePhase,
+    inFlightCap,
     STAGE_IN_FLIGHT_CAP,
 } from "../../workers/unifiedEnrichment";
 
@@ -198,6 +188,23 @@ async function seedTracks(count: number, stages: Array<[string, string]>): Promi
     }
 }
 
+/** `count` answers this stage closed just now, on tracks of their own: the drain rate the cap reads. */
+async function seedRecentCloses(stage: string, count: number): Promise<void> {
+    const trackIds = Array.from({ length: count }, (_, n) => id(`closed${n}`));
+    await prisma.track.createMany({
+        data: trackIds.map((trackId, n) => ({
+            id: trackId, albumId: id("alb"), title: `Closed ${n}`, trackNo: 1, duration: 180,
+            filePath: `/tmp/${trackId}.flac`, fileModified: new Date(), fileSize: 1000,
+            analysisStatus: "completed", enrichmentTags: [],
+        })),
+    });
+    await prisma.$executeRawUnsafe(
+        `INSERT INTO "TrackStage" (id, "trackId", stage, status, source, attempt, retryable, evidence, "startedAt", "finishedAt")
+         SELECT t || '__' || $2, t, $2, 'done', 'test', 1, true, '{}'::jsonb, now(), now() FROM unnest($1::text[]) AS t`,
+        trackIds, stage,
+    );
+}
+
 async function workingCount(stage: string): Promise<number> {
     const [row] = await prisma.$queryRawUnsafe<Array<{ n: bigint }>>(
         `SELECT count(*)::bigint AS n FROM "TrackStage" ts
@@ -237,35 +244,87 @@ describe("stages overlap instead of waving", () => {
             ["analysis", "pending"],
             ["fingerprint", "done"],
         ]);
+        const cap = (await inFlightCap("analysis")) ?? 0;
+        expect(cap).toBeGreaterThan(0);
 
         const queued = await executeAudioPhase();
 
-        expect(queued).toBe(20);
-        expect(mockRedis.rpush).toHaveBeenCalledTimes(20);
-        expect(await workingCount("analysis")).toBe(20);
+        expect(queued).toBe(cap);
+        expect(mockRedis.rpush).toHaveBeenCalledTimes(cap);
+        expect(await workingCount("analysis")).toBe(cap);
     });
 
-    it("the analysis window refills the moment answers land", async () => {
-        // One batch claimed; with no answers yet, the next cycle adds
-        // nothing new (cap room is there, but the offered set is the same
-        // pending rows — claimed rows are 'working', not re-offered).
+    it("claims whose lease ran out do not hold the stage's places", async () => {
+        const cap = (await inFlightCap("analysis")) ?? 0;
+        await seedTracks(cap, [["analysis", "working"]]);
+        await prisma.$executeRawUnsafe(
+            `UPDATE "TrackStage" SET "startedAt" = now() - interval '16 minutes',
+                    "nextRetryAt" = now() - interval '1 minute'
+              WHERE stage = 'analysis' AND "trackId" LIKE $1`,
+            `${PREFIX}_%`,
+        );
+
+        expect(await executeAudioPhase()).toBe(cap);
+        const [reoffered] = await prisma.$queryRawUnsafe<Array<{ n: bigint }>>(
+            `SELECT count(*)::bigint AS n FROM "TrackStage"
+              WHERE stage = 'analysis' AND "trackId" LIKE $1 AND redelivered = 1 AND "nextRetryAt" > now()`,
+            `${PREFIX}_%`,
+        );
+        expect(Number(reoffered.n)).toBe(cap);
+    });
+
+    it("a claimed question is not handed out again while its lease holds", async () => {
+        await seedRecentCloses("analysis", 200);
         await seedTracks(25, [["analysis", "pending"]]);
-        expect(await executeAudioPhase()).toBe(20);
-        expect(await executeAudioPhase()).toBe(5);
+        expect(await executeAudioPhase()).toBe(25);
         expect(await workingCount("analysis")).toBe(25);
-        // A claimed question is not handed out again while its lease holds.
         expect(await executeAudioPhase()).toBe(0);
     });
 });
 
 describe("in-flight caps keep queues inside the record's patience", () => {
-    it("analysis claims no deeper than its cap", async () => {
+    it("with no answers yet, each worker gets one track running and one queued", async () => {
+        const settings = await prisma.systemSettings.findUnique({ where: { id: "default" } });
+        const workers = settings?.audioAnalyzerWorkers ?? 2;
+        expect(await inFlightCap("analysis")).toBe(2 * workers);
+    });
+
+    it("a slow machine holds only what it drains in half the claim lease", async () => {
+        // 4 answers in the 2-minute window: 15 minutes of lease / 2 = 7.5 minutes = 15 answers.
+        await seedRecentCloses("analysis", 4);
+        const settings = await prisma.systemSettings.findUnique({ where: { id: "default" } });
+        const workers = settings?.audioAnalyzerWorkers ?? 2;
+        expect(await inFlightCap("analysis")).toBe(Math.max(2 * workers, 15));
+    });
+
+    it("identification holds two claims per worker until it has answered, then what it drains", async () => {
+        // One worker (the setting at 1): two claims, not thirty queued behind one worker
+        // past their lease; then what it drains in half the lease.
+        const before = await prisma.systemSettings.findUnique({ where: { id: "default" } });
+        const setConcurrency = async (n: number) => {
+            await prisma.systemSettings.upsert({
+                where: { id: "default" },
+                create: { id: "default", enrichmentConcurrency: n },
+                update: { enrichmentConcurrency: n },
+            });
+            invalidateSystemSettingsCache();
+        };
+        await setConcurrency(1);
+        try {
+            expect(await inFlightCap("recording")).toBe(2);
+            await seedRecentCloses("recording", 4);
+            expect(await inFlightCap("recording")).toBe(15);
+        } finally {
+            await setConcurrency(before?.enrichmentConcurrency ?? 5);
+        }
+    });
+
+    it("analysis claims no deeper than its ceiling on a fast machine", async () => {
         const cap = STAGE_IN_FLIGHT_CAP.analysis ?? 0;
-        expect(cap).toBeGreaterThan(0);
+        await seedRecentCloses("analysis", 400);
+        expect(await inFlightCap("analysis")).toBe(cap);
         await seedTracks(cap + 5, [["analysis", "pending"]]);
 
-        // A cycle dispatches min(window, headroom); drive cycles until the
-        // stage is at its cap and the queue goes quiet.
         let queued = 0;
         for (let cycle = 0; cycle < 15; cycle++) {
             const added = await executeAudioPhase();
@@ -284,9 +343,10 @@ describe("in-flight caps keep queues inside the record's patience", () => {
         expect(Number(stillPending.n)).toBe(5);
     });
 
-    it("embedding claims no deeper than its cap", async () => {
+    it("embedding claims no deeper than its ceiling on a fast machine", async () => {
         const cap = STAGE_IN_FLIGHT_CAP.embedding ?? 0;
-        expect(cap).toBeGreaterThan(0);
+        await seedRecentCloses("embedding", 400);
+        expect(await inFlightCap("embedding")).toBe(cap);
         // Embedding gates on the track's own analysis answer.
         await seedTracks(cap + 4, [
             ["analysis", "done"],

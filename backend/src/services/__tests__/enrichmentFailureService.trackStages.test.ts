@@ -63,14 +63,15 @@ async function putStage(
     const stageId = `${trackId}__${stage}`;
     await prisma.$executeRawUnsafe(
         `INSERT INTO "TrackStage"
-            (id, "trackId", stage, status, source, attempt,
+            (id, "trackId", stage, status, source, attempt, failures,
              "lastErrorCode", "lastErrorMessage", "failureClass",
              retryable, evidence, "startedAt", "finishedAt")
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, now(), now())
+         VALUES ($1, $2, $3, $4, $5, $6, $6, $7, $8, $9, $10, $11::jsonb, now(), now())
          ON CONFLICT ("trackId", stage) DO UPDATE
             SET status = EXCLUDED.status,
                 source = EXCLUDED.source,
                 attempt = EXCLUDED.attempt,
+                failures = EXCLUDED.failures,
                 "lastErrorCode" = EXCLUDED."lastErrorCode",
                 "lastErrorMessage" = EXCLUDED."lastErrorMessage",
                 "failureClass" = EXCLUDED."failureClass",

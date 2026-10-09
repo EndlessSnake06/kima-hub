@@ -94,6 +94,7 @@ router.get("/corrupt-tracks", requireAdmin, async (_req, res) => {
         title: t.title,
         artist: t.album.artist.name,
         album: t.album.title,
+        filePath: t.filePath,
       })),
     });
   } catch (error) {

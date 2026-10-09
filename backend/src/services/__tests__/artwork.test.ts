@@ -44,7 +44,7 @@ jest.mock("../fanart", () => ({
     },
 }));
 
-import { findAlbumArtwork, findArtistArtwork, withAlbumArtwork } from "../artwork";
+import { findAlbumArtwork, findArtistArtwork, withAlbumArtwork, withArtistArtwork } from "../artwork";
 import { validateUrlForFetch } from "../../utils/ssrf";
 
 const DEEZER_URL = "https://e-cdns-images.dzcdn.net/images/cover/abc/500x500.jpg";
@@ -206,12 +206,11 @@ describe("the one door for artwork", () => {
 
     describe("artist images", () => {
         it("keeps asking after the first source comes up empty", async () => {
-            // Nine call sites asked Deezer alone.
             deezerArtist.mockResolvedValue(DEEZER_URL);
 
             const found = await findArtistArtwork(ARTIST);
 
-            expect(fanartArtist).toHaveBeenCalledWith("artist-1");
+            expect(fanartArtist).toHaveBeenCalledWith("artist-1", { interactive: undefined });
             expect(found).toEqual({ url: DEEZER_URL, source: "deezer" });
         });
 
@@ -384,6 +383,21 @@ describe("the one door for artwork", () => {
     });
 
     describe("a page's worth at a time", () => {
+        it("does the same for a list of artists", async () => {
+            deezerArtist.mockResolvedValue(DEEZER_URL);
+
+            const result = await withArtistArtwork(
+                [{ name: "Perturbator", mbid: "artist-1" }, { name: "", mbid: null }],
+                (a) => ({ name: a.name, mbid: a.mbid }),
+                (a, image) => ({ ...a, image }),
+            );
+
+            expect(result).toEqual([
+                { name: "Perturbator", mbid: "artist-1", image: DEEZER_URL },
+                { name: "", mbid: null, image: null },
+            ]);
+        });
+
         it("puts the answer on the caller's own shape and leaves the rest alone", async () => {
             deezerAlbum.mockResolvedValue(DEEZER_URL);
 

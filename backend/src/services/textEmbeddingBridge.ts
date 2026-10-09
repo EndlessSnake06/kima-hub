@@ -4,6 +4,8 @@ import { redisClient } from "../utils/redis";
 import { withTimeout } from "../utils/timeout";
 import { logger } from "../utils/logger";
 import { efFor, withEfSearch } from "../utils/knn";
+import { formatEmbedding } from "../utils/embedding";
+import { MATCHING_MODEL } from "./matching/state";
 
 const REQUEST_CHANNEL = "audio:text:embed";
 const RESPONSE_PREFIX = "audio:text:embed:response:";
@@ -89,8 +91,8 @@ async function ensureSubscriber(): Promise<RedisConn> {
         logger.info("[TEXT-EMBED] Shared subscriber connected");
         return sub;
     })().catch((err) => {
-        // Never cache a rejected promise -- one transient failure must not
-        // permanently break vibe text search (#197).
+        // Never cache a rejected promise: one transient failure must not
+        // permanently break vibe text search.
         subscriber = null;
         subscriberPromise = null;
         throw err;
@@ -184,11 +186,9 @@ export async function searchTracksByEmbedding(
     embedding: number[],
     limit: number,
 ): Promise<TextSearchRow[]> {
-    // pgvector's text form. Bound as a raw number[], an all-integer vector
-    // arrives as bigint[], which has no cast to vector.
-    const vector = `[${embedding.join(",")}]`;
+    const vector = formatEmbedding(embedding);
     // Widen hnsw.ef_search, or any limit past 40 comes back short.
-    return withEfSearch(efFor(limit, 0), (tx) =>
+    return withEfSearch(efFor(limit), (tx) =>
         tx.$queryRaw<TextSearchRow[]>`
             SELECT
                 t.id,
@@ -205,7 +205,7 @@ export async function searchTracksByEmbedding(
             JOIN "Track" t ON te.track_id = t.id
             JOIN "Album" a ON t."albumId" = a.id
             JOIN "Artist" ar ON a."artistId" = ar.id
-            WHERE t."missingSince" IS NULL
+            WHERE t."missingSince" IS NULL AND te.model_version = ${MATCHING_MODEL}
             ORDER BY te.embedding <=> ${vector}::vector
             LIMIT ${limit}
         `,

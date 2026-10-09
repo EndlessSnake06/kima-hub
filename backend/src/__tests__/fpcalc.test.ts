@@ -5,12 +5,6 @@
  * honours promisify.custom so execFile resolves `{stdout, stderr}` as in production.
  */
 
-const mockScenario: {
-    ok: boolean;
-    stdout: string;
-    stderr: string;
-    exitCode: number;
-} = { ok: true, stdout: "", stderr: "", exitCode: 0 };
 
 jest.mock("child_process", () => {
     const { promisify } = require("util") as typeof import("util");

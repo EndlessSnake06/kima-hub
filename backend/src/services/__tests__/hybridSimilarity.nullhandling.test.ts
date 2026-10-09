@@ -1,7 +1,8 @@
 /**
- * With CLAP embeddings, similar tracks rank on the embedding alone. Without
- * them, missing features drop out of the weighted mean (0.5 when none are
- * present) and distance is 1 - similarity. A seed with no embedding returns no rows.
+ * With CLAP embeddings, similar tracks rank on the matching formula, which the
+ * audio feature columns do not enter. Without them, missing features drop out of
+ * the weighted mean (0.5 when none are present) and distance is 1 - similarity. A
+ * seed with no embedding returns no rows.
  */
 
 import { prisma } from "../../utils/db";
@@ -11,6 +12,7 @@ import {
     FEATURES_ONLY_WEIGHTS,
     SimilarTrack,
 } from "../hybridSimilarity";
+import { MATCHING_MODEL, buildMatching } from "../matching/state";
 
 jest.mock("../../services/featureDetection", () => ({
     featureDetection: { getFeatures: jest.fn() },
@@ -69,10 +71,11 @@ async function seedEmbedding(trackId: string, vector: string) {
     // (%s::vector). Prisma cannot write Unsupported("vector") columns.
     await prisma.$executeRawUnsafe(
         `INSERT INTO track_embeddings (track_id, embedding, model_version, analyzed_at)
-         VALUES ($1, $2::vector, 'laion-clap-music', now())
+         VALUES ($1, $2::vector, $3, now())
          ON CONFLICT (track_id) DO NOTHING`,
         trackId,
         vector,
+        MATCHING_MODEL,
     );
 }
 
@@ -86,9 +89,8 @@ afterAll(async () => {
     await prisma.$disconnect();
 });
 
-// pgvector norms are float32, so identical-vector distances carry ~1e-6 noise;
-// the perfect-match assertions use 5-decimal closeness for that reason. Pure
-// SQL float arithmetic (features-only) is exact and keeps 6.
+// pgvector computes in float32, so CLAP-mode scores carry ~1e-6 noise and those
+// assertions use 5-decimal closeness. Features-only SQL arithmetic keeps 6.
 
 describe("hybridSimilarity null handling (DB, shipped functions)", () => {
     beforeAll(() => {
@@ -99,7 +101,7 @@ describe("hybridSimilarity null handling (DB, shipped functions)", () => {
         });
     });
 
-    it("CLAP present: ranks on the fingerprint alone; distant audio features do not reorder it", async () => {
+    it("CLAP present: the audio feature columns do not move the ranking", async () => {
         setMode("hybrid");
         const src = {
             energy: 0.0, valence: 0.0, arousal: 0.0, bpm: 60,
@@ -112,28 +114,23 @@ describe("hybridSimilarity null handling (DB, shipped functions)", () => {
             key: "F#", keyScale: "minor",
         };
         await seedTrack("fp_src", src);
-        // Closer fingerprint, every feature as far from the source as possible.
         await seedTrack("fp_near", opposite);
-        // Farther fingerprint, every feature identical to the source. The old
-        // blend scored this ~0.945 against ~0.52 for fp_near and put it first.
         await seedTrack("fp_far", { ...src });
         await seedEmbedding("trk_hs_fp_src", unitVectorAt(1, 1));
         await seedEmbedding("trk_hs_fp_near", unitVectorAt(0.95, 2));
         await seedEmbedding("trk_hs_fp_far", unitVectorAt(0.9, 3));
+        await buildMatching();
 
-        const rows = await findSimilarTracks("trk_hs_fp_src", 10);
-        const near = rows.findIndex((r) => r.id === "trk_hs_fp_near");
-        const far = rows.findIndex((r) => r.id === "trk_hs_fp_far");
-        expect(near).toBeGreaterThanOrEqual(0);
-        expect(far).toBeGreaterThanOrEqual(0);
-        expect(near).toBeLessThan(far);
-
-        // similarity is the fingerprint cosine, and distance its complement.
-        expect(rows[near].similarity).toBeCloseTo(0.95, 5);
-        expect(rows[far].similarity).toBeCloseTo(0.9, 5);
-        for (const r of [rows[near], rows[far]]) {
+        const before = await findSimilarTracks("trk_hs_fp_src", 10);
+        expect(before.map((r) => r.id)).toEqual(expect.arrayContaining(["trk_hs_fp_near", "trk_hs_fp_far"]));
+        for (const r of before) {
             expect(r.distance).toBeCloseTo(1 - r.similarity, 5);
         }
+
+        // Swap the two candidates' audio features: nothing the formula reads changes.
+        await prisma.track.update({ where: { id: "trk_hs_fp_near" }, data: { ...src } });
+        await prisma.track.update({ where: { id: "trk_hs_fp_far" }, data: { ...opposite } });
+        expect(await findSimilarTracks("trk_hs_fp_src", 10)).toEqual(before);
     });
 
     it("features-only: all features null on both sides returns neutral 0.5, not a divide-by-zero", async () => {
@@ -232,11 +229,12 @@ describe("hybridSimilarity null handling (DB, shipped functions)", () => {
 describe("unanalysed seed (no embedding row) returns no rows", () => {
     it("CLAP mode: a seed track with no embedding row returns []", async () => {
         setMode("hybrid");
-        // One embedded neighbour proves the library is not empty -- the bug
-        // returned real tracks, not an empty result of an empty DB.
+        // One embedded neighbour shows the empty result comes from the seed's missing
+        // embedding, not from an empty library.
         await seedTrack("un_src", {});
         await seedTrack("un_nb", {});
         await seedEmbedding("trk_hs_un_nb", unitVectorAt(1, 1));
+        await buildMatching();
 
         const rows = await findSimilarTracks("trk_hs_un_src", 10);
         expect(rows).toEqual([]);
@@ -246,6 +244,7 @@ describe("unanalysed seed (no embedding row) returns no rows", () => {
         setMode("hybrid");
         await seedTrack("un_nb2", {});
         await seedEmbedding("trk_hs_un_nb2", unitVectorAt(1, 1));
+        await buildMatching();
 
         const rows = await findSimilarTracks("ctrk_hs_does_not_exist", 10);
         expect(rows).toEqual([]);

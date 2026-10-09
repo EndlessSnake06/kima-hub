@@ -5,12 +5,20 @@ import { gzip } from "node:zlib";
 import { logger } from "../utils/logger";
 import { prisma } from "../utils/db";
 import { requireAuth } from "../middleware/auth";
+import { UserFacingError } from "../utils/errors";
 import { findSimilarTracks } from "../services/hybridSimilarity";
-import { getMapProjectionState } from "../services/umapProjection";
+import { getVibeMap, type MapResponse } from "../services/vibeMap";
 import { generateSongPath } from "../services/songPath";
-import { parseEmbedding } from "../utils/embedding";
 import { searchTracksByText } from "../services/textEmbeddingBridge";
-import { efFor, withEfSearch } from "../utils/knn";
+import { SELF_SCORE, blendSelfScore } from "../services/matching/formula";
+import { matchingContext, rankMatches, weightedTracks } from "../services/matching/rank";
+import { createHash } from "node:crypto";
+
+/** A requested result count: 1 to 100, 20 when missing or not a number. */
+function resultLimit(value: unknown): number {
+    const n = Math.floor(Number(value));
+    return Number.isFinite(n) && n > 0 ? Math.min(n, 100) : 20;
+}
 
 const router = Router();
 const gzipAsync = promisify(gzip);
@@ -22,18 +30,20 @@ function sanitizeForLog(s: string): string {
 }
 
 // A large library's map is tens of megabytes of JSON that compresses ~8x, and
-// the app has no global compression middleware. Gzip it here, once per
-// computed map (keyed by computedAt), not once per request.
+// the app has no global compression middleware. Gzip it here, once per version
+// of the map and of the mood snapshot, not once per request.
 let gzippedMap: { key: string; body: Buffer } | null = null;
-async function sendMapJson(req: Request, res: Response, mapData: { computedAt?: string }) {
+async function sendMapJson(req: Request, res: Response, mapData: MapResponse) {
     const acceptsGzip = /\bgzip\b/.test(String(req.headers["accept-encoding"] ?? ""));
     if (!acceptsGzip) {
         res.json(mapData);
         return;
     }
-    const key = `${mapData.computedAt ?? ""}:${(mapData as { trackCount?: number }).trackCount ?? 0}`;
+    // Keyed on the content itself, so a renamed track or a new cover is never served stale.
+    const json = JSON.stringify(mapData);
+    const key = createHash("sha1").update(json).digest("base64");
     if (gzippedMap?.key !== key) {
-        gzippedMap = { key, body: await gzipAsync(Buffer.from(JSON.stringify(mapData))) };
+        gzippedMap = { key, body: await gzipAsync(Buffer.from(json)) };
     }
     res.setHeader("Content-Type", "application/json; charset=utf-8");
     res.setHeader("Content-Encoding", "gzip");
@@ -42,10 +52,10 @@ async function sendMapJson(req: Request, res: Response, mapData: { computedAt?: 
 }
 
 /**
- * GET /api/vibe/map: the UMAP projection of every embedded track, cached in
- * Redis until the embedding count changes. MOCK_VIBE_MAP names a JSON snapshot
- * of a real response to serve instead, for design work; the snapshot is a
- * private library and must stay out of the repo.
+ * GET /api/vibe/map: every track's position and colour from the similarity
+ * step; 202 while the first layout is pending. MOCK_VIBE_MAP names a JSON
+ * snapshot of a real response to serve instead, for design work; the snapshot
+ * is a private library and must stay out of the repo.
  */
 router.get("/map", requireAuth, async (req, res) => {
     try {
@@ -54,21 +64,15 @@ router.get("/map", requireAuth, async (req, res) => {
             res.json(JSON.parse(fs.readFileSync(mockPath, "utf8")));
             return;
         }
-        const state = await getMapProjectionState();
+        const state = await getVibeMap();
         if (state.status === "computing") {
-            // First layout of a large library: answer now, the client polls.
             res.status(202).json({ computing: true });
-            return;
-        }
-        if (state.status === "failed") {
-            logger.error("Vibe map computation failed:", state.message);
-            res.status(500).json({ error: "Failed to compute map projection" });
             return;
         }
         await sendMapJson(req, res, state.data);
     } catch (error) {
         logger.error("Vibe map error:", error);
-        res.status(500).json({ error: "Failed to compute map projection" });
+        res.status(500).json({ error: "Failed to read the vibe map" });
     }
 });
 
@@ -99,10 +103,8 @@ router.post("/path", requireAuth, async (req, res) => {
 
         res.json(result);
     } catch (error) {
-        if (error instanceof Error && error.message === "TRACKS_TOO_SIMILAR") {
-            return res.status(400).json({
-                error: "These tracks are too similar for a meaningful journey. Try \"Similar Tracks\" instead.",
-            });
+        if (error instanceof UserFacingError) {
+            return res.status(error.statusCode).json({ error: error.message });
         }
         logger.error("Song path error:", error);
         res.status(500).json({ error: "Failed to generate song path" });
@@ -111,8 +113,8 @@ router.post("/path", requireAuth, async (req, res) => {
 
 /**
  * POST /api/vibe/alchemy
- * Vector arithmetic playlist generation.
- * Computes: mean(add_embeddings) - mean(subtract_embeddings), finds nearest tracks.
+ * Tracks matching a blend on the matching formula: the add tracks weighted
+ * 1/|add| each, the subtract tracks weighted -1/|subtract| each.
  */
 router.post("/alchemy", requireAuth, async (req, res) => {
     try {
@@ -138,98 +140,50 @@ router.post("/alchemy", requireAuth, async (req, res) => {
             return res.status(400).json({ error: "'subtract' must contain valid track IDs" });
         }
 
-        const limit = Math.min(Math.max(1, requestedLimit || 20), 100);
-        const allInputIds = [...add, ...(subtract || [])];
+        const limit = resultLimit(requestedLimit);
+        const addIds: string[] = add;
+        const subtractIds: string[] = subtract ?? [];
 
-        // Fetch embeddings for all input tracks
-        const embeddings = await prisma.$queryRaw<Array<{
-            track_id: string;
-            embedding: string;
-        }>>`
-            SELECT track_id, embedding::text as embedding
-            FROM track_embeddings
-            WHERE track_id = ANY(${allInputIds})
-        `;
-
-        const embMap = new Map<string, number[]>();
-        for (const row of embeddings) {
-            embMap.set(row.track_id, parseEmbedding(row.embedding));
-        }
-
-        // Verify all requested tracks have embeddings
-        const missingAdd = add.filter((id: string) => !embMap.has(id));
-        const missingSubtract = (subtract || []).filter((id: string) => !embMap.has(id));
-        if (missingAdd.length > 0 || missingSubtract.length > 0) {
+        const ctx = await matchingContext([...addIds, ...subtractIds]);
+        const missingAdd = addIds.filter((id) => !ctx?.tracks.has(id));
+        const missingSubtract = subtractIds.filter((id) => !ctx?.tracks.has(id));
+        if (!ctx || missingAdd.length > 0 || missingSubtract.length > 0) {
             return res.status(400).json({
-                error: "Some tracks are missing CLAP embeddings",
+                error: "Some tracks have not been through the similarity step yet",
                 missingAdd,
                 missingSubtract,
             });
         }
 
-        // Compute: mean(add) - mean(subtract)
-        const dim = embMap.get(add[0])!.length;
-        const result = new Array(dim).fill(0);
-
-        for (const id of add) {
-            const emb = embMap.get(id)!;
-            for (let i = 0; i < dim; i++) result[i] += emb[i] / add.length;
-        }
-
-        if (subtract && subtract.length > 0) {
-            for (const id of subtract) {
-                const emb = embMap.get(id)!;
-                for (let i = 0; i < dim; i++) result[i] -= emb[i] / subtract.length;
-            }
-        }
-
-        // L2 normalize
-        let norm = 0;
-        for (let i = 0; i < dim; i++) norm += result[i] * result[i];
-        norm = Math.sqrt(norm);
-        if (norm > 0) {
-            for (let i = 0; i < dim; i++) result[i] /= norm;
-        }
-
-        // Nearest tracks, excluding the inputs, which eat HNSW candidates too.
-        const tracks = await withEfSearch(efFor(limit, allInputIds.length), (tx) =>
-            tx.$queryRaw<Array<{
-                id: string;
-                title: string;
-                duration: number;
-                distance: number;
-                albumId: string;
-                albumTitle: string;
-                albumCoverUrl: string | null;
-                artistId: string;
-                artistName: string;
-            }>>`
-                SELECT
-                    t.id, t.title, t.duration,
-                    te.embedding <=> ${result}::vector AS distance,
-                    a.id as "albumId", a.title as "albumTitle", a."coverUrl" as "albumCoverUrl",
-                    ar.id as "artistId", ar.name as "artistName"
-                FROM track_embeddings te
-                JOIN "Track" t ON te.track_id = t.id
-                JOIN "Album" a ON t."albumId" = a.id
-                JOIN "Artist" ar ON a."artistId" = ar.id
-                WHERE te.track_id != ALL(${allInputIds})
-                AND t."missingSince" IS NULL
-                ORDER BY te.embedding <=> ${result}::vector
-                LIMIT ${limit}
-            `,
+        const inputs = [
+            ...addIds.map((trackId) => ({ trackId, weight: 1 / addIds.length })),
+            ...subtractIds.map((trackId) => ({ trackId, weight: -1 / subtractIds.length })),
+        ];
+        const blendSq = blendSelfScore(
+            weightedTracks(ctx, inputs),
+            ctx.state.genres,
+            ctx.state.genreWeight ** 2,
         );
+        if (!(blendSq > 0)) {
+            return res.status(400).json({ error: "The tracks to add and to subtract cancel each other out" });
+        }
+
+        const rows = await rankMatches(ctx, inputs, { limit, counted: addIds });
+        const scale = Math.sqrt(blendSq * SELF_SCORE);
 
         res.json({
-            tracks: tracks.map(t => ({
-                id: t.id,
-                title: t.title,
-                duration: t.duration,
-                distance: t.distance,
-                similarity: distanceToSimilarity(t.distance),
-                album: { id: t.albumId, title: t.albumTitle, coverUrl: t.albumCoverUrl },
-                artist: { id: t.artistId, name: t.artistName },
-            })),
+            tracks: rows.map((t) => {
+                const match = t.score / scale;
+                return {
+                    id: t.id,
+                    title: t.title,
+                    duration: t.duration,
+                    distance: 1 - match,
+                    similarity: Math.min(1, Math.max(0, match)),
+                    album: { id: t.albumId, title: t.albumTitle, coverUrl: t.albumCoverUrl },
+                    artist: { id: t.artistId, name: t.artistName },
+                };
+            }),
         });
     } catch (error) {
         logger.error("Alchemy error:", error);
@@ -239,7 +193,7 @@ router.post("/alchemy", requireAuth, async (req, res) => {
 
 /**
  * GET /api/vibe/similar/:trackId
- * Find tracks similar to a given track using hybrid similarity (CLAP + audio features)
+ * Tracks similar to a given track on the matching formula.
  */
 router.get("/similar/:trackId", requireAuth, async (req, res) => {
     try {
@@ -311,10 +265,7 @@ router.post("/search", requireAuth, async (req, res) => {
             });
         }
 
-        const limit = Math.min(
-            Math.max(1, requestedLimit || 20),
-            100
-        );
+        const limit = resultLimit(requestedLimit);
 
         const trimmedQuery = query.trim();
         const rows = await searchTracksByText(trimmedQuery, limit);
@@ -357,7 +308,7 @@ router.post("/search", requireAuth, async (req, res) => {
  * GET /api/vibe/status
  * Get embedding analysis progress statistics
  */
-router.get("/status", requireAuth, async (req, res) => {
+router.get("/status", requireAuth, async (_req, res) => {
     try {
         const totalTracks = await prisma.track.count();
 

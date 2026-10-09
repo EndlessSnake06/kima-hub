@@ -138,7 +138,7 @@ class SimpleDownloadManager {
         artistName: string,
         albumTitle: string,
         albumMbid: string,
-        userId: string,
+        _userId: string,
         isDiscovery: boolean = false
     ): Promise<{ success: boolean; correlationId?: string; error?: string; errorType?: AcquisitionErrorType; isRecoverable?: boolean }> {
         logger.debug(

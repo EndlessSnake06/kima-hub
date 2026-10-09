@@ -5,15 +5,24 @@ import { redisClient } from "../utils/redis";
 import { logger } from "../utils/logger";
 import { invalidateSystemSettingsCache } from "../utils/systemSettings";
 
-// GPU-onnx toggle, backend half.
-// The DB column is the toggle's truth; enabled.json is a projection for the
-// analyzer (it must not read the DB to learn its own start-up env). The
-// analyzer owns state.json — we only read it to answer the UI.
+// GPU toggles. Two switches share one
+// downloaded runtime: sound vectors (`gpuOnnxEnabled`) and audio analysis
+// (`gpuAnalysisEnabled`). The DB columns are the truth; enabled.json is a
+// projection for the analyzers (they must not read the DB to learn their own
+// start-up env). The CLAP analyzer owns state.json and installs the runtime
+// while either switch is on; the Essentia analyzer records whether its
+// sessions got the GPU in analysis-provider.json.
 
 const ROOT = path.join(process.env.DATA_DIR || "/data", "gpu-onnx");
 const STATE_PATH = path.join(ROOT, "state.json");
 const ENABLED_PATH = path.join(ROOT, "enabled.json");
+const ANALYSIS_PROVIDER_PATH = path.join(ROOT, "analysis-provider.json");
 const CONTROL_CHANNEL = "audio:clap:control";
+
+interface GpuToggles {
+    soundVectors: boolean;
+    analysis: boolean;
+}
 
 interface GpuState {
     status?: string;
@@ -33,39 +42,52 @@ function readJsonSafe<T>(filePath: string): T | null {
     }
 }
 
-function writeEnabledProjection(enabled: boolean): void {
+/** `enabled` (the runtime is wanted) is what the installer reads; each analyzer reads its own switch. */
+function writeEnabledProjection(toggles: GpuToggles): void {
     fs.mkdirSync(ROOT, { recursive: true });
     const tmp = ENABLED_PATH + ".tmp";
     fs.writeFileSync(
         tmp,
-        JSON.stringify({ enabled, updatedAt: new Date().toISOString() }),
+        JSON.stringify({
+            enabled: toggles.soundVectors || toggles.analysis,
+            soundVectors: toggles.soundVectors,
+            analysis: toggles.analysis,
+            updatedAt: new Date().toISOString(),
+        }),
     );
     fs.renameSync(tmp, ENABLED_PATH);
 }
 
+async function readToggles(): Promise<GpuToggles> {
+    const settings = await prisma.systemSettings.findUnique({
+        where: { id: "default" },
+        select: { gpuOnnxEnabled: true, gpuAnalysisEnabled: true },
+    });
+    return {
+        soundVectors: Boolean(settings?.gpuOnnxEnabled),
+        analysis: Boolean(settings?.gpuAnalysisEnabled),
+    };
+}
+
 export async function initGpuRuntimeProjection(): Promise<void> {
     try {
-        const settings = await prisma.systemSettings.findUnique({
-            where: { id: "default" },
-            select: { gpuOnnxEnabled: true },
-        });
-        writeEnabledProjection(Boolean(settings?.gpuOnnxEnabled));
+        writeEnabledProjection(await readToggles());
     } catch (error) {
         logger.warn(`[GPU-onnx] boot projection skipped: ${String(error)}`);
     }
 }
 
 export async function getGpuStatus() {
-    const settings = await prisma.systemSettings.findUnique({
-        where: { id: "default" },
-        select: { gpuOnnxEnabled: true },
-    });
-    const enabled = Boolean(settings?.gpuOnnxEnabled);
+    const toggles = await readToggles();
+    const enabled = toggles.soundVectors;
     const state = readJsonSafe<GpuState>(STATE_PATH) || {};
     const installed = state.status === "installed";
     const providerActive = state.provider?.active === true;
+    const analysisProviderActive = readJsonSafe<{ active?: boolean }>(ANALYSIS_PROVIDER_PATH)?.active === true;
     return {
         enabled,
+        analysis: toggles.analysis,
+        analysisEffective: toggles.analysis && installed && analysisProviderActive,
         installed,
         installing: state.status === "installing",
         effective: enabled && installed && providerActive,
@@ -79,21 +101,28 @@ export async function getGpuStatus() {
     };
 }
 
-export async function setGpuEnabled(enabled: boolean) {
+/** Set either switch. The runtime is installed while either is on and removed when both are off. */
+export async function setGpuToggles(change: Partial<GpuToggles>) {
+    const data = {
+        ...(change.soundVectors !== undefined ? { gpuOnnxEnabled: change.soundVectors } : {}),
+        ...(change.analysis !== undefined ? { gpuAnalysisEnabled: change.analysis } : {}),
+    };
     // upsert, not update: SystemSettings has no row until something writes one.
     await prisma.systemSettings.upsert({
         where: { id: "default" },
-        create: { id: "default", gpuOnnxEnabled: enabled },
-        update: { gpuOnnxEnabled: enabled },
+        create: { id: "default", ...data },
+        update: data,
     });
     invalidateSystemSettingsCache();
-    writeEnabledProjection(enabled);
+    const toggles = await readToggles();
+    writeEnabledProjection(toggles);
+    const wanted = toggles.soundVectors || toggles.analysis;
     const delivered = await redisClient.publish(
         CONTROL_CHANNEL,
-        JSON.stringify({ command: enabled ? "install_gpu" : "remove_gpu" }),
+        JSON.stringify({ command: wanted ? "install_gpu" : "remove_gpu" }),
     );
     logger.info(
-        `[GPU-onnx] toggle ${enabled ? "on" : "off"} (control delivered to ${delivered} listener(s))`,
+        `[GPU-onnx] sound vectors ${toggles.soundVectors ? "on" : "off"}, analysis ${toggles.analysis ? "on" : "off"} (control delivered to ${delivered} listener(s))`,
     );
     return getGpuStatus();
 }

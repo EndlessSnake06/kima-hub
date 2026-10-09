@@ -12,7 +12,7 @@ import {
 } from "../utils/encryptedFields";
 import {
     getGpuStatus,
-    setGpuEnabled,
+    setGpuToggles,
 } from "../services/gpuRuntime";
 import { queueCleaner } from "../jobs/queueCleaner";
 import { configureLidarrWebhook } from "../services/lidarrWebhookSetup";
@@ -116,7 +116,7 @@ const systemSettingsSchema = z.object({
 });
 
 // GET /system-settings
-router.get("/", async (req, res) => {
+router.get("/", async (_req, res) => {
   try {
     let settings = await prisma.systemSettings.findUnique({
       where: { id: "default" },
@@ -173,7 +173,7 @@ router.post("/", async (req, res) => {
     // Fetch existing settings before save to detect credential changes
     const existingSettings = await prisma.systemSettings.findUnique({ where: { id: "default" } });
 
-    const settings = await prisma.systemSettings.upsert({
+    await prisma.systemSettings.upsert({
       where: { id: "default" },
       create: {
         id: "default",
@@ -418,7 +418,7 @@ router.post("/test-fanart", async (req, res) => {
     // Test with a known artist (The Beatles MBID)
     const testMbid = "b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d";
 
-    const response = await axios.get(
+    await axios.get(
       `https://webservice.fanart.tv/v3/music/${testMbid}`,
       {
         params: { api_key: fanartApiKey },
@@ -497,7 +497,7 @@ router.post("/test-soulseek", async (req, res) => {
           isConnected: true,
         });
       } catch (connectError) {
-        safeError(res, "slskd connection test", connectError, 401);
+        safeError(res, "slskd connection test", connectError, 502);
       } finally {
         // Restore the live config so a candidate URL never leaks into the
         // running client.
@@ -530,7 +530,7 @@ router.post("/test-soulseek", async (req, res) => {
         isConnected: true,
       });
     } catch (connectError) {
-      safeError(res, "Soulseek connection test", connectError, 401);
+      safeError(res, "Soulseek connection test", connectError, 502);
     }
   } catch (error) {
     safeError(res, "Soulseek connection test", error);
@@ -571,12 +571,12 @@ router.post("/test-spotify", async (req, res) => {
           message: "Spotify credentials are valid",
         });
       } else {
-        res.status(401).json({
+        res.status(400).json({
           error: "Invalid Spotify credentials",
         });
       }
     } catch (tokenError) {
-      safeError(res, "Spotify credentials test", tokenError, 401);
+      safeError(res, "Spotify credentials test", tokenError, 502);
     }
   } catch (error) {
     safeError(res, "Spotify credentials test", error);
@@ -584,12 +584,12 @@ router.post("/test-spotify", async (req, res) => {
 });
 
 // Get queue cleaner status
-router.get("/queue-cleaner-status", (req, res) => {
+router.get("/queue-cleaner-status", (_req, res) => {
   res.json(queueCleaner.getStatus());
 });
 
 // Start queue cleaner manually
-router.post("/queue-cleaner/start", async (req, res) => {
+router.post("/queue-cleaner/start", async (_req, res) => {
   try {
     await queueCleaner.start();
     res.json({
@@ -603,7 +603,7 @@ router.post("/queue-cleaner/start", async (req, res) => {
 });
 
 // Stop queue cleaner manually
-router.post("/queue-cleaner/stop", (req, res) => {
+router.post("/queue-cleaner/stop", (_req, res) => {
   queueCleaner.stop();
   res.json({
     success: true,
@@ -626,7 +626,7 @@ const PROTECTED_KEY_PREFIXES = [
 ];
 
 // Clear all rebuildable caches (never queue, session, or control-plane state)
-router.post("/clear-caches", async (req, res) => {
+router.post("/clear-caches", async (_req, res) => {
   try {
     const { redisClient } = require("../utils/redis");
 
@@ -676,9 +676,11 @@ router.post("/clear-caches", async (req, res) => {
   }
 });
 
-const gpuToggleSchema = z.object({ enabled: z.boolean() });
+const gpuToggleSchema = z
+  .object({ enabled: z.boolean().optional(), analysis: z.boolean().optional() })
+  .refine((body) => body.enabled !== undefined || body.analysis !== undefined);
 
-// GET /system-settings/gpu — measured install state
+// GET /system-settings/gpu — the GPU runtime's measured install state
 router.get("/gpu", async (_req, res) => {
   try {
     res.json(await getGpuStatus());
@@ -687,14 +689,15 @@ router.get("/gpu", async (_req, res) => {
   }
 });
 
-// POST /system-settings/gpu — the only writer of the toggle
+// POST /system-settings/gpu: the two switches, `enabled` (sound vectors) and `analysis` (audio analysis),
+// set through setGpuToggles like the release window's GPU choice.
 router.post("/gpu", async (req, res) => {
   try {
-    const { enabled } = gpuToggleSchema.parse(req.body);
-    res.json(await setGpuEnabled(enabled));
+    const { enabled, analysis } = gpuToggleSchema.parse(req.body);
+    res.json(await setGpuToggles({ soundVectors: enabled, analysis }));
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: "enabled (boolean) is required" });
+      return res.status(400).json({ error: "enabled or analysis (boolean) is required" });
     }
     safeError(res, "Set GPU toggle", error);
   }

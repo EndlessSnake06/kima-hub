@@ -166,9 +166,9 @@ app.use("/api/recommendations", apiLimiter, recommendationsRoutes);
 app.use("/api/downloads", apiLimiter, downloadsRoutes);
 app.use("/api/notifications", apiLimiter, notificationsRoutes);
 app.use("/api/webhooks", webhooksRoutes); // Excluded from apiLimiter; the router applies webhookLimiter
-// /api/audiobooks gets apiLimiter like every other mount; cover and stream
-// routes stay unauthenticated by design (the player and lockscreen artwork
-// request them), so the limiter is their only bound.
+// /api/audiobooks gets apiLimiter like every other mount. The cover route stays
+// unauthenticated by design (lockscreen artwork requests it without a session),
+// so the limiter is its only bound; the stream route accepts a token in the URL.
 app.use("/api/audiobooks", apiLimiter, audiobooksRoutes);
 app.use("/api/podcasts", apiLimiter, podcastsRoutes);
 app.use("/api/artists", apiLimiter, artistsRoutes);
@@ -225,15 +225,10 @@ async function healthHandler(_req: express.Request, res: express.Response) {
         uptime: Math.floor(process.uptime()),
         version: config.version,
         ...checks,
+        // Codes only: this route needs no login, and the full reasons are in the log.
         embeddingWritePath: embeddingCheck.ok ? "ok" : "error",
+        ...(embeddingCheck.ok ? {} : { embeddingWritePathReason: embeddingCheck.reason }),
         lidarr: lidarr.status,
-        ...(lidarr.reason && { lidarrReason: lidarr.reason }),
-        ...(embeddingCheck.ok
-            ? {}
-            : {
-                  embeddingWritePathReason: embeddingCheck.reason,
-                  embeddingWritePathDetail: embeddingCheck.detail,
-              }),
     });
 }
 
@@ -275,13 +270,8 @@ async function checkPostgresConnection() {
     }
 }
 
-/**
- * How long to let Redis finish connecting before giving up on it at boot.
- *
- * Ten seconds is generous for a local socket and still short enough that a
- * genuinely absent Redis fails the container fast rather than hanging a
- * deployment.
- */
+/** How long Redis may take to connect at boot before the container fails, so a missing Redis does not hang a
+ * deployment. */
 const REDIS_READY_TIMEOUT_MS = 10_000;
 
 /** Wait for Redis to reach "ready": it may still be starting alongside us. */
@@ -452,8 +442,7 @@ async function main() {
     const { initializeMusicConfig } = await import("./config");
     await initializeMusicConfig();
 
-    // Rewrite the GPU-onnx toggle projection so the file can never disagree
-    // with the DB after a restart.
+    // Rewrite the GPU toggle file from the DB so the two cannot disagree after a restart.
     const { initGpuRuntimeProjection } = await import("./services/gpuRuntime");
     await initGpuRuntimeProjection();
 

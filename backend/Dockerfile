@@ -50,7 +50,7 @@ COPY docker-entrypoint.sh /usr/local/bin/
 
 # Create directories, fix line endings, set permissions, then remove dangerous tools
 # NOTE: We keep /bin/sh because npm/npx require it to spawn processes
-RUN mkdir -p /app/cache/covers /app/cache/transcodes /app/logs && \
+RUN mkdir -p /app/cache/covers /app/cache/transcodes /app/logs /app/gpu-onnx && \
     sed -i 's/\r$//' /usr/local/bin/docker-entrypoint.sh && \
     sed -i 's/\r$//' /app/migrate-safe.sh && \
     chmod +x /usr/local/bin/docker-entrypoint.sh && \

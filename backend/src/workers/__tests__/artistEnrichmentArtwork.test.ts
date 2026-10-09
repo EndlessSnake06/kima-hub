@@ -7,6 +7,9 @@
 const mockArtistUpdate = jest.fn();
 const mockAlbumFindMany = jest.fn();
 const mockAlbumUpdate = jest.fn();
+const mockSimilarDeleteMany = jest.fn().mockResolvedValue({});
+const mockTrackFindFirst = jest.fn().mockResolvedValue({ filePath: "Perturbator/Album/01.flac" });
+const mockFindLocalArtistImage = jest.fn().mockResolvedValue(null);
 
 jest.mock("../../utils/db", () => ({
     prisma: {
@@ -23,9 +26,11 @@ jest.mock("../../utils/db", () => ({
             update: (...a: unknown[]) => mockAlbumUpdate(...a),
         },
         similarArtist: {
-            deleteMany: jest.fn().mockResolvedValue({}),
+            deleteMany: (...a: unknown[]) => mockSimilarDeleteMany(...a),
             createMany: jest.fn().mockResolvedValue({}),
         },
+        track: { findFirst: (...a: unknown[]) => mockTrackFindFirst(...a) },
+        $transaction: (ops: Promise<unknown>[]) => Promise.all(ops),
     },
 }));
 
@@ -45,20 +50,26 @@ jest.mock("../../services/wikidata", () => ({
     wikidataService: { getArtistInfo: jest.fn().mockResolvedValue(null) },
 }));
 
+const mockResolveByEntity = jest.fn().mockResolvedValue(true);
+jest.mock("../../services/enrichmentFailureService", () => ({
+    enrichmentFailureService: { resolveByEntity: (...a: unknown[]) => mockResolveByEntity(...a) },
+}));
+
 jest.mock("../../services/artistSimilarity", () => ({
     getSimilarArtists: jest.fn().mockResolvedValue([]),
+    findSimilarArtists: jest.fn().mockResolvedValue({ artists: [], failed: false }),
 }));
 
 
-const noData = { kind: "absent", evidence: { mocked: true } } as const;
 const answeredWith = (value: unknown) =>
     ({ kind: "answered", value, evidence: { mocked: true } }) as const;
 
 const mockSearchArtist = jest.fn();
+const mockGetArtist = jest.fn();
 jest.mock("../../services/musicbrainz", () => ({
     musicBrainzService: {
         searchArtist: (...a: unknown[]) => mockSearchArtist(...a),
-        getArtist: jest.fn().mockResolvedValue(noData),
+        getArtist: (...a: unknown[]) => mockGetArtist(...a),
     },
 }));
 
@@ -74,6 +85,7 @@ jest.mock("../../services/imageStorage", () => ({
     downloadAndStoreImage: (...a: unknown[]) => mockDownloadAndStoreImage(...a),
     isNativePath: (p: string) => typeof p === "string" && p.startsWith("native:"),
     nativeFileExists: jest.fn().mockReturnValue(false),
+    findLocalArtistImage: (...a: unknown[]) => mockFindLocalArtistImage(...a),
 }));
 
 import { enrichSimilarArtist } from "../artistEnrichment";
@@ -103,6 +115,7 @@ describe("the enrichment worker asks every source", () => {
         mockFindAlbumArtwork.mockResolvedValue(null);
         mockDownloadAndStoreImage.mockResolvedValue(null);
         mockSearchArtist.mockResolvedValue(answeredWith([]));
+        mockGetArtist.mockResolvedValue(answeredWith({ name: "Perturbator", "sort-name": "Perturbator", aliases: [] }));
     });
 
     describe("the artist's hero image", () => {
@@ -218,5 +231,91 @@ describe("the enrichment worker asks every source", () => {
 
             expect(mockFindAlbumArtwork).not.toHaveBeenCalled();
         });
+    });
+});
+
+describe("an artist row holding another artist's MusicBrainz id", () => {
+    beforeEach(() => {
+        jest.clearAllMocks();
+        mockArtistUpdate.mockResolvedValue({});
+        mockAlbumFindMany.mockResolvedValue([]);
+        mockFindArtistArtwork.mockResolvedValue(null);
+        mockSearchArtist.mockResolvedValue(answeredWith([]));
+    });
+
+    it("drops the id and what it brought when MusicBrainz names someone else (Alexis Ffrench holding Sam Cooke's)", async () => {
+        mockGetArtist.mockResolvedValue(answeredWith({ name: "Sam Cooke", "sort-name": "Cooke, Sam", aliases: [] }));
+        mockFindLocalArtistImage.mockResolvedValue("native:artists/art-2.jpg");
+
+        await enrichSimilarArtist({ id: "art-2", name: "Alexis Ffrench", mbid: REAL_MBID, heroUrl: "native:artists/art-2.jpg" } as any);
+
+        expect(mockArtistUpdate).toHaveBeenCalledWith({
+            where: { id: "art-2" },
+            data: expect.objectContaining({ mbid: null, summary: null, heroUrl: "native:artists/art-2.jpg" }),
+        });
+        expect(mockSimilarDeleteMany).toHaveBeenCalledWith({ where: { fromArtistId: "art-2" } });
+    });
+
+    it("keeps the id when MusicBrainz's name or an alias is this artist", async () => {
+        mockGetArtist.mockResolvedValue(answeredWith({ name: "deadmau5", "sort-name": "deadmau5", aliases: [{ name: "Deadmau5" }] }));
+
+        await enrichSimilarArtist({ id: "art-3", name: "Deadmau5", mbid: REAL_MBID } as any);
+
+        expect(mockArtistUpdate).not.toHaveBeenCalledWith(
+            expect.objectContaining({ data: expect.objectContaining({ mbid: null }) }),
+        );
+    });
+
+    it.each([
+        ["accents and punctuation differ", "Sigur Ros", { name: "Sigur Rós", "sort-name": "Sigur Rós", aliases: [] }],
+        ["the library uses the sort form", "Glass, Philip", { name: "Philip Glass", "sort-name": "Glass, Philip", aliases: [] }],
+        ["only a transliterated alias matches", "Mumiy Troll", { name: "Мумий Тролль", "sort-name": "Mumiy Troll", aliases: [{ name: "Mumiy Troll" }] }],
+        ["the library drops a leading article", "Beatles", { name: "The Beatles", "sort-name": "Beatles, The", aliases: [] }],
+    ])("keeps a right id when %s", async (_case, local, held) => {
+        mockGetArtist.mockResolvedValue(answeredWith(held));
+
+        await enrichSimilarArtist({ id: "art-5", name: local, mbid: REAL_MBID } as any);
+
+        expect(mockSimilarDeleteMany).not.toHaveBeenCalled();
+        expect(mockArtistUpdate).not.toHaveBeenCalledWith(
+            expect.objectContaining({ data: expect.objectContaining({ mbid: null }) }),
+        );
+    });
+
+    it("leaves the row alone while MusicBrainz is unreachable", async () => {
+        mockGetArtist.mockResolvedValue({ kind: "transient", error: { code: "NETWORK", message: "down" } });
+        jest.requireMock("../../services/wikidata").wikidataService.getArtistInfo.mockResolvedValueOnce({});
+
+        await enrichSimilarArtist({ id: "art-4", name: "Perturbator", mbid: REAL_MBID } as any);
+
+        expect(mockSimilarDeleteMany).not.toHaveBeenCalled();
+        expect(mockArtistUpdate).not.toHaveBeenCalledWith(
+            expect.objectContaining({ data: expect.objectContaining({ mbid: null }) }),
+        );
+        // The unanswered question counts as a failed try; it is not stored as done.
+        expect(mockArtistUpdate).toHaveBeenLastCalledWith(
+            expect.objectContaining({ data: expect.objectContaining({ enrichmentStatus: "failed", enrichmentFailures: 1 }) }),
+        );
+    });
+
+    it("waits for MusicBrainz's rate limit without counting a failure or calling the artist done", async () => {
+        mockGetArtist.mockResolvedValue({ kind: "rateLimited", retryAfter: new Date(Date.now() + 5000), evidence: {} });
+        jest.requireMock("../../services/wikidata").wikidataService.getArtistInfo.mockResolvedValueOnce({});
+
+        await enrichSimilarArtist({ id: "art-6", name: "Perturbator", mbid: REAL_MBID, enrichmentFailures: 2 } as any);
+
+        const data = mockArtistUpdate.mock.calls.at(-1)[0].data;
+        expect(data.enrichmentStatus).toBe("pending");
+        expect(data.enrichmentFailures).toBeUndefined();
+    });
+
+    it("clears the artist's earlier failures from the failures list once it is answered", async () => {
+        mockGetArtist.mockResolvedValue(answeredWith({ name: "Perturbator", "sort-name": "Perturbator", aliases: [], genres: [] }));
+        jest.requireMock("../../services/wikidata").wikidataService.getArtistInfo.mockResolvedValueOnce({});
+
+        await enrichSimilarArtist({ id: "art-7", name: "Perturbator", mbid: REAL_MBID } as any);
+
+        expect(mockArtistUpdate.mock.calls.at(-1)[0].data.enrichmentStatus).toBe("completed");
+        expect(mockResolveByEntity).toHaveBeenCalledWith("artist", "art-7");
     });
 });

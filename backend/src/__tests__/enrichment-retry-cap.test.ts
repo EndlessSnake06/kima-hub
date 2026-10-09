@@ -14,7 +14,6 @@ import {
     recordStageSuccess,
     STAGE_RETRY_CAP,
 } from "../workers/unifiedEnrichment";
-import { sourcePauseController } from "../services/sourcePauseController";
 import { closeEngineConnections } from "./helpers/engineConnections";
 
 const PREFIX = "retrycap";
@@ -304,5 +303,39 @@ describe("a closed record always carries its start stamp", () => {
         expect(rec.failureClass).toBe("DEPENDENCY_CLOSED");
         expect(rec.startedAt).toBeTruthy();
         expect(rec.finishedAt).toBeTruthy();
+    });
+});
+
+describe("waiting is not failing", () => {
+    /** A fresh claim, as dispatch makes one: a new attempt names it, nothing else changes. */
+    async function claim(trackId: string): Promise<string> {
+        const [row] = await prisma.$queryRawUnsafe<Array<{ attempt: number }>>(
+            `UPDATE "TrackStage" SET status = 'working', attempt = attempt + 1, redelivered = 0, "startedAt" = now()
+              WHERE "trackId" = $1 AND stage = 'recording' RETURNING attempt`,
+            trackId,
+        );
+        return `track-${trackId}-recording-${row.attempt}-r0`;
+    }
+
+    it("waits on a paused source and fresh claims use up no retry; four reported failures close it", async () => {
+        const trackId = id("waits");
+        await seedTrack(trackId, { recording: { status: "pending", attempt: 0 } });
+        const paused = Object.assign(new Error("HTTP 429 Too Many Requests"), { response: { status: 429 } });
+
+        for (let wait = 0; wait < 6; wait++) {
+            await recordStageFailure(trackId, "recording", "musicbrainz", paused, {}, await claim(trackId));
+            const rec = await getRecord(trackId, "recording");
+            expect(rec.status).toBe("pending");
+            expect(rec.failures).toBe(0);
+        }
+
+        for (let failures = 1; failures <= STAGE_RETRY_CAP; failures++) {
+            await recordStageFailure(trackId, "recording", "musicbrainz", new Error("socket hang up"), {}, await claim(trackId));
+            const rec = await getRecord(trackId, "recording");
+            expect(rec.failures).toBe(failures);
+            expect(rec.retryable).toBe(failures < STAGE_RETRY_CAP);
+        }
+        // Every claim had its own name: six waits and four failures, ten attempts.
+        expect((await getRecord(trackId, "recording")).attempt).toBe(10);
     });
 });

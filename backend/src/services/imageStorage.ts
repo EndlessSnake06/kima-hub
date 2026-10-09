@@ -128,7 +128,7 @@ export function nativeFileExists(nativePath: string | null | undefined): boolean
  * Check for a local artist image file in the artist's music directory.
  * Copies to the image cache if found and returns a native path.
  */
-export async function checkLocalArtistImage(
+async function checkLocalArtistImage(
     musicPath: string,
     artistDirName: string,
     artistId: string
@@ -165,6 +165,23 @@ export async function checkLocalArtistImage(
     return null;
 }
 
+
+/**
+ * An artist image in a folder above one of the artist's tracks (`relativeTrackPath`,
+ * relative to the music folder), nearest folder first.
+ */
+export async function findLocalArtistImage(
+    musicPath: string,
+    relativeTrackPath: string,
+    artistId: string
+): Promise<string | null> {
+    const parts = relativeTrackPath.split(path.sep);
+    for (let i = parts.length - 2; i >= 0; i--) {
+        const found = await checkLocalArtistImage(musicPath, parts.slice(0, i + 1).join(path.sep), artistId);
+        if (found) return found;
+    }
+    return null;
+}
 
 /**
  * Check if a URL is a native local path

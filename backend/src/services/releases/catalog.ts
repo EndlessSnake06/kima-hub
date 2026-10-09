@@ -1,77 +1,73 @@
 /**
- * What each release tells and asks the user; edit this when cutting a release.
- * A `note` informs, an `action` offers something to run, a `choice` asks and
- * defaults to false. Dismissing records untouched choices at their default
- * (`decidedBy: DISMISSED`), so silence is never consent.
+ * What each release tells and asks the user; edit this when cutting a release. The window opens on the release's
+ * `note` (the maintainer's own words), then lists every item by its one-line `summary`; each item opens on its own page.
+ * A `note` item informs, an `action` offers something to run, a `choice` asks and defaults to false. Dismissing
+ * records untouched choices at their default (`decidedBy: DISMISSED`), so silence is never consent.
  */
 
+/** An in-app page an item points to. */
+export interface ReleaseLink {
+    label: string;
+    href: string;
+}
+
+interface ItemBase {
+    /** Stable id, so copy can change without losing anything. */
+    key: string;
+    title: string;
+    /** One line in the window's list. */
+    summary: string;
+    /** The item's own page. Blank lines separate paragraphs. */
+    body: string;
+    links?: ReleaseLink[];
+}
+
 export type ReleaseItem =
-    | {
-          kind: "note";
-          /** Stable id, so copy can change without losing anything. */
-          key: string;
-          title: string;
-          body: string;
-          /** Optional grouping shown as a small label: "Fixed", "Added". */
-          label?: string;
-      }
-    | {
+    | (ItemBase & { kind: "note" })
+    | (ItemBase & {
           kind: "action";
-          key: string;
-          title: string;
-          body: string;
           /** The label on the button that runs it. */
           cta: string;
-          /** Where it lives permanently, once the window is gone. */
-          settingsPath?: string;
-          /**
-           * The action can be run directly from the window (behind a confirm)
-           * rather than only linking to its permanent home. When true the gate
-           * renders a run control below the CTA link.
-           */
-          runsFromWindow?: boolean;
+          /** Something the window runs itself, behind a confirm. */
+          run?: "wipeEnrichment";
           confirmTitle?: string;
           confirmMessage?: string;
           confirmLabel?: string;
           /**
-           * What closing the window without acting means for this item, said
-           * in the footer. Set it when the item asks for a decision, so the
-           * footer does not claim there is nothing to decide.
+           * What closing the window without acting means for this item, said in the footer. Set it when the item
+           * asks for a decision.
            */
           ifClosed?: string;
           /**
-           * Show only to users it applies to (the server filters in `pendingReleases`):
-           * "savedMoodMix" is a mix under a current mood, "retiredMoodMix" one under a
-           * mood that no longer exists.
+           * Show only to users it applies to (the server filters in `pendingReleases`): "savedMoodMix" is a mix
+           * under a current mood, "retiredMoodMix" one under a mood that no longer exists, "admin" an admin.
            */
-          requires?: "savedMoodMix" | "retiredMoodMix";
-      }
-    | {
+          requires?: "savedMoodMix" | "retiredMoodMix" | "admin";
+          /** Show only when the library holds enrichment from before this release's date (an upgrade, not a fresh install). */
+          olderLibraryOnly?: boolean;
+      })
+    | (ItemBase & {
           kind: "choice";
-          key: string;
-          title: string;
-          body: string;
           /**
-           * Always false. Present as a field rather than a constant so the shape
-           * survives a future opt-out-by-default choice, and so a reader can see
-           * what dismissing the window will record.
+           * Always false. Present as a field rather than a constant so the shape survives a future
+           * opt-out-by-default choice, and so a reader can see what dismissing the window will record.
            */
           defaultValue: false;
-          /** What the user gets by saying yes. Written plainly, no selling. */
-          benefit?: string;
           /** What actually leaves the machine. Say it exactly. */
           discloses?: string;
-          /** Only shown to admins when "admin" — the setting it writes is system-wide. */
+          /** Only shown to admins when "admin": the setting it writes is system-wide. */
           requires?: "admin";
-      };
+      });
 
 export interface Release {
     version: string;
-    /** Shown as the window's heading. A name, not a summary. */
+    /** The window's heading. A name, not a summary. */
     title: string;
-    /** One sentence under the heading. */
+    /** One sentence, for clients that show no note. */
     summary: string;
     date: string;
+    /** A note from the person who made the release, shown first. */
+    note?: { from: string; body: string };
     items: ReleaseItem[];
 }
 
@@ -81,61 +77,134 @@ export interface Release {
  */
 export const GPU_CHOICE_KEY = "gpu.accelerate";
 
+const WIPE_MESSAGE =
+    "Clears what Kima worked out about your music: which recording each track is, audio analysis, vibe data, the " +
+    "vibe map, artist bios and similar artists. Then it works it all out again with the new engine. Your music, playlists, plays, likes and edits stay. " +
+    "Takes a few hours on a large library; the vibe map is back when it finishes.";
+
+const KEVIN_1_11 = [
+    "Hey y'all.",
+    "I know updates have been slow, and if you've stuck around, thank you. If this is your first install, great timing.",
+    "I've had a series of unfortunate events since the launch of Kima, oddly. Painful family passings in short order, " +
+        "animal emergencies keeping us at the vet overnight, and of course the atrocity that is the American corporate " +
+        "grind. I also have ADHD, so I hyperfocus on shit and realize later I've been neglecting the big boy. And I have " +
+        "seemingly infinite ideas that I'm toying with, which are also a partial cause for the delays. That's done now. " +
+        "My focus is on Kima, the mobile application, and most importantly, the vibe engine.",
+    "Between all of that, I've been working on Kima v2, and this new enrichment engine rebuild is phase 1. This update " +
+        "does require a complete wipe and rerun of the engine. Only the engine's data gets wiped; your music, playlists, " +
+        "plays and likes stay exactly as they are. I think you'll be happy that you did.",
+    "The future of Kima is going to be wild. I'm not going to go deep on my future plans yet, because honestly I'm a " +
+        "little shy about it. But at a glance:",
+    [
+        "- Our own embed model",
+        "- Social features",
+        "- A personal vibe layer that sits on top of the base matching engine to tailor your personal vibes",
+        "- A plugin store for things like audiobooks, the social features, a future e-reader (conceptualized, no code " +
+            "yet) and plenty more, with hopefully room for users to add onto the store for all to pull from",
+        "- And my favorite bit: a global enrichment database. Purely opt-in, anonymized, and ONLY the final vectors + " +
+            "basic artist data uploaded, so over time we can do away with the per-user enrichment and pull from a " +
+            "database populated by us.",
+    ].join("\n"),
+    "My plan is natural discovery, not promoted discovery. That means any artist jamming to their own music gets the " +
+        "same care as everything else, and once uploaded to the global database, a new undiscovered map will populate " +
+        "with it. You'll be able to see music, regardless of artist, hype or financial backing, right in the zones you " +
+        "tend to favor. Natural, fair, and honestly exciting. Of course, the code will be open source and free to " +
+        "peruse, so you know I'm not just harvesting your data.",
+    "Like I said above, if you've stuck around, if you yell at the app in frustration (I do) but still hang in, I " +
+        "love you. Thanks again, and I hope this update makes y'all feel good. We need it in this world.",
+].join("\n\n");
+
 export const RELEASES: Release[] = [
     {
         version: "1.11.0",
-        title: "No accounts, no keys",
+        title: "Kima 1.11",
         summary:
-            "Last.fm is gone from every feature, and nothing asks you for an account in its place. There's a Stats page, the analyzer is torch-free, and the whole analysis engine was rebuilt. Your library re-analyses itself.",
+            "Songs match on sound, feel and genre, there's a new vibe map, the enrichment engine is rebuilt, and Last.fm is gone.",
         date: "2026-10-05",
+        note: { from: "Kevin", body: KEVIN_1_11 },
         items: [
             {
-                kind: "note",
-                key: "stats.page",
-                label: "New",
-                title: "The Stats page",
+                kind: "action",
+                key: "engine.wipe",
+                title: "Wipe and re-run enrichment",
+                summary: "The engine is new, so it needs one fresh run. Only its own data is wiped.",
                 body:
-                    "What you replay most. Which artists carry half of everything you play. How much of your library has never been heard, and how your habits shift between weeks, months, and all time. " +
-                    "Every figure comes from one shared definition of a listen, so the page, the player, and the API can't drift apart again.",
+                    "Everything Kima worked out about your music came from the old engine. Wiping clears it (audio " +
+                    "analysis, vibe data, the vibe map, artist bios and similar artists) and runs your whole library " +
+                    "through the new one.\n\n" +
+                    "Your music, playlists, plays, likes and edits stay. It runs in the background and takes a few " +
+                    "hours on a big library. The vibe map comes back when it's done.",
+                cta: "Wipe and re-run",
+                run: "wipeEnrichment",
+                confirmTitle: "Wipe and re-run enrichment?",
+                confirmMessage: WIPE_MESSAGE,
+                confirmLabel: "Wipe and re-run",
+                ifClosed: "If you close now, nothing is wiped. It's also in Settings, under Library Enrichment.",
+                links: [{ label: "See progress in Settings", href: "/settings#cache" }],
+                requires: "admin",
+                olderLibraryOnly: true,
             },
             {
                 kind: "note",
-                key: "player.playcounts",
-                label: "New",
-                title: "Play counts live in the player",
+                key: "vibe.engine",
+                title: "The new vibe engine",
+                summary: "Songs now match on how they sound, how they feel, and their artist's genres.",
                 body:
-                    "The full player now tells you how many times you've heard the current track, pulled from the same counts the Stats page reads. " +
-                    "Tracks you haven't played yet say so instead of showing a zero.",
+                    "Kima used to match songs on sound alone. Now every match weighs three things: how the song " +
+                    "sounds, how it feels (calm or intense, bright or dark, compared with the rest of your library), " +
+                    "and its artist's genres, which only count between different artists.\n\n" +
+                    "Similar tracks, Song Path, Blend and recommendations all use it, and no list has more than 2 " +
+                    "songs from one album or 4 from one artist. Searching by words still matches on sound, because a " +
+                    "sentence has no feel or genre.\n\n" +
+                    "Every weight was tested against how people judge music before it went in.",
+                links: [{ label: "Open the vibe map", href: "/vibe" }],
             },
             {
                 kind: "note",
-                key: "lastfm.gone",
-                label: "Changed",
-                title: "Last.fm is gone. Nothing to set up",
+                key: "vibe.map",
+                title: "The new vibe map",
+                summary: "Your library laid out by the vibe engine. It's yours, and it doesn't shuffle around.",
                 body:
-                    "Similar artists come from ListenBrainz's worldwide listening data, with Deezer related artists as fallback. Names and aliases resolve " +
-                    "through MusicBrainz, biographies through Wikidata, album artwork through Deezer and Cover Art Archive. No API keys, no account, " +
-                    "nothing to configure. Tracks without an embedded identifier are identified by a title-checked name search; fingerprint lookup runs " +
-                    "only on what that can't settle.",
+                    "Every song sits where the vibe engine puts it, so songs that match sit together. The faint glow " +
+                    "behind each area comes from how its music feels, from calm blue through to bright amber, in the " +
+                    "colours of the new Kima logo.\n\n" +
+                    "Your map is laid out once, after your library has been through enrichment. New songs are placed " +
+                    "among the others, and a song never moves once it has a place.",
+                links: [{ label: "Open the vibe map", href: "/vibe" }],
             },
             {
                 kind: "note",
-                key: "clap.onnx",
-                label: "Changed",
-                title: "The vibe analyzer is lighter now",
+                key: "engine.rebuilt",
+                title: "A rebuilt enrichment engine",
+                summary: "Better identification, no made-up numbers, and a lighter analyzer.",
                 body:
-                    "Swapped the audio analyzer to ONNX: lighter, torch-free, byte-reproducible, and it runs on Apple silicon. The old fingerprints no " +
-                    "longer line up with it; the re-analysis note below says what happens next.",
+                    "Songs are identified by their tags and file names first, checked against the music you actually " +
+                    "own. Audio fingerprinting only handles what that can't settle.\n\n" +
+                    "The analyzers only report what they actually measured. Anything they couldn't work out stays " +
+                    "empty instead of being guessed.\n\n" +
+                    "The vibe analyzer no longer needs PyTorch. It's smaller, and it runs on Apple silicon.",
+            },
+            {
+                kind: "note",
+                key: "moods.fixed",
+                title: "Moods, fixed",
+                summary: "Some moods were read backwards. That's fixed, and there are five moods now.",
+                body:
+                    "Calm songs could end up in Intense and sad ones in Upbeat. That's fixed.\n\n" +
+                    "There are five moods now: Upbeat, Melancholic, Calm, Intense and Energetic. Acoustic and " +
+                    "electronic aren't moods any more; they measured the same thing twice and drowned out the rest. " +
+                    "Energy no longer bunches up at the top, where about a third of a library used to read as " +
+                    "maximum energy.",
             },
             {
                 kind: "action",
                 key: "moods.mixes",
-                title: "Your mood mix needs rebuilding",
+                title: "Your mood mix",
+                summary: "It was picked from the old moods. Rebuild it, keep it, or save it as a playlist.",
                 body:
-                    "Moods were being read backwards: calm tracks could land in Intense, sad ones in Upbeat. That's fixed, and every track's mood is being re-analysed. " +
-                    "Your saved mood mix was picked from the old, wrong moods.\n\n" +
-                    "Rebuild clears it; pick a mood in the Mood Mixer on the home page to make a fresh one. Keep leaves it exactly as it is. " +
-                    "If you like it as it is, save it as a playlist first. Then you can rebuild and still keep those tracks.",
+                    "Your saved mood mix was picked using the old, wrong moods. Rebuild clears it so you can make a " +
+                    "fresh one in the Mood Mixer on the home page. Keep leaves it as it is.\n\n" +
+                    "Want its songs either way? Save it as a playlist first.",
                 cta: "Rebuild",
                 ifClosed: "If you close now, your mood mix stays as it is.",
                 requires: "savedMoodMix",
@@ -143,68 +212,52 @@ export const RELEASES: Release[] = [
             {
                 kind: "action",
                 key: "moods.mixes.retired",
-                title: "Your old mood mix can't be shown any more",
+                title: "Your old mood mix",
+                summary: "Its mood no longer exists. Save it as a playlist or remove it.",
                 body:
-                    "Moods were being read backwards, and fixing that left five moods: Upbeat, Melancholic, Calm, Intense and Energetic. " +
-                    "Your saved mood mix was made under one that's gone, so Kima can't show it any more. Its tracks are all still in your library.\n\n" +
-                    "Save it as a playlist to keep those tracks together, or remove it. Nothing is deleted until you pick one.",
+                    "Your saved mood mix was made under a mood that's gone, so Kima can't show it any more. Its songs " +
+                    "are all still in your library.\n\n" +
+                    "Save it as a playlist to keep them together, or remove it. Nothing is deleted until you pick.",
                 cta: "Save as playlist",
                 ifClosed: "If you close now, nothing is deleted, and you'll be asked again next time.",
                 requires: "retiredMoodMix",
             },
             {
                 kind: "note",
-                key: "engine.identification",
-                label: "New",
-                title: "Identification starts with the name",
+                key: "stats.page",
+                title: "Stats",
+                summary: "See what you actually listen to. Play counts are in the player too.",
                 body:
-                    "Every track's question now opens with the cheap, honest one: the tags and filename it already carries are searched against the recording they name, " +
-                    "and the match is checked against the music you actually own before it's believed. Fingerprinting, the slow and rate-limited route, is saved for what " +
-                    "that can't settle. Measured on the tracks that had always gone unidentified, four in five came home on the first pass.",
+                    "The Stats page shows what you replay most, which artists make up most of your listening, how " +
+                    "much of your library you've never played, over the last 30 days, the last 12 months or all time.\n\n" +
+                    "The full player shows how many times you've played the current song.",
+                links: [{ label: "Open Stats", href: "/stats" }],
             },
             {
                 kind: "note",
-                key: "engine.honest",
-                label: "Fixed",
-                title: "Numbers only where there's a measurement",
+                key: "lastfm.gone",
+                title: "No accounts, no keys",
+                summary: "Last.fm is gone. Nothing to sign up for or set up.",
                 body:
-                    "The analyzers now report only what they actually measured. A value that couldn't be determined stays empty instead of being filled with a guess, " +
-                    "and two of the five mood heads that had been read backwards are fixed and re-checked against your whole library, not a sample. " +
-                    "A track whose file has gone missing is closed honestly and reopens the day the file returns.",
-            },
-            {
-                kind: "note",
-                key: "engine.energy",
-                label: "Fixed",
-                title: "Energy spread out again",
-                body:
-                    "The energy and mood score comes from a pair of regression models now, and the old pileup near the top of the scale is gone: " +
-                    "the third of your library that used to read as maximum-energy can be Calm again. The mood categories on the map and in mood mixes come out of " +
-                    "five independent heads, ranked against your own library, so one loud classifier can't stamp half the collection.",
-            },
-            {
-                kind: "note",
-                key: "engine.redo",
-                label: "Heads up",
-                title: "Your library is re-analysing itself",
-                body:
-                    "The new engine writes a new analysis version, so every track is quietly re-queued: audio analysis first, then embeddings, then the vibe map. " +
-                    "It runs in the background and will take a while on a large library; everything keeps working with last-known values while it catches up. " +
-                    "Progress lives in Settings, under Library Enrichment. If you turn on GPU acceleration in this window, the download goes first " +
-                    "and the embedding pass runs on the card.",
+                    "Similar artists come from ListenBrainz, with Deezer as a backup. Names come from MusicBrainz, " +
+                    "artist bios from Wikidata, and album art from Deezer and the Cover Art Archive. None of it needs " +
+                    "an account or an API key.",
             },
             {
                 kind: "choice",
                 key: GPU_CHOICE_KEY,
-                title: "Run embedding rebuilds on an NVIDIA GPU",
+                title: "Use an NVIDIA graphics card",
+                summary: "Optional. Run the heaviest job on your graphics card; off unless you turn it on.",
                 body:
-                    "Rebuilding embeddings is the heaviest job your server runs. If Kima's container can see an NVIDIA graphics card, that job can run on the card " +
-                    "instead of the processor (measured about 1.5x faster on the embedding step itself), and your CPU is free for the rest of Kima while the rebuild runs.\n\n" +
-                    "Switching it on part-way through a rebuild is safe: tracks that are already embedded stay embedded, and the rest run faster as soon as the analyzer " +
-                    "restarts. Turning it off removes the download. You can also change this later in Settings, under Library Enrichment.",
+                    "Making vibe data is the heaviest job Kima runs. If your server has an NVIDIA card that Kima can " +
+                    "see, that job can run on the card: about 1.5 times faster, and your processor stays free for " +
+                    "everything else.\n\n" +
+                    "It's safe to turn on partway through a run. You can change it any time in Settings, under " +
+                    "Library Enrichment.",
                 discloses:
-                    "Kima downloads twelve pinned packages (about 2 GB) from PyPI, checks every file against a fixed fingerprint, and installs them into your data " +
-                    "directory, where they take about 3.4 GB. Nothing about your library leaves your server.",
+                    "Kima downloads twelve pinned packages (about 2 GB) from PyPI, checks every file against a fixed " +
+                    "fingerprint, and installs them in your data folder, where they take about 3.4 GB. Nothing about " +
+                    "your library leaves your server.",
                 defaultValue: false,
                 requires: "admin",
             },
@@ -220,23 +273,23 @@ export const RELEASES: Release[] = [
             {
                 kind: "note",
                 key: "plays.rule",
-                label: "Changed",
-                title: "A play means somebody listened",
+                title: "A play means you listened",
+                summary: "A song counts once you've heard half of it, or 4 minutes of it.",
                 body:
-                    "A play used to get logged the second a track started loading, so clicking through an album counted every track you skipped past. " +
-                    "Kima now uses the same rule as Last.fm and ListenBrainz. A track counts once you've heard half of it, or four minutes of it, whichever is less. " +
-                    "So a 3 minute song needs 90 seconds, and anything over 8 minutes just needs the 4. Tracks 30 seconds or shorter never count at all.",
+                    "A play used to be logged the moment a song started loading, so skipping through an album counted " +
+                    "every song. Now a song counts once you've heard half of it or 4 minutes of it, whichever is " +
+                    "less, the same rule Last.fm and ListenBrainz use. Songs 30 seconds or shorter never count.",
             },
             {
-                kind: "action",
+                kind: "note",
                 key: "plays.repair",
-                title: "Clean up your old play counts",
+                title: "Clean up old play counts",
+                summary: "Find the skips that were counted as plays, and remove them.",
                 body:
-                    "Your existing counts still include all those skips. When one play is followed a few seconds later by another, you clearly weren't listening to the first one, and that gap tells us so. " +
-                    "There's a tool on the Stats page that finds them, shows you what it found track by track, and lets you delete them or tell it to leave them alone.\n\n" +
-                    "It only ever removes what it can actually prove was a skip. It doesn't read, move, rename or change any of your music files, and it stays there for whenever you want it.",
-                cta: "Take me to it",
-                settingsPath: "/stats#false-starts",
+                    "Your old counts still include those skips. A tool on the Stats page finds plays that were followed " +
+                    "seconds later by another play, shows you each one, and lets you remove them or keep them.\n\n" +
+                    "It only removes what it can show was a skip, and it never touches your music files.",
+                links: [{ label: "Open the cleanup", href: "/stats#false-starts" }],
             },
         ],
     },

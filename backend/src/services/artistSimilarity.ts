@@ -1,7 +1,8 @@
 /**
- * Similar artists, discovery first: ListenBrainz by MBID, then Deezer by name
- * when it is short. The library only marks `inLibrary` and nudges scores by CLAP
- * centroid distance. Scores sit in the 0.5-0.7 band the discover-weekly tiers use.
+ * Similar artists, discovery first: ListenBrainz by MBID, then Deezer by name when it is short. Source
+ * scores run from 0.5 to 0.95 (ListenBrainz) or 0.9 (Deezer), strongest first. The library only marks
+ * `inLibrary` and moves each score by at most RERANK_MAX_DELTA by how close the artists are on the
+ * matching formula.
  */
 
 import { prisma } from "../utils/db";
@@ -12,7 +13,9 @@ import {
     type SimilarArtist,
 } from "./listenBrainz";
 import { deezerService } from "./deezer";
-import { cosineSimilarity } from "../utils/vector";
+import { artistMatch } from "./matching/formula";
+import { artistProfiles } from "./matching/rank";
+import { loadMatchingState } from "./matching/state";
 
 export type { SimilarArtist };
 
@@ -26,9 +29,6 @@ export interface SimilarArtistWithLibrary extends SimilarArtist {
     inLibrary?: boolean;
 }
 
-/** Below this many embedded tracks a centroid is noise; don't trust it. */
-export const MIN_LOCAL_TRACKS = 3;
-
 /** 7 days: similarity data changes slowly. */
 const CACHE_TTL = 604800;
 
@@ -40,64 +40,9 @@ const CACHE_TTL = 604800;
 const RERANK_MAX_DELTA = 0.1;
 
 /**
- * Parse a pgvector text literal ("[0.1,0.2,...]") into numbers.
- */
-function parseVector(literal: string): number[] {
-    return JSON.parse(literal) as number[];
-}
-
-/** Elementwise mean of equal-length vectors; skips empty vectors. */
-function meanVector(vectors: number[][]): number[] | null {
-    const usable = vectors.filter((v) => v.length > 0);
-    if (usable.length === 0) return null;
-    const dim = usable[0].length;
-    const sum = new Array<number>(dim).fill(0);
-    for (const v of usable) {
-        for (let i = 0; i < dim; i++) sum[i] += v[i] ?? 0;
-    }
-    return sum.map((s) => s / usable.length);
-}
-
-/**
- * (Re)compute and store the centroid for one artist from its tracks'
- * embeddings. Returns the number of tracks behind the centroid, or 0 when
- * the artist has no usable embeddings. Rides the existing rebuild-embeddings
- * flow and the per-track embed path — never its own scheduler.
- */
-export async function rebuildArtistCentroid(
-    artistId: string
-): Promise<{ trackCount: number }> {
-    const rows = await prisma.$queryRaw<
-        Array<{ embedding: unknown }>
-    >`
-        SELECT te.embedding::text AS embedding
-        FROM track_embeddings te
-        JOIN "Track" t ON te.track_id = t.id
-        JOIN "Album" al ON al.id = t."albumId"
-        WHERE al."artistId" = ${artistId}
-    `;
-    const vectors = rows
-        .map((r) => parseVector(String(r.embedding)))
-        .filter((v) => v.length > 0);
-    const centroid = meanVector(vectors);
-    if (!centroid) {
-        return { trackCount: 0 };
-    }
-    await prisma.$executeRaw`
-        INSERT INTO artist_embeddings ("artistId", embedding, "computedAt", "trackCount")
-        VALUES (${artistId}, ${`[${centroid.join(",")}]`}::vector, now(), ${vectors.length})
-        ON CONFLICT ("artistId") DO UPDATE
-        SET embedding = EXCLUDED.embedding,
-            "computedAt" = now(),
-            "trackCount" = EXCLUDED."trackCount"
-    `;
-    return { trackCount: vectors.length };
-}
-
-/**
  * Similar artists for an MBID ("" when unknown). ListenBrainz and Deezer run
  * concurrently and ListenBrainz wins when it fills the request; both empty
- * means an empty answer. Never throws.
+ * means an empty answer. Never throws: for callers that show what there is.
  */
 export async function getSimilarArtists(
     artistMbid: string,
@@ -105,12 +50,25 @@ export async function getSimilarArtists(
     limit = 30,
     opts: { interactive?: boolean } = {}
 ): Promise<SimilarArtistWithLibrary[]> {
+    return (await findSimilarArtists(artistMbid, artistName, limit, opts)).artists;
+}
+
+/**
+ * The same, saying whether a source that was asked failed to answer. `failed` with
+ * artists means a partial list; enrichment keeps what it stored and asks again.
+ */
+export async function findSimilarArtists(
+    artistMbid: string,
+    artistName: string,
+    limit = 30,
+    opts: { interactive?: boolean } = {}
+): Promise<{ artists: SimilarArtistWithLibrary[]; failed: boolean }> {
     const cacheKey = `artist-similar:${artistMbid || artistName}:${limit}`;
     try {
         const cached = await redisClient.get(cacheKey);
         if (cached) {
             const parsed = JSON.parse(cached) as SimilarArtistWithLibrary[];
-            if (parsed.length > 0) return parsed;
+            if (parsed.length > 0) return { artists: parsed, failed: false };
         }
     } catch (err) {
         logger.warn("[ArtistSimilarity] Redis read error:", err);
@@ -119,25 +77,20 @@ export async function getSimilarArtists(
     const hasMbid = typeof artistMbid === "string" && artistMbid.length > 0;
 
     // --- Tier 1 (ListenBrainz) + Tier 2 (Deezer), concurrently ---
+    let failed = false;
     const [lb, dz] = await Promise.all([
         hasMbid
             ? listenBrainzService
                   .getSimilarArtists(artistMbid, artistName, limit, opts)
-                  .catch((err) => {
-                      logger.warn(
-                          `[ArtistSimilarity] ListenBrainz path failed for ${artistName}:`,
-                          err
-                      );
+                  .catch(() => {
+                      failed = true;
                       return [] as SimilarArtist[];
                   })
             : Promise.resolve([] as SimilarArtist[]),
         deezerService
             .getRelatedArtists(artistName, limit)
-            .catch((err) => {
-                logger.warn(
-                    `[ArtistSimilarity] Deezer path failed for ${artistName}:`,
-                    err
-                );
+            .catch(() => {
+                failed = true;
                 return [] as SimilarArtist[];
             }),
     ]);
@@ -152,7 +105,7 @@ export async function getSimilarArtists(
         results = dedupeByName([...lb, ...dz]).slice(0, limit);
     } else {
         // Neither remote source knows this artist; the library does not substitute its own.
-        return [];
+        return { artists: [], failed };
     }
 
     // Re-rank against the library, then cache and return.
@@ -161,16 +114,16 @@ export async function getSimilarArtists(
         artistMbid,
         artistName
     );
-    if (reranked.length > 0) {
+    if (reranked.length > 0 && !failed) {
         await store(cacheKey, reranked);
     }
-    return reranked;
+    return { artists: reranked, failed };
 }
 
 /**
- * Mark `inLibrary` (by MBID, then name) and nudge owned artists' scores by
- * centroid distance to the seed, at most RERANK_MAX_DELTA, then re-sort. On a DB
- * failure the input passes through with inLibrary false.
+ * Mark `inLibrary` (by MBID, then name) and nudge owned artists' scores by how
+ * close they are to the seed on the matching formula, at most RERANK_MAX_DELTA,
+ * then re-sort. On a DB failure the input passes through with inLibrary false.
  */
 async function rerankWithLibrary(
     results: SimilarArtist[],
@@ -217,7 +170,7 @@ async function rerankWithLibrary(
             (r.mbid ? rowByMbid.get(r.mbid) : undefined) ??
             rowByName.get(r.name);
 
-        // 2. The seed's own row — distance is measured from its centroid.
+        // 2. The seed's own row, which closeness is measured from.
         let seedRowId: string | undefined;
         if (seedMbid) {
             seedRowId =
@@ -233,49 +186,31 @@ async function rerankWithLibrary(
                 }))?.id ?? undefined;
         }
 
-        // 3. One query for every centroid we might need.
+        // 3. The seed's and each owned result's tracks, averaged, in one query.
         const ids = new Set<string>();
         if (seedRowId) ids.add(seedRowId);
         for (const r of results) {
             const id = resolveRow(r);
             if (id) ids.add(id);
         }
-        const centroidById = new Map<string, number[]>();
-        if (ids.size > 0) {
-            const rows = await prisma.$queryRaw<
-                Array<{
-                    artistId: string;
-                    embedding: unknown;
-                    trackCount: number;
-                }>
-            >`
-                SELECT "artistId", embedding::text AS embedding, "trackCount"
-                FROM artist_embeddings
-                WHERE "artistId" = ANY(${[...ids]})
-            `;
-            for (const row of rows) {
-                const v = parseVector(String(row.embedding));
-                if (v.length > 0 && Number(row.trackCount) >= 1) {
-                    centroidById.set(row.artistId, v);
-                }
-            }
-        }
-        const seedCentroid = seedRowId
-            ? centroidById.get(seedRowId)
-            : undefined;
+        const state = await loadMatchingState();
+        const profiles =
+            state && seedRowId ? await artistProfiles(state, [...ids]) : new Map();
+        const seedProfile = seedRowId ? profiles.get(seedRowId) : undefined;
 
-        // 4. Adjusted scores + flags. Distance 0 against the seed's
-        // centroid → +0.1; distance >= 1 → −0.1; nothing in between is
-        // outside the band. No measurable distance → no adjustment.
+        // 4. Adjusted scores + flags. Closeness 1 → +0.1; closeness 0 or
+        // less → −0.1. An artist without matching data is not adjusted.
         const out: SimilarArtistWithLibrary[] = results.map((r) => {
             const rowId = resolveRow(r);
             const inLibrary = !!rowId;
             let match = r.match;
-            const resultCentroid = rowId
-                ? centroidById.get(rowId)
-                : undefined;
-            if (inLibrary && seedCentroid && resultCentroid) {
-                const distance = 1 - cosineSimilarity(seedCentroid, resultCentroid);
+            const resultProfile = rowId ? profiles.get(rowId) : undefined;
+            const closeness =
+                state && seedProfile && resultProfile
+                    ? artistMatch(seedProfile, resultProfile, state.genres, state.genreWeight ** 2)
+                    : null;
+            if (closeness !== null) {
+                const distance = 1 - closeness;
                 const delta =
                     RERANK_MAX_DELTA *
                     (1 - 2 * Math.min(Math.max(distance, 0), 1));
@@ -323,28 +258,24 @@ function dedupeByName(list: SimilarArtist[]): SimilarArtist[] {
     return out;
 }
 
+/** A similar artist as a search result. */
+interface SimilarArtistEntry {
+    type: "music";
+    id: string;
+    name: string;
+    listeners: number;
+    url: string;
+    image: string | null;
+    mbid?: string;
+    bio: string | null;
+    tags: string[];
+}
+
 /**
  * Search-result entries for similar artists. The first three get a bio,
  * artwork and genres; the rest get artwork only.
  */
-export async function enrichSimilarArtists(
-    similar: SimilarArtist[],
-    limit = 6
-): Promise<
-    Array<
-        {
-            type: "music";
-            id: string;
-            name: string;
-            listeners: number;
-            url: string;
-            image: string | null;
-            mbid?: string;
-            bio: string | null;
-            tags: string[];
-        }
-    >
-> {
+export async function enrichSimilarArtists(similar: SimilarArtist[], limit = 6): Promise<SimilarArtistEntry[]> {
     const { findArtistArtwork } = await import("./artwork");
     const { wikidataService } = await import("./wikidata");
     const { hasRealMbid } = await import("./artistIdentity");
@@ -352,20 +283,7 @@ export async function enrichSimilarArtists(
     const capped = similar.slice(0, limit);
     const enrichCount = Math.min(3, capped.length);
 
-    const build = async (
-        s: SimilarArtist,
-        enrich: boolean
-    ): Promise<{
-        type: "music";
-        id: string;
-        name: string;
-        listeners: number;
-        url: string;
-        image: string | null;
-        mbid?: string;
-        bio: string | null;
-        tags: string[];
-    }> => {
+    const build = async (s: SimilarArtist, enrich: boolean): Promise<SimilarArtistEntry> => {
         const base = {
             type: "music" as const,
             id: s.mbid || s.name,

@@ -9,7 +9,7 @@ import { z } from "zod";
 import { requireAuth } from "../middleware/auth";
 import { logger } from "../utils/logger";
 import { UnknownChoiceError, dismissRelease, findRelease, GPU_CHOICE_KEY, pendingReleases, setChoice } from "../services/releases";
-import { setGpuEnabled } from "../services/gpuRuntime";
+import { setGpuToggles } from "../services/gpuRuntime";
 import {
     MoodMixCannotKeepError,
     MoodMixNotFoundError,
@@ -105,7 +105,7 @@ router.post("/:version/choice", async (req, res) => {
             if (req.user!.role !== "admin") {
                 return res.status(403).json({ error: "Only admins can change GPU acceleration" });
             }
-            await setGpuEnabled(enabled);
+            await setGpuToggles({ soundVectors: enabled });
         }
         await setChoice({ userId: req.user!.id, version, key, enabled });
         res.json({ key, enabled, decidedBy: "EXPLICIT" });

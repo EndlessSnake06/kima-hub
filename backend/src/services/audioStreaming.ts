@@ -25,6 +25,10 @@ const QUALITY_SETTINGS = {
 
 export type Quality = keyof typeof QUALITY_SETTINGS;
 
+export function isQuality(value: unknown): value is Quality {
+    return typeof value === "string" && Object.prototype.hasOwnProperty.call(QUALITY_SETTINGS, value);
+}
+
 // 120s hard kill -- must be shorter than the 240s queue-wait cap (1.3)
 const TRANSCODE_TIMEOUT_MS = 120_000;
 

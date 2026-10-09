@@ -15,7 +15,7 @@ const mockPublishToChannel = jest.fn().mockResolvedValue(undefined);
 const mockClearGate = jest.fn().mockResolvedValue(undefined);
 
 const mockMarkFailed = jest.fn().mockResolvedValue(undefined);
-const mockWaitForStatus = jest.fn().mockImplementation((statuses, timeoutMs) =>
+const mockWaitForStatus = jest.fn().mockImplementation((statuses, _timeoutMs) =>
     Promise.resolve(statuses?.[0] ?? "running"));
 
 jest.mock("../../services/enrichmentState", () => ({
@@ -168,6 +168,10 @@ jest.mock("../../utils/db", () => ({
     },
 }));
 
+jest.mock("../../utils/systemSettings", () => ({
+    getSystemSettings: jest.fn().mockResolvedValue({ audioAnalyzerWorkers: 2, clapWorkers: 2 }),
+}));
+
 // Silence logger during tests
 jest.mock("../../utils/logger", () => ({
     logger: {
@@ -182,10 +186,11 @@ jest.mock("../../utils/logger", () => ({
 
 import {
     triggerEnrichmentNow,
+    startEnrichmentNow,
     startUnifiedEnrichmentWorker,
     executeAudioPhase,
     executeVibePhase,
-    executeMoodTagsPhase,
+    executeIdentificationPhase,
     getEnrichmentProgress,
     invalidateEnrichmentProgress,
 } from "../unifiedEnrichment";
@@ -216,20 +221,6 @@ function stageRows(rows: Array<{ trackId: string; stage: string; attempt?: numbe
         duration: 200,
         title: r.trackId,
     }));
-}
-
-/** The scheduler's fast cadence (unifiedEnrichment ENRICHMENT_INTERVAL_MS). */
-const ENRICHMENT_TICK_MS = 5_000;
-
-/**
- * Let N scheduler ticks fire. Uses async advancement so the cycle's awaited
- * promise chain (prisma/redis mocks) flushes between timer fire and the
- * cycle's own re-schedule in its finally block.
- */
-async function advanceTicks(count: number): Promise<void> {
-    for (let i = 0; i < count; i++) {
-        await jest.advanceTimersByTimeAsync(ENRICHMENT_TICK_MS);
-    }
 }
 
 // ── Tests ───────────────────────────────────────────────────────────
@@ -381,26 +372,40 @@ describe("Enrichment State Machine", () => {
         });
     });
 
-    describe("re-run functions clear all flags", () => {
-        it("explicit trigger (user re-run) is allowed to resume after stop", async () => {
+    describe("an operator's start lifts a stop or a pause", () => {
+        it("after a stop, wakes the analyzer and runs a cycle", async () => {
             await startUnifiedEnrichmentWorker();
 
             simulateStopViaStateService();
-            await triggerEnrichmentNow(); // first trigger observed the stop -> idle + userStopped
+            await triggerEnrichmentNow(); // the cycle observes the stop -> idle + userStopped
 
             mockGetState.mockResolvedValue({ status: "idle" });
             mockUpdateState.mockClear();
+            mockClearGate.mockClear();
+            mockPublishToChannel.mockClear();
 
-            // An explicit "Run Enrichment" runs one cycle even while stopped;
-            // only the timer is kept from restarting. Then it stays stopped.
-            await triggerEnrichmentNow();
+            await startEnrichmentNow();
+            expect(mockClearGate).toHaveBeenCalled();
+            expect(mockPublishToChannel).toHaveBeenCalledWith("audio:analysis:control", "resume");
+            expect(mockUpdateState).toHaveBeenCalledWith(
+                expect.objectContaining({ status: "running" }),
+            );
+        });
+
+        it("while paused, clears the stored pause and runs the cycle a plain trigger declines", async () => {
+            await startUnifiedEnrichmentWorker();
+            mockUpdateState.mockClear();
+            mockGetState.mockResolvedValueOnce({ status: "paused" }).mockResolvedValue({ status: "idle" });
+
+            await startEnrichmentNow();
+            expect(mockUpdateState).toHaveBeenCalledWith(expect.objectContaining({ status: "idle" }));
             expect(mockUpdateState).toHaveBeenCalledWith(
                 expect.objectContaining({ status: "running" }),
             );
         });
     });
 
-    describe("W1: startup must resume analyzer infrastructure (prod hang root cause)", () => {
+    describe("startup resumes analyzer infrastructure", () => {
         it("should clear the stale analyzer gate on worker start", async () => {
             mockClearGate.mockClear();
             await startUnifiedEnrichmentWorker();
@@ -511,7 +516,7 @@ describe("Enrichment State Machine", () => {
                 return [];
             });
 
-            const queued = await executeMoodTagsPhase();
+            const queued = await executeIdentificationPhase();
 
             expect(queued).toBe(1);
             expect(mockQueueAdd).toHaveBeenCalledWith(
@@ -546,7 +551,7 @@ describe("Enrichment State Machine", () => {
 
         it("does not select work by scanning Track status columns", async () => {
             await executeVibePhase();
-            await executeMoodTagsPhase();
+            await executeIdentificationPhase();
 
             // Gating reads TrackStage; no phase may decide work from
             // analysisStatus/enrichmentTags across the whole library.

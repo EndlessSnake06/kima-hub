@@ -1,6 +1,5 @@
 import { Router } from "express";
 import * as fs from "fs";
-import * as path from "path";
 import { logger } from "../utils/logger";
 import { safeError, UserFacingError } from "../utils/errors";
 import { audiobookCacheService } from "../services/audiobookCache";
@@ -96,7 +95,7 @@ router.get(
  * Manually trigger audiobook sync from Audiobookshelf
  * Fetches all audiobooks and caches metadata + cover images locally
  */
-router.post("/sync", requireAuthOrToken, apiLimiter, async (req, res) => {
+router.post("/sync", requireAuthOrToken, apiLimiter, async (_req, res) => {
     try {
         const settings = await getSystemSettings();
 
@@ -464,6 +463,10 @@ router.options("/:id/cover", (req, res) => {
 router.get("/:id/cover", async (req, res) => {
     try {
         const { id } = req.params;
+        // This route is unauthenticated and `id` names a file below, so it must be a plain id.
+        if (!/^[A-Za-z0-9_-]+$/.test(id)) {
+            return res.status(404).json({ error: "Cover not found" });
+        }
 
         const audiobook = await prisma.audiobook.findUnique({
             where: { id },
@@ -474,9 +477,6 @@ router.get("/:id/cover", async (req, res) => {
 
         // Fallback: check if cover exists on disk even if DB path is empty
         if (!coverPath) {
-            // `id` comes from the URL, and Express decodes %2F after matching, so "..%2F"
-            // is real traversal here. This route is unauthenticated; without the resolve it
-            // would serve any .jpg the process can read.
             const fallbackPath = resolveWithinMusicRoot(
                 "cover-cache",
                 "audiobooks",

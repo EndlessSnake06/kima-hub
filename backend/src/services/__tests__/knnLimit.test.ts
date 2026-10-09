@@ -1,66 +1,23 @@
 /**
- * HNSW answers from hnsw.ef_search candidates (default 40), so the index queries
- * widen it to the requested limit inside their transaction (utils/knn.ts). The
- * EXPLAIN guard runs first: on a small table Postgres seq-scans and the count
- * checks would pass with the bug.
+ * HNSW answers from hnsw.ef_search candidates (default 40), so text search widens
+ * it to the requested limit inside its transaction (utils/knn.ts). The EXPLAIN
+ * guard runs first: on a small table Postgres seq-scans and the count check alone
+ * would pass without the widening.
  */
-import fs from "fs";
-import path from "path";
-import express from "express";
-import request from "supertest";
+import { prisma } from "../../utils/db";
+import { efFor, withEfSearch } from "../../utils/knn";
+import { searchTracksByEmbedding } from "../textEmbeddingBridge";
 
 jest.mock("../../utils/logger", () => ({
     logger: { warn: jest.fn(), debug: jest.fn(), error: jest.fn(), info: jest.fn() },
 }));
-
-// Same authenticated passthrough the S2 route test uses (Proxy so any other
-// export the routers' transitive imports reach for degrades gracefully).
-jest.mock("../../middleware/auth", () => {
-    const passthrough = (req: any, _res: any, next: any) => {
-        req.user = { id: "user-1" };
-        next();
-    };
-    return new Proxy(
-        { requireAuth: passthrough, requireAuthOrToken: passthrough },
-        {
-            get(target: any, key: string) {
-                if (key in target) return target[key];
-                return passthrough;
-            },
-        },
-    );
-});
 
 jest.mock("../../utils/redis", () => ({
     __esModule: true,
     redisClient: { ping: jest.fn(async () => "pong") },
 }));
 
-jest.mock("../../services/featureDetection", () => ({
-    featureDetection: {
-        getFeatures: jest.fn().mockResolvedValue({
-            musicCNN: true,
-            vibeEmbeddings: true,
-            audiobookshelfEnabled: false,
-        }),
-    },
-}));
-
-import { prisma } from "../../utils/db";
-import { logger } from "../../utils/logger";
-import { efFor, withEfSearch } from "../../utils/knn";
-import { findSimilarTracks } from "../hybridSimilarity";
-import { searchTracksByEmbedding } from "../textEmbeddingBridge";
-import vibeRouter from "../../routes/vibe";
-
-const vibeApp = express();
-// Production mounts express.json() globally in src/index.ts; the bare test
-// app has to add it for the POST routes to see a parsed body.
-vibeApp.use(express.json());
-vibeApp.use("/api/vibe", vibeRouter);
-
 const TRACK_COUNT = 4000;
-// /alchemy validates ids against /^c[a-z0-9]{20,30}$/ (22 chars here).
 const trackId = (i: number) => `cknn${String(i).padStart(18, "0")}`;
 const ALL_IDS = Array.from({ length: TRACK_COUNT }, (_, i) => trackId(i));
 
@@ -96,14 +53,6 @@ function randomUnit(i: number): string {
     return `[${v.map((x) => x / norm).join(",")}]`;
 }
 
-function negated(vector: string): string {
-    return `[${vector
-        .slice(1, -1)
-        .split(",")
-        .map((x) => -Number(x))
-        .join(",")}]`;
-}
-
 beforeAll(async () => {
     // Leftover tracks (and their embeddings) from any other suite or an
     // interrupted run would land inside this suite's vector-search windows:
@@ -134,20 +83,12 @@ beforeAll(async () => {
             fileSize: 1000,
         })),
     });
-    // The first 10 tracks all carry the same fingerprint (they are the /alchemy
-    // add set, constructed so they are provably the blend's exact nearest
-    // neighbours -- see the alchemy test), the next 10 carry its negation as
-    // the subtract fingerprint; the rest are independent random points.
-    const ADD_VECTOR = randomUnit(7);
-    const SUBTRACT_VECTOR = negated(ADD_VECTOR);
-    const vectorFor = (i: number) =>
-        i < 10 ? ADD_VECTOR : i < 20 ? SUBTRACT_VECTOR : randomUnit(i);
     for (let start = 0; start < TRACK_COUNT; start += 25) {
         const ids = ALL_IDS.slice(start, start + 25);
         const values = ids
-            .map((_, j) => `($${2 * j + 1}, $${2 * j + 2}::vector, 'laion-clap-music', now())`)
+            .map((_, j) => `($${2 * j + 1}, $${2 * j + 2}::vector, 'laion-clap-htsat-unfused-v1', now())`)
             .join(",");
-        const params = ids.flatMap((id, j) => [id, vectorFor(start + j)]);
+        const params = ids.flatMap((id, j) => [id, randomUnit(start + j)]);
         await prisma.$executeRawUnsafe(
             `INSERT INTO track_embeddings (track_id, embedding, model_version, analyzed_at)
              VALUES ${values}`,
@@ -177,78 +118,30 @@ afterAll(async () => {
     await prisma.$disconnect();
 });
 
-describe("HNSW index-scan guard (the row counts below are only meaningful through the index)", () => {
-    it("answers the similar-tracks shape with Index Scan using track_embeddings_embedding_idx", async () => {
-        // Mirrors the shipped shape in hybridSimilarity.ts (WITH source, the
-        // S2 EXISTS guard, ORDER BY distance, LIMIT) with a real seed bound.
+describe("HNSW index-scan guard (the row count below is only meaningful through the index)", () => {
+    it("answers the text-search shape with Index Scan using track_embeddings_embedding_idx", async () => {
+        const vector = randomUnit(999999);
         const plan = await prisma.$queryRaw<Array<Record<string, string>>>`
             EXPLAIN (COSTS OFF)
-            WITH source AS (
-                SELECT embedding FROM track_embeddings WHERE track_id = ${trackId(0)}
-            )
             SELECT t.id
             FROM track_embeddings te
             JOIN "Track" t ON te.track_id = t.id
             JOIN "Album" a ON t."albumId" = a.id
             JOIN "Artist" ar ON a."artistId" = ar.id
-            WHERE te.track_id != ${trackId(0)}
-            AND EXISTS (SELECT 1 FROM source)
-            ORDER BY te.embedding <=> (SELECT embedding FROM source)
-            LIMIT 50
+            WHERE t."missingSince" IS NULL
+            ORDER BY te.embedding <=> ${vector}::vector
+            LIMIT 100
         `;
         const text = plan.map((row) => Object.values(row).join("\n")).join("\n");
         expect(text).toContain("Index Scan using track_embeddings_embedding_idx");
-        // The small Album/Artist dimension tables may seq-scan as join inputs;
-        // what must never happen is a Seq Scan over the vector table itself --
-        // an exact scan makes every row-count assertion below vacuous.
         expect(text).not.toContain("Seq Scan on track_embeddings");
     });
 });
 
-describe("vector searches return the requested row count (S1)", () => {
-    it("findSimilarTracks(seed, 50) ranks past the 40-row index default", async () => {
-        // One album by one artist, so the diversity caps cut the list to 1.
-        // The wide search itself is covered by the EXPLAIN guard.
-        const rows = await findSimilarTracks(trackId(0), 50);
-        expect(rows).toHaveLength(1);
-        expect(rows.every((r) => r.id !== trackId(0))).toBe(true);
-    });
-
+describe("text search returns the requested row count", () => {
     it("searchTracksByEmbedding(query, 100) returns 100 rows", async () => {
-        const rows = await searchTracksByEmbedding(
-            JSON.parse(randomUnit(999999)),
-            100,
-        );
+        const rows = await searchTracksByEmbedding(JSON.parse(randomUnit(999999)), 100);
         expect(rows).toHaveLength(100);
-    });
-
-    it("alchemy with 10 add + 10 subtract at limit 100 returns 100 rows, not the 40-candidate cap", async () => {
-        // The subtract fingerprint negates the add one, so the blend lands on
-        // the add fingerprint and its 10 inputs are the nearest neighbours.
-        const res = await request(vibeApp)
-            .post("/api/vibe/alchemy")
-            .send({
-                add: ALL_IDS.slice(0, 10),
-                subtract: ALL_IDS.slice(10, 20),
-                limit: 100,
-            });
-        if (res.status !== 200) {
-            const logError = logger.error as jest.Mock;
-            const msgs = logError.mock.calls.map((c: unknown[]) =>
-                c.map((part) => (part instanceof Error ? `${part.name}: ${part.message}` : String(part))),
-            );
-            throw new Error(
-                `alchemy returned ${res.status} ${JSON.stringify(res.body)} :: ${JSON.stringify(msgs)}`,
-            );
-        }
-        expect(res.status).toBe(200);
-        const ids: string[] = res.body.tracks.map((t: { id: string }) => t.id);
-        // Before the fix the index yields at most ~hnsw.ef_search=40 candidates
-        // (minus excluded inputs), so 100 can never be reached; after it, the
-        // widened candidate list serves the full limit.
-        expect(ids).toHaveLength(100);
-        // Every excluded input stays excluded even the nearest ones.
-        expect(ids.some((id) => ALL_IDS.slice(0, 20).includes(id))).toBe(false);
     });
 });
 
@@ -271,29 +164,9 @@ describe("utils/knn helper contract", () => {
         expect(rows[0].v).toBe("40");
     });
 
-    it("sizes the width as min(1000, max(2*limit + excluded, 100))", () => {
-        expect(efFor(50, 1)).toBe(101); // similar tracks: 2*limit + the seed
-        expect(efFor(100, 0)).toBe(200); // text search at the route cap
-        expect(efFor(30, 20)).toBe(100); // alchemy: floor wins at 2*30+20=80
-        expect(efFor(1, 0)).toBe(100); // documented floor
-        expect(efFor(600, 0)).toBe(1000); // pgvector's hard maximum
-        expect(efFor(450, 100)).toBe(1000); // ceiling clamps 2k+excluded
-    });
-});
-
-describe("S1 wiring", () => {
-    // Source-integrity pins, same trick as the F5 invariant test in
-    // hybridSimilarity.nullhandling.test.ts: the four index-using query sites
-    // must go through the widened transaction, and the S2 EXISTS guard that
-    // shares the similar-tracks query must stay put.
-    it("all four capped query sites route through withEfSearch; the S2 EXISTS guard survives", () => {
-        const read = (p: string) =>
-            fs.readFileSync(path.join(__dirname, p), "utf8");
-        const hybrid = read("../../services/hybridSimilarity.ts");
-        expect(hybrid).toContain("withEfSearch(");
-        expect(hybrid).toContain("AND EXISTS (SELECT 1 FROM source)");
-        expect(read("../../services/textEmbeddingBridge.ts")).toContain("withEfSearch(");
-        expect(read("../../routes/vibe.ts")).toContain("withEfSearch(");
-        expect(read("../../services/songPath.ts")).toContain("withEfSearch(");
+    it("sizes the width as min(1000, max(2*limit, 100))", () => {
+        expect(efFor(100)).toBe(200);
+        expect(efFor(30)).toBe(100);
+        expect(efFor(600)).toBe(1000);
     });
 });

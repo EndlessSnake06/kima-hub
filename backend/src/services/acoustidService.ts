@@ -4,6 +4,8 @@ import { rateLimiter } from "./rateLimiter";
 import { sourcePauseController } from "./sourcePauseController";
 import { USER_AGENT, config } from "../config";
 import { Outcome, answered, absent, rateLimited, transient, permanent } from "../utils/outcome";
+import { titlesAgree } from "./albumIdentity";
+import { lengthsAgree, versionOf } from "./recordingMatch";
 
 /**
  * AcoustID lookup client. The POST body is form-encoded with `meta` as
@@ -42,8 +44,6 @@ export interface AcoustIDResult {
 
 /** Confidence floor: below this AcoustID is effectively guessing. */
 const MIN_SCORE = 0.5;
-/** Matches shorter than this are jingles/samples, not library tracks. */
-const MIN_DURATION = 30;
 
 class AcoustIDService {
     private client: AxiosInstance;
@@ -88,16 +88,15 @@ class AcoustIDService {
     }
 
     /**
-     * Ask AcoustID which recording a fingerprint is; never throws.
-     * @param duration Track length in seconds.
-     * @param fingerprint Chromaprint fingerprint from `fpcalc`.
+     * Ask AcoustID which recording a fingerprint is; never throws. `duration` is the track's length in
+     * seconds, `fingerprint` fpcalc's, and `title` the track's own (`pickFingerprintMatch`).
      */
     async lookup(
         duration: number,
         fingerprint: string,
-        clientKey?: string
+        options: { clientKey?: string; title?: string } = {}
     ): Promise<Outcome<AcoustIDResult>> {
-        const apiKey = await this.resolveApiKey(clientKey);
+        const apiKey = await this.resolveApiKey(options.clientKey);
         if (!apiKey) {
             logger.debug("[AcoustID] No client key configured; not asking");
             return permanent(
@@ -141,7 +140,7 @@ class AcoustIDService {
                     `AcoustID returned status '${data?.status ?? "unreadable"}'`
                 );
             }
-            const picked = this.pickRecording(data, duration);
+            const picked = this.pickFingerprintMatch(data, duration, options.title);
             if (!picked) {
                 logger.debug(
                     `[AcoustID] No confident match for ${Math.round(duration)}s track`
@@ -150,7 +149,7 @@ class AcoustIDService {
                     askedDuration: Math.round(duration),
                     topScore: data.results?.[0]?.score ?? null,
                     reason:
-                        "no result above the confidence floor within the duration window",
+                        "no result above the confidence floor has a recording of this track's length",
                 });
             }
 
@@ -193,28 +192,30 @@ class AcoustIDService {
     }
 
     /**
-     * Walk the ranked results and return the first result that passes the
-     * confidence floor and the duration sanity window, with the recording
-     * attached. Bare results (fingerprint match with no recording metadata)
-     * are skipped — they cannot identify anything for us.
+     * The first result above the confidence floor that has a recording of this
+     * track's length (`lengthsAgree`; the length is the recording's, AcoustID
+     * gives none for the result). Among those, a recording whose title is the
+     * track's wins, then the closest length. Bare results (a fingerprint with no
+     * recording) cannot identify anything and are skipped.
      */
-    private pickRecording(
+    private pickFingerprintMatch(
         data: AcoustIDLookupResponse,
-        duration: number
+        duration: number,
+        title?: string
     ): { result: AcoustIDResultRaw; recording: AcoustIDRecording } | null {
-        const results = data.results || [];
-
-        for (const result of results) {
+        for (const result of data.results || []) {
             if (result.score < MIN_SCORE) continue;
-            const resultDuration = result.duration ?? duration;
-            if (
-                resultDuration < MIN_DURATION ||
-                Math.abs(resultDuration - duration) > duration * 0.5
-            ) {
-                continue;
-            }
-            const recording = result.recordings?.[0];
-            if (recording) return { result, recording };
+            const fits = (result.recordings || []).filter(
+                (rec) => lengthsAgree(duration, rec.duration != null ? rec.duration * 1000 : null) !== false
+            );
+            if (fits.length === 0) continue;
+            const titled = title
+                ? fits.filter((rec) => !!rec.title && titlesAgree(rec.title, title) && versionOf(rec.title) === versionOf(title))
+                : [];
+            const gap = (rec: AcoustIDRecording) =>
+                rec.duration != null ? Math.abs(rec.duration - duration) : Number.POSITIVE_INFINITY;
+            const recording = [...(titled.length > 0 ? titled : fits)].sort((a, b) => gap(a) - gap(b))[0];
+            return { result, recording };
         }
         return null;
     }
