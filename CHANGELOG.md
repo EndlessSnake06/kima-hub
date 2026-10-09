@@ -7,12 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - nightly
 
+## [1.11.0] - 2026-10-09
+
+### Added
+
+- **The Stats page.** Everything on it is computed from your own listening: most-replayed tracks, the artists that carry half of everything you play, how much of your library has never been heard, and how habits shift between weeks, months, and all time. Play counts in the player come from the same listen definition; tracks never played say so instead of showing zero. Includes `verify-stats.ts` (67 independent cross-checks) and ten live end-to-end journeys covering the four destructive audit buttons with database-level verification.
+- **An update window.** It opens on a note from Kevin and a short list of what's new; each line opens its own page with the buttons and links for it. The copy says plainly what each thing does.
+- **Scrobbling to ListenBrainz, opt-in.** Plays are recorded locally as always; setting a ListenBrainz user token mirrors each play to ListenBrainz's open API. Fire-and-forget: never awaited, rejections logged, no token means skipped, a ListenBrainz outage cannot fail a play or touch stats. The token is stored encrypted.
+- **Similar artists rebuilt for discovery.** Candidates come from ListenBrainz's similar-artists data first (the same as its artist pages; free, no key, no account), with Deezer related artists as fallback; your library re-ranks the merged list by up to ±0.1 on the same matching as the vibe features, so taste leans yours without hiding anyone. Artists not in your library are flagged `inLibrary: false` so they can be offered for download.
+- **Track identification without ISRC.** A file's own MusicBrainz recording tag answers first; then its album's tracklist (one request answers every song on the album, the earliest official release, and on a compilation the song credited to the track's artist), a title-checked MusicBrainz name search, and AcoustID fingerprint lookup (fpcalc) for the rest. Resolution outcomes are counted per path so the mix is observable.
+- **A queue-length setting** in Settings > Playback (default 10000, min 100, max 100000).
+- **A public vibe feed, off by default.** With `KIMA_PUBLIC_VIBE=true`, a token and a username set (see `.env.example`), `/api/public/vibe` serves the owned library as one gzipped export (positions, moods, nearest tracks; suggested albums and missing files are left out) and that user's listening as it happens: play, pause, seek, skip, stop and up-next, from the web player and from Subsonic clients' now-playing. That user gets a "Share what I'm playing" switch under Settings → Scrobbling; off, the feed reads `hidden` and drops their plays until it is turned back on. Subsonic clients do not report pausing, so a paused phone app reads as playing until the track's length plus 30 seconds has passed, then stopped. Without the variable the routes do not exist.
+- **The vibe analyzer is now ONNX** — torch-free, reproducible from public sources. The audio and text ONNX exports are built from the public `laion/clap-htsat-unfused` checkpoint and verified against fixed hashes at build time; the mel-spectrogram path is vendored as pure numpy so the stack runs without torch. Sound vectors from 1.10 came from a different model under the same name, so they are made again on upgrade.
+- **A choice about your saved mood mix.** Moods were being read backwards, so a mood mix saved before 1.11 was picked from the wrong values. The release window asks what to do with it: rebuild it, keep it, or save it as an ordinary playlist (saving and rebuilding can be combined). A mix saved under a mood 1.11 removed (High Energy, Focus Mode, Deep Feels, Acoustic Vibes) can no longer be shown, so it offers save-as-playlist or remove instead, and is asked about again on the next visit until answered. Nothing is deleted until the user chooses.
+- **NVIDIA GPU, opt-in.** Two switches in Settings, one for vibe embeddings and one for audio analysis, so you choose which steps use the GPU. The first switch turned on downloads about 2 GB of pinned packages into the data folder (about 3.4 GB on disk); they are removed when both are off, so nobody who leaves them off pays in image size or behaviour. Flip a switch and, within about a minute, the analyzer it belongs to finishes the songs it is on and restarts itself on or off the GPU. Audio analysis on the GPU is checked against the CPU's answers at every start; if it disagrees, or fails mid-run, analysis runs on the CPU. Settings says when a switch is still applying, when the GPU session fell back to the CPU, and when the analyzer that does the download is not running.
+- **Wipe and re-run enrichment.** Admins can clear what enrichment worked out (audio analysis, vibe data, the vibe map, artist bios, genres and similar artists) and run the whole library through the engine again, from the 1.11 window or Settings under Library Enrichment. The library, which recording and artist each file is, artist images, playlists, plays, likes and edits stay.
+- **A fifth enrichment step, Similarity.** It runs after vibe embeddings, computes each track's feel once, keeps the library's matching statistics current and lays out the vibe map; Settings shows its progress. A newly embedded track joins matching and the map when the step has run (seconds while enrichment is busy).
+
 ### Changed
 
 - **Vibe matching uses sound, feel and artist genre.** Similar tracks, recommendations from a track, Alchemy, Song Path, the public export's nearest tracks and the similar-artists re-rank now share one formula: how a track sounds (CLAP), how it feels (valence and arousal read from the sound and set against your own library's range, weight 0.25), and its artist's MusicBrainz genres (weight 0.25, counted only between different artists). Every list holds at most 2 tracks per album and 4 per artist. Text search still matches on sound alone; radio stations and artist radio are unchanged. The feel weights are derived from the DEAM dataset and licensed separately (see the README).
 - **Song Path answers 400 for a track that has not been analysed yet.** It answered 500.
 - **The vibe map is a picture of the matching.** Each track sits where the same formula places it among its closest matches (sound, feel and artist genre), laid out by UMAP's published method in Kima's own code; on a 9,027-track library 68% of each track's 10 closest matches sit among its 50 nearest stars. The similarity step lays a library's map out once and then places each new track among the others: a track that has a place never moves, and every server computes the same map. The page only draws it. The home view frames the map on any screen, phone included.
-- **The update window is rewritten.** It opens on a note from Kevin and a short list of what's new; each line opens its own page with the buttons and links for it. The copy says plainly what each thing does.
 - **The vibe map opens without mood names.** The tag button shows them; the choice is remembered.
 - **The vibe map looks like a universe.** Each song is a crisp star, a bright few over a faint many; a very faint glow sits behind everything and sparse stars in the far distance give it depth, as in Kima v2's galaxy. Songs stay exactly where the matching places them; the fog around clusters and the coloured glow on them are gone.
 - **A phone on its side gets more room.** On short landscape screens the top bar, the bottom bar (icon beside its label) and the mini player are slimmer on every page, so the content shows about 180 px instead of 110.
@@ -20,34 +36,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Lyrics scroll inside their own box.** Opening them no longer slides the whole app sideways.
 - **Everything is lowercase.** Every page, menu, dialog, tooltip and dropdown shows lowercase text, as in Kima v2. Typed, copied and submitted text keeps its case, and keys, codes and addresses show exactly as they are.
 - **Lyrics open inside the full-screen player on desktop.** The button opened them in the side panel, behind the player.
-- **The Stats page says what each number is.** Labels are short and lowercase, "plays" is the one word for a listen, and a count of one is singular. Two lines that said the wrong thing are fixed: the Discover line counted plays but called them tracks, and the album-order figure no longer pairs "0% in order" with "you play albums, not songs". The key wheel's inner ring names its minor keys. The iOS app uses the same wording.
 - **Audio analysis keeps every worker busy.** Workers take the next track as soon as they finish one; before, they took tracks ten at a time and waited for the slowest, so at most ten were ever busy. Moving the workers slider while enrichment runs no longer caps it at 8.
 - **Audio analysis runs MusiCNN on ONNX Runtime, without TensorFlow.** The models are Essentia's own, converted when the image is built; the build fails unless they give Essentia's answers (on 16 library tracks the stored values agree within 0.000004). The image no longer carries two copies of TensorFlow.
-- **Sound vectors take one model call per track** instead of five, so a GPU is no longer left idle between clips.
+- **Sound vectors take one model call per track** instead of five.
 - **The new Kima mark.** The logo in the app is the waveform in the new gradient, amber at the top through rose and violet to azure, its colour gently shifting like the mobile app's; still when the system asks for reduced motion.
-
-### Added
-
-- **NVIDIA GPU for audio analysis.** A second switch in Settings, beside the one for vibe embeddings, so you choose which steps use the GPU. Both use the same GPU download; it is removed when both are off. At every start the GPU is checked against the CPU's answers; if it disagrees, or fails mid-run, analysis runs on the CPU.
-- **The GPU switches apply on their own.** Flip one and, within about a minute, the analyzer it belongs to finishes the songs it is on and restarts itself on or off the GPU; there is nothing to restart by hand. Settings says when a switch is still applying, when the GPU session fell back to the CPU, and when the analyzer that does the download is not running. On docker-compose installs both analyzers can now write the shared GPU folder, which they could not before.
-- **Wipe and re-run enrichment.** Admins can clear what enrichment worked out (audio analysis, vibe data, the vibe map, artist bios, genres and similar artists) and run the whole library through the engine again, from the 1.11 window or Settings under Library Enrichment. The library, which recording and artist each file is, artist images, playlists, plays, likes and edits stay.
-- **A fifth enrichment step, Similarity.** It runs after vibe embeddings, computes each track's feel once, keeps the library's matching statistics current and lays out the vibe map; Settings shows its progress. A newly embedded track joins matching and the map when the step has run (seconds while enrichment is busy).
+- **Last.fm is gone, replaced everywhere.** No API keys, no account, nothing to configure:
+  - Similar artists: ListenBrainz → Deezer → local audio re-rank (above).
+  - Artist name resolution (aliases, misspellings): MusicBrainz.
+  - Track genres ("mood tags"): MusicBrainz recording genres.
+  - Artist biographies: Wikidata.
+  - Artwork: Deezer → Cover Art Archive → Fanart for albums; Fanart → Deezer for artists.
+  - Discover charts: ListenBrainz sitewide top artists.
+  - Identification: the file's MusicBrainz tag → the album's tracklist → MusicBrainz name search (title-checked) → AcoustID fingerprint.
+  - Scrobbling: optional ListenBrainz mirror; local play tracking needs nothing.
+- **Database:** `Track.lastfmTags` is renamed to `enrichmentTags` (it has held MusicBrainz genre tags since the Last.fm service was deleted). Four dead Last.fm columns are dropped from `SystemSettings`. The nightly-only `publicVibeEnabled` and `publicVibeUserId` columns are dropped too; the public feed is configured by environment variables now. If you keep dashboards or scripts against `lastfmTags`, repoint them.
+- **The galaxy map is the only vibe view.** The old Map view (deck.gl grid) and its toggle are gone; the Vibe page renders the 3D galaxy on every screen. Clicking a star shows that song over the right side of the map, with its moods, energy and valence and Play, Match Vibe, Similar and Song Path, and the map stays clickable around it; on phones the song opens in a sheet at the bottom. The former "you" star and its neighbour highlight are gone.
 
 ### Removed
 
-- **Stored artist averages.** The similar-artists re-rank averages each artist's tracks when asked, so the `artist_embeddings` table and its upkeep are gone. Migration `matching_engine` drops it and adds the similarity step's two tables; `npm run db:migrate` applies it.
 - **The old map positions.** Migration `matching_map` drops the three position columns on `track_embeddings` and the map's Redis copy is no longer kept; the similarity step lays every library out again from its own data.
 - **`CLAP_SLEEP_INTERVAL` and `AUDIO_ANALYSIS_INTERVAL`.** Neither changed anything; the analyzers wait on their queues (`AUDIO_BRPOP_TIMEOUT` still sets how long).
+- **Artwork consolidation.** `backend/src/services/artwork.ts` is the single artwork door; the four previous call paths (including `imageProvider.ts`) are absorbed into it. Each of albums and artists walks one ordered source list and takes the first real answer; a source that throws is not evidence of absence.
 
 ### Fixed
 
 - **Audio analysis reads stereo correctly.** Tempo, key, energy and the mood scores were computed from a garbled signal; a re-run of enrichment recomputes them.
-- **Wipe and re-run finishes when files are missing.** Tracks whose files are gone no longer hold the vibe map back from being laid out.
-- **Wipe and re-run starts identifying straight away**, instead of waiting 15 minutes on songs that were mid-lookup when it was pressed.
 - **Enrichment restarts after Stop, and after a server restart.** Run Enrichment and wipe and re-run lift a stop or pause; a restart no longer blocks enrichment for up to four hours.
 - **ListenBrainz receives your listens.** Plays were sent in a format ListenBrainz rejects.
 - **Spotify playlist imports find songs that arrive later** for artists with many tracks or multi-word names, and no longer add another artist's song with the same short title.
-- **The false-starts cleanup never offers to delete a real listen** recorded since 1.11.
 - **Radio, shuffle and the Similar Artists mix skip missing or broken files.**
 - **A cover or picture that failed to load is retried** instead of being remembered as "none" for a day; the Popular Artists row on Home shows pictures.
 - **Soulseek: the Test button works for slskd setups**, and download preferences are no longer greyed out for them.
@@ -56,11 +72,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Queue buttons show on phones and to keyboard users.**
 - **The same song played twice in a row counts twice.**
 - **Vibe map:** Blend's buttons stay reachable on short screens; song path and similar say why they failed; Escape closes Song Path and Blend; vibe queues always play in order; the camera no longer jumps home when the window is resized.
-- **Desktop pages scroll again** (broken in a 1.11 preview).
-- **Sound vectors from 1.10 are made again on upgrade.** 1.10 used a different sound model under the same name, so old and new vectors would have been compared as if alike.
 - **Songs are matched to the right recording.** Every way Kima identifies a song (its ISRC, its album's tracklist, a name search, its audio fingerprint) now checks the title, the version (remix, live, acoustic...), the artist and the length before accepting an answer; before, an ISRC or a name search took the first hit. A file's own MusicBrainz recording tag is used first. Wipe and re-run checks every song again.
 - **An artist's MusicBrainz id comes from the right tag.** When the artist name came from the album-artist tag, the id was taken from the track-artist tag. An artist whose stored id belongs to someone else loses it, with the bio, genres and similar artists that came with it; local artist images stay.
-- **Similar artists are ranked by similarity**, using ListenBrainz's similar-artists data (the same as its artist pages) instead of how often one recording was played.
 - **A failed Wikidata lookup keeps the artist's bio** instead of replacing it and remembering the failure for 30 days.
 - **Artists with more than 100 releases** have their whole catalogue checked.
 - **A late or repeated report from an analyzer can no longer overwrite a finished step**, and retrying failed analysis or rebuilding embeddings no longer reopens tracks whose files are missing.
@@ -70,7 +83,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Audio analysis listens to the end of each song.** It reads the last 90 seconds, where songs build to, instead of the first 90.
 - **Audio analysis never stores guesses.** If the analysis models are missing or fail, the song is retried instead of being given moods, valence and danceability estimated from its key and tempo.
 - **Enrichment finishes instead of starting over.** A song's identification is no longer handed out again after 30 seconds while it waits its turn, a job handed out again does no work, and waiting for an outside service no longer counts as a failed try. Only real failures use up a song's four tries.
-- **Songs are identified from their album first.** One MusicBrainz request for an album's tracklist answers every song on it, so a library is identified with far fewer requests; the earliest official release is used, and on a compilation the song credited to the track's artist is taken.
 - **An artist whose lookup keeps failing stops being retried every cycle** after four failures, and an artist left half-done by a restart is picked up again. A failed similar-artists source no longer wipes the similar artists already stored.
 - **A malformed MusicBrainz id in a file's tags is ignored** rather than sent to MusicBrainz and Wikidata.
 - **A song whose fingerprint can't be made is still identified** by its tags and a name search; it was closed unidentified.
@@ -84,6 +96,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **One song preview plays at a time on every page,** and the main player resumes when a preview stops, ends or fails; a preview that could not play left it paused.
 - **Removing a podcast that fails says so** instead of doing nothing.
 - **Carousel arrows and track play buttons show for the keyboard,** not only for the mouse; the previous and next episode rows are buttons.
+- **A second "Sync library" press within five seconds is no longer silently ignored.** The server already refuses a scan while one is running.
+- **The activity panel's tabs have names.** Screen readers heard only the unread count ("15"); each tab is now named and says whether it is open, and the panel toggle points at the panel it opens on desktop.
+- **A file that cannot be read is no longer counted as added.** The scan counted every new file before reading it, so an unreadable file showed up as "added" on every scan while never reaching the library. It now counts only as an error.
+- **Podcast subscribe returns 422 on an unreadable feed, not 500.**
 
 ### Security
 
@@ -92,57 +108,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Infrastructure
 
 - **The public export's nearest-track lists are computed in a worker thread**, and one export builds at a time: a library change during a build is built once that build ends.
-
-## [1.11.0] - 2026-10-05
-
-### Added
-
-- **The Stats page.** Everything on it is computed from your own listening: most-replayed tracks, the artists that carry half of everything you play, how much of your library has never been heard, and how habits shift between weeks, months, and all time. Play counts in the player come from the same listen definition; tracks never played say so instead of showing zero. Includes `verify-stats.ts` (67 independent cross-checks) and ten live end-to-end journeys covering the four destructive audit buttons with database-level verification.
-- **Scrobbling to ListenBrainz, opt-in.** Plays are recorded locally as always; setting a ListenBrainz user token mirrors each play to ListenBrainz's open API. Fire-and-forget: never awaited, rejections logged, no token means skipped, a ListenBrainz outage cannot fail a play or touch stats. The token is stored encrypted.
-- **Similar artists rebuilt for discovery.** Candidates come from ListenBrainz's worldwide top-artist data first (free, no key, no account), with Deezer related artists as fallback; your library's audio-analysis centroids re-rank the merged list by up to ±0.1 so taste leans yours without hiding them. Artists not in your library are flagged `inLibrary: false` so they can be offered for download.
-- **Track identification without ISRC.** A file's MusicBrainz recording-id tag answers first when present; otherwise a title-checked MusicBrainz name search runs, and AcoustID fingerprint lookup (fpcalc) handles the remainder. The order is set by a full-library measurement of hit quality. Resolution outcomes are counted per path so the mix is observable.
-- **A queue-length setting** in Settings > Playback (default 10000, min 100, max 100000).
-- **A public vibe feed, off by default.** With `KIMA_PUBLIC_VIBE=true`, a token and a username set (see `.env.example`), `/api/public/vibe` serves the owned library as one gzipped export (positions, moods, nearest tracks; suggested albums and missing files are left out) and that user's listening as it happens: play, pause, seek, skip, stop and up-next, from the web player and from Subsonic clients' now-playing. That user gets a "Share what I'm playing" switch under Settings → Scrobbling; off, the feed reads `hidden` and drops their plays until it is turned back on. Subsonic clients do not report pausing, so a paused phone app reads as playing until the track's length plus 30 seconds has passed, then stopped. Without the variable the routes do not exist.
-- **The vibe analyzer is now ONNX** — torch-free, reproducible from public sources. The audio and text ONNX exports are built from the public `laion/clap-htsat-unfused` checkpoint and verified against fixed hashes at build time; the mel-spectrogram path is vendored as pure numpy so the stack runs without torch. Existing embeddings are from the old model; the window offers a re-embed run.
-- **A choice about your saved mood mix.** Moods were being read backwards, so a mood mix saved before 1.11 was picked from the wrong values. The release window asks what to do with it: rebuild it, keep it, or save it as an ordinary playlist (saving and rebuilding can be combined). A mix saved under a mood 1.11 removed (High Energy, Focus Mode, Deep Feels, Acoustic Vibes) can no longer be shown, so it offers save-as-playlist or remove instead, and is asked about again on the next visit until answered. Nothing is deleted until the user chooses.
-
-### Changed
-
-- **Last.fm is gone, replaced everywhere.** No API keys, no account, nothing to configure:
-  - Similar artists: ListenBrainz → Deezer → local audio re-rank (above).
-  - Artist name resolution (aliases, misspellings): MusicBrainz.
-  - Track genres ("mood tags"): MusicBrainz recording genres.
-  - Artist biographies: Wikidata.
-  - Artwork: Deezer → Cover Art Archive → Fanart for albums; Fanart → Deezer for artists.
-  - Discover charts: ListenBrainz sitewide top artists.
-  - Identification: MusicBrainz name search (title-checked) → AcoustID fingerprint.
-  - Scrobbling: optional ListenBrainz mirror; local play tracking needs nothing.
-- **Database:** `Track.lastfmTags` is renamed to `enrichmentTags` (it has held MusicBrainz genre tags since the Last.fm service was deleted). Four dead Last.fm columns are dropped from `SystemSettings`. The nightly-only `publicVibeEnabled` and `publicVibeUserId` columns are dropped too; the public feed is configured by environment variables now. If you keep dashboards or scripts against `lastfmTags`, repoint them.
-- **Vibe similar-tracks no longer bury under-analyzed tracks.** Scorers previously treated a missing feature as a neutral 0.5 at full weight, capping any partially-analyzed candidate below ~0.87 however well it matched. Both paths now average only over features that are present; fully-analyzed libraries score exactly as before. The features-only path also reports a real `1 - similarity` instead of a fabricated distance of zero.
-- **The galaxy map is now the only vibe view.** The old Map view (deck.gl grid) and its toggle are gone; the Vibe page now renders the 3D galaxy exclusively, mobile included. Clicking a star on desktop (or any viewport) opens a right-side track drawer that shows the selected track's cover, title, artist, dominant mood, energy, and valence, with Play / Match Vibe / Find similar / Song Path actions — the mobile bottom-sheet it previously lived behind is replaced by that same drawer. Selecting a track now focuses only that track; the former "you" star and its neighbor highlight are removed, and nearby labels are culled in screen space so a zoomed neighborhood shows at most five, non-overlapping names instead of the piled-up blur reported on the field.
-
-### Removed
-
-- **Artwork consolidation.** `backend/src/services/artwork.ts` is the single artwork door; the four previous call paths (including `imageProvider.ts`) are absorbed into it. Each of albums and artists walks one ordered source list and takes the first real answer; a source that throws is not evidence of absence.
-
-### Fixed
-
-- **The public library export answers at once.** It rebuilt on every request after any library change, which on a 9,100-track library took up to half a minute, past the 30-second limit of the frontend's proxy, so the request failed. Requests now get the last finished export while the next one builds in the background, and the first build starts when the server does; before it finishes the export answers 503 with Retry-After.
-- **Saving a ListenBrainz token keeps the rest of the settings page as it was.** Saving reloaded every setting, which briefly unmounted the page, dropped unsaved edits and hid the confirmation. The token no longer counts as an unsaved change either, since it saves on its own.
-- **A second "Sync library" press within five seconds is no longer silently ignored.** The server already refuses a scan while one is running.
-- **The activity panel's tabs have names.** Screen readers heard only the unread count ("15"); each tab is now named and says whether it is open, and the panel toggle points at the panel it opens on desktop.
-- **The GPU setting shows when the runtime has been removed or installed.** The settings page read the status once, before the analyzer acted on the switch, and kept showing "Runtime installed" after the runtime was gone. It now refreshes until the runtime matches the switch.
-- **GPU acceleration shows as active right after the analyzer restarts.** The analyzer only checked the GPU when its first job loaded the model, so an idle server kept asking for a restart that had already happened. It now opens one session at startup to check.
-- **A file that cannot be read is no longer counted as added.** The scan counted every new file before reading it, so an unreadable file showed up as "added" on every scan while never reaching the library. It now counts only as an error.
-- **The whats-new window queue.** Dismissing one release no longer reuses its window for the next; the "Take me to it" action defers the rest of the queue instead of chasing the user, and Escape with a confirmation open no longer dismisses the window underneath.
-- **Podcast subscribe returns 422 on an unreadable feed, not 500.**
-
-### Infrastructure
-
 - **Enrichment hardening.** Failed status is genuine (crash-safe boot, honest route responses), the false-heartbeat hang class is gone, and a corrupted file can no longer disable all embeddings.
 - **Backend route tests keep one server per test app.** Handed a bare app, supertest opened a new server on a fresh port for every request; under parallel workers a request sometimes reached the wrong socket and the suite failed on a different test each time (a 303 or 404 from another app, or an HTTP parse error). A test app now keeps one server until its file finishes.
 - **A gate journey file for the features the walkthrough never touched:** the notification tray, ListenBrainz scrobbling, the public library export and live feed, the GPU switch, and the release window.
-- **Migrations for upgraders from 1.10:** `release_acknowledgements`, `play_audit_ignore`, `max_queue_length`, `acoustid_identification`, `track_embeddings_constraint_repair`, `resolve_soulseek_fallback_split`, `drop_analysis_status_audit`, `add_artist_embeddings`, `add_listenbrainz_user_token`, `rename_lastfm_tags_to_enrichment`. All are applied automatically by `npm run db:migrate` on deploy; the constraint-repair migration restores the track-embeddings primary key, foreign key, HNSW index, and model-version index. A soulseek-fallback settings split is resolved, and the boot-time fake migration rows the old Dockerfile wrote are gone.
+- **Migrations for upgraders from 1.10:** 44 of them, applied automatically by `npm run db:migrate` on deploy. Among them: the track-embeddings constraint repair restores the primary key, foreign key, HNSW index and model-version index; `matching_engine` adds the similarity step's tables; `matching_map` drops the old map position columns; `analysis_v4` and `sound_vector_label` have every song analysed and given a sound vector again; `database_clock_utc` sets the database clock to UTC. The boot-time fake migration rows the old Dockerfile wrote are gone.
 
 ## [1.10.1] - 2026-08-25
 
