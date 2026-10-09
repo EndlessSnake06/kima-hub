@@ -425,10 +425,9 @@ The unified Kima container handles most configuration automatically. Here are th
 | `TZ`                                | `UTC`                              | Timezone for the container                                                  |
 | `PORT`                              | `3030`                             | Port to access Kima                                                       |
 | `KIMA_CALLBACK_URL`               | `http://host.docker.internal:3030` | URL for Lidarr webhook callbacks (see [Lidarr integration](#lidarr))        |
-| `AUDIO_ANALYSIS_WORKERS`            | `2`                                | Number of parallel workers for audio analysis (1-8)                         |
-| `AUDIO_ANALYSIS_THREADS_PER_WORKER` | `1`                                | Threads per worker for TensorFlow/FFT operations (1-4)                      |
-| `AUDIO_ANALYSIS_BATCH_SIZE`         | `10`                               | Tracks per analysis batch                                                   |
-| `AUDIO_BRPOP_TIMEOUT`              | `30`                               | Redis blocking wait timeout in seconds (also controls DB reconciliation)     |
+| `AUDIO_ANALYSIS_WORKERS`            | `2`                                | Analysis workers until set in Settings (up to the machine's cores)          |
+| `AUDIO_ANALYSIS_THREADS_PER_WORKER` | `1`                                | Threads per analysis worker for the models and maths (1-4)                   |
+| `AUDIO_BRPOP_TIMEOUT`              | `30`                               | Seconds the analyzer waits for work before checking again                    |
 | `AUDIO_MODEL_IDLE_TIMEOUT`         | `300`                              | Seconds before unloading idle ML models to free memory (0 = never unload)    |
 | `LOG_LEVEL`                         | `warn` (prod) / `debug` (dev)      | Logging verbosity: debug, info, warn, error, silent                         |
 | `DOCS_PUBLIC`                       | `false`                            | Set to `true` to allow public access to API docs in production              |
@@ -529,7 +528,6 @@ Environment variables in docker-compose.yml:
 | ------------------------- | ------- | ------------------------------------------ |
 | `CLAP_WORKERS`            | `2`     | Number of analysis workers (1-8)           |
 | `CLAP_THREADS_PER_WORKER` | `1`     | CPU threads per worker (1-4)               |
-| `CLAP_SLEEP_INTERVAL`     | `5`     | Queue poll interval in seconds             |
 
 ### Usage
 
@@ -1092,6 +1090,8 @@ Kima is released under the [GNU General Public License v3.0](LICENSE).
 
 You are free to use, modify, and distribute this software under the terms of the GPL-3.0 license.
 
+The feel weights in `backend/src/services/matching/feelProbe.json` are derived from the DEAM dataset and are licensed separately under Creative Commons BY-NC, the terms DEAM's authors release it under.
+
 ---
 
 ## Acknowledgments
@@ -1108,6 +1108,7 @@ Kima wouldn't be possible without these services and projects:
 -   [Fanart.tv](https://fanart.tv/) - Artist images and artwork
 -   [Lidarr](https://lidarr.audio/) - Music collection management
 -   [Audiobookshelf](https://www.audiobookshelf.org/) - Audiobook and podcast server
+-   [DEAM](https://cvml.unige.ch/databases/DEAM/) (Aljanaki, Yang & Soleymani, PLOS ONE 2017) - Human valence and arousal ratings behind the feel part of matching
 
 ---
 

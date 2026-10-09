@@ -5,6 +5,93 @@ All notable changes to Kima will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - nightly
+
+### Changed
+
+- **Vibe matching uses sound, feel and artist genre.** Similar tracks, recommendations from a track, Alchemy, Song Path, the public export's nearest tracks and the similar-artists re-rank now share one formula: how a track sounds (CLAP), how it feels (valence and arousal read from the sound and set against your own library's range, weight 0.25), and its artist's MusicBrainz genres (weight 0.25, counted only between different artists). Every list holds at most 2 tracks per album and 4 per artist. Text search still matches on sound alone; radio stations and artist radio are unchanged. The feel weights are derived from the DEAM dataset and licensed separately (see the README).
+- **Song Path answers 400 for a track that has not been analysed yet.** It answered 500.
+- **The vibe map is a picture of the matching.** Each track sits where the same formula places it among its closest matches (sound, feel and artist genre), laid out by UMAP's published method in Kima's own code; on a 9,027-track library 68% of each track's 10 closest matches sit among its 50 nearest stars. The similarity step lays a library's map out once and then places each new track among the others: a track that has a place never moves, and every server computes the same map. The page only draws it. The home view frames the map on any screen, phone included.
+- **The update window is rewritten.** It opens on a note from Kevin and a short list of what's new; each line opens its own page with the buttons and links for it. The copy says plainly what each thing does.
+- **The vibe map opens without mood names.** The tag button shows them; the choice is remembered.
+- **The vibe map looks like a universe.** Each song is a crisp star, a bright few over a faint many; a very faint glow sits behind everything and sparse stars in the far distance give it depth, as in Kima v2's galaxy. Songs stay exactly where the matching places them; the fog around clusters and the coloured glow on them are gone.
+- **A phone on its side gets more room.** On short landscape screens the top bar, the bottom bar (icon beside its label) and the mini player are slimmer on every page, so the content shows about 180 px instead of 110.
+- **The vibe map on phones is rebuilt.** Search across the top with the two map buttons beside it, the moods in one row under it, Song Path and Blend on the right edge in thumb reach, and a sheet that shows only its handle until you pick a song. Song Path from the toolbar and from a song are now the same feature.
+- **Lyrics scroll inside their own box.** Opening them no longer slides the whole app sideways.
+- **Everything is lowercase.** Every page, menu, dialog, tooltip and dropdown shows lowercase text, as in Kima v2. Typed, copied and submitted text keeps its case, and keys, codes and addresses show exactly as they are.
+- **Lyrics open inside the full-screen player on desktop.** The button opened them in the side panel, behind the player.
+- **The Stats page says what each number is.** Labels are short and lowercase, "plays" is the one word for a listen, and a count of one is singular. Two lines that said the wrong thing are fixed: the Discover line counted plays but called them tracks, and the album-order figure no longer pairs "0% in order" with "you play albums, not songs". The key wheel's inner ring names its minor keys. The iOS app uses the same wording.
+- **Audio analysis keeps every worker busy.** Workers take the next track as soon as they finish one; before, they took tracks ten at a time and waited for the slowest, so at most ten were ever busy. Moving the workers slider while enrichment runs no longer caps it at 8.
+- **Audio analysis runs MusiCNN on ONNX Runtime, without TensorFlow.** The models are Essentia's own, converted when the image is built; the build fails unless they give Essentia's answers (on 16 library tracks the stored values agree within 0.000004). The image no longer carries two copies of TensorFlow.
+- **Sound vectors take one model call per track** instead of five, so a GPU is no longer left idle between clips.
+- **The new Kima mark.** The logo in the app is the waveform in the new gradient, amber at the top through rose and violet to azure, its colour gently shifting like the mobile app's; still when the system asks for reduced motion.
+
+### Added
+
+- **NVIDIA GPU for audio analysis.** A second switch in Settings, beside the one for vibe embeddings, so you choose which steps use the GPU. Both use the same GPU download; it is removed when both are off. At every start the GPU is checked against the CPU's answers; if it disagrees, or fails mid-run, analysis runs on the CPU.
+- **Wipe and re-run enrichment.** Admins can clear what enrichment worked out (audio analysis, vibe data, the vibe map, artist bios, genres and similar artists) and run the whole library through the engine again, from the 1.11 window or Settings under Library Enrichment. The library, which recording and artist each file is, artist images, playlists, plays, likes and edits stay.
+- **A fifth enrichment step, Similarity.** It runs after vibe embeddings, computes each track's feel once, keeps the library's matching statistics current and lays out the vibe map; Settings shows its progress. A newly embedded track joins matching and the map when the step has run (seconds while enrichment is busy).
+
+### Removed
+
+- **Stored artist averages.** The similar-artists re-rank averages each artist's tracks when asked, so the `artist_embeddings` table and its upkeep are gone. Migration `matching_engine` drops it and adds the similarity step's two tables; `npm run db:migrate` applies it.
+- **The old map positions.** Migration `matching_map` drops the three position columns on `track_embeddings` and the map's Redis copy is no longer kept; the similarity step lays every library out again from its own data.
+- **`CLAP_SLEEP_INTERVAL` and `AUDIO_ANALYSIS_INTERVAL`.** Neither changed anything; the analyzers wait on their queues (`AUDIO_BRPOP_TIMEOUT` still sets how long).
+
+### Fixed
+
+- **Audio analysis reads stereo correctly.** Tempo, key, energy and the mood scores were computed from a garbled signal; a re-run of enrichment recomputes them.
+- **Wipe and re-run finishes when files are missing.** Tracks whose files are gone no longer hold the vibe map back from being laid out.
+- **Wipe and re-run starts identifying straight away**, instead of waiting 15 minutes on songs that were mid-lookup when it was pressed.
+- **Enrichment restarts after Stop, and after a server restart.** Run Enrichment and wipe and re-run lift a stop or pause; a restart no longer blocks enrichment for up to four hours.
+- **ListenBrainz receives your listens.** Plays were sent in a format ListenBrainz rejects.
+- **Spotify playlist imports find songs that arrive later** for artists with many tracks or multi-word names, and no longer add another artist's song with the same short title.
+- **The false-starts cleanup never offers to delete a real listen** recorded since 1.11.
+- **Radio, shuffle and the Similar Artists mix skip missing or broken files.**
+- **A cover or picture that failed to load is retried** instead of being remembered as "none" for a day; the Popular Artists row on Home shows pictures.
+- **Soulseek: the Test button works for slskd setups**, and download preferences are no longer greyed out for them.
+- **A wrong password or 2FA code says so** instead of "Not authenticated".
+- **Copy buttons work on plain-http installs** (recovery codes, Subsonic tokens, share links).
+- **Queue buttons show on phones and to keyboard users.**
+- **The same song played twice in a row counts twice.**
+- **Vibe map:** Blend's buttons stay reachable on short screens; song path and similar say why they failed; Escape closes Song Path and Blend; vibe queues always play in order; the camera no longer jumps home when the window is resized.
+- **Desktop pages scroll again** (broken in a 1.11 preview).
+- **Sound vectors from 1.10 are made again on upgrade.** 1.10 used a different sound model under the same name, so old and new vectors would have been compared as if alike.
+- **Songs are matched to the right recording.** Every way Kima identifies a song (its ISRC, its album's tracklist, a name search, its audio fingerprint) now checks the title, the version (remix, live, acoustic...), the artist and the length before accepting an answer; before, an ISRC or a name search took the first hit. A file's own MusicBrainz recording tag is used first. Wipe and re-run checks every song again.
+- **An artist's MusicBrainz id comes from the right tag.** When the artist name came from the album-artist tag, the id was taken from the track-artist tag. An artist whose stored id belongs to someone else loses it, with the bio, genres and similar artists that came with it; local artist images stay.
+- **Similar artists are ranked by similarity**, using ListenBrainz's similar-artists data (the same as its artist pages) instead of how often one recording was played.
+- **A failed Wikidata lookup keeps the artist's bio** instead of replacing it and remembering the failure for 30 days.
+- **Artists with more than 100 releases** have their whole catalogue checked.
+- **A late or repeated report from an analyzer can no longer overwrite a finished step**, and retrying failed analysis or rebuilding embeddings no longer reopens tracks whose files are missing.
+- **Audio analysis measures what it says.** Mono files are analysed at their real level (they were read 3 dB quiet); loudness is EBU R128 loudness and loudness range; danceability comes from the danceability model; silence and tracks under 3 seconds get no tempo, key or mood instead of made-up ones. Older analyses are redone on upgrade.
+- **A song whose audio can't be read in full gets no sound vector** and is retried, instead of a vector averaged from the parts that loaded.
+- **Analysis and sound-vector times are stored correctly** on servers whose clock is not set to UTC (they were 5 hours off).
+- **Audio analysis listens to the end of each song.** It reads the last 90 seconds, where songs build to, instead of the first 90.
+- **Audio analysis never stores guesses.** If the analysis models are missing or fail, the song is retried instead of being given moods, valence and danceability estimated from its key and tempo.
+- **Enrichment finishes instead of starting over.** A song's identification is no longer handed out again after 30 seconds while it waits its turn, a job handed out again does no work, and waiting for an outside service no longer counts as a failed try. Only real failures use up a song's four tries.
+- **Songs are identified from their album first.** One MusicBrainz request for an album's tracklist answers every song on it, so a library is identified with far fewer requests; the earliest official release is used, and on a compilation the song credited to the track's artist is taken.
+- **An artist whose lookup keeps failing stops being retried every cycle** after four failures, and an artist left half-done by a restart is picked up again. A failed similar-artists source no longer wipes the similar artists already stored.
+- **A malformed MusicBrainz id in a file's tags is ignored** rather than sent to MusicBrainz and Wikidata.
+- **A song whose fingerprint can't be made is still identified** by its tags and a name search; it was closed unidentified.
+- **An artist is asked again after a MusicBrainz outage** instead of being marked done without its genres.
+- **Upgrading works on a database Kima's user doesn't own** (an external Postgres); the clock setting falls back to the user's own.
+- **A song's genres are its recording's own MusicBrainz genres** whichever way it was identified; songs identified from their album's tracklist were given crowd tags or, without them, the album's genres. Spotify playlist import and shared links pick MusicBrainz's recording by title, version, artist and length too, instead of taking its first answer. On upgrade each album's tracklist is fetched once more (two MusicBrainz requests per album).
+- **Enrichment says it is finished only when it is.** It waited for neither identification answers due a retry nor artists still being looked up, and a question someone set aside counted as still to do, which also kept the vibe map from being laid out.
+- **Audio analysis reads the real end of a song** when the file's header gives a shorter length than the audio has.
+- **Mood tags read what was measured.** A song whose tempo could not be read was tagged slow, and a valence or energy of exactly 0 was read as middling, so those songs missed "sad" and "calm".
+- **A vibe started from the map shows its match score** in the full player, as one started from the player does.
+- **One song preview plays at a time on every page,** and the main player resumes when a preview stops, ends or fails; a preview that could not play left it paused.
+- **Removing a podcast that fails says so** instead of doing nothing.
+- **Carousel arrows and track play buttons show for the keyboard,** not only for the mouse; the previous and next episode rows are buttons.
+
+### Security
+
+- **Next.js 16.3.8 and proxy-addr 2.0.8.** Patch updates for published advisories: Next.js 16.0 to 16.3.7, and proxy-addr's client-address check, which IPv4-mapped IPv6 addresses could get past. The production dependencies of both apps now audit clean.
+
+### Infrastructure
+
+- **The public export's nearest-track lists are computed in a worker thread**, and one export builds at a time: a library change during a build is built once that build ends.
+
 ## [1.11.0] - 2026-10-05
 
 ### Added
