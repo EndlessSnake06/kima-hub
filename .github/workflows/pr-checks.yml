@@ -145,7 +145,7 @@ jobs:
               # tests PyTorch too); the image build runs verify_runtime.py against the
               # real model instead.
               run: >-
-                  python -m pytest test_gpu_nobody_pays.py test_one_thread.py test_ship_blocker.py
+                  python -m pytest test_gpu_nobody_pays.py test_gpu_switch.py test_one_thread.py test_ship_blocker.py
                   test_window_offsets.py test_window_sweep.py -v
                   --deselect test_ship_blocker.py::test_ensure_onnx_backend_eagerly_loads_model
 

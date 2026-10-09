@@ -75,7 +75,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Application code -- ALL of the runtime modules. analyzer.py imports
 # onnx_backend at module load, which imports clap_mel. verify_runtime.py and
 # the fixtures ride along for the build-time parity gate below.
-COPY analyzer.py onnx_backend.py clap_mel.py verify_runtime.py gpu_runtime.py ./
+COPY analyzer.py onnx_backend.py clap_mel.py verify_runtime.py gpu_runtime.py gpu_switch.py ./
 COPY gpu_env.sh /app/gpu_env.sh
 RUN chmod +x /app/gpu_env.sh
 COPY test_fixtures/ ./test_fixtures/
@@ -126,9 +126,10 @@ RUN LAION='https://huggingface.co/laion/clap-htsat-unfused/resolve/8fa0f1c6d0433
 # here instead of shipping an image that embeds into a different space.
 RUN HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python verify_runtime.py
 
-# Create non-root user
+# /gpu-onnx is where compose mounts the shared GPU runtime volume; a new or empty volume takes this folder's owner.
 RUN useradd -m -u 1000 analyzer && \
-    chown -R analyzer:analyzer /app
+    mkdir -p /gpu-onnx && \
+    chown -R analyzer:analyzer /app /gpu-onnx
 
 USER analyzer
 

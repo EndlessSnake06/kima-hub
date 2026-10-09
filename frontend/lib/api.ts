@@ -186,6 +186,11 @@ export interface GpuRuntimeStatus {
     installed: boolean;
     installing: boolean;
     effective: boolean;
+    /** The analyzer started with the runtime and its session did not get the GPU. */
+    fellBack: boolean;
+    analysisFellBack: boolean;
+    /** The vibe embeddings analyzer, which downloads the runtime for both switches, is running. */
+    installerUp: boolean;
     status: string;
     reason: string | null;
     detail: string | null;

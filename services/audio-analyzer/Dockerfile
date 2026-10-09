@@ -50,11 +50,14 @@ RUN cd /tmp/musicnn-gate && python3 convert_musicnn.py gate /app/models /app/mod
 
 # analyzer.py imports classifier and musicnn_onnx at load. The wrapper puts the shared
 # GPU runtime on the path when "GPU for audio analysis" is on.
-COPY services/audio-analyzer/analyzer.py services/audio-analyzer/classifier.py services/audio-analyzer/musicnn_onnx.py ./
+COPY services/audio-analyzer/analyzer.py services/audio-analyzer/classifier.py services/audio-analyzer/musicnn_onnx.py \
+     services/audio-analyzer-clap/gpu_switch.py ./
 COPY services/audio-analyzer-clap/gpu_env.sh /app/gpu_env.sh
 
+# /gpu-onnx is where compose mounts the shared GPU runtime volume; a new or empty volume takes this folder's owner.
 RUN useradd -m -u 1000 analyzer && \
-    chown -R analyzer:analyzer /app
+    mkdir -p /gpu-onnx && \
+    chown -R analyzer:analyzer /app /gpu-onnx
 
 USER analyzer
 

@@ -230,17 +230,19 @@ const confirmMeta: Record<
 function gpuSettling(g: GpuRuntimeStatus): boolean {
     if (g.installing) return true;
     if (!g.enabled && !g.analysis) return g.installed;
-    return !g.installed && g.status !== "failed";
+    if (!g.installed) return g.status !== "failed";
+    return (g.enabled && !g.effective && !g.fellBack) || (g.analysis && !g.analysisEffective && !g.analysisFellBack);
 }
 
-/** One GPU switch and the state it was measured in; `on` and `effective` are that switch's. */
-function GpuSwitchRow({ id, label, description, gpu, on, effective, pending, onChange }: {
+/** One GPU switch and the state it was measured in; `on`, `effective` and `fellBack` are that switch's. */
+function GpuSwitchRow({ id, label, description, gpu, on, effective, fellBack, pending, onChange }: {
     id: string;
     label: string;
     description: string;
     gpu: GpuRuntimeStatus | null;
     on: boolean;
     effective: boolean;
+    fellBack: boolean;
     pending: boolean;
     onChange: (checked: boolean) => void;
 }) {
@@ -252,10 +254,14 @@ function GpuSwitchRow({ id, label, description, gpu, on, effective, pending, onC
                     <span
                         data-testid={`${id}-status`}
                         className={`text-xs text-right ${
-                            gpu.status === "failed" ? "text-warning" : effective ? "text-success" : "text-[var(--text-muted)]"
+                            gpu.status === "failed" || (on && fellBack)
+                                ? "text-warning"
+                                : effective
+                                  ? "text-success"
+                                  : "text-[var(--text-muted)]"
                         }`}
                     >
-                        {gpuStatusText(gpu, on, effective)}
+                        {gpuStatusText(gpu, on, effective, fellBack)}
                     </span>
                 )}
             </div>
@@ -263,7 +269,7 @@ function GpuSwitchRow({ id, label, description, gpu, on, effective, pending, onC
     );
 }
 
-function gpuStatusText(g: GpuRuntimeStatus, on: boolean, effective: boolean): string {
+function gpuStatusText(g: GpuRuntimeStatus, on: boolean, effective: boolean, fellBack: boolean): string {
     if (g.installing) return "Downloading GPU runtime (~2 GB)…";
     if (g.status === "failed") {
         switch (g.reason) {
@@ -277,6 +283,8 @@ function gpuStatusText(g: GpuRuntimeStatus, on: boolean, effective: boolean): st
                 return "Failed: Linux x86_64 only";
             case "checksum_mismatch":
                 return "Failed: checksum mismatch";
+            case "removal_failed":
+                return "Failed: could not remove the GPU runtime from the data directory";
             default:
                 return `Failed: ${g.reason || "install error"}.`;
         }
@@ -286,9 +294,12 @@ function gpuStatusText(g: GpuRuntimeStatus, on: boolean, effective: boolean): st
             ? "Runtime installed; GPU is off."
             : "Off (CPU)";
     if (effective) return "Active";
+    if (fellBack) return "Installed, but the GPU session fell back to the CPU";
     if (g.installed)
-        return "Installed, applies after analyzer restart";
-    return "Enabled, downloading";
+        return "Installed, applying (the analyzer restarts between songs)";
+    return g.installerUp
+        ? "Enabled, downloading"
+        : "Waiting for the vibe embeddings analyzer, which does the download";
 }
 
 export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
@@ -1241,10 +1252,11 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                     <GpuSwitchRow
                         id="gpu-onnx-toggle"
                         label="NVIDIA GPU for vibe embeddings"
-                        description="Run vibe embeddings on an NVIDIA GPU. Downloads about 2 GB of pinned packages into the data directory (they take about 3.4 GB); takes effect the next time the analyzer starts."
+                        description="Run vibe embeddings on an NVIDIA GPU. Downloads about 2 GB of pinned packages into the data directory (they take about 3.4 GB) the first time. Applies on its own within a minute: the analyzer finishes the songs it is on, then restarts."
                         gpu={gpuStatus ?? null}
                         on={gpuStatus?.enabled ?? false}
                         effective={gpuStatus?.effective ?? false}
+                        fellBack={gpuStatus?.fellBack ?? false}
                         pending={setGpuMutation.isPending}
                         onChange={(checked) => setGpuMutation.mutate(checked)}
                     />
@@ -1253,10 +1265,11 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                     <GpuSwitchRow
                         id="gpu-analysis-toggle"
                         label="NVIDIA GPU for audio analysis"
-                        description="Run the mood, valence and arousal models on an NVIDIA GPU. Uses the same download as vibe embeddings; takes effect the next time the analyzer starts."
+                        description="Run the mood, valence and arousal models on an NVIDIA GPU. Uses the same download as vibe embeddings. Applies on its own within a minute: the analyzer finishes the songs it is on, then restarts."
                         gpu={gpuStatus ?? null}
                         on={gpuStatus?.analysis ?? false}
                         effective={gpuStatus?.analysisEffective ?? false}
+                        fellBack={gpuStatus?.analysisFellBack ?? false}
                         pending={setGpuAnalysisMutation.isPending}
                         onChange={(checked) => setGpuAnalysisMutation.mutate(checked)}
                     />

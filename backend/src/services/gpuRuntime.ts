@@ -30,7 +30,7 @@ interface GpuState {
     detail?: string | null;
     bytes?: number | null;
     pinned?: string[] | null;
-    provider?: { active?: boolean } | null;
+    provider?: { active?: boolean; measured?: boolean } | null;
     updatedAt?: string;
 }
 
@@ -77,13 +77,23 @@ export async function initGpuRuntimeProjection(): Promise<void> {
     }
 }
 
+// The vibe embeddings analyzer downloads the runtime for both switches; it writes this every 30 s while running.
+const INSTALLER_HEARTBEAT_KEY = "clap:worker:heartbeat";
+const INSTALLER_HEARTBEAT_MS = 90_000;
+
+async function installerUp(): Promise<boolean> {
+    const beat = Number(await redisClient.get(INSTALLER_HEARTBEAT_KEY));
+    return Number.isFinite(beat) && Date.now() - beat < INSTALLER_HEARTBEAT_MS;
+}
+
 export async function getGpuStatus() {
     const toggles = await readToggles();
     const enabled = toggles.soundVectors;
     const state = readJsonSafe<GpuState>(STATE_PATH) || {};
     const installed = state.status === "installed";
     const providerActive = state.provider?.active === true;
-    const analysisProviderActive = readJsonSafe<{ active?: boolean }>(ANALYSIS_PROVIDER_PATH)?.active === true;
+    const analysisProvider = readJsonSafe<{ active?: boolean; measured?: boolean }>(ANALYSIS_PROVIDER_PATH);
+    const analysisProviderActive = analysisProvider?.active === true;
     return {
         enabled,
         analysis: toggles.analysis,
@@ -91,6 +101,10 @@ export async function getGpuStatus() {
         installed,
         installing: state.status === "installing",
         effective: enabled && installed && providerActive,
+        // The analyzer started with the runtime and its session still did not get the GPU.
+        fellBack: enabled && installed && state.provider?.measured === true && !providerActive,
+        analysisFellBack: toggles.analysis && installed && analysisProvider?.measured === true && !analysisProviderActive,
+        installerUp: await installerUp(),
         status: state.status || "idle",
         reason: state.reason ?? null,
         detail: state.detail ?? null,

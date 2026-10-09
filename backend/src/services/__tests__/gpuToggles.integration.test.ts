@@ -9,7 +9,10 @@ import os from "os";
 import path from "path";
 
 const mockPublish = jest.fn().mockResolvedValue(1);
-jest.mock("../../utils/redis", () => ({ redisClient: { publish: (...a: unknown[]) => mockPublish(...a) } }));
+const mockGet = jest.fn().mockResolvedValue(null);
+jest.mock("../../utils/redis", () => ({
+    redisClient: { publish: (...a: unknown[]) => mockPublish(...a), get: (...a: unknown[]) => mockGet(...a) },
+}));
 
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gpu-toggles-"));
 process.env.DATA_DIR = dataDir;
@@ -63,5 +66,28 @@ describe("the two GPU switches", () => {
         fs.writeFileSync(path.join(root, "analysis-provider.json"), JSON.stringify({ active: true }));
         const status = await gpu.getGpuStatus();
         expect(status).toMatchObject({ analysis: true, analysisEffective: true, enabled: false, effective: false });
+    });
+
+    it("says a switch fell back only when its analyzer started with the runtime and still got no GPU", async () => {
+        await gpu.setGpuToggles({ soundVectors: true, analysis: true });
+        const state = (provider: object) =>
+            fs.writeFileSync(path.join(root, "state.json"), JSON.stringify({ status: "installed", provider }));
+        state({ active: false, measured: false });
+        fs.writeFileSync(path.join(root, "analysis-provider.json"), JSON.stringify({ active: false, measured: false }));
+        expect(await gpu.getGpuStatus()).toMatchObject({ fellBack: false, analysisFellBack: false });
+        state({ active: false, measured: true });
+        fs.writeFileSync(path.join(root, "analysis-provider.json"), JSON.stringify({ active: false, measured: true }));
+        expect(await gpu.getGpuStatus()).toMatchObject({ fellBack: true, analysisFellBack: true, effective: false });
+        state({ active: true, measured: true });
+        expect(await gpu.getGpuStatus()).toMatchObject({ fellBack: false, effective: true });
+    });
+
+    it("calls the downloader up only while the vibe embeddings analyzer's heartbeat is fresh", async () => {
+        mockGet.mockResolvedValueOnce(String(Date.now() - 10_000));
+        expect((await gpu.getGpuStatus()).installerUp).toBe(true);
+        mockGet.mockResolvedValueOnce(String(Date.now() - 10 * 60_000));
+        expect((await gpu.getGpuStatus()).installerUp).toBe(false);
+        mockGet.mockResolvedValueOnce(null);
+        expect((await gpu.getGpuStatus()).installerUp).toBe(false);
     });
 });

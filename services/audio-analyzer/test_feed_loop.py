@@ -208,3 +208,38 @@ def test_a_failed_claim_lookup_puts_the_jobs_back_in_order(monkeypatch):
     except RuntimeError:
         pass
     assert [json.loads(x)["trackId"] for x in w.redis.queue] == ["a", "b", "c"]
+
+
+def test_a_changed_gpu_switch_finishes_the_running_track_takes_nothing_new_and_stops(monkeypatch):
+    running, release = threading.Event(), threading.Event()
+
+    def run(args):
+        running.set()
+        release.wait(5)
+        return args[0], args[1], dict(FEATURES)
+
+    jobs = [{"trackId": f"t{i}", "filePath": f"/m/{i}", "jobId": f"t{i}-1-r0"} for i in range(4)]
+    w = make_worker(jobs, 1, monkeypatch, run)
+    beats = []
+    w.redis.set = lambda key, value: beats.append((key, time.time()))
+    w.db.connect = w.db.close = lambda: None
+    w._check_control_signals = w._apply_pending_resize = lambda: None
+    w._is_gate_closed = lambda: False
+    w.is_paused, w.pubsub, w._restarting, w.consecutive_empty = False, None, False, 0
+    w._last_work_time = time.time()
+    switched = [False]
+    monkeypatch.setattr(analyzer.gpu_switch, "restart_needed", lambda switch: switched[0])
+
+    loop = threading.Thread(target=w.start)
+    loop.start()
+    assert running.wait(5)
+    switched[0] = True
+    changed = time.time()
+    time.sleep(0.3)
+    release.set()
+    loop.join(10)
+    assert any(key == "audio:worker:heartbeat" and at > changed for key, at in beats), "no heartbeat while finishing"
+
+    assert not loop.is_alive(), "the worker kept running after the switch changed"
+    assert [e["trackId"] for e in w.redis.published] == ["t0"]
+    assert len(w.redis.queue) == 3, "it took new tracks after the switch changed"

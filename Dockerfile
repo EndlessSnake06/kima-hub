@@ -181,7 +181,7 @@ RUN if [ "$(uname -m)" = "x86_64" ]; then \
     && rm -rf /tmp/musicnn-gate
 
 # analyzer.py imports classifier and musicnn_onnx at load.
-COPY services/audio-analyzer/analyzer.py services/audio-analyzer/classifier.py services/audio-analyzer/musicnn_onnx.py /app/audio-analyzer/
+COPY services/audio-analyzer/analyzer.py services/audio-analyzer/classifier.py services/audio-analyzer/musicnn_onnx.py services/audio-analyzer-clap/gpu_switch.py /app/audio-analyzer/
 
 # ============================================
 # CLAP ANALYZER SETUP (Vibe Similarity)
@@ -197,7 +197,7 @@ COPY services/audio-analyzer-clap/analyzer.py /app/audio-analyzer-clap/
 COPY services/audio-analyzer-clap/onnx_backend.py /app/audio-analyzer-clap/
 COPY services/audio-analyzer-clap/clap_mel.py /app/audio-analyzer-clap/
 COPY services/audio-analyzer-clap/verify_runtime.py /app/audio-analyzer-clap/
-COPY services/audio-analyzer-clap/gpu_runtime.py /app/audio-analyzer-clap/
+COPY services/audio-analyzer-clap/gpu_runtime.py services/audio-analyzer-clap/gpu_switch.py /app/audio-analyzer-clap/
 COPY services/audio-analyzer-clap/gpu_env.sh /app/audio-analyzer-clap/
 RUN chmod +x /app/audio-analyzer-clap/gpu_env.sh
 COPY services/audio-analyzer-clap/test_fixtures/ /app/audio-analyzer-clap/test_fixtures/

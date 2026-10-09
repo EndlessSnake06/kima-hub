@@ -16,8 +16,6 @@ os.environ['OMP_NUM_THREADS'] = str(THREADS_PER_WORKER)
 os.environ['OPENBLAS_NUM_THREADS'] = str(THREADS_PER_WORKER)
 os.environ['MKL_NUM_THREADS'] = str(THREADS_PER_WORKER)
 os.environ['NUMEXPR_MAX_THREADS'] = str(THREADS_PER_WORKER)
-# Set by the GPU wrapper when "GPU for audio analysis" is on and the GPU runtime is installed.
-GPU_ANALYSIS = os.getenv('KIMA_GPU_ANALYSIS') == '1'
 
 
 # NOW safe to import other dependencies
@@ -55,6 +53,11 @@ from classifier import (
     Disposition,
 )
 from musicnn_onnx import PATCH_SECONDS
+import gpu_switch
+
+# True when the wrapper started this process with the GPU runtime ("GPU for audio analysis" on and the
+# runtime installed).
+GPU_ANALYSIS = gpu_switch.started_with_runtime()
 
 
 # Configure logging
@@ -257,7 +260,7 @@ def _record_gpu_provider(active: bool) -> None:
             os.remove(path)
         tmp = f"{path}.{os.getpid()}.tmp"
         with open(tmp, 'w') as f:
-            json.dump({'active': bool(active)}, f)
+            json.dump({'active': bool(active), 'measured': GPU_ANALYSIS}, f)
         os.replace(tmp, path)
     except OSError as e:
         logger.warning(f"Could not record the analysis GPU provider: {e}")
@@ -776,6 +779,7 @@ class AnalysisWorker:
         self.executor = None
         self.pool_active = False
         self.consecutive_empty = 0
+        self._restarting = False
         self.is_paused = False  # Enrichment control: pause state
         self.pubsub = None  # Redis pub/sub for control signals
         self._last_work_time = time.time()
@@ -991,9 +995,10 @@ class AnalysisWorker:
             pass
         logger.info("Worker pool shut down (will restart when work arrives)")
 
-    def _recreate_pool(self):
-        """Replace a broken or stuck pool with a new one."""
-        logger.warning("Recreating process pool due to broken workers...")
+    def _drop_pool(self):
+        """Kill a broken or stuck pool. The next job starts a fresh one, so an analyzer that is finishing up
+        to restart starts none."""
+        logger.warning("Killing the process pool: a worker died or is stuck")
 
         if self.executor:
             # A stuck worker would run on after shutdown(wait=False); stop it outright. The pool's
@@ -1006,13 +1011,6 @@ class AnalysisWorker:
                 logger.warning(f"Error during executor shutdown: {e}")
             self.executor = None
             self.pool_active = False
-
-        # Small delay to allow cleanup
-        time.sleep(2)
-
-        # Create fresh pool
-        self._ensure_pool()
-        logger.info(f"Process pool recreated with {NUM_WORKERS} workers")
     
     def start(self):
         """Start processing jobs with BRPOP-driven event loop"""
@@ -1038,11 +1036,22 @@ class AnalysisWorker:
         try:
             while self.running:
                 try:
-                    # Publish heartbeat
                     try:
                         self.redis.set("audio:worker:heartbeat", str(int(time.time() * 1000)))
                     except Exception:
                         pass
+
+                    # The GPU runtime is put on the path before Python starts, so a changed switch is
+                    # applied by restarting: take nothing new, finish what is running, then exit for the
+                    # supervisor (or Docker) to start this process again.
+                    if not self._restarting and gpu_switch.restart_needed('analysis'):
+                        logger.info("GPU switch changed: finishing running tracks, then restarting to apply it")
+                        self._restarting = True
+                    if self._restarting:
+                        self._collect(timeout=1.0)
+                        if not self._in_flight:
+                            self.running = False
+                        continue
 
                     # Check for control signals (pause/resume/stop/set_workers)
                     self._check_control_signals()
@@ -1074,8 +1083,8 @@ class AnalysisWorker:
                     logger.info("Shutdown requested")
                     self.running = False
                 except BrokenProcessPool:
-                    logger.error("BrokenProcessPool detected, recreating pool...")
-                    self._recreate_pool()
+                    logger.error("BrokenProcessPool detected, dropping the pool")
+                    self._drop_pool()
                     continue
                 except Exception as e:
                     logger.error(f"Worker error: {e}")
@@ -1089,7 +1098,7 @@ class AnalysisWorker:
                             time.sleep(2)
                             self.db.connect()
                             if self.pool_active and not self._check_pool_health():
-                                self._recreate_pool()
+                                self._drop_pool()
                         except Exception as reconnect_err:
                             logger.error(f"Recovery failed: {reconnect_err}")
                         self.consecutive_empty = 0
@@ -1170,7 +1179,7 @@ class AnalysisWorker:
         return True
 
     def _collect(self, timeout: float):
-        """Save every finished job. A job past JOB_TIMEOUT_S means a stuck worker: the pool restarts and its
+        """Save every finished job. A job past JOB_TIMEOUT_S means a stuck worker: the pool is killed and its
         tracks come back through the server's lease, unreported and unpenalised."""
         if not self._in_flight:
             return
@@ -1186,7 +1195,7 @@ class AnalysisWorker:
                 future.cancel()
                 logger.error(f"✗ {'Pool crash' if broken else 'Stuck worker'} (no penalty): {job.get('filePath', '')}")
             self._in_flight.clear()
-            self._recreate_pool()
+            self._drop_pool()
 
     def _finish(self, future, job: Dict[str, Any]) -> bool:
         """Report one finished job; True when its worker process died."""

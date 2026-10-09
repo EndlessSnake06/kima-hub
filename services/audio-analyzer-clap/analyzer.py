@@ -59,6 +59,9 @@ MUSIC_PATH = os.getenv('MUSIC_PATH', '/music')
 NUM_WORKERS = int(os.getenv('NUM_WORKERS', '2'))
 BACKEND_URL = os.getenv('BACKEND_URL', 'http://backend:3006')
 MODEL_IDLE_TIMEOUT = int(os.getenv('MODEL_IDLE_TIMEOUT', '300'))
+# How long a job holds its BullMQ lock; CLAP inference can take 30-60 s.
+JOB_LOCK_MS = 300000
+HEARTBEAT_SECONDS = 30
 # ONNX is the default; the shipped images carry no PyTorch. 'torch' works only
 # in a build that installs requirements-torch.txt.
 CLAP_BACKEND = os.getenv('CLAP_BACKEND', 'onnx').lower()
@@ -567,7 +570,7 @@ class BullMQVibeWorker:
                 {
                     "connection": REDIS_URL,
                     "concurrency": concurrency,
-                    "lockDuration": 300000,  # 5 min — CLAP inference can take 30–60s
+                    "lockDuration": JOB_LOCK_MS,
                 },
             )
             w.on("failed", lambda job, err: logger.error(
@@ -599,34 +602,44 @@ class BullMQVibeWorker:
                     self._active_concurrency = target
                     logger.info(f"[BullMQ] Worker now running with concurrency {target}")
 
-                # Heartbeat — featureDetection and the settings screen both read
-                # this to decide whether an analyzer is actually running. The
-                # effective concurrency rides along so the backend can report
-                # what is in force rather than what was merely requested.
                 now = time.time()
-                if now - last_heartbeat >= 30:
+                if now - last_heartbeat >= HEARTBEAT_SECONDS:
                     last_heartbeat = now
-                    try:
-                        hb_loop = asyncio.get_running_loop()
-                        hb_val = str(int(now * 1000))
-                        active = self._active_concurrency
-                        await hb_loop.run_in_executor(
-                            None,
-                            lambda: (
-                                self._redis_client.set("clap:worker:heartbeat", hb_val),
-                                self._redis_client.set("clap:worker:concurrency", str(active)),
-                            ),
-                        )
-                    except Exception:
-                        pass
+                    await self._beat()
 
                 # Short sleep so a concurrency change lands in seconds, not in
                 # however long is left of a thirty-second heartbeat tick.
                 await asyncio.sleep(2)
         finally:
-            await bullmq_worker.close()
+            await self._close(bullmq_worker)
             if self._db_pool:
                 self._db_pool.closeall()
+
+    async def _close(self, worker) -> None:
+        """Close the worker, which waits for the running jobs (up to their lock), beating meanwhile: the
+        analyzer is still here."""
+        closing = asyncio.ensure_future(worker.close())
+        while not closing.done():
+            await self._beat()
+            await asyncio.wait({closing}, timeout=HEARTBEAT_SECONDS)
+        await closing
+
+    async def _beat(self) -> None:
+        """featureDetection and the settings screen read the heartbeat to decide whether an analyzer is
+        running. The effective concurrency rides along so the backend can report what is in force rather
+        than what was merely requested."""
+        beat = str(int(time.time() * 1000))
+        active = self._active_concurrency
+        try:
+            await asyncio.get_running_loop().run_in_executor(
+                None,
+                lambda: (
+                    self._redis_client.set("clap:worker:heartbeat", beat),
+                    self._redis_client.set("clap:worker:concurrency", str(active)),
+                ),
+            )
+        except Exception:
+            pass
 
     async def _process_job(self, job, _token: str) -> dict:
         """BullMQ job processor — called for each enrichment-vibe job."""
@@ -1025,7 +1038,17 @@ def probe_gpu_session():
         OnnxCLAPBackend(CLAP_ONNX_MODEL_PATH).load_model()
     except Exception as e:
         logger.error(f"gpu-onnx: startup session failed: {e}")
+        import gpu_runtime
+        gpu_runtime.record_provider(False, f'startup session failed: {e}')
     gc.collect()
+
+
+def gpu_switch_changed() -> bool:
+    """The sound-vector switch, or the runtime's install, changed since this process started, and no
+    install or removal is running here."""
+    import gpu_runtime
+    import gpu_switch
+    return gpu_switch.restart_needed('soundVectors') and not gpu_runtime.busy()
 
 
 def main():
@@ -1047,11 +1070,14 @@ def main():
     # analysis hasn't finished yet and there's no CLAP work to do.
     analyzer = CLAPAnalyzer()
 
-    # Stop event for graceful shutdown
+    # Everything stops on stop_event; the job worker and control messages on jobs_stop, which a restart
+    # sets first so searches are answered until the running jobs are done.
     stop_event = threading.Event()
+    jobs_stop = threading.Event()
 
     def signal_handler(signum, frame):
         logger.info(f"Received signal {signum}, initiating graceful shutdown...")
+        jobs_stop.set()
         stop_event.set()
 
     signal.signal(signal.SIGTERM, signal_handler)
@@ -1060,7 +1086,7 @@ def main():
     threads = []
 
     # Start BullMQ vibe worker (runs asyncio event loop in its own thread)
-    bullmq_worker = BullMQVibeWorker(analyzer, stop_event, concurrency=configured_workers)
+    bullmq_worker = BullMQVibeWorker(analyzer, jobs_stop, concurrency=configured_workers)
     bullmq_thread = threading.Thread(target=bullmq_worker.start, name="BullMQVibeWorker")
     bullmq_thread.daemon = True
     bullmq_thread.start()
@@ -1076,7 +1102,7 @@ def main():
     logger.info("Started text embed handler thread")
 
     # Start control handler thread (listens for worker count changes)
-    control_handler = ControlHandler(stop_event, worker=bullmq_worker)
+    control_handler = ControlHandler(jobs_stop, worker=bullmq_worker)
     control_thread = threading.Thread(target=control_handler.start, name="ControlHandler")
     control_thread.daemon = True
     control_thread.start()
@@ -1089,15 +1115,27 @@ def main():
                                    'gpu-onnx', 'enabled.json')):
         logger.info(f"gpu-runtime startup reconcile: {gpu_runtime.reconcile()}")
 
-    # The model loads on the first job, so an idle analyzer would never say
-    # whether the GPU took effect. One session opened now measures it.
+    # Each start begins unmeasured, so the settings page never reads an earlier start's answer. The model
+    # loads on the first job, so an idle analyzer would never say whether the GPU took effect: one session
+    # opened now measures it. A backend other than ONNX never uses the runtime, which is its answer.
+    if os.path.isdir(gpu_runtime.ROOT):
+        if CLAP_BACKEND == 'onnx':
+            gpu_runtime.record_provider(False, 'not measured since this start', measured=False)
+        else:
+            gpu_runtime.record_provider(False, f'the {CLAP_BACKEND} backend does not use the GPU runtime')
     if CLAP_BACKEND == 'onnx' and gpu_runtime.request_gpu():
         threading.Thread(target=probe_gpu_session, name="GpuProbe", daemon=True).start()
 
-    # Main loop: monitor idle state and unload model when not needed
+    # Main loop: unload an idle model, and restart when the GPU switch changed: the runtime is put
+    # on the path before Python starts, so the process restarts to take it up or let it go.
+    restarting = False
     try:
-        while not stop_event.is_set():
+        while not jobs_stop.is_set():
             time.sleep(5)
+            if gpu_switch_changed():
+                logger.info("GPU switch changed: finishing running jobs, then restarting to apply it")
+                restarting = True
+                break
             if analyzer._model_loaded:
                 idle_seconds = time.time() - analyzer.last_work_time
                 if idle_seconds >= MODEL_IDLE_TIMEOUT > 0:
@@ -1108,10 +1146,17 @@ def main():
         stop_event.set()
 
 
-    # Wait for threads to finish
+    # A restart gives the running jobs up to their lock to finish (past it BullMQ hands a job out again
+    # anyway) while searches are still answered. A control message that arrives meanwhile is carried out
+    # by the next start's reconcile, which also resumes an install this exit cut short. A stop gives each
+    # thread ten seconds.
+    jobs_stop.set()
+    if restarting:
+        bullmq_thread.join(timeout=JOB_LOCK_MS / 1000)
+    stop_event.set()
     logger.info("Waiting for threads to finish...")
     for thread in threads:
-        thread.join(timeout=10)
+        thread.join(timeout=0 if restarting and thread is bullmq_thread else 10)
 
     logger.info("CLAP Analyzer service stopped")
 

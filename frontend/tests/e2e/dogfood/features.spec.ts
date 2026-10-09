@@ -285,8 +285,8 @@ test.describe("Dogfood: tray, scrobbling, public feed, GPU, release window", () 
         session.assertClean("Journey 4 (public feed)");
     });
 
-    test("5. GPU: the runtime stays while either switch is on, goes when both are off, returns for the next restart", async () => {
-        test.setTimeout(GPU_INSTALL_MS + 5 * 60_000);
+    test("5. GPU: the runtime stays while either switch is on, goes when both are off, and each switch applies on its own", async () => {
+        test.setTimeout(GPU_INSTALL_MS + 10 * 60_000);
         session.setJourney("5. GPU runtime");
 
         type Gpu = {
@@ -297,12 +297,12 @@ test.describe("Dogfood: tray, scrobbling, public feed, GPU, release window", () 
         const vectorsStatus = () => page.getByTestId("gpu-onnx-toggle-status");
         const analysisStatus = () => page.getByTestId("gpu-analysis-toggle-status");
 
-        await session.step("after the restart, vibe embeddings and audio analysis both run on the GPU", async () => {
+        await session.step("vibe embeddings and audio analysis both run on the GPU", async () => {
             await navigateByClick(page, "/settings");
             await settle(page, 1500);
             await page.locator("#gpu-onnx-toggle").scrollIntoViewIfNeeded();
             const state = await gpu();
-            expect(state, "both GPU switches should be on and active after the analyzer restart").toMatchObject({
+            expect(state, "both GPU switches should be on and active").toMatchObject({
                 enabled: true, analysis: true, installed: true, effective: true, analysisEffective: true,
             });
             await expect(vectorsStatus()).toHaveText("Active");
@@ -326,16 +326,16 @@ test.describe("Dogfood: tray, scrobbling, public feed, GPU, release window", () 
             expect(await gpu()).toMatchObject({ effective: false, analysisEffective: false });
         });
 
-        await session.step("switching both on downloads it again, ready for the next restart", async () => {
+        await session.step("switching both on downloads it again and both analyzers take it up on their own", async () => {
             const started = Date.now();
             await settingsSwitch("gpu-onnx-toggle").click();
             await settingsSwitch("gpu-analysis-toggle").click();
-            await expect(vectorsStatus()).toHaveText("Installed, applies after analyzer restart", { timeout: GPU_INSTALL_MS });
-            await expect(analysisStatus()).toHaveText("Installed, applies after analyzer restart");
+            await expect(vectorsStatus()).toHaveText("Active", { timeout: GPU_INSTALL_MS + 3 * 60_000 });
+            await expect(analysisStatus()).toHaveText("Active", { timeout: 3 * 60_000 });
             expect(await gpu()).toMatchObject({
-                enabled: true, analysis: true, installed: true, effective: false, analysisEffective: false, status: "installed",
+                enabled: true, analysis: true, installed: true, effective: true, analysisEffective: true, status: "installed",
             });
-            return { installSeconds: Math.round((Date.now() - started) / 1000) };
+            return { applySeconds: Math.round((Date.now() - started) / 1000) };
         });
 
         session.assertClean("Journey 5 (GPU)");

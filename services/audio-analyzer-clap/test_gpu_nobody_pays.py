@@ -97,13 +97,14 @@ def test_env_wrapper_activates_only_when_enabled_and_installed(tmp_path):
     assert str(site) not in wrapped_env().get("PYTHONPATH", "")
     analysis = wrapped_env(KIMA_GPU_FOR="analysis")
     assert str(site / "nvidia" / "cublas" / "lib") in analysis.get("LD_LIBRARY_PATH", "")
-    assert analysis.get("KIMA_GPU_ANALYSIS") == "1"
+    assert analysis.get("KIMA_GPU_RUNTIME") == "1"
     # Its own switch on: the sound-vector analyzer gets the runtime.
     (root / "enabled.json").write_text(json.dumps({"enabled": True, "soundVectors": True, "analysis": False}))
     lines = wrapped_env()
     assert str(site) in lines.get("PYTHONPATH", "")
     assert str(site / "nvidia" / "cublas" / "lib") in lines.get("LD_LIBRARY_PATH", "")
-    assert "KIMA_GPU_ANALYSIS" not in lines
+    assert lines.get("KIMA_GPU_RUNTIME") == "1"
+    assert "KIMA_GPU_RUNTIME" not in wrapped_env(KIMA_GPU_FOR="analysis")
 
 
 def test_shipped_dependency_files_never_mention_the_runtime():

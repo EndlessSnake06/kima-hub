@@ -260,9 +260,8 @@ def test_replacing_a_stuck_pool_kills_its_workers(monkeypatch):
 
     worker = analyzer.AnalysisWorker.__new__(analyzer.AnalysisWorker)
     worker.executor, worker.pool_active = pool, True
-    monkeypatch.setattr(analyzer.time, "sleep", lambda s: None)
-    monkeypatch.setattr(worker, "_ensure_pool", lambda: None)
-    worker._recreate_pool()
+    worker._drop_pool()
+    assert worker.executor is None and not worker.pool_active, "dropping the pool started a new one"
 
     for process in stuck:
         process.join(timeout=10)

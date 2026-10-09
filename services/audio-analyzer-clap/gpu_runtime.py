@@ -7,6 +7,7 @@ Stdlib only at import, so nobody who leaves the toggle off pays for it.
 import ctypes
 import hashlib
 import json
+import logging
 import os
 import platform
 import shutil
@@ -15,6 +16,10 @@ import sys
 import sysconfig
 import threading
 import time
+
+import gpu_switch
+
+logger = logging.getLogger(__name__)
 
 ROOT = os.path.normpath(
     os.path.join(os.getenv('DATA_DIR', '/data'), 'gpu-onnx'))
@@ -25,6 +30,7 @@ ENABLED_PATH = os.path.join(ROOT, 'enabled.json')
 PIP_TIMEOUT_S = 1800
 PIP_ATTEMPTS = 3
 STALE_INSTALLING_S = PIP_TIMEOUT_S * PIP_ATTEMPTS + 300
+ABANDONED = 'install child abandoned (analyzer restarted mid-install)'
 
 CUDA_DRIVER_MIN = 12040
 
@@ -95,19 +101,23 @@ def read_state():
         return {'status': 'idle'}
     if state.get('status') == 'installing' and \
             time.time() - float(state.get('startedEpoch') or 0) > STALE_INSTALLING_S:
-        state = dict(state, status='failed', reason='install_failed',
-                     detail='install child abandoned (analyzer restarted mid-install)')
+        state = dict(state, status='failed', reason='install_failed', detail=ABANDONED)
         write_json_atomic(STATE_PATH, state)
     return state
 
 
 def update_state(**fields):
     with _lock:
-        state = dict(read_state())
-        state.update(fields)
-        state['updatedAt'] = _now()
-        write_json_atomic(STATE_PATH, state)
-        return state
+        return _write_state(fields)
+
+
+def _write_state(fields):
+    """Caller holds _lock."""
+    state = dict(read_state())
+    state.update(fields)
+    state['updatedAt'] = _now()
+    write_json_atomic(STATE_PATH, state)
+    return state
 
 
 def read_enabled():
@@ -122,9 +132,15 @@ def is_installed():
 
 
 def request_gpu():
-    """True only when the sound-vector switch is on AND the runtime is installed."""
-    projection = read_json(ENABLED_PATH)
-    return bool(projection and projection.get('soundVectors')) and is_installed()
+    """True only when the sound-vector switch is on, the runtime is installed, and this process started with it
+    (a process without it on its path cannot open a GPU session)."""
+    return gpu_switch.started_with_runtime() and gpu_switch.runtime_for('soundVectors') is not None
+
+
+def busy():
+    """True while an install or a removal is running in this process."""
+    thread = _install_thread
+    return thread is not None and thread.is_alive()
 
 
 def nvidia_lib_dirs():
@@ -140,9 +156,15 @@ def nvidia_lib_dirs():
     return dirs
 
 
-def record_provider(active, detail=None):
-    update_state(provider={'active': bool(active), 'recordedAt': _now(),
-                           'detail': detail})
+def record_provider(active, detail=None, measured=True):
+    """measured: the answer of a session this start opened with the runtime, rather than the reset a start
+    records before it has one. A data directory that cannot be written costs the settings page this answer,
+    never the analyzer."""
+    try:
+        update_state(provider={'active': bool(active), 'measured': bool(measured), 'recordedAt': _now(),
+                               'detail': detail})
+    except OSError as exc:
+        logger.warning('gpu-runtime: could not record the GPU answer: %r', exc)
 
 
 def _dir_bytes(path):
@@ -286,36 +308,48 @@ def _swap_site(tmp_site):
     shutil.rmtree(old, ignore_errors=True)
 
 
+def _clear_abandoned_installs():
+    """Download folders an install left when its process was killed (this thread is the only installer)."""
+    for name in os.listdir(ROOT) if os.path.isdir(ROOT) else []:
+        if name.startswith('.install-'):
+            shutil.rmtree(os.path.join(ROOT, name), ignore_errors=True)
+
+
+def _failed(reason, detail):
+    """Record a failed step. A data directory that cannot be written is logged, not raised, so the step still
+    ends as failed and is not repeated."""
+    try:
+        update_state(status='failed', reason=reason, detail=detail)
+    except OSError as exc:
+        logger.error('gpu-runtime: %s (%s), and the state could not be written: %r', reason, detail, exc)
+    return 'failed'
+
+
 def _install():
+    """Download, check and swap in the runtime: 'installed', 'cancelled' or 'failed'."""
     tmp_root = os.path.join(ROOT, '.install-%d' % int(time.time()))
     wheels_dir = os.path.join(tmp_root, 'wheels')
     tmp_site = os.path.join(tmp_root, 'site')
-    os.makedirs(wheels_dir)
     try:
+        _clear_abandoned_installs()
+        os.makedirs(wheels_dir)
         update_state(status='installing', startedEpoch=time.time(),
                      startedAt=_now(), reason=None, detail=None)
-        bad = _platform_ok()
+        bad = _platform_ok() or _gpu_visible()
         if bad:
-            update_state(status='failed', reason=bad[0], detail=bad[1])
-            return
-        bad = _gpu_visible()
-        if bad:
-            update_state(status='failed', reason=bad[0], detail=bad[1])
-            return
+            return _failed(bad[0], bad[1])
         if _cancel.is_set():
             update_state(status='idle', reason=None, detail='cancelled before download')
-            return
+            return 'cancelled'
         failure = _download(wheels_dir)
         if failure:
-            update_state(status='failed', reason=failure[0], detail=failure[1])
-            return
+            return _failed(failure[0], failure[1])
         if _cancel.is_set():
             update_state(status='idle', reason=None, detail='cancelled after download')
-            return
+            return 'cancelled'
         bad, nbytes = _verify_checksums(wheels_dir)
         if bad:
-            update_state(status='failed', reason=bad, detail=str(nbytes))
-            return
+            return _failed(bad, str(nbytes))
         args = ['install', '--no-deps', '--no-index', '--no-cache-dir',
                 '--find-links', wheels_dir, '--target', tmp_site]
         if _externally_managed():
@@ -323,67 +357,105 @@ def _install():
         specs = ['%s==%s' % (n, v) for n, v in PINS]
         proc = _pip(args + specs, timeout=600)
         if proc.returncode != 0:
-            update_state(status='failed', reason='install_failed',
-                         detail='pip --target failed\n' + _pip_tail(proc))
-            return
+            return _failed('install_failed', 'pip --target failed\n' + _pip_tail(proc))
         bad, tail = _smoke_test(tmp_site)
         if bad:
-            update_state(status='failed', reason=bad, detail=tail)
-            return
+            return _failed(bad, tail)
         _swap_site(tmp_site)
+        if not os.path.isdir(os.path.join(SITE, 'onnxruntime')):
+            return _failed('install_failed', 'the runtime is missing after the swap')
         update_state(status='installed', installedAt=_now(), reason=None, detail=None,
                      pinned=PINNED_DISPLAY, bytes=_dir_bytes(SITE))
+        return 'installed'
     except Exception as exc:
-        update_state(status='failed', reason='install_failed',
-                     detail='unhandled installer error: %r' % exc)
+        return _failed('install_failed', 'unhandled installer error: %r' % exc)
     finally:
         shutil.rmtree(tmp_root, ignore_errors=True)
-        update_state(installerDone=True)
 
 
 def _remove():
+    """Delete the runtime: 'removed' or 'failed'."""
     try:
         shutil.rmtree(SITE, ignore_errors=True)
         shutil.rmtree(os.path.join(ROOT, 'site.old'), ignore_errors=True)
+        _clear_abandoned_installs()
+        if os.path.exists(SITE):
+            return _failed('removal_failed', 'removal left files in %s' % SITE)
         update_state(status='idle', reason=None, detail=None, pinned=None,
                      bytes=None, provider=None, installedAt=None)
+        return 'removed'
     except Exception as exc:
-        update_state(status='failed', reason='install_failed',
-                     detail='removal failed: %r' % exc)
+        return _failed('removal_failed', 'removal failed: %r' % exc)
+
+
+def _next_action(retry_failed):
+    """What the switches ask of the disk: install when the runtime is wanted and missing (after a failed
+    attempt only when retry_failed), remove when it is not wanted and anything of it is left."""
+    status = read_state().get('status')
+    if read_enabled():
+        if is_installed() or status == 'installing':
+            return None
+        return 'install' if retry_failed or status != 'failed' else None
+    if status == 'installed' or os.path.isdir(SITE):
+        return 'remove'
+    return None
+
+
+def _start(action):
+    """Caller holds _lock."""
+    global _install_thread
+    if action == 'install':
+        _cancel.clear()
+    _install_thread = threading.Thread(target=_converge, args=(action,), name='gpu-runtime-install',
+                                       daemon=True)
+    _install_thread.start()
+
+
+def _converge(action):
+    """Run `action`, then whatever the switches ask for by the time it ends, so a request that came in
+    while this thread was busy is carried out. A failed step ends the run instead of repeating."""
+    global _install_thread
+    while action:
+        outcome = _install() if action == 'install' else _remove()
+        with _lock:
+            action = None if outcome == 'failed' else _next_action(retry_failed=False)
+            if action == 'install':
+                _cancel.clear()
+            if action is None:
+                _install_thread = None
 
 
 def dispatch(action):
-    """Entry point for control messages and startup reconciliation."""
-    global _install_thread
+    """Entry point for control messages. While an install or removal runs, the request is left to it (it
+    looks at the switches again when it ends); a removal request also stops a running install early."""
     with _lock:
-        if _install_thread is not None and _install_thread.is_alive():
+        if busy():
             if action == 'remove':
                 _cancel.set()
             return 'busy'
-        result = None
-        if action == 'remove':
-            result = 'started'
-            target = _remove
-        elif action == 'install':
+        if action == 'install':
             if not read_enabled():
                 return 'skipped_disabled'
             if is_installed():
                 return 'skipped_installed'
-            _cancel.clear()
-            result = 'started'
-            target = _install
-        else:
+        elif action != 'remove':
             return 'unknown_action'
-        _install_thread = threading.Thread(target=target, name='gpu-runtime-install',
-                                           daemon=True)
-        _install_thread.start()
-        return result
+        _start(action)
+        return 'started'
 
 
 def reconcile():
-    """Install if the projection says enabled and nothing is installed."""
-    if read_enabled():
-        state = read_state()
-        if state.get('status') in ('idle', 'failed'):
-            return dispatch('install')
-    return 'nothing_to_do'
+    """At start, do what the switches ask of the disk: this carries out a request sent while the process
+    was down, and tries a failed install again. An install still marked running was this process's
+    predecessor's, killed with it."""
+    with _lock:
+        if busy():
+            return 'busy'
+        recorded = read_json(STATE_PATH)
+        if isinstance(recorded, dict) and recorded.get('status') == 'installing':
+            _write_state({'status': 'failed', 'reason': 'install_failed', 'detail': ABANDONED})
+        action = _next_action(retry_failed=True)
+        if action is None:
+            return 'nothing_to_do'
+        _start(action)
+        return action
