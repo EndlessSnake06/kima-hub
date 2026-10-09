@@ -263,11 +263,17 @@ That's it! Open http://localhost:3030 and create your account.
 docker run -d \
   --name kima \
   --gpus all \
+  --device /dev/nvidia0 --device /dev/nvidiactl \
+  --device /dev/nvidia-uvm --device /dev/nvidia-uvm-tools \
   -p 3030:3030 \
   -v /path/to/your/music:/music \
   -v kima_data:/data \
   chevron7locked/kima:latest
 ```
+
+The `--device` lines keep the GPU after the host reloads its services (`systemctl daemon-reload`, which updates
+run): without them, on hosts where systemd manages Docker's cgroups, anything the container starts afterwards
+cannot open the card ([NVIDIA's note](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/troubleshooting.html)).
 
 ### What's Included
 
@@ -607,26 +613,27 @@ nvidia-container-runtime --version
 
 ### Enable GPU
 
-Running the container with GPU access only lets the container *see* the
-card; the embedding analyzer still waits for the toggle in
-**Settings -> Library Enrichment**.
+Giving the container the GPU only lets it *see* the card. Two switches in **Settings -> Library Enrichment**
+choose what uses it: vibe embeddings, and audio analysis. The first one turned on downloads the GPU runtime (about
+2 GB, 3.4 GB on disk) into the data folder; it is removed when both are off. A switch applies on its own within
+about a minute: the analyzer finishes the songs it is on and restarts with the GPU on or off.
 
 **All-in-One container:**
 ```bash
-docker run -d --gpus all -p 3030:3030 -v /path/to/music:/music -v kima_data:/data chevron7locked/kima:latest
+docker run -d --gpus all \
+  --device /dev/nvidia0 --device /dev/nvidiactl --device /dev/nvidia-uvm --device /dev/nvidia-uvm-tools \
+  -p 3030:3030 -v /path/to/music:/music -v kima_data:/data chevron7locked/kima:latest
 ```
 
-**Docker Compose:**
-
-Uncomment the `devices` block under `audio-analyzer` (and optionally `audio-analyzer-clap`) in `docker-compose.yml`:
+**Docker Compose:** add these lines to `audio-analyzer` and `audio-analyzer-clap` in `docker-compose.yml`:
 
 ```yaml
-reservations:
-    memory: 2G
-    devices:
-        - driver: nvidia
-          count: 1
-          capabilities: [gpu]
+        gpus: all
+        devices:
+            - /dev/nvidia0
+            - /dev/nvidiactl
+            - /dev/nvidia-uvm
+            - /dev/nvidia-uvm-tools
 ```
 
 Then restart: `docker compose up -d`
@@ -639,10 +646,10 @@ Flip the settings toggle and watch the row's status line, or ask the API:
 curl -H "Authorization: Bearer <token>" http://localhost:3030/api/system-settings/gpu
 ```
 
-Expected once the analyzer has restarted and taken a job:
-`"status": "installed", "effective": true`. If the container cannot see the
-card, `"reason": "no_gpu"` and the toggle stays honest -- embeddings keep
-running on the CPU.
+Expected within about a minute of turning a switch on (longer the first time, while the runtime downloads):
+`"status": "installed", "effective": true` for vibe embeddings, `"analysisEffective": true` for audio analysis.
+If the container cannot see the card, `"reason": "no_gpu"`; if a session could not use it, the page says it fell
+back to the CPU. Either way the work carries on, on the CPU.
 
 Host-side sanity checks:
 
