@@ -1084,6 +1084,12 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
                     duration,
                     isFinished
                 );
+                const saved = {
+                    currentTime: isFinished ? duration : currentTime,
+                    progress: duration > 0 ? Math.min(100, ((isFinished ? duration : currentTime) / duration) * 100) : 0,
+                    isFinished,
+                    lastPlayedAt: new Date(),
+                };
                 state.setCurrentPodcast((prev) => {
                     if (!prev || prev.id !== podcast.id) return prev;
                     const dur = prev.duration || 0;
@@ -1098,7 +1104,8 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
                         },
                     };
                 });
-                dispatchQueryEvent("podcast-progress-updated");
+                // The episode and what was saved, so a page showing it updates that row alone.
+                dispatchQueryEvent("podcast-progress-updated", { podcastId, episodeId, progress: saved });
             } catch (err) {
                 // A 404 means the podcast is no longer subscribed or no longer exists.
                 // Progress for it can never be saved again, so stop the player rather

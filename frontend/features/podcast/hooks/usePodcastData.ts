@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { usePodcastQuery } from "@/hooks/useQueries";
+import { useQueryClient, type InfiniteData } from "@tanstack/react-query";
+import { queryKeys, usePodcastQuery } from "@/hooks/useQueries";
 import { useAuth } from "@/lib/auth-context";
 import { api } from "@/lib/api";
 import { Podcast, PodcastPreview, SimilarPodcast, Episode } from "../types";
@@ -35,16 +36,36 @@ export function usePodcastData() {
     loadingMore,
   } = usePodcastQuery(podcastId, sortOrder);
 
-  // Listen for podcast-progress-updated event (fired when playback starts/updates or episode marked complete)
+  // Playback saves progress every 15 s: the saved episode is updated in place
+  // on every loaded page, with no request. A change that names no episode
+  // reads the podcast again.
+  const queryClient = useQueryClient();
   useEffect(() => {
-    // Progress saves every 15 s while an episode plays; a refetch must not
-    // cancel a "show more" already loading.
-    const unsubscribe = subscribeQueryEvent("podcast-progress-updated", () => {
-      refetch({ cancelRefetch: false });
+    const unsubscribe = subscribeQueryEvent("podcast-progress-updated", (event) => {
+      const { podcastId: savedFor, episodeId, progress } = event.detail as {
+        podcastId?: string;
+        episodeId?: string;
+        progress?: Episode["progress"];
+      };
+      if (!episodeId || !progress) {
+        refetch({ cancelRefetch: false });
+        return;
+      }
+      if (savedFor !== podcastId) return;
+      // Only the order on screen: patching the other would mark it fresh and
+      // drop a refetch it still owes.
+      queryClient.setQueryData<InfiniteData<Podcast | null>>([...queryKeys.podcast(podcastId), sortOrder], (data) =>
+        data && {
+          ...data,
+          pages: data.pages.map((page) =>
+            page && { ...page, episodes: page.episodes.map((ep) => (ep.id === episodeId ? { ...ep, progress } : ep)) },
+          ),
+        },
+      );
     });
 
     return unsubscribe;
-  }, [refetch]);
+  }, [refetch, queryClient, podcastId, sortOrder]);
 
   // State for preview mode, subscription, and similar podcasts
   const [previewData, setPreviewData] = useState<PodcastPreview | null>(null);
