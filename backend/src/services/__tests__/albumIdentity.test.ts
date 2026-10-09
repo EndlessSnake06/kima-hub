@@ -251,6 +251,9 @@ describe("editionlessKey — owning another edition counts, a different recordin
         expect(editionlessKey("Get Born (Live)")).not.toBe(editionlessKey("Get Born"));
         expect(editionlessKey("CLIFF: THE HEADHUNTER (Remixed)")).not.toBe(editionlessKey("CLIFF: THE HEADHUNTER"));
         expect(editionlessKey("Antics (Acoustic Version)")).not.toBe(editionlessKey("Antics"));
+        expect(editionlessKey("Antics (Radio Version)")).not.toBe(editionlessKey("Antics"));
+        expect(editionlessKey("Antics (Radio Version)")).not.toBe(editionlessKey("Antics (Clean Version)"));
+        expect(editionlessKey("Antics (Clean Version)")).toBe(editionlessKey("Antics"));
         expect(editionlessKey("Discovery (Live Edition)")).not.toBe(editionlessKey("Discovery"));
         expect(editionlessKey("Songs of Faith and Devotion: Live")).not.toBe(editionlessKey("Songs of Faith and Devotion"));
     });

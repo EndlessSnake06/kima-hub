@@ -54,7 +54,7 @@ const EDITION_WORD =
 // Words that mark a different recording, which is a different album even when
 // an edition word sits beside them: "(Live Edition)", "(Acoustic Version)".
 const OTHER_RECORDING =
-    /\b(?:live|remix(?:es|ed)?|mix|acoustic|unplugged|sessions?|demos?|instrumentals?|karaoke|covers?|reworked|reimagined|orchestral|symphonic|stripped)\b/i;
+    /\b(?:live|remix(?:es|ed)?|mix|radio|acoustic|unplugged|sessions?|demos?|instrumentals?|karaoke|covers?|reworked|reimagined|orchestral|symphonic|stripped)\b/i;
 
 function isEditionMarker(text: string): boolean {
     return EDITION_WORD.test(text) && !OTHER_RECORDING.test(text);
