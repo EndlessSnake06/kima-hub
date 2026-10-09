@@ -169,7 +169,6 @@ export default function AudiobooksPage() {
         return sorted;
     }, [audiobooks, filter, continueListening, selectedGenre, sortBy]);
 
-    const totalPages = Math.ceil(filteredBooks.length / itemsPerPage);
     const paginatedBooks = useMemo(() => {
         const start = (currentPage - 1) * itemsPerPage;
         return filteredBooks.slice(start, start + itemsPerPage);
@@ -186,7 +185,7 @@ export default function AudiobooksPage() {
         const seriesMap = new Map<string, Audiobook[]>();
         const standaloneBooks: Audiobook[] = [];
 
-        paginatedBooks.forEach((book) => {
+        filteredBooks.forEach((book) => {
             if (book.series && book.series.name && book.series.name.trim() !== "") {
                 const seriesName = book.series.name.trim();
                 if (!seriesMap.has(seriesName)) {
@@ -207,7 +206,20 @@ export default function AudiobooksPage() {
         });
 
         return { series: Array.from(seriesMap.entries()), standalone: standaloneBooks };
-    }, [paginatedBooks]);
+    }, [filteredBooks]);
+
+    // The series view groups the whole library, then pages over its cards (a series or a
+    // standalone book each), so a series is never split across pages.
+    const pageStart = (currentPage - 1) * itemsPerPage;
+    const pageEnd = pageStart + itemsPerPage;
+    const pageSeries = series.slice(pageStart, pageEnd);
+    const pageStandalone = standalone.slice(
+        Math.max(0, pageStart - series.length),
+        Math.max(0, pageEnd - series.length),
+    );
+    const totalPages = Math.ceil(
+        (groupBySeries ? series.length + standalone.length : filteredBooks.length) / itemsPerPage,
+    );
 
     const getCoverUrl = (coverUrl: string | null, size = 300) => {
         if (!coverUrl) return null;
@@ -267,9 +279,6 @@ export default function AudiobooksPage() {
                     <h1 className="text-lg font-semibold text-[var(--text-primary)]">
                         Couldn&apos;t load audiobooks
                     </h1>
-                    <p className="mt-2 text-sm text-[var(--text-secondary)]">
-                        The library request failed. Your listening progress is kept.
-                    </p>
                     <p className="mt-1 text-xs text-[var(--text-muted)]">{(error as Error).message}</p>
                     <button
                         onClick={() => refetch()}
@@ -293,7 +302,6 @@ export default function AudiobooksPage() {
 
                 <div className="relative page-shell pb-24">
 
-                    {/* Setup Steps */}
                     <div className="grid md:grid-cols-3 gap-4 mb-12">
                         {[
                             { num: "01", title: "Install Audiobookshelf", desc: "Set up your own Audiobookshelf instance via Docker or use an existing installation" },
@@ -321,7 +329,6 @@ export default function AudiobooksPage() {
                         ))}
                     </div>
 
-                    {/* Action Buttons */}
                     <div className="flex flex-col sm:flex-row gap-3 max-w-xl">
                         <button
                             onClick={() => router.push("/settings#audiobookshelf")}
@@ -362,7 +369,6 @@ export default function AudiobooksPage() {
             />
 
             <div className="relative page-shell pb-24 animate-rise">
-                {/* Filter and Sort Controls */}
                 <div className="mb-8 space-y-3">
                     {/* First Row: Filter Pills and Shuffle */}
                     <div className="flex flex-wrap items-center gap-2">
@@ -394,7 +400,7 @@ export default function AudiobooksPage() {
                             size="sm"
                             onClick={handleSync}
                             disabled={isSyncing}
-                            title="Sync audiobooks from Audiobookshelf"
+                            title="sync audiobooks from audiobookshelf"
                         >
                             <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? "animate-spin" : ""}`} />
                             <span className="hidden sm:inline">{isSyncing ? "Syncing..." : "Sync"}</span>
@@ -414,10 +420,10 @@ export default function AudiobooksPage() {
                                 onChange={(e) => setSortBy(e.target.value as SortType)}
                                 className="bg-transparent text-xs text-[var(--text-secondary)] focus:outline-none cursor-pointer [&>option]:bg-[var(--bg-primary)] [&>option]:text-white"
                             >
-                                <option value="title">Title</option>
-                                <option value="author">Author</option>
-                                <option value="recent">Recently Played</option>
-                                <option value="series">Series</option>
+                                <option value="title">title</option>
+                                <option value="author">author</option>
+                                <option value="recent">recently played</option>
+                                <option value="series">series</option>
                             </select>
                         </div>
 
@@ -428,7 +434,7 @@ export default function AudiobooksPage() {
                                     ? "bg-brand text-black"
                                     : "bg-white/5 text-[var(--text-secondary)] hover:bg-white/10 hover:text-white border border-white/10 hover:border-white/20"
                             }`}
-                            title="Show series as single cards"
+                            title="show series as single cards"
                         >
                             <ListTree className="w-3.5 h-3.5" />
                             <span className="hidden sm:inline">Series View</span>
@@ -441,10 +447,10 @@ export default function AudiobooksPage() {
                                     onChange={(e) => setSelectedGenre(e.target.value || null)}
                                     className="bg-transparent text-xs text-[var(--text-secondary)] focus:outline-none cursor-pointer min-w-0 max-w-[140px] truncate [&>option]:bg-[var(--bg-primary)] [&>option]:text-white"
                                 >
-                                    <option value="">All Genres</option>
+                                    <option value="">all genres</option>
                                     {allGenres.map((genre) => (
                                         <option key={genre} value={genre}>
-                                            {genre}
+                                            {genre.toLowerCase()}
                                         </option>
                                     ))}
                                 </select>
@@ -468,14 +474,12 @@ export default function AudiobooksPage() {
                         </div>
                     </div>
 
-                    {/* Mobile count */}
                     <div className="md:hidden text-xs tabular-nums text-[var(--text-muted)]">
                         {filteredBooks.length} {filteredBooks.length === 1 ? "book" : "books"}
                     </div>
                 </div>
 
                 <div className="section-stack">
-                    {/* Continue Listening Section */}
                     {continueListening.length > 0 && filter === "all" && !groupBySeries && (
                         <div>
                             <SectionHeader type="audiobook" title="Continue Listening" count={continueListening.length} />
@@ -502,18 +506,17 @@ export default function AudiobooksPage() {
                         </div>
                     )}
 
-                    {/* Audiobooks Grid */}
                     {filteredBooks.length > 0 ? (
                         groupBySeries ? (
                             <>
-                                {series.length > 0 && (
+                                {pageSeries.length > 0 && (
                                     <div>
                                         <SectionHeader type="audiobook" title="Series" count={series.length} />
                                         <div
                                             className="grid-media"
                                             data-tv-section="series"
                                         >
-                                            {series.map(([seriesName, books], index) => {
+                                            {pageSeries.map(([seriesName, books], index) => {
                                                 const firstBook = books[0];
                                                 const bookCount = `${books.length} ${books.length === 1 ? "book" : "books"}`;
                                                 return (
@@ -535,14 +538,14 @@ export default function AudiobooksPage() {
                                     </div>
                                 )}
 
-                                {standalone.length > 0 && (
+                                {pageStandalone.length > 0 && (
                                     <div>
                                         <SectionHeader type="audiobook" title="Standalone" count={standalone.length} />
                                         <div
                                             className="grid-media"
                                             data-tv-section="standalone"
                                         >
-                                            {standalone.map((book, index) => (
+                                            {pageStandalone.map((book, index) => (
                                                 <MediaCard
                                                     key={book.id}
                                                     href={`/audiobooks/${book.id}`}

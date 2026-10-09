@@ -1,12 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Download, Loader2, Music, Disc, X } from "lucide-react";
+import { Download, Loader2, X } from "lucide-react";
 import { api } from "@/lib/api";
-import { cn } from "@/lib/cn";
-import { GradientSpinner } from "../ui/GradientSpinner";
 import { useActiveDownloads } from "@/hooks/useNotifications";
-import { timeAgo } from "@/lib/relative-time";
+import { DownloadRow, RowAction } from "./DownloadRow";
 
 export function ActiveDownloadsTab() {
     // Use shared React Query hook instead of duplicate polling
@@ -68,115 +66,43 @@ export function ActiveDownloadsTab() {
 
     return (
         <div className="flex flex-col h-full">
-            {/* Header - monospace terminal style */}
-            <div className="flex items-center justify-between px-3 py-2 border-b-2 border-white/10">
-                <div className="flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-brand animate-pulse" />
-                    <span className="t-eyebrow">
-                        {String(downloads.length).padStart(2, "0")} ACTIVE
-                    </span>
-                </div>
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/10">
+                <span className="flex items-center gap-2 text-xs font-medium text-[var(--text-secondary)]">
+                    <span className="size-1.5 rounded-full bg-brand animate-pulse" aria-hidden />
+                    <span className="tabular-nums">{downloads.length} downloading</span>
+                </span>
                 <button
+                    type="button"
                     onClick={handleCancelAll}
-                    className="text-micro font-semibold text-[var(--text-muted)] hover:text-danger-light transition-colors"
-                    title="Cancel all downloads"
+                    className="rounded-full px-2.5 py-1 text-xs font-medium text-[var(--text-muted)] transition-colors hover:bg-white/10 hover:text-danger-light"
                 >
-                    CANCEL
+                    Cancel all
                 </button>
             </div>
 
-            {/* Download list - data stream style */}
-            <div className="flex-1 overflow-y-auto">
-                {downloads.map((download, index) => (
-                    <div
+            <ul className="flex-1 space-y-0.5 overflow-y-auto p-2">
+                {downloads.map((download) => (
+                    <DownloadRow
                         key={download.id}
-                        className="px-3 py-3 border-b border-white/5 border-l-2 border-brand bg-[var(--bg-secondary)] hover:bg-white/5 transition-colors group"
-                    >
-                        <div className="flex items-start gap-3">
-                            {/* Index number */}
-                            <div className="flex-shrink-0 w-6 mt-0.5">
-                                <span className="text-micro tabular-nums font-semibold text-[var(--text-muted)]">
-                                    {String(index + 1).padStart(2, "0")}
-                                </span>
-                            </div>
-
-                            {/* Status spinner */}
-                            <div className="mt-0.5 shrink-0">
-                                {cancelling.has(download.id) ? (
-                                    <Loader2 className="w-4 h-4 text-[var(--text-muted)] animate-spin" />
-                                ) : (
-                                    <GradientSpinner size="sm" />
-                                )}
-                            </div>
-
-                            {/* Content */}
-                            <div className="flex-1 min-w-0">
-                                <p className="text-xs font-semibold tracking-tight text-white truncate mb-1">
-                                    {download.subject}
-                                </p>
-                                <div className="flex items-center gap-2 flex-wrap">
-                                    <span
-                                        className={cn(
-                                            "text-xs tabular-nums font-semibold",
-                                            download.status === "processing"
-                                                ? "text-brand"
-                                                : "text-warning"
-                                        )}
-                                    >
-                                        {download.status}
-                                    </span>
-                                    {download.metadata?.statusText && (
-                                        <>
-                                            <span className="text-micro text-[var(--text-muted)]">
-                                                •
-                                            </span>
-                                            <span
-                                                className={cn(
-                                                    "text-xs font-semibold",
-                                                    download.metadata
-                                                        .currentSource ===
-                                                        "lidarr"
-                                                        ? "text-purple-400"
-                                                        : "text-teal-400"
-                                                )}
-                                            >
-                                                {String(download.metadata.statusText)}
-                                            </span>
-                                        </>
-                                    )}
-                                    <span className="text-micro text-[var(--text-muted)]">
-                                        •
-                                    </span>
-                                    <span className="text-xs tabular-nums text-[var(--text-muted)] flex items-center gap-1">
-                                        {download.type === "album" ? (
-                                            <Disc className="w-2.5 h-2.5" />
-                                        ) : (
-                                            <Music className="w-2.5 h-2.5" />
-                                        )}
-                                        {download.type}
-                                    </span>
-                                    <span className="text-micro text-[var(--text-muted)]">
-                                        •
-                                    </span>
-                                    <span className="text-xs tabular-nums text-[var(--text-muted)]">
-                                        {timeAgo(download.createdAt)}
-                                    </span>
-                                </div>
-                            </div>
-
-                            {/* Cancel button */}
-                            <button
+                        item={download}
+                        tone="active"
+                        actions={
+                            <RowAction
+                                label={`Cancel ${download.subject}`}
                                 onClick={() => handleCancel(download.id)}
                                 disabled={cancelling.has(download.id)}
-                                className="p-1 hover:bg-white/10 transition-colors shrink-0"
-                                title="Cancel download"
+                                danger
                             >
-                                <X className="w-3 h-3 text-[var(--text-muted)] hover:text-danger-light" />
-                            </button>
-                        </div>
-                    </div>
+                                {cancelling.has(download.id) ? (
+                                    <Loader2 className="size-4 animate-spin" />
+                                ) : (
+                                    <X className="size-4" />
+                                )}
+                            </RowAction>
+                        }
+                    />
                 ))}
-            </div>
+            </ul>
         </div>
     );
 }

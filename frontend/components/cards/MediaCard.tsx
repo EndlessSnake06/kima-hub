@@ -146,7 +146,7 @@ export const MediaCard = memo(function MediaCard({
                             onClick={stop(action.onClick)}
                             disabled={action.busy}
                             aria-label={`${action.label} ${title}`}
-                            title={action.label}
+                            title={action.label.toLowerCase()}
                             className={cn(
                                 "touch-reveal absolute bottom-3 right-3 w-11 h-11 rounded-lg bg-brand hover:bg-brand-hover flex items-center justify-center transition-opacity duration-150",
                                 action.busy ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
@@ -164,7 +164,7 @@ export const MediaCard = memo(function MediaCard({
                         type="button"
                         onClick={stop(onDelete)}
                         aria-label={`Delete ${title}`}
-                        title={`Delete ${title}`}
+                        title={`Delete ${title}`.toLowerCase()}
                         className="absolute top-2 right-2 w-8 h-8 rounded-lg bg-black/80 border border-white/20 hidden md:flex items-center justify-center opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-danger/90 transition-opacity duration-150"
                     >
                         <Trash2 className="w-4 h-4 text-white" />
@@ -175,7 +175,7 @@ export const MediaCard = memo(function MediaCard({
             <div className={cn("h-0.5 scale-x-0 group-hover:scale-x-100 transition-transform duration-150", styles.bar)} />
 
             <div className="p-3 bg-gradient-to-b from-[#0a0a0a] to-[#0f0f0f]">
-                <h3 className="text-sm font-bold text-white truncate tracking-tight" title={title}>
+                <h3 className="text-sm font-bold text-white truncate tracking-tight" title={title.toLowerCase()}>
                     {title}
                 </h3>
                 {subtitle && (

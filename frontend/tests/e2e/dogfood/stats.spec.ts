@@ -142,7 +142,7 @@ test.describe("Dogfood: stats, filters, audit, queue", () => {
 
         await session.step("nothing overflows the measure", async () => {
             const overflow = await page.evaluate(
-                () => document.documentElement.scrollWidth > window.innerWidth,
+                () => [document.documentElement, document.querySelector("#main-content")].some((el) => !!el && el.scrollWidth > el.clientWidth + 1),
             );
             expect(overflow, "the page must not scroll sideways").toBe(false);
         });
@@ -203,7 +203,7 @@ test.describe("Dogfood: stats, filters, audit, queue", () => {
                     (r) => r.url().includes("/api/stats?") && r.url().includes("period=all"),
                     { timeout: 30_000 },
                 ),
-                page.getByRole("button", { name: "All", exact: true }).click(),
+                page.getByRole("button", { name: "all time", exact: true }).click(),
             ]);
             await settle(page);
             const body = await page.locator("main").innerText();
@@ -251,7 +251,7 @@ test.describe("Dogfood: stats, filters, audit, queue", () => {
             expect(tracks.length).toBeLessThanOrEqual(Math.min(forHalf, 100));
         });
 
-        await session.step("a nonsense limit is refused, not answered with everything", async () => {
+        await session.step("a nonsense limit gets the default list, not a server error or everything", async () => {
             const res = await page.request.get(`/api/stats/tracks?of=top&limit=abc`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
@@ -364,7 +364,7 @@ test.describe("Dogfood: stats, filters, audit, queue", () => {
 
         // Pause first: a playing page saves its own queue on every advance and
         // would overwrite this journey's probe.
-        const pause = page.getByTitle("Pause", { exact: true });
+        const pause = page.getByTitle("pause", { exact: true });
         if (await pause.isVisible({ timeout: 2000 }).catch(() => false)) {
             await pause.click().catch(() => {});
             await settle(page, 1500);
@@ -444,7 +444,7 @@ test.describe("Dogfood: stats, filters, audit, queue", () => {
             before = await res.json();
             expect(
                 before.heard + before.skipped + before.tooShort + before.unclear,
-                "the four buckets are read against 'times you pressed play' and must sum to it",
+                "the four buckets are read against 'total plays' and must sum to it",
             ).toBe(before.totalListens);
         });
 
@@ -484,10 +484,10 @@ test.describe("Dogfood: stats, filters, audit, queue", () => {
 
             // The audit reads the whole history, so it is deliberately lazy —
             // "nothing runs until you ask". Asking is part of the journey.
-            const ask = page.getByRole("button", { name: /look for false starts/i });
+            const ask = page.getByRole("button", { name: /scan play history/i });
             if (await ask.isVisible().catch(() => false)) await ask.click();
 
-            await expect(page.getByText(/times you pressed play/i).first()).toBeVisible({
+            await expect(page.getByText(/total plays/i).first()).toBeVisible({
                 timeout: 30_000,
             });
 
@@ -539,7 +539,7 @@ test.describe("Dogfood: stats, filters, audit, queue", () => {
             const picked = listed.filter((t) => t.duration > 60).slice(0, 3);
             expect(picked.length, "the library needs three tracks over a minute long").toBe(3);
 
-            // A run that died after "leave alone" left these tracks off the list.
+            // A run that died after "ignore" left these tracks off the list.
             const restored = await page.request.post("/api/stats/false-starts/restore", {
                 data: { trackIds: picked.map((t) => t.id) },
                 headers: { Authorization: `Bearer ${token}` },
@@ -592,16 +592,16 @@ test.describe("Dogfood: stats, filters, audit, queue", () => {
         await session.step("open the panel and ask it to look", async () => {
             await page.goto("/stats#false-starts");
             await settle(page);
-            const ask = page.getByRole("button", { name: /look for false starts/i });
+            const ask = page.getByRole("button", { name: /scan play history/i });
             if (await ask.isVisible().catch(() => false)) await ask.click();
-            await expect(page.getByText(/times you pressed play/i).first()).toBeVisible({
+            await expect(page.getByText(/total plays/i).first()).toBeVisible({
                 timeout: 30_000,
             });
         });
 
         await session.step("the merge button removes exactly the number it names", async () => {
             const start = await audit();
-            const button = page.getByRole("button", { name: /merge [\d,]+ duplicate records/i });
+            const button = page.getByRole("button", { name: /merge [\d,]+ duplicates?/i });
             // Recording refuses duplicates, so only history from older versions
             // has any to merge; once merged, the button must not be offered.
             if (start.collapsibleRows === 0) {
@@ -619,7 +619,7 @@ test.describe("Dogfood: stats, filters, audit, queue", () => {
 
             const rowsBefore = await rowCount();
             await button.click();
-            await expect(page.getByText(/merged [\d,]+ duplicate records/i)).toBeVisible({
+            await expect(page.getByText(/merged [\d,]+ duplicates?/i)).toBeVisible({
                 timeout: 60_000,
             });
 
@@ -641,9 +641,9 @@ test.describe("Dogfood: stats, filters, audit, queue", () => {
         await session.step("leaving a track alone removes nothing and takes it off the list", async () => {
             await page.reload();
             await settle(page);
-            const ask = page.getByRole("button", { name: /look for false starts/i });
+            const ask = page.getByRole("button", { name: /scan play history/i });
             if (await ask.isVisible().catch(() => false)) await ask.click();
-            await expect(page.getByText(/times you pressed play/i).first()).toBeVisible({
+            await expect(page.getByText(/total plays/i).first()).toBeVisible({
                 timeout: 30_000,
             });
 
@@ -655,12 +655,12 @@ test.describe("Dogfood: stats, filters, audit, queue", () => {
             await expect(firstBox).toBeVisible({ timeout: 15_000 });
             await firstBox.check();
 
-            await page.getByRole("button", { name: /leave alone/i }).first().click();
-            await expect(page.getByText(/ignoring \d+ track/i)).toBeVisible({ timeout: 30_000 });
+            await page.getByRole("button", { name: "ignore", exact: true }).click();
+            await expect(page.getByText(/ignored \d+ tracks?/i)).toBeVisible({ timeout: 30_000 });
 
             expect(
                 await rowCount(),
-                "'leave alone' must not delete a single row",
+                "'ignore' must not delete a single row",
             ).toBe(rowsBefore);
 
             const end = await audit();
@@ -669,18 +669,18 @@ test.describe("Dogfood: stats, filters, audit, queue", () => {
             );
         });
 
-        await session.step("putting it back returns it to the audit", async () => {
+        await session.step("restoring it returns it to the results", async () => {
             const start = await audit();
-            expect(start.ignored.length, "the track left alone must be listed as ignored").toBeGreaterThan(0);
+            expect(start.ignored.length, "the ignored track must be listed").toBeGreaterThan(0);
 
             // The ignored list is collapsed by default, so expand it first. The
-            // control inside reads "put back"; "Back in the audit." is the
-            // message it shows afterwards.
-            const reveal = page.getByRole("button", { name: /show \d+ left alone/i });
+            // control inside reads "restore"; "restored" is the message it shows
+            // afterwards.
+            const reveal = page.getByRole("button", { name: /show \d+ ignored/i });
             await expect(reveal).toBeVisible({ timeout: 15_000 });
             await reveal.click();
 
-            const back = page.getByRole("button", { name: /put back/i }).first();
+            const back = page.getByRole("button", { name: "restore", exact: true }).first();
             await expect(back).toBeVisible({ timeout: 15_000 });
             const rowsBefore = await rowCount();
             await back.click();
@@ -693,9 +693,9 @@ test.describe("Dogfood: stats, filters, audit, queue", () => {
         await session.step("remove deletes the provable skips, and only those", async () => {
             await page.reload();
             await settle(page);
-            const ask = page.getByRole("button", { name: /look for false starts/i });
+            const ask = page.getByRole("button", { name: /scan play history/i });
             if (await ask.isVisible().catch(() => false)) await ask.click();
-            await expect(page.getByText(/times you pressed play/i).first()).toBeVisible({
+            await expect(page.getByText(/total plays/i).first()).toBeVisible({
                 timeout: 30_000,
             });
 
@@ -710,17 +710,17 @@ test.describe("Dogfood: stats, filters, audit, queue", () => {
 
             // The confirmation is deliberately two presses: a delete this size
             // should not happen on one click.
-            const remove = page.getByRole("button", { name: /remove from \d+ track/i });
+            const remove = page.getByRole("button", { name: /remove skipped plays \(\d+ tracks?\)/i });
             await expect(remove).toBeVisible({ timeout: 15_000 });
             await remove.click();
-            const confirm = page.getByRole("button", { name: /delete [\d,]+ listens\?/i });
+            const confirm = page.getByRole("button", { name: /delete [\d,]+ plays?\?/i });
             await expect(confirm, "a destructive action should ask before acting").toBeVisible({
                 timeout: 15_000,
             });
             const promised = Number((await confirm.innerText()).replace(/\D/g, ""));
             await confirm.click();
 
-            await expect(page.getByText(/removed [\d,]+ records/i)).toBeVisible({ timeout: 60_000 });
+            await expect(page.getByText(/removed [\d,]+ records? from/i)).toBeVisible({ timeout: 60_000 });
 
             const end = await audit();
             const rowsAfter = await rowCount();
@@ -844,13 +844,13 @@ test.describe("Dogfood: stats, filters, audit, queue", () => {
                 await settle(p);
 
                 const overflow = await p.evaluate(
-                    () => document.documentElement.scrollWidth > window.innerWidth,
+                    () => [document.documentElement, document.querySelector("#main-content")].some((el) => !!el && el.scrollWidth > el.clientWidth + 1),
                 );
                 expect(overflow, "a phone must not scroll sideways").toBe(false);
 
                 // On a phone the period is a select folded into the tab row; it
                 // has to be reachable and has to change what the page shows.
-                const periodSelect = p.getByRole("combobox", { name: "Period" });
+                const periodSelect = p.getByRole("combobox", { name: "period" });
                 await expect(periodSelect).toBeVisible();
                 await periodSelect.selectOption("30d");
                 await expect(p.locator("main h1").first()).toHaveText(/last 30 days/i);

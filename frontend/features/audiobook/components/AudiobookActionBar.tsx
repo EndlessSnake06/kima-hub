@@ -1,8 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { Play, Pause, RotateCcw, CheckCircle } from "lucide-react";
 import type { Audiobook } from "../types";
 import { Button } from "@/components/ui/Button";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 interface AudiobookActionBarProps {
     audiobook: Audiobook;
@@ -28,15 +30,15 @@ export function AudiobookActionBar({
     const hasProgress = audiobook.progress && audiobook.progress.progress > 0;
     const isFinished = audiobook.progress?.isFinished;
     const showingPause = isThisBookPlaying && isPlaying;
+    const [confirmingReset, setConfirmingReset] = useState(false);
 
     return (
         <div className="flex items-center gap-4">
-            {/* Play/Pause Button */}
             {onPlayPause && (
                 <button
                     onClick={onPlayPause}
                     className="w-10 h-10 rounded-lg bg-brand hover:bg-brand-hover transition-all flex items-center justify-center hover:scale-105 active:scale-95"
-                    title={showingPause ? "Pause" : (hasProgress && !isFinished ? "Resume" : "Play")}
+                    title={showingPause ? "pause" : (hasProgress && !isFinished ? "resume" : "play")}
                 >
                     {showingPause ? (
                         <Pause className="w-4 h-4 text-black" />
@@ -46,7 +48,6 @@ export function AudiobookActionBar({
                 </button>
             )}
 
-            {/* Progress indicator */}
             {hasProgress && !isFinished && (
                 <div className="hidden sm:flex items-center gap-3">
                     <div className="text-xs tabular-nums text-[var(--text-secondary)]">
@@ -69,21 +70,21 @@ export function AudiobookActionBar({
 
             <div className="flex-1" />
 
-            {/* Action buttons */}
             <div className="flex items-center gap-2">
                 {hasProgress && !isFinished && (
                     <>
                         <button
-                            onClick={onResetProgress}
+                            onClick={() => setConfirmingReset(true)}
                             className="p-2 rounded-lg text-[var(--text-muted)] hover:text-white hover:bg-white/5 border border-transparent hover:border-white/10 transition-all"
-                            title="Reset progress"
+                            title="reset progress"
+                            aria-label="reset progress"
                         >
                             <RotateCcw className="w-4 h-4" />
                         </button>
                         <button
                             onClick={onMarkAsCompleted}
                             className="p-2 rounded-lg text-success/60 hover:text-success hover:bg-success/10 border border-transparent hover:border-success/20 transition-all"
-                            title="Mark as completed"
+                            title="mark as completed"
                         >
                             <CheckCircle className="w-4 h-4" />
                         </button>
@@ -95,13 +96,22 @@ export function AudiobookActionBar({
                         variant="secondary"
                         size="sm"
                         onClick={onResetProgress}
-                        title="Listen again"
+                        title="listen again"
                     >
                         <RotateCcw className="w-3.5 h-3.5" />
                         <span>Listen Again</span>
                     </Button>
                 )}
             </div>
+            <ConfirmDialog
+                isOpen={confirmingReset}
+                onClose={() => setConfirmingReset(false)}
+                onConfirm={() => { setConfirmingReset(false); onResetProgress(); }}
+                title="Reset progress?"
+                message={`Your place in ${audiobook.title}${currentTime > 0 ? ` (${formatTime(Math.floor(currentTime))})` : ""} is forgotten and the book starts from the beginning.`}
+                confirmText="Reset"
+                variant="warning"
+            />
         </div>
     );
 }

@@ -39,7 +39,7 @@ export default function MixPage() {
     const { isPlaying } = useAudioPlayback();
     const { playTracks, addToQueue, pause, resumeWithGesture } = useAudioControls();
 
-    const { data: mix, isLoading } = useMixQuery(mixId);
+    const { data: mix, isLoading, error, refetch } = useMixQuery(mixId);
     const [isSaving, setIsSaving] = useState(false);
 
     const totalDuration = useMemo(() => {
@@ -113,23 +113,7 @@ export default function MixPage() {
         playTracks(shuffled, 0);
     };
 
-    const handleAddToQueue = (track: MixTrack) => {
-        const formattedTrack = {
-            id: track.id,
-            title: track.title,
-            artist: {
-                name: track.album.artist.name,
-                id: track.album.artist.id,
-            },
-            album: {
-                title: track.album.title,
-                coverArt: track.album.coverUrl,
-                id: track.albumId,
-            },
-            duration: track.duration,
-        };
-        addToQueue(formattedTrack);
-    };
+    const handleAddToQueue = (track: MixTrack) => addToQueue(formatTracksForPlayback([track])[0]);
 
     const handleSaveAsPlaylist = async () => {
         if (!mix) return;
@@ -170,11 +154,18 @@ export default function MixPage() {
     }
 
     if (!mix) {
-        return (
+        // Only a 404 means the mix is gone (a rebuild makes new mixes); anything else is a failed request.
+        return (error as { status?: number } | null)?.status === 404 ? (
             <PageMessage
                 title="Mix not found"
-                description="Mixes are rebuilt regularly, so this one may have been replaced."
+                description="This mix no longer exists. Rebuilding mixes replaces them with new ones."
                 action={{ label: "Home", href: "/" }}
+            />
+        ) : (
+            <PageMessage
+                title="Couldn't load this mix"
+                description="The server didn't answer. Try again in a moment."
+                action={{ label: "Try again", onClick: () => void refetch() }}
             />
         );
     }
@@ -191,7 +182,6 @@ export default function MixPage() {
                 }}
             >
                 <div className="flex items-end gap-6">
-                        {/* Cover Art Mosaic */}
                         <div className="w-[140px] h-[140px] md:w-[192px] md:h-[192px] bg-[#282828] rounded shrink-0 overflow-hidden">
                             {mix.coverUrls && mix.coverUrls.length > 0 ? (
                                 <div className="grid grid-cols-2 gap-0 w-full h-full">
@@ -243,10 +233,8 @@ export default function MixPage() {
                 </div>
             </div>
 
-            {/* Action Bar */}
             <div className="bg-gradient-to-b from-[#1a1a1a]/60 to-transparent page-shell py-4">
                 <div className="flex items-center gap-4">
-                    {/* Play Button */}
                     {mix.tracks && mix.tracks.length > 0 && (
                         <button
                             onClick={handlePlayMix}
@@ -261,7 +249,6 @@ export default function MixPage() {
                         </button>
                     )}
 
-                    {/* Shuffle Button */}
                     {mix.tracks && mix.tracks.length > 1 && (
                         <button
                             onClick={handleShuffle}
@@ -272,7 +259,6 @@ export default function MixPage() {
                         </button>
                     )}
 
-                    {/* Save as Playlist Button */}
                     <button
                         onClick={handleSaveAsPlaylist}
                         disabled={isSaving}
@@ -286,11 +272,9 @@ export default function MixPage() {
                 </div>
             </div>
 
-            {/* Track Listing */}
             <div className="page-shell pb-32">
                 {mix.tracks && mix.tracks.length > 0 ? (
                     <div className="w-full">
-                        {/* Table Header */}
                         <div className="hidden md:grid grid-cols-[40px_minmax(200px,4fr)_minmax(100px,1fr)_80px] gap-4 px-4 py-2 text-xs text-[var(--text-secondary)] border-b border-white/10 mb-2">
                             <span className="text-center">#</span>
                             <span>Title</span>
@@ -298,7 +282,6 @@ export default function MixPage() {
                             <span className="text-right">Duration</span>
                         </div>
 
-                        {/* Track Rows */}
                         <div>
                             {mix.tracks.map((track: MixTrack, index: number) => {
                                 const isCurrentlyPlaying = currentTrack?.id === track.id;
@@ -339,7 +322,6 @@ export default function MixPage() {
                                             </button>
                                         </div>
 
-                                        {/* Title + Artist */}
                                         <div className="flex items-center gap-3 min-w-0">
                                             <div className="relative w-10 h-10 bg-[#282828] rounded shrink-0 overflow-hidden">
                                                 {track.album?.coverUrl ? (
@@ -371,15 +353,13 @@ export default function MixPage() {
                                             </div>
                                         </div>
 
-                                        {/* Album (hidden on mobile) */}
                                         <p className="hidden md:flex items-center text-sm text-[var(--text-secondary)] truncate">
                                             {track.album.title}
                                         </p>
 
-                                        {/* Duration + Actions */}
                                         <div className="flex items-center justify-end gap-2">
                                             <button
-                                                className="min-h-[44px] min-w-[44px] rounded-full opacity-0 group-hover:opacity-100 hover:bg-white/10 text-[var(--text-secondary)] hover:text-white transition-all flex items-center justify-center"
+                                                className="min-h-[44px] min-w-[44px] rounded-full opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-white/10 text-[var(--text-secondary)] hover:text-white transition-all flex items-center justify-center"
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     handleAddToQueue(track);

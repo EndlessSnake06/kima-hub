@@ -43,9 +43,15 @@ export function LyricsView({ variant }: { variant: keyof typeof VARIANTS }) {
     const v = VARIANTS[variant];
     const { lines, activeIndex, isLoading, hasLyrics, isSynced, plainLyrics } = useLyricsSync();
     const activeRef = useRef<HTMLDivElement>(null);
+    const scrollerRef = useRef<HTMLDivElement>(null);
 
+    // Scroll only the lyrics box: scrollIntoView would also scroll every ancestor, the app layout included.
     useEffect(() => {
-        activeRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+        const box = scrollerRef.current;
+        const line = activeRef.current;
+        if (!box || !line) return;
+        const offset = line.getBoundingClientRect().top - box.getBoundingClientRect().top;
+        box.scrollTo({ top: box.scrollTop + offset - box.clientHeight / 2 + line.offsetHeight / 2, behavior: "smooth" });
     }, [activeIndex]);
 
     if (isLoading) {
@@ -65,7 +71,7 @@ export function LyricsView({ variant }: { variant: keyof typeof VARIANTS }) {
     }
 
     return (
-        <div className={v.scroller} style={isSynced ? v.syncedMask : v.plainMask}>
+        <div ref={scrollerRef} className={v.scroller} style={isSynced ? v.syncedMask : v.plainMask}>
             <div className={v.list}>
                 {isSynced
                     ? lines.map((line, i) => (

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { SettingsSection, SettingsRow, SettingsInput, SettingsSelect } from "../ui";
-import { SystemSettings } from "../../types";
+import { SystemSettings, soulseekConfigured } from "../../types";
 import { ExternalLink } from "lucide-react";
 import { InlineStatus, StatusType } from "@/components/ui/InlineStatus";
 import { Button } from "@/components/ui/Button";
@@ -33,11 +33,7 @@ export function SoulseekSection({ settings, onUpdate, onTest, isTesting }: Souls
 
     const mode = settings.soulseekMode || "p2p";
     const isSlskd = mode === "slskd";
-    // P2P needs Kima-side credentials; slskd only needs a reachable URL
-    // (slskd holds its own Soulseek account).
-    const canTest = isSlskd
-        ? !!settings.slskdUrl
-        : !!(settings.soulseekUsername && settings.soulseekPassword);
+    const canTest = soulseekConfigured(settings);
 
     return (
         <SettingsSection
@@ -49,8 +45,8 @@ export function SoulseekSection({ settings, onUpdate, onTest, isTesting }: Souls
                 label="Connection Mode"
                 description={
                     isSlskd
-                        ? "Route through a slskd REST API instance. slskd holds its own Soulseek account, so no credentials are needed here."
-                        : "Connect directly using Kima's built-in Soulseek client and your account credentials."
+                        ? "Use a slskd instance. Credentials stay in slskd."
+                        : "Built-in client with your Soulseek account."
                 }
             >
                 <SettingsSelect

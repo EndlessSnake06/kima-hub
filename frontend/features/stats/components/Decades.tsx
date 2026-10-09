@@ -46,7 +46,7 @@ export function Decades({ decades }: { decades: ShelfStats["decades"] }) {
         <figure ref={ref} className="m-0 grid items-center gap-x-12 gap-y-8 sm:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
             <div className="flex flex-col gap-2">
                 <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img"
-                     aria-label={`Albums you own by decade. Most are from the ${String(biggest.decade).slice(2)}s.`}>
+                     aria-label={`albums by decade · most from the ${String(biggest.decade).slice(2)}s`}>
                     <line x1="0" y1={H / 2} x2={W} y2={H / 2} stroke="var(--chart-ink-rule)" strokeWidth="0.3" />
                     {decades.map((d, i) => {
                         const cx = at(i);
@@ -82,7 +82,7 @@ export function Decades({ decades }: { decades: ShelfStats["decades"] }) {
                                         transitionDelay: `${i * 70 + 110}ms`,
                                     }}
                                 />
-                                <title>{`${d.decade}s: ${d.heard} of ${d.albums} albums opened`}</title>
+                                <title>{`${d.decade}s: ${d.heard} of ${d.albums} ${d.albums === 1 ? "album" : "albums"} played`}</title>
                             </g>
                         );
                     })}
@@ -104,20 +104,18 @@ export function Decades({ decades }: { decades: ShelfStats["decades"] }) {
 
             <figcaption className="flex flex-col gap-2 max-w-[30ch]">
                 <p className="t-body">
-                    Most of your shelf is the{" "}
+                    most albums:{" "}
                     <span className="t-figure text-sm">{String(biggest.decade).slice(2)}s</span>
                     {coldest && coldest.decade !== biggest.decade && (
                         <>
-                            , and the{" "}
+                            {" · least played: "}
                             <span className="t-figure text-sm">
                                 {String(coldest.decade).slice(2)}s
-                            </span>{" "}
-                            is the one you&apos;ve left alone
+                            </span>
                         </>
                     )}
-                    .
                 </p>
-                <p className="t-meta">size is what you own · amber is what you&apos;ve opened</p>
+                <p className="t-meta">size = albums owned · fill = albums played</p>
             </figcaption>
         </figure>
     );

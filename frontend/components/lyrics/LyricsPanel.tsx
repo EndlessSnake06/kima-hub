@@ -10,7 +10,7 @@ export function LyricsPanel({ onBack }: { onBack: () => void }) {
                 <button
                     onClick={onBack}
                     className="border border-white/20 p-2 hover:border-brand hover:bg-white/5 transition-colors"
-                    title="Back to activity"
+                    title="back to activity"
                     aria-label="Back to activity"
                 >
                     <ArrowLeft className="w-4 h-4 text-[var(--text-secondary)]" />

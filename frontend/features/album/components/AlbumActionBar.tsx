@@ -57,20 +57,18 @@ export function AlbumActionBar({
                         )}
                     </button>
 
-                    {/* Shuffle Button */}
                     <button
                         onClick={onShuffle}
                         className="h-8 w-8 rounded-lg hover:bg-white/10 flex items-center justify-center text-[var(--text-secondary)] hover:text-white transition-all"
-                        title="Shuffle play"
+                        title="shuffle play"
                     >
                         <Shuffle className="w-5 h-5" />
                     </button>
 
-                    {/* Add to Playlist Button */}
                     <button
                         onClick={onAddToPlaylist}
                         className="h-8 w-8 rounded-lg hover:bg-white/10 flex items-center justify-center text-[var(--text-secondary)] hover:text-white transition-all"
-                        title="Add to playlist"
+                        title="add to playlist"
                     >
                         <ListPlus className="w-5 h-5" />
                     </button>

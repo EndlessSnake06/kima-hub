@@ -20,7 +20,10 @@ export function useAlbumData(albumId?: string) {
             if (!id) throw new Error("Album ID is required");
             try {
                 return await api.getAlbum(id);
-            } catch {
+            } catch (e) {
+                // Only an album the library doesn't have is looked up in discovery; a
+                // failed request must not end as discovery's "not found".
+                if ((e as { status?: number }).status !== 404) throw e;
                 return await api.getAlbumDiscovery(id);
             }
         },

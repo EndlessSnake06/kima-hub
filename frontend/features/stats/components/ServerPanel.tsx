@@ -16,21 +16,21 @@ export function ServerPanel({ system }: { system: SystemStats }) {
     return (
         <div className="flex flex-col gap-7">
             <div className="grid gap-x-10 gap-y-5 grid-cols-2 sm:grid-cols-4">
-                <Probe label="Database" ms={system.db} />
-                <Probe label="Redis" ms={system.redis} />
-                <Reading label="Uptime" value={uptime(system.uptimeSeconds)} />
-                <Reading label="Version" value={system.version} mono />
+                <Probe label="database" ms={system.db} />
+                <Probe label="redis" ms={system.redis} />
+                <Reading label="uptime" value={uptime(system.uptimeSeconds)} />
+                <Reading label="version" value={system.version} mono />
             </div>
 
             <div className="grid gap-x-10 gap-y-5 grid-cols-2 sm:grid-cols-4">
-                <Reading label="Tracks" value={system.library.tracks.toLocaleString()} />
-                <Reading label="On disk" value={bytes(system.library.bytes)} />
+                <Reading label="tracks" value={system.library.tracks.toLocaleString()} />
+                <Reading label="library size" value={bytes(system.library.bytes)} />
                 <Reading
-                    label="Cached"
+                    label="cache size"
                     value={bytes((system.cache.downloadedMb + system.cache.transcodedMb) * 1048576)}
                 />
                 <Reading
-                    label="Needs attention"
+                    label="failed tracks"
                     value={(system.corruptTracks + system.enrichmentFailures).toLocaleString()}
                     tone={system.corruptTracks + system.enrichmentFailures > 0 ? "warn" : undefined}
                 />
@@ -38,7 +38,7 @@ export function ServerPanel({ system }: { system: SystemStats }) {
 
             {system.jobs.length > 0 && (
                 <div className="flex flex-col gap-3">
-                    <h3 className="t-label text-[var(--text-secondary)]">Download jobs</h3>
+                    <h3 className="t-label text-[var(--text-secondary)]">download jobs</h3>
                     <div className="flex flex-wrap gap-x-8 gap-y-3">
                         {system.jobs.map((job) => (
                             <p key={job.status} className="flex items-baseline gap-2">
@@ -54,21 +54,21 @@ export function ServerPanel({ system }: { system: SystemStats }) {
 
             <div className="flex flex-wrap gap-2 pt-1">
                 <Action<ClearCachesResult>
-                    label="Clear caches"
-                    confirmLabel="Clear them?"
+                    label="clear cache"
+                    confirmLabel="clear cache?"
                     path="/system-settings/clear-caches"
-                    done={(r) => `Cleared ${(r.clearedKeys ?? 0).toLocaleString()} cache entries.`}
+                    done={(r) => `cleared ${(r.clearedKeys ?? 0).toLocaleString()} cache ${(r.clearedKeys ?? 0) === 1 ? "entry" : "entries"}`}
                 />
                 <Action<CleanupJobsResult>
-                    label="Clear finished jobs"
-                    confirmLabel="Clear them?"
+                    label="clear finished jobs"
+                    confirmLabel="clear jobs?"
                     path="/settings/cleanup-stale-jobs"
-                    done={(r) => `Cleared ${(r.totalCleaned ?? 0).toLocaleString()} records.`}
+                    done={(r) => `cleared ${(r.totalCleaned ?? 0).toLocaleString()} ${(r.totalCleaned ?? 0) === 1 ? "job" : "jobs"}`}
                 />
                 <Action<RetryFailedResult>
-                    label="Retry failed analysis"
+                    label="retry failed analysis"
                     path="/analysis/retry-failed"
-                    done={(r) => `Requeued ${(r.reset ?? 0).toLocaleString()} tracks.`}
+                    done={(r) => `requeued ${(r.reset ?? 0).toLocaleString()} ${(r.reset ?? 0) === 1 ? "track" : "tracks"}`}
                 />
             </div>
         </div>
@@ -89,7 +89,7 @@ function Probe({ label, ms }: { label: string; ms: number | null }) {
                 <span
                     className={`t-figure text-[length:var(--stat-lead)] ${ok ? "" : "text-danger-light"}`}
                 >
-                    {ok ? `${ms < 1 ? ms.toFixed(1) : Math.round(ms)}ms` : "no answer"}
+                    {ok ? `${ms < 1 ? ms.toFixed(1) : Math.round(ms)}ms` : "down"}
                 </span>
             </span>
         </div>
@@ -154,7 +154,7 @@ function Action<TResult extends object>({
         try {
             setResult(done((await api.post<TResult>(path, {})) ?? ({} as TResult)));
         } catch {
-            setResult("That didn't run. Nothing changed.");
+            setResult("failed · nothing changed");
         } finally {
             setBusy(false);
         }

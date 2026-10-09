@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { useMemo } from "react";
 import { KeyboardShortcutsTooltip } from "./KeyboardShortcutsTooltip";
+import { shuffleState } from "@/lib/shuffle";
 import { cn } from "@/lib/cn";
 import { computeVibeMatchScore } from "@/lib/vibeMatchScore";
 import { formatTime, formatTimeRemaining } from "@/lib/format";
@@ -77,7 +78,7 @@ export function FullPlayer() {
         toggleRepeat,
     } = useAudioControls();
 
-    const { handleLyricsToggle, isLyricsActive } = useLyricsToggle({ isMobile: false });
+    const { handleLyricsToggle, isLyricsActive } = useLyricsToggle({ inline: false });
 
     const currentTrackFeatures = queue[currentIndex]?.audioFeatures || null;
 
@@ -88,6 +89,7 @@ export function FullPlayer() {
 
 
     const { title, subtitle, coverUrl, artistLink, mediaLink, hasMedia } = useMediaInfo(100);
+    const shuffle = shuffleState(hasMedia, playbackType, activeOperation.type);
 
     const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const newVolume = parseInt(e.target.value) / 100;
@@ -98,10 +100,8 @@ export function FullPlayer() {
         <>
         <div className="relative flex-shrink-0">
             <div className="bg-black border-t border-white/[0.08] h-24">
-                {/* Brand accent line */}
                 <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-brand/40 to-transparent" />
                 <div className="flex items-center h-full px-6 gap-6">
-                    {/* Artwork & Info */}
                     <div className="flex items-center gap-4 w-80">
                         {mediaLink ? (
                             <Link
@@ -196,11 +196,8 @@ export function FullPlayer() {
                         <SleepTimer />
                     </div>
 
-                    {/* Controls */}
                     <div className="flex-1 flex flex-col items-center gap-2">
-                        {/* Buttons */}
                         <div className="flex items-center gap-5" role="group" aria-label="Playback controls">
-                            {/* Shuffle */}
                             <button
                                 onClick={toggleShuffle}
                                 className={cn(
@@ -209,15 +206,14 @@ export function FullPlayer() {
                                         ? "text-brand hover:text-brand-light"
                                         : "text-[var(--text-secondary)] hover:text-white"
                                 )}
-                                disabled={!hasMedia || playbackType !== "track"}
+                                disabled={!shuffle.enabled}
                                 aria-label="Shuffle"
                                 aria-pressed={isShuffle}
-                                title="Shuffle"
+                                title={shuffle.title}
                             >
                                 <Shuffle className="w-4 h-4" />
                             </button>
 
-                            {/* Skip Backward 30s */}
                             <button
                                 onClick={() => skipBackward(30)}
                                 className={cn(
@@ -228,7 +224,7 @@ export function FullPlayer() {
                                 )}
                                 disabled={!hasMedia}
                                 aria-label="Rewind 30 seconds"
-                                title="Rewind 30 seconds"
+                                title="rewind 30 seconds"
                             >
                                 <RotateCcw className="w-4 h-4" />
                                 <span className="absolute text-micro font-semibold top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
@@ -241,7 +237,7 @@ export function FullPlayer() {
                                 className="text-[var(--text-secondary)] hover:text-white transition-all duration-200 hover:scale-110 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:scale-100"
                                 disabled={!hasMedia || playbackType !== "track"}
                                 aria-label="Previous track"
-                                title="Previous track"
+                                title="previous track"
                             >
                                 <SkipBack className="w-5 h-5" />
                             </button>
@@ -270,12 +266,12 @@ export function FullPlayer() {
                                 }
                                 title={
                                     audioError
-                                        ? "Retry playback"
+                                        ? "retry playback"
                                         : isBuffering
-                                        ? "Buffering..."
+                                        ? "buffering..."
                                         : isPlaying
-                                        ? "Pause"
-                                        : "Play"
+                                        ? "pause"
+                                        : "play"
                                 }
                             >
                                 {hasMedia && !isBuffering && !audioError && (
@@ -297,12 +293,11 @@ export function FullPlayer() {
                                 className="text-[var(--text-secondary)] hover:text-white transition-all duration-200 hover:scale-110 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:scale-100"
                                 disabled={!hasMedia || playbackType !== "track"}
                                 aria-label="Next track"
-                                title="Next track"
+                                title="next track"
                             >
                                 <SkipForward className="w-5 h-5" />
                             </button>
 
-                            {/* Skip Forward 30s */}
                             <button
                                 onClick={() => skipForward(30)}
                                 className={cn(
@@ -313,7 +308,7 @@ export function FullPlayer() {
                                 )}
                                 disabled={!hasMedia}
                                 aria-label="Forward 30 seconds"
-                                title="Forward 30 seconds"
+                                title="forward 30 seconds"
                             >
                                 <RotateCw className="w-4 h-4" />
                                 <span className="absolute text-micro font-semibold top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
@@ -321,7 +316,6 @@ export function FullPlayer() {
                                 </span>
                             </button>
 
-                            {/* Repeat */}
                             <button
                                 onClick={toggleRepeat}
                                 className={cn(
@@ -341,10 +335,10 @@ export function FullPlayer() {
                                 aria-pressed={repeatMode !== "off"}
                                 title={
                                     repeatMode === "off"
-                                        ? "Repeat: Off"
+                                        ? "repeat: off"
                                         : repeatMode === "all"
-                                        ? "Repeat: All (loop queue)"
-                                        : "Repeat: One (play current track twice)"
+                                        ? "repeat: all (loop queue)"
+                                        : "repeat: one (loop this track)"
                                 }
                             >
                                 {repeatMode === "one" ? (
@@ -362,7 +356,6 @@ export function FullPlayer() {
                                 activeClassName="text-brand hover:text-brand-hover"
                             />
 
-                            {/* Lyrics Toggle */}
                             {playbackType === "track" && (
                                 <button
                                     onClick={handleLyricsToggle}
@@ -376,14 +369,13 @@ export function FullPlayer() {
                                     )}
                                     disabled={!hasMedia}
                                     aria-label="Toggle lyrics"
-                                    title="Show lyrics"
+                                    title="show lyrics"
                                 >
                                     <MicVocal className="w-4 h-4" />
                                 </button>
                             )}
                         </div>
 
-                        {/* Progress Bar */}
                         <div className="w-full flex items-center gap-3">
                             <span
                                 className={cn(
@@ -425,7 +417,6 @@ export function FullPlayer() {
                         </div>
                     </div>
 
-                    {/* Volume & Expand */}
                     <div className="flex items-center gap-3 w-52 justify-end">
                         <button
                             onClick={toggleMute}
@@ -460,7 +451,6 @@ export function FullPlayer() {
                             />
                         </div>
 
-                        {/* Keyboard Shortcuts Info */}
                         <KeyboardShortcutsTooltip />
 
                         <button
@@ -473,7 +463,7 @@ export function FullPlayer() {
                             )}
                             disabled={!hasMedia}
                             aria-label="Expand player"
-                            title="Expand to full screen"
+                            title="expand to full screen"
                         >
                             <Maximize2 className="w-4 h-4" />
                         </button>

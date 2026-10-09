@@ -101,6 +101,7 @@ export default function BrowsePlaylistsPage() {
 
         setIsSearching(true);
         setHasSearched(true);
+        setSelectedGenre(null);
         setActiveTab("playlists");
 
         try {
@@ -222,7 +223,6 @@ export default function BrowsePlaylistsPage() {
                 />
 
                 <div className="relative page-shell pb-24 animate-rise">
-                    {/* Beta Notice */}
                     <div
                         className="mb-6"
 
@@ -280,7 +280,6 @@ export default function BrowsePlaylistsPage() {
                         </button>
                     </div>
 
-                    {/* Tabs */}
                     {!selectedGenre && !hasSearched && (
                         <div
                             className="flex items-center gap-2 mb-8"
@@ -309,7 +308,6 @@ export default function BrowsePlaylistsPage() {
                         </div>
                     )}
 
-                    {/* Genre Breadcrumb */}
                     {selectedGenre && (
                         <div className="flex items-center gap-2 mb-6">
                             <button
@@ -326,14 +324,12 @@ export default function BrowsePlaylistsPage() {
                         </div>
                     )}
 
-                    {/* Loading State */}
                     {(isLoading || isSearching) && !loadError && (
                         <div className="flex items-center justify-center py-24">
                             <GradientSpinner size="md" />
                         </div>
                     )}
 
-                    {/* Error State */}
                     {loadError && !isLoading && (
                         <div className="flex flex-col items-center justify-center py-20 text-center">
                             <Music2 className="w-12 h-12 text-white/10 mb-4" />
@@ -353,7 +349,6 @@ export default function BrowsePlaylistsPage() {
                         </div>
                     )}
 
-                    {/* Search Results */}
                     {!isLoading && !isSearching && hasSearched && (
                         <div
 
@@ -387,7 +382,6 @@ export default function BrowsePlaylistsPage() {
                         </div>
                     )}
 
-                    {/* Genre Playlists View */}
                     {!isLoading && selectedGenre && (
                         <div
 
@@ -409,7 +403,6 @@ export default function BrowsePlaylistsPage() {
                         </div>
                     )}
 
-                    {/* Main Content */}
                     {!isLoading &&
                         !isSearching &&
                         !hasSearched &&
@@ -466,7 +459,6 @@ export default function BrowsePlaylistsPage() {
                 </div>
             </div>
 
-            {/* URL Import Modal */}
             {showUrlModal && (
                 <div
                     className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-(--z-modal) p-4 animate-in fade-in duration-200"
@@ -480,7 +472,6 @@ export default function BrowsePlaylistsPage() {
                         className="bg-[var(--bg-secondary)] rounded-lg max-w-lg w-full border border-white/10 animate-in zoom-in-95 duration-200"
                         onClick={(e) => e.stopPropagation()}
                     >
-                        {/* Header */}
                         <div className="relative px-6 pt-6 pb-4 border-b border-white/10">
                             <button
                                 onClick={() => setShowUrlModal(false)}
@@ -503,7 +494,6 @@ export default function BrowsePlaylistsPage() {
                             </p>
                         </div>
 
-                        {/* Supported platforms */}
                         <div className="px-6 py-4">
                             <div className="flex items-center gap-3 p-3 bg-white/[0.02] rounded-lg border border-white/5">
                                 <div className="flex items-center gap-2 px-2.5 py-1 bg-spotify/10 rounded border border-spotify/20">
@@ -543,7 +533,6 @@ export default function BrowsePlaylistsPage() {
                             </div>
                         </div>
 
-                        {/* Input */}
                         <div className="px-6 pb-4">
                             <div className="relative">
                                 <input
@@ -573,7 +562,6 @@ export default function BrowsePlaylistsPage() {
                             </p>
                         </div>
 
-                        {/* Actions */}
                         <div className="px-6 pb-6 flex gap-3">
                             <button
                                 onClick={() => setShowUrlModal(false)}

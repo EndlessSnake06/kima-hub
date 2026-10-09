@@ -14,8 +14,7 @@ export function SpokenWord({ spoken }: { spoken: SpokenStats }) {
     if (audiobooks.seconds === 0 && podcasts.seconds === 0) {
         return (
             <p className="t-body max-w-[34ch]">
-                Nothing here yet. Connect Audiobookshelf or subscribe to a podcast and this fills
-                in.
+                no podcasts or audiobooks yet
             </p>
         );
     }
@@ -25,17 +24,16 @@ export function SpokenWord({ spoken }: { spoken: SpokenStats }) {
             {audiobooks.seconds > 0 && (
                 <Entry
                     value={hoursValue(audiobooks.seconds)}
-                    unit="hours of books"
+                    unit="hours of audiobooks"
                     lines={[
-                        sentence([
-                            audiobooks.finished > 0 &&
-                                `${audiobooks.finished} finished`,
-                            audiobooks.inProgress > 0 && `${audiobooks.inProgress} on the go`,
-                            audiobooks.setAside > 0 && `${audiobooks.setAside} set aside`,
+                        joined([
+                            audiobooks.finished > 0 && `${audiobooks.finished} finished`,
+                            audiobooks.inProgress > 0 && `${audiobooks.inProgress} in progress`,
+                            audiobooks.setAside > 0 && `${audiobooks.setAside} untouched 90+ days`,
                         ]),
                         audiobooks.current &&
-                            `${Math.round(audiobooks.current.percent * 100)}% through ${audiobooks.current.title}`,
-                        audiobooks.topAuthors[0] && `mostly ${audiobooks.topAuthors[0].name}`,
+                            `current: ${audiobooks.current.title} · ${Math.round(audiobooks.current.percent * 100)}%`,
+                        audiobooks.topAuthors[0] && `top author: ${audiobooks.topAuthors[0].name}`,
                     ]}
                 />
             )}
@@ -45,12 +43,14 @@ export function SpokenWord({ spoken }: { spoken: SpokenStats }) {
                     value={hoursValue(podcasts.seconds)}
                     unit="hours of podcasts"
                     lines={[
-                        sentence([
-                            podcasts.subscriptions > 0 && `${podcasts.subscriptions} subscribed`,
-                            podcasts.finished > 0 && `${podcasts.finished} episodes finished`,
+                        joined([
+                            podcasts.subscriptions > 0 &&
+                                `${podcasts.subscriptions} ${podcasts.subscriptions === 1 ? "subscription" : "subscriptions"}`,
+                            podcasts.finished > 0 &&
+                                `${podcasts.finished} ${podcasts.finished === 1 ? "episode" : "episodes"} finished`,
                         ]),
                         podcasts.backlog > 0 &&
-                            `${podcasts.backlog.toLocaleString()} waiting, never opened`,
+                            `${podcasts.backlog.toLocaleString()} unplayed ${podcasts.backlog === 1 ? "episode" : "episodes"}`,
                     ]}
                 />
             )}
@@ -84,10 +84,7 @@ function Entry({
     );
 }
 
-/** Join the parts that exist into one phrase, and skip the ones that don't. */
-function sentence(parts: Array<string | false>): string {
-    const kept = parts.filter(Boolean) as string[];
-    if (kept.length === 0) return "just getting started";
-    if (kept.length === 1) return kept[0];
-    return `${kept.slice(0, -1).join(", ")} and ${kept[kept.length - 1]}`;
+/** The parts that exist, on one line; nothing when none do. */
+function joined(parts: Array<string | false>): string {
+    return (parts.filter(Boolean) as string[]).join(" · ");
 }

@@ -12,11 +12,10 @@ import { useDoubleClickById } from "@/hooks/useDoubleTap";
 import { useReducedMotion } from "@/hooks/useMediaQuery";
 import { normalizeNFC } from "@/lib/format";
 import { MOOD_COLORS, moodIndex } from "../mapUtils";
-import type { MapTrack, PathResult, VibeMode } from "../types";
+import type { MapTrack } from "../types";
 import { createGlowTexture, createStarMaterial, setStarFocus, tickStars, type StarUniforms } from "./starShader";
 import { buildTrackField, easeEmphasis, toWorld, type TrackField } from "./trackField";
 import { buildSkyField } from "./skyField";
-import { buildDust, buildHaze } from "./nebula";
 import { computeMoodAnchors } from "./moodAnchors";
 import { ScreenPicker } from "./screenPick";
 
@@ -28,8 +27,6 @@ export interface VibeMapSceneProps {
     playingTrackId: string | null;
     queueTrackIds: string[];
     activeOperation: VibeOperation | null;
-    pathResult: PathResult | null;
-    mode: VibeMode;
     showLabels: boolean;
     /** A mood being previewed from the legend: its stars take on its colour. */
     focusMood: string | null;
@@ -55,15 +52,43 @@ const OPERATION_RING: Partial<Record<VibeOperation["type"], string>> = {
     similar: "#6f9be0",
 };
 const QUEUE_COLOR = "#c9b184";
+
+/** Two faint, far nebula wisps: depth at the edges only. */
+const NEBULA_WISPS: Array<{ p: [number, number, number]; s: number; c: string }> = [
+    { p: [-165, 26, -150], s: 150, c: "#5f2f8e" },
+    { p: [160, -44, 120], s: 150, c: "#7d2f66" },
+];
 const DRAG_TOLERANCE_PX = 5;
 const PICK_RADIUS_PX = 12;
 const HOVER_DWELL_MS = 400;
 // Matches useDoubleClickById's window; nothing moves the camera inside it.
 const DOUBLE_CLICK_WINDOW_MS = 420;
-// The home view stands just outside the cloud, a little above it, so the
-// nearest stars are in the foreground and the far side recedes behind them.
+// The home view looks at the cloud from a little above, far enough back that
+// 95% of the stars fit the screen across and up, whatever its shape.
 const HOME_DIRECTION = new THREE.Vector3(0, 0.42, 1).normalize();
-const HOME_DISTANCE = 1.25; // × the cloud's radius
+const HOME_SHARE = 0.95;
+
+/** Distance from the cloud's centre at which the home view fits it on a screen of this shape. */
+function homeDistance(field: TrackField, fovDegrees: number, aspect: number): number {
+    const forward = HOME_DIRECTION.clone().negate();
+    const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
+    const up = new THREE.Vector3().crossVectors(right, forward);
+    const n = field.positions.length / 3;
+    const across = new Float32Array(n);
+    const upward = new Float32Array(n);
+    const toward = new Float32Array(n);
+    const o = new THREE.Vector3();
+    for (let i = 0; i < n; i++) {
+        o.fromArray(field.positions, i * 3).sub(field.center);
+        across[i] = Math.abs(o.dot(right));
+        upward[i] = Math.abs(o.dot(up));
+        toward[i] = o.dot(HOME_DIRECTION);
+    }
+    const share = (values: Float32Array) => values.sort()[Math.floor((n - 1) * HOME_SHARE)] ?? 0;
+    const halfUp = THREE.MathUtils.degToRad(fovDegrees) / 2;
+    const halfAcross = Math.atan(Math.tan(halfUp) * aspect);
+    return Math.max(0, share(toward)) + Math.max(share(across) / Math.tan(halfAcross), share(upward) / Math.tan(halfUp), field.radius);
+}
 
 type Controls = ComponentRef<typeof OrbitControls>;
 interface Flight { fromPos: THREE.Vector3; toPos: THREE.Vector3; fromTarget: THREE.Vector3; toTarget: THREE.Vector3; t: number; duration: number }
@@ -160,15 +185,13 @@ function Ring({ at, radius, color, opacity = 0.75, pulse = false }: { at: [numbe
 function Scene(props: VibeMapSceneProps & { apiRef: MutableRefObject<SceneApi | null>; hoverId: string | null }) {
     const {
         tracks, trackMap, highlightedIds, selectedTrackId, playingTrackId, queueTrackIds, activeOperation,
-        pathResult, mode, showLabels, focusMood, resetSignal, flyTo, coveredRight, apiRef, hoverId,
+        showLabels, focusMood, resetSignal, flyTo, coveredRight, apiRef, hoverId,
     } = props;
     const reduced = useReducedMotion();
     const { camera, size } = useThree();
     const controls = useRef<Controls>(null);
 
     const field: TrackField = useMemo(() => buildTrackField(tracks), [tracks]);
-    const dust = useMemo(() => buildDust(tracks, field), [tracks, field]);
-    const haze = useMemo(() => buildHaze(tracks, field), [tracks, field]);
     const anchorPositions = useMemo(
         () => computeMoodAnchors(tracks).map((a) => ({ mood: a.mood, label: a.label, position: toWorld(a) })),
         [tracks],
@@ -176,19 +199,16 @@ function Scene(props: VibeMapSceneProps & { apiRef: MutableRefObject<SceneApi | 
     const picker = useMemo(() => new ScreenPicker(field.positions), [field]);
     const sky = useMemo(() => buildSkyField(), []);
     const glow = useMemo(() => createGlowTexture(), []);
-    const trackStars = useMemo(() => createStarMaterial({ sizeScale: 150, opacity: 1, minPx: 2 }), []);
-    const dustStars = useMemo(() => createStarMaterial({ sizeScale: 150, opacity: 1, minPx: 1 }), []);
-    const skyStars = useMemo(() => createStarMaterial({ sizeScale: 150, opacity: 0.9, minPx: 1.5, revealFade: 0.9 }), []);
+    const trackStars = useMemo(() => createStarMaterial({ sizeScale: 118, opacity: 0.9, minPx: 2.2 }), []);
+    const skyStars = useMemo(() => createStarMaterial({ sizeScale: 118, opacity: 0.9, minPx: 2.2, revealFade: 0.9 }), []);
 
     useEffect(() => () => { field.geometry.dispose(); }, [field]);
-    useEffect(() => () => { dust.dispose(); }, [dust]);
     useEffect(() => () => {
         sky.dispose();
         glow.dispose();
         trackStars.material.dispose();
-        dustStars.material.dispose();
         skyStars.material.dispose();
-    }, [sky, glow, trackStars, dustStars, skyStars]);
+    }, [sky, glow, trackStars, skyStars]);
 
     // ── emphasis: search/similar/path/mood highlights, selection, now playing ──
     const emphasisGoal = useMemo(() => {
@@ -222,16 +242,19 @@ function Scene(props: VibeMapSceneProps & { apiRef: MutableRefObject<SceneApi | 
     useLayoutEffect(() => {
         rig.current = {
             field, emphasisGoal, reduced,
-            materials: [trackStars.uniforms, dustStars.uniforms, skyStars.uniforms],
+            materials: [trackStars.uniforms, skyStars.uniforms],
             focusOn: !!focusMood && moodIndex(focusMood) >= 0,
         };
-    }, [field, emphasisGoal, trackStars, dustStars, skyStars, reduced, focusMood]);
+    }, [field, emphasisGoal, trackStars, skyStars, reduced, focusMood]);
 
     // ── camera ──
+    const fov = (camera as THREE.PerspectiveCamera).fov;
+    const aspect = size.width / Math.max(size.height, 1);
     const home = useMemo(() => {
         const target = field.center.clone();
-        return { target, position: target.clone().addScaledVector(HOME_DIRECTION, field.radius * HOME_DISTANCE) };
-    }, [field]);
+        const distance = homeDistance(field, fov, aspect);
+        return { target, distance, position: target.clone().addScaledVector(HOME_DIRECTION, distance) };
+    }, [field, fov, aspect]);
     const flight = useRef<Flight | null>(null);
     const flyToPose = useCallback((position: THREE.Vector3, target: THREE.Vector3, duration: number) => {
         const c = controls.current;
@@ -253,15 +276,21 @@ function Scene(props: VibeMapSceneProps & { apiRef: MutableRefObject<SceneApi | 
         controls.current.update();
     }, [camera, home]);
 
+    // Each press of "show the whole library" flies home once; a resize does not fly again.
+    const handledReset = useRef(resetSignal);
     useEffect(() => {
-        if (resetSignal) flyToPose(home.position, home.target, 1.2);
+        if (resetSignal === handledReset.current) return;
+        handledReset.current = resetSignal;
+        flyToPose(home.position, home.target, 1.2);
     }, [resetSignal, home, flyToPose]);
 
     // A search pick: glide to the star and stop at a comfortable distance.
+    const handledFlyTo = useRef<number | null>(null);
     useEffect(() => {
         const c = controls.current;
         const t = flyTo ? trackMap.get(flyTo.id) : undefined;
-        if (!c || !t) return;
+        if (!c || !t || !flyTo || flyTo.nonce === handledFlyTo.current) return;
+        handledFlyTo.current = flyTo.nonce;
         const star = new THREE.Vector3(...toWorld(t));
         const dir = camera.position.clone().sub(c.target).normalize();
         const dist = Math.min(camera.position.distanceTo(c.target), field.radius * 0.55);
@@ -290,8 +319,8 @@ function Scene(props: VibeMapSceneProps & { apiRef: MutableRefObject<SceneApi | 
                 flyToPose(star.clone().addScaledVector(dir, camera.position.distanceTo(c.target)), star, 0.9);
                 return;
             }
-            const fov = THREE.MathUtils.degToRad((camera as THREE.PerspectiveCamera).fov);
-            const perPixel = (2 * camera.position.distanceTo(star) * Math.tan(fov / 2)) / size.height;
+            const fovRad = THREE.MathUtils.degToRad((camera as THREE.PerspectiveCamera).fov);
+            const perPixel = (2 * camera.position.distanceTo(star) * Math.tan(fovRad / 2)) / size.height;
             const shiftPx = sx - (size.width - coveredRight) / 2;
             const shift = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0).multiplyScalar(shiftPx * perPixel);
             flyToPose(camera.position.clone().add(shift), c.target.clone().add(shift), 0.7);
@@ -401,20 +430,6 @@ function Scene(props: VibeMapSceneProps & { apiRef: MutableRefObject<SceneApi | 
         return t && color ? { at: toWorld(t), color } : null;
     }, [activeOperation, trackMap]);
 
-    const pathLine = useMemo(() => {
-        if (!pathResult || mode !== "path-result") return null;
-        const steps = [pathResult.startTrack, ...pathResult.path, pathResult.endTrack]
-            .map((t) => trackMap.get(t.id))
-            .filter((t): t is MapTrack => !!t);
-        if (steps.length < 2) return null;
-        const from = new THREE.Color("#f3ecdd");
-        const to = new THREE.Color(AMBER);
-        return {
-            points: steps.map((t) => new THREE.Vector3(...toWorld(t))),
-            colors: steps.map((_, i) => from.clone().lerp(to, i / (steps.length - 1))),
-        };
-    }, [pathResult, mode, trackMap]);
-
     const queueThread = useMemo(() => {
         const points = queueTrackIds
             .map((id) => ({ id, t: trackMap.get(id) }))
@@ -432,16 +447,14 @@ function Scene(props: VibeMapSceneProps & { apiRef: MutableRefObject<SceneApi | 
     return (
         <>
             <points geometry={sky} material={skyStars.material} renderOrder={0} />
-            {haze.map((h, i) => (
-                <sprite key={i} position={h.position} scale={h.scale} renderOrder={1}>
-                    <spriteMaterial map={glow} color={h.color} transparent opacity={h.opacity} blending={THREE.AdditiveBlending} depthWrite={false} />
+            {NEBULA_WISPS.map((n, i) => (
+                <sprite key={i} position={n.p} scale={n.s} renderOrder={1}>
+                    <spriteMaterial map={glow} color={n.c} transparent opacity={0.04} blending={THREE.AdditiveBlending} depthWrite={false} />
                 </sprite>
             ))}
-            <points geometry={dust} material={dustStars.material} renderOrder={2} />
 
             {queueThread?.played && <Line points={queueThread.played} color={QUEUE_COLOR} lineWidth={1} transparent opacity={0.14} />}
             {queueThread?.ahead && <Line points={queueThread.ahead} color={QUEUE_COLOR} lineWidth={1} transparent opacity={0.34} />}
-            {pathLine && <Line points={pathLine.points} vertexColors={pathLine.colors} lineWidth={1.6} transparent opacity={0.75} />}
 
             <points geometry={field.geometry} material={trackStars.material} renderOrder={3} />
 
@@ -478,12 +491,12 @@ function Scene(props: VibeMapSceneProps & { apiRef: MutableRefObject<SceneApi | 
                 rotateSpeed={0.55}
                 zoomSpeed={0.9}
                 minDistance={field.baseSize * 3}
-                maxDistance={field.radius * 3.2}
+                maxDistance={Math.max(field.radius * 3.2, home.distance * 1.5)}
             />
 
             <EffectComposer>
                 <Bloom mipmapBlur luminanceThreshold={0.62} luminanceSmoothing={0.35} intensity={0.32} />
-                {reduced ? <></> : <Noise blendFunction={BlendFunction.OVERLAY} opacity={0.03} />}
+                {reduced ? <></> : <Noise blendFunction={BlendFunction.OVERLAY} opacity={0.08} />}
                 <Vignette eskil={false} offset={0.22} darkness={0.82} />
             </EffectComposer>
         </>
@@ -609,7 +622,7 @@ export function VibeMapScene(props: VibeMapSceneProps) {
             onContextMenu={(e) => e.preventDefault()}
         >
             <Canvas
-                camera={{ position: [0, 40, 100], fov: 50, near: 0.1, far: 1200 }}
+                camera={{ position: [0, 40, 100], fov: 40, near: 0.1, far: 1200 }}
                 gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
                 dpr={[1, 2]}
             >

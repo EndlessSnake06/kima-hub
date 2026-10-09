@@ -10,9 +10,8 @@ export default function Error({ error, reset }: { error: Error & { digest?: stri
 
     return (
         <PageMessage
-            title="Something went wrong"
-            description="This page hit an unexpected error."
-            action={{ label: "Try again", onClick: reset }}
+            title="something went wrong"
+            action={{ label: "try again", onClick: reset }}
         />
     );
 }

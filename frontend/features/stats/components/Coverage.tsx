@@ -22,10 +22,10 @@ export function Coverage({ shelf }: { shelf: ShelfStats }) {
     const { ref, shown } = useReveal<HTMLDivElement>({ threshold: 0.3 });
     const { play, busy } = usePlaySlice();
     const rows: Row[] = [
-        { label: "Tracks heard", part: shelf.tracks.heard, whole: shelf.tracks.total, unit: "tracks" },
-        { label: "Albums opened", part: shelf.albums.heard, whole: shelf.albums.total, unit: "albums" },
-        { label: "Artists reached", part: shelf.artists.heard, whole: shelf.artists.total, unit: "artists" },
-        { label: "Analysed", part: shelf.analysis.done, whole: shelf.analysis.total, unit: "tracks" },
+        { label: "tracks played", part: shelf.tracks.heard, whole: shelf.tracks.total, unit: "tracks" },
+        { label: "albums played", part: shelf.albums.heard, whole: shelf.albums.total, unit: "albums" },
+        { label: "artists played", part: shelf.artists.heard, whole: shelf.artists.total, unit: "artists" },
+        { label: "tracks analysed", part: shelf.analysis.done, whole: shelf.analysis.total, unit: "tracks" },
     ];
 
     return (
@@ -75,7 +75,7 @@ export function Coverage({ shelf }: { shelf: ShelfStats }) {
                         className="h-11 px-4 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-white t-control flex items-center gap-2 transition-colors disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0a]"
                     >
                         {busy === "never" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shuffle className="w-4 h-4" />}
-                        Play forty of them
+                        shuffle 40 unplayed
                     </button>
                 </div>
             )}

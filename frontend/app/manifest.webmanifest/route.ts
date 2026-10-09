@@ -5,9 +5,9 @@ import { NextResponse } from "next/server";
 
 const MANIFEST = {
     id: "/",
-    name: "Kima",
-    short_name: "Kima",
-    description: "Self-hosted music streaming",
+    name: "kima",
+    short_name: "kima",
+    description: "self-hosted music streaming",
     lang: "en",
     scope: "/",
     start_url: "/",
@@ -25,9 +25,9 @@ const MANIFEST = {
         { src: "assets/icons/icon-512.webp", type: "image/webp", sizes: "512x512", purpose: "any maskable" },
     ],
     shortcuts: [
-        { name: "Vibe", short_name: "Vibe", url: "/vibe", icons: [{ src: "assets/icons/icon-96.webp", sizes: "96x96" }] },
-        { name: "Search", short_name: "Search", url: "/search", icons: [{ src: "assets/icons/icon-96.webp", sizes: "96x96" }] },
-        { name: "Library", short_name: "Library", url: "/library", icons: [{ src: "assets/icons/icon-96.webp", sizes: "96x96" }] },
+        { name: "vibe", short_name: "vibe", url: "/vibe", icons: [{ src: "assets/icons/icon-96.webp", sizes: "96x96" }] },
+        { name: "search", short_name: "search", url: "/search", icons: [{ src: "assets/icons/icon-96.webp", sizes: "96x96" }] },
+        { name: "library", short_name: "library", url: "/library", icons: [{ src: "assets/icons/icon-96.webp", sizes: "96x96" }] },
     ],
     display: "standalone",
     display_override: ["window-controls-overlay", "standalone"],

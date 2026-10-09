@@ -9,7 +9,7 @@ import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { useAudioState, useAudioPlayback } from "@/lib/audio-context";
 import { useDiscoverData } from "@/features/discover/hooks/useDiscoverData";
 import { useDiscoverActions } from "@/features/discover/hooks/useDiscoverActions";
-import { usePreviewPlayer } from "@/features/discover/hooks/usePreviewPlayer";
+import { usePreview } from "@/hooks/usePreview";
 import { DiscoverHero } from "@/features/discover/components/DiscoverHero";
 import { DiscoverActionBar } from "@/features/discover/components/DiscoverActionBar";
 import { TrackList } from "@/features/discover/components/TrackList";
@@ -38,7 +38,7 @@ export default function DiscoverWeeklyPage() {
         handlePlayTrack,
         handleTogglePlay,
     } = useDiscoverActions(playlist, reloadData, isGenerating, refreshBatchStatus, setPendingGeneration, markGenerationStart, updateTrackLiked);
-    const { currentPreview, handleTogglePreview } = usePreviewPlayer();
+    const preview = usePreview();
     const [retryingUnavailable, setRetryingUnavailable] = useState(false);
 
     const handleRetryUnavailable = async () => {
@@ -220,8 +220,10 @@ export default function DiscoverWeeklyPage() {
                                 <section>
                                     <UnavailableAlbums
                                         unavailable={playlist.unavailable}
-                                        currentPreview={currentPreview}
-                                        onTogglePreview={handleTogglePreview}
+                                        currentPreview={preview.previewId}
+                                        onTogglePreview={(albumId, artistName, title) =>
+                                            preview.toggle(albumId, api.getTrackPreviewStreamUrl(artistName, title))
+                                        }
                                         onRetryAll={handleRetryUnavailable}
                                         isRetrying={retryingUnavailable}
                                     />

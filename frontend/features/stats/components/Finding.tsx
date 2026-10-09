@@ -54,7 +54,7 @@ export function PlayCore({ count, period }: { count: number; period?: string }) 
         >
             {busy === "core" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
             {/* Says what will happen, not what was hoped for. */}
-            {willPlay < count ? `Play ${willPlay} of them` : `Play those ${count}`}
+            {willPlay < count ? `play the top ${willPlay}` : `play these ${count}`}
         </button>
     );
 }

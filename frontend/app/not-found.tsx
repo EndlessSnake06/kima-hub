@@ -4,7 +4,7 @@ export default function NotFound() {
     return (
         <PageMessage
             title="Page not found"
-            description="This address doesn't lead anywhere in Kima."
+            description="Page not found."
             action={{ label: "Home", href: "/" }}
         />
     );

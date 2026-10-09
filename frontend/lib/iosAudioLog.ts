@@ -117,10 +117,8 @@ function scheduleAutoUpload(): void {
             // Flush to sessionStorage immediately before each upload so the persisted
             // copy stays in sync with what we send.
             flushToStorage();
-            // The /api/debug/ios-log route is requireAuth (Bearer), so the upload
-            // MUST send the token the same way the api client does -- cookies
-            // alone 401, and the .catch below would swallow it silently (which is
-            // exactly why no trace was ever captured before).
+            // /api/debug/ios-log requires auth (Bearer): send the token the way the api client
+            // does; cookies alone return 401.
             const headers: Record<string, string> = { "Content-Type": "application/json" };
             let token: string | null = null;
             try {

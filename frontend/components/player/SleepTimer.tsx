@@ -78,7 +78,7 @@ export function SleepTimer({ size = "md" }: SleepTimerProps) {
                 aria-label={isActive ? `Sleep timer: ${displayRemaining} remaining` : "Sleep timer"}
                 aria-expanded={isOpen}
                 aria-haspopup="dialog"
-                title={isActive ? `Sleep timer: ${displayRemaining} remaining` : "Sleep timer"}
+                title={isActive ? `Sleep timer: ${displayRemaining} remaining`.toLowerCase() : "sleep timer"}
             >
                 <Timer className={iconSize} />
                 {isActive && remainingSeconds !== null && (
@@ -113,7 +113,6 @@ export function SleepTimer({ size = "md" }: SleepTimerProps) {
                         ))}
                     </div>
 
-                    {/* Custom input */}
                     <div className="px-3 py-2 border-t border-white/[0.06]">
                         <div className="flex items-center gap-2">
                             <input
@@ -132,7 +131,6 @@ export function SleepTimer({ size = "md" }: SleepTimerProps) {
                         </div>
                     </div>
 
-                    {/* Cancel button when active */}
                     {isActive && (
                         <div className="px-3 py-2 border-t border-white/[0.06]">
                             <button

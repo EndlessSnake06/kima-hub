@@ -1,18 +1,18 @@
 import * as THREE from "three";
-import { blendMoodColor, moodIndex } from "../mapUtils";
+import { moodIndex } from "../mapUtils";
 import type { MapTrack } from "../types";
 
 /** Half-extent of the map in world units: normalised 0..1 coordinates span ±FIELD_RADIUS. */
 export const FIELD_RADIUS = 60;
 
 /**
- * Each track at its backend UMAP position, normalised to a unit cube, so similar
- * tracks sit together. World axes: x → x, z (height) → y, y → depth. A map
- * without z lies on the middle plane.
+ * Each track at the position the similarity step gave it, normalised to a unit
+ * cube, so tracks the engine matches sit together. World axes: x → x, z
+ * (height) → y, y → depth.
  */
 export function toWorld(track: Pick<MapTrack, "x" | "y" | "z">): [number, number, number] {
     const s = FIELD_RADIUS * 2;
-    return [(track.x - 0.5) * s, ((track.z ?? 0.5) - 0.5) * s, (track.y - 0.5) * s];
+    return [(track.x - 0.5) * s, (track.z - 0.5) * s, (track.y - 0.5) * s];
 }
 
 export interface TrackField {
@@ -32,7 +32,7 @@ export interface TrackField {
 }
 
 // Deterministic per-track noise, so a track twinkles the same way every visit.
-export function hash01(i: number, salt: number) {
+function hash01(i: number, salt: number) {
     let h = (i * 2654435761) ^ (salt * 40503);
     h = Math.imul(h ^ (h >>> 15), 2246822519);
     h = Math.imul(h ^ (h >>> 13), 3266489917);
@@ -63,10 +63,8 @@ export function buildTrackField(tracks: MapTrack[]): TrackField {
     const emph = new Float32Array(n).fill(1);
     const indexById = new Map<string, number>();
 
-    // Small libraries get larger stars so a few hundred tracks still fill the
-    // view; large ones shrink toward the shader's pixel floor.
+    // Scales the rings and the closest zoom to the library's size.
     const baseSize = THREE.MathUtils.clamp(5 / Math.pow(Math.max(n, 1), 0.12), 0.7, 2.4);
-    const tint = new THREE.Color();
     const c = new THREE.Color();
     const center = new THREE.Vector3();
 
@@ -79,22 +77,18 @@ export function buildTrackField(tracks: MapTrack[]): TrackField {
         positions[i * 3 + 2] = wz;
         center.x += wx; center.y += wy; center.z += wz;
 
-        // Starlight first: warm white carrying only a breath of the track's mood.
-        const [r, g, b] = blendMoodColor(t, 1.2);
-        tint.setRGB(r / 255, g / 255, b / 255, THREE.SRGBColorSpace);
-        c.copy(STAR_WHITE).lerp(tint, 0.16);
-        // Energy is the star's magnitude: driving tracks burn brighter and larger.
-        const energy = THREE.MathUtils.clamp(t.energy ?? 0.5, 0, 1);
-        const jitter = 0.85 + hash01(i, 4) * 0.3;
-        const brightness = (0.4 + 0.75 * energy * energy) * jitter;
+        // Starlight: a bright few over a faint many.
+        c.copy(STAR_WHITE);
+        const notable = hash01(i, 7) < 0.11;
+        const brightness = notable ? 0.7 + hash01(i, 4) * 0.3 : 0.16 + hash01(i, 4) * 0.24;
         colors[i * 3] = c.r * brightness;
         colors[i * 3 + 1] = c.g * brightness;
         colors[i * 3 + 2] = c.b * brightness;
 
-        sizes[i] = baseSize * (0.7 + 0.9 * energy * energy) * jitter;
+        sizes[i] = notable ? 1.5 + hash01(i, 6) * 0.8 : 0.7 + hash01(i, 6) * 0.4;
         phases[i] = hash01(i, 1) * Math.PI * 2;
-        twinkle[i] = 0.1 + hash01(i, 2) * 0.2;
-        spark[i] = hash01(i, 3) < 0.04 ? 1 : 0;
+        twinkle[i] = 0.14 + hash01(i, 2) * 0.2;
+        spark[i] = hash01(i, 3) < 0.02 ? 1 : 0;
         mood[i] = moodIndex(t.dominantMood);
     }
     if (n > 0) center.divideScalar(n);

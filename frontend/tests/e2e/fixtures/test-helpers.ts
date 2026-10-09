@@ -45,14 +45,14 @@ export async function startPlayingFirstAlbum(page: Page): Promise<void> {
     await firstAlbum.click();
     await page.waitForURL(/\/album\//);
     await page.getByLabel("Play all").click();
-    await waitForPlaying(page); // waits for FullPlayer's title="Pause"
+    await waitForPlaying(page); // waits for FullPlayer's title="pause"
 }
 
 /** Wait until the player shows the Pause button (meaning audio started).
- * Uses `title="Pause"` to target the FullPlayer button specifically (avoids ambiguity
+ * Uses `title="pause"` to target the FullPlayer button specifically (avoids ambiguity
  * with album action bar and section-level Pause buttons). */
 async function waitForPlaying(page: Page, timeoutMs = 8_000): Promise<void> {
-    await page.getByTitle("Pause", { exact: true }).waitFor({ timeout: timeoutMs });
+    await page.getByTitle("pause", { exact: true }).waitFor({ timeout: timeoutMs });
 }
 
 /** Get the current <audio> src -- the stream URL. */
@@ -91,7 +91,7 @@ export async function waitForSrcChange(page: Page, prevSrc: string, timeoutMs = 
 
 /** Click the seek slider at a percentage of its width (0–100). */
 export async function seekToPercent(page: Page, percent: number): Promise<void> {
-    const slider = page.locator('[title="Click or drag to seek"]');
+    const slider = page.locator('[title="click or drag to seek"]');
     const box = await slider.boundingBox();
     if (!box) throw new Error("Seek slider not found");
     const x = box.x + box.width * (percent / 100);

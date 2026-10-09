@@ -39,9 +39,9 @@ interface Region {
     energy: number | null; valence: number | null; bpm: number | null;
 }
 
-const brightness = (v: number) =>
-    v < 0.4 ? "sombre" : v > 0.6 ? "bright" : "neither bright nor sombre";
-const drive = (e: number) => (e < 0.4 ? "calm" : e > 0.6 ? "driving" : "steady");
+const brightness = (v: number) => (v < 0.4 ? "dark" : v > 0.6 ? "bright" : "neutral");
+const energyWord = (e: number) => (e < 0.4 ? "low energy" : e > 0.6 ? "high energy" : "medium energy");
+const plays = (n: number) => `${n.toLocaleString()} ${n === 1 ? "play" : "plays"}`;
 
 export function ShapePlot({ listening, period }: { listening: ListeningStats; period?: string }) {
     const { shape, drift } = listening;
@@ -51,10 +51,8 @@ export function ShapePlot({ listening, period }: { listening: ListeningStats; pe
     /* Pointing at the cloud asks the server what is there. Debounced, and
      * ticketed so an answer for a point already left never lands. */
     const [probe, setProbe] = useState<{ x: number; y: number } | null>(null);
-    // The answer and the point it answers for, kept together. Storing the
-    // region alone meant clearing it needed a state write from the effect, and
-    // it also let the previous point's answer sit under the new point for as
-    // long as the next request took.
+    // The answer is kept with the point it answers for, so clearing needs no state write in the
+    // effect and an old answer never sits under a new point.
     const [answered, setAnswered] = useState<{ x: number; y: number; region: Region | null } | null>(null);
     const ticket = useRef(0);
 
@@ -149,10 +147,10 @@ export function ShapePlot({ listening, period }: { listening: ListeningStats; pe
         if (total === 0) return null;
         const mid = BUCKETS / 2;
         const quadrants = [
-            { name: "sombre and calm",    plays: 0, test: (c: typeof shape[0]) => c.x <= mid && c.y <= mid },
-            { name: "bright and calm",    plays: 0, test: (c: typeof shape[0]) => c.x > mid && c.y <= mid },
-            { name: "sombre and driving", plays: 0, test: (c: typeof shape[0]) => c.x <= mid && c.y > mid },
-            { name: "bright and driving", plays: 0, test: (c: typeof shape[0]) => c.x > mid && c.y > mid },
+            { name: "dark, low energy",    plays: 0, test: (c: typeof shape[0]) => c.x <= mid && c.y <= mid },
+            { name: "bright, low energy",  plays: 0, test: (c: typeof shape[0]) => c.x > mid && c.y <= mid },
+            { name: "dark, high energy",   plays: 0, test: (c: typeof shape[0]) => c.x <= mid && c.y > mid },
+            { name: "bright, high energy", plays: 0, test: (c: typeof shape[0]) => c.x > mid && c.y > mid },
         ];
         for (const cell of shape) {
             const q = quadrants.find((q) => q.test(cell));
@@ -169,17 +167,16 @@ export function ShapePlot({ listening, period }: { listening: ListeningStats; pe
         const dE = latest.energy - first.energy;
         const dV = latest.valence - first.valence;
         const parts: string[] = [];
-        if (Math.abs(dE) > 0.02) parts.push(dE > 0 ? "harder" : "calmer");
+        if (Math.abs(dE) > 0.02) parts.push(dE > 0 ? "higher energy" : "lower energy");
         if (Math.abs(dV) > 0.02) parts.push(dV > 0 ? "brighter" : "darker");
-        if (parts.length === 0) return "You've held roughly the same ground throughout.";
-        return `Since ${monthLong(first.month)} you've drifted ${parts.join(" and ")}.`;
+        if (parts.length === 0) return `no change since ${monthLong(first.month)}`;
+        return `since ${monthLong(first.month)}: ${parts.join(", ")}`;
     }, [path, latest]);
 
     if (cloud.length === 0) {
         return (
             <p className="t-body max-w-[46ch]">
-                Your shape appears once the audio analysis has run. It reads every track for
-                brightness and drive, then plots what you actually play.
+                needs audio analysis
             </p>
         );
     }
@@ -190,9 +187,9 @@ export function ShapePlot({ listening, period }: { listening: ListeningStats; pe
             className="m-0 grid grid-cols-[3.5rem_minmax(0,1fr)] gap-x-3 gap-y-2"
         >
             <>
-                <div className="flex flex-col justify-between items-end t-label py-0.5">
-                    <span>frantic</span>
-                    <span>calm</span>
+                <div className="flex flex-col justify-between items-end text-right leading-tight t-label py-0.5">
+                    <span>high energy</span>
+                    <span>low energy</span>
                 </div>
 
                 <svg
@@ -203,8 +200,8 @@ export function ShapePlot({ listening, period }: { listening: ListeningStats; pe
                     role="img"
                     aria-label={
                         overall
-                            ? `Your listening centres on music that is ${brightness(overall.valence)} and ${drive(overall.energy)}.`
-                            : "Your listening by brightness and drive."
+                            ? `average: ${energyWord(overall.energy)}, ${brightness(overall.valence)}`
+                            : "brightness and energy plot"
                     }
                 >
                     <g stroke="var(--chart-ink-empty)" strokeWidth="0.3">
@@ -301,7 +298,7 @@ export function ShapePlot({ listening, period }: { listening: ListeningStats; pe
 
                 <div />
                 <div className="flex justify-between t-label">
-                    <span>sombre</span>
+                    <span>dark</span>
                     <span>bright</span>
                 </div>
             </>
@@ -312,7 +309,7 @@ export function ShapePlot({ listening, period }: { listening: ListeningStats; pe
                         className="t-label text-right self-end pb-1 mt-4"
                         onMouseLeave={() => setAt(null)}
                     >
-                        plays
+                        plays per month
                     </span>
                     <div
                         className="flex items-end gap-[3px] h-12 mt-4"
@@ -325,9 +322,9 @@ export function ShapePlot({ listening, period }: { listening: ListeningStats; pe
                                 onMouseEnter={() => setAt(i)}
                                 onFocus={() => setAt(i)}
                                 onClick={() => setAt(i)}
-                                aria-label={`${monthLabel(p.month)}, ${p.plays} listens`}
+                                aria-label={`${monthLabel(p.month)}, ${plays(p.plays)}`}
                                 className="flex-1 flex items-end h-full rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0a]"
-                                title={`${monthLabel(p.month)}: ${p.plays.toLocaleString()} plays`}
+                                title={`${monthLabel(p.month)}: ${plays(p.plays)}`.toLowerCase()}
                             >
                                 <span
                                     className="block w-full transition-colors duration-150"
@@ -352,14 +349,14 @@ export function ShapePlot({ listening, period }: { listening: ListeningStats; pe
                 so the table is pinned to one pixel to never widen the page. */}
             <div className="absolute w-px h-px overflow-hidden [clip-path:inset(50%)] whitespace-nowrap border-0 p-0 -m-px">
             <table>
-                <caption>Your listening by month: brightness, drive and volume</caption>
+                <caption>plays by month: brightness, energy, bpm</caption>
                 <thead>
                     <tr>
-                        <th scope="col">Month</th>
-                        <th scope="col">Brightness, 0 to 100</th>
-                        <th scope="col">Drive, 0 to 100</th>
-                        <th scope="col">Beats per minute</th>
-                        <th scope="col">Listens</th>
+                        <th scope="col">month</th>
+                        <th scope="col">brightness (0–100)</th>
+                        <th scope="col">energy (0–100)</th>
+                        <th scope="col">bpm</th>
+                        <th scope="col">plays</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -385,12 +382,11 @@ export function ShapePlot({ listening, period }: { listening: ListeningStats; pe
                 {region && region.listens > 0 ? (
                     <>
                         <p className="text-[length:var(--stat-lead)] leading-snug font-light text-[var(--text-primary)] max-w-[30ch]">
-                            Music here is {drive(region.energy ?? 0.5)} and{" "}
-                            {brightness(region.valence ?? 0.5)}.
+                            {energyWord(region.energy ?? 0.5)}, {brightness(region.valence ?? 0.5)}
                         </p>
                         <p className="t-meta">
-                            {region.listens.toLocaleString()} of your listens land in this corner
-                            {region.bpm ? ` · around ${Math.round(region.bpm)} beats a minute` : ""}
+                            {plays(region.listens)} here
+                            {region.bpm ? ` · avg ${Math.round(region.bpm)} bpm` : ""}
                         </p>
                         <ul className="flex flex-col gap-1 mt-1">
                             {region.tracks.map((t) => (
@@ -408,29 +404,24 @@ export function ShapePlot({ listening, period }: { listening: ListeningStats; pe
                     <>
                         <p className="text-[length:var(--stat-lead)] leading-snug font-light text-[var(--text-primary)] max-w-[30ch]">
                             {at == null && overall
-                                ? <>Most of what you play is {drive(overall.energy)} and {brightness(overall.valence)}.</>
-                                : <>{monthLong(here.month)} was {drive(here.energy)} and {brightness(here.valence)}.</>}
+                                ? <>average: {energyWord(overall.energy)}, {brightness(overall.valence)}</>
+                                : <>{monthLong(here.month)}: {energyWord(here.energy)}, {brightness(here.valence)}</>}
                         </p>
                         <p className="t-body max-w-[36ch]">
                             {at == null
                                 ? movement
-                                : `${here.plays.toLocaleString()} plays that month${
-                                      here.bpm ? `, averaging ${Math.round(here.bpm)} beats a minute` : ""
-                                  }.`}
+                                : `${plays(here.plays)}${here.bpm ? ` · avg ${Math.round(here.bpm)} bpm` : ""}`}
                         </p>
                         <p className="t-meta mt-1">
                             {at == null && barestCorner && (
                                 <>
-                                    {barestCorner.percent === 0
-                                        ? "nothing "
-                                        : `only ${barestCorner.percent}% `}
-                                    {barestCorner.name}
+                                    least played: {barestCorner.name} ({barestCorner.percent}%)
                                     <span className="hidden sm:inline"> · </span>
                                     <br className="sm:hidden" />
                                 </>
                             )}
                             <span className="hidden sm:inline">
-                                point anywhere on the plot to see what lives there
+                                hover to see tracks
                             </span>
                         </p>
                     </>

@@ -45,7 +45,6 @@ export function ArtistActionBar({
 
     return (
         <div className="flex items-center gap-4">
-            {/* Play Button */}
             <button
                 onClick={handlePlayPauseClick}
                 className="h-12 w-12 rounded-full flex items-center justify-center transition-all hover:scale-105 bg-brand"
@@ -57,11 +56,10 @@ export function ArtistActionBar({
                 )}
             </button>
 
-            {/* Shuffle Button */}
             <button
                 onClick={onShuffle}
                 className="h-8 w-8 rounded-full hover:bg-white/10 flex items-center justify-center text-[var(--text-secondary)] hover:text-white transition-all"
-                title="Shuffle play"
+                title="shuffle play"
             >
                 <Shuffle className="w-5 h-5" />
             </button>
@@ -71,13 +69,12 @@ export function ArtistActionBar({
                 <button
                     onClick={onStartRadio}
                     className="h-8 w-8 rounded-full hover:bg-white/10 flex items-center justify-center text-[var(--text-secondary)] hover:text-white transition-all"
-                    title="Start artist radio"
+                    title="start artist radio"
                 >
                     <Radio className="w-5 h-5" />
                 </button>
             )}
 
-            {/* Download All Button */}
             {showDownloadAll && (
                 <button
                     onClick={onDownloadAll}

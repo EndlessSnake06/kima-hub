@@ -8,7 +8,7 @@ import { cn } from "@/lib/cn";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { notify } from "@/lib/notify";
-import Image from "next/image";
+import { KimaMark } from "@/components/ui/KimaMark";
 
 interface MobileSidebarProps {
     isOpen: boolean;
@@ -68,35 +68,25 @@ export function MobileSidebar({ isOpen, onClose }: MobileSidebarProps) {
 
     return (
         <>
-            {/* Backdrop */}
             <div
                 className="fixed inset-0 bg-black/60 z-(--z-drawer-backdrop) transition-opacity duration-200"
                 onClick={onClose}
                 aria-hidden="true"
             />
 
-            {/* Sidebar Drawer */}
             <div
                 className="fixed inset-y-0 left-0 w-[280px] bg-[var(--bg-primary)] z-(--z-drawer) flex flex-col overflow-hidden transform transition-transform duration-300 border-r border-white/[0.06]"
                 style={{
                     paddingTop: "var(--standalone-safe-area-top, 0px)",
                 }}
             >
-                {/* Header */}
                 <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.06]">
                     <Link
                         href="/"
                         className="flex items-center gap-3"
                         onClick={onClose}
                     >
-                        <Image
-                            src="/assets/images/kima.webp"
-                            alt="Kima"
-                            width={32}
-                            height={32}
-                            priority
-                            className="flex-shrink-0"
-                        />
+                        <KimaMark size={32} />
                         <span className="text-lg font-bold text-white tracking-tight">
                             Kima
                         </span>
@@ -110,13 +100,11 @@ export function MobileSidebar({ isOpen, onClose }: MobileSidebarProps) {
                     </button>
                 </div>
 
-                {/* Menu Content */}
                 <nav
                     className="flex-1 overflow-y-auto py-4"
                     role="navigation"
                     aria-label="Mobile menu"
                 >
-                    {/* Quick Links Section */}
                     <div className="px-3 mb-6">
                         <div className="text-xs font-semibold text-[var(--text-muted)] px-3 mb-2">
                             Quick Links
@@ -180,7 +168,6 @@ export function MobileSidebar({ isOpen, onClose }: MobileSidebarProps) {
                         </Link>
                     </div>
 
-                    {/* Actions Section */}
                     <div className="px-3">
                         <div className="text-xs font-semibold text-[var(--text-muted)] px-3 mb-2">
                             Actions
@@ -227,7 +214,6 @@ export function MobileSidebar({ isOpen, onClose }: MobileSidebarProps) {
                     </div>
                 </nav>
 
-                {/* Footer - Logout */}
                 <div className="border-t border-white/[0.06] p-3">
                     <button
                         onClick={handleLogout}

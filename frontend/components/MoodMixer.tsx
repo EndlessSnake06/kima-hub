@@ -177,7 +177,6 @@ export function MoodMixer({ isOpen, onClose }: MoodMixerProps) {
                 className="bg-gradient-to-b from-[#1a1a1a] to-[#0a0a0a] rounded-2xl max-w-lg w-full max-h-[85vh] overflow-hidden border border-white/10 animate-pop"
                 onClick={(e) => e.stopPropagation()}
             >
-                {/* Header */}
                 <div className="p-6 border-b border-white/10 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[var(--color-brand)] to-amber-600 flex items-center justify-center">
@@ -200,7 +199,6 @@ export function MoodMixer({ isOpen, onClose }: MoodMixerProps) {
                     </button>
                 </div>
 
-                {/* Content */}
                 <div className="p-6 overflow-y-auto max-h-[calc(85vh-100px)]">
                     {loading ? (
                         <div className="flex items-center justify-center py-12">
@@ -235,13 +233,12 @@ export function MoodMixer({ isOpen, onClose }: MoodMixerProps) {
                                         title={
                                             isDisabled
                                                 ? pendingTracks > 0
-                                                    ? `Not analysed yet — ${pendingTracks.toLocaleString()} tracks still being analysed`
-                                                    : `Need at least 8 tracks (have ${trackCount})`
+                                                    ? `Not analysed yet — ${pendingTracks.toLocaleString()} tracks still being analysed`.toLowerCase()
+                                                    : `Need at least 8 tracks (have ${trackCount})`.toLowerCase()
                                                 : config.description
                                         }
                                         style={{ "--i": i } as CSSProperties}
                                     >
-                                        {/* Icon */}
                                         <div className="relative z-(--z-raised)">
                                             {isGenerating ? (
                                                 <Loader2 className="w-8 h-8 text-white animate-spin" />
@@ -250,12 +247,10 @@ export function MoodMixer({ isOpen, onClose }: MoodMixerProps) {
                                             )}
                                         </div>
 
-                                        {/* Label */}
                                         <span className="relative z-(--z-raised) text-sm font-semibold text-white">
                                             {config.label}
                                         </span>
 
-                                        {/* Track count badge */}
                                         <span className="absolute top-2 right-2 text-micro font-medium text-[var(--text-secondary)] bg-black/30 px-1.5 py-0.5 rounded-full">
                                             {trackCount}
                                         </span>
@@ -277,7 +272,6 @@ export function MoodMixer({ isOpen, onClose }: MoodMixerProps) {
                         </div>
                     )}
 
-                    {/* Help text */}
                     <p className="text-center text-xs text-[var(--text-muted)] mt-4">
                         {pendingTracks > 0
                             ? `Moods not analysed yet for ${pendingTracks.toLocaleString()} tracks — mixes fill in as analysis finishes`

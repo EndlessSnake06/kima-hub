@@ -107,9 +107,7 @@ export default function SeriesDetailPage() {
 
     return (
         <div className="min-h-screen bg-gradient-to-b from-[#0a0a0a] to-black section-stack">
-            {/* Hero Section */}
             <div className="relative">
-                {/* Background */}
                 {heroImage && (
                     <div className="absolute inset-0 overflow-hidden">
                         <div className="absolute inset-0 scale-110 blur-md opacity-30">
@@ -128,7 +126,6 @@ export default function SeriesDetailPage() {
 
                 <div className="relative page-shell pt-8 pb-6">
                     <div>
-                        {/* Back navigation */}
                         <button
                             onClick={() => router.push("/audiobooks")}
                             className="flex items-center gap-2 text-xs tabular-nums text-[var(--text-muted)] hover:text-white transition-colors mb-6"
@@ -137,7 +134,6 @@ export default function SeriesDetailPage() {
                             Audiobooks
                         </button>
 
-                        {/* System status */}
                         <div className="flex items-center gap-2 mb-4">
                             <div className="w-1.5 h-1.5 bg-type-audiobook rounded-full" />
                             <span className="t-eyebrow">
@@ -146,7 +142,6 @@ export default function SeriesDetailPage() {
                         </div>
 
                         <div className="flex items-end gap-6">
-                            {/* Cover Art */}
                             <div className="w-[140px] h-[140px] md:w-[192px] md:h-[192px] bg-[var(--bg-primary)] rounded-lg shrink-0 overflow-hidden relative border-2 border-white/10">
                                 {heroImage ? (
                                     <CachedImage
@@ -164,15 +159,13 @@ export default function SeriesDetailPage() {
                                 )}
                             </div>
 
-                            {/* Info */}
                             <div className="flex-1 min-w-0 pb-1">
                                 <h1 className="text-2xl md:text-4xl lg:text-5xl font-bold text-white leading-tight line-clamp-2 mb-2 tracking-tight">
                                     {seriesName}
                                 </h1>
 
-                                {/* Metadata row */}
                                 <div className="flex flex-wrap items-center gap-3 text-xs tabular-nums text-[var(--text-secondary)]">
-                                    <span className="font-bold text-white normal-case tracking-tight text-sm">
+                                    <span className="font-bold text-white tracking-tight text-sm">
                                         {author}
                                     </span>
                                     <span className="text-[var(--text-muted)]">|</span>
@@ -183,7 +176,6 @@ export default function SeriesDetailPage() {
                                     <span>{formatDuration(totalDuration)}</span>
                                 </div>
 
-                                {/* Genre tags */}
                                 {genres.length > 0 && (
                                     <div className="hidden md:flex flex-wrap gap-1.5 mt-3">
                                         {genres.slice(0, 5).map((genre) => (
@@ -202,7 +194,6 @@ export default function SeriesDetailPage() {
                 </div>
             </div>
 
-            {/* Books List */}
             <div className="relative page-shell pb-24 animate-rise">
                 <div>
                     <div>
@@ -225,7 +216,6 @@ export default function SeriesDetailPage() {
                                                 : "border border-transparent hover:bg-white/[0.03] hover:border-white/5"
                                         }`}
                                     >
-                                        {/* Progress bar */}
                                         {book.progress && book.progress.progress > 0 && !book.progress.isFinished && (
                                             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white/5 rounded-full overflow-hidden">
                                                 <div
@@ -236,41 +226,41 @@ export default function SeriesDetailPage() {
                                         )}
 
                                         <div className="flex items-center gap-4 px-3 py-3">
-                                            {/* Number / Play */}
                                             <div className="w-8 flex items-center justify-center shrink-0">
                                                 {book.progress?.isFinished ? (
-                                                    <CheckCircle className="w-4 h-4 text-success" />
-                                                ) : isBookPlaying ? (
-                                                    <Pause
-                                                        className="w-4 h-4 text-brand cursor-pointer"
-                                                        onClick={() => pause()}
-                                                    />
+                                                    <CheckCircle className="w-4 h-4 text-success" aria-label="finished" />
                                                 ) : (
-                                                    <>
-                                                        <span className={`text-xs tabular-nums ${
-                                                            isCurrentBook ? "text-brand font-bold hidden" : "text-[var(--text-muted)] group-hover:hidden"
-                                                        }`}>
-                                                            {book.series?.sequence || index + 1}
-                                                        </span>
-                                                        <Play
-                                                            className={`w-4 h-4 cursor-pointer ${
-                                                                isCurrentBook
-                                                                    ? "text-brand"
-                                                                    : "text-white hidden group-hover:block"
-                                                            }`}
-                                                            onClick={() => {
-                                                                if (isCurrentBook) {
-                                                                    resumeWithGesture();
-                                                                } else {
-                                                                    playAudiobook(book);
-                                                                }
-                                                            }}
-                                                        />
-                                                    </>
+                                                    <button
+                                                        type="button"
+                                                        aria-label={isBookPlaying ? `pause ${book.title}` : `play ${book.title}`}
+                                                        onClick={() => {
+                                                            if (isBookPlaying) pause();
+                                                            else if (isCurrentBook) resumeWithGesture();
+                                                            else playAudiobook(book);
+                                                        }}
+                                                        className="group/play w-8 h-8 flex items-center justify-center rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+                                                    >
+                                                        {isBookPlaying ? (
+                                                            <Pause className="w-4 h-4 text-brand" />
+                                                        ) : (
+                                                            <>
+                                                                {/* The number until the row is hovered or the button focused; on touch screens, the play icon. */}
+                                                                <span className={`text-xs tabular-nums ${
+                                                                    isCurrentBook ? "hidden" : "text-[var(--text-muted)] group-hover:hidden group-focus-visible/play:hidden [@media(hover:none)]:hidden"
+                                                                }`}>
+                                                                    {book.series?.sequence || index + 1}
+                                                                </span>
+                                                                <Play className={`w-4 h-4 ${
+                                                                    isCurrentBook
+                                                                        ? "text-brand"
+                                                                        : "text-white hidden group-hover:block group-focus-visible/play:block [@media(hover:none)]:block"
+                                                                }`} />
+                                                            </>
+                                                        )}
+                                                    </button>
                                                 )}
                                             </div>
 
-                                            {/* Cover thumbnail */}
                                             <Link href={`/audiobooks/${book.id}`}>
                                                 <div className="relative w-10 h-10 rounded overflow-hidden bg-[var(--bg-primary)] border border-white/10 shrink-0 cursor-pointer">
                                                     {bookCover ? (
@@ -289,7 +279,6 @@ export default function SeriesDetailPage() {
                                                 </div>
                                             </Link>
 
-                                            {/* Title & narrator */}
                                             <Link
                                                 href={`/audiobooks/${book.id}`}
                                                 className="flex-1 min-w-0"
@@ -304,7 +293,6 @@ export default function SeriesDetailPage() {
                                                 </p>
                                             </Link>
 
-                                            {/* Progress */}
                                             {book.progress?.isFinished ? (
                                                 <span className="text-xs text-success shrink-0">
                                                     Finished
@@ -315,7 +303,6 @@ export default function SeriesDetailPage() {
                                                 </span>
                                             ) : null}
 
-                                            {/* Duration */}
                                             <span className="text-xs tabular-nums text-[var(--text-muted)] shrink-0">
                                                 {formatDuration(book.duration)}
                                             </span>

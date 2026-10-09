@@ -9,6 +9,7 @@ import { Modal } from "@/components/ui/Modal";
 import { InlineStatus, StatusType } from "@/components/ui/InlineStatus";
 import { Button } from "@/components/ui/Button";
 import { CachedImage } from "@/components/ui/CachedImage";
+import { copyText } from "@/lib/clipboard";
 
 export function AccountSection() {
     const { user } = useAuth();
@@ -67,12 +68,14 @@ export function AccountSection() {
         setChangingPassword(true);
         setPasswordStatus("loading");
         try {
-            await api.post("/auth/change-password", {
-                currentPassword,
-                newPassword,
-            });
+            const changed = await api.post<{ token: string; refreshToken: string }>(
+                "/auth/change-password",
+                { currentPassword, newPassword },
+            );
+            // The change signs out every other device; this one keeps going on the new tokens.
+            api.setToken(changed.token, changed.refreshToken);
             setPasswordStatus("success");
-            setPasswordMessage("Changed");
+            setPasswordMessage("Changed. Other devices are signed out");
             setCurrentPassword("");
             setNewPassword("");
             setConfirmPassword("");
@@ -314,7 +317,7 @@ export function AccountSection() {
                     </div>
                     <div className="flex gap-2">
                         <button
-                            onClick={() => navigator.clipboard.writeText(recoveryCodes.join("\n"))}
+                            onClick={() => void copyText(recoveryCodes.join("\n"))}
                             className="px-4 py-2 bg-white/5 border border-white/10 text-white text-xs rounded-lg hover:bg-white/10 transition-colors"
                         >
                             Copy

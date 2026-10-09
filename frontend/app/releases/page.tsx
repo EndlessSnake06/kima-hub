@@ -5,6 +5,7 @@ import { Calendar, Clock, Download, Disc, ArrowRight, CheckCircle2 } from "lucid
 import { cn } from "@/lib/cn";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { api } from "@/lib/api";
+import { notify } from "@/lib/notify";
 import Link from "next/link";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MediaCard } from "@/components/cards/MediaCard";
@@ -60,7 +61,7 @@ export default function ReleasesPage() {
             await api.post(`/releases/download/${albumMbid}`);
             await fetchReleases();
         } catch (err) {
-            console.error("Download failed:", err);
+            notify.error("Couldn't start the download", { message: err instanceof Error ? err.message : undefined });
         } finally {
             setDownloadingId(null);
         }

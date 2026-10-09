@@ -136,8 +136,8 @@ export function AuthenticatedLayout({ children }: { children: ReactNode }) {
                             tabIndex={-1}
                             className="flex-1 bg-gradient-to-b from-[#1a1a1a] via-black to-black mx-2 mb-2 rounded-lg overflow-y-auto relative focus:outline-none"
                             style={{
-                                marginTop: "calc(58px + var(--standalone-safe-area-top, 0px))",
-                                marginBottom: "calc(56px + var(--standalone-safe-area-bottom, 0px))",
+                                marginTop: "calc(var(--topbar-h) + var(--standalone-safe-area-top, 0px))",
+                                marginBottom: "calc(var(--nav-h) + var(--standalone-safe-area-bottom, 0px))",
                             }}
                         >
                             <GalaxyBackground />

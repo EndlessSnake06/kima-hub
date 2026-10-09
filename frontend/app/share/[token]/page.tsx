@@ -12,29 +12,29 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
         const res = await fetch(`${backendUrl}/api/share/${token}`, {
             next: { revalidate: 0 },
         });
-        if (!res.ok) return { title: "Shared Music - Kima" };
+        if (!res.ok) return { title: "shared music - kima" };
         const data = await res.json();
         const title =
-            data.entity?.name || data.entity?.title || "Shared Music";
+            data.entity?.name || data.entity?.title || "shared music";
         const artistName =
             data.entity?.artist?.name ||
             data.entity?.album?.artist?.name ||
-            "Kima";
+            "kima";
         const coverUrl: string | undefined =
             data.entity?.coverUrl ||
             data.entity?.items?.[0]?.track?.album?.coverUrl;
         return {
-            title: `${title} - Kima`,
+            title: `${title} - kima`.toLowerCase(),
             openGraph: {
-                title,
-                description: `by ${artistName} -- shared on Kima`,
+                title: title.toLowerCase(),
+                description: `by ${artistName} -- shared on kima`.toLowerCase(),
                 images: coverUrl ? [{ url: coverUrl }] : [],
                 type: "music.song",
-                siteName: "Kima",
+                siteName: "kima",
             },
         };
     } catch {
-        return { title: "Shared Music - Kima" };
+        return { title: "shared music - kima" };
     }
 }
 

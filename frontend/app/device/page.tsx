@@ -22,6 +22,7 @@ import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/Button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { copyText } from "@/lib/clipboard";
 
 interface DeviceLinkCode {
     code: string;
@@ -128,9 +129,8 @@ export default function DeviceLinkPage() {
     }, [linkCode, expired, codeUsed, loadDevices]);
 
     // Copy code to clipboard
-    const copyCode = () => {
-        if (linkCode) {
-            navigator.clipboard.writeText(linkCode.code);
+    const copyCode = async () => {
+        if (linkCode && (await copyText(linkCode.code))) {
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
         }
@@ -174,7 +174,6 @@ export default function DeviceLinkPage() {
                 <div className="max-w-4xl">
 
                     <div className="grid md:grid-cols-2 gap-8">
-                        {/* QR Code Section */}
                         <Card className="p-6 bg-white/[0.03] border border-white/5">
                             <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
                                 <Smartphone className="w-5 h-5" />
@@ -249,7 +248,6 @@ export default function DeviceLinkPage() {
                                         </div>
                                     ) : (
                                         <>
-                                            {/* QR Code */}
                                             <div className="bg-white p-4 rounded-xl inline-block mb-4">
                                                 <QRCodeSVG
                                                     value={getQRValue()}
@@ -259,7 +257,6 @@ export default function DeviceLinkPage() {
                                                 />
                                             </div>
 
-                                            {/* Code Display */}
                                             <div className="mb-4" aria-live="polite">
                                                 <p className="text-[var(--text-secondary)] text-sm mb-2">
                                                     Or enter this code manually:
@@ -287,7 +284,6 @@ export default function DeviceLinkPage() {
                                                 </div>
                                             </div>
 
-                                            {/* Timer */}
                                             <div className="flex items-center justify-center gap-2 text-[var(--text-secondary)]">
                                                 <Clock className="w-4 h-4" />
                                                 <span>
@@ -300,7 +296,6 @@ export default function DeviceLinkPage() {
                             )}
                         </Card>
 
-                        {/* Linked Devices Section */}
                         <Card className="p-6 bg-white/[0.03] border border-white/5">
                             <h2 className="text-xl font-bold text-white mb-4">
                                 Linked Devices
@@ -350,7 +345,6 @@ export default function DeviceLinkPage() {
                         </Card>
                     </div>
 
-                    {/* Instructions */}
                     <Card className="mt-8 p-6 bg-white/[0.03] border border-white/5">
                         <h2 className="text-xl font-bold text-white mb-4">
                             How to Link Your Device

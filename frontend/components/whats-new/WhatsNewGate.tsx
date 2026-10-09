@@ -1,30 +1,22 @@
 "use client";
 
 /**
- * Shows every release the user has not closed, in one window that pages
- * through the pending items oldest first. The server decides what is pending;
- * nothing is recorded locally, so a second device still asks.
+ * Shows every release the user has not closed in one window, the newest note
+ * first and every pending item oldest first. The server decides what is
+ * pending; nothing is recorded locally, so a second device still asks.
  */
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
-import { WhatsNewWindow } from "./WhatsNewWindow";
+import { useAuth } from "@/lib/auth-context";
+import { WhatsNewWindow, type Release } from "./WhatsNewWindow";
 import { MoodMixChoice } from "./MoodMixChoice";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
-interface Release {
-    version: string;
-    title: string;
-    summary: string;
-    date: string;
-    items: Parameters<typeof WhatsNewWindow>[0]["release"]["items"];
-}
-
-// One pending fetch per app session, shared across the remounts every route
-// change causes, so navigation neither refetches nor replaces the queue being
-// read. A failed fetch is not cached; the next mount retries.
+// One pending fetch per app session, shared across remounts (the layout switching
+// between phone, desktop and TV), so a remount neither refetches nor replaces the
+// queue being read. A failed fetch is not cached; the next mount retries.
 let pendingFetch: Promise<Release[]> | null = null;
 let pendingFetchKey: string | null = null;
 function fetchPending(): Promise<Release[]> {
@@ -44,20 +36,26 @@ function fetchPending(): Promise<Release[]> {
     return pendingFetch;
 }
 
+/** Everything was closed: a remount must not bring the window back from the cached fetch. */
+function closeAll(): void {
+    pendingFetch = Promise.resolve([]);
+}
+
 export function WhatsNewGate() {
     const [queue, setQueue] = useState<Release[]>([]);
-    // "Take me to it" defers the rest of the window for this tab, so it does
-    // not follow the user to the page. sessionStorage survives the gate
-    // remounting on navigation and clears with the tab; the pages return next
-    // visit.
-    const [deferred, setDeferred] = useState(() => {
-        if (typeof window === "undefined") return false;
-        return window.sessionStorage.getItem("whatsnew.deferred") === "1";
-    });
+    // Following a link to a page defers the window for this user in this tab, so it
+    // does not follow them there; nothing is answered or closed by it. sessionStorage
+    // survives the gate remounting on navigation and clears with the tab, so the
+    // window returns next visit.
+    const { user } = useAuth();
+    const deferKey = user ? `whatsnew.deferred:${user.id}` : null;
+    const [, setDeferredNow] = useState(0);
+    const deferred =
+        deferKey !== null && typeof window !== "undefined" && window.sessionStorage.getItem(deferKey) === "1";
     const [confirming, setConfirming] = useState(false);
-    const [running, setRunning] = useState<string | null>(null);
-    const [started, setStarted] = useState<string | null>(null);
-    const [runError, setRunError] = useState<string | null>(null);
+    const [wiping, setWiping] = useState(false);
+    const [done, setDone] = useState<string[]>([]);
+    const [wipeError, setWipeError] = useState<string | null>(null);
 
     useEffect(() => {
         let cancelled = false;
@@ -75,113 +73,88 @@ export function WhatsNewGate() {
     }, []);
 
     if (queue.length === 0 || deferred) return null;
-    const latest = queue[queue.length - 1];
-    // One window for the whole queue: the newest release's header, every
-    // pending item, oldest first.
-    const merged = { ...latest, items: queue.flatMap((r) => r.items) };
+    const wipe = queue.flatMap((r) => r.items).find((i) => i.kind === "action" && i.run === "wipeEnrichment");
 
-    // flatMap keeps the item objects, so key lookup finds a page's own release.
-    const versionOf = (key: string) =>
-        queue.find((r) => r.items.some((i) => i.key === key))?.version ?? latest.version;
-
-    const reembed = merged.items.find(
-        (i): i is Extract<typeof merged.items[number], { kind: "action"; runsFromWindow?: boolean }> =>
-            i.kind === "action" && i.runsFromWindow === true,
-    );
-
-    const runReembed = async () => {
-        if (!reembed) return;
+    const runWipe = async () => {
+        if (!wipe) return;
         setConfirming(false);
-        setRunning(reembed.key);
-        setRunError(null);
+        setWiping(true);
+        setWipeError(null);
         try {
-            // Same endpoint the Settings "Re-run" for vibe embeddings calls.
-            await api.resetVibeEmbeddings();
-            setStarted(reembed.key);
+            await api.wipeAndRerunEnrichment();
+            setDone((d) => [...d, wipe.key]);
         } catch {
-            setRunError("Couldn't start the rebuild. It's still in Settings, under Library Enrichment.");
+            setWipeError("Couldn't start it. Try again, or use Settings, under Library Enrichment.");
         } finally {
-            setRunning(null);
+            setWiping(false);
         }
     };
 
-    // Done closes every pending release in the queue, not just the header's:
-    // a window that pages through two releases must record both closings.
+    // Done closes every pending release in the queue, not just the heading's:
+    // a window that shows two releases must record both closings.
     const dismissAll = async () => {
         for (const r of queue) await api.post(`/whats-new/${r.version}/dismiss`, {});
+    };
+
+    const defer = () => {
+        if (!deferKey) return;
+        window.sessionStorage.setItem(deferKey, "1");
+        setDeferredNow((n) => n + 1);
     };
 
     return (
         <>
             <WhatsNewWindow
-                release={merged}
+                releases={queue}
                 onDismiss={dismissAll}
-                onClose={() => setQueue([])}
+                onClose={() => { closeAll(); setQueue([]); }}
+                onNavigate={defer}
+                done={done}
                 renderAction={(item) =>
-                item.key === "moods.mixes" || item.key === "moods.mixes.retired" ? (
-                    // Rebuild / keep / save as playlist, or for a mix under a
-                    // removed mood, save / remove. The server only sends these
-                    // to users who have that kind of saved mix.
-                    <MoodMixChoice />
-                ) : item.key === "plays.repair" ? (
-                    // The review lives on the stats page and stays there. A
-                    // dialogue is a bad place to work through forty tracks, and
-                    // a second copy of a destructive tool is worse. Link, not
-                    // <a>: the app router swaps the page in place, no reload.
-                    <Link
-                        href="/stats#false-starts"
-                        onClick={() => {
-                            window.sessionStorage.setItem("whatsnew.deferred", "1");
-                            setDeferred(true);
-                            void api.post(`/whats-new/${versionOf(item.key)}/dismiss`, {});
-                        }}
-                        className="self-start h-11 px-4 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-white text-sm font-medium flex items-center transition-colors"
-                    >
-                        {item.cta}
-                    </Link>
-                ) : item.runsFromWindow ? (
-                    <div className="flex flex-col gap-2">
-                        {started === item.key ? (
-                            <p className="text-sm text-success flex items-center gap-2" data-testid="reembed-started">
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                                Rebuild started. It runs in the background — you can close this and keep listening.
-                            </p>
-                        ) : runError && reembed?.key === item.key ? (
-                            <p className="text-sm text-danger-light">{runError}</p>
-                        ) : (
-                            <button
-                                type="button"
-                                onClick={() => setConfirming(true)}
-                                disabled={running !== null}
-                                data-testid="reembed-run"
-                                className="self-start h-11 px-4 rounded-lg bg-brand hover:bg-brand-hover text-black text-sm font-semibold flex items-center gap-2 transition-colors disabled:opacity-60"
-                            >
-                                {running === item.key ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                                {running === item.key ? "Starting..." : (item.confirmLabel ?? item.cta)}
-                            </button>
-                        )}
-                        <p className="text-xs text-[var(--text-muted)]">
-                            Or do it later from Settings, under Library Enrichment.
-                        </p>
-                    </div>
-                ) : null
-            }
+                    item.key === "moods.mixes" || item.key === "moods.mixes.retired" ? (
+                        // Rebuild / keep / save as playlist, or for a mix under a
+                        // removed mood, save / remove. The server only sends these
+                        // to users who have that kind of saved mix.
+                        <MoodMixChoice onNavigate={defer} />
+                    ) : item.run === "wipeEnrichment" ? (
+                        <div className="flex flex-col gap-2">
+                            {done.includes(item.key) ? (
+                                <p className="text-sm text-success flex items-center gap-2" data-testid="wipe-started">
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    Wiped. Your library is running through the new engine in the background.
+                                </p>
+                            ) : (
+                                <button
+                                    type="button"
+                                    onClick={() => setConfirming(true)}
+                                    disabled={wiping}
+                                    data-testid="wipe-run"
+                                    className="self-start min-h-11 py-2.5 px-4 rounded-lg bg-brand hover:bg-brand-hover text-black text-sm font-semibold flex items-center gap-2 transition-colors disabled:opacity-60"
+                                >
+                                    {wiping ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                                    {wiping ? "Starting..." : item.cta}
+                                </button>
+                            )}
+                            {wipeError && <p className="text-sm text-danger-light">{wipeError}</p>}
+                        </div>
+                    ) : null
+                }
             />
 
-        {confirming && reembed && (
-            <div data-nested-confirm="true">
-                <ConfirmDialog
-                    isOpen={true}
-                    onClose={() => setConfirming(false)}
-                    onConfirm={runReembed}
-                    title={reembed.confirmTitle ?? "Run this now?"}
-                    message={reembed.confirmMessage ?? ""}
-                    confirmText={reembed.confirmLabel ?? "Run it"}
-                    cancelText="Not now"
-                    variant="warning"
-                />
-            </div>
-        )}
+            {confirming && wipe && wipe.kind === "action" && (
+                <div data-nested-confirm="true">
+                    <ConfirmDialog
+                        isOpen={true}
+                        onClose={() => setConfirming(false)}
+                        onConfirm={runWipe}
+                        title={wipe.confirmTitle ?? "Wipe and re-run enrichment?"}
+                        message={wipe.confirmMessage ?? ""}
+                        confirmText={wipe.confirmLabel ?? wipe.cta}
+                        cancelText="Not now"
+                        variant="warning"
+                    />
+                </div>
+            )}
         </>
     );
 }

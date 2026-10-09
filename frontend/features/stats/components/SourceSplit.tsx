@@ -11,10 +11,10 @@ import type { ListeningStats } from "../types";
 const ORDER = ["LIBRARY", "SUBSONIC", "DISCOVERY", "DISCOVERY_KEPT"] as const;
 
 const SAY: Record<string, string> = {
-    LIBRARY: "your shelf",
-    SUBSONIC: "a phone",
-    DISCOVERY: "Discover",
-    DISCOVERY_KEPT: "kept from Discover",
+    LIBRARY: "library",
+    SUBSONIC: "subsonic apps",
+    DISCOVERY: "discover",
+    DISCOVERY_KEPT: "discover, kept",
 };
 
 /** Opacity, not hue. The accent stays one colour and share does the work. */
@@ -30,16 +30,14 @@ export function SourceSplit({ listening }: { listening: ListeningStats }) {
     const segments = ORDER.map((k) => ({ key: k, n: bySource[k] ?? 0 })).filter((s) => s.n > 0);
     if (plays === 0 || segments.length === 0) return null;
 
-    // A bar of one segment at a hundred per cent is a chart that has nothing to
-    // say. Someone who only ever plays from their own shelf gets the sentence
-    // instead, which at least tells them the other paths exist.
+    // A bar of one segment at a hundred per cent says nothing, so one source
+    // over 97% gets one line instead.
     const dominant = segments.reduce((a, b) => (b.n > a.n ? b : a));
     if (dominant.n / plays >= 0.97) {
         return (
             <p className="t-body max-w-[44ch]">
-                Everything you&apos;ve played came from{" "}
-                <span className="text-[var(--text-primary)]">{SAY[dominant.key]}</span>. Nothing yet
-                from Discover or a Subsonic app.
+                all plays from{" "}
+                <span className="text-[var(--text-primary)]">{SAY[dominant.key]}</span>
             </p>
         );
     }
@@ -83,8 +81,8 @@ export function SourceSplit({ listening }: { listening: ListeningStats }) {
 
             {keepRate !== null && (
                 <p className="t-meta max-w-[32ch]">
-                    Kima offered {offered.toLocaleString()} tracks · you kept{" "}
-                    <span className="t-figure text-xs">{keepRate}%</span>
+                    {offered.toLocaleString()} discover {offered === 1 ? "play" : "plays"} ·{" "}
+                    <span className="t-figure text-xs">{keepRate}%</span> on albums you kept
                 </p>
             )}
         </div>

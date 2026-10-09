@@ -107,7 +107,8 @@ const TrackRow = memo(
                 }
                 {...doubleTapProps}
                 onKeyDown={(e) => {
-                    if (e.key === "Enter") {
+                    // Enter on a button inside the row belongs to that button.
+                    if (e.key === "Enter" && e.target === e.currentTarget) {
                         e.preventDefault();
                         handleRowClick();
                     }
@@ -192,7 +193,7 @@ const TrackRow = memo(
                                 onClick={handleAddToQueue}
                                 className="p-1.5 rounded-lg hover:bg-white/10 transition-all text-[var(--text-secondary)] hover:text-white"
                                 aria-label="Add to queue"
-                                title="Add to queue"
+                                title="add to queue"
                             >
                                 <ListPlus className="w-4 h-4" />
                             </button>
@@ -200,7 +201,7 @@ const TrackRow = memo(
                                 onClick={handleAddToPlaylist}
                                 className="p-1.5 rounded-lg hover:bg-white/10 transition-all text-[var(--text-secondary)] hover:text-white"
                                 aria-label="Add to playlist"
-                                title="Add to playlist"
+                                title="add to playlist"
                             >
                                 <Plus className="w-4 h-4" />
                             </button>
@@ -224,7 +225,7 @@ const TrackRow = memo(
                 </div>
 
                 {/* Column 5: Duration */}
-                {track.duration && (
+                {track.duration > 0 && (
                     <span className="self-center text-xs md:text-sm text-[var(--text-secondary)] text-right tabular-nums">
                         {formatTime(track.duration)}
                     </span>

@@ -12,7 +12,7 @@ import { useDownloadContext } from "@/lib/download-context";
 // Custom hooks
 import { useAlbumData } from "@/features/album/hooks/useAlbumData";
 import { useAlbumActions } from "@/features/album/hooks/useAlbumActions";
-import { useTrackPreview } from "@/hooks/useTrackPreview";
+import { usePreview } from "@/hooks/usePreview";
 import type { MissingTrack, Track as AlbumTrack } from "@/features/album/types";
 
 // Components
@@ -44,7 +44,7 @@ export default function AlbumPage({ params }: AlbumPageProps) {
     const { playAlbum, shufflePlay, addToQueue, downloadAlbum } =
         useAlbumActions();
     const { isPendingByMbid } = useDownloadContext();
-    const { previewTrack, previewPlaying, handlePreview } = useTrackPreview();
+    const preview = usePreview();
 
     const combinedTracks = useMemo<AlbumTrack[]>(() => {
         const ownedTracks = (album?.tracks || []).map((track: AlbumTrack) => ({
@@ -235,10 +235,10 @@ export default function AlbumPage({ params }: AlbumPageProps) {
                                 addToQueue(track, album)
                             }
                             onAddToPlaylist={handleAddToPlaylist}
-                            previewTrack={previewTrack}
-                            previewPlaying={previewPlaying}
+                            previewTrack={preview.previewId}
+                            previewPlaying={preview.playing}
                             onPreview={(track: AlbumTrack) =>
-                                handlePreview(track, album.artist?.name || "")
+                                preview.toggle(track.id, api.getTrackPreviewStreamUrl(album.artist?.name || "", track.title))
                             }
                         />
                     )}

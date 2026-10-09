@@ -57,7 +57,7 @@ export function BottomNavigation() {
                 paddingBottom: 'var(--standalone-safe-area-bottom, 0px)'
             }}
         >
-            <div className="flex items-center justify-around h-14">
+            <div className="flex items-center justify-around" style={{ height: "var(--nav-h)" }}>
                 {navigationItems.map((item) => {
                     const isActive = pathname.startsWith(item.matchPattern);
                     const Icon = item.icon;
@@ -67,7 +67,7 @@ export function BottomNavigation() {
                             key={item.name}
                             href={item.href}
                             className={cn(
-                                "flex flex-col items-center justify-center flex-1 h-full py-2 transition-colors duration-200",
+                                "flex flex-col items-center justify-center flex-1 h-full py-2 transition-colors duration-200 landscape-short:flex-row landscape-short:gap-2 landscape-short:py-0",
                                 isActive
                                     ? "text-white"
                                     : "text-[var(--text-muted)] active:text-gray-300"
@@ -77,7 +77,7 @@ export function BottomNavigation() {
                         >
                             <Icon
                                 className={cn(
-                                    "w-5 h-5 mb-1 transition-all duration-200",
+                                    "w-5 h-5 mb-1 transition-all duration-200 landscape-short:mb-0",
                                     isActive && "text-white"
                                 )}
                                 strokeWidth={isActive ? 2.5 : 2}

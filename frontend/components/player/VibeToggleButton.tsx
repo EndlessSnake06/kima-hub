@@ -49,7 +49,7 @@ export function VibeToggleButton({
             )}
             aria-label={active ? "Turn off vibe mode" : "Match this vibe"}
             aria-pressed={active}
-            title={active ? "Turn off vibe mode" : "Match this vibe - find similar sounding tracks"}
+            title={active ? "turn off vibe mode" : "match this vibe - find similar sounding tracks"}
         >
             <Icon className={cn(iconClassName, isVibeLoading && "animate-spin")} />
         </button>

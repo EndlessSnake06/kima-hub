@@ -231,7 +231,7 @@ test.describe("Dogfood walkthrough", () => {
 
         await session.step("press play", async () => {
             await page.getByLabel("Play all").click();
-            await page.getByTitle("Pause", { exact: true }).waitFor({ timeout: 15_000 });
+            await page.getByTitle("pause", { exact: true }).waitFor({ timeout: 15_000 });
             const src = await page.evaluate(
                 (sel) => (document.querySelector(sel) as HTMLAudioElement | null)?.src ?? "",
                 PLAYER,
@@ -391,7 +391,7 @@ test.describe("Dogfood walkthrough", () => {
             await settle(page, 1200);
 
             await page.getByLabel("Play all").click();
-            await page.getByTitle("Pause", { exact: true }).waitFor({ timeout: 15_000 });
+            await page.getByTitle("pause", { exact: true }).waitFor({ timeout: 15_000 });
 
             for (const n of [1, 2]) {
                 const row = page.locator("[data-track-row]").nth(n);
@@ -529,7 +529,7 @@ test.describe("Dogfood walkthrough", () => {
             await page.waitForURL(/\/album\//, { timeout: 10_000 });
             await settle(page, 1200);
             await page.getByLabel("Play all").click();
-            await page.getByTitle("Pause", { exact: true }).waitFor({ timeout: 15_000 });
+            await page.getByTitle("pause", { exact: true }).waitFor({ timeout: 15_000 });
             return { playing: true };
         });
 
@@ -538,12 +538,12 @@ test.describe("Dogfood walkthrough", () => {
         // nothing is enough to catch an aggressive proxy timeout, cheap enough not to
         // slow the gate.
         await session.step("pause, sit idle, and resume", async () => {
-            await page.getByTitle("Pause", { exact: true }).click();
-            await expect(page.getByTitle("Play", { exact: true })).toBeVisible({ timeout: 8_000 });
+            await page.getByTitle("pause", { exact: true }).click();
+            await expect(page.getByTitle("play", { exact: true })).toBeVisible({ timeout: 8_000 });
             await page.waitForTimeout(15_000);
 
-            await page.getByTitle("Play", { exact: true }).click();
-            await page.getByTitle("Pause", { exact: true }).waitFor({ timeout: 10_000 });
+            await page.getByTitle("play", { exact: true }).click();
+            await page.getByTitle("pause", { exact: true }).waitFor({ timeout: 10_000 });
             const read = () =>
                 page.evaluate(
                     (sel) => {
@@ -844,7 +844,7 @@ test.describe("Dogfood walkthrough", () => {
             const before = await page.locator("[data-track-index]").count();
             const row = page.locator("[data-track-index]").first();
             await row.hover();
-            await row.getByTitle(/Remove from [Pp]laylist/).click();
+            await row.getByTitle(/remove from playlist/i).click();
             await page.waitForTimeout(1000);
             const after = await page.locator("[data-track-index]").count();
             expect(after, `remove clicked but the count went ${before} -> ${after}`).toBe(before - 1);
@@ -1372,7 +1372,7 @@ test.describe("Dogfood walkthrough", () => {
             // from selecting.
             await session.step("play an episode and hear it advance", async () => {
                 await page.locator("[data-track-index]").first().dblclick();
-                await page.getByTitle("Pause", { exact: true }).waitFor({ timeout: 30_000 });
+                await page.getByTitle("pause", { exact: true }).waitFor({ timeout: 30_000 });
 
                 const read = () =>
                     page.evaluate(
@@ -1437,7 +1437,7 @@ test.describe("Dogfood walkthrough", () => {
         } finally {
             // Leave the library as found, pass or fail. Playback stops before the
             // unsubscribe so position saves do not 404 into the next journey.
-            const pause = page.getByTitle("Pause", { exact: true });
+            const pause = page.getByTitle("pause", { exact: true });
             if (await pause.isVisible({ timeout: 2000 }).catch(() => false)) {
                 await pause.click().catch(() => {});
             }
@@ -1707,8 +1707,8 @@ test.describe("Dogfood walkthrough", () => {
 
             const play = page
                 .locator("main")
-                .getByTitle("Play", { exact: true })
-                .or(page.locator("main").getByTitle("Resume", { exact: true }));
+                .getByTitle("play", { exact: true })
+                .or(page.locator("main").getByTitle("resume", { exact: true }));
             await play.first().click();
             await page.getByLabel("Pause", { exact: true }).waitFor({ timeout: 30_000 });
 
@@ -1741,8 +1741,6 @@ test.describe("Dogfood walkthrough", () => {
     test("5e. vibe, deeper: a song path becomes a queue that plays", async () => {
         test.setTimeout(180_000);
         session.setJourney("5e. Vibe interaction");
-
-        test.skip(false, "vibe needs a projected library");
 
         let queryA = "";
         let queryB = "";
@@ -1819,6 +1817,9 @@ test.describe("Dogfood walkthrough", () => {
             const generate = page.getByRole("button", { name: /generate path/i });
             await expect(generate).toBeEnabled({ timeout: 8_000 });
             await generate.click();
+            // A song path replaces the queue; when one is already playing the app asks first.
+            const replace = page.getByRole("button", { name: /^replace$/i });
+            if (await replace.isVisible({ timeout: 2_500 }).catch(() => false)) await replace.click();
             await page.waitForTimeout(2500);
 
             // The CLAP search may return a different track than expected (semantic
@@ -1872,7 +1873,7 @@ test.describe("Dogfood walkthrough", () => {
 
             // The path UI may or may not auto-start playback; either way the queue
             // must be playable from the queue page.
-            const pause = page.getByTitle("Pause", { exact: true });
+            const pause = page.getByTitle("pause", { exact: true });
             if (!(await pause.isVisible({ timeout: 2_000 }).catch(() => false))) {
                 await page.goto("/queue");
                 await settle(page, 1500);
@@ -1883,7 +1884,7 @@ test.describe("Dogfood walkthrough", () => {
                 await row.hover();
                 await row.locator('[aria-label^="Play "]').first().click();
             }
-            await page.getByTitle("Pause", { exact: true }).waitFor({ timeout: 20_000 });
+            await page.getByTitle("pause", { exact: true }).waitFor({ timeout: 20_000 });
 
             const a = await page.evaluate(
                 (sel) => (document.querySelector(sel) as HTMLAudioElement | null)?.currentTime ?? -1,
@@ -1926,8 +1927,6 @@ test.describe("Dogfood walkthrough", () => {
         test.setTimeout(120_000);
         session.setJourney("5f. Radio");
 
-        test.skip(false, "radio needs a library to shuffle");
-
         await session.step("open the radio page", async () => {
             await navigateByClick(page, "/radio");
             await settle(page, 2000);
@@ -1940,7 +1939,7 @@ test.describe("Dogfood walkthrough", () => {
             const station = page.locator("main button").filter({ has: page.locator("h3") }).first();
             const name = (await station.locator("h3").textContent())?.trim();
             await station.click();
-            await page.getByTitle("Pause", { exact: true }).waitFor({ timeout: 30_000 });
+            await page.getByTitle("pause", { exact: true }).waitFor({ timeout: 30_000 });
 
             // Radio shuffles; the active track may change during the wait. Verify that
             // audio is actively advancing (playing, position > 0), not that the same
@@ -1979,7 +1978,7 @@ test.describe("Dogfood walkthrough", () => {
                 return { switched: false, note: "only one station card visible" };
             }
             await next.click();
-            const pause = page.getByTitle("Pause", { exact: true });
+            const pause = page.getByTitle("pause", { exact: true });
             await expect(pause).toBeVisible({ timeout: 30_000 });
             // Poll for the station switch to take effect — gapless swap can leave main
             // holding the stale src for a few hundred ms; poll until it changes or timeout.
@@ -2343,7 +2342,7 @@ test.describe("Dogfood walkthrough", () => {
                 await phone.waitForURL(/\/album\//, { timeout: 10_000 });
                 await settle(phone, 1200);
                 await phone.getByLabel("Play all").tap();
-                await phone.getByTitle("Pause", { exact: true }).waitFor({ timeout: 15_000 });
+                await phone.getByTitle("pause", { exact: true }).waitFor({ timeout: 15_000 });
                 return { playing: true };
             });
 
@@ -2418,7 +2417,7 @@ test.describe("Dogfood walkthrough", () => {
                 await page.waitForURL(/\/album\//, { timeout: 10_000 });
                 await settle(page, 1200);
                 await page.getByLabel("Play all").click();
-                await page.getByTitle("Pause", { exact: true }).waitFor({ timeout: 15_000 });
+                await page.getByTitle("pause", { exact: true }).waitFor({ timeout: 15_000 });
                 return { playing: true };
             });
 

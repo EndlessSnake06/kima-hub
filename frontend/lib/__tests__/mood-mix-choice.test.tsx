@@ -80,7 +80,7 @@ describe("MoodMixChoice", () => {
         expect(q("moodmix-rebuild")).not.toBeNull();
     });
 
-    it("rebuild clears the mix from the item and says how to make a new one", async () => {
+    it("rebuild clears the mix from the item", async () => {
         getState.mockResolvedValue({ mix: MIX, decision: null, playlist: null });
         decide.mockResolvedValue({ decision: "rebuild", removed: 1 });
         await render();
@@ -88,7 +88,7 @@ describe("MoodMixChoice", () => {
         expect(decide).toHaveBeenCalledWith("rebuild");
         expect(q("moodmix-name")).toBeNull();
         expect(q("moodmix-save")).toBeNull();
-        expect(q("moodmix-rebuilt")!.textContent).toContain("Mood Mixer");
+        expect(q("moodmix-rebuilt")!.textContent).toBe("Cleared");
     });
 
     it("save then rebuild: the saved playlist is still named after the mix is cleared", async () => {
@@ -124,7 +124,7 @@ describe("MoodMixChoice", () => {
         await click("moodmix-rebuild");
         expect(q("moodmix-name")).not.toBeNull();
         expect(q("moodmix-rebuilt")).toBeNull();
-        expect(q("moodmix-error")!.textContent).toContain("still there");
+        expect(q("moodmix-error")!.textContent).toBe("Couldn't clear the mix");
     });
 
     it("starts from what the server already recorded (answered on another device)", async () => {
@@ -172,14 +172,14 @@ describe("MoodMixChoice", () => {
             await render();
             await click("moodmix-remove");
             expect(q("moodmix-name")).not.toBeNull();
-            expect(q("moodmix-error")!.textContent).toContain("still there");
+            expect(q("moodmix-error")!.textContent).toBe("Couldn't clear the mix");
         });
     });
 
-    it("says closing keeps the mix when the state cannot be loaded", async () => {
+    it("says so when the state cannot be loaded", async () => {
         getState.mockRejectedValue(new Error("network"));
         await render();
-        expect(container.textContent).toContain("keeps it as it is");
+        expect(container.textContent).toContain("Couldn’t load your mood mix");
         expect(q("moodmix-rebuild")).toBeNull();
     });
 });

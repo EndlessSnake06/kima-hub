@@ -1,7 +1,7 @@
 import * as THREE from "three";
 
 /**
- * One point shader for every star: tracks, dust and sky. A sharp core in a soft
+ * One point shader for every star: tracks and sky. A sharp core in a soft
  * halo, sized by distance, twinkling. Each star ignites at its aReveal second of
  * the load-in as a white flash; while uFocusMix > 0, stars of uFocusMood take uFocusColor.
  */
@@ -44,7 +44,7 @@ void main() {
   float depth = max(-mv.z, 0.001);
   float ps = aSize * uSizeScale * uPixelRatio / depth;
   ps *= mix(0.8, 1.0, clamp(aEmph, 0.0, 1.0)) * max(1.0, aEmph) * (1.0 + focus * 0.25);
-  gl_PointSize = clamp(ps, uMinPx * uPixelRatio, 48.0 * uPixelRatio);
+  gl_PointSize = clamp(ps, uMinPx, 40.0);
 }`;
 
 const FRAG = /* glsl */ `
@@ -115,15 +115,15 @@ export function setStarFocus(u: StarUniforms, moodIdx: number, rgb: [number, num
     u.uFocusColor.value.setRGB(rgb[0] / 255, rgb[1] / 255, rgb[2] / 255, THREE.SRGBColorSpace);
 }
 
-/** Soft radial falloff used for the nebula haze sprites. */
+/** Soft radial glow sprite for the faint nebula wisps. */
 export function createGlowTexture() {
-    const size = 256;
+    const size = 128;
     const canvas = document.createElement("canvas");
     canvas.width = canvas.height = size;
     const ctx = canvas.getContext("2d")!;
     const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
     g.addColorStop(0, "rgba(255,255,255,1)");
-    g.addColorStop(0.35, "rgba(255,255,255,0.35)");
+    g.addColorStop(0.25, "rgba(255,255,255,0.5)");
     g.addColorStop(1, "rgba(255,255,255,0)");
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, size, size);

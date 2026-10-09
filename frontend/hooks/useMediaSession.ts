@@ -122,8 +122,7 @@ export function useMediaSession() {
 
         navigator.mediaSession.setActionHandler("pause", () => {
             iosAudioLog("ms:pause", "useMediaSession");
-            // Route through context pause so lock-screen pauses are USER pauses,
-            // matching the FE5 intent-correct routing (spec 4.1).
+            // Route through context pause so lock-screen pauses count as user pauses.
             pauseRef.current();
         });
 

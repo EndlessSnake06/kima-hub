@@ -13,6 +13,9 @@
 /* Screens where every row of height counts, such as a phone browser with its toolbars showing. */
 @custom-variant short (@media (max-height: 720px));
 
+/* A phone on its side: the app's bars and the mini player take less height. */
+@custom-variant landscape-short (@media (orientation: landscape) and (max-height: 480px));
+
 @theme {
     /* The smallest text size, for eyebrows, counts and status chips.
      * Tailwind's named scale stops at 12px; nothing goes below this. */
@@ -56,6 +59,8 @@
     --animate-panel-up: panel-up 300ms cubic-bezier(0.25, 1, 0.5, 1) both;
     --animate-panel-down: panel-down 220ms cubic-bezier(0.25, 1, 0.5, 1) both;
     --animate-slide-in: slide-in 280ms cubic-bezier(0.25, 1, 0.5, 1) both;
+    --animate-sweep: sweep 1600ms cubic-bezier(0.65, 0, 0.35, 1) infinite;
+    --animate-kima-drift: kima-drift 16s linear infinite;
 
     @keyframes rise {
         from { opacity: 0; transform: translateY(8px); }
@@ -76,6 +81,18 @@
     @keyframes panel-down {
         from { opacity: 1; transform: translateY(0); }
         to { opacity: 0; transform: translateY(8px); }
+    }
+    @keyframes sweep {
+        from { transform: translateX(-100%); }
+        to { transform: translateX(300%); }
+    }
+    /* One sine period: each quarter eases like sin(t) between its zero and its peak. */
+    @keyframes kima-drift {
+        0% { filter: hue-rotate(0deg); animation-timing-function: cubic-bezier(0.61, 1, 0.88, 1); }
+        25% { filter: hue-rotate(14deg); animation-timing-function: cubic-bezier(0.12, 0, 0.39, 0); }
+        50% { filter: hue-rotate(0deg); animation-timing-function: cubic-bezier(0.61, 1, 0.88, 1); }
+        75% { filter: hue-rotate(-14deg); animation-timing-function: cubic-bezier(0.12, 0, 0.39, 0); }
+        100% { filter: hue-rotate(0deg); }
     }
 }
 
@@ -126,15 +143,15 @@
 
 /* ── Type roles ───────────────────────────────────────────────────────────
  * Six roles cover every piece of text; size, weight and colour carry the
- * hierarchy. Capitals appear only on .t-eyebrow. Monospace is only for machine
- * strings (codes, tokens, URLs); aligned digits use tabular figures instead. */
+ * hierarchy. Nothing is capitalised: the body sets every page lowercase. Monospace
+ * is only for machine strings (codes, tokens, URLs); aligned digits use tabular
+ * figures instead. */
 @layer components {
-    /* The short status kicker above a page title. The only capitals left. */
+    /* The short status kicker above a page title. */
     .t-eyebrow {
         font-size: var(--text-micro);
         line-height: 1.4;
         font-weight: 500;
-        text-transform: uppercase;
         letter-spacing: 0.12em;
         color: var(--text-muted);
     }
@@ -169,8 +186,10 @@
         font-weight: 500;
     }
 
-    /* Machine strings only. <code> gets this for free, below. */
+    /* Machine strings only. <code> gets this for free, below. They keep their
+     * case, since a key or code has to be read exactly. */
     .t-data {
+        text-transform: none;
         font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
             "Liberation Mono", monospace;
         font-size: 0.75rem;
@@ -319,6 +338,19 @@ body {
     font-family: var(--font-montserrat), -apple-system, BlinkMacSystemFont,
         "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
     min-height: 100vh;
+    /* Every page is lowercase, as in Kima v2. Display only: typed, copied and
+     * submitted text keeps its case. */
+    text-transform: lowercase;
+}
+
+/* Browsers set form controls to text-transform: none; these follow the page. */
+button, input, textarea, select, optgroup, option {
+    text-transform: inherit;
+}
+
+/* Keys, codes and addresses are read exactly, so they keep their case. */
+code, pre, .font-mono {
+    text-transform: none;
 }
 
 /* Keyboard focus ring -- restores visibility removed by Tailwind outline-none.
@@ -491,10 +523,6 @@ button:disabled {
     to { transform: translateX(0); }
 }
 
-.animate-slide-in {
-    animation: slide-in 280ms cubic-bezier(0.25, 1, 0.5, 1) both;
-}
-
 /* Shake animation for error messages */
 @keyframes shake {
     0%,
@@ -519,34 +547,6 @@ button:disabled {
 .animate-shake {
     animation: shake 0.5s ease-in-out;
 }
-
-/* Galaxy Background Animations - Stationary with brightness twinkle only */
-@keyframes galaxyFloat {
-    0%,
-    100% {
-        opacity: 0.3;
-    }
-    25% {
-        opacity: 0.7;
-    }
-    50% {
-        opacity: 0.4;
-    }
-    75% {
-        opacity: 0.6;
-    }
-}
-
-@keyframes galaxyTwinkle {
-    0%,
-    100% {
-        opacity: 0.2;
-    }
-    50% {
-        opacity: 0.8;
-    }
-}
-
 
 /* =====================================================
    Accessibility - Reduced Motion Support
@@ -624,6 +624,13 @@ body.tv-mode * {
     gap: 20px;
     flex-shrink: 0;
     background: transparent;
+}
+
+/* The logo's shape; its gradient comes from lib/brandGradient.ts. */
+.kima-mark {
+    -webkit-mask: url("/assets/images/kima.webp") center / contain no-repeat;
+    mask: url("/assets/images/kima.webp") center / contain no-repeat;
+    animation: var(--animate-kima-drift);
 }
 
 .tv-logo {
@@ -933,7 +940,7 @@ body.scanner-active .scanner-overlay {
 /* Near-black with a faint violet breath near the middle. The canvas above it is
    transparent, so this is the deepest layer of the sky. */
 .vibe-sky {
-    background: radial-gradient(120% 90% at 50% 38%, #0c0610 0%, #060308 30%, #020103 55%, #000 72%);
+    background: radial-gradient(115% 90% at 50% 40%, #180b1e 0%, #0b0510 25%, #040207 48%, #000000 68%);
 }
 
 /* Floating surfaces over the map: dark violet glass, so the stars read through. */
@@ -1052,7 +1059,22 @@ body.scanner-active .scanner-overlay {
 /* The mini player floats over the content wherever the bottom-nav layout is used. */
 @media (max-width: 1024px), (max-width: 1366px) and (any-hover: none) and (pointer: coarse) {
     :root {
-        --stats-under: 6rem;
+        --stats-under: calc(var(--mini-clearance) + 0.5rem);
+    }
+}
+
+/* Heights of the phone layout's top bar and bottom bar, and the space the floating mini player covers above the bar. */
+:root {
+    --topbar-h: 58px;
+    --nav-h: 56px;
+    --mini-clearance: 88px;
+}
+
+@media (orientation: landscape) and (max-height: 480px) {
+    :root {
+        --topbar-h: 50px;
+        --nav-h: 44px;
+        --mini-clearance: 66px;
     }
 }
 

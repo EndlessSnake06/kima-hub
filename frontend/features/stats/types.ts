@@ -87,9 +87,9 @@ export interface Signature {
 export type Period = "30d" | "12mo" | "all";
 
 export const PERIODS: Array<{ id: Period; label: string; sentence: string }> = [
-    { id: "30d", label: "30 days", sentence: "in the last 30 days" },
-    { id: "12mo", label: "12 months", sentence: "in the last 12 months" },
-    { id: "all", label: "All", sentence: "" },
+    { id: "30d", label: "30 days", sentence: "· last 30 days" },
+    { id: "12mo", label: "12 months", sentence: "· last 12 months" },
+    { id: "all", label: "all time", sentence: "" },
 ];
 
 export interface StatsResponse {

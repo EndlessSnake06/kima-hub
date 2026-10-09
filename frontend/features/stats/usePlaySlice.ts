@@ -6,7 +6,7 @@ import { useCallback, useState } from "react";
 import { api } from "@/lib/api";
 import { useAudioControls } from "@/lib/audio-controls-context";
 
-export interface PlayableTrack {
+interface PlayableTrack {
     id: string;
     title: string;
     duration: number;
@@ -14,7 +14,7 @@ export interface PlayableTrack {
     album: { id: string; title: string; coverArt: string | null };
 }
 
-export type Slice = "top" | "never" | "core" | "key" | "decade";
+type Slice = "top" | "never" | "core" | "key" | "decade";
 
 export function usePlaySlice() {
     const { playTracks } = useAudioControls();

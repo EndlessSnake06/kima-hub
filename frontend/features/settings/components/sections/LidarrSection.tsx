@@ -118,7 +118,7 @@ export function LidarrSection({ settings, onUpdate, onTest, isTesting }: LidarrS
                         <>
                             <SettingsRow
                                 label="Quality Profile"
-                                description="Audio quality for artists Kima adds. Lidarr's default is the one set on its music folder"
+                                description="Quality profile for new artists. Default: the music folder's profile"
                             >
                                 <SettingsSelect
                                     value={String(settings.lidarrQualityProfileId ?? "")}
@@ -132,7 +132,7 @@ export function LidarrSection({ settings, onUpdate, onTest, isTesting }: LidarrS
 
                             <SettingsRow
                                 label="Metadata Profile"
-                                description="Which releases Lidarr lists for artists Kima adds. Lidarr's default is the one set on its music folder"
+                                description="Metadata profile for new artists. Default: the music folder's profile"
                             >
                                 <SettingsSelect
                                     value={String(settings.lidarrMetadataProfileId ?? "")}

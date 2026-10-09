@@ -35,14 +35,15 @@ export function VibeSongPath({ library, onStartPath, onClose }: VibeSongPathProp
         }
     }, [activeInput]);
 
+    const sameTrack = !!startTrackId && startTrackId === endTrackId;
     const handleSubmit = useCallback(() => {
-        if (startTrackId && endTrackId) {
+        if (startTrackId && endTrackId && startTrackId !== endTrackId) {
             onStartPath(startTrackId, endTrackId);
         }
     }, [startTrackId, endTrackId, onStartPath]);
 
     return (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-(--z-scene) w-[calc(100vw-2rem)] sm:w-96 vibe-glass rounded-2xl p-4">
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-(--z-scene-panel) w-[calc(100%-1.5rem)] sm:w-96 max-h-[calc(100%-5rem)] overflow-y-auto overscroll-contain border border-white/10 bg-[rgb(12,8,20)] shadow-[0_12px_32px_-12px_rgba(0,0,0,0.7)] rounded-2xl p-4">
             <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-medium text-[var(--text-primary)] flex items-center gap-2">
                     <Route className="w-4 h-4" /> Song Path
@@ -109,9 +110,12 @@ export function VibeSongPath({ library, onStartPath, onClose }: VibeSongPathProp
                 </p>
             )}
 
+            {sameTrack && (
+                <p className="mt-2 px-1 text-xs text-white/60" aria-live="polite">Pick a different track for the end.</p>
+            )}
             <button
                 onClick={handleSubmit}
-                disabled={!startTrackId || !endTrackId}
+                disabled={!startTrackId || !endTrackId || sameTrack}
                 className="w-full mt-3 px-3 py-2 bg-white/10 hover:bg-white/15 disabled:opacity-30 disabled:hover:bg-white/10 rounded-lg text-sm text-[var(--text-primary)] hover:text-white flex items-center justify-center gap-2 transition-colors"
             >
                 <Route className="w-4 h-4" /> Generate Path

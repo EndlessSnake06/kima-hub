@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect, useRef, useCallback } from "react";
-import Image from "next/image";
 import { cn } from "@/lib/cn";
 import { useAudio } from "@/lib/audio-context";
 import { api } from "@/lib/api";
@@ -12,6 +11,7 @@ import { useTVNavigation } from "@/hooks/useTVNavigation";
 import { formatTime, clampTime, formatTimeRemaining } from "@/lib/format";
 import { RefreshCw, SkipBack, SkipForward, Shuffle, Repeat } from "lucide-react";
 import { CachedImage } from "@/components/ui/CachedImage";
+import { KimaMark } from "@/components/ui/KimaMark";
 
 const tvNavigation = [
     { name: "Home", href: "/" },
@@ -111,7 +111,6 @@ export function TVLayout({ children }: { children: React.ReactNode }) {
             : null;
     }
 
-    // CRITICAL: Clamp currentTime to prevent display of invalid times
     const clampedCurrentTime = clampTime(currentTime, duration);
 
     // Sync library
@@ -211,10 +210,9 @@ export function TVLayout({ children }: { children: React.ReactNode }) {
 
     return (
         <>
-            {/* Nav */}
             <header className="tv-nav">
                 <Link href="/" className="tv-logo">
-                    <Image src="/assets/images/kima.webp" alt="Kima" width={24} height={24} priority />
+                    <KimaMark size={24} />
                     <span>Kima</span>
                 </Link>
 
@@ -241,15 +239,13 @@ export function TVLayout({ children }: { children: React.ReactNode }) {
                     })}
                 </nav>
 
-                {/* Spacer */}
                 <div className="flex-1" />
 
-                {/* Sync button */}
                 <button
                     onClick={handleSync}
                     disabled={isSyncing}
                     className="tv-sync-btn"
-                    title="Sync Library"
+                    title="sync library"
                 >
                     <RefreshCw className={cn("w-4 h-4", isSyncing && "animate-spin")} />
                 </button>
@@ -266,7 +262,6 @@ export function TVLayout({ children }: { children: React.ReactNode }) {
                         <div className="tv-np-artist">{artist}</div>
                     </div>
 
-                    {/* Time counter */}
                     <div className="tv-np-time">
                         {formatTime(clampedCurrentTime)} / {
                             playbackType === "podcast" || playbackType === "audiobook"
@@ -275,21 +270,18 @@ export function TVLayout({ children }: { children: React.ReactNode }) {
                         }
                     </div>
 
-                    {/* Shuffle */}
                     <button
                         onClick={toggleShuffle}
                         className={cn("tv-np-ctrl", isShuffle && "active")}
-                        title="Shuffle"
+                        title="shuffle"
                     >
                         <Shuffle className="w-4 h-4" />
                     </button>
 
-                    {/* Previous */}
-                    <button onClick={previous} className="tv-np-ctrl" title="Previous">
+                    <button onClick={previous} className="tv-np-ctrl" title="previous">
                         <SkipBack className="w-4 h-4" />
                     </button>
 
-                    {/* Play/Pause */}
                     <button onClick={() => isPlaying ? pause() : resumeWithGesture()} className="tv-np-btn">
                         {isPlaying ? (
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
@@ -303,16 +295,14 @@ export function TVLayout({ children }: { children: React.ReactNode }) {
                         )}
                     </button>
 
-                    {/* Next */}
-                    <button onClick={next} className="tv-np-ctrl" title="Next">
+                    <button onClick={next} className="tv-np-ctrl" title="next">
                         <SkipForward className="w-4 h-4" />
                     </button>
 
-                    {/* Repeat */}
                     <button
                         onClick={toggleRepeat}
                         className={cn("tv-np-ctrl", repeatMode !== "off" && "active")}
-                        title={repeatMode === "one" ? "Repeat One" : repeatMode === "all" ? "Repeat All" : "Repeat Off"}
+                        title={repeatMode === "one" ? "repeat one" : repeatMode === "all" ? "repeat all" : "repeat off"}
                     >
                         <Repeat className="w-4 h-4" />
                         {repeatMode === "one" && <span className="tv-np-repeat-one">1</span>}
@@ -320,7 +310,6 @@ export function TVLayout({ children }: { children: React.ReactNode }) {
                 </div>
             )}
 
-            {/* Content */}
             <main id="main-content" tabIndex={-1} ref={contentRef} className="tv-content">
                 {children}
             </main>

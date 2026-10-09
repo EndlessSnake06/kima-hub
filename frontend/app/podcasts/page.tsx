@@ -233,7 +233,6 @@ export default function PodcastsPage() {
                                 </div>
                             )}
 
-                            {/* Search Dropdown */}
                             {showDropdown && searchResults.length > 0 && (
                                 <div
                                     id="podcast-search-listbox"
@@ -349,7 +348,6 @@ export default function PodcastsPage() {
 
             <div className="relative page-shell pb-32 pt-2 animate-rise">
                 <div className="section-stack">
-                    {/* My Podcasts */}
                     {podcasts.length > 0 && (
                         <section>
                             <SectionHeader type="podcast"
@@ -361,7 +359,7 @@ export default function PodcastsPage() {
                                             onClick={handleRefreshAll}
                                             disabled={isRefreshingAll}
                                             className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[var(--text-muted)] hover:text-white hover:bg-white/5 border border-transparent hover:border-white/10 transition-all text-xs disabled:opacity-50"
-                                            title="Check all podcasts for new episodes"
+                                            title="check all podcasts for new episodes"
                                         >
                                             <RefreshCw className={cn("w-3.5 h-3.5", isRefreshingAll && "animate-spin")} />
                                             <span className="hidden md:inline">{isRefreshingAll ? "Refreshing..." : "Refresh All"}</span>
@@ -372,9 +370,9 @@ export default function PodcastsPage() {
                                             aria-label="Sort podcasts"
                                             className="px-3 py-1.5 bg-[var(--bg-primary)] border-2 border-white/10 rounded-lg text-white text-xs focus:outline-none focus:border-brand/50 [&>option]:bg-[var(--bg-primary)] [&>option]:text-white cursor-pointer"
                                         >
-                                            <option value="title">Title</option>
-                                            <option value="author">Author</option>
-                                            <option value="recent">Episodes</option>
+                                            <option value="title">title</option>
+                                            <option value="author">author</option>
+                                            <option value="recent">episodes</option>
                                         </select>
                                         <select
                                             value={itemsPerPage}
@@ -421,7 +419,6 @@ export default function PodcastsPage() {
                         </section>
                     )}
 
-                    {/* Top Podcasts */}
                     {topPodcasts.length > 0 && (
                         <section>
                             <SectionHeader type="podcast" title="Top Podcasts" />
@@ -445,7 +442,6 @@ export default function PodcastsPage() {
                         </section>
                     )}
 
-                    {/* Genre Discovery */}
                     {[
                         { id: "1303", name: "Comedy" },
                         { id: "1324", name: "Society & Culture" },
@@ -493,7 +489,6 @@ export default function PodcastsPage() {
                         ) : null;
                     })}
 
-                    {/* Empty State */}
                     {podcasts.length === 0 && topPodcasts.length === 0 && (
                         <section>
                             <div className="relative overflow-hidden rounded-lg border-2 border-white/10 bg-gradient-to-br from-[#0f0f0f] to-[#0a0a0a] p-12">

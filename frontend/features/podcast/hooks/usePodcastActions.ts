@@ -54,7 +54,7 @@ export function usePodcastActions(podcastId: string, sortedEpisodes?: Episode[])
             queryClient.invalidateQueries({ queryKey: queryKeys.podcasts() });
             router.push("/podcasts");
         } catch (error) {
-            console.error("Failed to remove podcast:", error);
+            notify.error("Couldn't remove this podcast", { message: error instanceof Error ? error.message : undefined });
         }
     }, [podcastId, router, queryClient]);
 
@@ -120,8 +120,7 @@ export function usePodcastActions(podcastId: string, sortedEpisodes?: Episode[])
                 // Dispatch event for real-time UI updates
                 dispatchQueryEvent("podcast-progress-updated");
             } catch (error) {
-                console.error("Failed to mark episode as complete:", error);
-                throw error;
+                notify.error("Couldn't mark the episode as played", { message: error instanceof Error ? error.message : undefined });
             }
         },
         [podcastId, queryClient]
@@ -134,8 +133,7 @@ export function usePodcastActions(podcastId: string, sortedEpisodes?: Episode[])
             queryClient.invalidateQueries({ queryKey: queryKeys.podcast(podcastId) });
             return result;
         } catch (error) {
-            console.error("Failed to refresh podcast:", error);
-            throw error;
+            notify.error("Couldn't refresh this podcast", { message: error instanceof Error ? error.message : undefined });
         } finally {
             setIsRefreshing(false);
         }

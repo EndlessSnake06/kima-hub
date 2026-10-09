@@ -74,14 +74,13 @@ export function UnifiedPanel({ isOpen, onToggle }: UnifiedPanelProps) {
                     willChange: "transform",
                 }}
             >
-                {/* Collapsed strip */}
                 <div
                     onClick={handleCollapse}
                     className={cn(
                         "absolute left-0 top-0 bottom-0 w-12 flex items-center justify-center cursor-pointer hover:bg-[var(--bg-tertiary)] transition-colors duration-200 z-(--z-raised)",
                         isOpen && "pointer-events-none opacity-0",
                     )}
-                    title="Open panel"
+                    title="open panel"
                 >
                     <ChevronLeft className="w-5 h-5 text-[var(--text-muted)]" />
                     {hasActivity && (
@@ -89,8 +88,9 @@ export function UnifiedPanel({ isOpen, onToggle }: UnifiedPanelProps) {
                     )}
                 </div>
 
-                {/* Expanded content */}
+                {/* Expanded content; inert while collapsed so its controls can't take focus. */}
                 <div
+                    inert={!isOpen}
                     className={cn(
                         "flex flex-col h-full transition-opacity duration-300",
                         isOpen ? "opacity-100" : "opacity-0 pointer-events-none",
@@ -105,7 +105,6 @@ export function UnifiedPanel({ isOpen, onToggle }: UnifiedPanelProps) {
                         </div>
                     ) : (
                     <>
-                    {/* Header */}
                     <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
                         <div className="flex items-center gap-2">
                             <div className="w-1.5 h-1.5 bg-brand rounded-full" />
@@ -116,13 +115,12 @@ export function UnifiedPanel({ isOpen, onToggle }: UnifiedPanelProps) {
                         <button
                             onClick={handleCollapse}
                             className="p-1 hover:bg-white/10 transition-colors duration-200"
-                            title="Collapse panel"
+                            title="collapse panel"
                         >
                             <ChevronRight className="w-4 h-4 text-[var(--text-muted)]" />
                         </button>
                     </div>
 
-                    {/* Activity icon bar */}
                     <ActivityIconBar
                         expandedActivity={expandedActivity}
                         onToggleActivity={handleToggleActivity}

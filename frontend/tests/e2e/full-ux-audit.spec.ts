@@ -1,6 +1,12 @@
 import { test, expect, Page } from "@playwright/test";
 import { skipIfEmptyLibrary } from "./fixtures/test-helpers";
 
+/** The app shell scrolls inside #main-content, so the document alone never overflows. */
+const OVERFLOWS = () =>
+    [document.documentElement, document.querySelector("#main-content")].some(
+        (el) => !!el && el.scrollWidth > el.clientWidth + 1,
+    );
+
 const username = process.env.KIMA_TEST_USERNAME || "playwright";
 const password = process.env.KIMA_TEST_PASSWORD || "playwright-test-pw";
 const baseUrl = process.env.KIMA_UI_BASE_URL || "http://127.0.0.1:3030";
@@ -297,7 +303,7 @@ test.describe("Playback", () => {
         await page.getByLabel("Play all").click();
 
         // Player should appear with a Pause button once audio starts
-        await expect(page.getByTitle("Pause", { exact: true })).toBeVisible({ timeout: 10_000 });
+        await expect(page.getByTitle("pause", { exact: true })).toBeVisible({ timeout: 10_000 });
     });
 
     test("clicking play on album starts playback UI", async ({ page }) => {
@@ -317,7 +323,7 @@ test.describe("Playback", () => {
         await page.waitForTimeout(3000);
 
         // Check if playback state changed
-        const pauseBtn = await page.locator('button[title="Pause"], button[aria-label="Pause"]').count();
+        const pauseBtn = await page.locator('button[title="pause"], button[aria-label="Pause"]').count();
         console.log(`After play click: pause button visible = ${pauseBtn > 0}`);
         if (consoleErrors.length > 0) {
             console.log("PLAYBACK console errors:", consoleErrors);
@@ -337,16 +343,10 @@ test.describe("Playback", () => {
         await playBtn.click();
         await page.waitForTimeout(2000);
 
-        const pauseBtn = page.locator('button[title="Pause"]').first();
-        if (await pauseBtn.isVisible({ timeout: 3000 })) {
-            await pauseBtn.click();
-            await page.waitForTimeout(500);
-            const playBtnAfter = page.locator('button[title="Play"]').first();
-            await expect(playBtnAfter).toBeVisible({ timeout: 3000 });
-            console.log("Play/pause toggle: WORKS");
-        } else {
-            console.log("Play/pause toggle: pause button not found after play");
-        }
+        const pauseBtn = page.locator('button[title="pause"]').first();
+        await expect(pauseBtn, "playback started").toBeVisible({ timeout: 5000 });
+        await pauseBtn.click();
+        await expect(page.locator('button[title="play"]').first()).toBeVisible({ timeout: 3000 });
     });
 
     test("next/prev buttons visible during playback", async ({ page }) => {
@@ -362,12 +362,8 @@ test.describe("Playback", () => {
         await playBtn.click();
         await page.waitForTimeout(2000);
 
-        const nextBtn = page.locator('button[title="Next"], button[aria-label="Next"]');
-        const prevBtn = page.locator('button[title="Previous"], button[aria-label="Previous"]');
-
-        const nextVisible = await nextBtn.first().isVisible({ timeout: 3000 }).catch(() => false);
-        const prevVisible = await prevBtn.first().isVisible({ timeout: 3000 }).catch(() => false);
-        console.log(`Next button: ${nextVisible}, Previous button: ${prevVisible}`);
+        await expect(page.getByRole("button", { name: "Next track" }).first()).toBeVisible({ timeout: 5000 });
+        await expect(page.getByRole("button", { name: "Previous track" }).first()).toBeVisible({ timeout: 5000 });
     });
 
     test("queue page renders", async ({ page }) => {
@@ -496,15 +492,8 @@ test.describe("Mobile Layout", () => {
         await page.goto("/", { waitUntil: "domcontentloaded" });
         await settle(page);
 
-        const hasOverflow = await page.evaluate(() =>
-            document.documentElement.scrollWidth > document.documentElement.clientWidth
-        );
-        console.log(`Mobile home: horizontal overflow = ${hasOverflow}`);
-        if (hasOverflow) {
-            const scrollW = await page.evaluate(() => document.documentElement.scrollWidth);
-            const clientW = await page.evaluate(() => document.documentElement.clientWidth);
-            console.log(`  scrollWidth=${scrollW}, clientWidth=${clientW}, diff=${scrollW - clientW}px`);
-        }
+        const hasOverflow = await page.evaluate(OVERFLOWS);
+        expect(hasOverflow, "the home page must not scroll sideways").toBe(false);
     });
 
     test("mobile: bottom nav present", async ({ page }) => {
@@ -534,15 +523,8 @@ test.describe("Mobile Layout", () => {
         await firstAlbum.click();
         await settle(page, 3000);
 
-        const hasOverflow = await page.evaluate(() =>
-            document.documentElement.scrollWidth > document.documentElement.clientWidth
-        );
-        if (hasOverflow) {
-            const diff = await page.evaluate(() =>
-                document.documentElement.scrollWidth - document.documentElement.clientWidth
-            );
-            console.log(`Mobile album detail: horizontal overflow by ${diff}px`);
-        }
+        const hasOverflow = await page.evaluate(OVERFLOWS);
+        expect(hasOverflow, "the album page must not scroll sideways").toBe(false);
     });
 
     test("mobile: search input accessible", async ({ page }) => {
@@ -559,23 +541,10 @@ test.describe("Mobile Layout", () => {
             await page.goto(route, { waitUntil: "domcontentloaded" });
             await settle(page);
 
-            const hasOverflow = await page.evaluate(() =>
-                document.documentElement.scrollWidth > document.documentElement.clientWidth
-            );
-            if (hasOverflow) {
-                const diff = await page.evaluate(() =>
-                    document.documentElement.scrollWidth - document.documentElement.clientWidth
-                );
-                overflowPages.push(`${route} (+${diff}px)`);
-            }
+            if (await page.evaluate(OVERFLOWS)) overflowPages.push(route);
         }
 
-        if (overflowPages.length > 0) {
-            console.log("MOBILE OVERFLOW detected:");
-            overflowPages.forEach((p) => console.log(`  ${p}`));
-        } else {
-            console.log("Mobile: no horizontal overflow on any page");
-        }
+        expect(overflowPages, "pages that scroll sideways").toEqual([]);
     });
 });
 

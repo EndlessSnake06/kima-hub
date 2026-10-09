@@ -50,26 +50,15 @@ export function ContinueListening({
             <SectionHeader title="Continue Listening" type="podcast" />
 
             <div className="space-y-0.5">
-                {/* Previous Episode */}
                 {previousEpisode && (
-                    <div
-                        className="flex items-center gap-3 px-3 py-2 rounded-lg border border-transparent hover:bg-white/[0.02] hover:border-white/5 transition-all cursor-pointer opacity-40 hover:opacity-60 animate-rise"
-                        style={{ animationDelay: "0ms" }}
-                        onClick={() => onPlayEpisode(previousEpisode)}
-                    >
-                        <div className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
-                            <Play className="w-3 h-3 text-[var(--text-secondary)]" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <h3 className="font-bold text-[var(--text-primary)] truncate text-sm tracking-tight">
-                                {previousEpisode.title}
-                            </h3>
-                            <p className="text-xs text-[var(--text-muted)]">Previous episode</p>
-                        </div>
-                    </div>
+                    <AdjacentEpisode
+                        episode={previousEpisode}
+                        which="previous"
+                        delayMs={0}
+                        onPlay={onPlayEpisode}
+                    />
                 )}
 
-                {/* Current Episode */}
                 <div
                     className="flex items-center gap-3 px-3 py-2 rounded-lg bg-white/5 transition-all cursor-pointer animate-rise"
                     style={{ animationDelay: "45ms" }}
@@ -80,6 +69,7 @@ export function ContinueListening({
                             e.stopPropagation();
                             onPlayPause(recentEpisode);
                         }}
+                        aria-label={isCurrentPlaying && isPlaying ? "pause" : "play"}
                         className="w-10 h-10 rounded-lg bg-[var(--color-brand)] hover:bg-[var(--color-brand-hover)] flex items-center justify-center shrink-0"
                     >
                         {isCurrentPlaying && isPlaying ? (
@@ -97,7 +87,6 @@ export function ContinueListening({
                             <span className="text-[var(--text-muted)]">|</span>
                             <span>{formatDate(recentEpisode.publishedAt)}</span>
                         </div>
-                        {/* Progress Bar */}
                         {recentEpisode.progress && (
                             <div className="mt-2">
                                 <div className="flex items-center gap-2">
@@ -118,24 +107,38 @@ export function ContinueListening({
                     </div>
                 </div>
 
-                {/* Next Episode */}
                 {nextEpisode && (
-                    <div
-                        className="flex items-center gap-3 px-3 py-2 rounded-lg border border-transparent hover:bg-white/[0.02] hover:border-white/5 transition-all cursor-pointer opacity-40 hover:opacity-60 animate-rise"
-                        style={{ animationDelay: "90ms" }}
-                    >
-                        <div className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
-                            <Play className="w-3 h-3 text-[var(--text-secondary)]" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <h3 className="font-bold text-[var(--text-primary)] truncate text-sm tracking-tight">
-                                {nextEpisode.title}
-                            </h3>
-                            <p className="text-xs text-[var(--text-muted)]">Next episode</p>
-                        </div>
-                    </div>
+                    <AdjacentEpisode episode={nextEpisode} which="next" delayMs={90} onPlay={onPlayEpisode} />
                 )}
             </div>
         </section>
+    );
+}
+
+/** The episode before or after the one in progress, as one control. */
+function AdjacentEpisode({ episode, which, delayMs, onPlay }: {
+    episode: Episode;
+    which: "previous" | "next";
+    delayMs: number;
+    onPlay: (episode: Episode) => void;
+}) {
+    return (
+        <button
+            type="button"
+            onClick={() => onPlay(episode)}
+            aria-label={`play the ${which} episode, ${episode.title}`}
+            className="w-full text-left flex items-center gap-3 px-3 py-2 rounded-lg border border-transparent hover:bg-white/[0.02] hover:border-white/5 transition-all opacity-40 hover:opacity-60 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 animate-rise"
+            style={{ animationDelay: `${delayMs}ms` }}
+        >
+            <span className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
+                <Play className="w-3 h-3 text-[var(--text-secondary)]" />
+            </span>
+            <span className="flex-1 min-w-0">
+                <span className="block font-bold text-[var(--text-primary)] truncate text-sm tracking-tight">
+                    {episode.title}
+                </span>
+                <span className="block text-xs text-[var(--text-muted)]">{which} episode</span>
+            </span>
+        </button>
     );
 }

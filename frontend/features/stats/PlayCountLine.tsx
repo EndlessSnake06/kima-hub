@@ -26,7 +26,7 @@ export function PlayCountLine({
     return (
         <Link
             href="/stats"
-            title="See your listening"
+            title="open stats"
             className={`text-brand hover:underline ${className}`.trim()}
         >
             {ordinal(heardBefore + 1)} play

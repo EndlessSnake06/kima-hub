@@ -25,12 +25,18 @@ export function useArtistData() {
             try {
                 return await api.getArtist(id);
             } catch {
-                return await api.getArtistDiscovery(id);
+                try {
+                    return await api.getArtistDiscovery(id);
+                } catch (error) {
+                    // Neither the library nor MusicBrainz has it: that is "not found", not a failure.
+                    if ((error as { status?: number }).status === 404) return null;
+                    throw error;
+                }
             }
         },
         enabled: !!id,
         staleTime: 10 * 60 * 1000,
-        retry: 1,
+        retry: (failures, error) => (error as { status?: number }).status !== 404 && failures < 1,
     });
 
     // Refetch when downloads complete (active count decreases)

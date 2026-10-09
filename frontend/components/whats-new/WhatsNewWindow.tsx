@@ -1,129 +1,151 @@
 "use client";
 
 /**
- * The release window, the one surface allowed to block. Items are a `note`, an
- * `action`, or a `choice` whose default is off. Closing answers no to every
- * untouched choice, and the window says so when there is a choice to answer.
+ * The release window, the one surface allowed to block. It opens on the newest release's note and a list of what's
+ * new, that release's items first and any older unseen release's after; each line opens that item's own page. Items
+ * are a `note`, an `action`, or a `choice` whose default is off. Closing answers no to every untouched choice.
  */
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { X, Check, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { X, Check, Loader2, ChevronLeft, ChevronRight, ArrowRight } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 
+interface ReleaseLink {
+    label: string;
+    href: string;
+}
+
+interface ItemBase {
+    key: string;
+    title: string;
+    summary: string;
+    body: string;
+    links?: ReleaseLink[];
+}
+
 type ReleaseItem =
-    | { kind: "note"; key: string; title: string; body: string; label?: string }
-    | {
+    | (ItemBase & { kind: "note" })
+    | (ItemBase & {
           kind: "action";
-          key: string;
-          title: string;
-          body: string;
           cta: string;
-          settingsPath?: string;
-          runsFromWindow?: boolean;
+          run?: "wipeEnrichment";
           confirmTitle?: string;
           confirmMessage?: string;
           confirmLabel?: string;
           /** What closing without acting means for this item; said in the footer. */
           ifClosed?: string;
-          requires?: "savedMoodMix" | "retiredMoodMix";
-      }
-    | {
-          kind: "choice";
-          key: string;
-          title: string;
-          body: string;
-          defaultValue: false;
-          benefit?: string;
-          discloses?: string;
-          requires?: "admin";
-      };
+          requires?: "savedMoodMix" | "retiredMoodMix" | "admin";
+      })
+    | (ItemBase & { kind: "choice"; defaultValue: false; discloses?: string; requires?: "admin" });
 
-interface Release {
+export interface Release {
     version: string;
     title: string;
     summary: string;
     date: string;
+    note?: { from: string; body: string };
     items: ReleaseItem[];
 }
 
+/** A click that replaces this page: a plain left click. Cmd, ctrl, shift or a middle click opens another tab or window. */
+export function opensHere(e: React.MouseEvent): boolean {
+    return e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey;
+}
+
 export function WhatsNewWindow({
-    release,
+    releases,
     onClose,
     onDismiss,
     renderAction,
+    onNavigate,
+    done = [],
 }: {
-    release: Release;
+    /** Every release the user has not closed, oldest first. */
+    releases: Release[];
     onClose: () => void;
-    /**
-     * Records the closing server-side. The gate passes one that closes every
-     * release merged into this window; the default records just this release.
-     */
+    /** Records the closing server-side; by default every release in the window is closed. */
     onDismiss?: () => Promise<void>;
-    /** An `action` item supplies its own body; the window only frames it. */
+    /** An `action` item supplies its own controls; the window only frames them. */
     renderAction?: (item: Extract<ReleaseItem, { kind: "action" }>) => React.ReactNode;
+    /** A link to a page in the app was followed. */
+    onNavigate?: () => void;
+    /** Action items the user has already taken. */
+    done?: string[];
 }) {
     const [choices, setChoices] = useState<Record<string, boolean>>({});
     const [closing, setClosing] = useState(false);
     const [closeError, setCloseError] = useState<string | null>(null);
-    const [page, setPage] = useState(0);
+    const [openKey, setOpenKey] = useState<string | null>(null);
     const dialogRef = useRef<HTMLDivElement>(null);
     const bodyRef = useRef<HTMLDivElement>(null);
+    const lastOpened = useRef<string | null>(null);
 
-    // Paging swaps content in place: land at the top of the new page before
-    // the browser paints, so the swap never shows a scroll swing first.
-    useLayoutEffect(() => {
-        bodyRef.current?.scrollTo(0, 0);
-    }, [page]);
-
-    const asks = release.items.filter((i) => i.kind === "choice");
+    const release = releases[releases.length - 1];
+    const older = releases.slice(0, -1).reverse();
+    const items = releases.flatMap((r) => r.items);
+    const versionOf = (key: string) => releases.find((r) => r.items.some((i) => i.key === key))?.version ?? release.version;
+    const shortVersion = (version: string) => version.split(".").slice(0, 2).join(".");
+    const opened = items.find((i) => i.key === openKey) ?? null;
+    const asks = items.filter((i) => i.kind === "choice");
     const unanswered = asks.filter((i) => choices[i.key] === undefined).length;
-    // Actions that ask for a decision (the 1.11 mood-mix question) say what
-    // closing means, so the footer must not claim there is nothing to decide.
-    const ifClosed = release.items
-        .map((i) => (i.kind === "action" ? i.ifClosed : undefined))
-        .filter((t): t is string => !!t);
 
-    // Closes only once the server has the acknowledgement; on failure the window
-    // stays open and says so, since the answer was not recorded.
+    // Closes only once the server has the acknowledgement; on failure the window stays open and says so, since the
+    // answer was not recorded.
     const close = useCallback(async () => {
-        if (closing) return; // one in-flight dismiss, whatever double-fires
+        if (closing) return;
         setClosing(true);
         setCloseError(null);
         try {
             if (onDismiss) await onDismiss();
-            else await api.post(`/whats-new/${release.version}/dismiss`, {});
+            else for (const r of releases) await api.post(`/whats-new/${r.version}/dismiss`, {});
         } catch {
             setClosing(false);
-            setCloseError("Couldn't record that. Check your connection and press Done again.");
+            setCloseError("Couldn't save. Try again.");
             return;
         }
         onClose();
-    }, [release.version, onDismiss, onClose, closing]);
+    }, [releases, onDismiss, onClose, closing]);
 
-    // Escape closes, and closing is a real answer -- same path as the button, so
-    // the two can never diverge. While a nested confirm is open (the
-    // run-from-window action), Escape belongs to it alone; the gate tells the
-    // window to hold off by setting data-confirming on the scrim.
+    const openItem = (key: string) => {
+        lastOpened.current = key;
+        setOpenKey(key);
+    };
+
+    // Each view starts at its top, and focus follows: the back button on an item's page, the line it came from on
+    // the way back.
+    useEffect(() => {
+        bodyRef.current?.scrollTo(0, 0);
+        const target = openKey
+            ? dialogRef.current?.querySelector<HTMLElement>("[data-back]")
+            : lastOpened.current
+              ? dialogRef.current?.querySelector<HTMLElement>(`[data-item="${lastOpened.current}"]`)
+              : null;
+        target?.focus();
+    }, [openKey]);
+
+    // Escape leaves an item's page first; on the overview it closes, which is a real answer, through the same path
+    // as the buttons. While a nested confirm is open, Escape belongs to it alone.
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
             if (e.key !== "Escape") return;
             if (document.querySelector("[data-nested-confirm='true']")) return;
-            void close();
+            if (openKey) setOpenKey(null);
+            else void close();
         };
         window.addEventListener("keydown", onKey);
         return () => window.removeEventListener("keydown", onKey);
-    }, [close]);
+    }, [close, openKey]);
 
-    // This window steals the page on purpose; it owes the keyboard the same
-    // courtesy ConfirmDialog gives its dialog: land focus inside on open, and
-    // keep Tab inside the panel while it is up.
+    // The window takes the page on purpose, so it owes the keyboard what ConfirmDialog gives: focus lands inside on
+    // open, and Tab stays inside while it is up.
     useEffect(() => {
         const prev = document.activeElement as HTMLElement | null;
         dialogRef.current?.querySelector<HTMLElement>("[data-autofocus]")?.focus();
         const onKey = (e: KeyboardEvent) => {
             if (e.key !== "Tab" || !dialogRef.current) return;
-            const focusable = Array.from<HTMLElement>(
+            const focusable = Array.from(
                 dialogRef.current.querySelectorAll<HTMLElement>(
                     'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
                 ),
@@ -146,86 +168,168 @@ export function WhatsNewWindow({
         };
     }, [release.version]);
 
-    // Arrow keys page, so the window reads as one paged dialogue rather than
-    // a scroll; Escape and Done still close the whole thing from any page.
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === "ArrowLeft") setPage((p) => Math.max(0, p - 1));
-            else if (e.key === "ArrowRight") setPage((p) => Math.min(release.items.length - 1, p + 1));
-        };
-        window.addEventListener("keydown", onKey);
-        return () => window.removeEventListener("keydown", onKey);
-    }, [release.items.length]);
-
     const answer = async (key: string, enabled: boolean) => {
         setChoices((c) => ({ ...c, [key]: enabled }));
         try {
-            await api.post(`/whats-new/${release.version}/choice`, { key, enabled });
+            await api.post(`/whats-new/${versionOf(key)}/choice`, { key, enabled });
         } catch {
-            setChoices((c) => { const n = { ...c }; delete n[key]; return n; });
+            setChoices((c) => {
+                const n = { ...c };
+                delete n[key];
+                return n;
+            });
         }
     };
 
-    // One item per page; the pager in the footer walks them oldest first.
-    const renderPage = (item: ReleaseItem) => {
-        if (item.kind === "note") {
-            return (
-                <section className="flex flex-col gap-1.5">
-                    {item.label && (
-                        <p className="text-[0.625rem] uppercase tracking-[0.12em] text-[var(--text-muted)]">
-                            {item.label}
-                        </p>
-                    )}
-                    <h3 className="text-base font-semibold text-white text-balance">{item.title}</h3>
-                    <Body text={item.body} />
-                </section>
-            );
-        }
+    const isDecision = (item: ReleaseItem) => item.kind === "choice" || (item.kind === "action" && (!!item.run || !!item.ifClosed));
+    const isOpenDecision = (item: ReleaseItem) =>
+        item.kind === "choice" ? choices[item.key] === undefined : isDecision(item) && !done.includes(item.key);
+    const waiting = items.filter(isOpenDecision);
+    const wide = !!release.note;
 
-        if (item.kind === "action") {
-            return (
-                <section className="flex flex-col gap-3">
-                    <div className="flex flex-col gap-1.5">
-                        <h3 className="text-base font-semibold text-white text-balance">{item.title}</h3>
-                        <Body text={item.body} />
-                    </div>
-                    {renderAction?.(item)}
-                    {item.settingsPath && (
-                        <p className="text-xs text-[var(--text-muted)]">
-                            This lives in Settings too, if you&rsquo;d rather do it later.
-                        </p>
-                    )}
-                </section>
-            );
-        }
+    const status = (item: ReleaseItem): string | null => {
+        if (item.kind === "choice" && choices[item.key] !== undefined) return choices[item.key] ? "On" : "Off";
+        if (item.kind === "action" && done.includes(item.key)) return "Done";
+        return null;
+    };
 
-        const answered = choices[item.key];
-        return (
-            <section className="flex flex-col gap-3 rounded-xl border border-white/10 bg-[var(--bg-tertiary)] p-4">
-                <div className="flex flex-col gap-1.5">
-                    <h3 className="text-base font-semibold text-white text-balance">{item.title}</h3>
-                    <Body text={item.body} />
-                    {item.discloses && (
-                        <p className="mt-1 text-xs leading-relaxed text-[var(--text-muted)]">
-                            <span className="text-white/70">What actually leaves your server:</span> {item.discloses}
-                        </p>
-                    )}
-                </div>
-                <div className="flex gap-2">
-                    <ChoiceButton
-                        selected={answered === true}
-                        onClick={() => answer(item.key, true)}
-                        label="Turn it on"
-                    />
-                    <ChoiceButton
-                        selected={answered === false}
-                        onClick={() => answer(item.key, false)}
-                        label="No thanks"
-                    />
-                </div>
-            </section>
+    const showWaiting = () => {
+        if (waiting.length === 1) {
+            openItem(waiting[0].key);
+            return;
+        }
+        setOpenKey(null);
+        requestAnimationFrame(() => {
+            const heading = dialogRef.current?.querySelector<HTMLElement>("#whats-new-needs");
+            heading?.scrollIntoView({ block: "start", behavior: "smooth" });
+            heading?.focus();
+        });
+    };
+
+    const itemList = (list: ReleaseItem[]) => (
+        <ul className="-mx-3 flex flex-col">
+            {list.map((item) => {
+                const tag = status(item);
+                const current = openKey === item.key;
+                return (
+                    <li key={item.key}>
+                        <button
+                            type="button"
+                            data-item={item.key}
+                            aria-current={current ? "true" : undefined}
+                            onClick={() => openItem(item.key)}
+                            className={`group w-full rounded-lg px-3 py-3 flex items-center gap-3 text-left transition-colors hover:bg-white/[0.05] ${current ? "bg-white/[0.07]" : ""}`}
+                        >
+                            <span className="min-w-0 flex-1">
+                                <span className="flex items-baseline justify-between gap-3">
+                                    <span className="text-sm font-medium text-white">{item.title}</span>
+                                    {tag && <span className="shrink-0 text-xs text-[var(--text-muted)]">{tag}</span>}
+                                </span>
+                                <span className="mt-0.5 block text-sm leading-snug text-[var(--text-secondary)]">{item.summary}</span>
+                            </span>
+                            <ChevronRight className="w-4 h-4 shrink-0 text-[var(--text-muted)] transition-transform group-hover:translate-x-0.5" />
+                        </button>
+                    </li>
+                );
+            })}
+        </ul>
+    );
+
+    const group = (id: string, label: string, list: ReleaseItem[]) =>
+        list.length > 0 && (
+            <div className="flex flex-col gap-1">
+                <h4 id={id} tabIndex={-1} className="text-sm font-medium text-[var(--text-secondary)] outline-none">
+                    {label}
+                </h4>
+                {itemList(list)}
+            </div>
         );
-    };
+
+    const list = (
+        <section aria-labelledby="whats-new-list" className="flex flex-col gap-5">
+            <h3 id="whats-new-list" className="text-base font-semibold text-white">
+                What&apos;s new in {shortVersion(release.version)}
+            </h3>
+            {group("whats-new-needs", "Needs you", release.items.filter(isDecision))}
+            {group("whats-new-changed", "What changed", release.items.filter((i) => !isDecision(i)))}
+            {older.map((r) => (
+                <div key={r.version}>{group(`whats-new-${r.version}`, `From ${shortVersion(r.version)}`, r.items)}</div>
+            ))}
+        </section>
+    );
+
+    const note = release.note && (
+        <section aria-labelledby="whats-new-note" className="flex flex-col gap-4">
+            <h3 id="whats-new-note" className="text-base font-semibold text-white">
+                A note from {release.note.from}
+            </h3>
+            <Body text={release.note.body} />
+            <p className="pt-1 text-[0.9375rem] font-medium text-white">{release.note.from}</p>
+        </section>
+    );
+
+    const page = (item: ReleaseItem) => (
+        <section aria-labelledby="whats-new-item" className="flex flex-col gap-5 max-w-prose">
+            <button
+                type="button"
+                data-back
+                onClick={() => setOpenKey(null)}
+                className="-ml-2 self-start min-h-9 py-1.5 pl-1 pr-3 rounded-lg flex items-center gap-1 text-sm text-[var(--text-secondary)] hover:text-white hover:bg-white/5 transition-colors"
+            >
+                <ChevronLeft className="w-4 h-4" />
+                {wide ? (
+                    <>
+                        <span className="lg:hidden">What&apos;s new</span>
+                        <span className="hidden lg:inline">{release.note!.from}&apos;s note</span>
+                    </>
+                ) : (
+                    "What's new"
+                )}
+            </button>
+            <h3 id="whats-new-item" className="text-xl font-semibold tracking-tight text-white text-balance">
+                {item.title}
+            </h3>
+            <div className="flex flex-col gap-3">
+                <Body text={item.body} />
+            </div>
+            {item.kind === "choice" && (
+                <div className="flex flex-col gap-3">
+                    {item.discloses && (
+                        <p className="text-sm leading-relaxed text-[var(--text-secondary)] max-w-[62ch]">
+                            <span className="text-white">What leaves your server: </span>
+                            {item.discloses}
+                        </p>
+                    )}
+                    <div className="flex gap-2">
+                        <ChoiceButton selected={choices[item.key] === true} onClick={() => answer(item.key, true)} label="Turn it on" />
+                        <ChoiceButton selected={choices[item.key] === false} onClick={() => answer(item.key, false)} label="No thanks" />
+                    </div>
+                </div>
+            )}
+            {item.kind === "action" && renderAction?.(item)}
+            {item.kind === "choice" && choices[item.key] === undefined && (
+                <p className="text-sm text-[var(--text-muted)] max-w-[62ch]">If you don&apos;t answer, it stays off.</p>
+            )}
+            {item.kind === "action" && item.ifClosed && !done.includes(item.key) && (
+                <p className="text-sm text-[var(--text-muted)] max-w-[62ch]">{item.ifClosed}</p>
+            )}
+            {item.links && item.links.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                    {item.links.map((link) => (
+                        <Link
+                            key={link.href}
+                            href={link.href}
+                            onClick={(e) => { if (opensHere(e)) onNavigate?.(); }}
+                            className="min-h-11 py-2.5 px-4 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-white text-sm font-medium flex items-center gap-2 transition-colors"
+                        >
+                            {link.label}
+                            <ArrowRight className="w-4 h-4" />
+                        </Link>
+                    ))}
+                </div>
+            )}
+        </section>
+    );
 
     return (
         <div
@@ -233,128 +337,104 @@ export function WhatsNewWindow({
             role="dialog"
             aria-modal="true"
             aria-labelledby="whats-new-title"
-            aria-describedby="whats-new-summary"
         >
             <div
                 ref={dialogRef}
-                className="w-full sm:max-w-2xl max-h-[92vh] sm:max-h-[85vh] flex flex-col bg-[var(--bg-secondary)] border border-white/10 rounded-t-2xl sm:rounded-2xl overflow-hidden animate-rise"
+                className={`w-full ${wide ? "sm:max-w-5xl" : "sm:max-w-2xl"} max-h-[92vh] sm:max-h-[88vh] flex flex-col bg-[var(--bg-secondary)] border border-white/10 rounded-t-2xl sm:rounded-2xl overflow-hidden animate-rise`}
             >
-                <header className="shrink-0 px-6 pt-6 pb-5 border-b border-white/10">
-                    <div className="flex items-start justify-between gap-4">
-                        <div className="min-w-0">
-                            <p className="text-[0.6875rem] uppercase tracking-[0.12em] text-brand">
-                                Kima {release.version}
-                            </p>
-                            <h2
-                                id="whats-new-title"
-                                className="mt-2 text-2xl font-bold tracking-tight text-white text-balance"
-                            >
-                                {release.title}
-                            </h2>
-                            <p
-                                id="whats-new-summary"
-                                className="mt-2 text-sm leading-relaxed text-[var(--text-secondary)] max-w-prose"
-                            >
-                                {release.summary}
-                            </p>
-                        </div>
-                        <button
-                            onClick={close}
-                            disabled={closing}
-                            aria-label="Close"
-                            className="shrink-0 w-11 h-11 -mr-2 -mt-2 flex items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-white hover:bg-white/5 transition-colors"
-                        >
-                            {closing ? <Loader2 className="w-5 h-5 animate-spin" /> : <X className="w-5 h-5" />}
-                        </button>
-                    </div>
+                <header className="shrink-0 px-5 sm:px-6 pt-4 sm:pt-6 pb-4 sm:pb-5 border-b border-white/10 flex items-center justify-between gap-4">
+                    <h2 id="whats-new-title" className="text-xl sm:text-2xl font-bold tracking-tight text-white text-balance">
+                        {release.title}
+                    </h2>
+                    <button
+                        onClick={close}
+                        disabled={closing}
+                        aria-label="Close"
+                        className="shrink-0 w-11 h-11 -mr-2 flex items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-white hover:bg-white/5 transition-colors"
+                    >
+                        {closing ? <Loader2 className="w-5 h-5 animate-spin" /> : <X className="w-5 h-5" />}
+                    </button>
                 </header>
 
-                <div ref={bodyRef} className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-7">
-                    {renderPage(release.items[page])}
+                <div ref={bodyRef} className="flex-1 overflow-y-auto px-5 sm:px-6 py-6">
+                    {wide ? (
+                        <div className="grid gap-x-12 gap-y-10 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+                            {opened ? page(opened) : note}
+                            <div className={`lg:self-start lg:sticky lg:top-0 ${opened ? "hidden lg:block" : ""}`}>{list}</div>
+                        </div>
+                    ) : opened ? (
+                        page(opened)
+                    ) : (
+                        list
+                    )}
                 </div>
 
-                <footer className="shrink-0 px-6 py-4 border-t border-white/10 flex items-center justify-between gap-4">
-                    <div className="flex flex-col gap-1 min-w-0">
-                        {closeError && (
+                <footer className="shrink-0 px-5 sm:px-6 py-4 border-t border-white/10 flex items-center justify-between gap-4">
+                    <div className="min-w-0">
+                        {closeError ? (
                             <p className="text-xs text-danger-light" data-testid="whatsnew-close-error" role="alert">
                                 {closeError}
                             </p>
-                        )}
-                        <p className="text-xs leading-relaxed text-[var(--text-muted)]">
-                            {asks.length === 0
-                                ? ifClosed.length > 0
-                                    ? ifClosed.join(" ")
-                                    : "Nothing to decide here. (or press Esc)"
-                                : unanswered > 0
-                                  ? `If you close now, ${unanswered === asks.length ? "these stay" : "the rest stay"} off. You can change your mind in Settings whenever.`
-                                  : "You can change your mind in Settings whenever."}
-                        </p>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                        {release.items.length > 1 && (
-                            <div className="flex items-center gap-1" data-testid="whatsnew-pager">
+                        ) : waiting.length > 0 ? (
+                            <p className="text-xs leading-relaxed text-[var(--text-muted)]">
                                 <button
                                     type="button"
-                                    onClick={() => setPage((p) => p - 1)}
-                                    disabled={page === 0}
-                                    aria-label="Previous item"
-                                    className="w-11 h-11 flex items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-white hover:bg-white/5 transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                                    onClick={showWaiting}
+                                    data-testid="whatsnew-waiting"
+                                    className="text-white underline underline-offset-4 decoration-white/30 hover:decoration-white"
                                 >
-                                    <ChevronLeft className="w-5 h-5" />
+                                    {waiting.length === 1 ? `Needs you: ${waiting[0].title}` : `${waiting.length} things need you`}
                                 </button>
-                                <span className="text-xs tabular-nums text-[var(--text-muted)] min-w-14 text-center">
-                                    {page + 1} of {release.items.length}
-                                </span>
-                                <button
-                                    type="button"
-                                    onClick={() => setPage((p) => Math.min(release.items.length - 1, p + 1))}
-                                    disabled={page === release.items.length - 1}
-                                    aria-label="Next item"
-                                    className="w-11 h-11 flex items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-white hover:bg-white/5 transition-colors disabled:opacity-30 disabled:pointer-events-none"
-                                >
-                                    <ChevronRight className="w-5 h-5" />
-                                </button>
-                            </div>
+                                <span className="hidden sm:inline">. Anything you don&apos;t answer stays as it is.</span>
+                            </p>
+                        ) : (
+                            <p className="text-xs text-[var(--text-muted)]">Press Esc to close.</p>
                         )}
-                        <Button
-                            variant="primary"
-                            onClick={close}
-                            disabled={closing}
-                            data-autofocus
-                            data-testid="whatsnew-done"
-                            className="shrink-0"
-                        >
-                            {closing ? "Saving..." : unanswered > 0 && asks.length > 0 ? "Close" : "Done"}
-                        </Button>
                     </div>
+                    <Button
+                        variant="primary"
+                        onClick={close}
+                        disabled={closing}
+                        data-autofocus
+                        data-testid="whatsnew-done"
+                        className="shrink-0"
+                    >
+                        {closing ? "Saving..." : unanswered > 0 ? "Close" : "Done"}
+                    </Button>
                 </footer>
             </div>
         </div>
     );
 }
 
-/** Copy can carry blank lines; render them as the paragraphs they are. */
+/** Blank lines separate paragraphs; a block of lines that each start with "- " is a list. */
 function Body({ text }: { text: string }) {
     return (
         <>
-            {text.split("\n\n").map((para, i) => (
-                <p key={i} className="text-sm leading-relaxed text-[var(--text-secondary)] max-w-prose">
-                    {para}
-                </p>
-            ))}
+            {text.split("\n\n").map((block, i) => {
+                const lines = block.split("\n");
+                if (lines.every((l) => l.startsWith("- "))) {
+                    return (
+                        <ul key={i} className="flex flex-col gap-2 pl-5 list-disc marker:text-brand">
+                            {lines.map((l, j) => (
+                                <li key={j} className="pl-1 text-[0.9375rem] leading-relaxed text-[var(--text-secondary)]">
+                                    {l.slice(2)}
+                                </li>
+                            ))}
+                        </ul>
+                    );
+                }
+                return (
+                    <p key={i} className="text-[0.9375rem] leading-relaxed text-[var(--text-secondary)] max-w-[62ch]">
+                        {block}
+                    </p>
+                );
+            })}
         </>
     );
 }
 
-function ChoiceButton({
-    selected,
-    onClick,
-    label,
-}: {
-    selected: boolean;
-    onClick: () => void;
-    label: string;
-}) {
+function ChoiceButton({ selected, onClick, label }: { selected: boolean; onClick: () => void; label: string }) {
     return (
         <button
             onClick={onClick}

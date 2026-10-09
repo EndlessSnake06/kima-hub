@@ -130,8 +130,8 @@ function EpisodeRow({
                         <button
                             type="button"
                             onClick={() => onMarkComplete(episode.id, episode.duration)}
-                            className="opacity-0 group-hover:opacity-100 p-2 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-white transition-all touch-reveal"
-                            title="Mark as complete"
+                            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 p-2 rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-white transition-all touch-reveal"
+                            title="mark as complete"
                             aria-label={`Mark ${episode.title} as complete`}
                         >
                             <CheckCircle className="w-4 h-4" />
@@ -259,7 +259,7 @@ export function EpisodeList({
                     {groups.map(([label, group]) => (
                         <div key={label} className="pb-2">
                             <div className="sticky top-0 z-[5] flex items-baseline gap-2 px-3 py-2 bg-[var(--bg-secondary)]/95 backdrop-blur-sm">
-                                <h4 className="text-[0.6875rem] uppercase tracking-[0.12em] text-[var(--text-muted)]">
+                                <h4 className="text-[0.6875rem] tracking-[0.12em] text-[var(--text-muted)]">
                                     {label}
                                 </h4>
                                 <span className="text-[0.6875rem] tabular-nums text-[var(--text-muted)] opacity-60">

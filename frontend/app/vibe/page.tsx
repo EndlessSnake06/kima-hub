@@ -24,9 +24,6 @@ const VibeMapScene = dynamic(
     { ssr: false, loading: () => <CenteredNote title="Charting your library" spinner /> },
 );
 
-// The phone mini player floats over the bottom of the page (MiniPlayer.tsx):
-// about 80px tall plus its 8px gap.
-const MINI_PLAYER_CLEARANCE = 88;
 // Width the desktop track panel takes from the right edge (20rem + its 1rem inset + a gap).
 const PANEL_CLEARANCE = 352;
 
@@ -79,8 +76,8 @@ function toQueueTrack(t: { id: string; title: string; duration?: number; artist:
 
 export default function VibePage() {
     const {
-        mapData, isLoading, computing, error, refetch, trackMap, mode, selectedTrackId, highlightedIds, pathResult,
-        selectTrack, completePathPicking, resetMode, setMode, setHighlightedIds,
+        mapData, isLoading, computing, error, refetch, trackMap, mode, selectedTrackId, highlightedIds,
+        selectTrack, resetMode, setMode, setHighlightedIds,
     } = useVibeMap();
 
     const { currentTrack, playbackType, queue, activeOperation } = useAudioState();
@@ -98,7 +95,7 @@ export default function VibePage() {
     const [moodPinned, setMoodPinned] = useState<string | null>(null);
 
     const [showLabels, setShowLabels] = useState(() => {
-        try { return localStorage.getItem("kima_vibe_labels") !== "false"; } catch { return true; }
+        try { return localStorage.getItem("kima_vibe_labels") === "true"; } catch { return false; }
     });
     const toggleLabels = useCallback(() => {
         setShowLabels((prev) => {
@@ -126,7 +123,7 @@ export default function VibePage() {
     const [searchQuery, setSearchQuery] = useState("");
     const searchResults = useMemo(() => searchLibrary(libraryIndex, searchQuery), [libraryIndex, searchQuery]);
     const [flyTo, setFlyTo] = useState<{ id: string; nonce: number } | null>(null);
-    const [toolbarKey, setToolbarKey] = useState(0);
+    const [searchClears, setSearchClears] = useState(0);
 
     // Mood legend highlights apply only while no search/similar/path/blend result is showing.
     const moodFocus = mode === "idle" ? moodPreview ?? moodPinned : null;
@@ -143,7 +140,11 @@ export default function VibePage() {
         vibeRequestRef.current = controller;
         try {
             const response = await api.getVibeSimilarTracks(trackId, 50, controller.signal);
-            if (controller.signal.aborted || !response.tracks?.length) return;
+            if (controller.signal.aborted) return;
+            if (!response.tracks?.length) {
+                notify.error("No matches for this track yet");
+                return;
+            }
             if (!mapData?.tracks.some((t) => t.id === trackId)) return;
             if (op === "vibe") {
                 const source = await api.getTrack(trackId);
@@ -152,7 +153,7 @@ export default function VibePage() {
                 const operation: VibeOperation = {
                     type: "vibe",
                     sourceTrackId: trackId,
-                    sourceFeatures: {},
+                    sourceFeatures: source.audioFeatures ?? {},
                     trackIds: [trackId, ...tracks.map((t) => t.id)],
                 };
                 await replaceOperation(operation, [source, ...tracks], 0);
@@ -161,8 +162,9 @@ export default function VibePage() {
                 setHighlightedIds(new Set([trackId, ...response.tracks.map((t) => t.id)]));
                 setMode("similar");
             }
-        } catch {
-            // Aborted, or the track has no embedding; the map simply does not change.
+        } catch (error) {
+            if (controller.signal.aborted) return;
+            notify.error(error instanceof Error && error.message ? error.message : "Couldn't find matches for this track");
         }
     }, [mapData, replaceOperation, setHighlightedIds, setMode]);
 
@@ -210,8 +212,8 @@ export default function VibePage() {
                 pathTrackIds: tracks.map((t) => t.id),
             };
             await replaceOperation(operation, tracks, 0);
-        } catch {
-            notify.error("Couldn't find a path between those two tracks");
+        } catch (error) {
+            notify.error(error instanceof Error && error.message ? error.message : "Couldn't find a path between those two tracks");
         }
     }, [replaceOperation]);
 
@@ -265,10 +267,12 @@ export default function VibePage() {
         setMode("alchemy");
     }, [setMode]);
 
+    // The toolbar's Song Path and the one started from a track are the same drift.
     const submitPath = useCallback(async (startId: string, endId: string) => {
         setShowPathPicker(false);
-        await completePathPicking(endId, startId);
-    }, [completePathPicking]);
+        setMode("idle");
+        await finishDrift(startId, endId);
+    }, [finishDrift, setMode]);
 
     const clearAll = useCallback(() => {
         resetMode();
@@ -277,21 +281,22 @@ export default function VibePage() {
         setDriftSourceId(null);
         setMoodPinned(null);
         setSearchQuery("");
-        setToolbarKey((k) => k + 1); // remount the toolbar so its search box empties too
+        setSearchClears((n) => n + 1);
     }, [resetMode]);
 
     // One Escape handler for the whole page, undoing the most recent thing first:
-    // the menu, then a pending song-path pick, then the selection. Inputs that
+    // the menu, then an open Song Path or Blend panel, then a pending song-path pick, then the selection. Inputs that
     // handle Escape themselves (the search box) mark the event handled.
-    const escapeState = useRef({ menu: false, drift: false, selected: false });
+    const escapeState = useRef({ menu: false, panel: false, drift: false, selected: false });
     useEffect(() => {
-        escapeState.current = { menu: !!menu, drift: !!driftSourceId, selected: !!selectedTrackId };
-    }, [menu, driftSourceId, selectedTrackId]);
+        escapeState.current = { menu: !!menu, panel: showAlchemy || showPathPicker, drift: !!driftSourceId, selected: !!selectedTrackId };
+    }, [menu, showAlchemy, showPathPicker, driftSourceId, selectedTrackId]);
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
             if (e.key !== "Escape" || e.defaultPrevented) return;
             const state = escapeState.current;
             if (state.menu) setMenu(null);
+            else if (state.panel) { setShowAlchemy(false); setShowPathPicker(false); resetMode(); }
             else if (state.drift) setDriftSourceId(null);
             else if (state.selected) selectTrack(null);
             else return;
@@ -299,7 +304,7 @@ export default function VibePage() {
         };
         document.addEventListener("keydown", onKey);
         return () => document.removeEventListener("keydown", onKey);
-    }, [selectTrack]);
+    }, [selectTrack, resetMode]);
 
     // A refetch can drop the selected track; do not leave the map dimmed for a
     // selection that no longer exists.
@@ -312,7 +317,7 @@ export default function VibePage() {
         return (
             <CenteredNote
                 title="Charting your library"
-                detail="Laying out every track by how it sounds. A large library takes a few minutes the first time; this page fills in by itself."
+                detail="Building the map. Large libraries take a few minutes."
                 spinner
             />
         );
@@ -337,6 +342,7 @@ export default function VibePage() {
     }
 
     const selectedTrack = selectedTrackId ? trackMap.get(selectedTrackId) : undefined;
+    const showHint = mode === "idle" && !hintDismissed && !selectedTrack;
     const menuTrack = menu ? trackMap.get(menu.trackId) : undefined;
 
     return (
@@ -350,8 +356,6 @@ export default function VibePage() {
                     playingTrackId={currentTrack?.id ?? null}
                     queueTrackIds={queueTrackIds}
                     activeOperation={activeOperation}
-                    pathResult={pathResult}
-                    mode={mode}
                     showLabels={showLabels}
                     focusMood={moodFocus}
                     picking={!!driftSourceId}
@@ -366,7 +370,7 @@ export default function VibePage() {
             </SceneErrorBoundary>
 
             <VibeToolbar
-                key={toolbarKey}
+                clearSignal={searchClears}
                 mode={mode}
                 compact={compact}
                 onSearch={handleSearch}
@@ -377,30 +381,32 @@ export default function VibePage() {
                 onReset={clearAll}
             />
 
-            <div className={`absolute left-[max(0.75rem,env(safe-area-inset-left))] z-(--z-scene) flex gap-1 ${compact ? "top-[max(4.25rem,calc(env(safe-area-inset-top)+4.25rem))]" : "top-[max(1rem,env(safe-area-inset-top))]"}`}>
-                <button
-                    type="button"
-                    onClick={() => setResetSignal((n) => n + 1)}
-                    title="Show the whole library"
-                    aria-label="Show the whole library"
-                    className="vibe-glass flex h-9 w-9 items-center justify-center rounded-lg text-white/70 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
-                >
-                    <LocateFixed className="h-4 w-4" />
-                </button>
+            <div className={`absolute z-(--z-scene) flex ${compact
+                ? "right-3 top-[max(0.75rem,env(safe-area-inset-top))] gap-2"
+                : "left-[max(0.75rem,env(safe-area-inset-left))] top-[max(1rem,env(safe-area-inset-top))] gap-1"}`}>
                 <button
                     type="button"
                     onClick={toggleLabels}
                     aria-pressed={showLabels}
-                    title={showLabels ? "Hide labels" : "Show labels"}
+                    title={showLabels ? "hide labels" : "show labels"}
                     aria-label={showLabels ? "Hide labels" : "Show labels"}
-                    className={`vibe-glass flex h-9 w-9 items-center justify-center rounded-lg transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 ${showLabels ? "text-white" : "text-white/45"}`}
+                    className={`vibe-glass flex items-center justify-center transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 ${compact ? "h-11 w-11 rounded-full" : "h-9 w-9 rounded-lg"} ${showLabels ? "text-white" : "text-white/45"}`}
                 >
-                    <Tag className="h-4 w-4" />
+                    <Tag className={compact ? "h-[18px] w-[18px]" : "h-4 w-4"} />
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setResetSignal((n) => n + 1)}
+                    title="show the whole library"
+                    aria-label="Show the whole library"
+                    className={`vibe-glass flex items-center justify-center text-white/70 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 ${compact ? "h-11 w-11 rounded-full" : "h-9 w-9 rounded-lg"}`}
+                >
+                    <LocateFixed className={compact ? "h-[18px] w-[18px]" : "h-4 w-4"} />
                 </button>
             </div>
 
             {driftSourceId && (
-                <div role="status" className="vibe-glass absolute left-1/2 top-[max(4.25rem,calc(env(safe-area-inset-top)+4.25rem))] z-(--z-scene) flex -translate-x-1/2 items-center gap-3 rounded-full px-4 py-2 text-sm text-[var(--text-secondary)]">
+                <div role="status" className={`vibe-glass absolute left-1/2 z-(--z-scene) flex -translate-x-1/2 items-center gap-3 rounded-full px-4 py-2 text-sm text-[var(--text-secondary)] ${compact ? "top-[max(7rem,calc(env(safe-area-inset-top)+7rem))] w-max max-w-[calc(100%-1.5rem)]" : "top-[max(4.25rem,calc(env(safe-area-inset-top)+4.25rem))]"}`}>
                     <span className="h-2 w-2 animate-pulse rounded-full bg-[var(--color-brand)]" />
                     {compact ? "Tap the track the path should end on" : "Click the track the song path should end on"}
                     <button type="button" onClick={() => setDriftSourceId(null)} className="text-xs text-[var(--text-muted)] hover:text-white">
@@ -413,29 +419,25 @@ export default function VibePage() {
             {showAlchemy && <VibeAlchemy library={libraryIndex} onHighlight={setHighlightedIds} onClose={() => { setShowAlchemy(false); resetMode(); }} />}
 
             <div className={`absolute z-(--z-scene) ${compact
-                ? "left-0 right-0 top-[max(6.75rem,calc(env(safe-area-inset-top)+6.75rem))] px-[max(0.75rem,env(safe-area-inset-left))]"
+                ? "left-0 right-0 top-[max(4rem,calc(env(safe-area-inset-top)+4rem))] px-3"
                 : "left-[max(0.75rem,env(safe-area-inset-left))] bottom-[max(0.75rem,env(safe-area-inset-bottom))] max-w-[min(30rem,calc(100%-25rem))]"}`}>
                 <MoodLegend
                     tracks={mapData.tracks}
+                    trackCount={mapData.trackCount}
                     activeMood={moodFocus}
                     scroll={compact}
                     onPreview={setMoodPreview}
                     onToggle={(m) => { if (mode !== "idle") clearAll(); setMoodPinned((cur) => (cur === m ? null : m)); }}
                 />
-                <p className="mt-2 text-[11px] text-white/60">
-                    {mapData.trackCount.toLocaleString()} tracks{mapData.sampled ? " (the largest libraries are capped)" : ""}
-                </p>
             </div>
 
-            {mode === "idle" && !hintDismissed && !selectedTrack && (
-                <div className={`absolute z-(--z-scene) max-w-sm animate-hint-in ${compact ? "bottom-[11.5rem] left-1/2 w-[calc(100%-2rem)] -translate-x-1/2" : "bottom-[max(0.75rem,env(safe-area-inset-bottom))] right-[max(0.75rem,env(safe-area-inset-right))] w-[22rem]"}`}>
+            {!compact && showHint && (
+                <div className="absolute bottom-[max(0.75rem,env(safe-area-inset-bottom))] right-[max(0.75rem,env(safe-area-inset-right))] z-(--z-scene) w-[22rem] max-w-sm">
                     <div className="vibe-glass flex items-start gap-3 rounded-xl px-4 py-3">
                         <div className="min-w-0 flex-1">
-                            <p className="mb-0.5 text-xs font-semibold text-[var(--text-primary)]">This is your music, mapped by sound.</p>
+                            <p className="mb-0.5 text-xs font-semibold text-[var(--text-primary)]">This is your music, mapped by vibe.</p>
                             <p className="text-xs leading-relaxed text-[var(--text-secondary)]">
-                                {compact
-                                    ? "Each star is a track, and stars that sit close together sound alike. Tap a star for details, double-tap to play. Drag to turn the view, pinch to zoom, two fingers to move."
-                                    : "Each star is a track, and stars that sit close together sound alike. Click a star for details, double-click to play, right-click for more. Drag to turn the view, right-drag to move, scroll to zoom toward the pointer."}
+                                Click: details · Double-click: play · Right-click: more · Drag: rotate · Right-drag: pan · Scroll: zoom
                             </p>
                         </div>
                         <button onClick={dismissHint} aria-label="Dismiss" className="shrink-0 rounded text-[var(--text-muted)] transition-colors hover:text-white/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40">
@@ -480,7 +482,18 @@ export default function VibePage() {
                     onPlay={selectedTrack ? playSelected : undefined}
                     selectedArtistId={selectedTrack?.artistId ?? null}
                     songPathActive={!!driftSourceId}
-                    bottomInset={playbackType ? MINI_PLAYER_CLEARANCE : 0}
+                    aboveMiniPlayer={!!playbackType}
+                    intro={showHint ? (
+                        <div className="flex items-start gap-3">
+                            <p className="min-w-0 flex-1 text-xs leading-relaxed text-[var(--text-secondary)] landscape-short:text-[11px]">
+                                <span className="font-semibold text-[var(--text-primary)]">This is your music, mapped by vibe. </span>
+                                Tap: details · Double-tap: play · Drag: rotate · Pinch: zoom · Two fingers: pan
+                            </p>
+                            <button onClick={dismissHint} aria-label="Dismiss" className="-mr-2 -mt-2 flex shrink-0 items-center justify-center rounded-full text-[var(--text-muted)] transition-colors hover:text-white/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40">
+                                <X className="h-4 w-4" />
+                            </button>
+                        </div>
+                    ) : undefined}
                 />
             )}
         </div>

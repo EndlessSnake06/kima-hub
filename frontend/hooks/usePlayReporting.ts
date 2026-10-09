@@ -128,14 +128,19 @@ export function usePlayReporting(
             if (id) void report(id, meterRef.current.secondsListened);
         };
         const onSeeked = () => meterRef.current.breakChain();
+        // A track that ends has been listened to; playing it again (repeat, a replay)
+        // is a new listen even though the track id is the same.
+        const onTrackBoundary = () => meterRef.current.reset();
 
         controller.on("timeupdate", onTimeUpdate);
         controller.on("seeked", onSeeked);
-        controller.on("gapless-advance", onSeeked);
+        controller.on("ended", onTrackBoundary);
+        controller.on("gapless-advance", onTrackBoundary);
         return () => {
             controller.off("timeupdate", onTimeUpdate);
             controller.off("seeked", onSeeked);
-            controller.off("gapless-advance", onSeeked);
+            controller.off("ended", onTrackBoundary);
+            controller.off("gapless-advance", onTrackBoundary);
         };
     }, [controller, report]);
 }

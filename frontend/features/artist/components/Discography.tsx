@@ -37,8 +37,8 @@ export function Discography({
                         }
                         className="px-3 py-1.5 bg-white/5 border border-white/10 rounded-full text-white text-xs focus:outline-none focus:border-white/20 [&>option]:bg-[var(--bg-hover)] [&>option]:text-white"
                     >
-                        <option value="year">Year (Newest)</option>
-                        <option value="dateAdded">Date Added (Recent)</option>
+                        <option value="year">year (newest)</option>
+                        <option value="dateAdded">date added (recent)</option>
                     </select>
                 }
             />

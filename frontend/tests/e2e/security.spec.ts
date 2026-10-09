@@ -18,7 +18,7 @@ test.describe("Security", () => {
 
         test.beforeAll(async ({ request }) => {
             // Create attacker account using the admin test user's credentials.
-            // If the test user lacks admin role, subsequent tests will skip gracefully.
+            // A test user without the admin role fails every test here: a skipped security test is a pass nobody earned.
             try {
                 const loginRes = await request.post("/api/auth/login", {
                     data: { username, password },
@@ -40,20 +40,20 @@ test.describe("Security", () => {
                 data: { username, password },
             }).then(r => r.json()).then((b: { token: string }) => b.token);
 
-            if (!victimToken) { test.skip(); return; }
+            expect(victimToken, "security setup failed: victimToken").toBeTruthy();
 
             const createRes = await page.request.post("/api/playlists", {
                 data: { name: `victim-private-${Date.now()}`, isPublic: false },
                 headers: { Authorization: `Bearer ${victimToken}` },
             });
-            if (!createRes.ok()) { test.skip(); return; }
+            expect(createRes.ok(), "security setup failed: createRes.ok()").toBeTruthy();
             const { id: playlistId } = await createRes.json() as { id: string };
 
             // Login as attacker
             const attackerLoginRes = await page.request.post("/api/auth/login", {
                 data: { username: ATTACKER_USER, password: ATTACKER_PASS },
             });
-            if (!attackerLoginRes.ok()) { test.skip(); return; }
+            expect(attackerLoginRes.ok(), "security setup failed: attackerLoginRes.ok()").toBeTruthy();
             const { token: attackerToken } = await attackerLoginRes.json() as { token: string };
 
             // Attacker attempts to read victim's private playlist
@@ -75,20 +75,20 @@ test.describe("Security", () => {
             const victimToken = await page.request.post("/api/auth/login", {
                 data: { username, password },
             }).then(r => r.json()).then((b: { token: string }) => b.token);
-            if (!victimToken) { test.skip(); return; }
+            expect(victimToken, "security setup failed: victimToken").toBeTruthy();
 
             const originalName = `victim-update-${Date.now()}`;
             const createRes = await page.request.post("/api/playlists", {
                 data: { name: originalName, isPublic: false },
                 headers: { Authorization: `Bearer ${victimToken}` },
             });
-            if (!createRes.ok()) { test.skip(); return; }
+            expect(createRes.ok(), "security setup failed: createRes.ok()").toBeTruthy();
             const { id: playlistId } = await createRes.json() as { id: string };
 
             const attackerLoginRes = await page.request.post("/api/auth/login", {
                 data: { username: ATTACKER_USER, password: ATTACKER_PASS },
             });
-            if (!attackerLoginRes.ok()) { test.skip(); return; }
+            expect(attackerLoginRes.ok(), "security setup failed: attackerLoginRes.ok()").toBeTruthy();
             const { token: attackerToken } = await attackerLoginRes.json() as { token: string };
 
             // Attacker attempts rename
@@ -116,19 +116,19 @@ test.describe("Security", () => {
             const victimToken = await page.request.post("/api/auth/login", {
                 data: { username, password },
             }).then(r => r.json()).then((b: { token: string }) => b.token);
-            if (!victimToken) { test.skip(); return; }
+            expect(victimToken, "security setup failed: victimToken").toBeTruthy();
 
             const createRes = await page.request.post("/api/playlists", {
                 data: { name: `victim-delete-${Date.now()}`, isPublic: false },
                 headers: { Authorization: `Bearer ${victimToken}` },
             });
-            if (!createRes.ok()) { test.skip(); return; }
+            expect(createRes.ok(), "security setup failed: createRes.ok()").toBeTruthy();
             const { id: playlistId } = await createRes.json() as { id: string };
 
             const attackerLoginRes = await page.request.post("/api/auth/login", {
                 data: { username: ATTACKER_USER, password: ATTACKER_PASS },
             });
-            if (!attackerLoginRes.ok()) { test.skip(); return; }
+            expect(attackerLoginRes.ok(), "security setup failed: attackerLoginRes.ok()").toBeTruthy();
             const { token: attackerToken } = await attackerLoginRes.json() as { token: string };
 
             // Attacker attempts deletion
@@ -156,7 +156,7 @@ test.describe("Security", () => {
 
         test("script tag in playlist name does not execute in browser", async ({ page }) => {
             const loginRes = await page.request.post("/api/auth/login", { data: { username, password } });
-            if (!loginRes.ok()) { test.skip(); return; }
+            expect(loginRes.ok(), "security setup failed: loginRes.ok()").toBeTruthy();
             const { token } = await loginRes.json() as { token: string };
 
             const payload = `<script>window.__xss_script=true</script>xss-${Date.now()}`;
@@ -164,7 +164,7 @@ test.describe("Security", () => {
                 data: { name: payload, isPublic: false },
                 headers: { Authorization: `Bearer ${token}` },
             });
-            if (!createRes.ok()) { test.skip(); return; }
+            expect(createRes.ok(), "security setup failed: createRes.ok()").toBeTruthy();
             const { id: playlistId } = await createRes.json() as { id: string };
 
             // Navigate in browser and verify the script did not execute
@@ -189,7 +189,7 @@ test.describe("Security", () => {
 
         test("img onerror payload in playlist name does not execute in browser", async ({ page }) => {
             const loginRes = await page.request.post("/api/auth/login", { data: { username, password } });
-            if (!loginRes.ok()) { test.skip(); return; }
+            expect(loginRes.ok(), "security setup failed: loginRes.ok()").toBeTruthy();
             const { token } = await loginRes.json() as { token: string };
 
             const payload = `<img src=x onerror="window.__xss_onerror=true">xss-${Date.now()}`;
@@ -197,7 +197,7 @@ test.describe("Security", () => {
                 data: { name: payload, isPublic: false },
                 headers: { Authorization: `Bearer ${token}` },
             });
-            if (!createRes.ok()) { test.skip(); return; }
+            expect(createRes.ok(), "security setup failed: createRes.ok()").toBeTruthy();
             const { id: playlistId } = await createRes.json() as { id: string };
 
             await page.goto("/playlists");
@@ -221,7 +221,7 @@ test.describe("Security", () => {
 
         test("POST /api/playlists ignores injected userId -- playlist owned by authenticated user", async ({ page }) => {
             const loginRes = await page.request.post("/api/auth/login", { data: { username, password } });
-            if (!loginRes.ok()) { test.skip(); return; }
+            expect(loginRes.ok(), "security setup failed: loginRes.ok()").toBeTruthy();
             const { token } = await loginRes.json() as { token: string };
 
             const res = await page.request.post("/api/playlists", {
@@ -233,7 +233,7 @@ test.describe("Security", () => {
                 },
                 headers: { Authorization: `Bearer ${token}` },
             });
-            if (!res.ok()) { test.skip(); return; }
+            expect(res.ok(), "security setup failed: res.ok()").toBeTruthy();
             const playlist = await res.json() as { id: string; userId: string };
 
             // Must belong to the real authenticated user, not the injected ID
@@ -265,7 +265,7 @@ test.describe("Security", () => {
 
         test("validation error after empty playlist name: no playlist created, count unchanged", async ({ page }) => {
             const loginRes = await page.request.post("/api/auth/login", { data: { username, password } });
-            if (!loginRes.ok()) { test.skip(); return; }
+            expect(loginRes.ok(), "security setup failed: loginRes.ok()").toBeTruthy();
             const { token } = await loginRes.json() as { token: string };
 
             // Capture count before

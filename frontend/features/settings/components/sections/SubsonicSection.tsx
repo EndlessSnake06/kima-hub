@@ -6,6 +6,8 @@ import { useAuth } from "@/lib/auth-context";
 import { api } from "@/lib/api";
 import { InlineStatus, StatusType } from "@/components/ui/InlineStatus";
 import { Button } from "@/components/ui/Button";
+import { copyText } from "@/lib/clipboard";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 interface ApiKey {
     id: string;
@@ -71,6 +73,8 @@ export function SubsonicSection() {
         }
     };
 
+    const [confirmRevoke, setConfirmRevoke] = useState<{ id: string; name: string } | null>(null);
+
     const handleRevoke = async (id: string) => {
         setRevoking(id);
         try {
@@ -85,7 +89,7 @@ export function SubsonicSection() {
     };
 
     const copyToClipboard = (text: string) => {
-        navigator.clipboard.writeText(text);
+        void copyText(text);
     };
 
     const formatDate = (dateStr: string) => {
@@ -211,7 +215,7 @@ export function SubsonicSection() {
                                     </p>
                                 </div>
                                 <button
-                                    onClick={() => handleRevoke(key.id)}
+                                    onClick={() => setConfirmRevoke({ id: key.id, name: key.name })}
                                     disabled={revoking === key.id}
                                     className="text-xs tabular-nums text-danger-light hover:brightness-125 transition-colors shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
@@ -222,6 +226,17 @@ export function SubsonicSection() {
                     </div>
                 </SettingsRow>
             )}
+            <ConfirmDialog
+                isOpen={confirmRevoke !== null}
+                onClose={() => setConfirmRevoke(null)}
+                onConfirm={() => {
+                    if (confirmRevoke) void handleRevoke(confirmRevoke.id);
+                    setConfirmRevoke(null);
+                }}
+                title="Revoke this token?"
+                message={`${confirmRevoke?.name ?? "This token"} stops working at once. The app using it needs a new token to connect again.`}
+                confirmText="Revoke"
+            />
         </SettingsSection>
     );
 }

@@ -64,7 +64,7 @@ export function MetadataEditor({
     const handleReset = async () => {
         if (
             !confirm(
-                "Reset all metadata to original values? This cannot be undone."
+                "reset all metadata to original values? this cannot be undone."
             )
         ) {
             return;
@@ -118,17 +118,15 @@ export function MetadataEditor({
 
     return (
         <>
-            {/* Pencil Icon Button */}
             <button
                 onClick={handleOpen}
                 className="p-2 rounded-full bg-black/40 hover:bg-black/60 transition-all opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                title={`Edit ${type} metadata`}
+                title={`Edit ${type} metadata`.toLowerCase()}
                 aria-label={`Edit ${type} metadata`}
             >
                 <Edit className="w-4 h-4 text-white" />
             </button>
 
-            {/* Modal */}
             {isOpen && (
                 <div
                     className="fixed inset-0 bg-black/80 flex items-center justify-center z-(--z-modal) p-4"
@@ -161,9 +159,7 @@ export function MetadataEditor({
                             </button>
                         </div>
 
-                        {/* Content */}
                         <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                            {/* Name/Title */}
                             <div>
                                 <label className="block text-sm font-bold text-white mb-2">
                                     {type === "artist"
@@ -207,7 +203,6 @@ export function MetadataEditor({
                                     )}
                             </div>
 
-                            {/* Bio (Artist only) */}
                             {type === "artist" && (
                                 <div>
                                     <label className="block text-sm font-bold text-white mb-2">
@@ -236,7 +231,6 @@ export function MetadataEditor({
                                 </div>
                             )}
 
-                            {/* Year (Album only) */}
                             {type === "album" && (
                                 <div>
                                     <label className="block text-sm font-bold text-white mb-2">
@@ -264,7 +258,6 @@ export function MetadataEditor({
                                 </div>
                             )}
 
-                            {/* Genres */}
                             <div>
                                 <label className="block text-sm font-bold text-white mb-2">
                                     Genres
@@ -304,7 +297,6 @@ export function MetadataEditor({
                                     )}
                             </div>
 
-                            {/* MusicBrainz ID */}
                             <div>
                                 <label className="block text-sm font-bold text-white mb-2">
                                     MusicBrainz ID
@@ -336,7 +328,6 @@ export function MetadataEditor({
                                 />
                             </div>
 
-                            {/* Image URL */}
                             <div>
                                 <label className="block text-sm font-bold text-white mb-2">
                                     {type === "artist"
@@ -382,7 +373,6 @@ export function MetadataEditor({
                                             {currentData._originalCoverUrl}
                                         </p>
                                     )}
-                                {/* Image Preview */}
                                 {(formData.heroUrl || formData.coverUrl) && (
                                     <div className="mt-2">
                                         <CachedImage
@@ -399,7 +389,6 @@ export function MetadataEditor({
                                 )}
                             </div>
 
-                            {/* Manual Override Warning */}
                             <div className="bg-warning/10 border border-warning/20 rounded p-4">
                                 <p className="text-sm text-warning">
                                     <strong>Note:</strong> Manually edited
@@ -409,7 +398,6 @@ export function MetadataEditor({
                             </div>
                         </div>
 
-                        {/* Footer */}
                         <div className="flex items-center justify-end gap-3 p-6 border-t border-white/10">
                             {hasOverrides && (
                                 <button

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { SettingsSection, SettingsRow } from "../ui";
 import { api } from "@/lib/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ChevronDown, ChevronUp, Loader2, Trash2 } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronUp, Loader2, RotateCcw } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 export function CorruptTracksSection() {
@@ -17,8 +17,8 @@ export function CorruptTracksSection() {
         queryFn: () => api.getCorruptTracks(),
     });
 
-    const deleteMutation = useMutation({
-        mutationFn: () => api.deleteCorruptTracks(),
+    const clearMutation = useMutation({
+        mutationFn: () => api.clearCorruptTracks(),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["corrupt-tracks"] });
             setShowConfirm(false);
@@ -36,7 +36,7 @@ export function CorruptTracksSection() {
         >
             <SettingsRow
                 label="Corrupt files detected"
-                description="These files failed audio analysis and may be incomplete or damaged"
+                description="These files could not be read in the last scan and may be incomplete or damaged"
             >
                 <div className="flex items-center gap-3">
                     {isLoading ? (
@@ -92,15 +92,15 @@ export function CorruptTracksSection() {
                     <div className="px-4 py-2">
                         <button
                             onClick={() => setShowConfirm(true)}
-                            disabled={deleteMutation.isPending}
+                            disabled={clearMutation.isPending}
                             className="flex items-center gap-2 px-4 py-2 text-xs tabular-nums text-danger-light hover:brightness-125 bg-danger/10 hover:bg-danger/20 border border-danger/20 rounded-lg transition-colors disabled:opacity-50"
                         >
-                            {deleteMutation.isPending ? (
+                            {clearMutation.isPending ? (
                                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
                             ) : (
-                                <Trash2 className="w-3.5 h-3.5" />
+                                <RotateCcw className="w-3.5 h-3.5" />
                             )}
-                            Remove all corrupt tracks
+                            Clear the corrupt marks
                         </button>
                     </div>
                 </>
@@ -109,11 +109,11 @@ export function CorruptTracksSection() {
             <ConfirmDialog
                 isOpen={showConfirm}
                 onClose={() => setShowConfirm(false)}
-                onConfirm={() => deleteMutation.mutate()}
-                title="Remove corrupt tracks"
-                message={`This will permanently remove ${count} corrupt track${count !== 1 ? "s" : ""} from your database. The files on disk will not be deleted.`}
-                confirmText="Remove All"
-                variant="danger"
+                onConfirm={() => clearMutation.mutate()}
+                title="Clear the corrupt marks"
+                message={`This clears the corrupt mark on ${count} track${count !== 1 ? "s" : ""}. Nothing is deleted. The next library scan reads each file again and marks any that are still broken.`}
+                confirmText="Clear marks"
+                variant="warning"
             />
         </SettingsSection>
     );

@@ -6,24 +6,24 @@ import { useAudioState } from "@/lib/audio-state-context";
 import { LyricsPanel } from "@/components/lyrics/LyricsPanel";
 
 interface UseLyricsToggleOptions {
-    isMobile: boolean;
+    /** Lyrics replace the artwork in place instead of opening in the activity panel. */
+    inline: boolean;
 }
 
-export function useLyricsToggle({ isMobile }: UseLyricsToggleOptions) {
+export function useLyricsToggle({ inline }: UseLyricsToggleOptions) {
     const { setSettingsContent, settingsOwner } = useActivityPanelSettings();
     const { currentTrack } = useAudioState();
 
-    // Mobile: local toggle state for inline crawl. Desktop: activity panel.
-    const [mobileActive, setMobileActive] = useState(false);
+    const [inlineActive, setInlineActive] = useState(false);
 
     // Render-time reset on track change (avoids setState-in-effect lint rule)
     const [prevTrackId, setPrevTrackId] = useState(currentTrack?.id);
     if (currentTrack?.id !== prevTrackId) {
         setPrevTrackId(currentTrack?.id);
-        setMobileActive(false);
+        setInlineActive(false);
     }
 
-    const isLyricsActive = isMobile ? mobileActive : settingsOwner === "lyrics";
+    const isLyricsActive = inline ? inlineActive : settingsOwner === "lyrics";
 
     const closeLyrics = useCallback(() => {
         setSettingsContent(null);
@@ -35,8 +35,8 @@ export function useLyricsToggle({ isMobile }: UseLyricsToggleOptions) {
     }, [setSettingsContent]);
 
     const handleLyricsToggle = useCallback(() => {
-        if (isMobile) {
-            setMobileActive(prev => !prev);
+        if (inline) {
+            setInlineActive(prev => !prev);
             return;
         }
 
@@ -52,7 +52,7 @@ export function useLyricsToggle({ isMobile }: UseLyricsToggleOptions) {
                 detail: { tab: "settings" },
             })
         );
-    }, [setSettingsContent, closeLyrics, settingsOwner, isMobile]);
+    }, [setSettingsContent, closeLyrics, settingsOwner, inline]);
 
     return { handleLyricsToggle, isLyricsActive };
 }

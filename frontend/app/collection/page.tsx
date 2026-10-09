@@ -379,7 +379,6 @@ export default function LibraryPage() {
                     />
                 </div>
 
-                {/* Toolbar */}
                 <div className="mb-8">
                     <LibraryToolbar
                         activeTab={activeTab}
@@ -439,8 +438,7 @@ export default function LibraryPage() {
                         className="flex items-center justify-between gap-4 rounded-lg border border-white/10 bg-white/[0.04] px-4 py-3 mb-6 -mt-6"
                     >
                         <p className="text-sm text-[var(--text-secondary)]">
-                            Couldn&apos;t load this page. The pager shows the last known count —
-                            nothing was deleted.
+                            Couldn&apos;t load this page.
                         </p>
                         <button
                             type="button"

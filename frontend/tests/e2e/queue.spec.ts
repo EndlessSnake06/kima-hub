@@ -62,21 +62,10 @@ test.describe("Queue", () => {
         // Client-side nav to preserve queue state in React context
         await page.getByRole("link", { name: "Queue" }).click();
         await page.waitForURL(/\/queue/);
-        // Find the Next Up section -- tracks after the currently playing one
-        // Each track row is a flex div containing the action buttons
-        const playNowButtons = page.locator('[title="Play now"]');
-        const count = await playNowButtons.count();
-
-        if (count === 0) {
-            test.skip(); // No upcoming tracks; skip rather than fail
-            return;
-        }
-
-        // Hover to expose the row actions and click "Play now" on a queued track
-        // Walk up 3 levels: button -> actions div -> track row div
-        const targetRow = playNowButtons.first().locator("xpath=ancestor::div[contains(@class,'flex') and contains(@class,'items-center')][1]");
-        await targetRow.hover();
-        await targetRow.getByTitle("Play now").click();
+        // Each queued row has "Play <title>"; the player's own button is plain "Play"/"Pause".
+        const playNowButtons = page.getByRole("button", { name: /^Play .+/ });
+        await expect(playNowButtons.first(), "a started album leaves tracks up next").toBeAttached({ timeout: 5_000 });
+        await playNowButtons.first().click();
 
         // Audio source should change since we skipped to a different track
         const srcAfter = await waitForSrcChange(page, srcBefore, 8_000);
@@ -89,23 +78,13 @@ test.describe("Queue", () => {
         await page.getByRole("link", { name: "Queue" }).click();
         await page.waitForURL(/\/queue/);
 
-        const removeButtons = page.locator('[title="Remove"]');
+        const removeButtons = page.getByRole("button", { name: /^Remove .+ from queue$/ });
+        await expect(removeButtons.first(), "a started album leaves tracks up next").toBeAttached({ timeout: 5_000 });
         const initialCount = await removeButtons.count();
 
-        if (initialCount === 0) {
-            test.skip();
-            return;
-        }
+        await removeButtons.first().click();
 
-        // Walk up to the row container from the Remove button
-        const firstQueueItem = removeButtons.first().locator("xpath=ancestor::div[contains(@class,'flex') and contains(@class,'items-center')][1]");
-
-        // Hover to show the controls, then click Remove
-        await firstQueueItem.hover();
-        await firstQueueItem.getByTitle("Remove").click();
-
-        // Count should decrease
-        await expect(page.locator('[title="Remove"]')).toHaveCount(initialCount - 1, { timeout: 3_000 });
+        await expect(removeButtons).toHaveCount(initialCount - 1, { timeout: 3_000 });
     });
 
     test("Move up reorders queue item", async ({ page }) => {
@@ -114,13 +93,8 @@ test.describe("Queue", () => {
         await page.getByRole("link", { name: "Queue" }).click();
         await page.waitForURL(/\/queue/);
 
-        const moveUpButtons = page.locator('[title="Move up"]:not([disabled])');
-        const count = await moveUpButtons.count();
-
-        if (count === 0) {
-            test.skip(); // No movable items
-            return;
-        }
+        const moveUpButtons = page.getByRole("button", { name: /^Move .+ up$/, disabled: false });
+        await expect(moveUpButtons.first(), "the second track up next can move up").toBeAttached({ timeout: 5_000 });
 
         // Grab the track titles from "Next Up" before the reorder.
         // The first item's Move up button is always disabled, so the first
@@ -129,21 +103,12 @@ test.describe("Queue", () => {
             has: page.locator("h2", { hasText: "Next Up" }),
         });
         const titlesBefore = await nextUpSection.locator("h3").allTextContents();
-
-        if (titlesBefore.length < 2) {
-            test.skip(); // Need at least 2 items to verify reorder
-            return;
-        }
+        expect(titlesBefore.length, "two tracks up next").toBeGreaterThanOrEqual(2);
         const targetTitle = titlesBefore[1]; // the one that will move to index 0
 
-        // Hover the target row and click Move up
-        const targetRow = moveUpButtons.first().locator("xpath=ancestor::div[contains(@class,'flex') and contains(@class,'items-center')][1]");
-        await targetRow.hover();
-        await targetRow.getByTitle("Move up").click();
+        await moveUpButtons.first().click();
 
-        // After the move, targetTitle should now be the first item in Next Up
-        const titlesAfter = await nextUpSection.locator("h3").allTextContents();
-        expect(titlesAfter[0]).toBe(targetTitle);
+        await expect.poll(async () => (await nextUpSection.locator("h3").allTextContents())[0]).toBe(targetTitle);
     });
 
     test("Clear queue empties the up-next list", async ({ page }) => {

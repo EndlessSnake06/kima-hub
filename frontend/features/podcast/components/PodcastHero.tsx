@@ -48,10 +48,8 @@ export function PodcastHero({
                 fallback={["#0f1a2e", "#0a0f1a"]}
             />
 
-            {/* Hero Content */}
             <div className="relative page-shell pt-8 pb-6">
                 <div>
-                    {/* Back navigation */}
                     <button
                         onClick={() => router.push("/podcasts")}
                         className="flex items-center gap-2 text-xs tabular-nums text-[var(--text-muted)] hover:text-white transition-colors mb-6"
@@ -60,7 +58,6 @@ export function PodcastHero({
                         Podcasts
                     </button>
 
-                    {/* System status */}
                     <div className="flex items-center gap-2 mb-4">
                         <div className="w-1.5 h-1.5 bg-type-podcast rounded-full" />
                         <span className="t-eyebrow">
@@ -87,7 +84,6 @@ export function PodcastHero({
                             )}
                         </div>
 
-                        {/* Info */}
                         <div className="flex-1 min-w-0 pb-1">
                             <h1 className="text-2xl md:text-4xl lg:text-5xl font-bold text-white leading-tight line-clamp-2 mb-2 tracking-tight">
                                 {title}
@@ -99,9 +95,8 @@ export function PodcastHero({
                                 </p>
                             )}
 
-                            {/* Metadata row */}
                             <div className="flex flex-wrap items-center gap-3 text-xs tabular-nums text-[var(--text-secondary)]">
-                                <span className="font-bold text-white normal-case tracking-tight text-sm">
+                                <span className="font-bold text-white tracking-tight text-sm">
                                     {author}
                                 </span>
                                 <span className="text-[var(--text-muted)]">|</span>
@@ -118,7 +113,6 @@ export function PodcastHero({
                                 )}
                             </div>
 
-                            {/* Genre tags */}
                             {genres && genres.length > 0 && (
                                 <div className="hidden md:flex flex-wrap gap-1.5 mt-3">
                                     {genres.slice(0, 4).map((genre: string) => (
@@ -136,7 +130,6 @@ export function PodcastHero({
                 </div>
             </div>
 
-            {/* Action Bar */}
             {children && (
                 <div className="relative page-shell pb-4">
                     <div>

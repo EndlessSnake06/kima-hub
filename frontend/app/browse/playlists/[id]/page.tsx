@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { formatTime, plural } from "@/lib/format";
 import { useParams, useRouter } from "next/navigation";
 import {
@@ -8,13 +8,13 @@ import {
     Play,
     Pause,
     Download,
-    Loader2,
     ExternalLink,
     Music2,
     Volume2,
     VolumeX,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { usePreview } from "@/hooks/usePreview";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/cn";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
@@ -64,26 +64,11 @@ export default function DeezerPlaylistDetailPage() {
     const [playlist, setPlaylist] = useState<DeezerPlaylistFull | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [isImporting] = useState(false);
-    const { volume, isMuted } = useAudioState();
+    const { isMuted } = useAudioState();
     const { toggleMute } = useAudioControls();
-
-    const [playingTrackId, setPlayingTrackId] = useState<string | null>(null);
-    const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
-    const audioRef = useRef<HTMLAudioElement | null>(null);
-
-    const applyCurrentPlayerVolume = useCallback((audio: HTMLAudioElement) => {
-        audio.volume = isMuted ? 0 : volume;
-    }, [volume, isMuted]);
-
-    const teardownPreviewAudio = useCallback((audio: HTMLAudioElement | null) => {
-        if (!audio) return;
-        audio.onended = null;
-        audio.onerror = null;
-        audio.pause();
-        audio.src = "";
-        audio.load();
-    }, []);
+    const preview = usePreview();
+    const playingTrackId = preview.previewId;
+    const isPreviewPlaying = preview.playing;
 
     useEffect(() => {
         async function fetchPlaylist() {
@@ -104,86 +89,12 @@ export default function DeezerPlaylistDetailPage() {
         fetchPlaylist();
     }, [playlistId]);
 
-    useEffect(() => {
-        if (audioRef.current) {
-            applyCurrentPlayerVolume(audioRef.current);
-        }
-    }, [applyCurrentPlayerVolume]);
-
-    useEffect(() => {
-        return () => {
-            if (audioRef.current) {
-                teardownPreviewAudio(audioRef.current);
-                audioRef.current = null;
-            }
-        };
-    }, [teardownPreviewAudio]);
-
     const handlePlayPreview = (track: DeezerTrack) => {
         if (!track.previewUrl) {
             notify.error("No preview available for this track");
             return;
         }
-
-        if (playingTrackId === track.deezerId) {
-            if (isPreviewPlaying && audioRef.current) {
-                audioRef.current.pause();
-                setIsPreviewPlaying(false);
-            } else if (audioRef.current) {
-                applyCurrentPlayerVolume(audioRef.current);
-                audioRef.current.play().catch(() => setIsPreviewPlaying(false));
-                setIsPreviewPlaying(true);
-            }
-            return;
-        }
-
-        if (audioRef.current) {
-            teardownPreviewAudio(audioRef.current);
-        }
-
-        const audio = new Audio(
-            api.getTrackPreviewStreamUrl(track.artist, track.title)
-        );
-        applyCurrentPlayerVolume(audio);
-        audioRef.current = audio;
-
-        audio.onended = () => {
-            if (audioRef.current !== audio) return;
-            setPlayingTrackId(null);
-            setIsPreviewPlaying(false);
-            audioRef.current = null;
-        };
-
-        audio.onerror = () => {
-            if (audioRef.current !== audio) return;
-            notify.error("Failed to play preview");
-            setPlayingTrackId(null);
-            setIsPreviewPlaying(false);
-            audioRef.current = null;
-        };
-
-        audio.play().catch(() => {
-            setPlayingTrackId(null);
-            setIsPreviewPlaying(false);
-        });
-        setPlayingTrackId(track.deezerId);
-        setIsPreviewPlaying(true);
-    };
-
-    const stopPreview = () => {
-        if (audioRef.current) {
-            teardownPreviewAudio(audioRef.current);
-            audioRef.current = null;
-        }
-        setPlayingTrackId(null);
-        setIsPreviewPlaying(false);
-    };
-
-    const handleToggleMute = () => {
-        toggleMute();
-        if (audioRef.current) {
-            applyCurrentPlayerVolume(audioRef.current);
-        }
+        preview.toggle(track.deezerId, api.getTrackPreviewStreamUrl(track.artist, track.title));
     };
 
     const handleImport = () => {
@@ -221,9 +132,7 @@ export default function DeezerPlaylistDetailPage() {
 
     return (
         <div className="min-h-screen bg-gradient-to-b from-[#0a0a0a] to-black section-stack">
-            {/* Hero Section */}
             <div className="relative">
-                {/* Background */}
                 {playlist.imageUrl && (
                     <div className="absolute inset-0 overflow-hidden">
                         <div className="absolute inset-0 scale-110 blur-md opacity-30">
@@ -241,7 +150,6 @@ export default function DeezerPlaylistDetailPage() {
 
                 <div className="relative page-shell pt-8 pb-6">
                     <div>
-                        {/* Back navigation */}
                         <button
                             onClick={() => router.push("/browse/playlists")}
                             className="flex items-center gap-2 text-xs tabular-nums text-[var(--text-muted)] hover:text-white transition-colors mb-6"
@@ -250,7 +158,6 @@ export default function DeezerPlaylistDetailPage() {
                             Browse
                         </button>
 
-                        {/* System status */}
                         <div className="flex items-center gap-2 mb-4">
                             <DeezerIcon className="w-3.5 h-3.5 text-brand" />
                             <span className="text-xs text-[var(--text-secondary)]">
@@ -259,7 +166,6 @@ export default function DeezerPlaylistDetailPage() {
                         </div>
 
                         <div className="flex items-end gap-6">
-                            {/* Cover Art */}
                             <div className="w-[140px] h-[140px] md:w-[192px] md:h-[192px] bg-[var(--bg-primary)] rounded-lg shrink-0 overflow-hidden relative border-2 border-white/10">
                                 {playlist.imageUrl ? (
                                     <CachedImage
@@ -276,7 +182,6 @@ export default function DeezerPlaylistDetailPage() {
                                 )}
                             </div>
 
-                            {/* Info */}
                             <div className="flex-1 min-w-0 pb-1">
                                 <h1 className="text-2xl md:text-4xl lg:text-5xl font-bold text-white leading-tight line-clamp-2 mb-2 tracking-tight">
                                     {playlist.title}
@@ -287,7 +192,7 @@ export default function DeezerPlaylistDetailPage() {
                                     </p>
                                 )}
                                 <div className="flex flex-wrap items-center gap-3 text-xs tabular-nums text-[var(--text-secondary)]">
-                                    <span className="font-bold text-white normal-case tracking-tight text-sm">
+                                    <span className="font-bold text-white tracking-tight text-sm">
                                         {playlist.creator}
                                     </span>
                                     <span className="text-[var(--text-muted)]">|</span>
@@ -305,29 +210,18 @@ export default function DeezerPlaylistDetailPage() {
                 </div>
             </div>
 
-            {/* Action Bar */}
             <div className="relative page-shell pb-4">
                 <div>
                     <div className="flex items-center gap-3">
-                        {/* Download/Import Button */}
-                        <Button
-                            variant="primary"
-                            onClick={handleImport}
-                            disabled={isImporting}
-                        >
-                            {isImporting ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                                <Download className="w-4 h-4" />
-                            )}
-                            <span>{isImporting ? "Importing" : "Import Playlist"}</span>
+                        <Button variant="primary" onClick={handleImport}>
+                            <Download className="w-4 h-4" />
+                            <span>Import Playlist</span>
                         </Button>
 
-                        {/* Volume Control */}
                         {playingTrackId && (
                             <div className="flex items-center gap-2">
                                 <button
-                                    onClick={handleToggleMute}
+                                    onClick={toggleMute}
                                     className="p-2 rounded-lg text-[var(--text-muted)] hover:text-white hover:bg-white/5 border border-transparent hover:border-white/10 transition-all"
                                 >
                                     {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
@@ -335,7 +229,7 @@ export default function DeezerPlaylistDetailPage() {
                                 <Button
                                     variant="secondary"
                                     size="sm"
-                                    onClick={stopPreview}
+                                    onClick={preview.stop}
                                 >
                                     Stop Preview
                                 </Button>
@@ -344,13 +238,12 @@ export default function DeezerPlaylistDetailPage() {
 
                         <div className="flex-1" />
 
-                        {/* Open in Deezer */}
                         <a
                             href={playlist.url}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="p-2.5 rounded-lg text-[var(--text-muted)] hover:text-white hover:bg-white/5 border border-transparent hover:border-white/10 transition-all"
-                            title="Open in Deezer"
+                            title="open in deezer"
                         >
                             <ExternalLink className="w-4 h-4" />
                         </a>
@@ -358,14 +251,12 @@ export default function DeezerPlaylistDetailPage() {
                 </div>
             </div>
 
-            {/* Track Listing */}
             <div className="relative page-shell pb-32 animate-rise">
                 <div>
                     {playlist.tracks.length > 0 ? (
                         <div>
                             <SectionHeader type="track" title="Tracks" count={playlist.trackCount} />
 
-                            {/* Table Header */}
                             <div className="hidden md:grid grid-cols-[40px_minmax(200px,4fr)_minmax(100px,1fr)_80px] gap-4 px-3 py-2 text-xs text-[var(--text-muted)] border-b border-white/10 mb-1">
                                 <span className="text-center">#</span>
                                 <span>Title</span>
@@ -382,15 +273,23 @@ export default function DeezerPlaylistDetailPage() {
                                         <div
                                             key={track.deezerId}
                                             onClick={() => hasPreview && handlePlayPreview(track)}
+                                            role={hasPreview ? "button" : undefined}
+                                            tabIndex={hasPreview ? 0 : undefined}
+                                            aria-label={hasPreview ? `play a preview of ${track.title}` : undefined}
+                                            onKeyDown={(e) => {
+                                                if (hasPreview && (e.key === "Enter" || e.key === " ")) {
+                                                    e.preventDefault();
+                                                    handlePlayPreview(track);
+                                                }
+                                            }}
                                             className={cn(
                                                 "grid grid-cols-[40px_1fr_auto] md:grid-cols-[40px_minmax(200px,4fr)_minmax(100px,1fr)_80px] gap-4 px-3 py-2 rounded-lg transition-all group",
                                                 hasPreview
-                                                    ? "hover:bg-white/[0.03] cursor-pointer"
+                                                    ? "hover:bg-white/[0.03] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
                                                     : "opacity-40 cursor-not-allowed",
                                                 isCurrentlyPlaying && "bg-white/5 border border-brand/30"
                                             )}
                                         >
-                                            {/* Track Number / Play */}
                                             <div className="flex items-center justify-center">
                                                 {hasPreview ? (
                                                     <>
@@ -417,7 +316,6 @@ export default function DeezerPlaylistDetailPage() {
                                                 )}
                                             </div>
 
-                                            {/* Title + Artist */}
                                             <div className="flex items-center gap-3 min-w-0">
                                                 <div className="relative w-10 h-10 bg-[var(--bg-primary)] rounded border border-white/10 shrink-0 overflow-hidden">
                                                     {track.coverUrl ? (
@@ -447,12 +345,10 @@ export default function DeezerPlaylistDetailPage() {
                                                 </div>
                                             </div>
 
-                                            {/* Album */}
                                             <p className="hidden md:flex items-center text-xs tabular-nums text-[var(--text-muted)] truncate">
                                                 {track.album}
                                             </p>
 
-                                            {/* Duration */}
                                             <div className="flex items-center justify-end">
                                                 <span className="text-xs tabular-nums text-[var(--text-muted)]">
                                                     {formatTime(Math.round(track.durationMs / 1000))}
@@ -477,7 +373,6 @@ export default function DeezerPlaylistDetailPage() {
                 </div>
             </div>
 
-            {/* Preview indicator */}
             {playingTrackId && (
                 <div className="fixed bottom-24 left-1/2 -translate-x-1/2 px-4 py-2 bg-brand rounded-lg text-black text-xs font-semibold flex items-center gap-2 z-(--z-toast-inline)">
                     <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />

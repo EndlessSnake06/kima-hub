@@ -12,8 +12,6 @@ import {
     Download,
     History,
     ListMusic,
-    ChevronLeft,
-    ChevronRight,
     X,
     type LucideIcon,
 } from "lucide-react";
@@ -50,9 +48,6 @@ export function ActivityPanel({
     const setResolvedActiveTab = onTabChange ?? setInternalActiveTab;
     const { unreadCount } = useNotifications();
     const { downloads: activeDownloads } = useActiveDownloads();
-    const isMobile = useIsMobile();
-    const isTablet = useIsTablet();
-    const isMobileOrTablet = isMobile || isTablet;
 
     const handleTabClick = useCallback((tab: ActivityTab) => {
         if (tab !== "settings" && resolvedActiveTab === "settings" && settingsContent) {
@@ -72,156 +67,37 @@ export function ActivityPanel({
     const notificationBadge = unreadCount > 0 ? unreadCount : null;
     const activeBadge =
         activeDownloads.length > 0 ? activeDownloads.length : null;
-    const hasActivity = unreadCount > 0 || activeDownloads.length > 0;
 
-    // Mobile/Tablet: Full-screen overlay
-    if (isMobileOrTablet) {
-        if (!isOpen) return null;
+    // A phone or tablet overlay: the desktop layout shows the side panel (UnifiedPanel).
+    if (!isOpen) return null;
 
-        return (
-            <>
-                {/* Backdrop */}
-                <div
-                    className="fixed inset-0 bg-black/60 z-(--z-panel-backdrop)"
-                    onClick={onToggle}
-                />
-
-                {/* Panel - slides in from right */}
-                <div
-                    id="activity-panel-mobile"
-                    className="fixed inset-y-0 right-0 w-full max-w-md bg-[var(--bg-primary)] z-(--z-panel) flex flex-col"
-                    style={{ paddingTop: "var(--standalone-safe-area-top, 0px)" }}
-                >
-                    {/* Header */}
-                    <div className="flex items-center justify-between px-4 py-4 border-b border-white/10">
-                        <h2 className="text-lg font-semibold text-white">
-                            Activity
-                        </h2>
-                        <button
-                            onClick={onToggle}
-                            className="p-2 hover:bg-white/10 rounded-full transition-colors"
-                            title="Close"
-                        >
-                            <X className="w-5 h-5 text-[var(--text-secondary)]" />
-                        </button>
-                    </div>
-
-                    {/* Tabs */}
-                    <div className="flex border-b border-white/10">
-                        {TABS.map((tab) => {
-                            const Icon = tab.icon;
-                            const badge =
-                                tab.id === "notifications"
-                                    ? notificationBadge
-                                    : tab.id === "active"
-                                    ? activeBadge
-                                    : null;
-
-                            return (
-                                <button
-                                    key={tab.id}
-                                    onClick={() => handleTabClick(tab.id)}
-                                    className={cn(
-                                        "flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors duration-200 relative",
-                                        resolvedActiveTab === tab.id
-                                            ? "text-white border-b-2 border-[#f5c518]"
-                                            : "text-[var(--text-secondary)] hover:text-white/70"
-                                    )}
-                                >
-                                    <Icon className="w-4 h-4" />
-                                    <span>{tab.label}</span>
-                                    {badge && (
-                                        <span
-                                            className={cn(
-                                                "min-w-[18px] h-[18px] px-1 rounded-full text-xs font-semibold flex items-center justify-center ml-1",
-                                                tab.id === "active"
-                                                    ? "bg-brand text-black"
-                                                    : "bg-white/15 text-white"
-                                            )}
-                                        >
-                                            {badge > 99 ? "99+" : badge}
-                                        </span>
-                                    )}
-                                </button>
-                            );
-                        })}
-                    </div>
-
-                    {/* Tab Content */}
-                    <div className="flex-1 overflow-hidden">
-                        {resolvedActiveTab === "notifications" && (
-                            <NotificationsTab />
-                        )}
-                        {resolvedActiveTab === "active" && (
-                            <ActiveDownloadsTab />
-                        )}
-                        {resolvedActiveTab === "imports" && <ImportsTab />}
-                        {resolvedActiveTab === "history" && <HistoryTab />}
-                        {resolvedActiveTab === "settings" && settingsContent}
-                    </div>
-                </div>
-            </>
-        );
-    }
-
-    // Desktop: Side panel - uses transform instead of width for GPU-accelerated animation
     return (
-        <div
-            className="shrink-0 h-full relative z-(--z-raised)"
-            style={{ width: isOpen ? 450 : 48 }}
-        >
-            {/* Panel container - slides via transform (GPU-accelerated, no layout recalc) */}
+        <>
             <div
-                id="activity-panel"
-                className="absolute inset-y-0 right-0 w-[450px] bg-[var(--bg-primary)] flex flex-col overflow-hidden transition-transform duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]"
-                style={{
-                    transform: isOpen ? 'translateX(0)' : 'translateX(402px)',
-                    willChange: 'transform',
-                }}
+                className="fixed inset-0 bg-black/60 z-(--z-panel-backdrop)"
+                onClick={onToggle}
+            />
+
+            {/* Panel - slides in from right */}
+            <div
+                id="activity-panel-mobile"
+                className="fixed inset-y-0 right-0 w-full max-w-md bg-[var(--bg-primary)] z-(--z-panel) flex flex-col"
+                style={{ paddingTop: "var(--standalone-safe-area-top, 0px)" }}
             >
-                {/* Collapsed state overlay - clickable strip on left */}
-                <div
-                    onClick={onToggle}
-                    className={cn(
-                        "absolute left-0 top-0 bottom-0 w-12 flex items-center justify-center cursor-pointer hover:bg-[var(--bg-tertiary)] transition-colors z-(--z-raised)",
-                        isOpen && "pointer-events-none opacity-0"
-                    )}
-                    title="Open activity panel"
-                >
-                    <ChevronLeft className="w-5 h-5 text-[var(--text-muted)]" />
-
-                    {/* Activity badge - status indicator */}
-                    {hasActivity && (
-                        <span className="absolute top-4 right-3 w-1.5 h-1.5 rounded-full bg-brand" />
-                    )}
-                </div>
-
-                {/* Expanded content */}
-                <div
-                    className={cn(
-                        "flex flex-col h-full transition-opacity duration-300",
-                        isOpen ? "opacity-100" : "opacity-0 pointer-events-none"
-                    )}
-                >
-                {/* Header - Command Index style */}
-                <div className="flex items-center justify-between px-4 py-4 border-b-2 border-white/10">
-                    <div className="flex items-center gap-2">
-                        <div className="w-1.5 h-1.5 bg-brand rounded-full" />
-                        <h2 className="text-xs tabular-nums font-semibold text-[var(--text-muted)] whitespace-nowrap">
-                            Activity Feed
-                        </h2>
-                    </div>
+                <div className="flex items-center justify-between px-4 py-4 border-b border-white/10">
+                    <h2 className="text-lg font-semibold text-white">
+                        Activity
+                    </h2>
                     <button
                         onClick={onToggle}
-                        className="p-1 hover:bg-white/10 transition-colors"
-                        title="Close panel"
+                        className="p-2 hover:bg-white/10 rounded-full transition-colors"
+                        title="close"
                     >
-                        <ChevronRight className="w-4 h-4 text-[var(--text-muted)]" />
+                        <X className="w-5 h-5 text-[var(--text-secondary)]" />
                     </button>
                 </div>
 
-                {/* Tabs - Terminal style */}
-                <div className="flex border-b-2 border-white/10 px-2 pt-2">
+                <div className="flex border-b border-white/10">
                     {TABS.map((tab) => {
                         const Icon = tab.icon;
                         const badge =
@@ -236,17 +112,24 @@ export function ActivityPanel({
                                 key={tab.id}
                                 onClick={() => handleTabClick(tab.id)}
                                 className={cn(
-                                    "flex-1 flex items-center justify-center gap-2 py-2.5 px-2 text-xs tabular-nums font-semibold transition-all duration-200 relative whitespace-nowrap border-l-2",
+                                    "flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors duration-200 relative",
                                     resolvedActiveTab === tab.id
-                                        ? "bg-[var(--bg-secondary)] border-brand text-white"
-                                        : "border-transparent text-[var(--text-muted)] hover:text-white hover:bg-white/5"
+                                        ? "text-white border-b-2 border-[#f5c518]"
+                                        : "text-[var(--text-secondary)] hover:text-white/70"
                                 )}
                             >
-                                <Icon className="w-3.5 h-3.5" />
-                                <span className="hidden lg:inline">{tab.label}</span>
+                                <Icon className="w-4 h-4" />
+                                <span>{tab.label}</span>
                                 {badge && (
-                                    <span className="text-micro tabular-nums text-brand">
-                                        {badge > 99 ? "99" : badge}
+                                    <span
+                                        className={cn(
+                                            "min-w-[18px] h-[18px] px-1 rounded-full text-xs font-semibold flex items-center justify-center ml-1",
+                                            tab.id === "active"
+                                                ? "bg-brand text-black"
+                                                : "bg-white/15 text-white"
+                                        )}
+                                    >
+                                        {badge > 99 ? "99+" : badge}
                                     </span>
                                 )}
                             </button>
@@ -254,19 +137,19 @@ export function ActivityPanel({
                     })}
                 </div>
 
-                {/* Tab Content */}
                 <div className="flex-1 overflow-hidden">
                     {resolvedActiveTab === "notifications" && (
                         <NotificationsTab />
                     )}
-                    {resolvedActiveTab === "active" && <ActiveDownloadsTab />}
+                    {resolvedActiveTab === "active" && (
+                        <ActiveDownloadsTab />
+                    )}
                     {resolvedActiveTab === "imports" && <ImportsTab />}
                     {resolvedActiveTab === "history" && <HistoryTab />}
                     {resolvedActiveTab === "settings" && settingsContent}
                 </div>
-                </div>
             </div>
-        </div>
+        </>
     );
 }
 
@@ -314,7 +197,7 @@ export function ActivityPanelToggle() {
                 "relative p-2 rounded-full transition-all",
                 "text-[var(--text-secondary)] hover:text-white"
             )}
-            title="Toggle activity panel"
+            title="toggle activity panel"
             aria-label="Toggle activity panel"
         >
             <Bell className="w-5 h-5" />

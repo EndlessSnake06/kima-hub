@@ -14,7 +14,7 @@ export interface MoodBucketPreset {
     pendingTracks?: number;
 }
 
-export interface MoodBucketMix {
+interface MoodBucketMix {
     id: string;
     mood: MoodType;
     name: string;
@@ -99,12 +99,12 @@ export class NetworkError extends Error {
 }
 
 // Enrichment engine contract (mirrors backend/src/services/enrichmentState).
-export interface EnrichmentState {
+interface EnrichmentState {
     status: "idle" | "running" | "paused" | "stopping" | "failed";
     startedAt?: string;
     pausedAt?: string;
     stoppedAt?: string;
-    currentPhase: "artists" | "tracks" | "audio" | "vibe" | "podcasts" | null;
+    currentPhase: "artists" | "tracks" | "fingerprint" | "audio" | "podcasts" | "vibe" | "similarity" | null;
     lastActivity: string;
     /** Set by the backend when status=running but nothing has moved for >15 min. */
     hung?: boolean;
@@ -145,7 +145,7 @@ export interface EnrichmentFailure {
     metadata: Record<string, unknown> | null;
 }
 
-export interface FailureCounts {
+interface FailureCounts {
     artist: number;
     track: number;
     audio: number;
@@ -156,14 +156,14 @@ export interface FailureCounts {
     total: number;
 }
 
-export interface ConcurrencyConfig {
+interface ConcurrencyConfig {
     concurrency: number;
     estimatedSpeed: string;
     artistsPerMin: number;
     tracksPerMin: number;
 }
 
-export interface AnalysisWorkersConfig {
+interface AnalysisWorkersConfig {
     workers: number;
     cpuCores: number;
     recommended: number;
@@ -178,7 +178,11 @@ export interface AnalysisWorkersConfig {
 }
 
 export interface GpuRuntimeStatus {
+    /** The switch for vibe embeddings (sound vectors). */
     enabled: boolean;
+    /** The switch for audio analysis (MusiCNN); shares the same download. */
+    analysis: boolean;
+    analysisEffective: boolean;
     installed: boolean;
     installing: boolean;
     effective: boolean;
@@ -453,8 +457,8 @@ class ApiClient {
                 };
             }
 
-            // Only log non-404 errors (404s are often expected)
-            if (!(silent404 && response.status === 404)) {
+            // 401s are handled below (refresh, or a sign-in prompt); 404s can be expected.
+            if (response.status !== 401 && !(silent404 && response.status === 404)) {
                 console.error(`[API] Request failed: ${url}`, {
                     status: response.status,
                     statusText: response.statusText,
@@ -641,7 +645,7 @@ class ApiClient {
     }
 
     async getArtist(id: string) {
-        return this.request<ApiData>(`/library/artists/${id}`);
+        return this.request<ApiData>(`/library/artists/${encodeURIComponent(id)}`);
     }
 
     async getAlbums(params?: {
@@ -1032,17 +1036,17 @@ class ApiClient {
         });
     }
 
-    async testSoulseek(username: string, password: string) {
+    /** Tests the backend being configured: slskd by its URL and key, or the Soulseek network by account. */
+    async testSoulseek(settings: {
+        mode: "p2p" | "slskd";
+        username?: string;
+        password?: string;
+        slskdUrl?: string;
+        slskdApiKey?: string;
+    }) {
         return this.request<ServiceTestResult>("/system-settings/test-soulseek", {
             method: "POST",
-            body: JSON.stringify({ username, password }),
-        });
-    }
-
-    async testSpotify(clientId: string, clientSecret: string) {
-        return this.request<ServiceTestResult>("/system-settings/test-spotify", {
-            method: "POST",
-            body: JSON.stringify({ clientId, clientSecret }),
+            body: JSON.stringify(settings),
         });
     }
 
@@ -1289,13 +1293,10 @@ class ApiClient {
     }
 
     async previewPodcast(itunesId: string) {
-        // Bound the preview so a slow or dead feed can't spin the UI forever. On
-        // timeout the request aborts and the hook renders its error surface
-        // instead of an endless spinner (#168).
+        // Bound the preview so a slow or dead feed ends in an error, not an endless spinner. 25 s sits
+        // above the backend's worst case (~18 s on the Deezer path: Deezer fetch, iTunes resolve, the
+        // 8 s RSS bound), so an answerable feed is not aborted as a false timeout.
         const controller = new AbortController();
-        // Headroom over the backend's worst-case preview time (~18s on the Deezer
-        // path: Deezer fetch + iTunes resolve + the 8s RSS bound) so a slow but
-        // answerable feed isn't aborted and shown as a false timeout (#168).
         const timer = setTimeout(() => controller.abort(), 25000);
         try {
             return await this.request<ApiData>(`/podcasts/preview/${itunesId}`, { signal: controller.signal });
@@ -1612,7 +1613,7 @@ class ApiClient {
     }
 
     // Pass the ids that were actually played, so the saved mix is the one the
-    // user heard: without them the server draws a fresh selection, which now
+    // user heard: without them the server draws a fresh selection, which
     // skips the tracks just served and never matches.
     async saveMoodBucketMix(mood: MoodType, trackIds?: string[]) {
         return this.request<{
@@ -1680,6 +1681,13 @@ class ApiClient {
                 progress: number;
                 isBackground: boolean;
             };
+            similarity: {
+                total: number;
+                completed: number;
+                pending: number;
+                progress: number;
+                isBackground: boolean;
+            };
             coreComplete: boolean;
             isFullyComplete: boolean;
         }>("/enrichment/progress");
@@ -1691,6 +1699,12 @@ class ApiClient {
             description: string;
             queued: number;
         }>("/enrichment/retry-failed-and-blocked", { method: "POST" });
+    }
+
+    async wipeAndRerunEnrichment() {
+        return this.request<{ artists: number; tracks: number; vectors: number }>("/enrichment/wipe-and-rerun", {
+            method: "POST",
+        });
     }
 
     async redecideEverything() {
@@ -1802,11 +1816,11 @@ class ApiClient {
         });
     }
 
-    async resetVibeEmbeddings() {
-        return this.post<{ message: string; queued: number }>(
-            "/analysis/vibe/start",
-            { force: true }
-        );
+    async setGpuAnalysisEnabled(analysis: boolean) {
+        return this.request<GpuRuntimeStatus>("/system-settings/gpu", {
+            method: "POST",
+            body: JSON.stringify({ analysis }),
+        });
     }
 
     async updateArtistMetadata(
@@ -1980,10 +1994,7 @@ class ApiClient {
                 id: string;
                 title: string;
                 duration: number;
-                // No trackNo here: /vibe/similar has never sent one. It was declared
-                // required, so callers could read undefined with TypeScript's blessing.
-                // Nothing consumes it, so the declaration goes rather than the endpoint
-                // inventing a value. (vibeSearch below genuinely does send it.)
+                // /vibe/similar sends no trackNo.
                 distance: number;
                 album: {
                     id: string;
@@ -2025,28 +2036,26 @@ class ApiClient {
     }
 
     async getVibeMap() {
-        // 202 { computing: true } while the server lays the library out; the caller polls.
+        // 202 { computing: true } until the similarity step has laid the library out; the caller polls.
         return this.request<{ computing: true } | {
             tracks: Array<{
                 id: string;
                 x: number;
                 y: number;
-                z?: number;
+                z: number;
+                /** Place on the Kima logo's gradient, 0 azure to 1 amber. */
+                colour: number;
                 title: string;
                 artist: string;
                 artistId: string;
                 albumId: string;
                 coverUrl: string | null;
                 dominantMood: string;
-                moodScore: number;
                 moods: Record<string, number>;
                 energy: number | null;
                 valence: number | null;
             }>;
             trackCount: number;
-            /** True when the library is larger than the map serves. */
-            sampled?: boolean;
-            computedAt: string;
         }>("/vibe/map");
     }
 
@@ -2175,8 +2184,8 @@ class ApiClient {
         }>("/library/corrupt-tracks");
     }
 
-    async deleteCorruptTracks() {
-        return this.request<{ deleted: number; message: string }>(
+    async clearCorruptTracks() {
+        return this.request<{ cleared: number; message: string }>(
             "/library/corrupt-tracks",
             { method: "DELETE" }
         );

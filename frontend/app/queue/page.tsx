@@ -97,7 +97,6 @@ export default function QueuePage() {
 
             <div className="page-shell pb-24">
                 <div className="max-w-4xl space-y-6">
-                    {/* Empty State */}
                     {queue.length === 0 && (
                         <EmptyState
                             icon={<ListMusic />}
@@ -110,7 +109,6 @@ export default function QueuePage() {
                         />
                     )}
 
-                    {/* Now Playing */}
                     {currentTrack && (
                         <section className="rounded-lg border border-white/10 bg-white/[0.02] p-4 md:p-6">
                             <h2 className="text-xl font-semibold text-white mb-4">
@@ -165,7 +163,6 @@ export default function QueuePage() {
                         </section>
                     )}
 
-                    {/* Next Up */}
                     {nextTracks.length > 0 && (
                         <section className="rounded-lg border border-white/10 bg-white/[0.02] p-4 md:p-6">
                             <h2 className="text-xl font-semibold text-white mb-4">
@@ -180,7 +177,6 @@ export default function QueuePage() {
                                                 key={`${track.id}-${queueIndex}`}
                                                 className="flex items-center gap-4 p-4 hover:bg-[var(--bg-hover)] transition-colors group"
                                             >
-                                                {/* Album Art */}
                                                 <div className="relative flex-shrink-0 w-12 h-12">
                                                     {track.album?.coverArt ? (
                                                         <CachedImage
@@ -201,7 +197,6 @@ export default function QueuePage() {
                                                     )}
                                                 </div>
 
-                                                {/* Track Info */}
                                                 <div className="flex-1 min-w-0">
                                                     <h3 className="text-sm font-medium text-white truncate">
                                                         {track.displayTitle ??
@@ -212,7 +207,6 @@ export default function QueuePage() {
                                                     </p>
                                                 </div>
 
-                                                {/* Duration */}
                                                 <div className="text-sm text-[var(--text-muted)]">
                                                     {track.duration
                                                         ? `${Math.floor(
@@ -223,8 +217,7 @@ export default function QueuePage() {
                                                         : ""}
                                                 </div>
 
-                                                {/* Actions */}
-                                                <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 touch-reveal transition-opacity">
                                                     <button
                                                         onClick={() =>
                                                             handleMoveUp(queueIndex)
@@ -296,7 +289,6 @@ export default function QueuePage() {
                                             key={`${track.id}-${idx}`}
                                             className="flex items-center gap-4 p-4 hover:bg-[var(--bg-hover)] transition-colors group opacity-50"
                                         >
-                                            {/* Album Art */}
                                             <div className="relative flex-shrink-0 w-12 h-12">
                                                 {track.album?.coverArt ? (
                                                     <CachedImage
@@ -316,7 +308,6 @@ export default function QueuePage() {
                                                 )}
                                             </div>
 
-                                            {/* Track Info */}
                                             <div className="flex-1 min-w-0">
                                                 <h3 className="text-sm font-medium text-white truncate">
                                                     {track.title}
@@ -326,7 +317,6 @@ export default function QueuePage() {
                                                 </p>
                                             </div>
 
-                                            {/* Duration */}
                                             <div className="text-sm text-[var(--text-muted)]">
                                                 {track.duration
                                                     ? `${Math.floor(

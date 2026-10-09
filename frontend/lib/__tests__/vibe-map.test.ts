@@ -2,10 +2,9 @@ import { describe, it, expect } from "vitest";
 import * as THREE from "three";
 import { buildLibraryIndex, searchLibrary } from "@/features/vibe/librarySearch";
 import { computeMoodAnchors } from "@/features/vibe/map/moodAnchors";
-import { buildTrackField, toWorld, FIELD_RADIUS } from "@/features/vibe/map/trackField";
+import { buildTrackField, FIELD_RADIUS } from "@/features/vibe/map/trackField";
 import { ScreenPicker } from "@/features/vibe/map/screenPick";
-import { buildDust } from "@/features/vibe/map/nebula";
-import { blendMoodColor, isMood, MOOD_COLORS, MOOD_KEYS, moodLabel } from "@/features/vibe/mapUtils";
+import { isMood, MOOD_KEYS, moodLabel } from "@/features/vibe/mapUtils";
 import type { MapTrack } from "@/features/vibe/types";
 
 /**
@@ -21,13 +20,13 @@ function track(id: string, over: Partial<MapTrack> = {}): MapTrack {
         x: 0.5,
         y: 0.5,
         z: 0.5,
+        colour: 0.5,
         title: `Title ${id}`,
         artist: "Artist",
         artistId: "a",
         albumId: "b",
         coverUrl: null,
         dominantMood: "moodRelaxed",
-        moodScore: 0.8,
         moods: { moodRelaxed: 0.8 },
         energy: 0.5,
         valence: 0.5,
@@ -103,12 +102,6 @@ describe("buildTrackField", () => {
         expect(Array.from(f.positions)).toEqual([-FIELD_RADIUS, -FIELD_RADIUS, FIELD_RADIUS, FIELD_RADIUS, FIELD_RADIUS, -FIELD_RADIUS]);
     });
 
-    it("lays maps from before the 3-D layout on the middle plane", () => {
-        const old = { ...track("old", { x: 0.2, y: 0.7 }) };
-        delete old.z;
-        expect(toWorld(old)[1]).toBe(0);
-    });
-
     it("finishes the load-in within two seconds, whatever the library size", () => {
         const tracks = Array.from({ length: 5000 }, (_, i) => track(`t${i}`, { x: (i % 71) / 70, y: (i % 53) / 52, z: (i % 37) / 36 }));
         const f = buildTrackField(tracks);
@@ -147,16 +140,6 @@ describe("ScreenPicker", () => {
     });
 });
 
-describe("blendMoodColor", () => {
-    it("falls back to neutral for a track with no mood scores", () => {
-        expect(blendMoodColor({ moods: {} })).toEqual(MOOD_COLORS.neutral);
-    });
-    it("is led by the strongest mood", () => {
-        const [r, , b] = blendMoodColor({ moods: { moodSad: 0.9, moodHappy: 0.2 } });
-        expect(b).toBeGreaterThan(r);
-    });
-});
-
 describe("mood names", () => {
     it("shows the five moods by their plain names", () => {
         expect(MOOD_KEYS.map(moodLabel)).toEqual(["Upbeat", "Melancholic", "Calm", "Intense", "Energetic"]);
@@ -164,7 +147,6 @@ describe("mood names", () => {
     it("does not treat acoustic or electronic as moods", () => {
         expect(isMood("moodAcoustic")).toBe(false);
         expect(isMood("moodElectronic")).toBe(false);
-        expect(blendMoodColor({ moods: { moodAcoustic: 1 } })).toEqual(MOOD_COLORS.neutral);
     });
     it("says plainly when a track has no single mood or is not analysed yet", () => {
         expect(moodLabel("neutral")).toBe("No single mood");
@@ -174,17 +156,3 @@ describe("mood names", () => {
     });
 });
 
-describe("buildDust", () => {
-    it("spreads dust over the whole library, not just the first 40k tracks", () => {
-        const n = 90_000;
-        const tracks = Array.from({ length: n }, (_, i) => track(`d${i}`, { x: i / n, y: 0.5, z: 0.5 }));
-        const field = buildTrackField(tracks);
-        const dust = buildDust(tracks, field);
-        const pos = dust.getAttribute("position").array as Float32Array;
-        let maxX = -Infinity;
-        for (let k = 0; k < pos.length; k += 3) maxX = Math.max(maxX, pos[k]);
-        // The last tracks sit at the far +x edge; their dust must reach it.
-        expect(maxX).toBeGreaterThan(FIELD_RADIUS * 0.9);
-        expect(pos.length / 3).toBeLessThanOrEqual(40_000);
-    });
-});

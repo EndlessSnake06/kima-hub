@@ -23,6 +23,7 @@ import {
     AlertTriangle,
     RefreshCw,
 } from "lucide-react";
+import { shuffleState } from "@/lib/shuffle";
 import { cn } from "@/lib/cn";
 import { useState, useRef } from "react";
 import { KeyboardShortcutsTooltip } from "./KeyboardShortcutsTooltip";
@@ -40,6 +41,7 @@ export function MiniPlayer() {
         playbackType,
         isShuffle,
         repeatMode,
+        activeOperation,
     } = useAudioState();
     const {
         isPlaying,
@@ -89,6 +91,7 @@ export function MiniPlayer() {
 
     // Check if controls should be enabled (only for tracks)
     const canSkip = playbackType === "track";
+    const shuffle = shuffleState(hasMedia, playbackType, activeOperation.type);
 
 
     if (isMobileOrTablet) {
@@ -145,10 +148,10 @@ export function MiniPlayer() {
                     onClick={() => setIsMinimized(false)}
                     className="fixed right-0 z-(--z-player) transition-transform hover:scale-105 active:scale-95"
                     style={{
-                        bottom: "calc(56px + var(--standalone-safe-area-bottom, 0px) + 8px)",
+                        bottom: "calc(var(--nav-h) + var(--standalone-safe-area-bottom, 0px) + 8px)",
                     }}
                     aria-label="Show player"
-                    title="Show player"
+                    title="show player"
                 >
                     <div
                         className="rounded-l-2xl p-[2px]"
@@ -160,7 +163,6 @@ export function MiniPlayer() {
                             <div className="relative bg-gradient-to-r from-[#1a1508] via-[#1a1200] to-[#1a1508]">
                                 <div className="absolute inset-0 bg-gradient-to-r from-brand/30 to-brand-dark/20" />
 
-                                {/* Progress bar at top */}
                                 <div className="relative h-[2px] bg-white/20 w-full">
                                     <div
                                         className="h-full bg-brand transition-all duration-150"
@@ -168,7 +170,6 @@ export function MiniPlayer() {
                                     />
                                 </div>
 
-                                {/* Content */}
                                 <div className="relative flex items-center gap-2 pl-3 pr-2 py-3">
                                     <ChevronLeft className="w-4 h-4 text-white flex-shrink-0" />
                                     {coverUrl ? (
@@ -201,7 +202,7 @@ export function MiniPlayer() {
             <div
                 className="fixed left-2 right-2 z-(--z-player)"
                 style={{
-                    bottom: "calc(56px + var(--standalone-safe-area-bottom, 0px) + 8px)",
+                    bottom: "calc(var(--nav-h) + var(--standalone-safe-area-bottom, 0px) + 8px)",
                     transform: `translateX(${swipeOffset}px)`,
                     opacity: swipeOpacity,
                     transition:
@@ -237,12 +238,12 @@ export function MiniPlayer() {
 
                             {/* Player content - more spacious padding */}
                             <div
-                                className="relative flex items-center gap-3 px-3 py-3 cursor-pointer"
+                                className="relative flex items-center gap-3 px-3 py-3 cursor-pointer landscape-short:py-1"
                                 onClick={() => setPlayerMode("overlay")}
                             >
                                 {/* Album Art - expand button for keyboard/AT users */}
                                 <button
-                                    className="relative w-12 h-12 flex-shrink-0 rounded-lg overflow-hidden bg-black/30"
+                                    className="relative w-12 h-12 flex-shrink-0 rounded-lg overflow-hidden bg-black/30 landscape-short:w-10 landscape-short:h-10"
                                     aria-label="Expand player"
                                     onClick={(e) => {
                                         e.stopPropagation();
@@ -264,7 +265,6 @@ export function MiniPlayer() {
                                     )}
                                 </button>
 
-                                {/* Track Info */}
                                 <div className="flex-1 min-w-0">
                                     {audioError ? (
                                         <>
@@ -283,13 +283,15 @@ export function MiniPlayer() {
                                             <p className="text-white text-sm font-medium truncate leading-tight">
                                                 {title}
                                             </p>
-                                            <p className="text-gray-300/70 text-xs truncate leading-tight mt-0.5">
-                                                {subtitle}
-                                            </p>
-                                            <PlayCountLine
-                                                trackId={countedTrackId}
-                                                className="block text-xs leading-tight mt-0.5"
-                                            />
+                                            <div className="landscape-short:flex landscape-short:min-w-0 landscape-short:items-baseline landscape-short:gap-2">
+                                                <p className="text-gray-300/70 text-xs truncate leading-tight mt-0.5">
+                                                    {subtitle}
+                                                </p>
+                                                <PlayCountLine
+                                                    trackId={countedTrackId}
+                                                    className="block text-xs leading-tight mt-0.5 shrink-0"
+                                                />
+                                            </div>
                                         </>
                                     )}
                                 </div>
@@ -310,7 +312,6 @@ export function MiniPlayer() {
                                         activeClassName="text-brand"
                                     />
 
-                                    {/* Play/Pause or Retry */}
                                     <button
                                         onClick={() => {
                                             if (isPlaying) {
@@ -338,12 +339,12 @@ export function MiniPlayer() {
                                         }
                                         title={
                                             audioError
-                                                ? "Retry playback"
+                                                ? "retry playback"
                                                 : isBuffering
-                                                ? "Buffering..."
+                                                ? "buffering..."
                                                 : isPlaying
-                                                ? "Pause"
-                                                : "Play"
+                                                ? "pause"
+                                                : "play"
                                         }
                                     >
                                         {audioError ? (
@@ -368,10 +369,8 @@ export function MiniPlayer() {
     return (
         <div className="relative">
             <div className="bg-gradient-to-t from-[#080808] via-[#0c0c0c] to-[#0a0a0a] border-t border-white/[0.08] relative">
-                {/* Brand accent line */}
                 <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-brand/40 to-transparent" />
 
-                {/* Progress Bar */}
                 <SeekSlider
                     progress={progress}
                     duration={duration}
@@ -384,11 +383,8 @@ export function MiniPlayer() {
                 />
 
 
-                {/* Player Content */}
                 <div className="px-3 py-2.5 pt-3">
-                    {/* Artwork & Track Info */}
                     <div className="flex items-center gap-2 mb-2">
-                        {/* Artwork */}
                         {mediaLink ? (
                             <Link
                                 href={mediaLink}
@@ -418,7 +414,6 @@ export function MiniPlayer() {
                             </div>
                         )}
 
-                        {/* Track Info */}
                         <div className="flex-1 min-w-0">
                             {mediaLink ? (
                                 <Link
@@ -439,13 +434,12 @@ export function MiniPlayer() {
                             </p>
                         </div>
 
-                        {/* Mode Switch Buttons */}
                         <div className="flex items-center gap-1 flex-shrink-0">
                             <button
                                 onClick={() => setPlayerMode("full")}
                                 className="text-[var(--text-secondary)] hover:text-white transition p-2"
                                 aria-label="Show bottom player"
-                                title="Show bottom player"
+                                title="show bottom player"
                             >
                                 <MonitorUp className="w-3.5 h-3.5" />
                             </button>
@@ -459,25 +453,22 @@ export function MiniPlayer() {
                                 )}
                                 disabled={!hasMedia}
                                 aria-label="Expand player"
-                                title="Expand to full screen"
+                                title="expand to full screen"
                             >
                                 <Maximize2 className="w-3.5 h-3.5" />
                             </button>
                         </div>
                     </div>
 
-                    {/* Playback Controls */}
                     <div className="flex items-center justify-between gap-1">
-                        {/* Sleep Timer */}
                         <SleepTimer size="sm" />
 
-                        {/* Shuffle */}
                         <button
                             onClick={toggleShuffle}
-                            disabled={!hasMedia || !canSkip}
+                            disabled={!shuffle.enabled}
                             className={cn(
                                 "rounded p-1.5 transition-colors",
-                                hasMedia && canSkip
+                                shuffle.enabled
                                     ? isShuffle
                                         ? "text-brand hover:text-brand-light"
                                         : "text-[var(--text-secondary)] hover:text-white"
@@ -485,12 +476,11 @@ export function MiniPlayer() {
                             )}
                             aria-label="Shuffle"
                             aria-pressed={isShuffle}
-                            title={canSkip ? "Shuffle" : "Shuffle (music only)"}
+                            title={shuffle.title}
                         >
                             <Shuffle className="w-3.5 h-3.5" />
                         </button>
 
-                        {/* Skip Backward 30s */}
                         <button
                             onClick={() => skipBackward(30)}
                             disabled={!hasMedia}
@@ -501,7 +491,7 @@ export function MiniPlayer() {
                                     : "text-[var(--text-muted)] cursor-not-allowed"
                             )}
                             aria-label="Skip backward 30 seconds"
-                            title="Rewind 30 seconds"
+                            title="rewind 30 seconds"
                         >
                             <RotateCcw className="w-3.5 h-3.5" />
                             <span className="absolute text-micro font-semibold top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
@@ -509,7 +499,6 @@ export function MiniPlayer() {
                             </span>
                         </button>
 
-                        {/* Previous */}
                         <button
                             onClick={previous}
                             disabled={!hasMedia || !canSkip}
@@ -521,13 +510,12 @@ export function MiniPlayer() {
                             )}
                             aria-label="Previous track"
                             title={
-                                canSkip ? "Previous" : "Previous (music only)"
+                                canSkip ? "previous" : "previous (music only)"
                             }
                         >
                             <SkipBack className="w-4 h-4" />
                         </button>
 
-                        {/* Play/Pause */}
                         <button
                             onClick={isPlaying ? pause : resumeWithGesture}
                             disabled={!hasMedia}
@@ -542,10 +530,10 @@ export function MiniPlayer() {
                             aria-label={isPlaying ? "Pause" : "Play"}
                             title={
                                 isBuffering
-                                    ? "Buffering..."
+                                    ? "buffering..."
                                     : isPlaying
-                                    ? "Pause"
-                                    : "Play"
+                                    ? "pause"
+                                    : "play"
                             }
                         >
                             {isBuffering ? (
@@ -557,7 +545,6 @@ export function MiniPlayer() {
                             )}
                         </button>
 
-                        {/* Next */}
                         <button
                             onClick={next}
                             disabled={!hasMedia || !canSkip}
@@ -568,12 +555,11 @@ export function MiniPlayer() {
                                     : "text-[var(--text-muted)] cursor-not-allowed"
                             )}
                             aria-label="Next track"
-                            title={canSkip ? "Next" : "Next (music only)"}
+                            title={canSkip ? "next" : "next (music only)"}
                         >
                             <SkipForward className="w-4 h-4" />
                         </button>
 
-                        {/* Skip Forward 30s */}
                         <button
                             onClick={() => skipForward(30)}
                             disabled={!hasMedia}
@@ -584,7 +570,7 @@ export function MiniPlayer() {
                                     : "text-[var(--text-muted)] cursor-not-allowed"
                             )}
                             aria-label="Skip forward 30 seconds"
-                            title="Forward 30 seconds"
+                            title="forward 30 seconds"
                         >
                             <RotateCw className="w-3.5 h-3.5" />
                             <span className="absolute text-micro font-semibold top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
@@ -592,7 +578,6 @@ export function MiniPlayer() {
                             </span>
                         </button>
 
-                        {/* Repeat */}
                         <button
                             onClick={toggleRepeat}
                             disabled={!hasMedia || !canSkip}
@@ -609,11 +594,11 @@ export function MiniPlayer() {
                             title={
                                 canSkip
                                     ? repeatMode === "off"
-                                        ? "Repeat: Off"
+                                        ? "repeat: off"
                                         : repeatMode === "all"
-                                        ? "Repeat: All"
-                                        : "Repeat: One"
-                                    : "Repeat (music only)"
+                                        ? "repeat: all"
+                                        : "repeat: one"
+                                    : "repeat (music only)"
                             }
                         >
                             {repeatMode === "one" ? (
@@ -631,7 +616,6 @@ export function MiniPlayer() {
                             activeClassName="text-brand hover:text-brand-hover"
                         />
 
-                        {/* Keyboard Shortcuts */}
                         <KeyboardShortcutsTooltip />
                     </div>
                 </div>

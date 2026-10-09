@@ -2,8 +2,8 @@
  * The newer features as one watched session: the notification tray, ListenBrainz,
  * the public library export and live feed, the GPU runtime and the release
  * window. Needs KIMA_PUBLIC_VIBE_TOKEN (the server's public vibe token, with the
- * test user as KIMA_PUBLIC_VIBE_USER) and an analyzer restarted since the GPU
- * runtime was last installed, which the gate loop does before every run.
+ * test user as KIMA_PUBLIC_VIBE_USER), both GPU switches on, and the analyzers restarted
+ * since the GPU runtime was last installed, which the gate loop does before every run.
  */
 
 import { test, expect, Browser, Page, BrowserContext, APIRequestContext, request } from "@playwright/test";
@@ -246,7 +246,7 @@ test.describe("Dogfood: tray, scrobbling, public feed, GPU, release window", () 
             await page.waitForURL(/\/album\//, { timeout: 15_000 });
             await settle(page, 1000);
             await page.getByLabel("Play all").click();
-            await page.getByTitle("Pause", { exact: true }).first().waitFor({ timeout: 15_000 });
+            await page.getByTitle("pause", { exact: true }).first().waitFor({ timeout: 15_000 });
             trackId = await playingTrackId();
             expect(trackId, "the player has no track source").toBeTruthy();
             await expect.poll(async () => (await live()).status, { timeout: 15_000 }).toBe("playing");
@@ -255,7 +255,7 @@ test.describe("Dogfood: tray, scrobbling, public feed, GPU, release window", () 
         });
 
         await session.step("pausing shows as paused, not stopped", async () => {
-            await page.getByTitle("Pause", { exact: true }).first().click();
+            await page.getByTitle("pause", { exact: true }).first().click();
             await expect.poll(async () => (await live()).status, { timeout: 15_000 }).toBe("paused");
             const state = await live();
             expect(state.trackId).toBe(trackId);
@@ -276,50 +276,65 @@ test.describe("Dogfood: tray, scrobbling, public feed, GPU, release window", () 
             await settingsSwitch("share-live").click();
             await saveSettings();
             expect((await live()).status).not.toBe("hidden");
-            await page.getByTitle("Play", { exact: true }).first().click();
+            await page.getByTitle("play", { exact: true }).first().click();
             await expect.poll(async () => (await live()).status, { timeout: 15_000 }).toBe("playing");
-            await page.getByTitle("Pause", { exact: true }).first().click();
+            await page.getByTitle("pause", { exact: true }).first().click();
             await expect.poll(async () => (await live()).status, { timeout: 15_000 }).toBe("paused");
         });
 
         session.assertClean("Journey 4 (public feed)");
     });
 
-    test("5. GPU: off removes the runtime, on reinstalls it for the next restart", async () => {
+    test("5. GPU: the runtime stays while either switch is on, goes when both are off, returns for the next restart", async () => {
         test.setTimeout(GPU_INSTALL_MS + 5 * 60_000);
         session.setJourney("5. GPU runtime");
 
-        type Gpu = { enabled: boolean; installed: boolean; installing: boolean; effective: boolean; status: string; reason: string | null };
+        type Gpu = {
+            enabled: boolean; analysis: boolean; installed: boolean; installing: boolean;
+            effective: boolean; analysisEffective: boolean; status: string; reason: string | null;
+        };
         const gpu = () => getJson<Gpu>("/system-settings/gpu");
-        const status = () => page.getByText(/^(Active|Installed|Off|Runtime installed|Downloading|Enabled|Failed)/);
+        const vectorsStatus = () => page.getByTestId("gpu-onnx-toggle-status");
+        const analysisStatus = () => page.getByTestId("gpu-analysis-toggle-status");
 
-        await session.step("after the restart, embeddings run on the GPU", async () => {
+        await session.step("after the restart, vibe embeddings and audio analysis both run on the GPU", async () => {
             await navigateByClick(page, "/settings");
             await settle(page, 1500);
             await page.locator("#gpu-onnx-toggle").scrollIntoViewIfNeeded();
             const state = await gpu();
-            expect(state, "the GPU runtime should be on and active after the analyzer restart").toMatchObject({
-                enabled: true, installed: true, effective: true,
+            expect(state, "both GPU switches should be on and active after the analyzer restart").toMatchObject({
+                enabled: true, analysis: true, installed: true, effective: true, analysisEffective: true,
             });
-            await expect(status()).toHaveText("Active — embeddings are running on the GPU.");
+            await expect(vectorsStatus()).toHaveText("Active");
+            await expect(analysisStatus()).toHaveText("Active");
             await expect(page.locator("#gpu-onnx-toggle")).toBeChecked();
+            await expect(page.locator("#gpu-analysis-toggle")).toBeChecked();
         });
 
-        await session.step("switching it off removes the runtime", async () => {
+        await session.step("switching vibe embeddings off keeps the runtime for audio analysis", async () => {
             await settingsSwitch("gpu-onnx-toggle").click();
-            await expect(status()).toHaveText("Off — embeddings use the CPU.", { timeout: 2 * 60_000 });
-            await expect.poll(async () => (await gpu()).installed, { timeout: 2 * 60_000 }).toBe(false);
-            expect((await gpu()).effective).toBe(false);
+            await expect(vectorsStatus()).toHaveText("Runtime installed; GPU is off.", { timeout: 2 * 60_000 });
+            const state = await gpu();
+            expect(state).toMatchObject({ enabled: false, analysis: true, installed: true });
         });
 
-        await session.step("switching it on downloads it again, ready for the next restart", async () => {
+        await session.step("switching audio analysis off too removes the runtime", async () => {
+            await settingsSwitch("gpu-analysis-toggle").click();
+            await expect.poll(async () => (await gpu()).installed, { timeout: 2 * 60_000 }).toBe(false);
+            await expect(vectorsStatus()).toHaveText("Off (CPU)");
+            await expect(analysisStatus()).toHaveText("Off (CPU)");
+            expect(await gpu()).toMatchObject({ effective: false, analysisEffective: false });
+        });
+
+        await session.step("switching both on downloads it again, ready for the next restart", async () => {
             const started = Date.now();
             await settingsSwitch("gpu-onnx-toggle").click();
-            await expect(status()).toHaveText("Installed — will be used after the analyzer restarts.", {
-                timeout: GPU_INSTALL_MS,
+            await settingsSwitch("gpu-analysis-toggle").click();
+            await expect(vectorsStatus()).toHaveText("Installed, applies after analyzer restart", { timeout: GPU_INSTALL_MS });
+            await expect(analysisStatus()).toHaveText("Installed, applies after analyzer restart");
+            expect(await gpu()).toMatchObject({
+                enabled: true, analysis: true, installed: true, effective: false, analysisEffective: false, status: "installed",
             });
-            const state = await gpu();
-            expect(state).toMatchObject({ enabled: true, installed: true, effective: false, status: "installed" });
             return { installSeconds: Math.round((Date.now() - started) / 1000) };
         });
 
@@ -379,17 +394,27 @@ test.describe("Dogfood: tray, scrobbling, public feed, GPU, release window", () 
                 return { mood: mood!.id };
             });
 
-            await session.step("1.10.1 comes first and points at the play repair", async () => {
+            await session.step("the window opens on Kevin's note and one list of what's new", async () => {
                 await expect(dialog).toBeVisible({ timeout: 15_000 });
-                await expect(heading).toHaveText("What counts as a play");
-                await expect(dialog.getByRole("link", { name: "Take me to it" })).toHaveAttribute("href", "/stats#false-starts");
-                const dismissed = fp.waitForResponse((r) => r.url().includes("/whats-new/1.10.1/dismiss"));
-                await fp.getByTestId("whatsnew-done").click();
-                expect((await dismissed).status()).toBe(200);
+                await expect(heading).toHaveText("Kima 1.11");
+                await expect(dialog.getByRole("heading", { name: "A note from Kevin" })).toBeVisible();
+                for (const title of ["A play means you listened", "Clean up old play counts", "The new vibe engine", "The new vibe map"]) {
+                    await expect(dialog.locator("[data-item]").filter({ hasText: title }).first()).toBeVisible();
+                }
             });
 
-            await session.step("1.11.0: the mood mix is saved as a playlist, then rebuilt", async () => {
-                await expect(heading).toHaveText("A page that knows your habits", { timeout: 10_000 });
+            await session.step("each line opens its own page, with its links, and comes back", async () => {
+                await dialog.locator('[data-item="plays.repair"]').click();
+                await expect(dialog.getByRole("link", { name: /Open the cleanup/ })).toHaveAttribute("href", "/stats#false-starts");
+                await dialog.locator("[data-back]").click();
+                await expect(dialog.locator('[data-item="plays.repair"]')).toBeFocused();
+                await dialog.locator('[data-item="engine.wipe"]').click();
+                await expect(fp.getByTestId("wipe-run")).toBeVisible();
+                await dialog.locator("[data-back]").click();
+            });
+
+            await session.step("the mood mix is saved as a playlist, then rebuilt", async () => {
+                await dialog.locator('[data-item="moods.mixes"]').click();
                 await expect(fp.getByTestId("moodmix-name")).toBeVisible({ timeout: 10_000 });
                 const savedResponse = fp.waitForResponse((r) => r.url().includes("/whats-new/mood-mixes/save"));
                 await fp.getByTestId("moodmix-save").click();
@@ -402,23 +427,22 @@ test.describe("Dogfood: tray, scrobbling, public feed, GPU, release window", () 
                 // With the mix cleared, the status no longer links to the playlist; check it directly.
                 const playlist = await freshGet<{ id: string; items: unknown[] }>(`/playlists/${saved.id}`);
                 expect(playlist.items, "the saved playlist should keep its tracks").toHaveLength(saved.trackCount);
+                await dialog.locator("[data-back]").click();
             });
 
-            await session.step("1.11.0: the GPU answer is kept through closing", async () => {
+            await session.step("the GPU answer is kept through closing, and both releases close", async () => {
+                await dialog.locator('[data-item="gpu.accelerate"]').click();
                 const answered = fp.waitForResponse((r) => r.url().includes("/whats-new/1.11.0/choice"));
                 await dialog.getByRole("button", { name: "Turn it on" }).click();
                 expect((await answered).status()).toBe(200);
                 await expect(dialog.getByRole("button", { name: "Turn it on" })).toHaveAttribute("aria-pressed", "true");
+                const older = fp.waitForResponse((r) => r.url().includes("/whats-new/1.10.1/dismiss"));
                 const dismissed = fp.waitForResponse((r) => r.url().includes("/whats-new/1.11.0/dismiss"));
                 await fp.getByTestId("whatsnew-done").click();
+                expect((await older).status()).toBe(200);
                 const body = (await (await dismissed).json()) as { recordedDefaults: unknown[] };
                 expect(JSON.stringify(body.recordedDefaults), "an explicit answer must not be overwritten").not.toContain("gpu.accelerate");
                 expect((await getJson<{ enabled: boolean }>("/system-settings/gpu")).enabled).toBe(true);
-            });
-
-            await session.step("1.12.0 closes, and nothing is pending after a reload", async () => {
-                await expect(heading).toHaveText("The engine rebuild", { timeout: 10_000 });
-                await fp.getByTestId("whatsnew-done").click();
                 await expect(dialog).toBeHidden({ timeout: 10_000 });
                 const pending = await freshGet<{ releases: unknown[] }>("/whats-new/pending");
                 expect(pending.releases).toHaveLength(0);

@@ -59,7 +59,7 @@ export function ScrobblingSection({
             {liveSharing && (
                 <SettingsRow
                     label="Share what I'm playing"
-                    description="Show your listening live on the public vibe map. Off hides it at once."
+                    description="Show what you're playing on the shared vibe map."
                     htmlFor="share-live"
                 >
                     <SettingsToggle id="share-live" checked={liveSharing.checked} onChange={liveSharing.onChange} />

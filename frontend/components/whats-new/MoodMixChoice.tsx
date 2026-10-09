@@ -7,12 +7,15 @@
  */
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Check, Loader2 } from "lucide-react";
 import { api, type MoodMixDecision, type MoodMixReleaseState } from "@/lib/api";
+import { opensHere } from "./WhatsNewWindow";
 
 type Busy = "save" | MoodMixDecision | null;
 
-export function MoodMixChoice() {
+/** `onNavigate` puts the window off for this tab when the user follows the playlist link, as the window's own links do. */
+export function MoodMixChoice({ onNavigate }: { onNavigate?: () => void }) {
     const [state, setState] = useState<MoodMixReleaseState | null>(null);
     const [loadFailed, setLoadFailed] = useState(false);
     const [busy, setBusy] = useState<Busy>(null);
@@ -31,7 +34,7 @@ export function MoodMixChoice() {
     if (loadFailed) {
         return (
             <p className="text-sm text-danger-light">
-                Couldn&rsquo;t load your mood mix. Closing this keeps it as it is.
+                Couldn&rsquo;t load your mood mix.
             </p>
         );
     }
@@ -49,7 +52,7 @@ export function MoodMixChoice() {
             const saved = await api.saveMoodMixAsPlaylist(mix.id);
             setState((s) => s && { ...s, playlist: { id: saved.id, name: saved.name } });
         } catch {
-            setError("Couldn't save it as a playlist. Your mix is untouched.");
+            setError("Couldn't save as a playlist");
         } finally {
             setBusy(null);
         }
@@ -63,7 +66,7 @@ export function MoodMixChoice() {
             if (next === "remove") setRemovedRetired(true);
             setState((s) => s && { ...s, decision: next === "keep" ? "keep" : "rebuild", mix: next === "keep" ? s.mix : null });
         } catch {
-            setError(next === "keep" ? "Couldn't save your answer." : "Couldn't clear your mix. It's still there.");
+            setError(next === "keep" ? "Couldn't save your answer." : "Couldn't clear the mix");
         } finally {
             setBusy(null);
         }
@@ -73,9 +76,9 @@ export function MoodMixChoice() {
         <p className="text-sm text-success flex items-center gap-2" data-testid="moodmix-saved">
             <Check className="w-4 h-4" />
             Saved as the playlist&nbsp;
-            <a href={`/playlist/${playlist.id}`} className="underline hover:text-white">
+            <Link href={`/playlist/${playlist.id}`} onClick={(e) => { if (opensHere(e)) onNavigate?.(); }} className="underline hover:text-white">
                 {playlist.name}
-            </a>
+            </Link>
         </p>
     );
 
@@ -87,10 +90,10 @@ export function MoodMixChoice() {
                 <p className="text-sm text-success flex items-center gap-2" data-testid="moodmix-rebuilt">
                     <Check className="w-4 h-4" />
                     {decision !== "rebuild"
-                        ? "You don't have a saved mood mix any more, so there's nothing to do."
+                        ? "No saved mood mix"
                         : removedRetired
                           ? "Removed."
-                          : "Cleared. Pick a mood in the Mood Mixer to make a fresh one."}
+                          : "Cleared"}
                 </p>
             </div>
         );

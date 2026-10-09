@@ -1,6 +1,5 @@
 "use client";
 
-import { useRef } from "react";
 import Link from "next/link";
 import { AudioWaveform, Play, Sparkles, Waypoints, X } from "lucide-react";
 import { CachedImage } from "@/components/ui/CachedImage";
@@ -27,8 +26,6 @@ const ACTION = "flex items-center justify-center gap-1.5 rounded-lg border px-3 
  * reaches the field. Everything shown comes from the map payload itself.
  */
 export function TrackPanel({ track, songPathActive, onClose, onPlay, onVibe, onSimilar, onSongPath }: TrackPanelProps) {
-    const panelRef = useRef<HTMLElement>(null);
-
     const moods = Object.entries(track.moods ?? {})
         .filter(([, v]) => v > 0)
         .sort((a, b) => b[1] - a[1]);
@@ -36,7 +33,6 @@ export function TrackPanel({ track, songPathActive, onClose, onPlay, onVibe, onS
 
     return (
         <aside
-            ref={panelRef}
             id="vibe-track-panel"
             role="region"
             aria-labelledby="vibe-track-panel-title"
@@ -44,7 +40,7 @@ export function TrackPanel({ track, songPathActive, onClose, onPlay, onVibe, onS
         >
             <div className="flex items-start gap-3">
                 <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-white/5">
-                    <CachedImage src={track.coverUrl ? api.getCoverArtUrl(track.coverUrl, 128) : null} alt="" className="h-full w-full object-cover" sizes="64px" />
+                    <CachedImage src={track.coverUrl ? api.getCoverArtUrl(track.coverUrl, 128) : null} alt="" fill className="object-cover" sizes="64px" />
                 </div>
                 <div className="min-w-0 flex-1 pt-0.5">
                     <p id="vibe-track-panel-title" className="truncate text-sm font-semibold text-[var(--text-primary)]">
@@ -93,13 +89,13 @@ export function TrackPanel({ track, songPathActive, onClose, onPlay, onVibe, onS
                 <dl className="mt-4 grid grid-cols-2 gap-2">
                     {track.energy != null && (
                         <div className="rounded-lg bg-white/[0.04] px-3 py-2">
-                            <dt className="text-micro uppercase tracking-[0.12em] text-[var(--text-muted)]">Energy</dt>
+                            <dt className="text-micro tracking-[0.12em] text-[var(--text-muted)]">Energy</dt>
                             <dd className="text-sm font-medium tabular-nums text-[var(--text-primary)]">{Math.round(track.energy * 100)}%</dd>
                         </div>
                     )}
                     {track.valence != null && (
                         <div className="rounded-lg bg-white/[0.04] px-3 py-2">
-                            <dt className="text-micro uppercase tracking-[0.12em] text-[var(--text-muted)]">Positivity</dt>
+                            <dt className="text-micro tracking-[0.12em] text-[var(--text-muted)]">Positivity</dt>
                             <dd className="text-sm font-medium tabular-nums text-[var(--text-primary)]">{Math.round(track.valence * 100)}%</dd>
                         </div>
                     )}

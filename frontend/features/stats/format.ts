@@ -28,7 +28,7 @@ export function uptime(seconds: number): string {
     return `${m}m`;
 }
 
-const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
 
 /** "1st", "2nd", "45th"; 11-13 take "th", so the last two digits decide first. */
 export function ordinal(n: number): string {
@@ -47,21 +47,21 @@ export function hourLabel(hour: number): string {
     return `${hour % 12 === 0 ? 12 : hour % 12}${hour < 12 ? "am" : "pm"}`;
 }
 
-/** "Thursday at 9pm" — how someone would actually say it out loud. */
+/** "thursday 9pm" — a weekday and an hour. */
 export function whenLabel(weekday: number, hour: number): string {
-    return `${WEEKDAYS[weekday]} at ${hourLabel(hour)}`;
+    return `${WEEKDAYS[weekday]} ${hourLabel(hour)}`;
 }
 
 export function monthLabel(iso: string): string {
     const [y, m] = iso.split("-");
-    const names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const names = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
     return `${names[Number(m) - 1]} ${y.slice(2)}`;
 }
 
 export function monthYear(iso: string | null): string {
     if (!iso) return "";
     const d = new Date(iso);
-    return d.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+    return d.toLocaleDateString(undefined, { month: "long", year: "numeric" }).toLowerCase();
 }
 
 export function percent(part: number, whole: number): number {
@@ -69,10 +69,10 @@ export function percent(part: number, whole: number): number {
     return Math.round((part / whole) * 100);
 }
 
-/** "September 2025" — for prose, where "Sep 25" reads as a day of the month. */
+/** "september 2025" — where "sep 25" would read as a day of the month. */
 export function monthLong(iso: string): string {
     const [y, m] = iso.split("-");
-    const names = ["January", "February", "March", "April", "May", "June",
-        "July", "August", "September", "October", "November", "December"];
+    const names = ["january", "february", "march", "april", "may", "june",
+        "july", "august", "september", "october", "november", "december"];
     return `${names[Number(m) - 1]} ${y}`;
 }

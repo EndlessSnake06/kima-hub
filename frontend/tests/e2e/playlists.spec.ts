@@ -50,11 +50,14 @@ test.describe("Playlists", () => {
             headers: { Authorization: `Bearer ${token}` },
         });
 
-        if (response.ok()) {
+        expect(response.status(), "creating the test playlist").toBeLessThan(300);
+        const { id } = (await response.json()) as { id: string };
+        try {
             await page.goto("/playlists");
             await page.waitForLoadState("domcontentloaded");
-            await page.waitForTimeout(1_000);
             await expect(page.getByText(TEST_PLAYLIST_NAME, { exact: false }).first()).toBeVisible({ timeout: 10_000 });
+        } finally {
+            await page.request.delete(`/api/playlists/${id}`, { headers: { Authorization: `Bearer ${token}` } });
         }
     });
 
@@ -161,7 +164,7 @@ test.describe("Playlists", () => {
         await trackRow.waitFor({ timeout: 10_000 });
         await trackRow.hover();
 
-        const removeBtn = page.getByTitle(/Remove from [Pp]laylist/).first();
+        const removeBtn = page.getByTitle(/remove from playlist/i).first();
         await expect(removeBtn).toBeVisible({ timeout: 5_000 });
         await removeBtn.click();
 
@@ -192,7 +195,7 @@ test.describe("Playlists", () => {
         await page.goto(`/playlist/${playlistId}`);
         await page.waitForLoadState("domcontentloaded");
 
-        // Click the delete button (trash icon with title="Delete Playlist")
+        // Click the delete button (trash icon with title="delete playlist")
         const deleteBtn = page.getByTitle("Delete Playlist");
         await expect(deleteBtn).toBeVisible({ timeout: 5_000 });
         await deleteBtn.click();
@@ -259,7 +262,7 @@ test.describe("Playlists", () => {
         await playAllBtn.click();
 
         // Pause button should appear -- playback started (target FullPlayer title to avoid ambiguity)
-        await expect(page.getByTitle("Pause", { exact: true })).toBeVisible({ timeout: 8_000 });
+        await expect(page.getByTitle("pause", { exact: true })).toBeVisible({ timeout: 8_000 });
 
         // Cleanup
         await page.request.delete(`/api/playlists/${playlistId}`, {

@@ -44,8 +44,8 @@ interface Audit {
 }
 
 const clock = (n: number) => {
-    const m = Math.floor(n / 60);
-    return `${m}:${String(Math.round(n % 60)).padStart(2, "0")}`;
+    const t = Math.round(n);
+    return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
 };
 
 export function FalseStarts() {
@@ -78,7 +78,7 @@ export function FalseStarts() {
             setPage(0);
             setArming(false);
         } catch {
-            setError("Couldn't read your play history. Nothing changed.");
+            setError("couldn't load play history");
         } finally {
             clearInterval(tick);
             setBusy(false);
@@ -95,7 +95,7 @@ export function FalseStarts() {
             setNote(said(result ?? {}));
             await load();
         } catch {
-            setError("That didn't finish. Nothing was changed.");
+            setError("failed · nothing changed");
             setBusy(false);
         }
     };
@@ -103,10 +103,8 @@ export function FalseStarts() {
     if (!audit) {
         return (
             <div className="flex flex-col gap-4 items-start">
-                <p className="t-body max-w-[52ch]">
-                    Before the rule changed, a play was logged the moment a track started loading, so
-                    clicking through an album counted every track you skipped past. This finds the
-                    ones it can prove nobody listened to.
+                <p className="t-body max-w-[76ch] text-pretty">
+                    finds plays logged for tracks you skipped, recorded before version 1.10.1
                 </p>
                 <button
                     onClick={load}
@@ -114,11 +112,11 @@ export function FalseStarts() {
                     className="h-11 px-4 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-white t-control flex items-center gap-2 transition-colors disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0a]"
                 >
                     {busy && <Loader2 className="w-4 h-4 animate-spin" />}
-                    Look for false starts
+                    scan play history
                 </button>
                 {busy && (
                     <p className="t-meta" aria-live="polite">
-                        Reading every play and working out which belong to the same listen
+                        scanning
                         {elapsed >= 3 && ` · ${elapsed}s`}
                     </p>
                 )}
@@ -149,48 +147,40 @@ export function FalseStarts() {
     return (
         <div className="flex h-full min-h-0 flex-col gap-6">
             <div className="flex flex-wrap items-end gap-x-12 gap-y-4">
-                <Figure n={audit.skipped} label="you didn't stay for" tone="brand" />
-                <Figure n={audit.heard} label="proven you heard" />
-                <Figure n={audit.unclear} label="can't tell, left alone" />
-                {/* Listed whenever there are any: the figures add up to "times you
-                    pressed play", and leaving this bucket out breaks that sum. */}
+                <Figure n={audit.skipped} label="skipped (removable)" tone="brand" />
+                <Figure n={audit.heard} label="confirmed" />
+                <Figure n={audit.unclear} label="unclear (kept)" />
+                {/* Listed whenever there are any: the figures add up to the total, and
+                    leaving this bucket out breaks that sum. */}
                 {audit.tooShort > 0 && (
-                    <Figure n={audit.tooShort} label="too short to ever count" />
+                    <Figure n={audit.tooShort} label="track too short to count" />
                 )}
-                <Figure n={audit.totalListens} label="times you pressed play" />
+                <Figure n={audit.totalListens} label="total plays" />
             </div>
 
             {audit.collapsibleRows > 0 && (
                 <div className="flex flex-col gap-3 items-start">
                     <p className="t-body max-w-[58ch]">
-                        Your history holds{" "}
                         <span className="text-[var(--text-primary)]">
                             {audit.totalRows.toLocaleString()} records
                         </span>{" "}
                         for{" "}
                         <span className="text-[var(--text-primary)]">
-                            {audit.totalListens.toLocaleString()} listens
+                            {audit.totalListens.toLocaleString()} {audit.totalListens === 1 ? "play" : "plays"}
                         </span>
-                        . The extra {audit.duplicateRows.toLocaleString()} were written while a song
-                        was still playing, so they describe listens already counted. Merging them
-                        doesn&apos;t change a single play count, and it keeps the first and last
-                        record of each listen so the evidence behind{" "}
-                        <span className="text-[var(--text-primary)]">
-                            {audit.heard.toLocaleString()} proven heard
-                        </span>{" "}
-                        survives it.
+                        {` · ${audit.duplicateRows.toLocaleString()} ${audit.duplicateRows === 1 ? "is a duplicate" : "are duplicates"} written mid-track · merging changes no play counts`}
                     </p>
                     <button
                         onClick={() =>
                             act("collapse", [], (r) =>
-                                `Merged ${(r.removed ?? 0).toLocaleString()} duplicate records.`,
+                                `merged ${(r.removed ?? 0).toLocaleString()} ${(r.removed ?? 0) === 1 ? "duplicate" : "duplicates"}`,
                             )
                         }
                         disabled={busy}
                         className="h-11 px-4 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-white t-control flex items-center gap-2 transition-colors disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0a]"
                     >
                         {busy && <Loader2 className="w-4 h-4 animate-spin" />}
-                        Merge {audit.collapsibleRows.toLocaleString()} duplicate records
+                        merge {audit.collapsibleRows.toLocaleString()} {audit.collapsibleRows === 1 ? "duplicate" : "duplicates"}
                     </button>
                 </div>
             )}
@@ -199,8 +189,7 @@ export function FalseStarts() {
 
             {audit.tracks.length === 0 && !showIgnored && (
                 <p className="t-body max-w-[52ch]">
-                    Nothing left to judge. Every listen is either one the audit can&apos;t call or
-                    one on a track you told it to leave alone.
+                    nothing to review
                     {audit.ignored.length > 0 && (
                         <>
                             {" "}
@@ -208,7 +197,7 @@ export function FalseStarts() {
                                 onClick={toggleIgnored}
                                 className="t-control text-[var(--text-secondary)] hover:text-white transition-colors rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
                             >
-                                Show {audit.ignored.length} left alone
+                                show {audit.ignored.length} ignored
                             </button>
                         </>
                     )}
@@ -220,7 +209,7 @@ export function FalseStarts() {
                     <div className="flex items-center justify-between gap-4 pb-3 border-b border-white/[0.08]">
                         {showIgnored ? (
                             <span className="t-meta">
-                                {audit.ignored.length} {audit.ignored.length === 1 ? "track" : "tracks"} left alone
+                                {audit.ignored.length} ignored
                             </span>
                         ) : (
                             <>
@@ -228,12 +217,12 @@ export function FalseStarts() {
                                     onClick={() => setPicked(allPicked ? new Set() : new Set(all.slice(0, MAX_PER_ACTION)))}
                                     className="t-control text-[var(--text-secondary)] hover:text-white transition-colors rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0a]"
                                 >
-                                    {allPicked ? "Select none" : `Select all ${selectable.toLocaleString()}`}
+                                    {allPicked ? "select none" : `select all ${selectable.toLocaleString()}`}
                                 </button>
                                 <span className="t-meta truncate">
                                     {picked.size > 0
-                                        ? `${picked.size} selected · ${pickedStarts.toLocaleString()} listens would go`
-                                        : `${all.length} tracks have listens we can prove nobody stayed for`}
+                                        ? `${picked.size} selected · ${pickedStarts.toLocaleString()} ${pickedStarts === 1 ? "play" : "plays"} to remove`
+                                        : `${all.length} ${all.length === 1 ? "track" : "tracks"} with skipped plays`}
                                 </span>
                             </>
                         )}
@@ -251,22 +240,23 @@ export function FalseStarts() {
                                             <span className="block truncate t-meta">{t.artist}</span>
                                         </span>
                                         <button
-                                            onClick={() => act("restore", [t.trackId], () => "Back in the audit.")}
+                                            onClick={() => act("restore", [t.trackId], () => "restored")}
                                             disabled={busy}
                                             className="shrink-0 h-9 px-3 rounded-lg t-control text-[var(--text-secondary)] hover:text-white hover:bg-white/[0.06] transition-colors disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
                                         >
-                                            Put back
+                                            restore
                                         </button>
                                     </li>
                                 ))
                                 : audit.tracks.slice(from, from + rows).map((t) => {
                                     const on = picked.has(t.trackId);
-                                    const counts = `${t.skipped.toLocaleString()} skipped · ${t.listens.toLocaleString()} times you pressed play${t.heard > 0 ? ` · ${t.heard} proven heard` : ""}`;
+                                    const plays = `${t.listens.toLocaleString()} ${t.listens === 1 ? "play" : "plays"}`;
+                                    const counts = `${t.skipped.toLocaleString()} skipped · ${plays}${t.heard > 0 ? ` · ${t.heard} confirmed` : ""}`;
                                     const rule = t.requiredSeconds == null
-                                        ? `only ${clock(t.durationSeconds)} long, too short to ever count`
+                                        ? `${clock(t.durationSeconds)} long · too short to count`
                                         : t.shortestRunSeconds == null
-                                          ? `no run measured yet; needs ${clock(t.requiredSeconds)} to count`
-                                          : `shortest ran ${Math.round(t.shortestRunSeconds)}s; needs ${clock(t.requiredSeconds)} to count`;
+                                          ? `counts after ${clock(t.requiredSeconds)}`
+                                          : `shortest ${clock(t.shortestRunSeconds)} · counts after ${clock(t.requiredSeconds)}`;
                                     return (
                                         <li key={t.trackId}>
                                             <label className="flex items-center gap-4 py-3 cursor-pointer">
@@ -289,11 +279,11 @@ export function FalseStarts() {
                                                     </span>
                                                     <span className="block truncate t-meta">{t.artist}</span>
                                                 </span>
-                                                <span className="min-w-0 max-w-[55%] text-right" title={`${counts}. ${rule}`}>
+                                                <span className="min-w-0 max-w-[55%] text-right" title={`${counts}. ${rule}`.toLowerCase()}>
                                                     <span className="block truncate t-meta text-[var(--text-muted)]">
                                                         <span className="text-brand">{t.skipped.toLocaleString()} skipped</span>
-                                                        {` · ${t.listens.toLocaleString()} times you pressed play`}
-                                                        {t.heard > 0 && ` · ${t.heard} proven heard`}
+                                                        {` · ${plays}`}
+                                                        {t.heard > 0 && ` · ${t.heard} confirmed`}
                                                     </span>
                                                     <span className="block truncate t-meta">{rule}</span>
                                                 </span>
@@ -311,8 +301,8 @@ export function FalseStarts() {
                                 className="h-9 t-control text-[var(--text-muted)] hover:text-white transition-colors rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
                             >
                                 {showIgnored
-                                    ? "Back to the audit"
-                                    : `Show ${audit.ignored.length} left alone`}
+                                    ? "back to results"
+                                    : `show ${audit.ignored.length} ignored`}
                             </button>
                         ) : <span />}
                         {pages > 1 && (
@@ -320,10 +310,10 @@ export function FalseStarts() {
                                 <span className="t-meta mr-2">
                                     {(from + 1).toLocaleString()}–{Math.min(from + rows, listing).toLocaleString()} of {listing.toLocaleString()}
                                 </span>
-                                <PageButton label="Previous page" disabled={at === 0} onClick={() => setPage(at - 1)}>
+                                <PageButton label="previous page" disabled={at === 0} onClick={() => setPage(at - 1)}>
                                     <ChevronLeft className="w-4 h-4" />
                                 </PageButton>
-                                <PageButton label="Next page" disabled={at >= pages - 1} onClick={() => setPage(at + 1)}>
+                                <PageButton label="next page" disabled={at >= pages - 1} onClick={() => setPage(at + 1)}>
                                     <ChevronRight className="w-4 h-4" />
                                 </PageButton>
                             </div>
@@ -337,20 +327,17 @@ export function FalseStarts() {
             {picked.size > 0 && !showIgnored && (
                 <div className="flex flex-col gap-3">
                     <p className="t-body max-w-[62ch]">
-                        <span className="text-[var(--text-primary)]">Removing can&apos;t be undone.</span>{" "}
-                        It deletes only the listens the audit can prove nobody stayed for.
-                        The rest of the track&apos;s history stays. Leaving alone deletes
-                        nothing: it stops the track being raised again, and it goes on
-                        counting normally. Neither option touches your music files.
+                        <span className="text-[var(--text-primary)]">remove deletes the skipped plays and can&apos;t be undone</span>
+                        {" · ignore keeps all plays and stops flagging the track · music files are never touched"}
                     </p>
                     <div className="flex flex-wrap items-center gap-3">
                         <button
                             onClick={() =>
                                 arming
                                     ? act("remove", [...picked], (r) =>
-                                          `Removed ${(r.removed ?? 0).toLocaleString()} records from ${
+                                          `removed ${(r.removed ?? 0).toLocaleString()} ${(r.removed ?? 0) === 1 ? "record" : "records"} from ${
                                               r.tracks ?? 0
-                                          } tracks.`,
+                                          } ${(r.tracks ?? 0) === 1 ? "track" : "tracks"}`,
                                       )
                                     : setArming(true)
                             }
@@ -366,22 +353,20 @@ export function FalseStarts() {
                         >
                             {busy && <Loader2 className="w-4 h-4 animate-spin" />}
                             {arming
-                                ? `Delete ${pickedStarts.toLocaleString()} listens?`
-                                : `Remove from ${picked.size} ${picked.size === 1 ? "track" : "tracks"}`}
+                                ? `delete ${pickedStarts.toLocaleString()} ${pickedStarts === 1 ? "play" : "plays"}?`
+                                : `remove skipped plays (${picked.size} ${picked.size === 1 ? "track" : "tracks"})`}
                         </button>
 
                         <button
                             onClick={() =>
                                 act("ignore", [...picked], (r) =>
-                                    `Ignoring ${r.ignored ?? 0} ${
-                                        (r.ignored ?? 0) === 1 ? "track" : "tracks"
-                                    }. Their counts are untouched.`,
+                                    `ignored ${r.ignored ?? 0} ${(r.ignored ?? 0) === 1 ? "track" : "tracks"}`,
                                 )
                             }
                             disabled={busy}
                             className="h-11 px-4 rounded-lg t-control text-[var(--text-secondary)] hover:text-white hover:bg-white/[0.06] transition-colors disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0a]"
                         >
-                            Leave alone
+                            ignore
                         </button>
                     </div>
                 </div>

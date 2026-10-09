@@ -7,7 +7,7 @@ import { expect, Page, Response } from "@playwright/test";
 import * as fs from "fs";
 import * as path from "path";
 
-export interface Violation {
+interface Violation {
     /** Which step was executing when this happened. */
     step: string;
     kind: "console" | "pageerror" | "http" | "overflow" | "sse" | "assertion";
@@ -16,9 +16,9 @@ export interface Violation {
 }
 
 /** What a step reports back: the evidence that it did something real. */
-export type Observed = Record<string, string | number | boolean | undefined>;
+type Observed = Record<string, string | number | boolean | undefined>;
 
-export interface StepRecord {
+interface StepRecord {
     name: string;
     journey: string;
     ms: number;
@@ -56,7 +56,7 @@ const IGNORED_CONSOLE = [
 ];
 
 /** API calls that are allowed to fail, because a step deliberately provokes them. */
-export interface ExpectedFailure {
+interface ExpectedFailure {
     urlPattern: RegExp;
     status: number;
     reason: string;
@@ -247,15 +247,28 @@ export class DogfoodSession {
      * a broken one. One pixel of tolerance covers sub-pixel rounding in the layout engine.
      */
     private async checkLayout(): Promise<void> {
+        // The app shell scrolls inside #main-content, so the document alone never overflows.
         const overflow = await this.activePage.evaluate(() => {
-            const doc = document.documentElement;
-            return { scroll: doc.scrollWidth, client: doc.clientWidth };
+            const els = [document.documentElement, document.querySelector("#main-content")].filter(
+                (el): el is HTMLElement => !!el,
+            );
+            const worst = els.reduce((a, b) => (b.scrollWidth - b.clientWidth > a.scrollWidth - a.clientWidth ? b : a));
+            return { scroll: worst.scrollWidth, client: worst.clientWidth };
         });
         if (overflow.scroll > overflow.client + 1) {
             this.record(
                 "overflow",
                 `page scrolls sideways: content ${overflow.scroll}px in a ${overflow.client}px viewport`,
             );
+        }
+        // The page area must end inside the window: one that grows to its content's
+        // height never overflows itself, so nothing on the page can scroll.
+        const runsPast = await this.activePage.evaluate(() => {
+            const main = document.querySelector("#main-content");
+            return main ? Math.round(main.getBoundingClientRect().bottom - window.innerHeight) : 0;
+        });
+        if (runsPast > 1) {
+            this.record("overflow", `the page area runs ${runsPast}px past the bottom of the window, so it cannot scroll`);
         }
     }
 

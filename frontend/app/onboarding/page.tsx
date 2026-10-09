@@ -3,10 +3,10 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import Image from "next/image";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/Button";
+import { KimaMark } from "@/components/ui/KimaMark";
 
 type IntegrationKey = "lidarr" | "audiobookshelf" | "soulseek";
 type IntegrationResult = { ok: boolean; message: string };
@@ -216,7 +216,6 @@ export default function OnboardingPage() {
 
     return (
         <div className="min-h-screen relative overflow-hidden">
-            {/* Dark background (matches login) */}
             <div className="absolute inset-0 bg-[#000]">
                 <div className="absolute inset-0 bg-gradient-to-br from-brand/5 via-transparent to-transparent" />
             </div>
@@ -231,18 +230,11 @@ export default function OnboardingPage() {
                 </div>
             :   <div className="relative z-(--z-raised) min-h-screen flex items-center justify-center p-6">
                     <div className="w-full max-w-4xl">
-                        {/* Logo/Brand */}
                         <div className="text-center mb-8">
                             <div className="inline-flex items-center gap-4 mb-4">
                                 <div className="relative">
                                     <div className="absolute inset-0 bg-white/10 blur-xl rounded-full" />
-                                    <Image
-                                        src="/assets/images/kima.webp"
-                                        alt="Kima"
-                                        width={48}
-                                        height={48}
-                                        className="relative z-(--z-raised)"
-                                    />
+                                    <KimaMark size={48} className="relative z-(--z-raised)" />
                                 </div>
                                 <h1 className="text-4xl font-bold text-white">
                                     Kima Hub
@@ -254,7 +246,6 @@ export default function OnboardingPage() {
                             </p>
                         </div>
 
-                        {/* Progress Steps */}
                         <div className="flex items-center justify-center gap-3 mb-8">
                             {[
                                 { num: 1, label: "Account" },
@@ -296,7 +287,6 @@ export default function OnboardingPage() {
                             ))}
                         </div>
 
-                        {/* Main Content Card */}
                         <div className="bg-[#111]/90 rounded-lg border border-white/10 overflow-hidden">
                             <div className="p-6 md:p-8">
                                 {step === 1 && (
@@ -428,7 +418,6 @@ export default function OnboardingPage() {
                                         </div>
 
                                         <div className="space-y-4 mt-8">
-                                            {/* Lidarr */}
                                             <IntegrationCard
                                                 title="Lidarr"
                                                 description="Automatically find and download albums missing from your library."
@@ -477,7 +466,6 @@ export default function OnboardingPage() {
                                                 result={integrationResults["lidarr"]}
                                             />
 
-                                            {/* Audiobookshelf */}
                                             <IntegrationCard
                                                 title="Audiobookshelf"
                                                 description="Browse and stream your audiobook collection alongside your music."
@@ -528,7 +516,6 @@ export default function OnboardingPage() {
                                                 result={integrationResults["audiobookshelf"]}
                                             />
 
-                                            {/* Soulseek */}
                                             <SoulseekCard
                                                 enabled={soulseek.enabled}
                                                 onToggle={() =>
@@ -568,7 +555,6 @@ export default function OnboardingPage() {
                                             </div>
                                         )}
 
-                                        {/* What happens next */}
                                         <p className="text-sm text-[var(--text-muted)] border-t border-white/10 pt-4">
                                             After finishing, Kima will scan your music library and start enrichment in the background. This may take a few minutes for large collections.
                                         </p>
@@ -622,7 +608,6 @@ export default function OnboardingPage() {
                             </div>
                         </div>
 
-                        {/* Footer */}
                         <p className="text-center text-[var(--text-muted)] text-sm mt-6" suppressHydrationWarning>
                             &copy; {new Date().getFullYear()} Kima. Your music, your way.
                         </p>
@@ -703,8 +688,6 @@ function IntegrationCard({
                     </div>
                     <button
                         onClick={onToggle}
-                        onKeyDown={(e) => e.key === "Enter" && onToggle()}
-                        tabIndex={0}
                         aria-label={`${enabled ? "Disable" : "Enable"} ${title}`}
                         aria-pressed={enabled}
                         className={`relative w-11 h-6 rounded-lg transition-all ${
@@ -778,12 +761,6 @@ function IntegrationCard({
                         )}
                         <button
                             onClick={onTest}
-                            onKeyDown={(e) =>
-                                e.key === "Enter" &&
-                                !testing &&
-                                !e.defaultPrevented &&
-                                onTest()
-                            }
                             disabled={
                                 testing ||
                                 !url ||
@@ -872,8 +849,6 @@ function SoulseekCard({
                     </div>
                     <button
                         onClick={onToggle}
-                        onKeyDown={(e) => e.key === "Enter" && onToggle()}
-                        tabIndex={0}
                         aria-label={`${enabled ? "Disable" : "Enable"} Soulseek`}
                         aria-pressed={enabled}
                         className={`relative w-11 h-6 rounded-lg transition-all ${
@@ -928,13 +903,6 @@ function SoulseekCard({
                         )}
                         <button
                             onClick={onTest}
-                            onKeyDown={(e) =>
-                                e.key === "Enter" &&
-                                !testing &&
-                                username &&
-                                password &&
-                                onTest()
-                            }
                             disabled={testing || !username || !password}
                             tabIndex={0}
                             className="w-full bg-white/10 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-white/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-brand/30"

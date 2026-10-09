@@ -57,7 +57,7 @@ export function UserManagementSection() {
         setCreateStatus("loading");
         try {
             await api.post("/auth/create-user", {
-                username: newUsername,
+                username: newUsername.trim(),
                 password: newPassword,
                 role: newRole,
             });
@@ -75,13 +75,24 @@ export function UserManagementSection() {
         }
     };
 
+    // Each opening of the dialog starts clean: a status from an earlier delete
+    // must not show against another user.
+    const openDelete = (userId: string) => {
+        setDeleteStatus("idle");
+        setDeleteMessage("");
+        setConfirmDelete(userId);
+    };
+    const closeDelete = () => {
+        setDeleteStatus("idle");
+        setDeleteMessage("");
+        setConfirmDelete(null);
+    };
+
     const handleDelete = async (userId: string) => {
         setDeleteStatus("loading");
         try {
             await api.delete(`/auth/users/${userId}`);
-            setDeleteStatus("success");
-            setDeleteMessage("Deleted");
-            setConfirmDelete(null);
+            closeDelete();
             loadUsers();
         } catch (error: unknown) {
             setDeleteStatus("error");
@@ -177,8 +188,9 @@ export function UserManagementSection() {
 
                                 {currentUser?.id !== user.id && (
                                     <button
-                                        onClick={() => setConfirmDelete(user.id)}
+                                        onClick={() => openDelete(user.id)}
                                         className="p-2 text-[var(--text-muted)] hover:text-danger-light transition-colors"
+                                        aria-label={`delete ${user.username}`}
                                     >
                                         <Trash2 className="w-4 h-4" />
                                     </button>
@@ -192,12 +204,12 @@ export function UserManagementSection() {
             {/* Delete Confirmation Modal */}
             <Modal
                 isOpen={!!confirmDelete}
-                onClose={() => setConfirmDelete(null)}
+                onClose={closeDelete}
                 title="Delete User"
             >
                 <div className="space-y-4">
                     <p className="text-xs text-[var(--text-secondary)]">
-                        Are you sure you want to delete this user? This action cannot be undone.
+                        Delete {users.find((u) => u.id === confirmDelete)?.username ?? "this user"} and everything they made? This cannot be undone.
                     </p>
                     <div className="flex gap-2 justify-end items-center">
                         <InlineStatus
@@ -206,14 +218,15 @@ export function UserManagementSection() {
                             onClear={() => setDeleteStatus("idle")}
                         />
                         <button
-                            onClick={() => setConfirmDelete(null)}
+                            onClick={closeDelete}
                             className="px-4 py-2 text-xs text-[var(--text-muted)] hover:text-white/70 transition-colors"
                         >
                             Cancel
                         </button>
                         <button
                             onClick={() => confirmDelete && handleDelete(confirmDelete)}
-                            className="px-4 py-2 text-xs font-semibold bg-danger text-white rounded-lg hover:bg-danger/90 transition-colors"
+                            disabled={deleteStatus === "loading"}
+                            className="px-4 py-2 text-xs font-semibold bg-danger text-white rounded-lg hover:bg-danger/90 transition-colors disabled:opacity-50"
                         >
                             Delete
                         </button>

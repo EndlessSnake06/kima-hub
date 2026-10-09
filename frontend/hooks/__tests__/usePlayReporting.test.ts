@@ -107,3 +107,12 @@ describe("ListenMeter", () => {
         expect(m.secondsListened).toBe(0);
     });
 });
+
+describe("the same track played twice in a row", () => {
+    it("reports the second listen once the meter is reset at the track's end", () => {
+        const meter = new ListenMeter(200);
+        expect(play(meter, 0, 200)).toBe(1);
+        meter.reset(); // what the hook does on "ended" and "gapless-advance"
+        expect(play(meter, 0, 200)).toBe(1);
+    });
+});

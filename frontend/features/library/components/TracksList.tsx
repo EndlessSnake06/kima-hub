@@ -79,7 +79,7 @@ const TrackRow = memo(
                             e.stopPropagation();
                             onPlayTrack();
                         }}
-                        className="w-10 h-10 flex items-center justify-center"
+                        className="group/play w-10 h-10 flex items-center justify-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
                         aria-label={isCurrentlyPlaying ? "Pause" : "Play"}
                     >
                         <span
@@ -92,11 +92,10 @@ const TrackRow = memo(
                                 <AudioLines className="w-4 h-4 text-brand" />
                             :   displayTrackLabel}
                         </span>
-                        <Play className="w-4 h-4 text-brand opacity-0 group-hover:opacity-100 transition-opacity duration-150 fill-current" />
+                        <Play className="w-4 h-4 text-brand opacity-0 group-hover:opacity-100 group-focus-visible/play:opacity-100 transition-opacity duration-150 fill-current" />
                     </button>
                 </div>
 
-                {/* Cover + Title/Artist */}
                 <div className="flex items-center gap-3 min-w-0">
                     <div className="relative w-11 h-11 bg-[#181818] rounded border border-white/10 flex items-center justify-center overflow-hidden shrink-0">
                         {track.album?.coverArt ?
@@ -134,15 +133,14 @@ const TrackRow = memo(
                     </p>
                 </div>
 
-                {/* Actions + Duration */}
                 <div className="flex items-center gap-1">
                     <button
                         onClick={(e) => {
                             e.stopPropagation();
                             onAddToQueue(track);
                         }}
-                        className="w-10 h-10 rounded-lg flex items-center justify-center text-[var(--text-secondary)] hover:text-white hover:bg-white/10 opacity-0 group-hover:opacity-100 transition-all duration-150 border border-transparent hover:border-white/20"
-                        title="Add to Queue"
+                        className="w-10 h-10 rounded-lg flex items-center justify-center text-[var(--text-secondary)] hover:text-white hover:bg-white/10 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-all duration-150 border border-transparent hover:border-white/20"
+                        title="add to queue"
                     >
                         <ListPlus className="w-4 h-4" />
                     </button>
@@ -151,8 +149,8 @@ const TrackRow = memo(
                             e.stopPropagation();
                             onShowAddToPlaylist(track.id);
                         }}
-                        className="w-10 h-10 rounded-lg flex items-center justify-center text-[var(--text-secondary)] hover:text-white hover:bg-white/10 opacity-0 group-hover:opacity-100 transition-all duration-150 border border-transparent hover:border-white/20"
-                        title="Add to Playlist"
+                        className="w-10 h-10 rounded-lg flex items-center justify-center text-[var(--text-secondary)] hover:text-white hover:bg-white/10 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-all duration-150 border border-transparent hover:border-white/20"
+                        title="add to playlist"
                     >
                         <Plus className="w-4 h-4" />
                     </button>
@@ -161,8 +159,8 @@ const TrackRow = memo(
                             e.stopPropagation();
                             onDelete(track.id, track.title);
                         }}
-                        className="w-10 h-10 rounded-lg flex items-center justify-center text-[var(--text-secondary)] hover:text-danger hover:bg-danger/10 opacity-0 group-hover:opacity-100 transition-all duration-150 border border-transparent hover:border-danger/30"
-                        title="Delete Track"
+                        className="w-10 h-10 rounded-lg flex items-center justify-center text-[var(--text-secondary)] hover:text-danger hover:bg-danger/10 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-all duration-150 border border-transparent hover:border-danger/30"
+                        title="delete track"
                     >
                         <Trash2 className="w-4 h-4" />
                     </button>

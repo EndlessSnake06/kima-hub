@@ -28,6 +28,7 @@ import {
     StopCircle,
     AlertTriangle,
     Waves,
+    Network,
     ChevronDown,
     type LucideIcon,
 } from "lucide-react";
@@ -193,7 +194,13 @@ function EnrichmentFailuresList({ active = false }: { active?: boolean }) {
     );
 }
 
-type ConfirmTarget = "retryFailedAndBlocked" | "redecideEverything" | null;
+type ConfirmTarget = "retryFailedAndBlocked" | "redecideEverything" | "wipeAndRerun" | null;
+
+const WIPE_MESSAGE =
+    "Clears what Kima worked out about your music: which recording each track is, audio analysis, vibe data, the vibe map, " +
+    "artist bios and similar artists. " +
+    "Then it works it all out again with the new engine. Your music, playlists, plays, likes and edits stay. " +
+    "Takes a few hours on a large library; the vibe map is back when it finishes.";
 
 const confirmMeta: Record<
     NonNullable<ConfirmTarget>,
@@ -202,51 +209,86 @@ const confirmMeta: Record<
     retryFailedAndBlocked: {
         title: "Retry What Didn't Work?",
         message:
-        "Kima goes back over every track that's missing something: a match it failed to find, a scan that died, a question it never got to ask. Tracks that came out complete are left alone, and nothing is deleted.",
+        "Re-runs every incomplete track. Complete tracks are skipped. Nothing is deleted.",
         confirmText: "Retry What Didn't Work",
     },
     redecideEverything: {
         title: "Start Over on Everything?",
         message:
-        "Kima goes through the whole library from the top, the way it did on a fresh install, and re-checks every answer it kept. A track that already has a match won't be fingerprinted twice, and nothing is deleted. Expect a full re-analysis pass: a big library takes hours.",
+        "Re-processes the whole library. Existing matches are kept. Nothing is deleted. Takes hours on a large library.",
         confirmText: "Start Over on Everything",
+    },
+    wipeAndRerun: {
+        title: "Wipe and Re-run Enrichment?",
+        message: WIPE_MESSAGE,
+        confirmText: "Wipe and Re-run",
     },
 };
 
-// The analyzer installs or removes the runtime after the toggle is saved, so the
-// status keeps polling until the runtime matches the toggle.
+// The analyzer installs the runtime while either switch is on and removes it when
+// both are off, so the status keeps polling until the runtime matches the switches.
 function gpuSettling(g: GpuRuntimeStatus): boolean {
     if (g.installing) return true;
-    if (!g.enabled) return g.installed;
+    if (!g.enabled && !g.analysis) return g.installed;
     return !g.installed && g.status !== "failed";
 }
 
-function gpuStatusText(g: GpuRuntimeStatus): string {
+/** One GPU switch and the state it was measured in; `on` and `effective` are that switch's. */
+function GpuSwitchRow({ id, label, description, gpu, on, effective, pending, onChange }: {
+    id: string;
+    label: string;
+    description: string;
+    gpu: GpuRuntimeStatus | null;
+    on: boolean;
+    effective: boolean;
+    pending: boolean;
+    onChange: (checked: boolean) => void;
+}) {
+    return (
+        <SettingsRow label={label} description={description} htmlFor={id}>
+            <div className="flex flex-col items-end gap-1">
+                <SettingsToggle id={id} checked={on} disabled={pending} onChange={onChange} />
+                {gpu && (
+                    <span
+                        data-testid={`${id}-status`}
+                        className={`text-xs text-right ${
+                            gpu.status === "failed" ? "text-warning" : effective ? "text-success" : "text-[var(--text-muted)]"
+                        }`}
+                    >
+                        {gpuStatusText(gpu, on, effective)}
+                    </span>
+                )}
+            </div>
+        </SettingsRow>
+    );
+}
+
+function gpuStatusText(g: GpuRuntimeStatus, on: boolean, effective: boolean): string {
     if (g.installing) return "Downloading GPU runtime (~2 GB)…";
     if (g.status === "failed") {
         switch (g.reason) {
             case "no_gpu":
-                return "Failed: Kima's containers cannot see an NVIDIA GPU.";
+                return "Failed: no NVIDIA GPU visible";
             case "no_network":
-                return "Failed: could not reach the package index.";
+                return "Failed: package index unreachable";
             case "driver_too_old":
-                return "Failed: the NVIDIA driver is too old for this CUDA runtime.";
+                return "Failed: NVIDIA driver too old";
             case "unsupported_platform":
-                return "Failed: GPU runtime is supported on Linux x86_64 only.";
+                return "Failed: Linux x86_64 only";
             case "checksum_mismatch":
-                return "Failed: a downloaded file did not match its pinned checksum.";
+                return "Failed: checksum mismatch";
             default:
                 return `Failed: ${g.reason || "install error"}.`;
         }
     }
-    if (!g.enabled)
+    if (!on)
         return g.installed
             ? "Runtime installed; GPU is off."
-            : "Off — embeddings use the CPU.";
-    if (g.effective) return "Active — embeddings are running on the GPU.";
+            : "Off (CPU)";
+    if (effective) return "Active";
     if (g.installed)
-        return "Installed — will be used after the analyzer restarts.";
-    return "Enabled — the analyzer will download it.";
+        return "Installed, applies after analyzer restart";
+    return "Enabled, downloading";
 }
 
 export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
@@ -260,7 +302,8 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
     const [redeciding, setRedeciding] = useState(false);
     const [retryingFailed, setRetryingFailed] = useState(false);
     const [retryResult, setRetryResult] = useState<{ reset: number } | null>(null);
-    const [queueResult, setQueueResult] = useState<"retry" | "everything" | null>(null);
+    const [queueResult, setQueueResult] = useState<"retry" | "everything" | "wipe" | null>(null);
+    const [wiping, setWiping] = useState(false);
     const [confirmTarget, setConfirmTarget] = useState<ConfirmTarget>(null);
     const [maintenanceOpen, setMaintenanceOpen] = useState(false);
     const [cleanupResult, setCleanupResult] = useState<{
@@ -412,6 +455,14 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
             }),
     });
 
+    const setGpuAnalysisMutation = useMutation({
+        mutationFn: (analysis: boolean) => api.setGpuAnalysisEnabled(analysis),
+        onSuccess: () =>
+            queryClient.invalidateQueries({
+                queryKey: ["gpu-runtime-status"],
+            }),
+    });
+
     const setClapWorkersMutation = useMutation({
         mutationFn: (workers: number) =>
             api.setClapWorkers(workers),
@@ -532,7 +583,7 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
             void queryClient.invalidateQueries({ queryKey: ["enrichment-failures-inline"] });
         } catch (err) {
             console.error("Retry failed and blocked error:", err);
-            setError("Couldn't queue the retry. Try again.");
+            setError("Couldn't queue the retry");
         } finally {
             setRetryingAll(false);
         }
@@ -549,9 +600,26 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
             void queryClient.invalidateQueries({ queryKey: ["enrichment-failures-inline"] });
         } catch (err) {
             console.error("Re-decide everything error:", err);
-            setError("Couldn't start the fresh pass. Try again.");
+            setError("Couldn't start the pass");
         } finally {
             setRedeciding(false);
+        }
+    };
+
+    const execWipeAndRerun = async () => {
+        setWiping(true);
+        setError(null);
+        try {
+            await api.wipeAndRerunEnrichment();
+            setQueueResult("wipe");
+            refetchProgress();
+            void queryClient.invalidateQueries({ queryKey: ["enrichment-failure-counts"] });
+            void queryClient.invalidateQueries({ queryKey: ["enrichment-failures-inline"] });
+        } catch (err) {
+            console.error("Wipe and re-run error:", err);
+            setError("Couldn't wipe and re-run");
+        } finally {
+            setWiping(false);
         }
     };
 
@@ -605,6 +673,7 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
         setConfirmTarget(null);
         if (target === "retryFailedAndBlocked") await execRetryFailedAndBlocked();
         else if (target === "redecideEverything") await execRedecideEverything();
+        else if (target === "wipeAndRerun") await execWipeAndRerun();
     };
 
     const handlePause = async () => {
@@ -746,21 +815,34 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                                 </div>
                             ) : null}
 
-                            {/* CLAP Embeddings */}
+                            {/* CLAP Embeddings, then the matching built on them */}
                             {!featuresLoading && vibeEmbeddings ? (
-                                enrichmentProgress.clapEmbeddings && (
-                                    <EnrichmentStage
-                                        icon={Waves}
-                                        label="Vibe Embeddings"
-                                        description="CLAP audio embeddings for similarity search"
-                                        completed={enrichmentProgress.clapEmbeddings.completed}
-                                        total={enrichmentProgress.clapEmbeddings.total}
-                                        progress={enrichmentProgress.clapEmbeddings.progress}
-                                        processing={enrichmentProgress.clapEmbeddings.processing}
-                                        failed={enrichmentProgress.clapEmbeddings.failed}
-                                        isBackground={true}
-                                    />
-                                )
+                                <>
+                                    {enrichmentProgress.clapEmbeddings && (
+                                        <EnrichmentStage
+                                            icon={Waves}
+                                            label="Vibe Embeddings"
+                                            description="CLAP audio embeddings for similarity search"
+                                            completed={enrichmentProgress.clapEmbeddings.completed}
+                                            total={enrichmentProgress.clapEmbeddings.total}
+                                            progress={enrichmentProgress.clapEmbeddings.progress}
+                                            processing={enrichmentProgress.clapEmbeddings.processing}
+                                            failed={enrichmentProgress.clapEmbeddings.failed}
+                                            isBackground={true}
+                                        />
+                                    )}
+                                    {enrichmentProgress.similarity && (
+                                        <EnrichmentStage
+                                            icon={Network}
+                                            label="Similarity"
+                                            description="Matching from sound, feel and artist genre"
+                                            completed={enrichmentProgress.similarity.completed}
+                                            total={enrichmentProgress.similarity.total}
+                                            progress={enrichmentProgress.similarity.progress}
+                                            isBackground={true}
+                                        />
+                                    )}
+                                </>
                             ) : !featuresLoading ? (
                                 <div className="opacity-50 py-2">
                                     <h4 className="text-sm font-medium text-[var(--text-secondary)]">Vibe Similarity</h4>
@@ -806,11 +888,20 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                                     {redeciding ? "Queuing..." : "Start over on everything"}
                                 </button>
                             )}
+                            {currentUser?.role === "admin" && (
+                                <button
+                                    onClick={() => setConfirmTarget("wipeAndRerun")}
+                                    disabled={wiping}
+                                    data-testid="enrichment-wipe"
+                                    className="px-3 py-2.5 min-h-[44px] text-xs tabular-nums bg-white/5 border border-white/10 text-[var(--text-secondary)] rounded-lg
+                                    hover:bg-white/10 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                                >
+                                    {wiping ? "Wiping..." : "Wipe and re-run"}
+                                </button>
+                            )}
                             {queueResult !== null && (
                                 <span className="self-center text-xs text-success" data-testid="enrichment-queue-result">
-                                    {queueResult === "retry"
-                                        ? "Queued. Kima picks the unfinished tracks back up."
-                                        : "Queued. Kima goes through the whole library again, starting now."}
+                                    {queueResult === "wipe" ? "Wiped. Re-running." : "Queued"}
                                 </span>
                             )}
 
@@ -1145,40 +1236,31 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                     </SettingsRow>
                 )}
 
-                {/* NVIDIA GPU acceleration — row shows only measured state. */}
-                {settings.autoEnrichMetadata &&
-                    !featuresLoading &&
-                    vibeEmbeddings && (
-                        <SettingsRow
-                            label="NVIDIA GPU acceleration"
-                            description="Run vibe embeddings on an NVIDIA GPU. Downloads about 2 GB of pinned packages into the data directory (they take about 3.4 GB); takes effect the next time the analyzer starts."
-                            htmlFor="gpu-onnx-toggle"
-                        >
-                            <div className="flex flex-col items-end gap-1">
-                                <SettingsToggle
-                                    id="gpu-onnx-toggle"
-                                    checked={gpuStatus?.enabled ?? false}
-                                    disabled={setGpuMutation.isPending}
-                                    onChange={(checked) =>
-                                        setGpuMutation.mutate(checked)
-                                    }
-                                />
-                                {gpuStatus && (
-                                    <span
-                                        className={`text-xs text-right ${
-                                            gpuStatus.status === "failed"
-                                                ? "text-warning"
-                                                : gpuStatus.effective
-                                                  ? "text-success"
-                                                  : "text-[var(--text-muted)]"
-                                        }`}
-                                    >
-                                        {gpuStatusText(gpuStatus)}
-                                    </span>
-                                )}
-                            </div>
-                        </SettingsRow>
-                    )}
+                {/* NVIDIA GPU switches: each row shows only measured state */}
+                {settings.autoEnrichMetadata && !featuresLoading && vibeEmbeddings && (
+                    <GpuSwitchRow
+                        id="gpu-onnx-toggle"
+                        label="NVIDIA GPU for vibe embeddings"
+                        description="Run vibe embeddings on an NVIDIA GPU. Downloads about 2 GB of pinned packages into the data directory (they take about 3.4 GB); takes effect the next time the analyzer starts."
+                        gpu={gpuStatus ?? null}
+                        on={gpuStatus?.enabled ?? false}
+                        effective={gpuStatus?.effective ?? false}
+                        pending={setGpuMutation.isPending}
+                        onChange={(checked) => setGpuMutation.mutate(checked)}
+                    />
+                )}
+                {settings.autoEnrichMetadata && !featuresLoading && musicCNN && (
+                    <GpuSwitchRow
+                        id="gpu-analysis-toggle"
+                        label="NVIDIA GPU for audio analysis"
+                        description="Run the mood, valence and arousal models on an NVIDIA GPU. Uses the same download as vibe embeddings; takes effect the next time the analyzer starts."
+                        gpu={gpuStatus ?? null}
+                        on={gpuStatus?.analysis ?? false}
+                        effective={gpuStatus?.analysisEffective ?? false}
+                        pending={setGpuAnalysisMutation.isPending}
+                        onChange={(checked) => setGpuAnalysisMutation.mutate(checked)}
+                    />
+                )}
 
                 {/* Maintenance Operations -- grouped destructive actions */}
                 <div className="mt-6 rounded-lg border border-white/10 overflow-hidden">
@@ -1258,10 +1340,11 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                                     No stale jobs found
                                 </p>
                             )}
-                            {error && <p className="text-xs tabular-nums text-danger-light">{error}</p>}
                         </div>
                     )}
                 </div>
+                {/* Outside the collapsible: every action in this section reports here. */}
+                {error && <p role="alert" className="mt-2 px-1 text-xs tabular-nums text-danger-light">{error}</p>}
             </SettingsSection>
 
             {/* Confirm dialog for destructive resets */}

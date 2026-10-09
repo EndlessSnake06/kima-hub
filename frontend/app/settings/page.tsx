@@ -170,9 +170,6 @@ export default function SettingsPage() {
                     <h2 className="text-lg font-semibold text-[var(--text-primary)]">
                         Settings could not be loaded
                     </h2>
-                    <p className="mt-2 text-sm text-[var(--text-secondary)]">
-                        Settings stay hidden until they load, so nothing can be saved over them.
-                    </p>
                     <p className="mt-1 text-xs text-[var(--text-muted)]">{loadError}</p>
                     <Button
                         variant="primary"

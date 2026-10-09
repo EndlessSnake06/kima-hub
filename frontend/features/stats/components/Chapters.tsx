@@ -125,7 +125,7 @@ export function Chapters({ chapters, aside }: { chapters: Chapter[]; aside?: Rea
                 <div
                     ref={tabRow}
                     role="tablist"
-                    aria-label="Stats chapters"
+                    aria-label="stats sections"
                     onKeyDown={onTabKey}
                     className="-mb-px flex min-w-0 flex-1 gap-5 overflow-x-auto scrollbar-hide sm:gap-6"
                 >

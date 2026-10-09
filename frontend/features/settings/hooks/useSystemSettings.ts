@@ -30,7 +30,6 @@ const defaultSystemSettings: SystemSettings = {
     maxCacheSizeMb: 10240,
     autoSync: true,
     autoEnrichMetadata: true,
-    audioAnalyzerWorkers: 2,
     soulseekConcurrentDownloads: 4,
     lidarrQualityProfileId: null,
     lidarrMetadataProfileId: null,
@@ -48,7 +47,6 @@ export function useSystemSettings() {
     );
     const [isLoading, setIsLoading] = useState(true);
     const [loadError, setLoadError] = useState<string | null>(null);
-    const [isSaving, setIsSaving] = useState(false);
 
     const isAdmin = user?.role === "admin";
 
@@ -67,12 +65,11 @@ export function useSystemSettings() {
                 api.getSettings(),
             ]);
 
-            // Sanitize null values to empty strings for controlled inputs
+            // Null strings become empty strings for controlled inputs.
             const sanitizeSettings = (settings: Record<string, unknown>): SystemSettings => {
                 const sanitized: Record<string, unknown> = {};
                 for (const key in settings) {
                     const value = settings[key];
-                    // Convert null to empty string for string fields
                     if (value === null && typeof defaultSystemSettings[key as keyof SystemSettings] === 'string') {
                         sanitized[key] = '';
                     } else {
@@ -96,18 +93,8 @@ export function useSystemSettings() {
     };
 
     const saveSystemSettings = async (settingsToSave: SystemSettings) => {
-        try {
-            setIsSaving(true);
-            await api.updateSystemSettings(settingsToSave);
-            await api.updateSettings({
-                maxCacheSizeMb: settingsToSave.maxCacheSizeMb,
-            });
-        } catch (error) {
-            console.error("Failed to save system settings:", error);
-            throw error;
-        } finally {
-            setIsSaving(false);
-        }
+        await api.updateSystemSettings(settingsToSave);
+        await api.updateSettings({ maxCacheSizeMb: settingsToSave.maxCacheSizeMb });
     };
 
     const updateSystemSettings = (updates: Partial<SystemSettings>) => {
@@ -141,16 +128,13 @@ export function useSystemSettings() {
                     );
                     break;
                 case "soulseek":
-                    result = await api.testSoulseek(
-                        systemSettings.soulseekUsername,
-                        systemSettings.soulseekPassword
-                    );
-                    break;
-                case "spotify":
-                    result = await api.testSpotify(
-                        systemSettings.spotifyClientId,
-                        systemSettings.spotifyClientSecret
-                    );
+                    result = await api.testSoulseek({
+                        mode: systemSettings.soulseekMode === "slskd" ? "slskd" : "p2p",
+                        username: systemSettings.soulseekUsername,
+                        password: systemSettings.soulseekPassword,
+                        slskdUrl: systemSettings.slskdUrl ?? undefined,
+                        slskdApiKey: systemSettings.slskdApiKey ?? undefined,
+                    });
                     break;
                 default:
                     throw new Error(`Unknown service: ${service}`);
@@ -167,8 +151,6 @@ export function useSystemSettings() {
         systemSettings,
         isLoading,
         loadError,
-        isSaving,
-        setSystemSettings,
         updateSystemSettings,
         saveSystemSettings,
         testService,

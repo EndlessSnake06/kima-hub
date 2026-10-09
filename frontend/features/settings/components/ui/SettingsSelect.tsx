@@ -34,7 +34,7 @@ export function SettingsSelect({ id, value, onChange, options, disabled }: Setti
             >
                 {options.map((option) => (
                     <option key={option.value} value={option.value}>
-                        {option.label}
+                        {option.label.toLowerCase()}
                     </option>
                 ))}
             </select>

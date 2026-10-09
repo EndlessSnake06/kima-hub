@@ -53,7 +53,7 @@ export function SimilarArtists({ similarArtists }: SimilarArtistsProps) {
                             index={index}
                             corner={
                                 artist.inLibrary && (
-                                    <span className="block bg-brand rounded-full p-1" title="In your library">
+                                    <span className="block bg-brand rounded-full p-1" title="in your library">
                                         <Library className="w-3 h-3 text-black" />
                                     </span>
                                 )

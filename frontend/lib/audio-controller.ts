@@ -4,7 +4,6 @@ import { iosAudioLog } from "./iosAudioLog";
 import { STORAGE_KEYS } from "./storage-keys";
 import type {
     EngineStatus,
-    PauseClass,
     TimerId,
     EngineSnapshot,
     EngineEvent,
@@ -12,8 +11,6 @@ import type {
 } from "./audio-engine-policy";
 import { initialSnapshot, transition } from "./audio-engine-policy";
 
-// Re-export types consumers may need
-export type { EngineStatus, PauseClass, EngineSnapshot };
 
 type ExternalEvent = "ended" | "timeupdate" | "canplay" | "seeked" | "error" | "gapless-advance";
 type ExternalCallback = (data?: unknown) => void;
@@ -1066,7 +1063,7 @@ export class AudioController {
 
     setMuted(muted: boolean): void {
         this.isMuted = muted;
-        // FE14: must use audio.muted on iOS (audio.volume is read-only there)
+        // audio.muted, since audio.volume is read-only on iOS.
         this.audio.muted = muted;
         if (this.audioNext) this.audioNext.muted = muted;
         // Also set volume for non-iOS devices

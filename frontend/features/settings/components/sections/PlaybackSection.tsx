@@ -117,7 +117,7 @@ export function PlaybackSection({ value, onChange, maxQueueLength, onMaxQueueLen
             {onMaxQueueLength && (
                 <SettingsRow
                     label="Queue limit"
-                    description={`How many tracks the play queue can hold. The queue is a list of references, so a long one costs a larger save rather than disk. ${QUEUE_MIN.toLocaleString()} to ${QUEUE_MAX.toLocaleString()}.`}
+                    description={`Maximum tracks in the play queue. ${QUEUE_MIN.toLocaleString()} to ${QUEUE_MAX.toLocaleString()}.`}
                 >
                     <QueueLimitInput value={maxQueueLength} onCommit={onMaxQueueLength} />
                 </SettingsRow>

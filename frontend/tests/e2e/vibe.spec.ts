@@ -126,8 +126,8 @@ test.describe("Vibe", () => {
             return;
         }
 
-        await expect(page.locator('[title^="Song Path"]')).toBeVisible({ timeout: 5_000 });
-        await expect(page.locator('[title^="Blend"]')).toBeVisible({ timeout: 5_000 });
+        await expect(page.locator('[title^="song path"]')).toBeVisible({ timeout: 5_000 });
+        await expect(page.locator('[title^="blend"]')).toBeVisible({ timeout: 5_000 });
         await expect(page.locator('[aria-label="Search tracks or artists"]')).toBeVisible({ timeout: 5_000 });
     });
 
@@ -225,7 +225,7 @@ test.describe("Vibe", () => {
         await Promise.race([canvas.waitFor({ timeout: 35_000 }), noData.waitFor({ timeout: 35_000 })]);
         if ((await noData.count()) > 0) { test.skip(); return; }
 
-        await page.locator('[title^="Song Path"]').click();
+        await page.locator('[title^="song path"]').click();
 
         await expect(page.locator('#path-start')).toBeVisible({ timeout: 5_000 });
         await expect(page.locator('#path-end')).toBeVisible({ timeout: 5_000 });
@@ -245,7 +245,7 @@ test.describe("Vibe", () => {
         await canvas.waitFor({ timeout: 35_000 });
 
         // Open drift form
-        await page.locator('[title^="Song Path"]').click();
+        await page.locator('[title^="song path"]').click();
         await expect(page.locator('#path-start')).toBeVisible({ timeout: 5_000 });
 
         // Search and select start track
@@ -289,7 +289,7 @@ test.describe("Vibe", () => {
         await Promise.race([canvas.waitFor({ timeout: 35_000 }), noData.waitFor({ timeout: 35_000 })]);
         if ((await noData.count()) > 0) { test.skip(); return; }
 
-        await page.locator('[title^="Blend"]').click();
+        await page.locator('[title^="blend"]').click();
         await page.waitForTimeout(500);
 
         // Blend (alchemy) panel should appear -- close button has aria-label="Close alchemy"

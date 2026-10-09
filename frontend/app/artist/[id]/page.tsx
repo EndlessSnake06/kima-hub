@@ -16,7 +16,7 @@ import { useArtistData } from "@/features/artist/hooks/useArtistData";
 import { useArtistActions } from "@/features/artist/hooks/useArtistActions";
 import { useDownloadActions } from "@/features/artist/hooks/useDownloadActions";
 import type { Track, Album } from "@/features/artist/types";
-import { useTrackPreview } from "@/hooks/useTrackPreview";
+import { usePreview } from "@/hooks/usePreview";
 
 // Components
 import { ArtistHero } from "@/features/artist/components/ArtistHero";
@@ -50,7 +50,7 @@ export default function ArtistPage() {
     // Action hooks
     const { playAll, shufflePlay } = useArtistActions();
     const { downloadArtist, downloadAlbum } = useDownloadActions();
-    const { previewTrack, previewPlaying, handlePreview } = useTrackPreview();
+    const preview = usePreview();
 
     // Separate owned and available albums
     const ownedAlbums = albums.filter((a) => a.owned);
@@ -217,10 +217,10 @@ export default function ArtistPage() {
                             artist={artist}
                             currentTrackId={currentTrack?.id}
                             onPlayTrack={handlePlayTrack}
-                            previewTrack={previewTrack}
-                            previewPlaying={previewPlaying}
+                            previewTrack={preview.previewId}
+                            previewPlaying={preview.playing}
                             onPreview={(track: Track) =>
-                                handlePreview(track, artist.name)
+                                preview.toggle(track.id, api.getTrackPreviewStreamUrl(artist.name, track.title))
                             }
                         />
                     )}

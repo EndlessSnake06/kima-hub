@@ -55,10 +55,10 @@ export function DiscoverSettingsTab({
         if (isClearing) return;
 
         const confirmed = window.confirm(
-            "Clear Discovery Playlist?\n\n" +
-                "• Liked albums will be moved to your library\n" +
-                "• Non-liked albums will be deleted\n\n" +
-                "This action cannot be undone."
+            "clear discovery playlist?\n\n" +
+                "• liked albums will be moved to your library\n" +
+                "• non-liked albums will be deleted\n\n" +
+                "this action cannot be undone."
         );
 
         if (!confirmed) return;
@@ -86,21 +86,18 @@ export function DiscoverSettingsTab({
 
     return (
         <div className="h-full flex flex-col bg-[var(--bg-primary)]">
-            {/* Header with back button */}
             <div className="flex items-center gap-3 px-5 py-4 border-b-2 border-white/20">
                 <button
                     onClick={onBack}
                     className="border border-white/20 p-2 hover:border-brand hover:bg-white/5 transition-colors"
-                    title="Back to activity"
+                    title="back to activity"
                 >
                     <ArrowLeft className="w-4 h-4 text-[var(--text-secondary)]" />
                 </button>
                 <h3 className="text-sm font-bold text-white">Settings</h3>
             </div>
 
-            {/* Scrollable Content */}
             <div className="flex-1 overflow-y-auto p-5 space-y-8">
-                {/* Playlist Size */}
                 <div>
                     <label className="block text-xs text-[var(--text-muted)] mb-4">
                         Playlist Size
@@ -131,7 +128,6 @@ export function DiscoverSettingsTab({
                     </p>
                 </div>
 
-                {/* Download Buffer */}
                 <div>
                     <label className="block text-xs text-[var(--text-muted)] mb-4">
                         Download Buffer
@@ -162,7 +158,6 @@ export function DiscoverSettingsTab({
                     </p>
                 </div>
 
-                {/* Album Exclusion */}
                 <div>
                     <label className="block text-xs text-[var(--text-muted)] mb-4">
                         Album Exclusion
@@ -197,7 +192,6 @@ export function DiscoverSettingsTab({
                     </p>
                 </div>
 
-                {/* Clear Playlist */}
                 <div className="pt-6 border-t-2 border-white/20">
                     <label className="block text-xs text-[var(--text-muted)] mb-4">
                         Danger Zone

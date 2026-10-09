@@ -88,7 +88,7 @@ export function KeyWheel({ keys, period }: { keys: NonNullable<Signature["key"]>
                     but never taller than the panel leaves room for. */
                 className="w-full aspect-square max-w-[calc(var(--fit-h)*0.4)] lg:max-w-[min(19rem,calc(var(--fit-h)-12rem))]"
                 role="img"
-                aria-label={`A circle of fifths. You play most often in ${busiest.name}. ${Math.round(keys.minorPct)}% of your listening is in a minor key.`}
+                aria-label={`key wheel · top key: ${busiest.name.toLowerCase()} · ${Math.round(keys.minorPct)}% minor`}
             >
                 {ring.map((r) => {
                     const wedge = (
@@ -109,7 +109,7 @@ export function KeyWheel({ keys, period }: { keys: NonNullable<Signature["key"]>
                                 strokeWidth="0.7"
                                 role={dead ? undefined : "button"}
                                 tabIndex={dead ? undefined : 0}
-                                aria-label={dead ? undefined : `Play ${label}, ${plays} listens`}
+                                aria-label={dead ? undefined : `play ${label.toLowerCase()}, ${plays} ${plays === 1 ? "play" : "plays"}`}
                                 onPointerEnter={() => setHover({ name: label, plays })}
                                 onPointerLeave={() => setHover(null)}
                                 onFocus={() => setHover({ name: label, plays })}
@@ -139,7 +139,7 @@ export function KeyWheel({ keys, period }: { keys: NonNullable<Signature["key"]>
                     );
                 })}
 
-                {/* Names sit on the majors; the minor inside each is its relative. */}
+                {/* Majors on the outer ring; the minor inside each is its relative. */}
                 {ring.map((r) => {
                     const a = (r.i / 12) * TAU - TAU / 4;
                     const x = CX + Math.cos(a) * 39.2;
@@ -155,7 +155,25 @@ export function KeyWheel({ keys, period }: { keys: NonNullable<Signature["key"]>
                             pointerEvents="none"
                             style={{ fontWeight: 500, letterSpacing: "-0.02em" }}
                         >
-                            {r.major.name}
+                            {r.major.name.toLowerCase()}
+                        </text>
+                    );
+                })}
+
+                {ring.map((r) => {
+                    const a = (r.i / 12) * TAU - TAU / 4;
+                    const loud = r.minor.plays / max > 0.45;
+                    return (
+                        <text
+                            key={`m-${r.minor.name}`}
+                            x={CX + Math.cos(a) * 24.75} y={CY + Math.sin(a) * 24.75}
+                            textAnchor="middle" dominantBaseline="central"
+                            fontSize="3.3"
+                            fill={loud ? "#0a0a0a" : "rgba(229,229,229,0.6)"}
+                            pointerEvents="none"
+                            style={{ fontWeight: 500, letterSpacing: "-0.02em" }}
+                        >
+                            {`${r.minor.name.toLowerCase()}m`}
                         </text>
                     );
                 })}
@@ -164,13 +182,13 @@ export function KeyWheel({ keys, period }: { keys: NonNullable<Signature["key"]>
                     x={CX} y={CY - 2.5} textAnchor="middle" dominantBaseline="central"
                     fontSize="12" fill="#e5e5e5" pointerEvents="none" style={{ fontWeight: 200 }}
                 >
-                    {Math.round(keys.minorPct)}
+                    {`${Math.round(keys.minorPct)}%`}
                 </text>
                 <text
                     x={CX} y={CY + 6} textAnchor="middle" dominantBaseline="central"
                     fontSize="4" fill="#858585" pointerEvents="none" style={{ letterSpacing: "0.06em" }}
                 >
-                    % MINOR
+                    minor
                 </text>
             </svg>
 
@@ -178,9 +196,9 @@ export function KeyWheel({ keys, period }: { keys: NonNullable<Signature["key"]>
             <figcaption className="t-meta min-h-[2.5rem] max-w-[30ch]">
                 {hover
                     ? hover.plays > 0
-                        ? `${hover.name}: ${hover.plays.toLocaleString()} listens`
-                        : `${hover.name}: never played`
-                    : `Majors outside, their relative minors inside · ${total.toLocaleString()} listens`}
+                        ? `${hover.name.toLowerCase()}: ${hover.plays.toLocaleString()} ${hover.plays === 1 ? "play" : "plays"}`
+                        : `${hover.name.toLowerCase()}: no plays`
+                    : `outer: major · inner: minor · ${total.toLocaleString()} ${total === 1 ? "play" : "plays"}`}
             </figcaption>
         </figure>
     );

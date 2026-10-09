@@ -6,6 +6,7 @@ import {
     clearIosAudioLog,
     isIosAudioDebugEnabled,
 } from "@/lib/iosAudioLog";
+import { copyText } from "@/lib/clipboard";
 
 export default function IosLogPage() {
     const [enabled] = useState(() => isIosAudioDebugEnabled());
@@ -46,7 +47,7 @@ export default function IosLogPage() {
     return (
         <div style={{ padding: 16, fontFamily: "system-ui", fontSize: 12 }}>
             <h1>iOS Audio Log ({events.length} events)</h1>
-            <button onClick={() => navigator.clipboard.writeText(JSON.stringify(events, null, 2))}>
+            <button onClick={() => void copyText(JSON.stringify(events, null, 2))}>
                 Copy
             </button>{" "}
             <button onClick={upload}>Upload</button>{" "}

@@ -9,13 +9,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { useReveal } from "../useReveal";
-import { whenLabel } from "../format";
+import { hourLabel, whenLabel } from "../format";
 import type { ListeningStats } from "../types";
 
 /** Backend rows are Sunday-first; read them out Monday-first. */
 const ROWS = [1, 2, 3, 4, 5, 6, 0];
-const ROW_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const HOUR_TICKS = [0, 3, 6, 9, 12, 15, 18, 21];
+const ROW_LABELS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+const HOUR_TICKS = [0, 6, 12, 18];
 
 interface HourDetail {
     weekday: number;
@@ -34,9 +34,8 @@ export function ListeningClock({ listening, period }: { listening: ListeningStat
     const [loading, setLoading] = useState(false);
     const request = useRef(0);
     const { ref, shown: revealed } = useReveal<HTMLElement>({ threshold: 0.2 });
-    // One cell holds the tab stop; the arrows move between them. Putting all
-    // 168 in the tab order made the grid a wall — reaching anything below it
-    // meant 168 presses, which is not navigation, it is a toll.
+    // One cell holds the tab stop and the arrows move between cells; with all 168 in the tab
+    // order, passing the grid would take 168 presses.
     const [cursor, setCursor] = useState<{ dow: number; hour: number }>({ dow: 1, hour: 12 });
     const gridRef = useRef<HTMLDivElement | null>(null);
 
@@ -77,7 +76,7 @@ export function ListeningClock({ listening, period }: { listening: ListeningStat
     }, [open]);
 
     if (max === 0) {
-        return <p className="t-body max-w-[46ch]">Nothing played yet, so there is no week to draw.</p>;
+        return <p className="t-body max-w-[46ch]">no plays yet</p>;
     }
 
     // The five loudest cells, which is what a finger actually wants to reach.
@@ -127,7 +126,7 @@ export function ListeningClock({ listening, period }: { listening: ListeningStat
             <div
                 ref={gridRef}
                 role="grid"
-                aria-label="Listening by hour of the week. Use the arrow keys to move, Enter to see what was playing."
+                aria-label="plays by day and hour. arrow keys move, enter opens an hour"
                 className="flex flex-col gap-[3px]"
                 onMouseLeave={() => setAt(null)}
             >
@@ -153,8 +152,8 @@ export function ListeningClock({ listening, period }: { listening: ListeningStat
                                         onKeyDown={(e) => steer(e, dow, hour)}
                                         aria-label={
                                             n === 0
-                                                ? `${whenLabel(dow, hour)}, nothing played`
-                                                : `${whenLabel(dow, hour)}, ${n} ${n === 1 ? "listen" : "listens"}`
+                                                ? `${whenLabel(dow, hour)}: no plays`
+                                                : `${whenLabel(dow, hour)}: ${n} ${n === 1 ? "play" : "plays"}`
                                         }
                                         aria-pressed={opened}
                                         onMouseEnter={() => { if (!open) setAt({ dow, hour }); }}
@@ -196,7 +195,7 @@ export function ListeningClock({ listening, period }: { listening: ListeningStat
                     <div className="grid grid-cols-[repeat(24,minmax(0,1fr))] gap-[3px]">
                         {Array.from({ length: 24 }, (_, hour) => (
                             <span key={hour} className="t-meta leading-none whitespace-nowrap">
-                                {HOUR_TICKS.includes(hour) ? clockFace(hour) : ""}
+                                {HOUR_TICKS.includes(hour) ? hourLabel(hour) : ""}
                             </span>
                         ))}
                     </div>
@@ -208,7 +207,7 @@ export function ListeningClock({ listening, period }: { listening: ListeningStat
                 would cost the only thing the grid is for — the busiest hours get
                 their own full-width rows underneath, and the grid stays a grid. */}
             <div className="sm:hidden flex flex-col gap-1 -mt-1 short:[&>button:nth-of-type(n+3)]:hidden">
-                <h3 className="t-label mb-1">Your busiest hours</h3>
+                <h3 className="t-label mb-1">busiest hours</h3>
                 {busiest.map(({ dow, hour, n }) => {
                     const opened = open?.dow === dow && open?.hour === hour;
                     return (
@@ -228,7 +227,7 @@ export function ListeningClock({ listening, period }: { listening: ListeningStat
                             <span className="text-sm text-[var(--text-primary)]">
                                 {whenLabel(dow, hour)}
                             </span>
-                            <span className="t-meta shrink-0">{n} listens</span>
+                            <span className="t-meta shrink-0">{n} {n === 1 ? "play" : "plays"}</span>
                         </button>
                     );
                 })}
@@ -245,13 +244,13 @@ export function ListeningClock({ listening, period }: { listening: ListeningStat
                             </p>
                             <p className="t-meta">
                                 {shownCount === 0
-                                    ? "nothing, ever"
-                                    : `${shownCount.toLocaleString()} ${shownCount === 1 ? "listen" : "listens"} · ${(
+                                    ? "no plays"
+                                    : `${shownCount.toLocaleString()} ${shownCount === 1 ? "play" : "plays"} · ${(
                                           (shownCount / plays) * 100
-                                      ).toFixed(1)}% of everything`}
-                                {isPeak && !open && " · your busiest hour"}
+                                      ).toFixed(1)}% of all plays`}
+                                {isPeak && !open && " · busiest"}
                                 {shownCount > 0 && !open && (
-                                    <span className="hidden sm:inline"> · click to see what was on</span>
+                                    <span className="hidden sm:inline"> · click for tracks</span>
                                 )}
                                 {open && <span className="hidden sm:inline"> · click again to close</span>}
                             </p>
@@ -294,7 +293,7 @@ function HourPanel({ detail, loading }: { detail: HourDetail | null; loading: bo
     return (
         <div className="pt-1 grid gap-x-14 gap-y-7 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] animate-rise">
             <div className="flex flex-col gap-3">
-                <h3 className="t-label text-[var(--text-secondary)]">What was on</h3>
+                <h3 className="t-label text-[var(--text-secondary)]">tracks</h3>
                 <ol className="flex flex-col gap-2.5">
                     {detail.tracks.map((t, i) => (
                         <li
@@ -317,7 +316,7 @@ function HourPanel({ detail, loading }: { detail: HourDetail | null; loading: bo
             </div>
 
             <div className="flex flex-col gap-3">
-                <h3 className="t-label text-[var(--text-secondary)]">Who</h3>
+                <h3 className="t-label text-[var(--text-secondary)]">artists</h3>
                 <ul className="flex flex-col gap-2.5">
                     {detail.artists.map((a, i) => (
                         <li
@@ -349,17 +348,9 @@ function fullInkAt(clock: number[][]): number {
 
 /** Cell darkness on a gentle curve; one listen still gets visible ink. */
 function cellInk(n: number, full: number): string {
-    // An hour with nothing in it still has to read as a cell. At 3% white on a
-    // #0a0a0a ground the empty ones were invisible, so a week with four quiet
-    // days looked like a grid that had failed to render rather than a person
-    // who does not listen at the weekend.
+    // An empty hour still has to read as a cell: at 3% white on #0a0a0a it is invisible and the
+    // grid looks unrendered.
     if (n === 0) return "var(--chart-ink-empty)";
     const share = Math.min(1, Math.pow(n / full, 0.72));
     return `color-mix(in oklab, var(--color-brand) ${Math.round(10 + 90 * share)}%, transparent)`;
-}
-
-/** 12a, 3a, 6a — one vocabulary, not a mix of clock faces and integers. */
-function clockFace(hour: number): string {
-    const h = hour % 12 === 0 ? 12 : hour % 12;
-    return `${h}${hour < 12 ? "a" : "p"}`;
 }

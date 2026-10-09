@@ -6,11 +6,11 @@ import { useParams, useRouter } from "next/navigation";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { api } from "@/lib/api";
 import { useAudioState, useAudioPlayback, useAudioControls, Track as AudioTrack } from "@/lib/audio-context";
-import { useAudioController } from "@/lib/audio-controller-context";
 import { cn } from "@/lib/cn";
 import { shuffleArray } from "@/lib/shuffle";
 import { formatTime, plural } from "@/lib/format";
 import { queryKeys, usePlaylistQuery, useRemoveFromPlaylistMutation, useDeletePlaylistMutation, useUpdatePlaylistMutation, useMoveTrackInPlaylistMutation } from "@/hooks/useQueries";
+import { usePreview } from "@/hooks/usePreview";
 import { useQueryClient } from "@tanstack/react-query";
 import { notify } from "@/lib/notify";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
@@ -48,6 +48,7 @@ import { SectionHeader } from "@/components/ui/SectionHeader";
 import { Button } from "@/components/ui/Button";
 import { CachedImage } from "@/components/ui/CachedImage";
 import { PageMessage } from "@/components/ui/PageMessage";
+import { copyText } from "@/lib/clipboard";
 
 interface Track {
     id: string;
@@ -61,6 +62,17 @@ interface Track {
             id?: string;
             name: string;
         };
+    };
+}
+
+/** A playlist track as the player takes it. */
+function toAudioTrack(track: Track): AudioTrack {
+    return {
+        id: track.id,
+        title: track.title,
+        artist: { name: track.album.artist.name, id: track.album.artist.id },
+        album: { title: track.album.title, coverArt: track.album.coverArt, id: track.album.id },
+        duration: track.duration,
     };
 }
 
@@ -94,7 +106,6 @@ const TRACK_GRID = "grid-cols-[64px_minmax(0,2fr)_minmax(0,1fr)_56px_160px]";
 const TRACK_GRID_MD = "md:grid-cols-[64px_minmax(0,2fr)_minmax(0,1fr)_56px_160px]";
 
 export default function PlaylistDetailPage() {
-    const controller = useAudioController();
     const params = useParams();
     const router = useRouter();
     const queryClient = useQueryClient();
@@ -115,7 +126,6 @@ export default function PlaylistDetailPage() {
     const editSaveRef = useRef(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [isHiding, setIsHiding] = useState(false);
-    const [playingPreviewId, setPlayingPreviewId] = useState<string | null>(null);
     const [retryingTrackId, setRetryingTrackId] = useState<string | null>(null);
     const [removingTrackId, setRemovingTrackId] = useState<string | null>(null);
     const [retryingAll, setRetryingAll] = useState(false);
@@ -124,19 +134,10 @@ export default function PlaylistDetailPage() {
     const [shareLoading, setShareLoading] = useState(false);
     const [shareCopied, setShareCopied] = useState(false);
     const [showSharePopover, setShowSharePopover] = useState(false);
-    const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+    const preview = usePreview();
     const listRef = useRef<HTMLDivElement>(null);
     const scrollContainerRef = useRef<HTMLElement | null>(null);
     const [scrollMargin, setScrollMargin] = useState(0);
-
-    useEffect(() => {
-        return () => {
-            if (previewAudioRef.current) {
-                previewAudioRef.current.pause();
-                previewAudioRef.current = null;
-            }
-        };
-    }, []);
 
     // Capture the actual scroll container (#main-content) and measure the
     // list's offset within it so the element virtualizer positions rows correctly.
@@ -162,40 +163,8 @@ export default function PlaylistDetailPage() {
         };
     }, [showSharePopover]);
 
-    const handlePlayPreview = async (pendingId: string) => {
-        if (playingPreviewId === pendingId && previewAudioRef.current) {
-            previewAudioRef.current.pause();
-            setPlayingPreviewId(null);
-            return;
-        }
-
-        if (previewAudioRef.current) {
-            previewAudioRef.current.pause();
-        }
-
-        setPlayingPreviewId(pendingId);
-
-        try {
-            const audio = new Audio(
-                api.getPendingTrackPreviewStreamUrl(playlistId, pendingId)
-            );
-            const { volume, isMuted } = controller?.getState() ?? { volume: 1, isMuted: false };
-            audio.volume = isMuted ? 0 : volume;
-            audio.onended = () => setPlayingPreviewId(null);
-            audio.onerror = (e) => {
-                console.error("Deezer preview playback failed:", e);
-                setPlayingPreviewId(null);
-                notify.error("Preview playback failed");
-            };
-            previewAudioRef.current = audio;
-
-            await audio.play();
-        } catch (err) {
-            console.error("Failed to play Deezer preview:", err);
-            setPlayingPreviewId(null);
-            notify.error("No preview available");
-        }
-    };
+    const handlePlayPreview = (pendingId: string) =>
+        preview.toggle(pendingId, api.getPendingTrackPreviewStreamUrl(playlistId, pendingId));
 
     const handleRetryPendingTrack = async (pendingId: string) => {
         setRetryingTrackId(pendingId);
@@ -389,12 +358,9 @@ export default function PlaylistDetailPage() {
 
     const handleCopyShareUrl = async () => {
         if (!shareUrl) return;
-        try {
-            await navigator.clipboard.writeText(shareUrl);
+        if (await copyText(shareUrl)) {
             setShareCopied(true);
             setTimeout(() => setShareCopied(false), 2000);
-        } catch {
-            notify.error("Failed to copy link");
         }
     };
 
@@ -440,62 +406,20 @@ export default function PlaylistDetailPage() {
             return;
         }
 
-        const tracks = playlist.items.map((item: PlaylistItem) => ({
-            id: item.track.id,
-            title: item.track.title,
-            artist: {
-                name: item.track.album.artist.name,
-                id: item.track.album.artist.id,
-            },
-            album: {
-                title: item.track.album.title,
-                coverArt: item.track.album.coverArt,
-                id: item.track.album.id,
-            },
-            duration: item.track.duration,
-        }));
+        const tracks = playlist.items.map((item: PlaylistItem) => toAudioTrack(item.track));
         playTracks(tracks, 0);
     };
 
     const handlePlayTrack = (index: number) => {
         if (!playlist?.items || playlist.items.length === 0) return;
 
-        const tracks = playlist.items.map((item: PlaylistItem) => ({
-            id: item.track.id,
-            title: item.track.title,
-            artist: {
-                name: item.track.album.artist.name,
-                id: item.track.album.artist.id,
-            },
-            album: {
-                title: item.track.album.title,
-                coverArt: item.track.album.coverArt,
-                id: item.track.album.id,
-            },
-            duration: item.track.duration,
-        }));
+        const tracks = playlist.items.map((item: PlaylistItem) => toAudioTrack(item.track));
         playTracks(tracks, index);
     };
 
     const handleRowTouchEnd = useDoubleTapList(handlePlayTrack);
 
-    const handleAddToQueue = (track: Track) => {
-        const formattedTrack = {
-            id: track.id,
-            title: track.title,
-            artist: {
-                name: track.album.artist.name,
-                id: track.album.artist.id,
-            },
-            album: {
-                title: track.album.title,
-                coverArt: track.album.coverArt,
-                id: track.album.id,
-            },
-            duration: track.duration,
-        };
-        addToQueue(formattedTrack);
-    };
+    const handleAddToQueue = (track: Track) => addToQueue(toAudioTrack(track));
 
     // ── Drag-to-reorder ──────────────────────────────────────────────────────
 
@@ -600,7 +524,7 @@ export default function PlaylistDetailPage() {
     const renderRow = (item: PlaylistItem | PendingTrack, index: number) => {
             if (item.type === "pending") {
                 const pending = (item as PendingTrack).pending;
-                const isPreviewPlaying = playingPreviewId === pending.id;
+                const isPreviewPlaying = preview.previewId === pending.id;
                 const isRetrying = retryingTrackId === pending.id;
                 const isRemoving = removingTrackId === pending.id;
                 const isMissing = pending.missingFromDisk === true;
@@ -624,7 +548,7 @@ export default function PlaylistDetailPage() {
                                     onClick={() => handlePlayPreview(pending.id)}
                                     className="w-full h-full flex items-center justify-center hover:bg-white/5 transition-colors"
                                     aria-label="Play a 30-second preview"
-                                    title="Play a 30-second preview"
+                                    title="play a 30-second preview"
                                 >
                                     {isPreviewPlaying ? (
                                         <Volume2 className="w-5 h-5 text-brand animate-pulse" />
@@ -647,7 +571,7 @@ export default function PlaylistDetailPage() {
                             {pending.album}
                         </p>
 
-                        <span aria-hidden="true" />
+                        <span aria-hidden="true" className="hidden md:block" />
 
                         <div className="flex items-center justify-end gap-1">
                             <span className={cn(
@@ -670,7 +594,7 @@ export default function PlaylistDetailPage() {
                                             : "text-[var(--text-muted)] hover:text-white/60"
                                     )}
                                     aria-label="Retry download"
-                                    title="Retry download"
+                                    title="retry download"
                                 >
                                     {isRetrying ? (
                                         <Loader2 className="w-4 h-4 animate-spin" />
@@ -688,7 +612,7 @@ export default function PlaylistDetailPage() {
                                     disabled={isRemoving}
                                     className="w-11 h-11 md:w-9 md:h-9 flex items-center justify-center rounded-lg hover:bg-white/10 text-[var(--text-muted)] hover:text-danger-light transition-all"
                                     aria-label="Remove from playlist"
-                                    title="Remove from playlist"
+                                    title="remove from playlist"
                                 >
                                     {isRemoving ? (
                                         <Loader2 className="w-4 h-4 animate-spin" />
@@ -841,7 +765,7 @@ export default function PlaylistDetailPage() {
                                 handleAddToQueue(playlistItem.track);
                             }}
                             aria-label="Add to queue"
-                            title="Add to queue"
+                            title="add to queue"
                         >
                             <ListPlus className="w-4 h-4" />
                         </button>
@@ -854,7 +778,7 @@ export default function PlaylistDetailPage() {
                                         e.stopPropagation();
                                         handleMoveTrackUp(playlistItem.id);
                                     }}
-                                    title="Move up"
+                                    title="move up"
                                 >
                                     <ChevronUp className="w-4 h-4" />
                                 </button>
@@ -865,7 +789,7 @@ export default function PlaylistDetailPage() {
                                         e.stopPropagation();
                                         handleMoveTrackDown(playlistItem.id);
                                     }}
-                                    title="Move down"
+                                    title="move down"
                                 >
                                     <ChevronDown className="w-4 h-4" />
                                 </button>
@@ -876,7 +800,7 @@ export default function PlaylistDetailPage() {
                                         handleRemoveTrack(playlistItem.track.id);
                                     }}
                                     aria-label="Remove from playlist"
-                                    title="Remove from playlist"
+                                    title="remove from playlist"
                                 >
                                     <X className="w-4 h-4" />
                                 </button>
@@ -899,7 +823,7 @@ export default function PlaylistDetailPage() {
         return (
             <PageMessage
                 title="Playlist not found"
-                description="It may have been deleted, or it belongs to someone who has not shared it."
+                description="Deleted or not shared."
                 action={{ label: "Your playlists", href: "/playlists" }}
             />
         );
@@ -1042,7 +966,7 @@ export default function PlaylistDetailPage() {
                                 <div className="flex flex-wrap items-center gap-3 text-xs tabular-nums text-[var(--text-secondary)]">
                                     {isShared && playlist.user?.username && (
                                         <>
-                                            <span className="font-bold text-white normal-case tracking-tight text-sm">
+                                            <span className="font-bold text-white tracking-tight text-sm">
                                                 {playlist.user.username}
                                             </span>
                                             <span className="text-[var(--text-muted)]">|</span>
@@ -1082,27 +1006,10 @@ export default function PlaylistDetailPage() {
                         <button
                             onClick={() => {
                                 if (!playlist?.items || playlist.items.length === 0) return;
-                                const tracks: AudioTrack[] = playlist.items.map(
-                                    (item: PlaylistItem) => ({
-                                        id: item.track.id,
-                                        title: item.track.title,
-                                        artist: {
-                                            name: item.track.album.artist.name,
-                                            id: item.track.album.artist.id,
-                                        },
-                                        album: {
-                                            title: item.track.album.title,
-                                            coverArt: item.track.album.coverArt,
-                                            id: item.track.album.id,
-                                        },
-                                        duration: item.track.duration,
-                                    })
-                                );
-                                const shuffled = shuffleArray(tracks);
-                                playTracks(shuffled, 0);
+                                playTracks(shuffleArray(playlist.items.map((item: PlaylistItem) => toAudioTrack(item.track))), 0);
                             }}
                             className="h-8 w-8 rounded-lg hover:bg-white/10 flex items-center justify-center text-[var(--text-muted)] hover:text-white transition-all"
-                            title="Shuffle play"
+                            title="shuffle play"
                         >
                             <Shuffle className="w-5 h-5" />
                         </button>
@@ -1122,7 +1029,7 @@ export default function PlaylistDetailPage() {
                                         : "text-[var(--text-muted)] hover:text-white/60",
                                     shareLoading && "opacity-50 cursor-not-allowed"
                                 )}
-                                title="Share playlist"
+                                title="share playlist"
                             >
                                 {shareLoading ? (
                                     <Loader2 className="w-5 h-5 animate-spin" />
@@ -1199,7 +1106,7 @@ export default function PlaylistDetailPage() {
                                     : "text-[var(--text-muted)] hover:text-white/60",
                                 isUpdatingPlaylist && "opacity-50 cursor-not-allowed"
                             )}
-                            title={playlist.isPublic ? "Make private" : "Make public"}
+                            title={playlist.isPublic ? "make private" : "make public"}
                         >
                             {playlist.isPublic ? (
                                 <Globe className="w-5 h-5" />
@@ -1219,7 +1126,7 @@ export default function PlaylistDetailPage() {
                                 : "text-[var(--text-muted)] hover:text-white/60",
                             isHiding && "opacity-50 cursor-not-allowed"
                         )}
-                        title={playlist.isHidden ? "Show playlist" : "Hide playlist"}
+                        title={playlist.isHidden ? "show playlist" : "hide playlist"}
                     >
                         {playlist.isHidden ? (
                             <Eye className="w-5 h-5" />
@@ -1232,7 +1139,7 @@ export default function PlaylistDetailPage() {
                         <button
                             onClick={() => setShowDeleteConfirm(true)}
                             className="h-8 w-8 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-danger-light transition-all"
-                            title="Delete Playlist"
+                            title="delete playlist"
                         >
                             <Trash2 className="w-5 h-5" />
                         </button>

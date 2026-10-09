@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import Image from "next/image";
+import { KimaMark } from "@/components/ui/KimaMark";
 
 function deriveProgress(p: number): number {
     return Math.min(p, 90);
@@ -30,6 +30,7 @@ function deriveMessage(p: number): string {
 export default function SyncPage() {
     useRouter();
     const queryClient = useQueryClient();
+    const router = useRouter();
     const [initError, setInitError] = useState("");
     const [initFailed, setInitFailed] = useState(false);
     const [postScanDone, setPostScanDone] = useState(false);
@@ -163,13 +164,14 @@ export default function SyncPage() {
 
             setPostScanDone(true);
             setTimeout(() => {
-                window.location.href = "/";
+                void queryClient.invalidateQueries();
+                router.push("/");
             }, 1500);
         })();
-    }, [scanStatus]);
+    }, [scanStatus, queryClient, router]);
 
     const handleSkip = () => {
-        window.location.href = "/";
+        router.push("/");
     };
 
     const steps = [
@@ -181,12 +183,10 @@ export default function SyncPage() {
 
     return (
         <div className="min-h-screen w-full relative overflow-hidden">
-            {/* Dark background (matches onboarding) */}
             <div className="absolute inset-0 bg-[#000]">
                 <div className="absolute inset-0 bg-gradient-to-br from-brand/5 via-transparent to-transparent" />
             </div>
 
-            {/* Main content */}
             <div className="relative z-(--z-raised) min-h-screen flex items-center justify-center p-6">
                 <div className="w-full max-w-lg">
                     {/* Logo/Brand -- matches onboarding header */}
@@ -194,13 +194,7 @@ export default function SyncPage() {
                         <div className="inline-flex items-center gap-4 mb-4">
                             <div className="relative">
                                 <div className="absolute inset-0 bg-white/10 blur-xl rounded-full" />
-                                <Image
-                                    src="/assets/images/kima.webp"
-                                    alt="Kima"
-                                    width={48}
-                                    height={48}
-                                    className="relative z-(--z-raised)"
-                                />
+                                <KimaMark size={48} className="relative z-(--z-raised)" />
                             </div>
                             <h1 className="text-4xl font-bold text-white">
                                 Kima Hub
@@ -211,7 +205,6 @@ export default function SyncPage() {
                     {/* Sync card -- same aesthetic as onboarding card */}
                     <div className="bg-[#111]/90 rounded-lg border border-white/10 overflow-hidden">
                         <div className="p-6 md:p-8 space-y-6">
-                            {/* Title + status message */}
                             <div>
                                 <h2 className="text-2xl font-bold text-white mb-1">
                                     {syncing ? "Setting Things Up" : "Ready to Go!"}
@@ -221,7 +214,6 @@ export default function SyncPage() {
                                 </p>
                             </div>
 
-                            {/* Progress bar */}
                             {syncing && !error && (
                                 <div className="space-y-2">
                                     <div className="w-full bg-white/10 rounded-full h-1.5 overflow-hidden">
@@ -236,7 +228,6 @@ export default function SyncPage() {
                                 </div>
                             )}
 
-                            {/* Error state */}
                             {error && (
                                 <div className="p-4 bg-danger/10 border border-danger/20 rounded-lg">
                                     <p className="text-danger-light text-sm">
@@ -245,7 +236,6 @@ export default function SyncPage() {
                                 </div>
                             )}
 
-                            {/* Steps list */}
                             <div className="grid grid-cols-2 gap-3 pt-4 border-t border-white/10">
                                 {steps.map((step) => {
                                     const isComplete = completedSteps.includes(step.id);
@@ -293,7 +283,6 @@ export default function SyncPage() {
                         </div>
                     </div>
 
-                    {/* Skip button */}
                     <div className="flex justify-end mt-4">
                         <button
                             onClick={handleSkip}
@@ -303,7 +292,6 @@ export default function SyncPage() {
                         </button>
                     </div>
 
-                    {/* Footer note */}
                     <p className="text-center text-[var(--text-muted)] text-xs mt-6">
                         Enrichment and metadata analysis will continue in the background once you&apos;re in.
                     </p>

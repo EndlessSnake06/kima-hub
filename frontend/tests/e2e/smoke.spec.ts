@@ -34,14 +34,14 @@ test("core smoke: login → play album → play/pause/next/prev", async ({ page 
     await expect.poll(() => getAudioCurrentTime(page), { timeout: 15_000 }).toBeGreaterThan(0);
 
     // Player should reflect playing state
-    const playPause = page.locator('button[title="Pause"], button[title="Play"]').first();
-    await expect(playPause).toHaveAttribute("title", "Pause");
+    const playPause = page.locator('button[title="pause"], button[title="play"]').first();
+    await expect(playPause).toHaveAttribute("title", "pause");
 
     // Toggle pause/play
     await playPause.click();
-    await expect(playPause).toHaveAttribute("title", "Play");
+    await expect(playPause).toHaveAttribute("title", "play");
     await playPause.click();
-    await expect(playPause).toHaveAttribute("title", "Pause");
+    await expect(playPause).toHaveAttribute("title", "pause");
 
     // Verify the audio element is actually advancing -- not stalled at 0
     const t0 = await getAudioCurrentTime(page);

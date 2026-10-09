@@ -117,7 +117,7 @@ export function LibraryRadioStations() {
                 {canScrollLeft && (
                     <button
                         onClick={() => scroll("left")}
-                        className="absolute left-0 top-1/2 -translate-y-1/2 z-(--z-raised) w-9 h-9 rounded-lg bg-black/80 flex items-center justify-center opacity-0 group-hover/carousel:opacity-100 transition-opacity hover:bg-black border border-white/10 -translate-x-1/2"
+                        className="absolute left-0 top-1/2 -translate-y-1/2 z-(--z-raised) w-9 h-9 rounded-lg bg-black/80 flex items-center justify-center opacity-0 group-hover/carousel:opacity-100 focus-visible:opacity-100 transition-opacity hover:bg-black border border-white/10 -translate-x-1/2"
                         aria-label="Scroll left"
                     >
                         <ChevronLeft className="w-5 h-5 text-white" />
@@ -139,7 +139,7 @@ export function LibraryRadioStations() {
                 {canScrollRight && (
                     <button
                         onClick={() => scroll("right")}
-                        className="absolute right-0 top-1/2 -translate-y-1/2 z-(--z-raised) w-9 h-9 rounded-lg bg-black/80 flex items-center justify-center opacity-0 group-hover/carousel:opacity-100 transition-opacity hover:bg-black border border-white/10 translate-x-1/2"
+                        className="absolute right-0 top-1/2 -translate-y-1/2 z-(--z-raised) w-9 h-9 rounded-lg bg-black/80 flex items-center justify-center opacity-0 group-hover/carousel:opacity-100 focus-visible:opacity-100 transition-opacity hover:bg-black border border-white/10 translate-x-1/2"
                         aria-label="Scroll right"
                     >
                         <ChevronRight className="w-5 h-5 text-white" />

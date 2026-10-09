@@ -97,7 +97,7 @@ export function SettingsLayout({ children, sidebarItems, isAdmin }: SettingsLayo
                             .filter((item) => !item.adminOnly || isAdmin)
                             .map((item) => (
                                 <option key={item.id} value={item.id}>
-                                    {item.label}
+                                    {item.label.toLowerCase()}
                                 </option>
                             ))}
                     </select>

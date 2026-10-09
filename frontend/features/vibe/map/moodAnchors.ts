@@ -27,7 +27,7 @@ export function computeMoodAnchors(tracks: MapTrack[], maxLabels = 7): MoodAncho
         const mood = t.dominantMood;
         if (!mood || !isMood(mood)) continue;
         totals.set(mood, (totals.get(mood) ?? 0) + 1);
-        const z = t.z ?? 0.5;
+        const z = t.z;
         const cx = Math.min(GRID - 1, Math.max(0, Math.floor(t.x * GRID)));
         const cy = Math.min(GRID - 1, Math.max(0, Math.floor(t.y * GRID)));
         const cz = Math.min(GRID - 1, Math.max(0, Math.floor(z * GRID)));

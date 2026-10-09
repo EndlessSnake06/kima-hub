@@ -4,10 +4,10 @@ import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { api } from "@/lib/api";
-import Image from "next/image";
 import { Loader2 } from "lucide-react";
 import { GalaxyBackground } from "@/components/ui/GalaxyBackground";
 import { Button } from "@/components/ui/Button";
+import { KimaMark } from "@/components/ui/KimaMark";
 
 const LOGIN_ERROR_MESSAGES: Record<string, string> = {
     "session_expired": "Your session has expired. Please sign in again.",
@@ -127,7 +127,6 @@ export default function LoginPage() {
                 <LoginErrorHandler setError={setError} />
             </Suspense>
 
-            {/* Background */}
             <div className="absolute inset-0 bg-[#000]">
                 <div className="absolute inset-0 bg-gradient-to-br from-brand/5 via-transparent to-transparent" />
                 <div className="opacity-[0.08]">
@@ -135,21 +134,13 @@ export default function LoginPage() {
                 </div>
             </div>
 
-            {/* Login Form - Centered */}
             <div className="relative z-(--z-raised) min-h-screen flex items-center justify-center p-4">
                 <div className="w-full max-w-md">
-                    {/* Logo */}
                     <div className="flex items-center justify-center mb-8">
                         <div className="relative flex gap-3 items-center group">
                             <div className="relative">
                                 <div className="absolute inset-0 bg-white/10 blur-xl rounded-full group-hover:bg-white/20 transition-all duration-300" />
-                                <Image
-                                    src="/assets/images/kima.webp"
-                                    alt="Kima"
-                                    width={40}
-                                    height={40}
-                                    className="relative z-(--z-raised)"
-                                />
+                                <KimaMark size={40} className="relative z-(--z-raised)" />
                             </div>
                             <span className="text-3xl font-bold text-white">
                                 Kima
@@ -157,7 +148,6 @@ export default function LoginPage() {
                         </div>
                     </div>
 
-                    {/* Login Card */}
                     <div className="bg-[#111]/90 rounded-lg p-6 md:p-8 border border-white/10 animate-rise transition-shadow duration-200">
                         <h1 className="text-2xl font-bold text-white mb-1 text-center">
                             Welcome back
@@ -345,7 +335,6 @@ export default function LoginPage() {
                         </form>
                     </div>
 
-                    {/* Footer */}
                     <p className="text-center text-[var(--text-muted)] text-sm mt-6" suppressHydrationWarning>
                         © {new Date().getFullYear()} Kima. Your music, your way.
                     </p>

@@ -182,10 +182,10 @@ export function SeekSlider({
         if (!hasMedia) return undefined;
         if (!canSeek) {
             return downloadProgress !== null
-                ? `Downloading ${downloadProgress}%... Seek will be available when cached`
-                : "Downloading... Seeking will be available when cached";
+                ? `downloading ${downloadProgress}%... seek will be available when cached`
+                : "downloading... seeking will be available when cached";
         }
-        return isDragging ? "Release to seek" : "Click or drag to seek";
+        return isDragging ? "release to seek" : "click or drag to seek";
     };
 
     // Variant-specific styles
@@ -262,7 +262,6 @@ export function SeekSlider({
                 )}
             </div>
 
-            {/* Visual feedback when dragging */}
             {isDragging && (
                 <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-black/80 text-white text-xs px-2 py-1 rounded pointer-events-none whitespace-nowrap">
                     {Math.floor((displayProgress / 100) * duration)}s

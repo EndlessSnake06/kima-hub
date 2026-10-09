@@ -111,7 +111,7 @@ export default function HomePage() {
                         )},
                         { key: "popular-artists", visible: popularArtists.length > 0, content: (
                             <section data-tv-section="popular-artists">
-                                <SectionHeader title="Popular Artists" badge="Local Engine" type="artist" />
+                                <SectionHeader title="Popular Artists" badge="ListenBrainz" type="artist" />
                                 <PopularArtistsGrid artists={popularArtists} />
                             </section>
                         )},

@@ -156,7 +156,7 @@ export function NotificationsTab() {
                                         <button
                                             onClick={() => handleMarkAsRead(notification.id)}
                                             className="p-1 hover:bg-white/10 transition-colors"
-                                            title="Mark as read"
+                                            title="mark as read"
                                             aria-label="Mark as read"
                                         >
                                             <Check className="w-3 h-3 text-[var(--text-muted)] hover:text-white" />
@@ -165,7 +165,7 @@ export function NotificationsTab() {
                                     <button
                                         onClick={() => handleClear(notification.id)}
                                         className="p-1 hover:bg-white/10 transition-colors"
-                                        title="Dismiss"
+                                        title="dismiss"
                                         aria-label="Dismiss"
                                     >
                                         <Trash2 className="w-3 h-3 text-[var(--text-muted)] hover:text-danger-light" />

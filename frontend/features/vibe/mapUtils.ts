@@ -1,5 +1,3 @@
-import type { MapTrack } from "./types";
-
 /**
  * Backend mood keys, in a fixed order (the index is what the star shader sees).
  * Five moods; acoustic/electronic are a sound, not a mood, and are not shown.
@@ -13,9 +11,6 @@ export const MOOD_KEYS = [
     "moodAggressive",
     "moodParty",
 ] as const;
-
-/** Analysed, but no single mood stands out for the track. */
-/** The track's mood analysis has not run yet. */
 
 // Warm, muted "matter, not neon" tones so the map reads as a night sky, with
 // each mood still distinct from its neighbours.
@@ -52,33 +47,4 @@ export function isMood(key: string): boolean {
 /** Index of a mood key in MOOD_KEYS, or -1 for none/neutral. */
 export function moodIndex(key: string): number {
     return (MOOD_KEYS as readonly string[]).indexOf(key);
-}
-
-/**
- * Blend a track's mood ranks into one RGB colour (0–255). Ranks are cubed so
- * the mood the track stands out on dominates; `saturationBoost` pushes the blend away from grey.
- * Uncached on purpose: it runs once per track when the map is built.
- */
-export function blendMoodColor(track: Pick<MapTrack, "moods">, saturationBoost = 1.6): [number, number, number] {
-    const moods = track.moods;
-    let r = 0, g = 0, b = 0, total = 0;
-    if (moods) {
-        for (const key of MOOD_KEYS) {
-            const score = moods[key];
-            if (!score || score <= 0) continue;
-            const [cr, cg, cb] = MOOD_COLORS[key];
-            const w = score * score * score;
-            r += cr * w;
-            g += cg * w;
-            b += cb * w;
-            total += w;
-        }
-    }
-    if (total === 0) return MOOD_COLORS.neutral;
-    r /= total;
-    g /= total;
-    b /= total;
-    const grey = (r + g + b) / 3;
-    const clamp = (v: number) => Math.round(Math.max(0, Math.min(255, grey + (v - grey) * saturationBoost)));
-    return [clamp(r), clamp(g), clamp(b)];
 }

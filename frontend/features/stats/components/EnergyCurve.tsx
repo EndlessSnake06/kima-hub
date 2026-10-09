@@ -71,19 +71,17 @@ export function EnergyCurve({ hourly }: { hourly: Signature["hourly"] }) {
     if (!line) return null;
 
     return (
-        // Capped, and given a named axis. The viewBox is roughly two-to-one, so
-        // left to fill a phone this drew a curve 280 pixels tall beside a key
-        // wheel capped at 304 wide -- one graphic reading as a wall and the
-        // other as a coin, when they are meant to be a pair.
+        // Capped so it pairs with the key wheel beside it: the viewBox is roughly two-to-one, so
+        // uncapped on a phone it stands 280 px tall against the wheel's 304 px width.
         <figure
             ref={ref}
             className="m-0 grid grid-cols-[3.25rem_minmax(0,1fr)] gap-x-3 gap-y-2 max-w-[34rem] xl:max-w-[44rem]"
         >
-            {/* The axis, named down the left edge in the taste plot's words. */}
+            {/* The axis, named down the left edge. */}
             <div className="flex flex-col items-end t-label">
                 <div className="flex-[34] flex w-full flex-col items-end justify-between py-0.5">
-                    <span>frantic</span>
-                    <span>calm</span>
+                    <span>high</span>
+                    <span>low</span>
                 </div>
                 <div className="flex-[12] flex w-full items-center justify-end">
                     <span>plays</span>
@@ -91,7 +89,7 @@ export function EnergyCurve({ hourly }: { hourly: Signature["hourly"] }) {
             </div>
 
             <svg viewBox={`0 0 ${W} ${H + 12}`} className="w-full" role="img"
-                 aria-label={`The music you play is most frantic around ${hourLabel(peak!.hour)} and calmest around ${hourLabel(trough!.hour)}.`}>
+                 aria-label={`highest energy around ${hourLabel(peak!.hour)}, lowest around ${hourLabel(trough!.hour)}`}>
                 <path d={band} fill="var(--chart-ink-band)" />
                 <path
                     d={line}

@@ -54,7 +54,6 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
     return (
         <QueryClientProvider client={queryClient}>
             {children}
-            {/* DevTools only in development */}
             {process.env.NODE_ENV === "development" && (
                 <ReactQueryDevtools
                     initialIsOpen={false}
@@ -64,7 +63,3 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
         </QueryClientProvider>
     );
 }
-
-/**
- * Export the query client for use in server components or utilities
- */

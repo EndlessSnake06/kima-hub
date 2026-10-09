@@ -1,8 +1,3 @@
-/**
- * Settings Types
- * Centralized type definitions for the settings feature
- */
-
 export interface UserSettings {
     playbackQuality: "original" | "high" | "medium" | "low";
     wifiOnly: boolean;
@@ -54,7 +49,6 @@ export interface SystemSettings {
     maxCacheSizeMb: number;
     autoSync: boolean;
     autoEnrichMetadata: boolean;
-    audioAnalyzerWorkers: number;
     soulseekConcurrentDownloads: number;
     // Download Preferences
     downloadSource: "soulseek" | "lidarr";
@@ -63,12 +57,12 @@ export interface SystemSettings {
     publicUrl: string;
 }
 
-export interface ApiKey {
-    id: string;
-    name: string;
-    keyPreview?: string;
-    createdAt: string;
-    lastUsed?: string | null;
-    lastUsedAt?: string | null;
+/**
+ * Whether Soulseek can be used: slskd holds its own Soulseek account and needs
+ * only its address; Kima's own client needs the account itself. Mirrors the
+ * server's utils/soulseekConfigured.ts.
+ */
+export function soulseekConfigured(settings: Pick<SystemSettings, "soulseekMode" | "slskdUrl" | "soulseekUsername" | "soulseekPassword">): boolean {
+    if (settings.soulseekMode === "slskd") return !!settings.slskdUrl?.trim();
+    return !!(settings.soulseekUsername?.trim() && settings.soulseekPassword?.trim());
 }
-

@@ -29,8 +29,8 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-    title: "Kima - Your Music",
-    description: "Self-hosted music streaming platform. https://github.com/Chevron7Locked/kima-hub",
+    title: "kima",
+    description: "self-hosted music streaming. https://github.com/Chevron7Locked/kima-hub",
     manifest: "/manifest.webmanifest",
     icons: {
         apple: [
@@ -43,12 +43,12 @@ export const metadata: Metadata = {
         // player from Safari chrome overlap.
         capable: true,
         statusBarStyle: "black-translucent",
-        title: "Kima",
+        title: "kima",
     },
     openGraph: {
-        title: "Kima",
-        description: "Self-hosted music streaming platform",
-        siteName: "Kima",
+        title: "kima",
+        description: "self-hosted music streaming",
+        siteName: "kima",
         url: "https://github.com/Chevron7Locked/kima-hub",
         type: "website",
     },

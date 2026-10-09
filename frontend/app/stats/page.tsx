@@ -73,9 +73,8 @@ export default function StatsPage() {
     if (!data) {
         return (
             <PageMessage
-                title="Couldn't load your stats"
-                description="Your listening history is fine; the page just couldn't read it."
-                action={{ label: "Try again", onClick: () => { setFailed(false); setAttempt((n) => n + 1); } }}
+                title="couldn't load stats"
+                action={{ label: "try again", onClick: () => { setFailed(false); setAttempt((n) => n + 1); } }}
             />
         );
     }
@@ -93,15 +92,15 @@ export default function StatsPage() {
 
     const analysed = shelf.analysis.done.toLocaleString();
     const topKey = signature.key?.top[0]?.key;
-    const keyClaim = topKey ? `You play ${topKey} more than any other key.` : "Your keys, read from the audio.";
+    const keyClaim = topKey ? `top key: ${topKey.toLowerCase()}` : "keys";
 
     const sources = (
         <>
-            <Column label="Spoken word">
+            <Column label="podcasts & audiobooks">
                 <SpokenWord spoken={spoken} />
             </Column>
             {hasPlays && (
-                <Column label="Where it came from">
+                <Column label="play sources">
                     <SourceSplit listening={listening} />
                 </Column>
             )}
@@ -111,7 +110,7 @@ export default function StatsPage() {
     const chapters: Chapter[] = [
         {
             id: "overview",
-            label: "Overview",
+            label: "overview",
             content: hasPlays
                 ? <Overview listening={listening} shelf={shelf} signature={signature} period={shown} withShape={!stacked} />
                 : <NoPlays period={shown} />,
@@ -119,7 +118,7 @@ export default function StatsPage() {
         // Where the Overview stacks, the plot has no room beside the figures and gets its own chapter.
         ...(hasPlays && stacked ? [{
             id: "shape",
-            label: "Shape",
+            label: "brightness & energy",
             content: (
                 <div className="mx-auto w-full max-w-[max(10rem,calc(var(--fit-h)-13.5rem))]">
                     <ShapePlot listening={listening} period={shown} />
@@ -128,27 +127,27 @@ export default function StatsPage() {
         }] : []),
         ...(hasPlays ? [{
             id: "played",
-            label: "Most played",
+            label: "most played",
             content: <TopLists listening={listening} period={shown} />,
         }] : []),
         ...(hasPlays && listening.peak ? [{
             id: "rhythm",
-            label: "Rhythm",
+            label: "by hour",
             content: (
                 <Finding
-                    claim={`Your week peaks on ${whenLabel(listening.peak.weekday, listening.peak.hour)}.`}
-                    note="Every hour you have ever played anything, in your own timezone."
+                    claim={`busiest hour: ${whenLabel(listening.peak.weekday, listening.peak.hour)}`}
+                    note="plays by day and hour · local time"
                     evidence={<ListeningClock listening={listening} period={shown} />}
                 />
             ),
         }] : []),
         ...(hasPlays && signature.key && !stacked ? [{
             id: "mood",
-            label: "Mood",
+            label: "keys",
             content: (
                 <Finding
-                    claim={frantic ? `The music you play is most frantic around ${hourLabel(frantic.hour)}.` : keyClaim}
-                    note={`Keys and energy are both read from the audio itself, across ${analysed} analysed tracks. Press a segment of the wheel to put that key on.`}
+                    claim={frantic ? `highest energy: around ${hourLabel(frantic.hour)}` : keyClaim}
+                    note={`from audio analysis of ${analysed} tracks · click a key to play it`}
                     evidence={<SignatureSound signature={signature} period={shown} />}
                 />
             ),
@@ -156,34 +155,33 @@ export default function StatsPage() {
         // Stacked, the wheel and the energy curve each need the full panel.
         ...(hasPlays && signature.key && stacked ? [{
             id: "mood",
-            label: "Mood",
+            label: "keys",
             content: (
                 <Finding
                     claim={keyClaim}
-                    note={`Keys are read from the audio itself, across ${analysed} analysed tracks. Press a segment to put that key on.`}
+                    note={`from audio analysis of ${analysed} tracks · tap a key to play it`}
                     evidence={<KeyWheel keys={signature.key} period={shown} />}
                 />
             ),
         }] : []),
         ...(hasPlays && stacked && frantic && signature.hourly.length > 3 ? [{
             id: "energy",
-            label: "Energy",
+            label: "energy by hour",
             content: (
                 <Finding
-                    claim={`The music you play is most frantic around ${hourLabel(frantic.hour)}.`}
-                    note="Energy is read from the audio itself, hour by hour."
+                    claim={`highest energy: around ${hourLabel(frantic.hour)}`}
+                    note="average track energy of plays, by hour"
                     evidence={<EnergyCurve hourly={signature.hourly} />}
                 />
             ),
         }] : []),
         {
             id: "unplayed",
-            label: "Unplayed",
+            label: "unplayed",
             content: (
                 <Finding
-                    claim={`${shelf.neverPlayed.toLocaleString()} tracks you have never once played.`}
+                    claim={`${shelf.neverPlayed.toLocaleString()} ${shelf.neverPlayed === 1 ? "track" : "tracks"} never played`}
                     scope={shown === "all" ? undefined : "all time"}
-                    note="That is not a failure. It is what owning a collection looks like."
                     evidence={
                         <div className="flex flex-col gap-(--stat-gap-block)">
                             <Coverage shelf={shelf} />
@@ -196,7 +194,7 @@ export default function StatsPage() {
         // On compact screens the decades and the sources each get a chapter of their own.
         ...(compact && shelf.decades.length > 1 ? [{
             id: "decades",
-            label: "Decades",
+            label: "decades",
             content: (
                 <Aside note={shown === "all" ? undefined : "all time"}>
                     <Decades decades={shelf.decades} />
@@ -205,12 +203,12 @@ export default function StatsPage() {
         }] : []),
         {
             id: "also",
-            label: "Also true",
+            label: "other stats",
             content: (
                 <Aside note={shown === "all" ? undefined : "all time"}>
                     <div className="grid gap-x-12 gap-y-(--stat-gap-block) sm:grid-cols-2 lg:grid-cols-3">
                         {signature.ownedVsPlayed.length > 0 && (
-                            <Column label="What you own against what you play">
+                            <Column label="library vs played">
                                 <OwnedAgainstPlayed signature={signature} />
                             </Column>
                         )}
@@ -221,7 +219,7 @@ export default function StatsPage() {
         },
         ...(compact ? [{
             id: "sources",
-            label: "Sources",
+            label: "sources",
             content: (
                 <Aside note={shown === "all" ? undefined : "all time"}>
                     <div className="flex flex-col gap-(--stat-gap-block)">{sources}</div>
@@ -230,14 +228,14 @@ export default function StatsPage() {
         }] : []),
         ...(system ? [{
             id: "health",
-            label: "Health",
+            label: "server",
             content: (
-                <Aside note={`Kima ${system.version}`}>
+                <Aside note={`kima ${system.version}`}>
                     <ServerPanel system={system} />
                 </Aside>
             ),
         }] : []),
-        { id: "false-starts", label: "False starts", fill: true, content: <FalseStarts /> },
+        { id: "false-starts", label: "play history cleanup", fill: true, content: <FalseStarts /> },
     ];
 
     return (
@@ -253,8 +251,7 @@ export default function StatsPage() {
             status={
                 failed ? (
                     <p className="t-meta text-[var(--text-secondary)]" role="status">
-                        Couldn&apos;t load that period. These are still the figures for{" "}
-                        {PERIODS.find((p) => p.id === shown)?.label.toLowerCase() ?? "all time"}.
+                        couldn&apos;t load that period · showing {PERIODS.find((p) => p.id === shown)?.label ?? "all time"}
                     </p>
                 ) : null
             }
@@ -289,23 +286,23 @@ function Overview({
     const facts: Array<{ value: string; note: string }> = [
         listening.peak && {
             value: whenLabel(listening.peak.weekday, listening.peak.hour),
-            note: "your busiest hour, every week",
+            note: "busiest hour of the week",
         },
         signature.concentration && {
-            value: `${signature.concentration.forHalf} songs`,
-            note: "are half of everything you play",
+            value: `${signature.concentration.forHalf} ${signature.concentration.forHalf === 1 ? "track" : "tracks"}`,
+            note: signature.concentration.forHalf === 1 ? "makes up half your plays" : "make up half your plays",
         },
         signature.key && {
-            value: `${Math.round(signature.key.minorPct)}% minor`,
-            note: `most often ${signature.key.top[0]?.key ?? "minor"}`,
+            value: `${Math.round(signature.key.minorPct)}% minor key`,
+            note: signature.key.top[0]?.key ? `top key: ${signature.key.top[0].key.toLowerCase()}` : "",
         },
         signature.albumHabit && {
-            value: `${Math.round(signature.albumHabit.inOrderPct)}% in order`,
-            note: "you play albums, not songs",
+            value: `${Math.round(signature.albumHabit.inOrderPct)}%`,
+            note: "played in album order",
         },
         signature.era && {
             value: String(signature.era.medianYear),
-            note: "half of what you play is newer",
+            note: "median release year",
         },
     ].filter(Boolean) as Array<{ value: string; note: string }>;
 
@@ -314,22 +311,22 @@ function Overview({
             <div className="flex flex-col gap-(--stat-gap-block)">
                 <h1
                     className="text-[length:var(--stat-hero)] leading-[1.02] font-light tracking-[-0.03em] text-[var(--text-primary)] text-balance"
-                    aria-label={`About ${hoursValue(listening.estimatedSeconds)} hours of music ${window}`.trim()}
+                    aria-label={`about ${hoursValue(listening.estimatedSeconds)} hours of music ${window}`.trim()}
                 >
-                    About{" "}
+                    about{" "}
                     <span className="t-figure text-[length:var(--stat-hero)]">
                         {hoursValue(listening.estimatedSeconds)}
                     </span>{" "}
-                    hours of music{window ? ` ${window}` : ""}.
+                    hours of music{window ? ` ${window}` : ""}
                 </h1>
 
                 {/* The hours are an estimate and say so; these four counts are exact.
                     Under 480px four columns cannot hold their labels, so phones get two. */}
                 <dl className="grid grid-cols-2 min-[480px]:grid-cols-4 gap-x-4 gap-y-6 sm:gap-x-8 lg:max-w-[42rem]">
-                    <Reading value={listening.plays.toLocaleString()} label="listens" />
+                    <Reading value={listening.plays.toLocaleString()} label="plays" />
                     <Reading value={listening.distinctArtists.toLocaleString()} label="artists" />
                     <Reading value={listening.distinctAlbums.toLocaleString()} label="albums" />
-                    <Reading value={`${heard}%`} label="of your shelf" />
+                    <Reading value={`${heard}%`} label={period === "all" ? "of library played" : "of library played · all time"} />
                 </dl>
 
                 <div className="flex flex-col gap-5">
@@ -343,7 +340,7 @@ function Overview({
                                 <dt className="t-figure text-[length:var(--stat-lead)] leading-tight">
                                     {f.value}
                                 </dt>
-                                <dd className="t-body">{f.note}</dd>
+                                {f.note && <dd className="t-body">{f.note}</dd>}
                             </div>
                         ))}
                     </dl>
@@ -367,12 +364,12 @@ function NoPlays({ period }: { period: Period }) {
     return (
         <div className="flex flex-col gap-4">
             <h1 className="text-[length:var(--stat-hero)] leading-[1.02] font-light tracking-[-0.03em] text-[var(--text-primary)]">
-                {period === "all" ? "No plays yet" : "No plays in this period"}
+                {period === "all" ? "no plays yet" : "no plays in this period"}
             </h1>
             <p className="t-body leading-relaxed max-w-[48ch]">
                 {period === "all"
-                    ? "This page fills in as you listen. A track counts once you've heard half of it, so clicking through an album won't pad it out."
-                    : "You have not played anything in this period. Widen it above and the page fills back in."}
+                    ? "a play counts after half the track"
+                    : "try a longer period"}
             </p>
         </div>
     );
@@ -394,7 +391,7 @@ function PeriodPicker({
     return (
         <div
             role="group"
-            aria-label="Period"
+            aria-label="period"
             aria-busy={busy}
             className={`flex items-baseline gap-4 transition-opacity ${busy ? "opacity-50" : ""}`}
         >
@@ -435,7 +432,7 @@ function PeriodSelect({
 }) {
     return (
         <select
-            aria-label="Period"
+            aria-label="period"
             aria-busy={busy}
             value={value}
             onChange={(e) => onChange(e.target.value as Period)}
@@ -493,7 +490,7 @@ function Frame({
     return (
         <div className="page-shell relative flex h-full flex-col pt-6 pb-[var(--stats-under)] compact:pt-1">
             <div className="compact:hidden flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 pb-3">
-                <p className="t-eyebrow">Your listening</p>
+                <p className="t-eyebrow">your listening</p>
                 <div className="flex items-baseline gap-4">{controls}</div>
             </div>
             {status}
@@ -508,7 +505,7 @@ function TopLists({ listening, period }: { listening: ListeningStats; period: Pe
     return (
         <div className="grid gap-(--stat-gap-block) sm:grid-cols-2 sm:gap-x-16">
             <Ranked
-                label="Artists"
+                label="artists"
                 kind="artist"
                 period={period}
                 items={listening.topArtists.map((a) => ({
@@ -519,7 +516,7 @@ function TopLists({ listening, period }: { listening: ListeningStats; period: Pe
                 }))}
             />
             <Ranked
-                label="Tracks"
+                label="tracks"
                 kind="track"
                 period={period}
                 items={listening.topTracks.map((t) => ({
@@ -601,7 +598,7 @@ function Ranked({
                                     type="button"
                                     onClick={() => play("top", { limit: items.length, startIndex: i, token: item.key, period })}
                                     disabled={busy === item.key}
-                                    aria-label={`Play ${item.primary}`}
+                                    aria-label={`play ${item.primary}`}
                                     className={shared + (busy === item.key ? " opacity-60" : "")}
                                 >
                                     {inner}
@@ -625,7 +622,7 @@ function Waiting() {
                     <div key={i} className="h-3 w-16 rounded bg-white/[0.05] animate-pulse" />
                 ))}
             </div>
-            <div className="flex flex-col gap-(--stat-gap-block) pt-6" aria-busy="true" aria-label="Loading your stats">
+            <div className="flex flex-col gap-(--stat-gap-block) pt-6" aria-busy="true" aria-label="loading stats">
                 <div className="h-12 w-80 max-w-full rounded bg-white/[0.04] animate-pulse" />
                 <div className="grid grid-cols-2 gap-6 sm:grid-cols-4">
                     {[0, 1, 2, 3].map((i) => (

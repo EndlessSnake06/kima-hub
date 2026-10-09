@@ -6,7 +6,7 @@ import { expect, test, type Page } from "@playwright/test";
  * registered kima_dogfood.
  */
 
-const baseUrl = process.env.KIMA_UI_BASE_URL || "http://127.0.0.1:3055";
+const baseUrl = process.env.KIMA_UI_BASE_URL || "http://127.0.0.1:3056";
 const USERNAME = process.env.KIMA_TEST_USERNAME || "";
 const PASSWORD = process.env.KIMA_TEST_PASSWORD || "";
 

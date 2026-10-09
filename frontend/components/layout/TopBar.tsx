@@ -21,8 +21,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useIsMobile, useIsTablet } from "@/hooks/useMediaQuery";
 import { useAuth } from "@/lib/auth-context";
 import { useQueryClient } from "@tanstack/react-query";
-import Image from "next/image";
 import { APP_VERSION } from "@/lib/version";
+import { KimaMark } from "@/components/ui/KimaMark";
 
 export function TopBar() {
     const pathname = usePathname();
@@ -196,7 +196,7 @@ export function TopBar() {
             className="fixed top-0 left-0 right-0 bg-black flex items-center px-3 z-(--z-header) pwa-titlebar-drag"
             style={{
                 height: isMobileOrTablet
-                    ? "calc(58px + var(--standalone-safe-area-top, 0px))"
+                    ? "calc(var(--topbar-h) + var(--standalone-safe-area-top, 0px))"
                     : "calc(64px + var(--titlebar-height, 0px))",
                 paddingTop: isMobileOrTablet
                     ? "var(--standalone-safe-area-top, 0px)"
@@ -206,7 +206,6 @@ export function TopBar() {
             {/* Mobile/Tablet Layout: Hamburger + Home + Search + Bell */}
             {isMobileOrTablet ? (
                 <>
-                    {/* Hamburger menu button */}
                     <button
                         onClick={() => {
                             // Dispatch custom event to toggle mobile menu
@@ -220,7 +219,6 @@ export function TopBar() {
                         <Menu className="w-5 h-5" />
                     </button>
 
-                    {/* Home */}
                     <Link
                         href="/"
                         className={cn(
@@ -230,12 +228,11 @@ export function TopBar() {
                                 : "bg-[var(--bg-primary)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-white"
                         )}
                         aria-label="Home"
-                        title="Home"
+                        title="home"
                     >
                         <Home className="w-5 h-5" />
                     </Link>
 
-                    {/* Search */}
                     <form onSubmit={handleSearch} className="flex-1 min-w-0">
                         <div
                             className="relative"
@@ -256,7 +253,6 @@ export function TopBar() {
                         </div>
                     </form>
 
-                    {/* Notification Bell */}
                     <button
                         onClick={() => {
                             window.dispatchEvent(
@@ -267,28 +263,19 @@ export function TopBar() {
                         aria-controls="activity-panel-mobile"
                         className="w-11 h-11 flex items-center justify-center text-[var(--text-secondary)] hover:text-white transition-colors duration-200 ml-2 flex-shrink-0 relative"
                         aria-label="Notifications"
-                        title="Notifications"
+                        title="notifications"
                     >
                         <Bell className="w-5 h-5" />
                     </button>
                 </>
             ) : (
                 <>
-                    {/* Desktop Layout */}
-                    {/* Logo - Far Left */}
                     <div className="w-72 flex items-center px-2">
                         <Link
                             href="/"
                             className="flex items-center gap-2 group"
                         >
-                            <Image
-                                src="/assets/images/kima.webp"
-                                alt="Kima"
-                                width={32}
-                                height={32}
-                                priority
-                                className="group-hover:scale-105 transition-transform"
-                            />
+                            <KimaMark size={32} className="group-hover:scale-105 transition-transform" />
                         </Link>
                         <span className="ml-2 px-1.5 py-0.5 text-micro font-medium text-[var(--text-muted)] bg-white/5 rounded border border-white/10">
                             v{APP_VERSION}
@@ -306,7 +293,7 @@ export function TopBar() {
                                     : "bg-[var(--bg-primary)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-white hover:scale-105"
                             )}
                             aria-label="Home"
-                            title="Home"
+                            title="home"
                         >
                             <Home className="w-6 h-6" />
                         </Link>
@@ -362,12 +349,12 @@ export function TopBar() {
                             )}
                             title={
                                 isPolling
-                                    ? "Library scan in progress..."
+                                    ? "library scan in progress..."
                                     : hasActiveDownloads
-                                    ? `${downloadStatus.activeDownloads.length} download(s) in progress`
+                                    ? `${downloadStatus.activeDownloads.length} download(s) in progress`.toLowerCase()
                                     : hasPendingUploads
-                                    ? `${pendingDownloads.length} download(s) starting...`
-                                    : "Sync Library"
+                                    ? `${pendingDownloads.length} download(s) starting...`.toLowerCase()
+                                    : "sync library"
                             }
                         >
                             <RefreshCw
@@ -388,7 +375,7 @@ export function TopBar() {
                                     : "text-[var(--text-secondary)] hover:text-white"
                             )}
                             aria-label="Settings"
-                            title="Settings"
+                            title="settings"
                         >
                             <Settings className="w-5 h-5" />
                         </Link>
@@ -396,7 +383,7 @@ export function TopBar() {
                             onClick={handleLogout}
                             className="w-11 h-11 rounded-full flex items-center justify-center transition-all duration-200 text-danger-light hover:brightness-125"
                             aria-label="Logout"
-                            title="Logout"
+                            title="logout"
                         >
                             <Power className="w-5 h-5" />
                         </button>

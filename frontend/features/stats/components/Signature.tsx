@@ -28,15 +28,15 @@ export function OwnedAgainstPlayed({ signature: s }: { signature: Sig }) {
     const { ref, shown } = useReveal<HTMLDivElement>({ threshold: 0.2 });
     if (s.ownedVsPlayed.length === 0) return null;
 
-    // How much harder the listening runs than the shelf.
-    const hits = s.ownedVsPlayed.find((row) => row.unit !== "bpm");
-    const harder = hits
-        ? Math.round(((hits.played - hits.owned) / Math.max(0.01, hits.owned)) * 100)
+    // How far played energy sits above the library's.
+    const energy = s.ownedVsPlayed.find((row) => row.unit !== "bpm");
+    const above = energy
+        ? Math.round(((energy.played - energy.owned) / Math.max(0.01, energy.owned)) * 100)
         : 0;
 
     return (
         <div ref={ref} className="flex flex-col gap-5">
-            <p className="t-meta">grey is your shelf · amber is what you actually play</p>
+            <p className="t-meta">grey = library average · amber = played average</p>
 
             <dl className="flex flex-col gap-4">
                 {s.ownedVsPlayed.map((row, i) => {
@@ -77,11 +77,10 @@ export function OwnedAgainstPlayed({ signature: s }: { signature: Sig }) {
             {/* Only when there is a gap worth stating. The legend above already
                 says which mark is which, so with nothing to add this said
                 nothing twice. */}
-            {harder > 3 && (
+            {above > 3 && (
                 <p className="t-body max-w-[38ch]">
-                        What you put on hits about{" "}
-                        <span className="t-figure text-sm">{harder}%</span> harder than the average
-                        record on your shelf.
+                        played energy:{" "}
+                        <span className="t-figure text-sm">{above}%</span> above library average
                 </p>
             )}
         </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { SettingsSection, SettingsRow, SettingsSelect } from "../ui";
-import { SystemSettings } from "../../types";
+import { SystemSettings, soulseekConfigured } from "../../types";
 
 interface DownloadPreferencesSectionProps {
     settings: SystemSettings;
@@ -18,9 +18,7 @@ export function DownloadPreferencesSection({
         settings.lidarrUrl.trim() !== "" &&
         settings.lidarrApiKey.trim() !== "";
 
-    const isSoulseekConfigured =
-        settings.soulseekUsername.trim() !== "" &&
-        settings.soulseekPassword.trim() !== "";
+    const isSoulseekConfigured = soulseekConfigured(settings);
 
     const areBothServicesConfigured = isLidarrConfigured && isSoulseekConfigured;
     const isDisabled = !areBothServicesConfigured;

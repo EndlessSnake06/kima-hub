@@ -77,12 +77,12 @@ export const PopularTracks: React.FC<PopularTracksProps> = ({
                                         e.stopPropagation();
                                         activate(track);
                                     }}
-                                    className="w-8 h-8 flex items-center justify-center"
+                                    className="group/play w-8 h-8 flex items-center justify-center"
                                     aria-label={isPlaying ? "Pause" : "Play"}
                                 >
                                     <span
                                         className={cn(
-                                            "text-sm group-hover:hidden",
+                                            "text-sm group-hover:hidden group-focus-visible/play:hidden",
                                             isPlaying
                                                 ? "text-brand"
                                                 : "text-[var(--text-secondary)]"
@@ -94,11 +94,10 @@ export const PopularTracks: React.FC<PopularTracksProps> = ({
                                             index + 1
                                         )}
                                     </span>
-                                    <Play className="w-4 h-4 text-white hidden group-hover:block" />
+                                    <Play className="w-4 h-4 text-white hidden group-hover:block group-focus-visible/play:block" />
                                 </button>
                             </div>
 
-                            {/* Title + Album Art */}
                             <div className="flex items-center gap-3 min-w-0">
                                 <div className="w-10 h-10 bg-[#282828] rounded shrink-0 overflow-hidden">
                                     {coverUrl ? (
@@ -150,7 +149,6 @@ export const PopularTracks: React.FC<PopularTracksProps> = ({
                                     )}
                             </div>
 
-                            {/* Duration + Preview */}
                             <div className="flex items-center justify-end gap-2">
                                 {isUnowned && (
                                     <button
@@ -158,7 +156,8 @@ export const PopularTracks: React.FC<PopularTracksProps> = ({
                                             e.stopPropagation();
                                             onPreview(track);
                                         }}
-                                        className="p-1.5 rounded-full opacity-0 group-hover:opacity-100 group-hover:translate-y-0 translate-y-1 transition-[opacity,transform] duration-150 hover:bg-white/10 text-[var(--text-secondary)] hover:text-white"
+                                        aria-label={isPreviewPlaying ? `stop the preview of ${track.title}` : `play a preview of ${track.title}`}
+                                        className="p-1.5 rounded-full opacity-0 group-hover:opacity-100 focus-visible:opacity-100 group-hover:translate-y-0 focus-visible:translate-y-0 translate-y-1 transition-[opacity,transform] duration-150 hover:bg-white/10 text-[var(--text-secondary)] hover:text-white"
                                     >
                                         {isPreviewPlaying ? (
                                             <Pause className="w-4 h-4" />

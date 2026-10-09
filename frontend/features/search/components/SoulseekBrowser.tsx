@@ -207,7 +207,6 @@ export function SoulseekBrowser({
 
     return (
         <div className="space-y-4">
-            {/* Status bar */}
             <div className="flex items-center gap-3 px-4 py-3 bg-[#181818] rounded-lg">
                 {isActive ? (
                     <>
@@ -223,9 +222,7 @@ export function SoulseekBrowser({
                 )}
             </div>
 
-            {/* Toolbar */}
             <div className="flex flex-wrap items-center gap-3">
-                {/* Format pills */}
                 <div className="flex gap-1.5">
                     {FORMAT_PILLS.map((pill) => (
                         <button
@@ -243,7 +240,6 @@ export function SoulseekBrowser({
                     ))}
                 </div>
 
-                {/* Sort selector */}
                 <select
                     value={sortField}
                     onChange={(e) => setSortField(e.target.value as SoulseekSortField)}
@@ -251,12 +247,11 @@ export function SoulseekBrowser({
                 >
                     {SORT_OPTIONS.map((opt) => (
                         <option key={opt.value} value={opt.value}>
-                            {opt.label}
+                            {opt.label.toLowerCase()}
                         </option>
                     ))}
                 </select>
 
-                {/* View toggle */}
                 <div className="flex gap-1 bg-[#282828] rounded-md p-0.5">
                     <button
                         onClick={() => setViewMode("flat")}
@@ -264,7 +259,7 @@ export function SoulseekBrowser({
                             "p-1.5 rounded transition-colors",
                             viewMode === "flat" ? "bg-white/10 text-white" : "text-[var(--text-muted)] hover:text-gray-300",
                         )}
-                        title="Flat list"
+                        title="flat list"
                     >
                         <List className="w-4 h-4" />
                     </button>
@@ -274,13 +269,12 @@ export function SoulseekBrowser({
                             "p-1.5 rounded transition-colors",
                             viewMode === "grouped" ? "bg-white/10 text-white" : "text-[var(--text-muted)] hover:text-gray-300",
                         )}
-                        title="Group by user"
+                        title="group by user"
                     >
                         <Users className="w-4 h-4" />
                     </button>
                 </div>
 
-                {/* Bulk download */}
                 {selectedKeys.size > 0 && (
                     <Button
                         variant="primary"
@@ -293,7 +287,6 @@ export function SoulseekBrowser({
                 )}
             </div>
 
-            {/* Results */}
             {viewMode === "flat" ? (
                 <FlatView
                     results={displayResults}
@@ -315,7 +308,6 @@ export function SoulseekBrowser({
                 />
             )}
 
-            {/* Infinite scroll sentinel */}
             {viewMode === "flat" && hasMore && (
                 <div ref={sentinelRef} className="flex items-center justify-center py-4">
                     <span className="text-xs text-[var(--text-muted)]">
@@ -350,7 +342,6 @@ function FlatView({
 
     return (
         <div>
-            {/* Header row */}
             <div className="grid grid-cols-[32px_1fr_minmax(80px,120px)_80px_80px_80px_44px] md:grid-cols-[32px_1fr_minmax(80px,120px)_80px_80px_80px_44px] gap-2 px-3 py-2 text-xs text-[var(--text-muted)] border-b border-white/5">
                 <div className="flex items-center justify-center">
                     <input
@@ -368,7 +359,6 @@ function FlatView({
                 <div />
             </div>
 
-            {/* Result rows */}
             {results.map((result, index) => (
                 <ResultRow
                     key={`${result.username}-${result.path}-${index}`}

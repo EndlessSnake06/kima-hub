@@ -28,7 +28,6 @@ export function TrackList({
 
     return (
         <div className="w-full">
-            {/* Table Header */}
             <div className="hidden md:grid grid-cols-[40px_minmax(200px,4fr)_minmax(100px,2fr)_80px_80px] gap-4 px-4 py-2 text-xs text-[var(--text-secondary)] border-b border-white/10 mb-2">
                 <span className="text-center">#</span>
                 <span>Title</span>
@@ -37,7 +36,6 @@ export function TrackList({
                 <span className="text-right">Duration</span>
             </div>
 
-            {/* Track Rows */}
             <div>
                 {tracks.map((track, index) => {
                     const isTrackPlaying = currentTrack?.id === track.id;
@@ -83,12 +81,12 @@ export function TrackList({
                                             onPlayTrack(index);
                                         }
                                     }}
-                                    className="w-8 h-8 flex items-center justify-center"
+                                    className="group/play w-8 h-8 flex items-center justify-center"
                                     aria-label={isTrackPlaying && isPlaying ? "Pause" : "Play"}
                                 >
                                     <span
                                         className={cn(
-                                            "group-hover:hidden text-sm",
+                                            "group-hover:hidden group-focus-visible/play:hidden text-sm",
                                             isTrackPlaying
                                                 ? "text-brand"
                                                 : "text-[var(--text-secondary)]"
@@ -100,11 +98,10 @@ export function TrackList({
                                             index + 1
                                         )}
                                     </span>
-                                    <Play className="w-4 h-4 text-white hidden group-hover:block" />
+                                    <Play className="w-4 h-4 text-white hidden group-hover:block group-focus-visible/play:block" />
                                 </button>
                             </div>
 
-                            {/* Title + Artist */}
                             <div className="flex items-center gap-3 min-w-0">
                                 <div className="w-10 h-10 bg-[#282828] rounded shrink-0 overflow-hidden">
                                     {track.coverUrl ? (
@@ -141,7 +138,6 @@ export function TrackList({
                                 </div>
                             </div>
 
-                            {/* Album (hidden on mobile) */}
                             <p className="hidden md:flex items-center text-sm text-[var(--text-secondary)] truncate">
                                 {track.album}
                             </p>
@@ -158,23 +154,24 @@ export function TrackList({
                                 </span>
                             </div>
 
-                            {/* Duration + Like */}
                             <div className="flex items-center justify-end gap-2">
                                 <button
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         onLike(track);
                                     }}
+                                    aria-label={track.isLiked ? `unlike ${track.title}` : `like ${track.title}`}
+                                    aria-pressed={track.isLiked}
                                     className={cn(
-                                        "p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-all",
+                                        "p-1.5 rounded-full opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-all",
                                         track.isLiked
                                             ? "text-brand hover:text-brand-light"
                                             : "text-[var(--text-secondary)] hover:text-white"
                                     )}
                                     title={
                                         track.isLiked
-                                            ? "Unlike"
-                                            : "Keep in library"
+                                            ? "unlike"
+                                            : "keep in library"
                                     }
                                 >
                                     <Heart

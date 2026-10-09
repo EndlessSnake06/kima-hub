@@ -29,7 +29,8 @@ export function PreviewEpisodes({
             <SectionHeader title="Latest Episodes" type="podcast" />
 
             {hasEpisodes ? (
-                <>
+                // The subscribe fade below covers the episode list only, so the list holds it.
+                <div className="relative">
                     <div className="space-y-0.5">
                         {previewData.previewEpisodes!.map((episode, index) => (
                             <div
@@ -59,7 +60,6 @@ export function PreviewEpisodes({
                         ))}
                     </div>
 
-                    {/* Subscribe overlay */}
                     <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#0a0a0a]/80 to-[#0a0a0a] flex items-end justify-center pb-8 pointer-events-none">
                         <button
                             onClick={onSubscribe}
@@ -79,7 +79,7 @@ export function PreviewEpisodes({
                             )}
                         </button>
                     </div>
-                </>
+                </div>
             ) : (
                 <div className="relative overflow-hidden rounded-lg border border-white/10 bg-gradient-to-br from-[#0f0f0f] to-[#0a0a0a] p-8 text-center">
                     <p className="text-xs text-[var(--text-muted)] mb-4">
@@ -105,7 +105,6 @@ export function PreviewEpisodes({
                 </div>
             )}
 
-            {/* About Section */}
             {previewData.description && (
                 <div className="mt-8">
                     <SectionHeader title="About" type="podcast" />

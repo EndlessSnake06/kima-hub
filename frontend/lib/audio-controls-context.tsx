@@ -821,14 +821,14 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
         [playback]
     );
 
-    const skipForward = useCallback(
-        (seconds: number = 30) => {
-            const isFirstInBatch = skipAccumulatorRef.current === 0;
-            if (isFirstInBatch) {
+    /** Skip by `delta` seconds; skips in quick succession add up into one seek. */
+    const skipBy = useCallback(
+        (delta: number) => {
+            if (skipAccumulatorRef.current === 0) {
                 skipBaseTimeRef.current = currentTimeRef.current;
             }
-            skipAccumulatorRef.current += seconds;
-            setCurrentTimeRef.current(skipBaseTimeRef.current + skipAccumulatorRef.current);
+            skipAccumulatorRef.current += delta;
+            setCurrentTimeRef.current(Math.max(0, skipBaseTimeRef.current + skipAccumulatorRef.current));
             if (skipDebounceRef.current) {
                 clearTimeout(skipDebounceRef.current);
             }
@@ -841,29 +841,8 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
         },
         [seek]
     );
-
-    const skipBackward = useCallback(
-        (seconds: number = 30) => {
-            const isFirstInBatch = skipAccumulatorRef.current === 0;
-            if (isFirstInBatch) {
-                skipBaseTimeRef.current = currentTimeRef.current;
-            }
-            skipAccumulatorRef.current -= seconds;
-            setCurrentTimeRef.current(
-                Math.max(0, skipBaseTimeRef.current + skipAccumulatorRef.current)
-            );
-            if (skipDebounceRef.current) {
-                clearTimeout(skipDebounceRef.current);
-            }
-            skipDebounceRef.current = setTimeout(() => {
-                skipDebounceRef.current = null;
-                const targetTime = skipBaseTimeRef.current + skipAccumulatorRef.current;
-                skipAccumulatorRef.current = 0;
-                seek(targetTime);
-            }, 200);
-        },
-        [seek]
-    );
+    const skipForward = useCallback((seconds: number = 30) => skipBy(seconds), [skipBy]);
+    const skipBackward = useCallback((seconds: number = 30) => skipBy(-seconds), [skipBy]);
 
     const setPlayerModeWithHistory = useCallback(
         (mode: PlayerMode) => {
@@ -910,10 +889,16 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
         startIndex = 0,
     ): Promise<boolean> => {
         const op = state.activeOperation;
-
-        if (op.type === 'idle') {
+        // A vibe queue is an ordered journey: it always plays in order.
+        const start = () => {
             state.setActiveOperation(newOp);
             playTracks(newQueue, startIndex, { skipOperationCheck: true });
+            state.setIsShuffle(false);
+            state.setShuffleIndices([]);
+        };
+
+        if (op.type === 'idle') {
+            start();
             return true;
         }
 
@@ -924,8 +909,7 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
             : [];
 
         if (!currentTrackId || !opTrackIds.includes(currentTrackId)) {
-            state.setActiveOperation(newOp);
-            playTracks(newQueue, startIndex, { skipOperationCheck: true });
+            start();
             return true;
         }
 
@@ -938,10 +922,7 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
                 resolve: (confirmed: boolean) => {
                     if (settled) return;
                     settled = true;
-                    if (confirmed) {
-                        state.setActiveOperation(newOp);
-                        playTracks(newQueue, startIndex, { skipOperationCheck: true });
-                    }
+                    if (confirmed) start();
                     if (pendingReplacementRef.current === pending) {
                         pendingReplacementRef.current = null;
                         setPendingReplacement(null);
@@ -1004,9 +985,6 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
             if (!confirmed) {
                 return { success: false, trackCount: 0 };
             }
-
-            state.setIsShuffle(false);
-            state.setShuffleIndices([]);
 
             return { success: true, trackCount: response.tracks.length };
         } catch (error) {

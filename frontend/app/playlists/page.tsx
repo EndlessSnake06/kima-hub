@@ -115,7 +115,7 @@ function PlaylistCard({
                         onClick={handleToggleHide}
                         disabled={isHiding}
                         aria-label={playlist.isHidden ? "Show playlist" : "Hide playlist"}
-                        title={playlist.isHidden ? "Show playlist" : "Hide playlist"}
+                        title={playlist.isHidden ? "show playlist" : "hide playlist"}
                         className={cn(
                             "w-8 h-8 rounded-lg flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity duration-150",
                             playlist.isHidden ? "text-success" : "text-[var(--text-muted)]",
@@ -491,7 +491,6 @@ function EmptyState({
             </div>
 
             <div className="grid gap-6 md:grid-cols-2">
-                {/* Create */}
                 <div className="space-y-3">
                     <button
                         onClick={() => setActiveAction(activeAction === "create" ? null : "create")}
@@ -512,7 +511,6 @@ function EmptyState({
                     )}
                 </div>
 
-                {/* Import URL */}
                 <div className="space-y-3">
                     <button
                         onClick={() => setActiveAction(activeAction === "importUrl" ? null : "importUrl")}
@@ -533,7 +531,6 @@ function EmptyState({
                     )}
                 </div>
 
-                {/* Import M3U */}
                 <div className="space-y-3">
                     <button
                         onClick={() => setActiveAction(activeAction === "importFile" ? null : "importFile")}
@@ -554,7 +551,6 @@ function EmptyState({
                     )}
                 </div>
 
-                {/* Browse */}
                 <div>
                     <Link
                         href="/browse/playlists"
@@ -670,6 +666,7 @@ export default function PlaylistsPage() {
     const displayedPlaylists = showHiddenTab
         ? hiddenPlaylists
         : visiblePlaylists;
+    const emptyStateHasForms = displayedPlaylists.length === 0 && !showHiddenTab;
 
     return (
         <div className="min-h-screen bg-gradient-to-b from-[#0a0a0a] to-black section-stack">
@@ -693,7 +690,6 @@ export default function PlaylistsPage() {
                     )
                 }
             >
-                {/* Action buttons */}
                 <div className="flex flex-wrap items-center gap-2 mt-5">
                     <ActionButton
                         icon={Plus}
@@ -716,6 +712,7 @@ export default function PlaylistsPage() {
                     />
                     <Link
                         href="/browse/playlists"
+                        aria-label="browse playlists"
                         className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold text-[var(--text-secondary)] hover:bg-white/5 border border-white/10 hover:text-white/70 hover:border-white/20 transition-all"
                     >
                         <Compass className="w-4 h-4" />
@@ -723,8 +720,8 @@ export default function PlaylistsPage() {
                     </Link>
                 </div>
 
-                {/* Inline action panel */}
-                {activeAction && (
+                {/* Inline action panel; with no playlists the empty state below shows the same forms */}
+                {activeAction && !emptyStateHasForms && (
                     <div className="mt-4 p-4 rounded-lg bg-white/[0.02] border border-white/10">
                         {activeAction === "create" && (
                             <CreatePanel onClose={() => setActiveAction(null)} />
@@ -740,19 +737,16 @@ export default function PlaylistsPage() {
             </PageHeader>
 
             <div className="relative page-shell pb-24 animate-rise">
-                {/* Hidden playlists notice */}
                 {showHiddenTab && (
                     <div className="mb-6 px-4 py-3 bg-white/5 rounded-lg border border-white/10">
                         <p className="text-xs text-[var(--text-muted)]">
-                            Hidden playlists don&apos;t appear in your library. Use the
-                            eye button on a playlist to bring it back.
+                            Unhide with the eye button.
                         </p>
                     </div>
                 )}
 
                 {displayedPlaylists.length > 0 ? (
                     <div>
-                        {/* Section header */}
                         <SectionHeader type="track" title={showHiddenTab ? "Hidden" : "All Playlists"} count={displayedPlaylists.length} />
 
                         <div

@@ -1,15 +1,14 @@
 import * as THREE from "three";
 
 /**
- * Backdrop stars in a deep shell around the map, so they shift with parallax as
- * the camera moves. They twinkle and a few flare. Decoration, not data.
+ * Deep-space backdrop: soft twinkling stars on a flattened shell
+ * around the map, with a few faint far clumps for depth. Decoration, not data.
  */
-const SKY_STARS = 7000;
-const INNER = 150;
-const OUTER = 440;
+const SKY_STARS = 8000;
 
-// Mostly warm white, some cool steel, a little gold and rose, one faint violet.
-const PALETTE = ["#f3ecdd", "#f3ecdd", "#efe6d2", "#dfe6f3", "#f0c07a", "#e79db0", "#b58fd6"];
+// Mostly warm white, some gold and warm, a little rose, one faint purple.
+const PALETTE = ["#f3ecdd", "#f3ecdd", "#efe6d2", "#f0c07a", "#e6b892", "#e79db0", "#b06fc8"];
+const CLUMPS = [new THREE.Vector3(-270, 66, -170), new THREE.Vector3(300, -92, 150), new THREE.Vector3(120, 150, -320)];
 
 function rng(seed: number) {
     let a = seed >>> 0;
@@ -32,27 +31,30 @@ export function buildSkyField(): THREE.BufferGeometry {
     const palette = PALETTE.map((hex) => new THREE.Color(hex));
 
     for (let i = 0; i < SKY_STARS; i++) {
-        // Uniform direction, radius biased outward so the far sky is densest.
-        const u = rand() * 2 - 1;
-        const theta = rand() * Math.PI * 2;
-        const s = Math.sqrt(1 - u * u);
-        const r = INNER + Math.pow(rand(), 0.7) * (OUTER - INNER);
-        pos[i * 3] = Math.cos(theta) * s * r;
-        pos[i * 3 + 1] = u * r * 0.75;
-        pos[i * 3 + 2] = Math.sin(theta) * s * r;
-
+        if (i % 11 === 0) {
+            const k = CLUMPS[i % CLUMPS.length];
+            pos[i * 3] = k.x + (rand() - 0.5) * 74;
+            pos[i * 3 + 1] = k.y + (rand() - 0.5) * 26;
+            pos[i * 3 + 2] = k.z + (rand() - 0.5) * 74;
+        } else {
+            const u = rand() * 2 - 1;
+            const th = rand() * Math.PI * 2;
+            const s = Math.sqrt(1 - u * u);
+            const r = 140 + rand() * 270;
+            pos[i * 3] = Math.cos(th) * s * r;
+            pos[i * 3 + 1] = u * r * 0.6;
+            pos[i * 3 + 2] = Math.sin(th) * s * r;
+        }
         const c = palette[Math.floor(rand() * palette.length)];
-        // A bright few over a faint many, dimmer with distance.
-        const bright = rand() < 0.05;
-        const fade = 1 - ((r - INNER) / (OUTER - INNER)) * 0.45;
-        const b = (bright ? 0.8 + rand() * 0.45 : 0.1 + Math.pow(rand(), 2.4) * 0.4) * fade;
+        // A bright few over a faint many.
+        const bright = rand() < 0.06;
+        const b = bright ? 0.9 + rand() * 0.5 : 0.12 + Math.pow(rand(), 2.4) * 0.5;
         col[i * 3] = c.r * b;
         col[i * 3 + 1] = c.g * b;
         col[i * 3 + 2] = c.b * b;
-
-        size[i] = bright ? 1.5 + rand() * 1.1 : 0.7 + rand() * 0.7;
+        size[i] = bright ? 1.4 + rand() * 1.0 : 0.7 + rand() * 0.6;
         phase[i] = rand() * Math.PI * 2;
-        amp[i] = 0.3 + rand() * 0.55;
+        amp[i] = 0.4 + rand() * 0.45;
         spark[i] = rand() < 0.04 ? 1 : 0;
     }
 

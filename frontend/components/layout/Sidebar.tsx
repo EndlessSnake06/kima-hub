@@ -13,9 +13,9 @@ import { useAudioState } from "@/lib/audio-state-context";
 import { useIsMobile, useIsTablet } from "@/hooks/useMediaQuery";
 import { notify } from "@/lib/notify";
 import { useFeatures } from "@/lib/features-context";
-import Image from "next/image";
 import { MobileSidebar } from "./MobileSidebar";
 import { Button } from "@/components/ui/Button";
+import { KimaMark } from "@/components/ui/KimaMark";
 
 const allNavigation = [
     { name: "Collection", href: "/collection", feature: null },
@@ -165,16 +165,8 @@ export function Sidebar() {
             {/* Mobile Only - Logo and App Info */}
             {isMobileOrTablet && (
                 <div className="px-6 pt-8 pb-6 border-b border-white/[0.08]">
-                    {/* Logo and Title */}
                     <div className="flex items-center gap-4 mb-5">
-                        <Image
-                            src="/assets/images/kima.webp"
-                            alt="Kima Logo"
-                            width={48}
-                            height={48}
-                            priority
-                            className="flex-shrink-0"
-                        />
+                        <KimaMark size={48} />
                         <div className="flex-1 min-w-0">
                             <h2 className="text-2xl font-bold text-white tracking-tight">
                                 Kima
@@ -228,7 +220,7 @@ export function Sidebar() {
                             aria-label={
                                 isSyncing ? "Syncing library" : "Sync library"
                             }
-                            title={isSyncing ? "Syncing..." : "Sync Library"}
+                            title={isSyncing ? "syncing..." : "sync library"}
                         >
                             <RefreshCw
                                 className={cn(
@@ -247,7 +239,7 @@ export function Sidebar() {
                                 :   "bg-white/10 text-[var(--text-secondary)] hover:text-white hover:bg-white/15 active:scale-95",
                             )}
                             aria-label="Settings"
-                            title="Settings"
+                            title="settings"
                         >
                             <Settings className="w-4 h-4" />
                         </Link>
@@ -255,7 +247,6 @@ export function Sidebar() {
                 </div>
             )}
 
-            {/* Navigation - Command Index */}
             <nav
                 className={cn("pt-6", isMobileOrTablet ? "px-4" : "px-3")}
                 role="navigation"
@@ -286,7 +277,6 @@ export function Sidebar() {
                                     :   "border-transparent text-[var(--text-muted)] hover:text-white hover:bg-white/5 hover:border-white/20",
                                 )}
                             >
-                                {/* Command index number */}
                                 <span
                                     className={cn(
                                         "w-6 text-xs tabular-nums font-semibold text-center shrink-0 transition-colors duration-200",
@@ -298,7 +288,6 @@ export function Sidebar() {
                                     {String(index + 1).padStart(2, "0")}
                                 </span>
 
-                                {/* Vertical separator */}
                                 <div
                                     className={cn(
                                         "w-px h-4 shrink-0",
@@ -308,7 +297,6 @@ export function Sidebar() {
                                     )}
                                 />
 
-                                {/* Label */}
                                 <span
                                     className={cn(
                                         "font-bold text-sm tracking-tight",
@@ -324,7 +312,6 @@ export function Sidebar() {
                     })}
                 </div>
 
-                {/* Horizontal rule separator */}
                 <div className="mt-4 mb-4 border-t-2 border-white/10" />
             </nav>
 
@@ -356,7 +343,7 @@ export function Sidebar() {
                             }}
                             className="w-6 h-6 flex items-center justify-center bg-[var(--bg-primary)] border-2 border-white/10 text-[var(--text-muted)] hover:text-brand hover:border-brand/50 hover:bg-brand/5 transition-all duration-200"
                             aria-label="Create playlist"
-                            title="Create Playlist"
+                            title="create playlist"
                         >
                             <Plus className="w-3.5 h-3.5" />
                         </button>
@@ -432,7 +419,6 @@ export function Sidebar() {
                                             :   "border-transparent text-[var(--text-muted)] hover:text-white hover:bg-white/5 hover:border-white/20",
                                         )}
                                     >
-                                        {/* Stack index */}
                                         <span
                                             className={cn(
                                                 "w-5 t-meta font-semibold text-center shrink-0 transition-colors duration-200",
@@ -444,7 +430,6 @@ export function Sidebar() {
                                             {String(index + 1).padStart(2, "0")}
                                         </span>
 
-                                        {/* Content */}
                                         <div className="flex-1 min-w-0">
                                             <div className="flex items-center gap-1.5">
                                                 <div
@@ -463,7 +448,7 @@ export function Sidebar() {
                                                             playlist.user
                                                                 ?.username ||
                                                             "someone"
-                                                        }`}
+                                                        }`.toLowerCase()}
                                                     />
                                                 )}
                                             </div>
@@ -499,7 +484,6 @@ export function Sidebar() {
 
     return (
         <>
-            {/* Mobile Sidebar */}
             {isMobileOrTablet && (
                 <MobileSidebar
                     isOpen={isMobileMenuOpen}
@@ -507,7 +491,6 @@ export function Sidebar() {
                 />
             )}
 
-            {/* Desktop Sidebar */}
             {!isMobileOrTablet && (
                 <aside className="w-64 bg-[var(--bg-primary)] flex flex-col overflow-hidden relative z-(--z-raised) rounded-lg">
                     {sidebarContent}

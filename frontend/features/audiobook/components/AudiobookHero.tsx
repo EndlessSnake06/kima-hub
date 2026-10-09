@@ -50,10 +50,8 @@ export function AudiobookHero({
                 fallback={["#2a1e0a", "#1a140a"]}
             />
 
-            {/* Hero Content */}
             <div className="relative page-shell pt-8 pb-6">
                 <div>
-                    {/* Back navigation */}
                     <button
                         onClick={() => router.push("/audiobooks")}
                         className="flex items-center gap-2 text-xs tabular-nums text-[var(--text-muted)] hover:text-white transition-colors mb-6"
@@ -62,7 +60,6 @@ export function AudiobookHero({
                         Audiobooks
                     </button>
 
-                    {/* System status */}
                     <div className="flex items-center gap-2 mb-4">
                         <div className="w-1.5 h-1.5 bg-type-audiobook rounded-full" />
                         <span className="t-eyebrow">
@@ -89,7 +86,6 @@ export function AudiobookHero({
                             )}
                         </div>
 
-                        {/* Info */}
                         <div className="flex-1 min-w-0 pb-1">
                             <h1 className="text-2xl md:text-4xl lg:text-5xl font-bold text-white leading-tight line-clamp-2 mb-2 tracking-tight">
                                 {audiobook.title}
@@ -101,9 +97,8 @@ export function AudiobookHero({
                                 </p>
                             )}
 
-                            {/* Metadata row */}
                             <div className="flex flex-wrap items-center gap-3 text-xs tabular-nums text-[var(--text-secondary)]">
-                                <span className="font-bold text-white normal-case tracking-tight text-sm">
+                                <span className="font-bold text-white tracking-tight text-sm">
                                     {audiobook.author}
                                 </span>
                                 {metadata?.narrator && (
@@ -120,7 +115,6 @@ export function AudiobookHero({
                                 </span>
                             </div>
 
-                            {/* Series & Genre tags */}
                             {(audiobook.series || (audiobook.genres && audiobook.genres.length > 0)) && (
                                 <div className="hidden md:flex flex-wrap gap-1.5 mt-3">
                                     {audiobook.series && (
@@ -143,7 +137,6 @@ export function AudiobookHero({
                 </div>
             </div>
 
-            {/* Action Bar */}
             {children && (
                 <div className="relative page-shell pb-4">
                     <div>

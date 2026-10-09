@@ -39,7 +39,7 @@ export function ActivityIconBar({ expandedActivity, onToggleActivity }: Activity
                                 ? "bg-white/10 text-white"
                                 : "text-[var(--text-muted)] hover:text-white/70 hover:bg-white/5",
                         )}
-                        title={label}
+                        title={label.toLowerCase()}
                     >
                         <Icon className="w-4 h-4" />
                         {badge > 0 && (
