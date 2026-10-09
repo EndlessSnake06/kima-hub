@@ -41,24 +41,11 @@ sys.path.insert(0, SERVICE_DIR)
 
 from onnx_backend import OnnxTextCLAPBackend  # noqa: E402
 
-# Same prompt groups the shipped analyzer caches (analyzer.py detect_emotion).
+from analyzer import PROMPTS as SHIPPED_PROMPTS  # noqa: E402
+
 PROMPTS = {
-    'valence': {
-        'pos': ["happy cheerful uplifting music",
-                "joyful bright positive song",
-                "feel good upbeat music"],
-        'neg': ["sad melancholic somber music",
-                "dark gloomy depressing song",
-                "sorrowful mournful music"],
-    },
-    'arousal': {
-        'pos': ["intense energetic powerful music",
-                "loud fast aggressive song",
-                "high energy driving music"],
-        'neg': ["calm relaxing peaceful music",
-                "soft quiet gentle song",
-                "mellow soothing ambient music"],
-    },
+    'valence': {'pos': SHIPPED_PROMPTS['happy'], 'neg': SHIPPED_PROMPTS['sad']},
+    'arousal': {'pos': SHIPPED_PROMPTS['high_energy'], 'neg': SHIPPED_PROMPTS['low_energy']},
 }
 T_SHIPPED = 15.0
 LABEL_SETS = ['deam', 'memo2496', 'soundtracks_set1', 'soundtracks_set2']

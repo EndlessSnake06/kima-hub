@@ -1,21 +1,23 @@
 #!/bin/bash
-# GPU-onnx env wrapper.
-# Exports PYTHONPATH/LD_LIBRARY_PATH for the installed CUDA runtime, if the
-# toggle says so, then execs the real command. Must run before Python
-# starts: glibc fixes LD_LIBRARY_PATH at process start.
+# GPU runtime env wrapper.
+# Exports PYTHONPATH/LD_LIBRARY_PATH for the installed CUDA runtime when this
+# process's own switch is on, then execs the real command. KIMA_GPU_FOR names
+# the switch: soundVectors (the CLAP analyzer, the default) or analysis (the
+# Essentia analyzer, which is also told so by KIMA_GPU_ANALYSIS=1). Must run
+# before Python starts: glibc fixes LD_LIBRARY_PATH at process start.
 ROOT="${DATA_DIR:-/data}"
 ROOT="${ROOT%/}/gpu-onnx"
 
 if [ -f "$ROOT/state.json" ] && [ -f "$ROOT/enabled.json" ]; then
-    EVAL=$(python3 - "$ROOT" <<'PY'
+    EVAL=$(python3 - "$ROOT" "${KIMA_GPU_FOR:-soundVectors}" <<'PY'
 import json, os, sys
-root = sys.argv[1]
+root, switch = sys.argv[1], sys.argv[2]
 try:
     state = json.load(open(os.path.join(root, 'state.json')))
     enabled = json.load(open(os.path.join(root, 'enabled.json')))
 except (OSError, ValueError):
     sys.exit(0)
-if enabled.get('enabled') and state.get('status') == 'installed' \
+if enabled.get(switch) and state.get('status') == 'installed' \
         and os.path.isdir(os.path.join(root, 'site', 'onnxruntime')):
     site = os.path.join(root, 'site')
     libs = sorted(
@@ -31,7 +33,8 @@ PY
         LIB_DIRS="${EVAL#*$'\t'}"
         export PYTHONPATH="$SITE_DIR${PYTHONPATH:+:$PYTHONPATH}"
         export LD_LIBRARY_PATH="$LIB_DIRS${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-        echo "gpu-onnx: runtime active from $SITE_DIR"
+        if [ "${KIMA_GPU_FOR:-soundVectors}" = "analysis" ]; then export KIMA_GPU_ANALYSIS=1; fi
+        echo "gpu-onnx: runtime active from $SITE_DIR for ${KIMA_GPU_FOR:-soundVectors}"
     fi
 fi
 

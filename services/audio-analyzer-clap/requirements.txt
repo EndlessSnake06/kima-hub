@@ -1,32 +1,28 @@
-# CLAP and ML -- ONNX only.
-#
-# The PyTorch stack (torch, torchaudio, torchvision, laion-clap) is deliberately
-# NOT installed here. It cost several GB, its arm64 wheels are what broke the
-# multi-architecture builds, and it was the reason eleven nightly builds failed
-# silently. The shipped images run the ONNX backend (CLAP_BACKEND=onnx).
-#
-# The legacy torch backend still exists in the code for anyone who needs it;
-# install it on top of this file with: pip install -r requirements-torch.txt
-librosa>=0.10.0
+# CLAP and ML -- ONNX only; the shipped images carry no PyTorch (requirements-torch.txt adds it
+# for the torch backend).
+librosa==0.11.0
+soundfile==0.14.0
 
 # ONNX runtime powering both CLAP encoders (audio + text) under
 # CLAP_BACKEND=onnx. NOT optional: analyzer.py imports onnx_backend at module
 # load, and an image without this silently fell back to torch (the Sep-2026
-onnxruntime>=1.16
+onnxruntime==1.30.0
 
 # transformers supplies what the ONNX backends need and nothing more: the
 # numpy audio_utils primitives used by our vendored clap_mel.py (bit-for-bit
 # equivalent of ClapFeatureExtractor's mel, which is torch-gated upstream on
 # every installable version) and the text tokenizer (RobertaTokenizer).
-transformers>=4.30.0
+transformers==4.57.6
 
 # Database and queue
 redis>=4.5.0
 psycopg2-binary>=2.9.0
 pgvector>=0.2.0
-bullmq==2.19.5
+# 2.26.0 pins msgpack 1.2.1, the fixed release for GHSA-6v7p-g79w-8964.
+bullmq==2.26.0
+msgpack==1.2.1
 
 # Utilities
-python-dotenv>=1.0.0
-numpy>=1.25.0
+# The all-in-one image's numpy, which the sound-vector parity was measured on.
+numpy==1.24.4
 requests>=2.31.0

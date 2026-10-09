@@ -240,35 +240,34 @@ services:
     # Audio Analyzer - Extracts BPM, key, mood, and other audio features
     audio-analyzer:
         build:
-            context: ./services/audio-analyzer
+            context: .
+            dockerfile: services/audio-analyzer/Dockerfile
         container_name: kima_audio_analyzer
         environment:
             REDIS_URL: redis://redis:6379
             DATABASE_URL: postgresql://${POSTGRES_USER:-kimadb}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-kima}
             MUSIC_PATH: /music
-            BATCH_SIZE: ${AUDIO_ANALYSIS_BATCH_SIZE:-10}
-            SLEEP_INTERVAL: ${AUDIO_ANALYSIS_INTERVAL:-5}
-            # BRPOP timeout for blocking wait (seconds). Also controls DB reconciliation interval.
+            # Seconds the analyzer waits for work before checking again.
             BRPOP_TIMEOUT: ${AUDIO_BRPOP_TIMEOUT:-30}
-            # Idle timeout before unloading ML models to free memory (seconds)
+            # Seconds idle before the analysis models unload (0 = never).
             MODEL_IDLE_TIMEOUT: ${AUDIO_MODEL_IDLE_TIMEOUT:-300}
-            # Default workers reduced from 8 to 2 for stability (Issue #26 fix)
-            # Each worker requires 1-1.5GB RAM normally, up to 2-3GB peak
+            # Workers until set in Settings; each needs about 1-1.5 GB RAM, up to 2-3 GB at peak.
             NUM_WORKERS: ${AUDIO_ANALYSIS_WORKERS:-2}
-            # CPU thread limiting per worker (default 1 for conservative CPU usage)
             THREADS_PER_WORKER: ${AUDIO_ANALYSIS_THREADS_PER_WORKER:-1}
+            # The shared GPU runtime lives in the gpu_runtime_data volume, mounted at /gpu-onnx.
+            DATA_DIR: /
         volumes:
             # Music library (read-only)
             - ${MUSIC_PATH:-./music}:/music:ro
-            # NOTE: Models are baked into the Docker image at /app/models
-            # No volume mount needed - previously this caused models to be hidden by empty volume
+            # Models are baked into the image at /app/models; this volume holds only the GPU runtime.
+            - gpu_runtime_data:/gpu-onnx
         depends_on:
             postgres:
                 condition: service_healthy
             redis:
                 condition: service_healthy
         restart: unless-stopped
-        # Memory limits prevent OOM kills (Issue #26 fix)
+        # Memory limits prevent OOM kills
         # 6G limit = safe for 2 workers at 2-3GB peak each
         # 2G reservation = minimum guaranteed memory
         deploy:
@@ -295,7 +294,6 @@ services:
             DATABASE_URL: postgresql://${POSTGRES_USER:-kimadb}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-kima}
             BACKEND_URL: http://backend:3006
             MUSIC_PATH: /music
-            SLEEP_INTERVAL: ${CLAP_SLEEP_INTERVAL:-5}
             NUM_WORKERS: ${CLAP_WORKERS:-2}
             THREADS_PER_WORKER: ${CLAP_THREADS_PER_WORKER:-1}
             MODEL_IDLE_TIMEOUT: ${CLAP_MODEL_IDLE_TIMEOUT:-300}

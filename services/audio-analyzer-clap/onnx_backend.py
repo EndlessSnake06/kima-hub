@@ -5,6 +5,8 @@ audio_model.onnx, then 512-d and L2-normalised (test_onnx_parity.py).
 """
 import os
 import logging
+import queue
+import threading
 from typing import Optional
 import numpy as np
 
@@ -12,42 +14,67 @@ logger = logging.getLogger('clap-analyzer')
 
 CLAP_SAMPLE_RATE = 48000
 MAX_SAMPLES = 480000  # 10s
-MAX_FRAMES = 1001
 EPS = 1e-12
 
-# Default ONNX model path. Resolves to the analyzer's own models/ directory
-# (where the validated hf_audio.onnx is copied) so the ONNX backend works out
-# of the box; override with CLAP_ONNX_MODEL_PATH when needed.
-# In production this can still point at the Docker image instead.
-def _default_onnx_model_path() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    candidate = os.path.join(here, 'models', 'hf_audio.onnx')
-    if os.path.exists(candidate):
-        return candidate
-    # Fall back to the legacy Docker path if the local copy is absent.
-    return os.path.join(here, 'models', 'audio_model.onnx')
-
-
+# The validated export the images copy next to the analyzer; CLAP_ONNX_MODEL_PATH overrides it.
 ONNX_MODEL_PATH = os.getenv(
     'CLAP_ONNX_MODEL_PATH',
-    _default_onnx_model_path(),
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), 'models', 'hf_audio.onnx'),
 )
-
-# Default HF torch reference model path (used for the torch fallback).
-REF_MODEL_PATH = os.getenv(
-    'CLAP_REF_MODEL_PATH',
-    'laion/clap-htsat-unfused',
-)
-
 
 def plan_providers(gpu_wanted: bool, available) -> list:
-    """CUDA is requested only when the toggle
-    AND the install say so, and only if this onnxruntime can actually offer it.
-    Every other path is exactly ['CPUExecutionProvider'] — the promise that
-    nobody who leaves the toggle off pays anything (Test 5)."""
+    """CUDA is requested only when the switch and the install both say so and this onnxruntime
+    offers it. Every other path is exactly ['CPUExecutionProvider'], so nobody who leaves the
+    switch off pays anything."""
     if gpu_wanted and 'CUDAExecutionProvider' in available:
         return ['CUDAExecutionProvider', 'CPUExecutionProvider']
     return ['CPUExecutionProvider']
+
+
+class OneThread:
+    """Runs every call on one thread. ONNX Runtime gives each thread that calls a GPU session its
+    own GPU workspace: 16 analyzer threads calling the sound model held 2.4 GB of an 8 GB card;
+    one thread making the calls holds one. A call that gets no answer in CALL_TIMEOUT_S raises, so a
+    hung GPU fails tracks instead of stopping the analyzer."""
+
+    CALL_TIMEOUT_S = 120
+
+    def __init__(self, name: str):
+        self._requests: queue.Queue = queue.Queue()
+        threading.Thread(target=self._loop, name=name, daemon=True).start()
+
+    def _loop(self) -> None:
+        while True:
+            fn, args, reply, done = self._requests.get()
+            try:
+                reply['value'] = fn(*args)
+            except BaseException as e:
+                reply['error'] = e
+            done.set()
+
+    def call(self, fn, *args):
+        reply: dict = {}
+        done = threading.Event()
+        self._requests.put((fn, args, reply, done))
+        if not done.wait(self.CALL_TIMEOUT_S):
+            raise TimeoutError(f'the GPU thread gave no answer in {self.CALL_TIMEOUT_S} s')
+        if 'error' in reply:
+            raise reply['error']
+        return reply['value']
+
+
+_gpu_thread: Optional[OneThread] = None
+_gpu_thread_lock = threading.Lock()
+
+
+def gpu_thread() -> OneThread:
+    """The process's one GPU-calling thread, made on first use and kept when the model is
+    unloaded and loaded again."""
+    global _gpu_thread
+    with _gpu_thread_lock:
+        if _gpu_thread is None:
+            _gpu_thread = OneThread('clap-gpu')
+        return _gpu_thread
 
 
 class OnnxCLAPBackend:
@@ -56,10 +83,8 @@ class OnnxCLAPBackend:
     def __init__(self, model_path: str = ONNX_MODEL_PATH):
         self.model_path = model_path
         self._sess = None
+        self._run = None
         self._fe = None
-        # Non-zero means a torch embedding stood in for ONNX, which a parity
-        # check against torch would wrongly score as a pass.
-        self.torch_fallback_count = 0
 
     def load_model(self) -> None:
         if self._sess is not None:
@@ -83,6 +108,9 @@ class OnnxCLAPBackend:
                     f'(providers={active}) — embeddings still correct, CPU speed')
         self._in_name = self._sess.get_inputs()[0].name
         self._out_name = self._sess.get_outputs()[0].name
+        on_gpu = self._sess.get_providers()[0] == 'CUDAExecutionProvider'
+        self._run = (lambda gpu: lambda feeds: gpu.call(self._sess.run, [self._out_name], feeds))(
+            gpu_thread()) if on_gpu else (lambda feeds: self._sess.run([self._out_name], feeds))
         # transformers gates ClapFeatureExtractor behind PyTorch, so the mel
         # comes from clap_mel, built on the ungated audio_utils primitives.
         import clap_mel
@@ -102,61 +130,23 @@ class OnnxCLAPBackend:
         return self._fe.get_input_mel(clip)[0]  # [1001, 64]
 
     def _prepare_input(self, audio: np.ndarray) -> np.ndarray:
-        """Concatenate 10s-chunk mels, pad/truncate to 1001 frames total."""
-        n_chunks = max(1, (audio.shape[0] + MAX_SAMPLES - 1) // MAX_SAMPLES)
-        blocks = []
-        for i in range(n_chunks):
-            seg = audio[i * MAX_SAMPLES:(i + 1) * MAX_SAMPLES]
-            mel = self._mel_chunk(seg)  # [1001, 64]
-            blocks.append(mel)
-        spec = np.concatenate(blocks, axis=0)  # [total_frames, 64]
-        if spec.shape[0] < MAX_FRAMES:
-            spec = np.pad(spec, [(MAX_FRAMES - spec.shape[0], 0), (0, 0)])
-        else:
-            spec = spec[:MAX_FRAMES, :]
-        return spec[np.newaxis, np.newaxis, ...].astype(np.float32)  # [1,1,T,64]
+        """The model's whole input: the log-mel of the first 10 s, [1, 1, 1001, 64]. Audio past 10 s
+        (a 44.1 kHz source resampled can run a sample over) would only be cut away again."""
+        return self._mel_chunk(audio)[np.newaxis, np.newaxis, ...].astype(np.float32)
 
-    def embed_audio(self, audio: np.ndarray,
-                    allow_torch_fallback: bool = False) -> np.ndarray:
-        """512-d L2-normalised embedding of a 48 kHz mono clip. An ONNX failure
-        raises: only a parity harness may pass allow_torch_fallback, and it
-        must then check torch_fallback_count.
-        """
+    def embed_clips(self, clips: list) -> np.ndarray:
+        """``(len(clips), 512)`` L2-normalised embeddings of 48 kHz mono clips in one
+        model call: on the GPU one batch costs about what one clip does. The
+        spectrograms are built first, on the calling thread; on the GPU the call
+        itself is made by the one GPU thread."""
         self.load_model()
-        inp = self._prepare_input(audio)
-        try:
-            out = self._sess.run([self._out_name], {self._in_name: inp})[0]
-            vec = out[0]
-            vec = vec / (np.linalg.norm(vec) + EPS)
-            return vec.astype(np.float32)
-        except Exception as e:
-            if not allow_torch_fallback:
-                raise RuntimeError(
-                    f'ONNX audio embedding failed ({e}) and the torch fallback is '
-                    'off. This image runs the ONNX backend; a failed window is a '
-                    'failed window and must not be replaced with a substitute '
-                    'vector. Pass allow_torch_fallback=True only in a harness that '
-                    'is explicitly comparing the two.'
-                ) from e
-            logger.warning(
-                f'ONNX embed failed ({e}); falling back to torch reference '
-                'embedding (explicitly requested)'
-            )
-            self.torch_fallback_count += 1
-            return self._torch_fallback(audio)
+        batch = np.concatenate([self._prepare_input(clip) for clip in clips], axis=0)
+        out = self._run({self._in_name: batch})[0]
+        return (out / (np.linalg.norm(out, axis=1, keepdims=True) + EPS)).astype(np.float32)
 
-    def _torch_fallback(self, audio: np.ndarray) -> np.ndarray:
-        """Fallback: HF torch reference embedding (ClapProcessor + model)."""
-        import torch
-        import torch.nn.functional as F
-        from transformers import ClapProcessor, ClapAudioModelWithProjection
-        model = ClapAudioModelWithProjection.from_pretrained(REF_MODEL_PATH).eval()
-        proc = ClapProcessor.from_pretrained('laion/clap-htsat-unfused')
-        y = torch.from_numpy(audio).float()
-        inp = proc(audio=y, sampling_rate=CLAP_SAMPLE_RATE, return_tensors='pt')
-        with torch.no_grad():
-            emb = model(**inp)[0].float()
-        return F.normalize(emb, dim=-1)[0].detach().cpu().numpy().astype(np.float32)
+    def embed_audio(self, audio: np.ndarray) -> np.ndarray:
+        """512-d L2-normalised embedding of a 48 kHz mono clip."""
+        return self.embed_clips([audio])[0]
 
 
 # Default ONNX TEXT model path (Xenova clap-htsat-unfused text_model.onnx).

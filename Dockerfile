@@ -6,8 +6,7 @@
 # CLAP ONNX BUILDER STAGE
 # Exports hf_audio.onnx (sha256 37df17afb9881569c4f50e5b691167aa54586418059701a74a54934514969972)
 # from the PUBLIC laion/clap-htsat-unfused checkpoint with a pinned toolchain.
-# Byte-reproducibility PROVEN on linux/amd64 and linux/arm64 (2026-09-16):
-# same pins -> same bytes.
+# Same pins give the same bytes on amd64 and arm64.
 # The sha gate below fails the build on any drift -- upstream checkpoint
 # revision, toolchain version, or export script change.
 FROM python:3.11-slim AS clap-onnx-builder
@@ -40,6 +39,27 @@ RUN mkdir -p ckpt \
 RUN python3 export_onnx.py --src ckpt --out hf_audio.onnx \
     && echo '37df17afb9881569c4f50e5b691167aa54586418059701a74a54934514969972  hf_audio.onnx' | sha256sum -c - \
     && echo '[builder] hf_audio.onnx exported and sha-verified'
+
+# ============================================================
+# MUSICNN ONNX BUILDER STAGE
+# Essentia's MusiCNN model and its ten heads, checksum-verified, converted to ONNX
+# and gated: the build fails unless the ONNX graphs answer as Essentia's TensorFlow
+# does (services/audio-analyzer/convert_musicnn.py). Only the ONNX files reach the
+# image. The graphs are the same on every platform; the stage runs as x86_64 because
+# Essentia-TensorFlow publishes no other Linux wheel.
+FROM --platform=linux/amd64 python:3.11-slim AS musicnn-onnx-builder
+WORKDIR /build
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+RUN pip3 install --no-cache-dir 'tensorflow-cpu==2.13.1' 'onnxruntime==1.22.0' 'requests' \
+    && pip3 install --no-cache-dir --no-deps 'tf2onnx==1.16.1' 'onnx==1.14.1' 'essentia-tensorflow==2.1b6.dev1389'
+COPY services/audio-analyzer/fetch_models.sh services/audio-analyzer/models.sha256 \
+     services/audio-analyzer/musicnn_onnx.py services/audio-analyzer/convert_musicnn.py ./
+# onnxruntime 1.22.0 is the GPU runtime's version; the shipped image checks its own below.
+RUN sh fetch_models.sh pb \
+    && python3 convert_musicnn.py convert pb onnx \
+    && python3 convert_musicnn.py reference pb answers.npz \
+    && python3 convert_musicnn.py gate onnx answers.npz
 
 FROM node:24-slim
 
@@ -95,7 +115,6 @@ RUN pip3 install --no-cache-dir --break-system-packages \
     redis \
     psycopg2-binary \
     'pgvector>=0.2.0' \
-    'python-dotenv>=1.0.0' \
     'requests>=2.31.0' \
     # 2.26.0 is the latest 2.x binding (Worker API the analyzer imports); its
     # msgpack==1.2.1 pin is the GHSA-6v7p-g79w-8964 fixed release.
@@ -104,7 +123,9 @@ RUN pip3 install --no-cache-dir --break-system-packages \
     # Floor the transitive msgpack: <1.2.1 carries GHSA-6v7p-g79w-8964.
     'msgpack>=1.2.1'
 
-# ML dependencies -- ONNX for CLAP (audio + text), tensorflow/essentia for MusiCNN.
+# ML dependencies -- ONNX Runtime for CLAP (audio + text) and MusiCNN.
+# Exact versions: the sound vectors and the MusiCNN parity were validated on these, and a
+# rebuild must not drift onto others (onnxruntime 1.30.0, librosa 0.11.0, soundfile 0.14.0).
 # The PyTorch stack (torch/torchaudio/torchvision/laion-clap) is NOT installed:
 # since v1.11.0 the shipped images run the ONNX CLAP backend (CLAP_BACKEND=onnx,
 # the analyzer default) and are torch-free. The legacy torch backend remains
@@ -115,25 +136,24 @@ RUN pip3 install --no-cache-dir --break-system-packages \
 # install (verified 4.57.6 AND 5.8.1 raise ImportError without torch) -- the
 # shipped runtime does NOT use it; clap_mel.py reproduces its mel bit-for-bit
 # (proven, test_clap_mel_parity). 4.57.6 is the pin the parity was validated on.
-# tensorflow-cpu + essentia-tensorflow: no Linux ARM64 wheels exist upstream,
-# so MusiCNN audio analysis is unavailable on ARM64. CLAP still works.
+# The same pins as services/audio-analyzer-clap/requirements.txt (test_ship_blocker.py checks).
+# transformers is exact: newer releases reference torch.float8_e8m0fnu at import and crash
+# without torch. Bump only with a full ONNX re-validation (verify_runtime.py, the build gate).
 RUN pip3 install --no-cache-dir --break-system-packages \
-    'onnxruntime>=1.16' \
+    'onnxruntime==1.30.0' \
     'transformers==4.57.6' \
-    'librosa>=0.10.0'
-# transformers pinned exact: newer releases reference torch.float8_e8m0fnu
-# (added in torch 2.7) at import and crash when torch is absent. 5.8.1 is the
-# version running in prod. Bump only together with a full ONNX re-validation
-# (see verify_runtime.py -- the build-time parity gate).
+    'librosa==0.11.0' \
+    'soundfile==0.14.0'
 
-# tensorflow-cpu + essentia-tensorflow (AMD64 only -- no ARM64 wheels upstream)
-RUN pip3 install --no-cache-dir --break-system-packages \
-    'tensorflow-cpu>=2.13.0,<2.14.0' \
-    && pip3 install --no-cache-dir --break-system-packages --no-deps \
-    essentia-tensorflow \
-    || echo "[ARM64] tensorflow-cpu/essentia-tensorflow unavailable -- MusiCNN analysis disabled"
+# Essentia for the signal analysis and MusiCNN's input features; MusiCNN itself runs on
+# ONNX Runtime, so no TensorFlow is installed. Essentia publishes Linux wheels for x86_64
+# only: there a failed install fails the build; elsewhere the image runs without audio
+# analysis and CLAP still works.
+RUN if [ "$(uname -m)" = "x86_64" ]; then \
+        pip3 install --no-cache-dir --break-system-packages --no-deps 'essentia==2.1b6.dev1389'; \
+    else echo "[$(uname -m)] Essentia has no wheel here -- audio analysis disabled"; fi
 
-# Keep scipy/pandas aligned with tensorflow's numpy constraint in the shared Python env.
+# numpy 1.24.4 is what Essentia, the MusiCNN gate and the CLAP parity were validated with.
 # Force exact wheel versions to avoid resolver drift leaving incompatible pandas/scipy.
 RUN pip3 uninstall -y pandas scipy numpy || true \
     && pip3 install --no-cache-dir --break-system-packages --force-reinstall \
@@ -149,37 +169,19 @@ RUN pip cache purge \
     && find /usr -name "*.pyc" -delete \
     && find /usr -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
 
-# Download all ML models in a single layer (~800MB total)
-# IMPORTANT: Using MusiCNN models to match analyzer.py expectations
-RUN echo "Downloading ML models..." && \
-    curl -fL --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30 --speed-limit 1024 --speed-time 60 -o /app/models/msd-musicnn-1.pb \
-        "https://essentia.upf.edu/models/autotagging/msd/msd-musicnn-1.pb" && \
-    curl -fL --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30 --speed-limit 1024 --speed-time 60 -o /app/models/mood_happy-msd-musicnn-1.pb \
-        "https://essentia.upf.edu/models/classification-heads/mood_happy/mood_happy-msd-musicnn-1.pb" && \
-    curl -fL --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30 --speed-limit 1024 --speed-time 60 -o /app/models/mood_sad-msd-musicnn-1.pb \
-        "https://essentia.upf.edu/models/classification-heads/mood_sad/mood_sad-msd-musicnn-1.pb" && \
-    curl -fL --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30 --speed-limit 1024 --speed-time 60 -o /app/models/mood_relaxed-msd-musicnn-1.pb \
-        "https://essentia.upf.edu/models/classification-heads/mood_relaxed/mood_relaxed-msd-musicnn-1.pb" && \
-    curl -fL --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30 --speed-limit 1024 --speed-time 60 -o /app/models/mood_aggressive-msd-musicnn-1.pb \
-        "https://essentia.upf.edu/models/classification-heads/mood_aggressive/mood_aggressive-msd-musicnn-1.pb" && \
-    curl -fL --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30 --speed-limit 1024 --speed-time 60 -o /app/models/mood_party-msd-musicnn-1.pb \
-        "https://essentia.upf.edu/models/classification-heads/mood_party/mood_party-msd-musicnn-1.pb" && \
-    curl -fL --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30 --speed-limit 1024 --speed-time 60 -o /app/models/mood_acoustic-msd-musicnn-1.pb \
-        "https://essentia.upf.edu/models/classification-heads/mood_acoustic/mood_acoustic-msd-musicnn-1.pb" && \
-    curl -fL --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30 --speed-limit 1024 --speed-time 60 -o /app/models/mood_electronic-msd-musicnn-1.pb \
-        "https://essentia.upf.edu/models/classification-heads/mood_electronic/mood_electronic-msd-musicnn-1.pb" && \
-    curl -fL --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30 --speed-limit 1024 --speed-time 60 -o /app/models/danceability-msd-musicnn-1.pb \
-        "https://essentia.upf.edu/models/classification-heads/danceability/danceability-msd-musicnn-1.pb" && \
-    curl -fL --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30 --speed-limit 1024 --speed-time 60 -o /app/models/deam-msd-musicnn-2.pb \
-        "https://essentia.upf.edu/models/classification-heads/deam/deam-msd-musicnn-2.pb" && \
-    curl -fL --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30 --speed-limit 1024 --speed-time 60 -o /app/models/emomusic-msd-musicnn-2.pb \
-        "https://essentia.upf.edu/models/classification-heads/emomusic/emomusic-msd-musicnn-2.pb" && \
-    echo "All ML models downloaded" && \
-    ls -lh /app/models/
+# MusiCNN and its heads as ONNX, converted and gated in the builder stage, then
+# checked again against Essentia's answers on this image's own ONNX Runtime. The
+# answers stay: the analyzer checks its GPU session against them at every start.
+COPY --from=musicnn-onnx-builder /build/onnx/ /app/models/
+COPY --from=musicnn-onnx-builder /build/answers.npz /app/models/musicnn-answers.npz
+COPY services/audio-analyzer/convert_musicnn.py services/audio-analyzer/musicnn_onnx.py /tmp/musicnn-gate/
+RUN if [ "$(uname -m)" = "x86_64" ]; then \
+        cd /tmp/musicnn-gate && python3 convert_musicnn.py gate /app/models /app/models/musicnn-answers.npz; \
+    else echo "[$(uname -m)] no Essentia -- MusiCNN gate not run, audio analysis disabled"; fi \
+    && rm -rf /tmp/musicnn-gate
 
-# Copy audio analyzer scripts -- analyzer.py imports classifier at module
-# load, so both files must land in the image or the worker cannot start.
-COPY services/audio-analyzer/analyzer.py services/audio-analyzer/classifier.py /app/audio-analyzer/
+# analyzer.py imports classifier and musicnn_onnx at load.
+COPY services/audio-analyzer/analyzer.py services/audio-analyzer/classifier.py services/audio-analyzer/musicnn_onnx.py /app/audio-analyzer/
 
 # ============================================
 # CLAP ANALYZER SETUP (Vibe Similarity)
@@ -448,7 +450,7 @@ environment=NODE_ENV="production",BACKEND_URL="http://localhost:3006",PORT="3030
 priority=40
 
 [program:audio-analyzer]
-command=/bin/bash -c "/app/wait-for-db.sh 120 && cd /app/audio-analyzer && python3 analyzer.py"
+command=/bin/bash -c "/app/wait-for-db.sh 120 && cd /app/audio-analyzer && KIMA_GPU_FOR=analysis /app/audio-analyzer-clap/gpu_env.sh python3 analyzer.py"
 autostart=true
 autorestart=true
 startretries=3
@@ -457,7 +459,7 @@ stdout_logfile=/dev/stdout
 stdout_logfile_maxbytes=0
 stderr_logfile=/dev/stderr
 stderr_logfile_maxbytes=0
-environment=DATABASE_URL="postgresql://kima:kima@localhost:5432/kima",REDIS_URL="redis://localhost:6379",MUSIC_PATH="/music",BATCH_SIZE="10",SLEEP_INTERVAL="5",MAX_ANALYZE_SECONDS="90",BRPOP_TIMEOUT="5",MODEL_IDLE_TIMEOUT="300",NUM_WORKERS="2",THREADS_PER_WORKER="1"
+environment=DATABASE_URL="postgresql://kima:kima@localhost:5432/kima",REDIS_URL="redis://localhost:6379",MUSIC_PATH="/music",MAX_ANALYZE_SECONDS="90",BRPOP_TIMEOUT="5",MODEL_IDLE_TIMEOUT="300",NUM_WORKERS="2",THREADS_PER_WORKER="1"
 priority=50
 
 [program:audio-analyzer-clap]
@@ -470,7 +472,7 @@ stdout_logfile=/dev/stdout
 stdout_logfile_maxbytes=0
 stderr_logfile=/dev/stderr
 stderr_logfile_maxbytes=0
-environment=DATABASE_URL="postgresql://kima:kima@localhost:5432/kima",REDIS_URL="redis://localhost:6379",MUSIC_PATH="/music",BACKEND_URL="http://localhost:3006",SLEEP_INTERVAL="5",NUM_WORKERS="1",MODEL_IDLE_TIMEOUT="300",INTERNAL_API_SECRET="kima-internal-aio"
+environment=DATABASE_URL="postgresql://kima:kima@localhost:5432/kima",REDIS_URL="redis://localhost:6379",MUSIC_PATH="/music",BACKEND_URL="http://localhost:3006",NUM_WORKERS="1",MODEL_IDLE_TIMEOUT="300",INTERNAL_API_SECRET="kima-internal-aio"
 priority=60
 EOF
 
@@ -610,7 +612,7 @@ elif [ "$USER_TABLE_EXIST" = "t" ]; then
     echo "Existing database detected without migration history."
     echo "Creating baseline from current schema..."
     # Mark the init migration as already applied (baseline)
-    node node_modules/prisma/build/index.js migrate resolve --applied 20241130000000_init 2>&1 || true
+    node node_modules/prisma/build/index.js migrate resolve --applied 20251130000000_init 2>&1 || true
     # Now run any subsequent migrations
     if ! node node_modules/prisma/build/index.js migrate deploy 2>&1; then
         echo "FATAL: Migration after baseline failed!"

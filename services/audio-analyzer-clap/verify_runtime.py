@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 """Verifies the CLAP ONNX stack offline (HF_HUB_OFFLINE=1): the fixtures must
 embed at cosine >= 0.999 to expected_onnx_embeddings.npy with no torch
-fallback, and two text prompts must embed distinguishably.
+fallback, the clips embedded together in one call (as tracks are) must match
+each clip embedded alone, and two text prompts must embed distinguishably.
 Usage: python3 verify_runtime.py <fixtures_dir>; exit 0 = pass.
 """
 import os
@@ -17,6 +18,7 @@ from onnx_backend import OnnxCLAPBackend, OnnxTextCLAPBackend  # noqa: E402
 import librosa  # noqa: E402
 
 MIN_COS = 0.999
+BATCH_MIN_COS = 0.99999
 
 
 def main() -> int:
@@ -27,6 +29,7 @@ def main() -> int:
     audio_backend = OnnxCLAPBackend()
     audio_backend.load_model()
     ok = True
+    singles = []
     for i, name in enumerate(names):
         wav = os.path.join(fixtures, name)
         if not os.path.exists(wav):
@@ -34,16 +37,17 @@ def main() -> int:
             return 1
         sig, _sr = librosa.load(wav, sr=48000, mono=True)
         emb = audio_backend.embed_audio(sig)
+        singles.append((sig, emb))
         cos = float(np.dot(emb, expected[i]) /
                     (np.linalg.norm(emb) * np.linalg.norm(expected[i]) + 1e-12))
         status = 'PASS' if cos >= MIN_COS else 'FAIL'
         print(f'[{status}] audio {name}: cosine={cos:.6f} (min {MIN_COS})')
         ok &= cos >= MIN_COS
-    if audio_backend.torch_fallback_count != 0:
-        print(f'FAIL: torch_fallback_count={audio_backend.torch_fallback_count} (must be 0)')
-        ok = False
-    else:
-        print('[PASS] torch_fallback_count=0 (pure ONNX)')
+    together = audio_backend.embed_clips([sig for sig, _emb in singles])
+    worst = min(float(np.dot(together[i], emb)) for i, (_sig, emb) in enumerate(singles))
+    status = 'PASS' if worst >= BATCH_MIN_COS else 'FAIL'
+    print(f'[{status}] {len(singles)} clips in one call vs one at a time: lowest cosine={worst:.8f} (min {BATCH_MIN_COS})')
+    ok &= worst >= BATCH_MIN_COS
 
     text_backend = OnnxTextCLAPBackend()
     text_backend.load_model()

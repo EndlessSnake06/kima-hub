@@ -12,9 +12,8 @@
 # ============================================================
 # CLAP ONNX BUILDER STAGE
 # Exports hf_audio.onnx (sha256 37df17afb9881569c4f50e5b691167aa54586418059701a74a54934514969972)
-# from the public checkpoint with a pinned toolchain. Same pins -> same bytes
-# (proven on linux/amd64 and linux/arm64, 2026-09-16); the sha gate fails the
-# build on any drift.
+# from the public checkpoint with a pinned toolchain. Same pins give the same bytes on amd64
+# and arm64; the sha gate fails the build on any drift.
 FROM python:3.11-slim AS clap-onnx-builder
 WORKDIR /build
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates
@@ -69,13 +68,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Torch-free: requirements.txt carries the ONNX stack only. The legacy torch
-# backend is not installed (see requirements-torch.txt for why and how).
-# transformers is pinned exact, as in the all-in-one image: newer releases
-# reference torch.float8_e8m0fnu at import and crash when torch is absent, and
-# 4.57.6 is the version the ONNX parity was validated on.
+# Torch-free: requirements.txt carries the ONNX stack only, pinned.
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt 'transformers==4.57.6'
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Application code -- ALL of the runtime modules. analyzer.py imports
 # onnx_backend at module load, which imports clap_mel. verify_runtime.py and

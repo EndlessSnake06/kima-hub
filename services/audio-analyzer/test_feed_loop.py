@@ -1,0 +1,210 @@
+"""The analysis loop keeps every worker busy and tags each report with the job it answers."""
+import importlib.util
+import json
+import os
+import sys
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
+
+_ANALYZER_PATH = os.path.join(os.path.dirname(__file__), "analyzer.py")
+_spec = importlib.util.spec_from_file_location("audio_analyzer_feed_loop", _ANALYZER_PATH)
+assert _spec and _spec.loader
+analyzer = importlib.util.module_from_spec(_spec)
+sys.modules["audio_analyzer_feed_loop"] = analyzer
+_spec.loader.exec_module(analyzer)
+
+
+class FakeRedis:
+    def __init__(self, jobs):
+        self.queue = [json.dumps(j) for j in jobs]
+        self.published = []
+        self.lock = threading.Lock()
+
+    def blpop(self, _key, timeout=0):
+        with self.lock:
+            return (b"q", self.queue.pop(0)) if self.queue else None
+
+    def lpop(self, _key):
+        with self.lock:
+            return self.queue.pop(0) if self.queue else None
+
+    def lpush(self, _key, *values):
+        with self.lock:
+            for value in values:
+                self.queue.insert(0, value)
+
+    def get(self, _key):
+        return None
+
+    def publish(self, _channel, message):
+        self.published.append(json.loads(message))
+
+
+class FakeCursor:
+    rowcount = 1
+
+    def __init__(self, db):
+        self.db = db
+        self.rows = []
+
+    def execute(self, sql, params=None):
+        if 'FOR SHARE' in sql:
+            track, attempt, redelivered = params[0], params[3], params[4]
+            self.rows = [{"held": 1}] if self.db.open_claims.get(track) == (attempt, redelivered) else []
+        elif 'FROM "TrackStage"' in sql:
+            self.rows = [{"trackId": t, "attempt": a, "redelivered": r}
+                         for t, (a, r) in self.db.open_claims.items() if t in params[2]]
+
+    def fetchall(self):
+        return self.rows
+
+    def fetchone(self):
+        return self.rows[0] if self.rows else None
+
+    def close(self):
+        pass
+
+
+class FakeDb:
+    def __init__(self, open_claims=None):
+        # trackId -> (attempt, redelivered) of the record's open claim; by default every job's own.
+        self.open_claims = open_claims
+
+    def get_cursor(self):
+        return FakeCursor(self)
+
+    def commit(self):
+        pass
+
+    def rollback(self):
+        pass
+
+
+FEATURES: dict = {k: 0.5 for k in ("bpm", "beatsCount", "keyStrength", "energy", "loudness", "dynamicRange",
+                             "danceability", "valence", "arousal")}
+FEATURES.update(key="C", keyScale="major", moodTags=[], essentiaGenres=[], analysisMode="enhanced")
+
+
+def claim(job_id):
+    attempt, redelivered = analyzer.CLAIM_IN_JOB_ID.search(job_id).groups()
+    return int(attempt), int(redelivered)
+
+
+def make_worker(jobs, workers, monkeypatch, run):
+    monkeypatch.setattr(analyzer, "NUM_WORKERS", workers)
+    monkeypatch.setattr(analyzer, "ProcessPoolExecutor", lambda **kw: ThreadPoolExecutor(kw["max_workers"]))
+    monkeypatch.setattr(analyzer, "_analyze_track_in_process", run)
+    w = analyzer.AnalysisWorker.__new__(analyzer.AnalysisWorker)
+    w.redis = FakeRedis(jobs)
+    w.db = FakeDb({j["trackId"]: claim(j["jobId"]) for j in jobs if j.get("jobId")})
+    w.executor = None
+    w.pool_active = False
+    w._in_flight = {}
+    w.musicnn_server = None
+    return w
+
+
+def drain(w, seconds=5.0):
+    end = time.time() + seconds
+    while time.time() < end and (w.redis.queue or w._in_flight):
+        w._fill()
+        w._collect(timeout=0.05)
+
+
+def test_a_slow_track_does_not_hold_up_the_others(monkeypatch):
+    finished = {}
+
+    def run(args):
+        track_id, path = args
+        time.sleep(0.6 if track_id == "slow" else 0.05)
+        finished[track_id] = time.time()
+        return track_id, path, dict(FEATURES)
+
+    jobs = [{"trackId": "slow", "filePath": "/m/slow", "jobId": "slow-1-r0"}]
+    jobs += [{"trackId": f"t{i}", "filePath": f"/m/{i}", "jobId": f"t{i}-1-r0"} for i in range(9)]
+    w = make_worker(jobs, 4, monkeypatch, run)
+    drain(w)
+    shorts = [finished[f"t{i}"] for i in range(9)]
+    assert max(shorts) < finished["slow"], "short tracks waited for the slow one"
+
+
+def test_never_more_jobs_running_than_workers(monkeypatch):
+    running, peak, lock = [0], [0], threading.Lock()
+
+    def run(args):
+        with lock:
+            running[0] += 1
+            peak[0] = max(peak[0], running[0])
+        time.sleep(0.03)
+        with lock:
+            running[0] -= 1
+        return args[0], args[1], dict(FEATURES)
+
+    jobs = [{"trackId": f"t{i}", "filePath": f"/m/{i}", "jobId": f"t{i}-1-r0"} for i in range(20)]
+    w = make_worker(jobs, 3, monkeypatch, run)
+    drain(w)
+    assert peak[0] == 3
+
+
+def test_reports_carry_the_job_they_answer(monkeypatch):
+    def run(args):
+        if args[0] == "bad":
+            return args[0], args[1], {"_error": "decode failed"}
+        return args[0], args[1], dict(FEATURES)
+
+    jobs = [{"trackId": "good", "filePath": "/m/g", "jobId": "good-3-r1"},
+            {"trackId": "bad", "filePath": "/m/b", "jobId": "bad-2-r0"}]
+    w = make_worker(jobs, 2, monkeypatch, run)
+    drain(w)
+    by_track = {e["trackId"]: e for e in w.redis.published}
+    assert by_track["good"] == {"trackId": "good", "jobId": "good-3-r1", "status": "complete"}
+    assert by_track["bad"]["jobId"] == "bad-2-r0"
+    assert by_track["bad"]["status"] == "failed"
+
+
+def test_live_resize_reaches_the_machines_cores(monkeypatch):
+    class Bus:
+        def get_message(self, **_kw):
+            return {"type": "message", "data": json.dumps({"command": "set_workers", "count": 64})}
+
+    monkeypatch.setattr(analyzer, "NUM_WORKERS", 2)
+    monkeypatch.setattr(analyzer.os, "cpu_count", lambda: 12)
+    w = analyzer.AnalysisWorker.__new__(analyzer.AnalysisWorker)
+    w.pubsub = Bus()
+    w._pending_resize = None
+    w._check_control_signals()
+    assert w._pending_resize == 12
+
+
+def test_a_job_whose_claim_was_reissued_is_not_analysed(monkeypatch):
+    analysed = []
+
+    def run(args):
+        analysed.append(args[0])
+        return args[0], args[1], dict(FEATURES)
+
+    jobs = [{"trackId": "old", "filePath": "/m/old", "jobId": "old-1-r0"},
+            {"trackId": "new", "filePath": "/m/new", "jobId": "new-2-r0"}]
+    w = make_worker(jobs, 2, monkeypatch, run)
+    w.db.open_claims["old"] = (2, 0)
+    monkeypatch.setattr(w, "_save_results", lambda job, features: None)
+    drain(w)
+    assert analysed == ["new"]
+
+
+
+def test_a_failed_claim_lookup_puts_the_jobs_back_in_order(monkeypatch):
+    jobs = [{"trackId": t, "filePath": f"/m/{t}", "jobId": f"{t}-1-r0"} for t in ("a", "b", "c")]
+    w = make_worker(jobs, 4, monkeypatch, lambda args: None)
+
+    def boom(_jobs):
+        raise RuntimeError("server closed the connection unexpectedly")
+
+    monkeypatch.setattr(w, "_current_claims", boom)
+    try:
+        w._fill()
+        raise AssertionError("the lookup's failure was swallowed")
+    except RuntimeError:
+        pass
+    assert [json.loads(x)["trackId"] for x in w.redis.queue] == ["a", "b", "c"]

@@ -1,103 +1,66 @@
-# Audio Analyzer Service - Essentia with TensorFlow (MusiCNN)
-# Using Ubuntu 20.04 with Python 3.8 for essentia-tensorflow compatibility
-FROM ubuntu:20.04
+# Audio Analyzer Service - Essentia signal analysis with MusiCNN on ONNX Runtime.
+# Built from the repository root (docker-compose.yml), so it can carry the shared
+# GPU wrapper from the CLAP service.
 
-# Avoid interactive prompts
-ENV DEBIAN_FRONTEND=noninteractive
-ENV TZ=UTC
+# Essentia's MusiCNN model and its ten heads, checksum-verified, converted to ONNX
+# and gated: the build fails unless the ONNX graphs answer as Essentia's TensorFlow
+# does (convert_musicnn.py). Only the ONNX files reach the image, so it carries no
+# TensorFlow. The graphs are the same on every platform; the stage runs as x86_64
+# because Essentia-TensorFlow publishes no other Linux wheel.
+FROM --platform=linux/amd64 python:3.11-slim AS musicnn-onnx-builder
+WORKDIR /build
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+RUN pip3 install --no-cache-dir 'tensorflow-cpu==2.13.1' 'onnxruntime==1.22.0' 'requests' \
+    && pip3 install --no-cache-dir --no-deps 'tf2onnx==1.16.1' 'onnx==1.14.1' 'essentia-tensorflow==2.1b6.dev1389'
+COPY services/audio-analyzer/fetch_models.sh services/audio-analyzer/models.sha256 \
+     services/audio-analyzer/musicnn_onnx.py services/audio-analyzer/convert_musicnn.py ./
+# onnxruntime 1.22.0 is the GPU runtime's version; the shipped image checks its own below.
+RUN sh fetch_models.sh pb \
+    && python3 convert_musicnn.py convert pb onnx \
+    && python3 convert_musicnn.py reference pb answers.npz \
+    && python3 convert_musicnn.py gate onnx answers.npz
 
-# CPU thread limiting for TensorFlow and numerical libraries
-# Prevents each worker from using all CPU cores
-# Override with docker-compose environment variables
-ENV TF_NUM_INTRAOP_THREADS=1 \
-    TF_NUM_INTEROP_THREADS=1 \
+FROM python:3.11-slim
+
+ENV TZ=UTC \
     OMP_NUM_THREADS=1 \
     OPENBLAS_NUM_THREADS=1 \
     MKL_NUM_THREADS=1 \
     NUMEXPR_MAX_THREADS=1 \
     THREADS_PER_WORKER=1
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 \
-    python3-dev \
-    python3-pip \
-    ffmpeg \
-    curl \
-    procps \
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg procps \
     && rm -rf /var/lib/apt/lists/*
-
-# Upgrade pip
-RUN pip3 install --upgrade pip setuptools wheel
 
 WORKDIR /app
 
-# Install essentia-tensorflow (includes TensorFlow + MusiCNN support)
-RUN pip3 install --no-cache-dir essentia-tensorflow
+# The versions the main image ships. Essentia declares numpy>=1.25 but runs on the
+# images' numpy 1.24.4 (the sound-vector parity pin); the gate below proves it.
+RUN pip3 install --no-cache-dir 'numpy==1.24.4' 'onnxruntime==1.30.0' pyyaml six redis psycopg2-binary \
+    && pip3 install --no-cache-dir --no-deps 'essentia==2.1b6.dev1389'
 
-# Verify TensorflowPredictMusiCNN is available
-RUN python3 -c "from essentia.standard import TensorflowPredictMusiCNN, TensorflowPredict2D; print('MusiCNN and TensorflowPredict2D: OK')"
+# MusiCNN and its heads as ONNX, checked again on this image's own ONNX Runtime. The
+# answers stay: the analyzer checks its GPU session against them at every start.
+COPY --from=musicnn-onnx-builder /build/onnx/ /app/models/
+COPY --from=musicnn-onnx-builder /build/answers.npz /app/models/musicnn-answers.npz
+COPY services/audio-analyzer/convert_musicnn.py services/audio-analyzer/musicnn_onnx.py /tmp/musicnn-gate/
+RUN cd /tmp/musicnn-gate && python3 convert_musicnn.py gate /app/models /app/models/musicnn-answers.npz \
+    && rm -rf /tmp/musicnn-gate
 
-# Create models directory
-# Create models directory and fetch the MusiCNN model plus its classification
-# heads.
-#
-# essentia.upf.edu is intermittently unreachable. Observed from the build host
-# minutes apart: the same URL returning HTTP 200 on one attempt, a connection
-# failure on the next, and an SSL handshake error (curl exit 35) on a third.
-# Nine bare `curl -L` calls with no retry meant a single blip anywhere in the
-# chain failed the whole image, and which file it landed on was luck.
-#
-# The retry is a shell loop rather than curl's own flags, deliberately:
-# --retry-all-errors would cover this but only exists from curl 7.71, and the
-# curl in ubuntu:20.04 is 7.68 -- passing it fails the build instantly with
-# "option is unknown". --retry-connrefused is understood by 7.68 but does not
-# retry the SSL error actually seen here. A loop covers every failure mode
-# regardless of curl version.
-#
-# -f so an HTTP error page is never written to disk as if it were a model, and
-# each file is size-checked afterwards for the same reason.
-RUN mkdir -p /app/models && \
-    fetch() { \
-        name="$1"; url="$2"; \
-        for attempt in 1 2 3 4 5; do \
-            if curl -fL --connect-timeout 20 --max-time 300 -o "/app/models/$name" "$url"; then \
-                if [ -s "/app/models/$name" ]; then return 0; fi; \
-                echo "  $name downloaded empty, retrying"; \
-            fi; \
-            echo "  $name attempt $attempt failed, retrying in 5s"; \
-            rm -f "/app/models/$name"; \
-            sleep 5; \
-        done; \
-        echo "FATAL: could not download $name from $url"; \
-        return 1; \
-    }; \
-    base="https://essentia.upf.edu/models"; \
-    fetch msd-musicnn-1.pb              "$base/autotagging/msd/msd-musicnn-1.pb" && \
-    for m in happy sad relaxed aggressive party acoustic electronic; do \
-        fetch "mood_$m-msd-musicnn-1.pb" "$base/classification-heads/mood_$m/mood_$m-msd-musicnn-1.pb" || exit 1; \
-    done && \
-    fetch danceability-msd-musicnn-1.pb "$base/classification-heads/danceability/danceability-msd-musicnn-1.pb"
+# analyzer.py imports classifier and musicnn_onnx at load. The wrapper puts the shared
+# GPU runtime on the path when "GPU for audio analysis" is on.
+COPY services/audio-analyzer/analyzer.py services/audio-analyzer/classifier.py services/audio-analyzer/musicnn_onnx.py ./
+COPY services/audio-analyzer-clap/gpu_env.sh /app/gpu_env.sh
 
-
-# Verify models downloaded
-RUN echo "Models downloaded:" && ls -lh /app/models/
-
-# Install other dependencies
-RUN pip3 install --no-cache-dir redis psycopg2-binary 'numpy>=1.19.0,<2.0.0'
-
-# Copy application code -- analyzer.py imports classifier at module load,
-# so both files must land in the image or the worker cannot start.
-COPY analyzer.py classifier.py .
-
-# Create non-root user
 RUN useradd -m -u 1000 analyzer && \
     chown -R analyzer:analyzer /app
 
 USER analyzer
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD pgrep -f "python.*analyzer" || exit 1
 
+ENV KIMA_GPU_FOR=analysis
+ENTRYPOINT ["/app/gpu_env.sh"]
 CMD ["python3", "analyzer.py"]

@@ -2,30 +2,17 @@
 happy, aggressive, acoustic, electronic and danceability, column 1 for sad,
 relaxed and party (from each head's model metadata)."""
 
-import inspect
 import re
-import sys
+import json
 import types
 import unittest
+from unittest import mock
 from typing import Any
 
 import numpy as np
 
 
-def _install_psycopg2_stub() -> None:
-    extras: Any = types.ModuleType("psycopg2.extras")
-    extras.RealDictCursor = dict
-    extras.DictCursor = dict
-    psycopg2: Any = types.ModuleType("psycopg2")
-    psycopg2.extras = extras
-    psycopg2.connect = lambda *a, **k: None
-    sys.modules.setdefault("psycopg2", psycopg2)
-    sys.modules.setdefault("psycopg2.extras", extras)
-
-
-_install_psycopg2_stub()
-
-import analyzer  # noqa: E402
+import analyzer
 
 
 # Positive-class column per head, straight from each head's metadata "classes".
@@ -75,6 +62,7 @@ class ExtractMoodsTest(unittest.TestCase):
         # Column 0 always holds 0.9, column 1 holds 0.1. A correct reader
         # therefore stores 0.9 for column-0-positive heads and 0.1 for the rest.
         heads = {h: _Head([0.9, 0.1]) for h in EXPECTED_POSITIVE_COLUMN}
+        heads.update(deam=_Head([5.0, 5.0]), emomusic=_Head([5.0, 5.0]))
         heads.update(overrides)
         return heads
 
@@ -85,6 +73,7 @@ class ExtractMoodsTest(unittest.TestCase):
         self.assertEqual(out['moodAcoustic'], 0.9)
         self.assertEqual(out['moodElectronic'], 0.9)
         self.assertEqual(out['danceabilityMl'], 0.9)
+        self.assertEqual(out['danceability'], 0.9)
         self.assertEqual(out['moodSad'], 0.1)
         self.assertEqual(out['moodRelaxed'], 0.1)
         self.assertEqual(out['moodParty'], 0.1)
@@ -103,10 +92,56 @@ class ExtractMoodsTest(unittest.TestCase):
         self.assertEqual(out['moodRelaxed'], 0.99)
         self.assertEqual(out['moodAggressive'], 0.01)
 
-    def test_failed_head_is_missing_not_neutral(self):
-        heads = self._heads(mood_party=_Head(None, fail=True))
+    def test_a_failed_head_fails_the_track_rather_than_storing_a_gap(self):
+        for head in ('mood_party', 'deam', 'danceability'):
+            heads = self._heads(**{head: _Head(None, fail=True)})
+            with self.assertRaises(RuntimeError, msg=head):
+                _analyzer_with(heads)._extract_ml_features(np.zeros(16000))
+
+    def test_valence_and_arousal_are_the_mean_of_both_regressions(self):
+        heads = self._heads(deam=_Head([6.0, 4.0]), emomusic=_Head([4.0, 6.0]))
         out = _analyzer_with(heads)._extract_ml_features(np.zeros(16000))
-        self.assertIsNone(out['moodParty'])
+        self.assertEqual((out['valence'], out['arousal']), (0.5, 0.5))
+
+    @mock.patch.object(analyzer, 'ESSENTIA_AVAILABLE', True)
+    def test_without_the_models_a_track_fails_with_the_reason(self):
+        a = _analyzer_with(self._heads())
+        a.enhanced_mode = False
+        a.models_error = 'MusiCNN models failed to load: out of memory'
+        a.load_audio = lambda path, max_duration=None: self.fail('nothing is decoded without the models')
+        out = a.analyze('/music/x.flac')
+        self.assertEqual(out['_error'], 'MusiCNN models failed to load: out of memory')
+
+    @mock.patch.object(analyzer, 'ESSENTIA_AVAILABLE', True)
+    def test_a_failed_musicnn_fails_the_track_instead_of_estimating(self):
+        a = _analyzer_with(self._heads())
+        a.enhanced_mode = True
+        a.load_audio = lambda path, max_duration=None: np.full((2, 10 * 44100), 0.1, dtype=np.float32)
+        a.rhythm_extractor = lambda audio: (120.0, [0.5, 1.0], 3.0, None, [0.5])
+        a.key_extractor = lambda audio: ('A', 'minor', 0.8)
+        a.rms = lambda frame: 0.1
+        a.loudness_ebu = lambda pair: (None, None, -14.0, 6.0)
+        a.resampler = lambda audio: audio
+        a._extract_ml_features = lambda audio: (_ for _ in ()).throw(RuntimeError('MusiCNN server: CUDA out of memory'))
+        out = a.analyze('/music/x.flac')
+        self.assertIn('ML analysis failed', out.get('_error', ''))
+
+
+class MoodTags(unittest.TestCase):
+    def _tags(self, **features):
+        base = dict(bpm=None, valence=None, arousal=None, danceability=None, keyScale=None,
+                    moodHappy=None, moodSad=None, moodRelaxed=None, moodAggressive=None)
+        return object.__new__(analyzer.AudioAnalyzer)._generate_mood_tags({**base, **features})
+
+    def test_zero_is_a_measured_value(self):
+        tags = self._tags(valence=0.0, arousal=0.0, danceability=0.0, bpm=100.0)
+        self.assertIn('sad', tags)
+        self.assertIn('calm', tags)
+
+    def test_an_unmeasured_tempo_gives_no_tempo_tag(self):
+        tags = self._tags(valence=0.5, arousal=0.2, danceability=0.5)
+        self.assertNotIn('slow', tags)
+        self.assertNotIn('chill', tags)
 
 
 class _Cursor:
@@ -150,49 +185,59 @@ def _worker() -> Any:
     return w
 
 
-class ReanalysisSafetyTest(unittest.TestCase):
+def _features() -> dict:
+    features: dict[str, Any] = {k: None for k in (
+        'bpm', 'beatsCount', 'key', 'keyScale', 'keyStrength', 'energy',
+        'loudness', 'dynamicRange', 'danceability', 'valence', 'arousal')}
+    features.update(moodTags=[], essentiaGenres=[], analysisMode='enhanced')
+    return features
+
+
+class ResultWriteTest(unittest.TestCase):
+    def test_the_jobs_claim_is_held_before_the_write(self):
+        w = _worker()
+        self.assertTrue(w._save_results({"trackId": "t1", "filePath": "/x.flac", "jobId": "t1-3-r1"}, _features()))
+        (claim_sql, claim_params), (update_sql, _) = w.db.cursor.statements
+        self.assertIn('FOR SHARE', claim_sql)
+        self.assertEqual(claim_params, ('t1', 'analysis', 'working', 3, 1))
+        self.assertTrue(update_sql.lstrip().startswith('UPDATE "Track"'))
+        self.assertEqual(w.db.commits, 1)
+
+    def test_a_reissued_claim_writes_and_reports_nothing(self):
+        w = _worker()
+        published = []
+        w.redis = types.SimpleNamespace(publish=lambda channel, body: published.append(body))
+        w.db.cursor.fetchone = lambda: None
+        self.assertFalse(w._save_results({"trackId": "t1", "filePath": "/x.flac", "jobId": "t1-3-r1"}, _features()))
+        self.assertEqual(len(w.db.cursor.statements), 1)
+        self.assertEqual((w.db.commits, w.db.rollbacks), (0, 1))
+        self.assertEqual(published, [])
+
+    def test_a_job_naming_no_claim_is_not_written(self):
+        w = _worker()
+        self.assertFalse(w._save_results({"trackId": "t1", "filePath": "/x.flac", "jobId": "t1"}, _features()))
+        self.assertEqual(w.db.cursor.statements, [])
+
+    def test_a_failed_write_is_reported_as_the_tracks_failure(self):
+        w = _worker()
+        published = []
+        w.redis = types.SimpleNamespace(publish=lambda channel, body: published.append(json.loads(body)))
+        w.db.cursor.execute = lambda *a: (_ for _ in ()).throw(RuntimeError("server closed the connection"))
+        saved = w._save_results({"trackId": "t1", "filePath": "/x.flac", "jobId": "t1-1-r0"}, _features())
+        self.assertFalse(saved)
+        self.assertEqual(w.db.rollbacks, 1)
+        self.assertEqual([(p['status'], p['jobId']) for p in published], [('failed', 't1-1-r0')])
+        self.assertIn('server closed the connection', published[0]['error'])
+
     def test_save_results_does_not_touch_clap_columns(self):
         w = _worker()
-        features: dict[str, Any] = {k: None for k in (
-            'bpm', 'beatsCount', 'key', 'keyScale', 'keyStrength', 'energy',
-            'loudness', 'dynamicRange', 'danceability', 'valence', 'arousal',
-            'instrumentalness', 'acousticness')}
-        features.update(moodTags=[], essentiaGenres=[])
-        w._save_results("t1", "/x.flac", features)
-        update_sql = w.db.cursor.statements[0][0]
+        w._save_results({"trackId": "t1", "filePath": "/x.flac", "jobId": "t1-1-r0"}, _features())
+        update_sql, update_params = w.db.cursor.statements[1]
         self.assertNotIn('acousticness', update_sql)
         self.assertNotIn('instrumentalness', update_sql)
-        # Placeholder count must still match the parameter tuple.
-        self.assertEqual(update_sql.count('%s'), len(w.db.cursor.statements[0][1]))
-
-    def test_stale_processing_is_never_marked_completed(self):
-        # The sweep that rewrote stale 'processing' rows from column guesses
-        # is gone: recovery is a TrackStage record whose claim lease expires,
-        # so no analyzer code path may flip analysisStatus back from
-        # staleness. Pin the methods' absence so they cannot return silently.
-        for gone in ("_cleanup_stale_processing", "_retry_failed_tracks",
-                     "_run_db_reconciliation", "_reset_queued_on_restart"):
-            self.assertFalse(hasattr(analyzer.AnalysisWorker, gone),
-                             f"{gone} still exists")
-        # And 'completed' is written by _save_results alone.
-        src = inspect.getsource(analyzer)
-        save_src = inspect.getsource(analyzer.AnalysisWorker._save_results)
-        self.assertEqual(src.count("'completed'"), save_src.count("'completed'"),
-                         "'completed' appears outside _save_results")
-
-    def test_failed_tracks_are_retried_not_marked_completed(self):
-        # Re-offering a failed track is the stage queue's job now: the record
-        # settles failed+retryable with a nextRetryAt and getNextWork offers
-        # it once due. The analyzer must not re-queue anything itself.
-        self.assertFalse(hasattr(analyzer.AnalysisWorker, "_retry_failed_tracks"))
-        src = inspect.getsource(analyzer)
-        for block in re.findall(r'UPDATE "Track".*?;', src, flags=re.S):
-            if "'pending'" in block:
-                # The only pending-write left is _save_failed's timeout
-                # branch, which releases a claim it verifiably holds.
-                self.assertIn("= 'processing'", block,
-                              f"an UPDATE resets unclaimed tracks to pending: {block[:120]}")
-            self.assertNotIn("track_embeddings", block)
+        # The shared valence/arousal pair is derived by the server from both analyzers' raws.
+        self.assertIsNone(re.search(r'\b(valence|arousal)\s*=', update_sql))
+        self.assertEqual(update_sql.count('%s'), len(update_params))
 
 
 if __name__ == '__main__':

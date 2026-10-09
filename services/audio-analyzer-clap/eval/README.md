@@ -49,7 +49,7 @@ checked against `SHA256SUMS`.
 | MagnaTagATune similarity (`mtt_triplets`) | odd-one-out of three 29 s clips; 533 triplets, 446 with a clear majority | 1,019 | CC BY-NC-SA 3.0 (tagatune.org licence text, archived 2016; mirg.city.ac.uk now hosts it with no licence text) | fetch only |
 | Soundtracks Set 1 / Set 2 (Eerola & Vuoskoski 2011) | expert mean valence, energy, tension (1-9) on 15 s film-score excerpts | 360 / 110 | OSF node p6vkg: CC BY 4.0. The audio is excerpts of commercial film scores, which the depositors' licence cannot cover | **labels vendored** (`labels/soundtracks/`, unmodified); audio fetch only |
 | IsoVAT (Plut et al.) | a composer's low/medium/high versions of the same bars, varying one of valence, arousal, tension | 90 | GitHub repo has no licence file, so all rights reserved | fetch only (pinned commit) |
-| DEAM (Aljanaki et al. 2017) | song-level mean valence/arousal (1-9), 45 s clips | 1,802 | page says the audio is Creative Commons (mixed sources, several NonCommercial); annotations carry no licence | fetch only |
+| DEAM (Aljanaki et al. 2017) | song-level mean valence/arousal (1-9), 45 s clips | 1,802 | audio Creative Commons (mixed sources, several NonCommercial); the paper releases the data under CC BY-NC | fetch only |
 | MERGE Audio Complete (Louro et al. 2024) | valence/arousal (0-1), 30 s song clips | 3,554 | Zenodo 13939205: CC BY-NC 4.0 | fetch only |
 | Memo2496 (Li et al. 2025) | 30 experts' per-second valence/arousal on full instrumental tracks | 2,496 | Figshare 25827034: CC BY 4.0 | **labels vendored** as per-track means (`labels/memo2496/`, derived; see below); 12.3 GB audio fetch only |
 | PMEmo 2019 (Zhang et al. 2018) | mean valence/arousal (0-1) on chorus excerpts of chart songs | 767 | code repo MIT; the authors state the songs are copyright-restricted (only choruses shared) | fetch only, manual (Google Drive) |
@@ -319,6 +319,7 @@ effect on search would come through those norms.
 - `vibe_eval.py`: the CLI (loads sets, embeds with cache, scores, writes JSON).
 - `postprocess_eval.py`: post-processing experiments on the cached vectors (section above).
 - `datasets.py`: one loader per set, plus `derive-memo`.
+- `fit_feel_probe.py`: fits the feel probe on DEAM and writes `backend/src/services/matching/feelProbe.json`.
 - `embedders.py`: the v1 and engine embedders and the cache.
 - `metrics.py`: every score and interval.
 - `fetch_data.sh`, `SHA256SUMS`: downloads and their checksums.

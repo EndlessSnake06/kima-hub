@@ -1,32 +1,15 @@
-"""The real ``analyzer._decode_to_stereo``: one ffmpeg command reads the first
+"""The real ``analyzer._decode_to_stereo``: one ffmpeg command reads the last
 90 s, tolerates bad frames, downmixes to stereo and reads any codec. Fixtures
 (6-channel eac3 and aac, opus, corrupt mp3, 120 s) are generated with ffmpeg."""
 
 import shutil
 import subprocess
-import sys
-import types
 
 import numpy as np
 import pytest
 
 
-def _install_psycopg2_stub() -> None:
-    """Provide a dummy psycopg2/psycopg2.extras so the real analyzer imports
-    without a database driver installed."""
-    extras = types.ModuleType("psycopg2.extras")
-    extras.RealDictCursor = dict
-    extras.DictCursor = dict
-    psycopg2 = types.ModuleType("psycopg2")
-    psycopg2.extras = extras
-    psycopg2.connect = lambda *a, **k: None
-    sys.modules["psycopg2"] = psycopg2
-    sys.modules["psycopg2.extras"] = extras
-
-
-_install_psycopg2_stub()
-
-import analyzer  # noqa: E402
+import analyzer
 
 FFMPEG = shutil.which("ffmpeg")
 
@@ -40,14 +23,7 @@ pytestmark = pytest.mark.skipif(
 
 
 def _decode(path, duration=90):
-    """Call the single decode path; fail loudly if it does not exist yet."""
-    fn = getattr(analyzer, "_decode_to_stereo", None)
-    if fn is None:
-        pytest.fail(
-            "analyzer._decode_to_stereo does not exist: the two-decoder "
-            "design (_is_decodable gate + MonoLoader) is still in place"
-        )
-    return fn(path, duration=duration)
+    return analyzer._decode_to_stereo(path, duration=duration)
 
 
 def _ffmpeg_generate(args, out_path):
@@ -121,16 +97,47 @@ def opus_file(tmp_path_factory):
 
 @pytest.fixture(scope="module")
 def long_file(tmp_path_factory):
-    """120-second file — only the first 90 s may be read."""
+    """120 seconds: 30 s of silence, then 90 s of tone. Only the last 90 s may be read."""
     path = tmp_path_factory.mktemp("fixtures") / "long.flac"
     return _ffmpeg_generate(
         [
             "-f", "lavfi",
-            "-i", "sine=frequency=440:duration=120",
+            "-i", "aevalsrc='if(lt(t,30),0,0.5*sin(2*PI*440*t))':d=120",
             str(path),
         ],
         str(path),
     )
+
+
+@pytest.fixture(scope="module")
+def split_tone_file(tmp_path_factory):
+    """440 Hz on the left, 880 Hz on the right: each channel must come back
+    as its own tone, not two halves of the song."""
+    path = tmp_path_factory.mktemp("fixtures") / "split.flac"
+    return _ffmpeg_generate(
+        [
+            "-filter_complex",
+            "sine=frequency=440:duration=3[l];sine=frequency=880:duration=3[r];"
+            "[l][r]join=inputs=2:channel_layout=stereo",
+            str(path),
+        ],
+        str(path),
+    )
+
+
+@pytest.fixture(scope="module")
+def mono_file(tmp_path_factory):
+    """A one-channel file at a known level: amplitude 0.5."""
+    path = tmp_path_factory.mktemp("fixtures") / "mono.flac"
+    return _ffmpeg_generate(
+        ["-f", "lavfi", "-i", "aevalsrc=0.5*sin(2*PI*440*t):duration=3", "-ac", "1", str(path)],
+        str(path),
+    )
+
+
+def _peak_hz(channel, sr):
+    spectrum = np.abs(np.fft.rfft(channel))
+    return float(np.fft.rfftfreq(len(channel), 1 / sr)[np.argmax(spectrum)])
 
 
 @pytest.fixture
@@ -205,40 +212,41 @@ class TestSingleDecodePath:
             assert samples.shape[0] == 2
             assert duration > 3.0
 
-    def test_reads_first_90_second_window(self, long_file):
+    def test_keeps_left_and_right_apart(self, split_tone_file):
+        samples, sr, channels, duration, command, rc, stderr, cls = _decode(
+            split_tone_file
+        )
+        assert rc == 0, f"decode returned {rc}: {stderr}"
+        assert abs(_peak_hz(samples[0], sr) - 440) < 2
+        assert abs(_peak_hz(samples[1], sr) - 880) < 2
+        assert samples.flags["C_CONTIGUOUS"] and samples.dtype == np.float32
+
+    def test_keeps_a_mono_file_at_its_own_level(self, mono_file):
+        # ffmpeg's upmix to stereo lowers each channel by 3 dB (0.707); the
+        # analysis must see the file's true level.
+        samples, sr, channels, duration, command, rc, stderr, cls = _decode(mono_file)
+        assert rc == 0, f"decode returned {rc}: {stderr}"
+        assert channels == 1 and samples.shape[0] == 1
+        assert abs(float(np.max(np.abs(samples[0]))) - 0.5) < 0.01
+
+    def test_reads_the_last_90_seconds(self, long_file):
         samples, sr, channels, duration, command, rc, stderr, cls = _decode(
             long_file
         )
         assert rc == 0, f"decode returned {rc}: {stderr}"
-        # The analysed window is exactly the first 90 s — a 120 s file
-        # must yield ~90 s, never the whole thing (that was the waste).
+        # A 120 s file yields its last ~90 s: all of it tone, none of the
+        # opening silence, and never the whole file.
         assert 89.0 <= duration <= 90.5, (
-            f"expected the first 90s window, got {duration}s"
+            f"expected a 90s window, got {duration}s"
         )
         assert samples.shape[1] <= int(90.5 * sr)
+        second_rms = np.sqrt((samples[0][: int(duration) * sr].reshape(-1, sr) ** 2).mean(axis=1))
+        assert second_rms.min() > 0.1, "the window reached into the opening silence"
 
-    def test_no_is_decodable_gate_remains(self):
-        # The gate and its helper must be gone, not merely bypassed.
-        assert not hasattr(analyzer, "_is_decodable"), (
-            "_is_decodable still exists as a module-level helper"
-        )
-        assert not hasattr(analyzer.AudioAnalyzer, "_is_decodable"), (
-            "AudioAnalyzer._is_decodable still exists"
-        )
-
-    def test_no_validate_audio_gate_remains(self):
-        assert not hasattr(analyzer.AudioAnalyzer, "validate_audio"), (
-            "validate_audio still exists — its short/NaN/silence gates "
-            "measure nothing the analysis needs"
-        )
-        import inspect
-        src = inspect.getsource(analyzer.AudioAnalyzer.load_audio)
-        assert "_is_decodable" not in src, (
-            "load_audio still consults the pre-decode gate"
-        )
-        assert "validate_audio" not in src, (
-            "load_audio still calls validate_audio"
-        )
+    def test_a_song_shorter_than_the_window_is_read_whole(self, corrupt_file, opus_file):
+        samples, sr, channels, duration, command, rc, stderr, cls = _decode(opus_file)
+        assert duration > 2.0
+        assert "-ss" not in command
 
     def test_single_command_per_decode(self, opus_file):
         # One command, recorded verbatim — the caller must be able to
@@ -259,3 +267,30 @@ class TestSingleDecodePath:
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))
+
+class TestWhenTheLengthLies:
+    def _tone_only(self, samples, sr):
+        second_rms = np.sqrt((samples[0][: (samples.shape[1] // sr) * sr].reshape(-1, sr) ** 2).mean(axis=1))
+        return second_rms.min() > 0.1
+
+    def test_an_unreadable_length_still_gives_the_last_90_seconds(self, long_file, monkeypatch):
+        monkeypatch.setattr(analyzer, "_source_stream", lambda path: (1, None))
+        samples, sr, channels, duration, command, rc, stderr, cls = _decode(long_file)
+        assert 89.0 <= duration <= 90.5, f"expected a 90s window, got {duration}s"
+        assert self._tone_only(samples, sr), "the window reached into the opening silence"
+        assert "-ss" not in command
+
+    def test_a_header_longer_than_the_audio_still_gives_its_real_last_90_seconds(self, long_file, monkeypatch):
+        # A cut-short download: the header claims 240 s, the file holds 120 s.
+        monkeypatch.setattr(analyzer, "_source_stream", lambda path: (1, 240.0))
+        samples, sr, channels, duration, command, rc, stderr, cls = _decode(long_file)
+        assert 89.0 <= duration <= 90.5, f"expected a 90s window, got {duration}s"
+        assert self._tone_only(samples, sr)
+
+    def test_a_header_shorter_than_the_audio_still_gives_its_real_last_90_seconds(self, long_file, monkeypatch):
+        # A header that understates the length (an estimate from the bitrate): 85 s and 100 s for 120 s.
+        for header in (85.0, 100.0):
+            monkeypatch.setattr(analyzer, "_source_stream", lambda path, h=header: (1, h))
+            samples, sr, channels, duration, command, rc, stderr, cls = _decode(long_file)
+            assert 89.0 <= duration <= 90.5, f"header {header}: expected a 90s window, got {duration}s"
+            assert self._tone_only(samples, sr), f"header {header}: the window reached into the opening silence"

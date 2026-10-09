@@ -87,20 +87,34 @@ def test_env_wrapper_activates_only_when_enabled_and_installed(tmp_path):
         env={**os.environ, "DATA_DIR": str(tmp_path), "PYTHONPATH": "", "LD_LIBRARY_PATH": ""},
         capture_output=True, text=True, check=True).stdout
     assert "gpu-onnx" not in out
-    (root / "enabled.json").write_text(json.dumps({"enabled": True}))
-    lines = dict(l.split("=", 1) for l in subprocess.run(
-        ["bash", os.path.join(SERVICE_DIR, "gpu_env.sh"), "env"],
-        env={**os.environ, "DATA_DIR": str(tmp_path), "PYTHONPATH": "", "LD_LIBRARY_PATH": ""},
-        capture_output=True, text=True, check=True).stdout.splitlines() if "=" in l)
+    # Only the audio-analysis switch on: the sound-vector analyzer still gets nothing.
+    (root / "enabled.json").write_text(json.dumps({"enabled": True, "soundVectors": False, "analysis": True}))
+    def wrapped_env(**extra):
+        return dict(l.split("=", 1) for l in subprocess.run(
+            ["bash", os.path.join(SERVICE_DIR, "gpu_env.sh"), "env"],
+            env={**os.environ, "DATA_DIR": str(tmp_path), "PYTHONPATH": "", "LD_LIBRARY_PATH": "", **extra},
+            capture_output=True, text=True, check=True).stdout.splitlines() if "=" in l)
+    assert str(site) not in wrapped_env().get("PYTHONPATH", "")
+    analysis = wrapped_env(KIMA_GPU_FOR="analysis")
+    assert str(site / "nvidia" / "cublas" / "lib") in analysis.get("LD_LIBRARY_PATH", "")
+    assert analysis.get("KIMA_GPU_ANALYSIS") == "1"
+    # Its own switch on: the sound-vector analyzer gets the runtime.
+    (root / "enabled.json").write_text(json.dumps({"enabled": True, "soundVectors": True, "analysis": False}))
+    lines = wrapped_env()
     assert str(site) in lines.get("PYTHONPATH", "")
     assert str(site / "nvidia" / "cublas" / "lib") in lines.get("LD_LIBRARY_PATH", "")
+    assert "KIMA_GPU_ANALYSIS" not in lines
 
 
 def test_shipped_dependency_files_never_mention_the_runtime():
     # The 3.4 GB CUDA set is pip-installed into the data volume at runtime.
     # If it ever leaks into the image files, every user pays — this is the tripwire.
-    for name in ("requirements.txt", "Dockerfile"):
-        with open(os.path.join(SERVICE_DIR, name)) as f:
+    repo = os.path.dirname(os.path.dirname(SERVICE_DIR))
+    files = [os.path.join(SERVICE_DIR, "requirements.txt"), os.path.join(SERVICE_DIR, "Dockerfile"),
+             os.path.join(repo, "Dockerfile"), os.path.join(repo, "services", "audio-analyzer", "Dockerfile"),
+             os.path.join(repo, "services", "audio-analyzer", "requirements.txt")]
+    for path in files:
+        with open(path) as f:
             body = f.read().lower()
         for needle in ("onnxruntime-gpu", "nvidia", "cudnn", "cuda"):
-            assert needle not in body, f"{name} mentions {needle!r}"
+            assert needle not in body, f"{os.path.relpath(path, repo)} mentions {needle!r}"

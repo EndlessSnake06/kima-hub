@@ -86,12 +86,7 @@ def _init_worker(spec: EmbedderSpec, threads: int) -> None:
         logging.getLogger('clap-analyzer').setLevel(logging.WARNING)
         a = analyzer.CLAPAnalyzer()
 
-        def fn(path: str) -> Optional[np.ndarray]:
-            v = a.get_audio_embedding(path)
-            if a.onnx_backend is not None and a.onnx_backend.torch_fallback_count:
-                raise RuntimeError('ONNX backend fell back to torch; the measurement would be invalid')
-            return v
-        _embed_fn = fn
+        _embed_fn = a.get_audio_embedding
     else:
         os.environ['VIBE_ENGINE_CLAP_MODEL_PATH'] = spec.model_path
         sys.path.insert(0, spec.engine_dir)

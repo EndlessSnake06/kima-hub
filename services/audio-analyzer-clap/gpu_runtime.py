@@ -28,9 +28,8 @@ STALE_INSTALLING_S = PIP_TIMEOUT_S * PIP_ATTEMPTS + 300
 
 CUDA_DRIVER_MIN = 12040
 
-# The probe-verified set (probe-results-20260928.json, RTX 4060 Ti,
-# cosine 1.0 over 25 tracks). Transitive closure pinned with --no-deps so
-# nothing here shadows the image's numpy/protobuf/flatbuffers.
+# The set checked on an RTX 4060 Ti (cosine 1.0 against the CPU over 25 tracks). Transitive closure
+# pinned with --no-deps so nothing here shadows the image's numpy/protobuf/flatbuffers.
 PINS = [
     ('onnxruntime-gpu', '1.22.0'),
     ('nvidia-cuda-runtime-cu12', '12.9.79'),
@@ -46,8 +45,7 @@ PINS = [
     ('sympy', '1.14.0'),
 ]
 
-# sha256 of each pinned wheel, keyed by normalized distribution name;
-# measured from the exact files on 2026-09-28 (test-server, python:3.11-slim).
+# sha256 of each pinned wheel, keyed by normalized distribution name.
 PIN_SHA256 = {
     'onnxruntime-gpu': 'd30c1512f22b1f01bacb4f177d49cbefd23e0f4bef56066f1282992d133e6ff8',
     'nvidia-cuda-runtime-cu12': '25bba2dfb01d48a9b59ca474a1ac43c6ebf7011f1b0b8cc44f54eb6ac48a96c3',
@@ -113,6 +111,7 @@ def update_state(**fields):
 
 
 def read_enabled():
+    """Whether the runtime is wanted: either switch (sound vectors, audio analysis) is on."""
     projection = read_json(ENABLED_PATH)
     return bool(projection and projection.get('enabled'))
 
@@ -123,8 +122,9 @@ def is_installed():
 
 
 def request_gpu():
-    """True only when the toggle is on AND the runtime is installed (G4)."""
-    return read_enabled() and is_installed()
+    """True only when the sound-vector switch is on AND the runtime is installed."""
+    projection = read_json(ENABLED_PATH)
+    return bool(projection and projection.get('soundVectors')) and is_installed()
 
 
 def nvidia_lib_dirs():
@@ -183,10 +183,13 @@ def _gpu_visible():
     return None
 
 
+def _externally_managed() -> bool:
+    return os.path.exists(os.path.join(sysconfig.get_paths()['stdlib'], 'EXTERNALLY-MANAGED'))
+
+
 def _pip(args, env=None, timeout=PIP_TIMEOUT_S):
     cmd = [sys.executable, '-m', 'pip'] + args
-    marker = os.path.join(sysconfig.get_paths()['stdlib'], 'EXTERNALLY-MANAGED')
-    if os.path.exists(marker):
+    if _externally_managed():
         cmd += ['--disable-pip-version-check']
     return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
 
@@ -209,8 +212,6 @@ def _download(wheels_dir):
         text = (proc.stdout or '') + (proc.stderr or '')
         if 'Could not find a version' in text or 'No matching distribution' in text:
             return ('install_failed', 'index rejected the pinned set\n' + _pip_tail(proc))
-    if last is None:
-        return ('install_failed', 'pip download never ran')
     text = (last.stdout or '') + (last.stderr or '')
     if 'Connection' in text or 'NewConnectionError' in text or \
             'Max retries' in text or 'Temporary failure' in text or \
@@ -317,8 +318,7 @@ def _install():
             return
         args = ['install', '--no-deps', '--no-index', '--no-cache-dir',
                 '--find-links', wheels_dir, '--target', tmp_site]
-        marker = os.path.join(sysconfig.get_paths()['stdlib'], 'EXTERNALLY-MANAGED')
-        if os.path.exists(marker):
+        if _externally_managed():
             args.append('--break-system-packages')
         specs = ['%s==%s' % (n, v) for n, v in PINS]
         proc = _pip(args + specs, timeout=600)
@@ -381,7 +381,7 @@ def dispatch(action):
 
 
 def reconcile():
-    """Install if the projection says enabled and nothing is installed (G10)."""
+    """Install if the projection says enabled and nothing is installed."""
     if read_enabled():
         state = read_state()
         if state.get('status') in ('idle', 'failed'):

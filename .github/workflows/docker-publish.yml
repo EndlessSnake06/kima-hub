@@ -70,28 +70,10 @@ jobs:
             # the multi-architecture step below reuses the identical cached
             # layers for its Intel leg.
             #
-            # WHY THIS REPORTS RATHER THAN BLOCKS. It was written to block, then
-            # run against a real build of this image (arm64, locally, 2026-08-23)
-            # and it failed on 19 findings — none of which anyone would act on
-            # before a release:
-            #
-            #   8  Go stdlib CVEs inside wandb-core. wandb is a hard dependency
-            #      of laion-clap; nothing here imports it, and the binary is
-            #      never executed.
-            #   1  torch 2.5.1 -> 2.6.0 (CVE-2025-32434). The 2.5.1 pin is
-            #      deliberate; a mismatched torch ABI is what caused #165.
-            #   7  Node packages, most of them inside npm's OWN bundled
-            #      node_modules rather than this project's dependency tree.
-            #   1  /etc/ssl/private/ssl-cert-snakeoil.key — Debian's throwaway
-            #      self-signed placeholder from the ssl-cert package. Skipped
-            #      below; it is not a secret in any meaningful sense.
-            #
-            # A gate that stops a release over a placeholder key and an unused
-            # telemetry binary trains people to bypass it, which is worse than
-            # not having one. So: report every run, keep it visible in the job
-            # summary, and turn `--exit-code 1` back on once the baseline is
-            # something a failure would genuinely mean. The dependency scan in
-            # security.yml DOES block, and passes clean.
+            # It reports rather than blocks: most findings are Debian base-image
+            # packages with no fixed release yet, which a release cannot act on.
+            # The dependency scan in security.yml blocks. Debian's placeholder
+            # ssl-cert-snakeoil.key is skipped below; it is not a secret.
             - name: Build image for scanning (amd64)
               uses: docker/build-push-action@v5
               with:

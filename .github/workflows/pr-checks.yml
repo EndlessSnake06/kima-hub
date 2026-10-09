@@ -66,9 +66,8 @@ jobs:
     unit-tests:
         name: Backend Unit Tests
         runs-on: ubuntu-latest
-        # The social integration suite (vibeProfile/social/socialProfile) needs a
-        # real Postgres with pgvector -- not stock postgres, `vibe.fused_track`'s
-        # v3 column is a vector type. DATABASE_URL below is the same
+        # The tests need Postgres with pgvector, not stock postgres:
+        # track_embeddings.embedding is a vector column. DATABASE_URL below is the same
         # test/test@localhost:5433/kima_v1_test that
         # backend/src/__mocks__/test-env.cjs falls back to for local dev (see
         # test-db-defaults.cjs), so this job doesn't need its own separate
@@ -124,22 +123,31 @@ jobs:
                   python-version: "3.11"
 
             - name: Install test dependencies
-              # numpy==1.24.4 is exactly what the shipped image pins (the root
-              # Dockerfile force-reinstalls it over tensorflow-cpu's numpy<1.24
-              # constraint); requirements.txt's stale 'numpy<1.24.0' would
-              # downgrade it again. redis + psycopg2-binary cover analyzer.py's
-              # module-level imports; the tests fake everything else and need
-              # no model weights.
+              # numpy==1.24.4 is what the shipped image pins. redis + psycopg2-binary
+              # cover analyzer.py's module-level imports; the tests fake everything
+              # else and need no model weights.
               run: |
                   python -m pip install --upgrade pip
                   pip install "numpy==1.24.4" redis psycopg2-binary pytest
+                  sudo apt-get update && sudo apt-get install -y ffmpeg
 
             - name: Run analyzer tests that need no model weights
               working-directory: services/audio-analyzer
-              # test_save_failed_routing.py self-skips its three classifier
-              # tests: classifier.py is untracked, unfinished work (see the
-              # skip reasons in that file).
-              run: python -m pytest test_mood_heads.py test_restart_flush.py test_analyzer.py test_save_failed_routing.py -v
+              # ffmpeg drives the decode tests (stereo split, bad frames, channel downmix).
+              run: python -m pytest test_mood_heads.py test_classifier.py test_results_leave_ledger.py test_decode_path.py test_feed_loop.py test_silence.py test_musicnn_groups.py -v
+
+            - name: Install the sound-vector analyzer's dependencies
+              run: pip install -r services/audio-analyzer-clap/requirements.txt
+
+            - name: Run sound-vector analyzer tests that need no model weights
+              working-directory: services/audio-analyzer-clap
+              # The parity tests and the eager-load test need the weights (the parity
+              # tests PyTorch too); the image build runs verify_runtime.py against the
+              # real model instead.
+              run: >-
+                  python -m pytest test_gpu_nobody_pays.py test_one_thread.py test_ship_blocker.py
+                  test_window_offsets.py test_window_sweep.py -v
+                  --deselect test_ship_blocker.py::test_ensure_onnx_backend_eagerly_loads_model
 
     build-docker:
         name: Docker Build Check
@@ -159,3 +167,13 @@ jobs:
                   tags: kima:pr-check
                   cache-from: type=gha
                   cache-to: type=gha,mode=max
+
+            - name: Build the compose audio analyzer image (no push)
+              uses: docker/build-push-action@v5
+              with:
+                  context: .
+                  file: services/audio-analyzer/Dockerfile
+                  push: false
+                  tags: kima-audio-analyzer:pr-check
+                  cache-from: type=gha,scope=audio-analyzer
+                  cache-to: type=gha,mode=max,scope=audio-analyzer

@@ -1,27 +1,12 @@
-"""A successful analysis settles the TrackStage record and leaves
-EnrichmentFailure untouched. Real ``_save_results`` on a recording cursor."""
+"""A successful analysis writes the Track's features and nothing else: the
+server owns the stage record and the failure ledger. Real ``_save_results`` on a
+recording cursor."""
 
-import sys
-import types
 import unittest
 from typing import Any
 
 
-def _install_psycopg2_stub() -> None:
-    """Provide a dummy psycopg2/psycopg2.extras so the real analyzer imports."""
-    extras: Any = types.ModuleType("psycopg2.extras")
-    extras.RealDictCursor = dict
-    extras.DictCursor = dict
-    psycopg2: Any = types.ModuleType("psycopg2")
-    psycopg2.extras = extras
-    psycopg2.connect = lambda *a, **k: None
-    sys.modules["psycopg2"] = psycopg2
-    sys.modules["psycopg2.extras"] = extras
-
-
-_install_psycopg2_stub()
-
-import analyzer  # noqa: E402
+import analyzer
 
 
 class _RecordingCursor:
@@ -35,9 +20,6 @@ class _RecordingCursor:
     def execute(self, sql, params=None):
         self.statements.append((sql, params if params is not None else ()))
         self.rowcount = 1
-
-    def executemany(self, *a):
-        pass
 
     def fetchone(self):
         return {"analysisRetryCount": self.returning_retry}
@@ -75,8 +57,8 @@ class SuccessLeavesLedgerTest(unittest.TestCase):
         features: dict[str, Any] = {k: None for k in (
             "bpm", "beatsCount", "key", "keyScale", "keyStrength", "energy",
             "loudness", "dynamicRange", "danceability", "valence", "arousal")}
-        features.update(moodTags=[], essentiaGenres=[], analysisMode="standard")
-        self.worker._save_results("t1", "/x.flac", features)
+        features.update(moodTags=[], essentiaGenres=[], analysisMode="enhanced")
+        self.worker._save_results({"trackId": "t1", "filePath": "/x.flac", "jobId": "t1-1-r0"}, features)
 
     def test_no_statement_touches_enrichmentfailure(self):
         self._save_results()
@@ -89,15 +71,15 @@ class SuccessLeavesLedgerTest(unittest.TestCase):
                 f"success path still writes the old ledger: {sql[:120]}",
             )
 
-    def test_track_and_stage_record_are_still_settled(self):
+    def test_writes_the_features_and_leaves_the_stage_record_to_the_server(self):
         self._save_results()
 
         sqls = [sql for sql, _ in self.db.cursor.statements]
-        # The real record of success: the Track columns and the stage record.
         self.assertTrue(any('UPDATE "Track"' in sql for sql in sqls))
-        self.assertTrue(
-            any('INTO "TrackStage"' in sql for sql in sqls),
-            "success must still settle the TrackStage record",
+        writes = ('UPDATE "TrackStage"', 'INSERT INTO "TrackStage"', 'DELETE FROM "TrackStage"')
+        self.assertFalse(
+            any(w in sql for sql in sqls for w in writes),
+            "the server settles the stage record from the completion event; the analyzer only reads it",
         )
         self.assertEqual(self.db.commits, 1)
 

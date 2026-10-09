@@ -9,8 +9,8 @@
 #   - Redis (port 6390)
 #   - Audio Analyzer with ML models (Enhanced vibe matching)
 #
-# Ports are v1-dedicated on purpose: 5433 and 6379 on this machine are owned
-# by other Kima checkouts' containers; do NOT repoint backend/.env at them.
+# The ports are not the defaults, so this stack can run beside another
+# Postgres or Redis.
 
 services:
     postgres:
@@ -48,7 +48,8 @@ services:
     # Audio Analyzer - Essentia with ML models for Enhanced vibe matching
     audio-analyzer:
         build:
-            context: ./services/audio-analyzer
+            context: .
+            dockerfile: services/audio-analyzer/Dockerfile
         container_name: kima_audio_analyzer
         environment:
             # Connect to host machine's services (or Docker services)
@@ -56,8 +57,6 @@ services:
             DATABASE_URL: postgresql://kima:kima@postgres:5432/kima
             # Music path inside container (mounted from host)
             MUSIC_PATH: /music
-            BATCH_SIZE: 10
-            SLEEP_INTERVAL: 5
             BRPOP_TIMEOUT: 10
             MODEL_IDLE_TIMEOUT: 60
         volumes:

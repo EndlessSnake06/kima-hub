@@ -1,9 +1,8 @@
-# Audio Analyzer Requirements
-# Note: essentia-tensorflow is installed directly in Dockerfile for Python 3.7
-
-# Queue and database
+# Audio analyzer outside the images. Then: pip install --no-deps essentia==2.1b6.dev1389
+# (Essentia declares numpy>=1.25; the images run it on 1.24.4, checked at build by convert_musicnn.py).
+numpy==1.24.4
+onnxruntime==1.30.0
+pyyaml
+six
 redis>=4.5.0
 psycopg2-binary>=2.9.0
-
-# Numeric operations (compatible with older TensorFlow)
-numpy>=1.19.0,<1.24.0

@@ -6,15 +6,14 @@ answers text queries over Redis pub/sub, ControlHandler applies worker changes.
 """
 
 import os
-import sys
 import signal
 import json
+import re
 import time
 import logging
 import gc
 import asyncio
 import threading
-from datetime import datetime
 from typing import Optional, Tuple
 import traceback
 import numpy as np
@@ -57,7 +56,6 @@ logger = logging.getLogger('clap-analyzer')
 REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379')
 DATABASE_URL = os.getenv('DATABASE_URL', '')
 MUSIC_PATH = os.getenv('MUSIC_PATH', '/music')
-SLEEP_INTERVAL = int(os.getenv('SLEEP_INTERVAL', '5'))
 NUM_WORKERS = int(os.getenv('NUM_WORKERS', '2'))
 BACKEND_URL = os.getenv('BACKEND_URL', 'http://backend:3006')
 MODEL_IDLE_TIMEOUT = int(os.getenv('MODEL_IDLE_TIMEOUT', '300'))
@@ -81,14 +79,38 @@ TEXT_EMBED_RESPONSE_PREFIX = 'audio:text:embed:response:'
 CONTROL_CHANNEL = 'audio:clap:control'
 
 # Model version identifier
-MODEL_VERSION = 'laion-clap-music-v1'
+MODEL_VERSION = 'laion-clap-htsat-unfused-v1'
+# A stage job id ends in its claim: <key>-<attempt>-r<redelivered> (backend `claimOf`).
+CLAIM_IN_JOB_ID = re.compile(r'-(\d+)-r(\d+)$')
 
-# Zero-shot V/A mapping: score = sigmoid(a * margin + b). Platt parameters
-# fitted on the labelled eval sets (fit on Memo2496, chosen by leave-one-out
-# transfer: unseen-set ECE 0.19/0.02/0.16/0.25 valence, 0.10/0.03/0.15/0.20
-# arousal vs shipped 0.24/0.05/0.16/0.23 and 0.40/0.28/0.16/0.11). Refit with
-# eval/calibrate_platt.py; full report in eval/calibration/.
+# Zero-shot valence/arousal: score = sigmoid(a * margin + b), fitted on Memo2496 and chosen by
+# leave-one-out transfer to the other labelled sets. Refit with eval/calibrate_platt.py (report in
+# eval/calibration/).
 VA_CALIB = {'valence': (12.738, -0.172), 'arousal': (12.449, -2.309)}
+
+# The zero-shot prompt groups. A changed prompt changes every stored score that reads it.
+PROMPTS = {
+    'vocal': ["music with singing vocals", "song with a singer", "vocal music with lyrics"],
+    'instrumental': [
+        "instrumental music without vocals",
+        "instrumental track with no singing",
+        "music without any vocals or singing",
+    ],
+    'acoustic': [
+        "soft acoustic guitar and piano music",
+        "unplugged unamplified intimate performance",
+        "gentle stripped-back acoustic recording",
+    ],
+    'electronic': [
+        "heavily produced studio track with electric instruments",
+        "distorted electric guitar and amplified drums",
+        "polished pop production with layered synths and effects",
+    ],
+    'happy': ["happy cheerful uplifting music", "joyful bright positive song", "feel good upbeat music"],
+    'sad': ["sad melancholic somber music", "dark gloomy depressing song", "sorrowful mournful music"],
+    'high_energy': ["intense energetic powerful music", "loud fast aggressive song", "high energy driving music"],
+    'low_energy': ["calm relaxing peaceful music", "soft quiet gentle song", "mellow soothing ambient music"],
+}
 
 # Audio processing: sample the whole track with several short windows.
 # Five 10-second windows (at 10/30/50/70/90% of the duration) capture the
@@ -104,7 +126,7 @@ def compute_window_offsets(duration: float,
                            window_seconds: float = WINDOW_SECONDS) -> list:
     """Start offsets, in seconds, for `count` windows of `window_seconds`.
 
-    A long track gets windows centred at 10/30/50/70/90% of its length; a short
+    A long track gets windows starting at 10/30/50/70/90% of its length; a short
     one gets only the non-overlapping windows that fit, tiled from 0 to the end.
     No window reads past `duration`.
     """
@@ -142,8 +164,7 @@ class CLAPAnalyzer:
     """
     LAION CLAP model wrapper for generating audio and text embeddings.
 
-    Uses HTSAT-base architecture with the music_audioset checkpoint,
-    optimized for music similarity tasks. Supports idle model unloading
+    Runs laion/clap-htsat-unfused (HTSAT-tiny audio encoder). Supports idle model unloading
     to free memory when no work is pending.
     """
 
@@ -154,22 +175,27 @@ class CLAPAnalyzer:
         self._lock = threading.Lock()
         self.last_work_time: float = time.time()
         self._model_loaded = False
+        self._prompt_embs: dict = {}
 
     def _ensure_onnx_backend(self):
-        """Lazily construct + load the ONNX backend (only when CLAP_BACKEND=onnx).
+        """Lazily construct + load the ONNX backend (only when CLAP_BACKEND=onnx) and
+        return it; the caller keeps that reference, so an idle unload cannot pull the
+        model out from under a track being embedded.
 
         Loads the model eagerly (not just constructs the wrapper) so the log
         line that follows is a real "the ONNX path works" assertion, and a
         broken model fails LOUDLY here instead of at the first embed call.
         """
-        if self.onnx_backend is None and CLAP_BACKEND == 'onnx':
+        with self._lock:
+            if self.onnx_backend is not None or CLAP_BACKEND != 'onnx':
+                return self.onnx_backend
             from onnx_backend import OnnxCLAPBackend
             backend = OnnxCLAPBackend(CLAP_ONNX_MODEL_PATH)
             backend.load_model()  # raises if onnxruntime or the model are broken
             self.onnx_backend = backend
-            # Exact string the sweep monitoring greps for: proves the ONNX path
-            # actually initialized.
+            self._model_loaded = True
             logger.info(f"[CLAP] ONNX backend: True ({CLAP_ONNX_MODEL_PATH})")
+            return backend
 
     def _ensure_onnx_text_backend(self):
         """Lazily construct + load the ONNX TEXT backend (CLAP_BACKEND=onnx).
@@ -183,7 +209,9 @@ class CLAPAnalyzer:
             backend = OnnxTextCLAPBackend(ONNX_TEXT_MODEL_PATH)
             backend.load_model()
             self.onnx_text_backend = backend
+            self._model_loaded = True
             logger.info(f"[CLAP] ONNX text backend verified: {ONNX_TEXT_MODEL_PATH}")
+        return self.onnx_text_backend
 
     def _text_embeddings(self, prompts: list[str]) -> list:
         """A list of 512-d float32 vectors, as laion_clap's get_text_embedding
@@ -191,9 +219,9 @@ class CLAPAnalyzer:
         unpadded prompt at a time; otherwise, or if it is unavailable, laion_clap.
         """
         if CLAP_BACKEND == 'onnx':
-            self._ensure_onnx_text_backend()
+            text_backend = self._ensure_onnx_text_backend()
             try:
-                embs = self.onnx_text_backend.embed_text(prompts)
+                embs = text_backend.embed_text(prompts)
                 return [embs[i] for i in range(embs.shape[0])]
             except Exception as e:
                 logger.critical(
@@ -241,12 +269,15 @@ class CLAPAnalyzer:
                 raise
 
     def unload_model(self):
-        """Unload the CLAP model to free memory"""
+        """Unload the CLAP models (torch, or the ONNX sound and text sessions) to free
+        memory; they load again with the next track or search."""
         with self._lock:
-            if self.model is None:
+            if self.model is None and self.onnx_backend is None and self.onnx_text_backend is None:
                 return
             logger.info("Unloading CLAP model to free memory...")
             self.model = None
+            self.onnx_backend = None
+            self.onnx_text_backend = None
             self._model_loaded = False
             gc.collect()
             # Force glibc to return freed pages to OS (Python/PyTorch hold RSS otherwise)
@@ -263,15 +294,11 @@ class CLAPAnalyzer:
             logger.info("Reloading CLAP model (new work arrived)...")
             self.load_model()
 
-    def _load_window(self, audio_path: str, start: float,
-                     window_seconds: float,
-                     duration_hint: Optional[float] = None) -> Tuple[Optional[np.ndarray], int]:
-        """Load a window from `start`, clamped to the file end; (None, 0) on error."""
+    def _load_window(self, audio_path: str, start: float, window_seconds: float,
+                     duration: float) -> Tuple[Optional[np.ndarray], int]:
+        """Load a window from `start` of a track `duration` seconds long, clamped to its end; (None, 0)
+        on error."""
         try:
-            # Use provided duration or fall back to computing it.
-            duration = duration_hint if duration_hint else librosa.get_duration(
-                path=audio_path)
-
             # Clamp so we never start past the end of the file.
             start = max(0.0, min(start, max(0.0, duration - 1e-3)))
             available = max(0.0, duration - start)
@@ -292,45 +319,58 @@ class CLAPAnalyzer:
             traceback.print_exc()
             return None, 0
 
-    def get_audio_embedding(self, audio_path: str, duration: Optional[float] = None) -> Optional[np.ndarray]:
-        """512-d embedding of a track: five 10 s windows (see window offsets)
-        embedded by the active backend, averaged and L2-normalised. `duration`
-        skips a file read when known. Returns None on error.
+    def get_audio_embedding(self, audio_path: str) -> Optional[np.ndarray]:
+        """512-d embedding of a track: five 10 s windows (see window offsets) embedded by the
+        active backend, averaged and L2-normalised. The length is the file's own, to the
+        sample. Returns None on error.
         """
+        self.last_work_time = time.time()
         if CLAP_BACKEND == 'onnx':
             # ONNX path never touches laion_clap -- don't try to load it.
-            self._ensure_onnx_backend()
+            onnx_backend = self._ensure_onnx_backend()
         else:
             self.ensure_model()
-        self.last_work_time = time.time()
 
         if not os.path.exists(audio_path):
             logger.error(f"Audio file not found: {audio_path}")
             return None
 
-        # Resolve the track duration once so every window shares it.
-        if not duration:
-            try:
-                duration = librosa.get_duration(path=audio_path)
-            except Exception as e:
-                logger.error(f"Failed to determine duration of {audio_path}: {e}")
-                traceback.print_exc()
-                return None
+        try:
+            duration = librosa.get_duration(path=audio_path)
+        except Exception as e:
+            logger.error(f"Failed to determine duration of {audio_path}: {e}")
+            traceback.print_exc()
+            return None
 
         offsets = compute_window_offsets(duration)
         logger.debug(f"Embedding {audio_path} with {len(offsets)} windows at "
                      f"offsets={[round(o, 1) for o in offsets]}")
 
-        # Embed each window through the active backend and collect the vectors.
-        vectors = []
-        for start in offsets:
-            vec = self._embed_window(audio_path, start, duration)
-            if vec is not None:
+        # A track with a window that failed has no vector; the rest
+        # are never averaged as if they were the whole track.
+        if CLAP_BACKEND == 'onnx':
+            clips = []
+            for start in offsets:
+                audio, _ = self._load_window(audio_path, start, WINDOW_SECONDS, duration)
+                if audio is None:
+                    logger.error(f"Window at {start:.1f}s of {audio_path} failed to load; no vector")
+                    return None
+                clips.append(audio)
+            try:
+                vectors = list(onnx_backend.embed_clips(clips))
+            except Exception as e:
+                # Never fall back to torch: a re-embed must stay in one vector space.
+                logger.critical(f"ONNX backend failed on {audio_path}: {e}")
+                traceback.print_exc()
+                return None
+        else:
+            vectors = []
+            for start in offsets:
+                vec = self._embed_window(audio_path, start, duration)
+                if vec is None:
+                    logger.error(f"Window at {start:.1f}s of {audio_path} failed; no vector")
+                    return None
                 vectors.append(vec)
-
-        if not vectors:
-            logger.error(f"No windows embedded for {audio_path}")
-            return None
 
         # Mean of the window vectors, then L2-normalize -> 512-d.
         combined = np.mean(np.vstack(vectors), axis=0).astype(np.float32)
@@ -339,54 +379,21 @@ class CLAPAnalyzer:
             combined = combined / norm
         return combined.astype(np.float32)
 
-    def _embed_window(self, audio_path: str, start: float,
-                      duration_hint: Optional[float] = None) -> Optional[np.ndarray]:
-        """
-        Embed one window (starting at `start` seconds) through the active backend.
-
-        Mirrors the ONNX/torch dispatch in the old code but for a single window
-        rather than a single 60s chunk, so both backends stay on the same path.
-        Returns a 512-d L2-normalized vector, or None on error.
-        """
-        # ONNX backend: skip laion_clap, use the numerically-identical
-        # onnxruntime audio encoder. Verified parity >= 0.99 (== 1.0000).
-        if CLAP_BACKEND == 'onnx':
-            self._ensure_onnx_backend()
-            try:
-                audio, sr = self._load_window(audio_path, start, WINDOW_SECONDS, duration_hint)
-                if audio is None:
-                    return None
-                logger.debug(f"[onnx] Loaded window: {len(audio)/sr:.1f}s at {sr}Hz")
-                with self._lock:
-                    return self.onnx_backend.embed_audio(audio)
-            except Exception as e:
-                # Never fall back to torch: a re-embed must stay in one vector
-                # space. The track fails and the backend retries it.
-                logger.critical(f"ONNX backend FAILED with CLAP_BACKEND=onnx pinned; NOT falling back to torch. Track {audio_path} failed: {e}")
-                traceback.print_exc()
-                return None
-
+    def _embed_window(self, audio_path: str, start: float, duration: float) -> Optional[np.ndarray]:
+        """One window (starting at `start` seconds) through the torch backend: a
+        512-d L2-normalised vector, or None on error. The ONNX backend embeds a
+        track's windows together (`OnnxCLAPBackend.embed_clips`)."""
         try:
-            audio, sr = self._load_window(audio_path, start, WINDOW_SECONDS, duration_hint)
+            audio, sr = self._load_window(audio_path, start, WINDOW_SECONDS, duration)
             if audio is None:
                 return None
-            logger.debug(f"Loaded window: {len(audio)/sr:.1f}s at {sr}Hz")
-
             with self._lock:
-                embeddings = self.model.get_audio_embedding_from_data(
-                    [audio],
-                    use_tensor=False
-                )
-                embedding = embeddings[0]
-                if embedding.shape[0] != 512:
-                    logger.warning(f"Unexpected embedding dimension: {embedding.shape}")
-                vec = embedding.astype(np.float32)
-                # The torch backend returns normalized vectors; normalize again
-                # defensively so the mean-and-normalize below is well-scaled.
-                n = np.linalg.norm(vec)
-                if n > 0:
-                    vec = vec / n
-                return vec
+                embedding = self.model.get_audio_embedding_from_data([audio], use_tensor=False)[0]
+            if embedding.shape[0] != 512:
+                logger.warning(f"Unexpected embedding dimension: {embedding.shape}")
+            vec = embedding.astype(np.float32)
+            n = np.linalg.norm(vec)
+            return vec / n if n > 0 else vec
         except Exception as e:
             logger.error(f"Failed to embed window at {start:.1f}s of {audio_path}: {e}")
             traceback.print_exc()
@@ -419,179 +426,49 @@ class CLAPAnalyzer:
             traceback.print_exc()
             return None
 
-    def detect_vocals(self, audio_embedding: np.ndarray) -> float:
-        """
-        Zero-shot vocal detection using CLAP text-audio similarity.
-        Returns instrumentalness score (0 = vocals present, 1 = instrumental).
-        """
+    def _prompt_similarity(self, audio_embedding: np.ndarray, group: str) -> float:
+        """Mean cosine between a track's vector and one prompt group's text vectors, which are
+        embedded once per process."""
         if CLAP_BACKEND != 'onnx':
             self.ensure_model()
-
-        if not hasattr(self, '_vocal_text_embs') or self._vocal_text_embs is None:
+        embs = self._prompt_embs.get(group)
+        if embs is None:
             with self._lock:
-                if not hasattr(self, '_vocal_text_embs') or self._vocal_text_embs is None:
-                    vocal_prompts = [
-                        "music with singing vocals",
-                        "song with a singer",
-                        "vocal music with lyrics",
-                    ]
-                    instrumental_prompts = [
-                        "instrumental music without vocals",
-                        "instrumental track with no singing",
-                        "music without any vocals or singing",
-                    ]
-                    self._vocal_text_embs = self._text_embeddings(
-                        vocal_prompts
-                    )
-                    self._instr_text_embs = self._text_embeddings(
-                        instrumental_prompts
-                    )
-                    logger.info("Cached vocal/instrumental text embeddings for zero-shot detection")
-
+                embs = self._prompt_embs.get(group)
+                if embs is None:
+                    embs = [e / (np.linalg.norm(e) + 1e-8) for e in self._text_embeddings(PROMPTS[group])]
+                    self._prompt_embs[group] = embs
         audio_norm = audio_embedding / (np.linalg.norm(audio_embedding) + 1e-8)
+        return float(np.mean([float(np.dot(audio_norm, e)) for e in embs]))
 
-        vocal_sims = []
-        for emb in self._vocal_text_embs:
-            emb_norm = emb / (np.linalg.norm(emb) + 1e-8)
-            vocal_sims.append(float(np.dot(audio_norm, emb_norm)))
-
-        instr_sims = []
-        for emb in self._instr_text_embs:
-            emb_norm = emb / (np.linalg.norm(emb) + 1e-8)
-            instr_sims.append(float(np.dot(audio_norm, emb_norm)))
-
-        avg_vocal = np.mean(vocal_sims)
-        avg_instr = np.mean(instr_sims)
-
-        # Temperature-scaled softmax (T=15 amplifies small cosine sim differences)
-        T = 15
-        exp_vocal = np.exp(avg_vocal * T)
-        exp_instr = np.exp(avg_instr * T)
-        instrumentalness = float(exp_instr / (exp_vocal + exp_instr))
-
-        return round(max(0.0, min(1.0, instrumentalness)), 3)
+    def detect_vocals(self, audio_embedding: np.ndarray) -> float:
+        """Instrumentalness: 0 = vocals present, 1 = instrumental."""
+        share = _softmax_share(self._prompt_similarity(audio_embedding, 'instrumental'),
+                               self._prompt_similarity(audio_embedding, 'vocal'))
+        return round(max(0.0, min(1.0, share)), 3)
 
     def detect_acousticness(self, audio_embedding: np.ndarray) -> float:
-        """
-        Zero-shot acoustic vs electronic detection using CLAP text-audio similarity.
-        Returns acousticness score (0 = electronic/synthesized, 1 = acoustic/organic).
-        """
-        if CLAP_BACKEND != 'onnx':
-            self.ensure_model()
-
-        if not hasattr(self, '_acoustic_text_embs') or self._acoustic_text_embs is None:
-            with self._lock:
-                if not hasattr(self, '_acoustic_text_embs') or self._acoustic_text_embs is None:
-                    acoustic_prompts = [
-                        "soft acoustic guitar and piano music",
-                        "unplugged unamplified intimate performance",
-                        "gentle stripped-back acoustic recording",
-                    ]
-                    electronic_prompts = [
-                        "heavily produced studio track with electric instruments",
-                        "distorted electric guitar and amplified drums",
-                        "polished pop production with layered synths and effects",
-                    ]
-                    self._acoustic_text_embs = self._text_embeddings(
-                        acoustic_prompts
-                    )
-                    self._electronic_text_embs = self._text_embeddings(
-                        electronic_prompts
-                    )
-                    logger.info("Cached acoustic/electronic text embeddings for zero-shot detection")
-
-        audio_norm = audio_embedding / (np.linalg.norm(audio_embedding) + 1e-8)
-
-        acoustic_sims = []
-        for emb in self._acoustic_text_embs:
-            emb_norm = emb / (np.linalg.norm(emb) + 1e-8)
-            acoustic_sims.append(float(np.dot(audio_norm, emb_norm)))
-
-        electronic_sims = []
-        for emb in self._electronic_text_embs:
-            emb_norm = emb / (np.linalg.norm(emb) + 1e-8)
-            electronic_sims.append(float(np.dot(audio_norm, emb_norm)))
-
-        avg_acoustic = np.mean(acoustic_sims)
-        avg_electronic = np.mean(electronic_sims)
-
-        T = 15
-        exp_acoustic = np.exp(avg_acoustic * T)
-        exp_electronic = np.exp(avg_electronic * T)
-        acousticness = float(exp_acoustic / (exp_acoustic + exp_electronic))
-
-        return round(max(0.0, min(1.0, acousticness)), 3)
+        """Acousticness: 0 = electronic or heavily produced, 1 = acoustic."""
+        share = _softmax_share(self._prompt_similarity(audio_embedding, 'acoustic'),
+                               self._prompt_similarity(audio_embedding, 'electronic'))
+        return round(max(0.0, min(1.0, share)), 3)
 
     def detect_emotion(self, audio_embedding: np.ndarray) -> tuple:
-        """
-        Zero-shot valence/arousal detection using CLAP text-audio similarity.
-        Returns (valence, arousal) tuple, each in [0, 1].
-        Valence: 0 = sad/dark, 1 = happy/bright
-        Arousal: 0 = calm/quiet, 1 = intense/energetic
-        """
-        if CLAP_BACKEND != 'onnx':
-            self.ensure_model()
+        """(valence, arousal), each in [0, 1]: the prompt groups' margin through VA_CALIB's
+        Platt mapping. Valence 0 sad, 1 happy; arousal 0 calm, 1 intense."""
+        def platt(axis: str, pos: str, neg: str) -> float:
+            a, b = VA_CALIB[axis]
+            margin = self._prompt_similarity(audio_embedding, pos) - self._prompt_similarity(audio_embedding, neg)
+            return round(max(0.0, min(1.0, float(1.0 / (1.0 + np.exp(-(a * margin + b)))))), 3)
 
-        if not hasattr(self, '_happy_text_embs') or self._happy_text_embs is None:
-            with self._lock:
-                if not hasattr(self, '_happy_text_embs') or self._happy_text_embs is None:
-                    happy_prompts = [
-                        "happy cheerful uplifting music",
-                        "joyful bright positive song",
-                        "feel good upbeat music",
-                    ]
-                    sad_prompts = [
-                        "sad melancholic somber music",
-                        "dark gloomy depressing song",
-                        "sorrowful mournful music",
-                    ]
-                    high_energy_prompts = [
-                        "intense energetic powerful music",
-                        "loud fast aggressive song",
-                        "high energy driving music",
-                    ]
-                    low_energy_prompts = [
-                        "calm relaxing peaceful music",
-                        "soft quiet gentle song",
-                        "mellow soothing ambient music",
-                    ]
-                    self._happy_text_embs = self._text_embeddings(
-                        happy_prompts
-                    )
-                    self._sad_text_embs = self._text_embeddings(
-                        sad_prompts
-                    )
-                    self._high_energy_text_embs = self._text_embeddings(
-                        high_energy_prompts
-                    )
-                    self._low_energy_text_embs = self._text_embeddings(
-                        low_energy_prompts
-                    )
-                    logger.info("Cached emotion text embeddings for zero-shot valence/arousal")
+        return platt('valence', 'happy', 'sad'), platt('arousal', 'high_energy', 'low_energy')
 
-        audio_norm = audio_embedding / (np.linalg.norm(audio_embedding) + 1e-8)
 
-        def _avg_sim(embeddings):
-            sims = []
-            for emb in embeddings:
-                emb_norm = emb / (np.linalg.norm(emb) + 1e-8)
-                sims.append(float(np.dot(audio_norm, emb_norm)))
-            return np.mean(sims)
-
-        avg_happy = _avg_sim(self._happy_text_embs)
-        avg_sad = _avg_sim(self._sad_text_embs)
-        a, b = VA_CALIB['valence']
-        valence = float(1.0 / (1.0 + np.exp(-(a * (avg_happy - avg_sad) + b))))
-
-        avg_high = _avg_sim(self._high_energy_text_embs)
-        avg_low = _avg_sim(self._low_energy_text_embs)
-        a, b = VA_CALIB['arousal']
-        arousal = float(1.0 / (1.0 + np.exp(-(a * (avg_high - avg_low) + b))))
-
-        return (
-            round(max(0.0, min(1.0, valence)), 3),
-            round(max(0.0, min(1.0, arousal)), 3),
-        )
+def _softmax_share(winner: float, other: float, temperature: float = 15) -> float:
+    """The winner's share of a softmax over two mean similarities; the temperature spreads small
+    cosine gaps."""
+    a, b = np.exp(winner * temperature), np.exp(other * temperature)
+    return float(a / (a + b))
 
 
 def load_configured_workers() -> int:
@@ -678,7 +555,7 @@ class BullMQVibeWorker:
             minconn=1,
             maxconn=pool_size,
             dsn=DATABASE_URL,
-            options="-c client_encoding=UTF8",
+            options="-c client_encoding=UTF8 -c timezone=UTC",
             application_name="clap-analyzer",
         )
         logger.info(f"Connected to PostgreSQL (pool size: {pool_size})")
@@ -751,18 +628,21 @@ class BullMQVibeWorker:
             if self._db_pool:
                 self._db_pool.closeall()
 
-    async def _process_job(self, job, job_token: str) -> dict:
+    async def _process_job(self, job, _token: str) -> dict:
         """BullMQ job processor — called for each enrichment-vibe job."""
         track_id = job.data.get("trackId")
         file_path = job.data.get("filePath", "")
-        duration = job.data.get("duration")
+        job_id = job.id
 
         if not track_id:
             raise ValueError(f"Invalid job data (no trackId): {job.data}")
 
-        logger.info(f"[BullMQ] Processing vibe for track: {track_id}")
-
         loop = asyncio.get_running_loop()
+        if not await loop.run_in_executor(None, self._claim_is_current, track_id, job_id):
+            logger.info(f"[BullMQ] Skipped {track_id}: claim {job_id} was re-issued")
+            return {"skipped": True}
+
+        logger.info(f"[BullMQ] Processing vibe for track: {track_id}")
 
         normalized_path = file_path.replace("\\", "/")
         full_path = os.path.join(MUSIC_PATH, normalized_path)
@@ -771,25 +651,26 @@ class BullMQVibeWorker:
             file_size = os.path.getsize(full_path)
             if file_size == 0:
                 await loop.run_in_executor(
-                    None, self._report_failure, track_id,
+                    None, self._report_failure, job_id, track_id,
                     "Empty file (0 bytes) - likely incomplete download",
                 )
                 raise ValueError("Empty file")
         except OSError:
             await loop.run_in_executor(
-                None, self._report_failure, track_id, f"File not found: {normalized_path}"
+                None, self._report_failure, job_id, track_id, f"File not found: {normalized_path}"
             )
             raise
 
+        # The file's exact length places the windows; the stored length is whole seconds.
         embedding = await loop.run_in_executor(
-            None, self.analyzer.get_audio_embedding, full_path, duration
+            None, self.analyzer.get_audio_embedding, full_path
         )
 
         await job.updateProgress(50)
 
         if embedding is None:
             await loop.run_in_executor(
-                None, self._report_failure, track_id, "Failed to generate embedding"
+                None, self._report_failure, job_id, track_id, "Failed to generate embedding"
             )
             raise RuntimeError("Embedding generation failed")
 
@@ -804,15 +685,16 @@ class BullMQVibeWorker:
             None, self.analyzer.detect_emotion, embedding
         )
 
-        success = await loop.run_in_executor(None, self._store_embedding, track_id, embedding)
+        stored = await loop.run_in_executor(
+            None, self._store_result, track_id, embedding,
+            instrumentalness, acousticness, clap_valence, clap_arousal, job_id,
+        )
 
-        if success:
-            await loop.run_in_executor(
-                None, self._update_clap_features, track_id,
-                instrumentalness, acousticness,
-                clap_valence, clap_arousal
-            )
-            await loop.run_in_executor(None, self._report_success, track_id)
+        if stored == "stale":
+            logger.info(f"[BullMQ] Not stored for {track_id}: claim {job_id} was re-issued while it ran")
+            return {"trackId": track_id, "skipped": True}
+        if stored == "stored":
+            await loop.run_in_executor(None, self._report_success, job_id, track_id)
             await job.updateProgress(100)
             logger.info(
                 f"[BullMQ] Completed vibe for track: {track_id} "
@@ -822,51 +704,11 @@ class BullMQVibeWorker:
             return {"trackId": track_id, "status": "complete"}
         else:
             await loop.run_in_executor(
-                None, self._report_failure, track_id, "Failed to store embedding"
+                None, self._report_failure, job_id, track_id, "Failed to store embedding"
             )
             raise RuntimeError("Failed to store embedding")
 
-    def _update_clap_features(
-        self, track_id: str,
-        instrumentalness: float, acousticness: float,
-        clap_valence: float, clap_arousal: float
-    ):
-        """Write CLAP's own features and raw V/A, and recompute the shared
-        pair from the stored raws. The pair is a pure function of the
-        raw columns -- recomputing it at every embedding completion is
-        idempotent, so a rebuild can no longer erode it, and DEAM's value is
-        never read from the blended pair."""
-        conn = self._db_pool.getconn()
-        try:
-            with conn.cursor(cursor_factory=RealDictCursor) as cursor:
-                cursor.execute(
-                    """UPDATE "Track"
-                    SET instrumentalness = %s, acousticness = %s,
-                        "clapValenceRaw" = %s, "clapArousalRaw" = %s,
-                        valence = COALESCE(
-                            ROUND((0.7 * "deamValence" + 0.3 * %s)::numeric, 3)::float8, %s),
-                        arousal = COALESCE(
-                            ROUND((0.5 * "deamArousal" + 0.5 * %s)::numeric, 3)::float8, %s)
-                    WHERE id = %s""",
-                    (instrumentalness, acousticness,
-                     clap_valence, clap_arousal,
-                     clap_valence, clap_valence,
-                     clap_arousal, clap_arousal,
-                     track_id),
-                )
-            conn.commit()
-            logger.debug(
-                f"CLAP features for {track_id}: instr={instrumentalness}, "
-                f"acoustic={acousticness}, clap raw V/A=({clap_valence}, {clap_arousal}); "
-                f"pair recomputed from raw columns"
-            )
-        except Exception as e:
-            logger.error(f"Failed to update CLAP features for {track_id}: {e}")
-            conn.rollback()
-        finally:
-            self._db_pool.putconn(conn)
-
-    def _report_failure(self, track_id: str, error: str):
+    def _report_failure(self, job_id: str, track_id: str, error: str):
         """Report a failed embedding to the backend (runs in executor thread).
         The backend owns every write of a track's state; this writes nothing."""
         track_name = None
@@ -891,6 +733,7 @@ class BullMQVibeWorker:
                 f"{BACKEND_URL}/api/analysis/vibe/failure",
                 json={
                     "trackId": track_id,
+                    "jobId": job_id,
                     "trackName": track_name,
                     "errorMessage": error[:500],
                     "errorCode": "VIBE_EMBEDDING_FAILED"
@@ -901,8 +744,8 @@ class BullMQVibeWorker:
         except Exception as report_err:
             logger.warning(f"Failed to report failure to backend: {report_err}")
 
-    def _report_success(self, track_id: str):
-        """Resolve stale failure records for a track that succeeded on retry."""
+    def _report_success(self, job_id: str, track_id: str):
+        """Tell the backend the job's answer is stored; it settles the stage record."""
         try:
             headers = {
                 "Content-Type": "application/json",
@@ -910,15 +753,41 @@ class BullMQVibeWorker:
             }
             requests.post(
                 f"{BACKEND_URL}/api/analysis/vibe/success",
-                json={"trackId": track_id},
+                json={"trackId": track_id, "jobId": job_id},
                 headers=headers,
                 timeout=5
             )
         except Exception as report_err:
             logger.warning(f"Failed to report success to backend: {report_err}")
 
-    def _store_embedding(self, track_id: str, embedding: np.ndarray) -> bool:
-        """Store the embedding in track_embeddings (runs in executor thread)."""
+    def _claim_is_current(self, track_id: str, job_id: Optional[str]) -> bool:
+        """Whether this job's claim is still the record's open one (backend `claimIsCurrent`). A job whose
+        claim was re-issued (a lease re-offer, a wipe, a restart) does no work: its report would be
+        refused as stale. A job id with no claim in it always runs."""
+        match = CLAIM_IN_JOB_ID.search(job_id or "")
+        if not match:
+            return True
+        conn = self._db_pool.getconn()
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    'SELECT status, attempt, redelivered FROM "TrackStage" WHERE "trackId" = %s AND stage = %s',
+                    (track_id, "embedding"),
+                )
+                row = cursor.fetchone()
+            conn.commit()
+        finally:
+            self._db_pool.putconn(conn)
+        return bool(row) and row[0] == "working" and (row[1], row[2]) == (int(match.group(1)), int(match.group(2)))
+
+    def _store_result(self, track_id: str, embedding: np.ndarray,
+                      instrumentalness: float, acousticness: float,
+                      clap_valence: float, clap_arousal: float,
+                      job_id: Optional[str] = None) -> str:
+        """Store the vector and CLAP's own raw features in one transaction (runs in executor thread):
+        "stored", "stale" when the job's claim is no longer the record's open one (a wipe or a re-offer
+        while it ran; nothing is written), or "failed". The shared valence/arousal pair is the
+        backend's to derive from both analyzers' raws."""
         conn = self._db_pool.getconn()
         try:
             # Unit-norm guard: an embedding that is not (approximately) unit
@@ -931,31 +800,49 @@ class BullMQVibeWorker:
                     f"unit-norm guard failed (norm={norm:.6f}, expected ~1.0). "
                     f"Track will be marked as failed."
                 )
-                return False
+                return "failed"
 
             # pgvector type must be registered per-connection; idempotent on repeat calls
             register_vector(conn)
             embedding_list = embedding.tolist()
+            claim = CLAIM_IN_JOB_ID.search(job_id or "")
             with conn.cursor() as cursor:
+                if claim:
+                    # Held for the transaction, so the claim cannot move between this check and the write.
+                    cursor.execute(
+                        'SELECT 1 FROM "TrackStage" WHERE "trackId" = %s AND stage = %s AND status = %s'
+                        ' AND attempt = %s AND redelivered = %s FOR SHARE',
+                        (track_id, "embedding", "working", int(claim.group(1)), int(claim.group(2))),
+                    )
+                    if cursor.fetchone() is None:
+                        conn.rollback()
+                        return "stale"
                 cursor.execute(
                     """
                     INSERT INTO track_embeddings (track_id, embedding, model_version, analyzed_at)
-                    VALUES (%s, %s::vector, %s, %s)
+                    VALUES (%s, %s::vector, %s, now())
                     ON CONFLICT (track_id)
                     DO UPDATE SET
                         embedding = EXCLUDED.embedding,
                         model_version = EXCLUDED.model_version,
                         analyzed_at = EXCLUDED.analyzed_at
                     """,
-                    (track_id, embedding_list, MODEL_VERSION, datetime.utcnow()),
+                    (track_id, embedding_list, MODEL_VERSION),
+                )
+                cursor.execute(
+                    """UPDATE "Track"
+                       SET instrumentalness = %s, acousticness = %s,
+                           "clapValenceRaw" = %s, "clapArousalRaw" = %s
+                     WHERE id = %s""",
+                    (instrumentalness, acousticness, clap_valence, clap_arousal, track_id),
                 )
             conn.commit()
-            return True
+            return "stored"
         except Exception as e:
             logger.error(f"Failed to store embedding for {track_id}: {e}")
             traceback.print_exc()
             conn.rollback()
-            return False
+            return "failed"
         finally:
             self._db_pool.putconn(conn)
 
@@ -1151,7 +1038,6 @@ def main():
     configured_workers = load_configured_workers()
     logger.info(f"  Num workers: {configured_workers} (SystemSettings.clapWorkers, env NUM_WORKERS={NUM_WORKERS})")
     logger.info(f"  Threads per worker: {THREADS_PER_WORKER}")
-    logger.info(f"  Sleep interval: {SLEEP_INTERVAL}s")
     logger.info(f"  Model idle timeout: {MODEL_IDLE_TIMEOUT}s")
     logger.info("=" * 60)
 
@@ -1197,8 +1083,7 @@ def main():
     threads.append(control_thread)
     logger.info("Started control handler thread")
 
-    # GPU-onnx: pick up an install that was requested while this process was
-    # down.
+    # Pick up a GPU install requested while this process was down.
     import gpu_runtime
     if os.path.exists(os.path.join(os.getenv('DATA_DIR', '/data'),
                                    'gpu-onnx', 'enabled.json')):
