@@ -103,6 +103,24 @@ beforeAll(async () => {
             attempt: 4, retryable: true, startedAt: new Date(),
         },
     });
+    await prisma.track.create({
+        data: {
+            id: `${P}aside`, albumId: `${P}alb`, title: "Set Aside", trackNo: 4, duration: 200,
+            filePath: `/tmp/${P}-aside.flac`, fileModified: new Date(), fileSize: 1000,
+            analysisStatus: "failed", analysisError: "corrupt", vibeAnalysisStatus: "failed",
+        },
+    });
+    for (const stage of ["analysis", "embedding"]) {
+        await prisma.trackStage.create({
+            data: {
+                id: `${P}aside__${stage}`, trackId: `${P}aside`, stage, status: "blocked", attempt: 4, retryable: false,
+                decidedAt: new Date(), decidedBy: "resolved-via-failures-api",
+            },
+        });
+    }
+    // A run that got this far before keeps its finished job for an hour; adding the same id again would be a no-op.
+    await trackQueue.remove(`${P}asking-recording-4-r0`);
+    await vibeQueue.remove(`${P}-vibe-1-r0`);
     await trackQueue.add("enrich", { trackId: `${P}asking` }, { jobId: `${P}asking-recording-4-r0` });
     await redisClient.rpush("audio:analysis:queue", JSON.stringify({ trackId: `${P}trk`, jobId: `${P}-1-r0` }));
     await vibeQueue.add("embed", { trackId: `${P}trk` }, { jobId: `${P}-vibe-1-r0` });
@@ -151,6 +169,16 @@ describe("wiping the enrichment", () => {
             ["embedding", "pending", true],
             ["recording", "pending", true],
         ]);
+    });
+
+    it("leaves analysis and sound vectors a person set aside as they left them", async () => {
+        const stages = await prisma.trackStage.findMany({ where: { trackId: `${P}aside` }, orderBy: { stage: "asc" } });
+        expect(stages.map((s) => [s.stage, s.status, s.decidedBy])).toEqual([
+            ["analysis", "blocked", "resolved-via-failures-api"],
+            ["embedding", "blocked", "resolved-via-failures-api"],
+        ]);
+        const t = await prisma.track.findUniqueOrThrow({ where: { id: `${P}aside` } });
+        expect(t).toMatchObject({ analysisStatus: "failed", analysisError: "corrupt", vibeAnalysisStatus: "failed" });
     });
 
     it("leaves a track whose file is gone closed as missing, so nothing waits on it", async () => {

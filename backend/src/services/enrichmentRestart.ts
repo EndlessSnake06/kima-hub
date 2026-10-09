@@ -26,7 +26,12 @@ export async function wipeEnrichment(): Promise<EnrichmentWipe> {
     await trackQueue.drain();
     return prisma.$transaction(
         async (tx) => {
-            const vectors = await tx.$executeRaw`DELETE FROM track_embeddings`;
+            // A step a person set aside for a track stays as they left it.
+            const vectors = await tx.$executeRaw`
+                DELETE FROM track_embeddings e
+                WHERE NOT EXISTS (SELECT 1 FROM "TrackStage" s
+                                  WHERE s."trackId" = e.track_id AND s.stage = 'embedding' AND s."decidedAt" IS NOT NULL)
+            `;
             await tx.$executeRaw`DELETE FROM matching_state`;
             await tx.$executeRaw`DELETE FROM "SimilarArtist"`;
             const artists = await tx.$executeRaw`
@@ -45,16 +50,23 @@ export async function wipeEnrichment(): Promise<EnrichmentWipe> {
                     "moodParty" = NULL, "moodAcoustic" = NULL, "moodElectronic" = NULL, "danceabilityMl" = NULL,
                     "moodTags" = '{}', "essentiaGenres" = '{}',
                     "analysisStatus" = 'pending', "analysisVersion" = NULL, "analysisMode" = NULL,
-                    "analyzedAt" = NULL, "analysisError" = NULL, "analysisRetryCount" = 0, "analysisStartedAt" = NULL,
-                    "vibeAnalysisStatus" = 'pending', "vibeAnalysisStartedAt" = NULL, "vibeAnalysisError" = NULL,
+                    "analyzedAt" = NULL, "analysisError" = NULL, "analysisRetryCount" = 0, "analysisStartedAt" = NULL
+                WHERE NOT EXISTS (SELECT 1 FROM "TrackStage" s
+                                  WHERE s."trackId" = "Track".id AND s.stage = 'analysis' AND s."decidedAt" IS NOT NULL)
+            `;
+            await tx.$executeRaw`
+                UPDATE "Track"
+                SET "vibeAnalysisStatus" = 'pending', "vibeAnalysisStartedAt" = NULL, "vibeAnalysisError" = NULL,
                     "vibeAnalysisRetryCount" = 0, "vibeAnalysisStatusUpdatedAt" = NULL
+                WHERE NOT EXISTS (SELECT 1 FROM "TrackStage" s
+                                  WHERE s."trackId" = "Track".id AND s.stage = 'embedding' AND s."decidedAt" IS NOT NULL)
             `;
             await tx.$executeRaw`
                 UPDATE "TrackStage"
                 SET status = 'pending', failures = 0, redelivered = 0, "lastErrorCode" = NULL,
                     "lastErrorMessage" = NULL, "failureClass" = NULL, retryable = true, "nextRetryAt" = NULL,
-                    evidence = NULL, "startedAt" = NULL, "finishedAt" = NULL, "decidedAt" = NULL, "decidedBy" = NULL
-                WHERE stage IN ('analysis', 'embedding')
+                    evidence = NULL, "startedAt" = NULL, "finishedAt" = NULL
+                WHERE stage IN ('analysis', 'embedding') AND "decidedAt" IS NULL
             `;
             // Identification is asked again where it was answered or is being asked; a question
             // closed for good or decided by a person stays as it is.
