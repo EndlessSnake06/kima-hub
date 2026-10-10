@@ -344,7 +344,7 @@ describe("per-track stage gating", () => {
             expect(track?.analysisStatus).toBe("processing");
         });
 
-        it("does not re-queue tracks from the enrichmentTags record", async () => {
+        it("does not re-offer a track whose recording stage is answered, even with empty tags", async () => {
             // Selection comes from the stage record, so a track whose recording
             // stage is answered is not re-offered just because its tags are empty.
             await seedTrack(id("answered"), {

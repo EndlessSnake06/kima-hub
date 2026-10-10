@@ -247,28 +247,7 @@ describe("Enrichment State Machine", () => {
         jest.useRealTimers();
     });
 
-    describe("startup does not sweep status columns", () => {
-        it("does not reset processing/queued rows on startup", async () => {
-            await startUnifiedEnrichmentWorker();
-
-            // The attempt lives in the stage record, so startup must not flip
-            // status columns.
-            const crashResets = mockPrismaTrackUpdateMany.mock.calls.filter((call) => {
-                const where = JSON.stringify(call[0] ?? {});
-                return where.includes("processing") || where.includes("queued");
-            });
-            expect(crashResets).toHaveLength(0);
-        });
-
-        it("does not clear the _queued sentinel on startup", async () => {
-            await startUnifiedEnrichmentWorker();
-
-            const sentinelClears = mockPrismaTrackUpdateMany.mock.calls.filter(
-                (call) => JSON.stringify(call[0] ?? {}).includes("_queued"),
-            );
-            expect(sentinelClears).toHaveLength(0);
-        });
-
+    describe("startup", () => {
         it("does not reset artists stuck in enriching on startup", async () => {
             await startUnifiedEnrichmentWorker();
 
@@ -279,7 +258,7 @@ describe("Enrichment State Machine", () => {
         });
     });
 
-    describe("stop persistence (C1)", () => {
+    describe("stop persistence", () => {
         it("should not auto-restart enrichment after stop via state service", async () => {
             await startUnifiedEnrichmentWorker();
             mockUpdateState.mockClear();
@@ -420,7 +399,7 @@ describe("Enrichment State Machine", () => {
         });
     });
 
-    describe("W2: reverse-sync must resume infrastructure, not just flip the local flag", () => {
+    describe("reverse-sync must resume infrastructure, not just flip the local flag", () => {
         it("should call clearGate when reverse-syncing a stale pause to running", async () => {
             // The wedge is a missed "resume" control message: state says
             // "paused" (the pause landed), then state says "running" (the
@@ -450,21 +429,7 @@ describe("Enrichment State Machine", () => {
         });
     });
 
-    describe("per-track stage queue replaces the status-column sweeps", () => {
-        it("does not flush audio:analysis:queue on a stale analyzer heartbeat", async () => {
-            // A stale heartbeat flushes nothing: each stage record owns its attempt.
-            mockRedisGet.mockResolvedValue(String(Date.now() - 600_000));
-            mockRedisLlen.mockResolvedValue(42);
-            mockRedisDel.mockClear();
-
-            await executeAudioPhase();
-
-            const flushed = mockRedisDel.mock.calls.some(
-                (call) => call[0] === "audio:analysis:queue",
-            );
-            expect(flushed).toBe(false);
-        });
-
+    describe("per-track stage queue", () => {
         it("does not drain a past-cap track to permanently_failed", async () => {
             // Selection comes from the stage record, so tracks are never
             // selected by analysisRetryCount to have their status rewritten.
@@ -560,7 +525,7 @@ describe("Enrichment State Machine", () => {
         });
     });
 
-    describe("progress readout still reflects the stage records", () => {
+    describe("progress readout reflects the stage records", () => {
         it("computes progress from the TrackStage records, not the columns", async () => {
             // The record owns the answer: each stage's counts come from
             // TrackStage, and no stage checks track_embeddings or

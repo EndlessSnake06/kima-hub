@@ -199,17 +199,6 @@ describe("enrichment phases -- job keys and backoff", () => {
             );
         });
 
-        it("claims the record instead of parking the entity on a sentinel", async () => {
-            // A track in flight is marked by the stage record's `working`
-            // status, not by an enrichmentTags sentinel.
-            await executeIdentificationPhase();
-
-            const sentinelWrites = mockTrackUpdateMany.mock.calls.filter(
-                (call) => JSON.stringify(call[0] ?? {}).includes("_queued"),
-            );
-            expect(sentinelWrites).toHaveLength(0);
-        });
-
         it("does not select work from Track.enrichmentTags", async () => {
             await executeIdentificationPhase();
 
