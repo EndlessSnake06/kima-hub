@@ -62,8 +62,8 @@ class QueueCleanerService {
         try {
             const settings = await getSystemSettings();
 
-            if (!settings?.lidarrUrl || !settings?.lidarrApiKey) {
-                logger.debug("Lidarr not configured, stopping queue cleaner");
+            if (!settings?.lidarrEnabled || !settings?.lidarrUrl || !settings?.lidarrApiKey) {
+                logger.debug("Lidarr off or not configured, stopping queue cleaner");
                 this.stop();
                 return;
             }
