@@ -757,9 +757,9 @@ class SimpleDownloadManager {
 
     /**
      * A download Lidarr imported brought none of the jobs' album. With junk removal off the jobs fail
-     * saying so. With it on, a release grabbed for this album alone is marked failed in Lidarr
-     * (blocklisted; a bundle is left alone) and each album under its retry limit is searched again.
-     * An album at the limit is not searched: Lidarr's album search ignores monitoring.
+     * saying so. With it on, a single-album release is marked failed in Lidarr (blocklisted; a bundle
+     * is left alone) and each album under its retry limit is searched again; one at the limit is not,
+     * because Lidarr's album search ignores monitoring.
      */
     private async onFailedRelease(
         jobs: { id: string; userId: string; subject: string; discoveryBatchId: string | null; metadata: Prisma.JsonValue; lidarrAlbumId: number | null }[],
@@ -783,10 +783,9 @@ class SimpleDownloadManager {
     }
 
     /**
-     * Count a failed download once against every job on its album, ignoring
-     * Lidarr's report of a removal Kima made itself. Lidarr searches again while
-     * any of those jobs is under its user's retry limit; a job at its limit moves
-     * on or fails, and the album is unmonitored once none still wants it.
+     * Counts a failed download once against every job on its album, ignoring Lidarr's report of a
+     * removal Kima made. Lidarr searches again while any job is under its user's retry limit; one at
+     * its limit moves on or fails, and the album is unmonitored once none wants it.
      */
     async onImportFailed(
         downloadId: string,
@@ -897,10 +896,9 @@ class SimpleDownloadManager {
     }
 
     /**
-     * Lidarr parked a download for a person (tracks missing, or Kima leaves junk to the user's own
-     * setup), or imported only part of an album: the job waits until the album is whole or a new grab
-     * carries on. The user is told once, when the job first starts waiting. `onlyJobs` limits it to the
-     * jobs of the albums concerned.
+     * Lidarr parked a download for a person (tracks missing, or junk left to the user's own setup) or
+     * imported only part of an album: the job waits until the album is whole or a new grab carries on.
+     * The user is told once, when the job first waits. `onlyJobs` limits it to those jobs.
      */
     async onImportParked(downloadId: string, reason: string, onlyJobs?: string[]): Promise<number> {
         const jobs = await prisma.downloadJob.findMany({
@@ -921,10 +919,9 @@ class SimpleDownloadManager {
     }
 
     /**
-     * The user cancelled these jobs: a running download no other active job
-     * shares comes out of Lidarr's queue without a blocklist or a new search, and
-     * Lidarr stops monitoring an album no other active job still wants. The
-     * caller deletes the rows.
+     * The user cancelled these jobs: a running download no other active job shares leaves Lidarr's
+     * queue without a blocklist or new search, and an album no other active job wants is unmonitored.
+     * The caller deletes the rows.
      */
     async cancelJobs(jobs: { id: string; status: string; lidarrRef: string | null; lidarrAlbumId: number | null }[]): Promise<void> {
         const active = jobs.filter((j) => j.status === "pending" || j.status === "processing");
@@ -1005,9 +1002,9 @@ class SimpleDownloadManager {
 
     /**
      * Jobs waiting on something other than a running download. A pending job not started in 10 minutes
-     * fails unless held for Lidarr. A job with no download yet takes the one Lidarr queued for its album,
-     * waits while a search runs, and fails with Lidarr's own reason when Kima's search ends with nothing
-     * grabbed or 15 minutes after the last search. Returns how many failed.
+     * fails unless held for Lidarr. A job with no download takes the one Lidarr queued for its album,
+     * waits while a search runs, and fails with Lidarr's reason when the search grabs nothing or 15
+     * minutes pass since the last search. Returns how many failed.
      */
     async checkWaitingJobs(snapshot: ReconciliationSnapshot | null): Promise<number> {
         const now = Date.now();

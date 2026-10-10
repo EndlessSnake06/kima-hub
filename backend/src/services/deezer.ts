@@ -182,8 +182,7 @@ class DeezerService {
     /**
      * Deezer's related artists for a name, resolved to an id by search. Deezer
      * publishes no similarity score, so `match` falls linearly by position from
-     * 0.9 to 0.5 (fan counts measure popularity, not similarity). [] when
-     * unresolved; never throws.
+     * 0.9 to 0.5. [] when unresolved; never throws.
      */
     async getRelatedArtists(artistName: string, limit = 30): Promise<SimilarArtist[]> {
         const cacheKey = `related:${artistName.toLowerCase()}:${limit}`;

@@ -162,10 +162,8 @@ interface SlskdTransferUserBlock {
 }
 
 /**
- * Drop-in replacement for the vendored SlskClient that routes through
- * slskd's REST API. Implements the same public surface that
- * SoulseekService depends on: login, search, download, removeDownload,
- * destroy, server.conn, loggedIn, downloads.
+ * The vendored SlskClient's surface (login, search, download, removeDownload,
+ * destroy, server.conn, loggedIn, downloads) served through slskd's REST API.
  */
 export class SlskdClient extends EventEmitter {
   loggedIn = false

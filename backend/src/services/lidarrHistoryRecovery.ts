@@ -43,10 +43,9 @@ function toWebhookPayload(eventType: string, record: LidarrHistoryRecord, sameDo
 }
 
 /**
- * Reads history from 10 minutes before the newest stored Lidarr event, or from
- * the oldest active download if that started earlier (at most 7 days back), and
- * handles each record not seen yet, in the order Lidarr wrote them, so a second
- * grab follows the failure of the first. Returns how many were new.
+ * Reads Lidarr history from 10 minutes before the newest stored event (or the oldest active
+ * download, if earlier; at most 7 days back) and handles each record not seen yet in the order
+ * Lidarr wrote them, so a second grab follows the failure of the first. Returns how many were new.
  */
 export async function recoverMissedEvents(lidarrUrl: string, apiKey: string): Promise<number> {
     const now = Date.now();

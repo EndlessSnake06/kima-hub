@@ -647,12 +647,7 @@ class SoulseekService {
         return this.client!.search(query, options ?? {});
     }
 
-    /**
-     * Search for a track on Soulseek
-     *
-     * @param timeoutMs Default 15s per research (slsk-batchdl uses 6s, community recommends 10-15s)
-     *                  Too long wastes time, too short misses slow peers
-     */
+    /** Searches Soulseek for a track, waiting `timeoutMs` for peers to answer. */
     async searchTrack(
         artistName: string,
         trackTitle: string,

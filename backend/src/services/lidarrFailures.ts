@@ -54,10 +54,9 @@ function isSingleTrackPost(title: string): boolean {
 export type QueueVerdict = { action: "reject" | "owned" | "junk" | "parked"; reason: string };
 
 /**
- * What a queue item needs: a single-track post is turned away (not counted as an attempt); an album
- * the library already holds closes its job; junk (not the album at all) is removed so Lidarr tries the
- * next release; anything else Lidarr stopped on, missing tracks above all, is parked for a person.
- * Null while the download is still going or its archive is being extracted.
+ * What a queue item needs: a single-track post is turned away (not an attempt); an album the
+ * library already holds closes its job; junk is removed so Lidarr tries the next release; anything
+ * else Lidarr stopped on, missing tracks above all, is parked for a person. Null while it is running.
  */
 export function judgeQueueItem(item: LidarrQueueItem, now = Date.now()): QueueVerdict | null {
     if (isSingleTrackPost(item.title ?? "")) return { action: "reject", reason: "Single-track post" };

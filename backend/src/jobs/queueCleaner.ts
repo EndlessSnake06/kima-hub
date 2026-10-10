@@ -206,10 +206,9 @@ class QueueCleanerService {
     }
 
     /**
-     * Complete jobs Lidarr is not fetching whose album the library already
-     * holds: the same album id, or the same artist and title once edition
-     * words are set aside (owning another edition counts). Covers albums that
-     * arrived some other way, and requests for an album already owned.
+     * Closes complete jobs Lidarr is not fetching whose album the library already holds:
+     * the same album id, or the same artist and title with edition words set aside.
+     * Covers albums that arrived some other way and requests for an album already owned.
      */
     async reconcileWithLocalLibrary(): Promise<{ reconciled: number }> {
         // A job Lidarr is fetching is settled by what Lidarr says about its album.
