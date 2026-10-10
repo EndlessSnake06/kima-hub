@@ -195,7 +195,6 @@ export default function SearchPage() {
                     </div>
                 )}
 
-                {/* All / Library / Discover Tabs */}
                 {filterTab !== "soulseek" && (
                     <div className="section-stack">
                         {show2ColumnLayout ?

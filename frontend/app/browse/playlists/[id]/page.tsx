@@ -17,7 +17,7 @@ import { api } from "@/lib/api";
 import { usePreview } from "@/hooks/usePreview";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/cn";
-import { GradientSpinner } from "@/components/ui/GradientSpinner";
+import { LoadingScreen } from "@/components/ui/LoadingScreen";
 import { PageMessage } from "@/components/ui/PageMessage";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useAudioState } from "@/lib/audio-state-context";
@@ -108,11 +108,7 @@ export default function DeezerPlaylistDetailPage() {
     };
 
     if (isLoading) {
-        return (
-            <div className="flex items-center justify-center min-h-screen bg-[var(--bg-primary)]">
-                <GradientSpinner size="md" />
-            </div>
-        );
+        return <LoadingScreen />;
     }
 
     if (error || !playlist) {

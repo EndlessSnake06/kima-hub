@@ -202,9 +202,7 @@ export default function AlbumPage({ params }: AlbumPageProps) {
                 />
             </AlbumHero>
 
-            {/* Main Content - fills remaining viewport height */}
             <div className="relative min-h-[50vh] flex-1 animate-rise">
-                {/* Dynamic color gradient */}
                 <div
                     className="absolute inset-0 pointer-events-none"
                     style={{
@@ -214,8 +212,6 @@ export default function AlbumPage({ params }: AlbumPageProps) {
               transparent 100%)`,
                     }}
                 />
-
-
 
                 <div className="relative page-shell py-6 space-y-8">
                     {combinedTracks.length > 0 && (

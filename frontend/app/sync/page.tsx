@@ -38,7 +38,7 @@ export default function SyncPage() {
 
     // Scan status: SSE updates populate cache, with API polling as fallback.
     // The scan can complete before SSE delivers the event (race condition),
-    // so we poll the status endpoint every 2s until completed/failed.
+    // so we poll the status endpoint every 500ms until completed/failed.
     const { data: scanStatus } = useQuery<{
         status: string;
         progress: number;

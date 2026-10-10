@@ -276,7 +276,6 @@ export default function LoginPage() {
                                         </p>
                                     </div>
 
-                                    {/* Toggle between TOTP and Recovery Code */}
                                     <div className="flex items-center justify-center">
                                         <button
                                             type="button"

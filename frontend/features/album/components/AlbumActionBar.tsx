@@ -41,7 +41,6 @@ export function AlbumActionBar({
 
     return (
         <div className="flex items-center gap-4">
-            {/* Play Button - only for owned albums */}
             {isOwned && (
                 <>
                     <button
@@ -74,7 +73,6 @@ export function AlbumActionBar({
                 </>
             )}
 
-            {/* Download Album Button - prominent for unowned */}
             {showDownload && (
                 <button
                     onClick={onDownloadAlbum}

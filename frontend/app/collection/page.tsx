@@ -134,7 +134,6 @@ export default function LibraryPage() {
         (activeTab === "albums" && albumsQuery.isLoading) ||
         (activeTab === "tracks" && tracksQuery.isLoading);
 
-
     // `fresh` is undefined while the query has no data (loading, or a failed
     // first load). The latch keeps the last real total, and totalPages is
     // floored at 1 so the pager never disappears.

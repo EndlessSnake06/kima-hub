@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/auth-context";
 import { notify } from "@/lib/notify";
 import { Mic2, Search, Plus, RefreshCw, Rss, X } from "lucide-react";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
+import { LoadingScreen } from "@/components/ui/LoadingScreen";
 import { Pagination } from "@/components/ui/Pagination";
 import { usePodcastsQuery, useTopPodcastsQuery, queryKeys } from "@/hooks/useQueries";
 import { cn } from "@/lib/cn";
@@ -19,7 +20,6 @@ import { MediaCard } from "@/components/cards/MediaCard";
 import { scrollMainToTop } from "@/lib/scroll";
 import { PODCAST_GENRES } from "@/features/podcast/genres";
 import { coverArtUrl } from "@/lib/cover-art";
-
 
 function PodcastCard({ podcast, index }: { podcast: { id: string; title: string; author: string; coverUrl?: string }; index: number }) {
     return (
@@ -224,11 +224,7 @@ export default function PodcastsPage() {
     }, [searchQuery]);
 
     if (isLoading) {
-        return (
-            <div className="flex items-center justify-center min-h-screen bg-[var(--bg-primary)]">
-                <GradientSpinner size="md" />
-            </div>
-        );
+        return <LoadingScreen />;
     }
 
     return (
@@ -446,10 +442,7 @@ export default function PodcastsPage() {
                     {PODCAST_GENRES.map(({ id: genreId, name: genreName }) => {
                         const genrePodcasts = relatedPodcasts[genreId] || [];
                         return genrePodcasts.length > 0 ? (
-                            <section
-                                key={genreId}
-
-                            >
+                            <section key={genreId}>
                                 <SectionHeader type="podcast"
                                     title={genreName}
                                     action={

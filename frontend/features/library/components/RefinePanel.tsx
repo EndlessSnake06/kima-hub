@@ -114,7 +114,6 @@ export function RefinePanel({
 
     return (
         <div className="relative">
-            {/* Refine trigger button */}
             <button
                 ref={buttonRef}
                 type="button"
@@ -135,7 +134,6 @@ export function RefinePanel({
             >
                 <SlidersHorizontal className="w-3.5 h-3.5 flex-shrink-0" />
                 <span>Refine</span>
-                {/* Active-state dot */}
                 {hasRefinements && !open && (
                     <span
                         aria-label="Refinements active"
@@ -144,7 +142,6 @@ export function RefinePanel({
                 )}
             </button>
 
-            {/* Disclosure panel */}
             {open && (
                 <div
                     id="refine-panel"
@@ -155,7 +152,6 @@ export function RefinePanel({
                     // toolbar at every width, so right-0 would push the panel off the page.
                     className="absolute left-0 top-full mt-2 z-(--z-dropdown) w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)] p-4 flex flex-col gap-5 animate-panel-up"
                 >
-                    {/* Panel header */}
                     <div className="flex items-center justify-between">
                         <span className="text-sm font-medium text-white">Refine</span>
                         <button
@@ -171,7 +167,6 @@ export function RefinePanel({
                         </button>
                     </div>
 
-                    {/* Filter section -- hidden for Tracks tab */}
                     {showFilterSection && (
                         <fieldset className="flex flex-col gap-1.5">
                             <legend className="text-xs font-medium text-[var(--text-muted)] mb-2">
@@ -209,7 +204,6 @@ export function RefinePanel({
                         </fieldset>
                     )}
 
-                    {/* Sort section */}
                     <fieldset className="flex flex-col gap-1">
                         <legend className="text-xs font-medium text-[var(--text-muted)] mb-2">
                             Sort by
@@ -234,7 +228,6 @@ export function RefinePanel({
                         </div>
                     </fieldset>
 
-                    {/* Per-page section */}
                     <fieldset className="flex flex-col gap-1">
                         <legend className="text-xs font-medium text-[var(--text-muted)] mb-2">
                             Items per page

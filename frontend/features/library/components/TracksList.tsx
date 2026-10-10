@@ -24,7 +24,6 @@ interface TracksListProps {
     gridKey?: number;
 }
 
-
 interface TrackRowProps {
     track: Track;
     index: number;
@@ -72,7 +71,6 @@ const TrackRow = memo(
                     "animate-rise [animation-delay:calc(var(--i)*var(--stagger))]",
                 )}
             >
-                {/* Track number / Play button */}
                 <div className="w-8 flex items-center justify-center">
                     <button
                         onClick={(e) => {
@@ -126,7 +124,6 @@ const TrackRow = memo(
                     </div>
                 </div>
 
-                {/* Album - hidden on mobile */}
                 <div className="hidden md:block min-w-0">
                     <p className="text-xs tabular-nums text-[var(--text-muted)] truncate">
                         {track.album?.title}
@@ -229,7 +226,6 @@ export function TracksList({
 
     return (
         <>
-            {/* Header row - terminal style */}
             <div className="grid grid-cols-[auto_1fr_auto] md:grid-cols-[auto_1fr_1fr_auto] items-center gap-3 px-4 py-3 bg-[var(--bg-primary)] border-2 border-white/10 rounded-lg mb-2">
                 <div className="w-8 text-center text-xs font-semibold text-[var(--text-muted)]">#</div>
                 <div className="text-xs font-semibold text-[var(--text-muted)]">Title</div>

@@ -647,7 +647,6 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
     return (
         <>
             <SettingsSection id="cache" title="Library Enrichment">
-                {/* Enrichment Progress */}
                 {isProgressPending ? (
                     <div className="mb-6 p-4 bg-white/5 rounded-lg border border-white/10 flex items-center gap-2">
                         <GradientSpinner size="sm" />
@@ -684,7 +683,6 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                         </div>
 
                         <div className="space-y-1">
-                            {/* Artist Metadata */}
                             <EnrichmentStage
                                 icon={User}
                                 label="Artist Metadata"
@@ -695,7 +693,6 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                                 failed={enrichmentProgress.artists.failed}
                             />
 
-                            {/* Mood Tags */}
                             <EnrichmentStage
                                 icon={Heart}
                                 label="Mood Tags"
@@ -777,7 +774,6 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                             ) : null}
                         </div>
 
-                        {/* Control Buttons */}
                         <div className="flex flex-wrap gap-2 mt-4 pt-3 border-t border-white/10">
                             <Button
                                 variant="primary"
@@ -868,7 +864,6 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                             </div>
                         )}
 
-                        {/* Status Message -- aria-live so screen readers announce changes */}
                         <div aria-live="polite" aria-atomic="true">
                             {enrichmentState &&
                                 enrichmentState.status !== "idle" && (
@@ -927,7 +922,6 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                     </div>
                 ) : null}
 
-                {/* Cache Sizes */}
                 <SettingsRow
                     label="User cache size"
                     description="Maximum storage for offline content"
@@ -979,7 +973,6 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                     </div>
                 </SettingsRow>
 
-                {/* Automation */}
                 <SettingsRow
                     label="Auto sync library"
                     description="Automatically sync library changes"
@@ -1006,7 +999,6 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                     />
                 </SettingsRow>
 
-                {/* Enrichment Speed Control */}
                 {settings.autoEnrichMetadata && (
                     <SettingsRow
                         label="Metadata Fetch Speed"
@@ -1104,7 +1096,6 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                     />
                 )}
 
-                {/* Maintenance Operations -- grouped destructive actions */}
                 <div className="mt-6 rounded-lg border border-white/10 overflow-hidden">
                     <button
                         onClick={() => setMaintenanceOpen((o) => !o)}
@@ -1126,7 +1117,6 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
 
                     {maintenanceOpen && (
                         <div className="px-4 pt-3 pb-4 space-y-3 border-t border-white/10">
-                            {/* Non-destructive maintenance */}
                             <Button size="sm" onClick={handleClearCaches} disabled={clearingCaches}>
                                 {clearingCaches ? "Clearing..." : "Clear All Caches"}
                             </Button>
@@ -1179,7 +1169,6 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                 {error && <p role="alert" className="mt-2 px-1 text-xs tabular-nums text-danger-light">{error}</p>}
             </SettingsSection>
 
-            {/* Confirm dialog for destructive resets */}
             {confirmTarget && (
                 <ConfirmDialog
                     isOpen={true}

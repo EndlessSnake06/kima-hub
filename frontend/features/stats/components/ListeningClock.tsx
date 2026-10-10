@@ -79,7 +79,7 @@ export function ListeningClock({ listening, period }: { listening: ListeningStat
         return <p className="t-body max-w-[46ch]">no plays yet</p>;
     }
 
-    // The five loudest cells, which is what a finger actually wants to reach.
+    // The three loudest cells, which is what a finger actually wants to reach.
     const busiest = clock
         .flatMap((row, dow) => row.map((n, hour) => ({ dow, hour, n })))
         .filter((c) => c.n > 0)
@@ -215,7 +215,7 @@ export function ListeningClock({ listening, period }: { listening: ListeningStat
                             key={`${dow}-${hour}`}
                             type="button"
                             onClick={() => toggle(dow, hour)}
-                                        aria-disabled={n === 0}
+                            aria-disabled={n === 0}
                             aria-pressed={opened}
                             className={[
                                 "h-11 px-3 -mx-3 rounded-lg flex items-baseline justify-between gap-4",

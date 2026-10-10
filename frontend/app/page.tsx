@@ -160,7 +160,6 @@ export default function HomePage() {
                 </div>
             </div>
 
-            {/* Mood Mixer Modal - Lazy loaded */}
             {showMoodMixer && (
                 <Suspense fallback={null}>
                     <MoodMixer isOpen={showMoodMixer} onClose={() => setShowMoodMixer(false)} />

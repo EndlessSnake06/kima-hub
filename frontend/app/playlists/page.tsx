@@ -20,7 +20,7 @@ import {
     X,
     Check,
 } from "lucide-react";
-import { GradientSpinner } from "@/components/ui/GradientSpinner";
+import { LoadingScreen } from "@/components/ui/LoadingScreen";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -235,7 +235,7 @@ function ImportUrlPanel({ onClose }: { onClose: () => void }) {
             return;
         }
 
-        const supportedDomains = ["spotify.com", "deezer.com", "youtube.com", "youtu.be", "music.youtube.com", "soundcloud.com", "bandcamp.com", "mixcloud.com"];
+        const supportedDomains = ["spotify.com", "deezer.com", "youtube.com", "youtu.be", "soundcloud.com", "bandcamp.com", "mixcloud.com"];
         if (!supportedDomains.some(domain => trimmed.includes(domain))) {
             setError("Supported: Spotify, Deezer, YouTube, SoundCloud, Bandcamp, Mixcloud");
             return;
@@ -620,11 +620,7 @@ export default function PlaylistsPage() {
     };
 
     if (isLoading) {
-        return (
-            <div className="flex items-center justify-center min-h-screen bg-[var(--bg-primary)]">
-                <GradientSpinner size="md" />
-            </div>
-        );
+        return <LoadingScreen />;
     }
 
     const displayedPlaylists = showHiddenTab
