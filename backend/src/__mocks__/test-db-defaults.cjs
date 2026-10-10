@@ -1,8 +1,8 @@
 /**
  * Local-dev DATABASE_URL/REDIS_URL fallbacks shared by test-env.cjs and
  * test-global-setup.cjs. Credentials come from the gitignored backend/.env,
- * with the database swapped to this checkout's own test database, so tests
- * never reach another checkout's server. CI sets its own URLs.
+ * with the database swapped to this checkout's own test database; without a
+ * .env they are the docker-compose.dev.yml servers. CI sets its own URLs.
  */
 const fs = require("fs");
 const path = require("path");
@@ -37,6 +37,6 @@ module.exports = {
     // This checkout's dedicated test database, on its dedicated server.
     DATABASE_URL_FALLBACK:
         (devDatabaseUrl && swapDbName(devDatabaseUrl, "kima_v1_test")) ||
-        "postgresql://test:***@localhost:5477/kima_v1_test",
+        "postgresql://kima:kima@localhost:5455/kima_v1_test",
     REDIS_URL_FALLBACK: envValue("REDIS_URL") || "redis://localhost:6390",
 };

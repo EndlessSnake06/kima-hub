@@ -1,9 +1,9 @@
 #!/bin/bash
-# Migrate this checkout's own Jest template base (kima_v1_test) to the current
-# schema. CI runs `prisma migrate deploy` against its test DB before Jest; the
-# local equivalent needs the name-swap from backend/.env -> kima_v1_test, which
-# is what src/__mocks__/test-db-defaults.cjs does for the test run itself.
+# Migrate this checkout's Jest template database (kima_v1_test) to the current
+# schema. CI runs `prisma migrate deploy` against its test database before Jest;
+# locally the database is the one src/__mocks__/test-db-defaults.cjs resolves.
 set -euo pipefail
 cd "$(dirname "$0")/.."   # backend/
-export DATABASE_URL="$(node scripts/test-base-url.js)"
+DATABASE_URL="$(node -p 'require("./src/__mocks__/test-db-defaults.cjs").DATABASE_URL_FALLBACK')"
+export DATABASE_URL
 npx prisma migrate deploy
