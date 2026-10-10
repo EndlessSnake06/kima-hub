@@ -32,7 +32,7 @@ export function ServerPanel({ system }: { system: SystemStats }) {
                 <Reading
                     label="failed tracks"
                     value={(system.corruptTracks + system.enrichmentFailures).toLocaleString()}
-                    tone={system.corruptTracks + system.enrichmentFailures > 0 ? "warn" : undefined}
+                    tone={system.corruptTracks + system.enrichmentFailures > 0 ? "brand" : undefined}
                 />
             </div>
 
@@ -105,7 +105,7 @@ function Reading({
     label: string;
     value: string;
     mono?: boolean;
-    tone?: "warn";
+    tone?: "brand";
 }) {
     return (
         <div className="flex flex-col gap-1.5">
@@ -113,7 +113,7 @@ function Reading({
             <span
                 className={[
                     mono ? "t-data text-base" : "t-figure text-[length:var(--stat-lead)]",
-                    tone === "warn" ? "text-brand" : "text-[var(--text-primary)]",
+                    tone === "brand" ? "text-brand" : "text-[var(--text-primary)]",
                 ].join(" ")}
             >
                 {value}
