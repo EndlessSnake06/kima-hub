@@ -20,6 +20,47 @@ const getRequestUserId = (req: any): string | null => {
     return req.user?.id || req.session?.userId || null;
 };
 
+const MIXES_CACHE_TTL = 3600; // 1 hour
+
+function mixesCacheKey(userId: string): string {
+    return `mixes:${userId}`;
+}
+
+/** All of the user's mixes: Redis first, regenerated and cached on a miss. */
+async function getMixesForUser(userId: string): Promise<any[]> {
+    const cached = await redisClient.get(mixesCacheKey(userId));
+    if (cached) {
+        return JSON.parse(cached);
+    }
+
+    const mixes = await programmaticPlaylistService.generateAllMixes(userId);
+    await redisClient.setex(
+        mixesCacheKey(userId),
+        MIXES_CACHE_TTL,
+        JSON.stringify(mixes)
+    );
+    return mixes;
+}
+
+/** Full track rows for the given ids, in the order the ids list them. */
+async function loadTracksInMixOrder(trackIds: string[]): Promise<any[]> {
+    const tracks = await prisma.track.findMany({
+        where: { id: { in: trackIds } },
+        include: {
+            album: {
+                include: {
+                    artist: {
+                        select: { id: true, name: true, mbid: true },
+                    },
+                },
+            },
+        },
+    });
+    return trackIds
+        .map((id) => tracks.find((t) => t.id === id))
+        .filter((t: any) => t !== undefined);
+}
+
 router.get("/", async (req, res) => {
     try {
         const userId = getRequestUserId(req);
@@ -27,23 +68,7 @@ router.get("/", async (req, res) => {
             return res.status(401).json({ error: "Not authenticated" });
         }
 
-        // Check cache first (mixes are expensive to compute)
-        const cacheKey = `mixes:${userId}`;
-        const cached = await redisClient.get(cacheKey);
-
-        if (cached) {
-            return res.json(JSON.parse(cached));
-        }
-
-        // Generate all mixes
-        const mixes = await programmaticPlaylistService.generateAllMixes(
-            userId
-        );
-
-        // Cache for 1 hour
-        await redisClient.setex(cacheKey, 3600, JSON.stringify(mixes));
-
-        res.json(mixes);
+        res.json(await getMixesForUser(userId));
     } catch (error) {
         logger.error("Get mixes error:", error);
         res.status(500).json({ error: "Failed to get mixes" });
@@ -95,24 +120,7 @@ router.get("/mood/buckets/:mood", async (req, res) => {
             await moodBucketService.recordServedTracks(userId, mood, mix.trackIds);
         }
 
-        // Load full track details
-        const tracks = await prisma.track.findMany({
-            where: { id: { in: mix.trackIds } },
-            include: {
-                album: {
-                    include: {
-                        artist: {
-                            select: { id: true, name: true, mbid: true },
-                        },
-                    },
-                },
-            },
-        });
-
-        // Preserve mix order
-        const orderedTracks = mix.trackIds
-            .map((id: string) => tracks.find((t) => t.id === id))
-            .filter((t: any) => t !== undefined);
+        const orderedTracks = await loadTracksInMixOrder(mix.trackIds);
 
         res.json({
             ...mix,
@@ -162,27 +170,9 @@ router.post("/mood/buckets/:mood/save", async (req, res) => {
         }
 
         // Invalidate mixes cache so home page refetches
-        const cacheKey = `mixes:${userId}`;
-        await redisClient.del(cacheKey);
+        await redisClient.del(mixesCacheKey(userId));
 
-        // Load full track details for immediate playback
-        const tracks = await prisma.track.findMany({
-            where: { id: { in: savedMix.trackIds } },
-            include: {
-                album: {
-                    include: {
-                        artist: {
-                            select: { id: true, name: true, mbid: true },
-                        },
-                    },
-                },
-            },
-        });
-
-        // Preserve mix order
-        const orderedTracks = savedMix.trackIds
-            .map((id: string) => tracks.find((t) => t.id === id))
-            .filter((t: any) => t !== undefined);
+        const orderedTracks = await loadTracksInMixOrder(savedMix.trackIds);
 
         logger.debug(
             `[MIXES] Saved mood bucket mix for user ${userId}: ${mood} (${savedMix.trackCount} tracks)`
@@ -232,18 +222,17 @@ router.post("/refresh", async (req, res) => {
             return res.status(401).json({ error: "Not authenticated" });
         }
 
-        // Clear cache
-        const cacheKey = `mixes:${userId}`;
-        await redisClient.del(cacheKey);
-
-        // Regenerate mixes with random selection (not date-based)
+        // Regenerate with random selection (not date-based) and replace the cache
+        await redisClient.del(mixesCacheKey(userId));
         const mixes = await programmaticPlaylistService.generateAllMixes(
             userId,
             true
         );
-
-        // Cache for 1 hour
-        await redisClient.setex(cacheKey, 3600, JSON.stringify(mixes));
+        await redisClient.setex(
+            mixesCacheKey(userId),
+            MIXES_CACHE_TTL,
+            JSON.stringify(mixes)
+        );
 
         res.json({ message: "Mixes refreshed", mixes });
     } catch (error) {
@@ -261,17 +250,7 @@ router.post("/:id/save", async (req, res) => {
         const mixId = req.params.id;
         const customName = req.body.name;
 
-        // Get the mix with track details
-        const cacheKey = `mixes:${userId}`;
-        let mixes;
-
-        const cached = await redisClient.get(cacheKey);
-        if (cached) {
-            mixes = JSON.parse(cached);
-        } else {
-            mixes = await programmaticPlaylistService.generateAllMixes(userId);
-            await redisClient.setex(cacheKey, 3600, JSON.stringify(mixes));
-        }
+        const mixes = await getMixesForUser(userId);
 
         const mix = mixes.find((m: any) => m.id === mixId);
 
@@ -346,17 +325,7 @@ router.get("/:id", async (req, res) => {
         }
         const mixId = req.params.id;
 
-        // Get all mixes (from cache if available)
-        const cacheKey = `mixes:${userId}`;
-        let mixes;
-
-        const cached = await redisClient.get(cacheKey);
-        if (cached) {
-            mixes = JSON.parse(cached);
-        } else {
-            mixes = await programmaticPlaylistService.generateAllMixes(userId);
-            await redisClient.setex(cacheKey, 3600, JSON.stringify(mixes));
-        }
+        const mixes = await getMixesForUser(userId);
 
         // Find the specific mix
         const mix = mixes.find((m: any) => m.id === mixId);
@@ -365,32 +334,7 @@ router.get("/:id", async (req, res) => {
             return res.status(404).json({ error: "Mix not found" });
         }
 
-        // Load full track details
-        const tracks = await prisma.track.findMany({
-            where: {
-                id: {
-                    in: mix.trackIds,
-                },
-            },
-            include: {
-                album: {
-                    include: {
-                        artist: {
-                            select: {
-                                id: true,
-                                name: true,
-                                mbid: true,
-                            },
-                        },
-                    },
-                },
-            },
-        });
-
-        // Preserve mix order
-        const orderedTracks = mix.trackIds
-            .map((id: string) => tracks.find((t) => t.id === id))
-            .filter((t: any) => t !== undefined);
+        const orderedTracks = await loadTracksInMixOrder(mix.trackIds);
 
         res.json({
             ...mix,
