@@ -172,7 +172,7 @@ export default function VibePage() {
                 const operation: VibeOperation = {
                     type: "vibe",
                     sourceTrackId: trackId,
-                    sourceFeatures: source.audioFeatures ?? {},
+                    matches: Object.fromEntries(response.tracks.map((t) => [t.id, t.similarity])),
                     trackIds: [trackId, ...tracks.map((t) => t.id)],
                 };
                 await replaceOperation(operation, [source, ...tracks], 0);

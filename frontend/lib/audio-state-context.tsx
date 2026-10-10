@@ -110,7 +110,7 @@ type SetStateAction<T> = T | ((prev: T) => T);
 
 export type VibeOperation =
     | { type: 'idle' }
-    | { type: 'vibe'; sourceTrackId: string; sourceFeatures: AudioFeatures; trackIds: string[] }
+    | { type: 'vibe'; sourceTrackId: string; matches: Record<string, number>; trackIds: string[] }
     | { type: 'drift'; startTrackId: string; endTrackId: string; pathTrackIds: string[] }
     | { type: 'blend'; addTrackIds: string[]; subtractTrackIds: string[]; resultTrackIds: string[] }
     | { type: 'similar'; sourceTrackId: string; trackIds: string[] };

@@ -25,11 +25,9 @@ import {
     RefreshCw,
     MicVocal,
 } from "lucide-react";
-import { useMemo } from "react";
 import { KeyboardShortcutsTooltip } from "./KeyboardShortcutsTooltip";
 import { shuffleState } from "@/lib/shuffle";
 import { cn } from "@/lib/cn";
-import { computeVibeMatchScore } from "@/lib/vibeMatchScore";
 import { formatTime, formatTimeRemaining } from "@/lib/format";
 import { SeekSlider } from "./SeekSlider";
 import { SleepTimer } from "./SleepTimer";
@@ -78,12 +76,9 @@ export function FullPlayer() {
 
     const { handleLyricsToggle, isLyricsActive } = useLyricsToggle({ inline: false });
 
-    const currentTrackFeatures = queue[currentIndex]?.audioFeatures || null;
-
-    const vibeMatchScore = useMemo(() => {
-        if (activeOperation.type === 'idle' || !('sourceFeatures' in activeOperation)) return null;
-        return computeVibeMatchScore(activeOperation.sourceFeatures, currentTrackFeatures);
-    }, [activeOperation, currentTrackFeatures]);
+    const currentId = queue[currentIndex]?.id;
+    const match = activeOperation.type === 'vibe' && currentId ? activeOperation.matches[currentId] : undefined;
+    const vibeMatchScore = match === undefined ? null : Math.round(match * 100);
 
     const { title, subtitle, coverUrl, artistLink, mediaLink, hasMedia } = useMediaInfo(100);
     const shuffle = shuffleState(hasMedia, playbackType, activeOperation.type);
@@ -152,18 +147,8 @@ export function FullPlayer() {
                                 trackId={playbackType === "track" ? currentTrack?.id : null}
                                 className="mt-0.5"
                             />
-                            {/* Vibe match score when in vibe mode */}
-                            {activeOperation.type !== 'idle' && vibeMatchScore !== null && (
-                                <span
-                                    className={cn(
-                                        "inline-flex items-center gap-1 text-micro font-semibold px-1.5 py-0.5 rounded mt-1",
-                                        vibeMatchScore >= 80
-                                            ? "bg-success/20 text-success"
-                                            : vibeMatchScore >= 60
-                                            ? "bg-brand/20 text-brand"
-                                            : "bg-warning/20 text-warning"
-                                    )}
-                                >
+                            {vibeMatchScore !== null && (
+                                <span className="inline-flex items-center gap-1 text-micro font-semibold px-1.5 py-0.5 rounded mt-1 bg-white/[0.06] text-muted">
                                     <AudioWaveform className="w-2.5 h-2.5" />
                                     {vibeMatchScore}% match
                                 </span>

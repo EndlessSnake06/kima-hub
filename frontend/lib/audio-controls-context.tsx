@@ -971,7 +971,7 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
             const newOp: VibeOperation = {
                 type: 'vibe',
                 sourceTrackId: currentTrack.id,
-                sourceFeatures: currentTrack.audioFeatures || {},
+                matches: Object.fromEntries(response.tracks.map((t) => [t.id, t.similarity])),
                 trackIds: queueIds,
             };
 

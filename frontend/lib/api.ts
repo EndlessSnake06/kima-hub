@@ -1993,6 +1993,7 @@ class ApiClient {
                 duration: number;
                 // /vibe/similar sends no trackNo.
                 distance: number;
+                similarity: number;
                 album: {
                     id: string;
                     title: string;
