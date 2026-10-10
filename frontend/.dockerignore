@@ -37,11 +37,6 @@ logs
 *.md
 docs
 
-# Capacitor (mobile)
-android
-ios
-capacitor.config.ts
-
 # Misc
 .DS_Store
 Thumbs.db

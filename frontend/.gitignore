@@ -42,9 +42,3 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-
-# android signing keys (NEVER commit these!)
-*.keystore
-*.jks
-android/key.properties
-# Note: android/gradle.properties is NOT ignored - it contains AndroidX settings needed for builds
