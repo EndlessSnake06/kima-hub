@@ -48,13 +48,13 @@ import { findAlbumArtwork, findArtistArtwork, withAlbumArtwork, withArtistArtwor
 import { validateUrlForFetch } from "../../utils/ssrf";
 
 const DEEZER_URL = "https://e-cdns-images.dzcdn.net/images/cover/abc/500x500.jpg";
-const ARCHIVE_URL = "https://coverartarchive.org/release-group/rg-1/front-1200.jpg";
+const ARCHIVE_URL = "https://coverartarchive.org/release-group/10e85e9b-0f07-33d4-a927-18a273f86eca/front-1200.jpg";
 const FANART_URL = "https://assets.fanart.tv/fanart/music/xyz/albumcover/a.jpg";
 /** An unchecked Cover Art Archive address, built from the MBID alone. */
-const GUESS = "https://coverartarchive.org/release-group/rg-1/front-500";
+const GUESS = "https://coverartarchive.org/release-group/10e85e9b-0f07-33d4-a927-18a273f86eca/front-500";
 
-const ALBUM = { rgMbid: "rg-1", artistName: "Perturbator", albumTitle: "Age Of Aquarius" };
-const ARTIST = { name: "Perturbator", mbid: "artist-1" };
+const ALBUM = { rgMbid: "10e85e9b-0f07-33d4-a927-18a273f86eca", artistName: "Brad Sucks", albumTitle: "I Don't Know What I'm Doing" };
+const ARTIST = { name: "Brad Sucks", mbid: "9c070e4f-28c1-4b98-b371-d8514c31ba55" };
 
 describe("the one door for artwork", () => {
     let fetchSpy: jest.SpyInstance;
@@ -178,7 +178,7 @@ describe("the one door for artwork", () => {
 
             const found = await findAlbumArtwork({ ...ALBUM, rgMbid: "temp-123" });
 
-            expect(deezerAlbum).toHaveBeenCalledWith("Perturbator", "Age Of Aquarius");
+            expect(deezerAlbum).toHaveBeenCalledWith("Brad Sucks", "I Don't Know What I'm Doing");
             expect(archiveCover).not.toHaveBeenCalled();
             expect(fanartAlbum).not.toHaveBeenCalled();
             expect(found?.url).toBe(DEEZER_URL);
@@ -209,14 +209,14 @@ describe("the one door for artwork", () => {
 
             const found = await findArtistArtwork(ARTIST);
 
-            expect(fanartArtist).toHaveBeenCalledWith("artist-1", { interactive: undefined });
+            expect(fanartArtist).toHaveBeenCalledWith("9c070e4f-28c1-4b98-b371-d8514c31ba55", { interactive: undefined });
             expect(found).toEqual({ url: DEEZER_URL, source: "deezer" });
         });
 
         it("skips Fanart when the artist's id is one this app invented", async () => {
             deezerArtist.mockResolvedValue(DEEZER_URL);
 
-            await findArtistArtwork({ name: "Perturbator", mbid: "temp-9" });
+            await findArtistArtwork({ name: "Brad Sucks", mbid: "temp-9" });
 
             expect(fanartArtist).not.toHaveBeenCalled();
             expect(deezerArtist).toHaveBeenCalled();
@@ -225,7 +225,7 @@ describe("the one door for artwork", () => {
         it("skips Fanart when there is no MBID to ask it about", async () => {
             deezerArtist.mockResolvedValue(DEEZER_URL);
 
-            await findArtistArtwork({ name: "Perturbator" });
+            await findArtistArtwork({ name: "Brad Sucks" });
 
             expect(fanartArtist).not.toHaveBeenCalled();
         });
@@ -350,7 +350,7 @@ describe("the one door for artwork", () => {
             mockGet.mockResolvedValue(null);
             mockSetex.mockResolvedValue("OK");
             deezerAlbum.mockResolvedValue(DEEZER_URL);
-            await findAlbumArtwork({ ...ALBUM, rgMbid: "rg-2" });
+            await findAlbumArtwork({ ...ALBUM, rgMbid: "d0484284-1ee7-4157-951a-50f003cbcfb4" });
             const [, hitTtl] = mockSetex.mock.calls[0];
 
             expect(missValue).toBe("NONE");
@@ -385,13 +385,13 @@ describe("the one door for artwork", () => {
             deezerArtist.mockResolvedValue(DEEZER_URL);
 
             const result = await withArtistArtwork(
-                [{ name: "Perturbator", mbid: "artist-1" }, { name: "", mbid: null }],
+                [{ name: "Brad Sucks", mbid: "9c070e4f-28c1-4b98-b371-d8514c31ba55" }, { name: "", mbid: null }],
                 (a) => ({ name: a.name, mbid: a.mbid }),
                 (a, image) => ({ ...a, image }),
             );
 
             expect(result).toEqual([
-                { name: "Perturbator", mbid: "artist-1", image: DEEZER_URL },
+                { name: "Brad Sucks", mbid: "9c070e4f-28c1-4b98-b371-d8514c31ba55", image: DEEZER_URL },
                 { name: "", mbid: null, image: null },
             ]);
         });
@@ -400,13 +400,13 @@ describe("the one door for artwork", () => {
             deezerAlbum.mockResolvedValue(DEEZER_URL);
 
             const result = await withAlbumArtwork(
-                [{ id: 7, title: "Age Of Aquarius", artist: "Perturbator", coverUrl: GUESS as string | null }],
-                (i) => ({ rgMbid: "rg-1", artistName: i.artist, albumTitle: i.title, candidateUrl: i.coverUrl }),
+                [{ id: 7, title: "I Don't Know What I'm Doing", artist: "Brad Sucks", coverUrl: GUESS as string | null }],
+                (i) => ({ rgMbid: "10e85e9b-0f07-33d4-a927-18a273f86eca", artistName: i.artist, albumTitle: i.title, candidateUrl: i.coverUrl }),
                 (i, coverUrl) => ({ ...i, coverUrl }),
             );
 
             expect(result).toEqual([
-                { id: 7, title: "Age Of Aquarius", artist: "Perturbator", coverUrl: DEEZER_URL },
+                { id: 7, title: "I Don't Know What I'm Doing", artist: "Brad Sucks", coverUrl: DEEZER_URL },
             ]);
         });
 
