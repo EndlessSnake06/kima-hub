@@ -439,8 +439,7 @@ async function processDownload(
             jobId,
             parsedArtist,
             parsedAlbum,
-            mbid,
-            job.userId
+            mbid
         );
 
         if (!result.success) {

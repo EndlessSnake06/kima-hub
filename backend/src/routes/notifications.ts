@@ -681,7 +681,6 @@ router.post(
                                         artistName,
                                         albumTitle,
                                         failedJob.targetMbid,
-                                        req.user!.id,
                                         false
                                     );
 
@@ -782,14 +781,11 @@ router.post(
                 "../services/simpleDownloadManager"
             );
 
-            // Start download with the correct positional arguments
-            // startDownload(jobId, artistName, albumTitle, albumMbid, userId, isDiscovery)
             const result = await simpleDownloadManager.startDownload(
                 newJobRecord.id,
                 artistName,
                 albumTitle,
                 failedJob.targetMbid,
-                req.user!.id,
                 false // isDiscovery
             );
 

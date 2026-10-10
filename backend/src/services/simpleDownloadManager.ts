@@ -216,7 +216,6 @@ class SimpleDownloadManager {
         artistName: string,
         albumTitle: string,
         albumMbid: string,
-        _userId: string,
         isDiscovery: boolean = false
     ): Promise<{ success: boolean; correlationId?: string; error?: string; errorType?: AcquisitionErrorType; isRecoverable?: boolean }> {
         logger.debug(`\n Starting download: ${artistName} - ${albumTitle}${isDiscovery ? " (discovery)" : ""}`);
@@ -394,7 +393,6 @@ class SimpleDownloadManager {
                 metadata.artistName,
                 metadata.albumTitle,
                 job.targetMbid!,
-                job.userId,
                 !!job.discoveryBatchId
             );
             resumed++;

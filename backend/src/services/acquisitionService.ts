@@ -733,7 +733,6 @@ class AcquisitionService {
                 request.artistName,
                 request.albumTitle,
                 request.mbid,
-                context.userId,
                 isDiscovery
             );
 

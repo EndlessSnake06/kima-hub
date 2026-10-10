@@ -82,7 +82,7 @@ async function request(album: { mbid: string; title: string }) {
             metadata: { artistName: ARTIST, albumTitle: album.title, downloadType: "library", rootFolderPath: "/music" },
         },
     });
-    await manager.startDownload(job.id, ARTIST, album.title, album.mbid, USER);
+    await manager.startDownload(job.id, ARTIST, album.title, album.mbid);
     return () => prisma.downloadJob.findUniqueOrThrow({ where: { id: job.id } });
 }
 

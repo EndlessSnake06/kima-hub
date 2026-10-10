@@ -72,7 +72,7 @@ async function request() {
             metadata: { artistName: "Brad Sucks", albumTitle: IDK.title, downloadType: "library", rootFolderPath: "/music" },
         },
     });
-    await manager.startDownload(job.id, "Brad Sucks", IDK.title, IDK.mbid, USER);
+    await manager.startDownload(job.id, "Brad Sucks", IDK.title, IDK.mbid);
     return () => prisma.downloadJob.findUniqueOrThrow({ where: { id: job.id } });
 }
 
