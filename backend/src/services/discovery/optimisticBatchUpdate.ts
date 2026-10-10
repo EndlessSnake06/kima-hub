@@ -46,7 +46,7 @@ export async function updateBatchStatus(
 
     let retries = 0;
 
-    while (retries <= maxRetries) {
+    for (;;) {
         try {
             const current = await client.discoveryBatch.findUnique({
                 where: { id: batchId },
@@ -118,10 +118,4 @@ export async function updateBatchStatus(
             }
         }
     }
-
-    return {
-        success: false,
-        retries,
-        error: 'Update loop exited unexpectedly',
-    };
 }
