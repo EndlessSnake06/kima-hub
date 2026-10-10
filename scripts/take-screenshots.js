@@ -24,24 +24,10 @@ async function shot(page, filename) {
     console.log(`  [ok] ${filename}`);
 }
 
-// Pages with open streams never reach networkidle, so a timeout is normal.
 async function netIdle(page, ms = 5000) {
     try {
         await page.waitForLoadState("networkidle", { timeout: ms });
-    } catch {
-        /* keep going: the shot is taken either way */
-    }
-}
-
-async function settle(page, idleMs, pauseMs) {
-    await page.waitForLoadState("domcontentloaded");
-    await netIdle(page, idleMs);
-    await page.waitForTimeout(pauseMs);
-}
-
-async function visit(page, route, idleMs, pauseMs) {
-    await page.goto(`${BASE_URL}${route}`);
-    await settle(page, idleMs, pauseMs);
+    } catch { /* ok */ }
 }
 
 async function login(page) {
@@ -75,11 +61,17 @@ async function takeDesktopShots(browser) {
     await login(p);
 
     // Home
-    await visit(p, "/", 6000, 1500);
+    await p.goto(`${BASE_URL}/`);
+    await p.waitForLoadState("domcontentloaded");
+    await netIdle(p, 6000);
+    await p.waitForTimeout(1500);
     await shot(p, "desktop-home.png");
 
     // Library - albums tab
-    await visit(p, "/collection?tab=albums", 6000, 1500);
+    await p.goto(`${BASE_URL}/collection?tab=albums`);
+    await p.waitForLoadState("domcontentloaded");
+    await netIdle(p, 6000);
+    await p.waitForTimeout(1500);
     await shot(p, "desktop-library.png");
 
     // Album page
@@ -88,31 +80,44 @@ async function takeDesktopShots(browser) {
         await link.waitFor({ timeout: 8000 });
         await link.click();
         await p.waitForURL(/\/album\//, { timeout: 8000 });
-        await settle(p, 4000, 1500);
+        await p.waitForLoadState("domcontentloaded");
+        await netIdle(p, 4000);
+        await p.waitForTimeout(1500);
         await shot(p, "desktop-album.png");
     } catch (e) {
         console.warn("  [skip] desktop-album.png:", e.message);
     }
 
     // Artist page
-    await visit(p, "/collection?tab=artists", 6000, 1500);
+    await p.goto(`${BASE_URL}/collection?tab=artists`);
+    await p.waitForLoadState("domcontentloaded");
+    await netIdle(p, 6000);
+    await p.waitForTimeout(1500);
     try {
         const link = p.locator('a[href^="/artist/"]').first();
         await link.waitFor({ timeout: 8000 });
         await link.click();
         await p.waitForURL(/\/artist\//, { timeout: 8000 });
-        await settle(p, 4000, 1500);
+        await p.waitForLoadState("domcontentloaded");
+        await netIdle(p, 4000);
+        await p.waitForTimeout(1500);
         await shot(p, "desktop-artist.png");
     } catch (e) {
         console.warn("  [skip] desktop-artist.png:", e.message);
     }
 
     // Podcasts
-    await visit(p, "/podcasts", 6000, 1500);
+    await p.goto(`${BASE_URL}/podcasts`);
+    await p.waitForLoadState("domcontentloaded");
+    await netIdle(p, 6000);
+    await p.waitForTimeout(1500);
     await shot(p, "desktop-podcasts.png");
 
     // Audiobooks
-    await visit(p, "/audiobooks", 6000, 1500);
+    await p.goto(`${BASE_URL}/audiobooks`);
+    await p.waitForLoadState("domcontentloaded");
+    await netIdle(p, 6000);
+    await p.waitForTimeout(1500);
     await shot(p, "desktop-audiobooks.png");
 
     // Player (start music then screenshot)
@@ -124,19 +129,31 @@ async function takeDesktopShots(browser) {
     }
 
     // Settings
-    await visit(p, "/settings", 4000, 1500);
+    await p.goto(`${BASE_URL}/settings`);
+    await p.waitForLoadState("domcontentloaded");
+    await netIdle(p, 4000);
+    await p.waitForTimeout(1500);
     await shot(p, "desktop-settings.png");
 
     // Deezer browse
-    await visit(p, "/browse/playlists", 8000, 2000);
+    await p.goto(`${BASE_URL}/browse/playlists`);
+    await p.waitForLoadState("domcontentloaded");
+    await netIdle(p, 8000);
+    await p.waitForTimeout(2000);
     await shot(p, "deezer-browse.png");
 
     // Import / playlist
-    await visit(p, "/import/playlist", 4000, 1500);
+    await p.goto(`${BASE_URL}/import/playlist`);
+    await p.waitForLoadState("domcontentloaded");
+    await netIdle(p, 4000);
+    await p.waitForTimeout(1500);
     await shot(p, "spotify-import-preview.png");
 
     // Mood Mixer (home page, scroll to it)
-    await visit(p, "/", 6000, 1500);
+    await p.goto(`${BASE_URL}/`);
+    await p.waitForLoadState("domcontentloaded");
+    await netIdle(p, 6000);
+    await p.waitForTimeout(1500);
     try {
         // Look for mood mixer heading or the MoodMixer component
         const moodSection = p.locator("text=Mood Mixer, text=Create Your Vibe, text=Mood").first();
@@ -151,7 +168,8 @@ async function takeDesktopShots(browser) {
     } catch { /* ignore */ }
     await shot(p, "mood-mixer.png");
 
-    // Vibe map
+    // --- Vibe (nebula map, 3D) ---
+
     await p.goto(`${BASE_URL}/vibe`);
     await p.waitForLoadState("domcontentloaded");
     console.log("  waiting for vibe canvas (up to 40s)...");
@@ -198,12 +216,18 @@ async function takeDesktopShots(browser) {
         console.warn("  [skip] vibe-blend.png:", e.message);
     }
 
-    // Stats
-    await visit(p, "/stats", 6000, 2500);
+    // --- Stats (new in 1.11) ---
+    await p.goto(`${BASE_URL}/stats`);
+    await p.waitForLoadState("domcontentloaded");
+    await netIdle(p, 6000);
+    await p.waitForTimeout(2500);
     await shot(p, "desktop-stats.png");
 
-    // Discover
-    await visit(p, "/discover", 8000, 2500);
+    // --- Discover / similar artists (new in 1.11) ---
+    await p.goto(`${BASE_URL}/discover`);
+    await p.waitForLoadState("domcontentloaded");
+    await netIdle(p, 8000);
+    await p.waitForTimeout(2500);
     await shot(p, "desktop-discover.png");
 
     await ctx.close();
@@ -216,11 +240,17 @@ async function takeMobileShots(browser) {
     await login(p);
 
     // Mobile Home
-    await visit(p, "/", 6000, 1500);
+    await p.goto(`${BASE_URL}/`);
+    await p.waitForLoadState("domcontentloaded");
+    await netIdle(p, 6000);
+    await p.waitForTimeout(1500);
     await shot(p, "mobile-home.png");
 
     // Mobile Library
-    await visit(p, "/collection?tab=albums", 6000, 1500);
+    await p.goto(`${BASE_URL}/collection?tab=albums`);
+    await p.waitForLoadState("domcontentloaded");
+    await netIdle(p, 6000);
+    await p.waitForTimeout(1500);
     await shot(p, "mobile-library.png");
 
     // Mobile Player
