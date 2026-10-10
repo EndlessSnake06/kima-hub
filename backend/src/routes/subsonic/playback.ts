@@ -199,26 +199,7 @@ playbackRouter.all("/download.view", wrap(async (req, res) => {
     const id = req.query.id as string;
     if (!id) return subsonicError(req, res, SubsonicError.MISSING_PARAM, "Required parameter is missing: id");
 
-    const track = await prisma.track.findUnique({ where: { id } });
-    if (!track || !track.filePath) return subsonicError(req, res, SubsonicError.NOT_FOUND, "Song not found");
-
-    const absolutePath = resolveWithinMusicRoot(track.filePath);
-    if (!absolutePath) {
-        return subsonicError(req, res, SubsonicError.NOT_FOUND, "Song not found");
-    }
-
-    const streamingService = getAudioStreamingService(
-        config.music.transcodeCachePath,
-        config.music.transcodeCacheMaxGb,
-    );
-
-    const { filePath, mimeType } = await streamingService.getStreamFilePath(
-        track.id,
-        "original",
-        track.fileModified,
-        absolutePath,
-    );
-    await streamingService.streamFileWithRangeSupport(req, res, filePath, mimeType);
+    return streamTrackById(req, res, id, "original");
 }));
 
 // ===================== COVER ART =====================
