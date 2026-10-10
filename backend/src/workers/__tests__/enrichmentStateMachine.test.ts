@@ -38,8 +38,6 @@ jest.mock("../../services/enrichmentFailureService", () => ({
         cleanupOldResolved: jest.fn().mockResolvedValue(0),
         recordFailure: jest.fn().mockResolvedValue({}),
         resolveByEntity: jest.fn().mockResolvedValue(true),
-        clearFailure: jest.fn().mockResolvedValue(true),
-        clearAllFailures: jest.fn().mockResolvedValue(0),
     },
 }));
 
@@ -253,8 +251,8 @@ describe("Enrichment State Machine", () => {
         it("does not reset processing/queued rows on startup", async () => {
             await startUnifiedEnrichmentWorker();
 
-            // The crash-recovery sweep is replaced by the stage queue: the
-            // attempt lives in the record, so startup must not flip columns.
+            // The attempt lives in the stage record, so startup must not flip
+            // status columns.
             const crashResets = mockPrismaTrackUpdateMany.mock.calls.filter((call) => {
                 const where = JSON.stringify(call[0] ?? {});
                 return where.includes("processing") || where.includes("queued");
@@ -302,8 +300,8 @@ describe("Enrichment State Machine", () => {
             mockGetState.mockResolvedValue({ status: "idle" });
 
             // After the stop landed, a trigger still runs exactly one cycle
-            // (the immediate flag) — it does not re-arm the engine (design
-            // the timer must not auto-restart a stopped engine.
+            // (the immediate flag); it does not re-arm the engine, so the timer
+            // never auto-restarts a stopped engine.
             const result2 = await triggerEnrichmentNow();
 
             expect(result2).toBeDefined();
@@ -468,9 +466,8 @@ describe("Enrichment State Machine", () => {
         });
 
         it("does not drain a past-cap track to permanently_failed", async () => {
-            // The purgatory drain selected tracks with analysisRetryCount >= 3
-            // and rewrote their status. Selection now comes from the stage
-            // record, so no such select happens at all.
+            // Selection comes from the stage record, so tracks are never
+            // selected by analysisRetryCount to have their status rewritten.
             mockPrismaTrackFindMany.mockResolvedValue([
                 { id: "stuck", title: "Stuck", filePath: "/m/stuck.flac", analysisRetryCount: 5 },
             ]);
@@ -537,8 +534,8 @@ describe("Enrichment State Machine", () => {
                 }
                 return [];
             });
-            // A track still sits at analysisStatus 'pending' — under the old
-            // global audioInFlight gate this phase returned 0.
+            // A track still sits at analysisStatus 'pending'; that must not
+            // hold back the embedding phase.
             mockPrismaTrackCount.mockResolvedValue(1);
 
             await expect(executeVibePhase()).resolves.toBe(1);

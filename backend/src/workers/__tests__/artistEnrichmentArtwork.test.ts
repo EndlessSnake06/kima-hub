@@ -137,9 +137,7 @@ describe("the enrichment worker asks every source", () => {
         });
 
         it("stores whatever image the one door found", async () => {
-            // The old chain was Fanart then Deezer and stopped. Any artist
-            // only another source had a picture of got none; now the door
-            // walks the whole list and the worker stores whatever it finds.
+            // The door walks every source; the worker stores whatever it finds.
             mockFindArtistArtwork.mockResolvedValue({ url: HERO, source: "deezer" });
             mockDownloadAndStoreImage.mockResolvedValue("native:artists/art-1.jpg");
 
@@ -172,8 +170,8 @@ describe("the enrichment worker asks every source", () => {
         ];
 
         it("passes the artist's name, so Deezer can actually be searched", async () => {
-            // The change that matters. With only a release-group id the sources
-            // can ask the archive and nothing else, which is the original bug.
+            // With only a release-group id the sources can ask the archive and
+            // nothing else.
             mockAlbumFindMany.mockResolvedValue(uncovered);
 
             await enrichSimilarArtist(artist);

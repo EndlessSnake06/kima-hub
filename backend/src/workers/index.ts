@@ -91,7 +91,7 @@ scanWorker.on("failed", (job, err) => {
 });
 
 scanWorker.on("active", (job) => {
-    logger.debug(` Scan job ${job.id} started`);
+    logger.debug(`Scan job ${job.id} started`);
 });
 
 scanWorker.on("error", (err) => {
@@ -143,7 +143,7 @@ importWorker.on("error", (err) => {
 
 logger.debug("BullMQ workers registered and event handlers attached");
 
-// Start Discovery Weekly cron scheduler (Sundays at 8 PM)
+// Start Discovery Weekly cron scheduler (Mondays at 5 AM)
 startDiscoverWeeklyCron();
 
 // Start data cleanup cron scheduler (daily at 2 AM)

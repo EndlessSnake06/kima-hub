@@ -79,7 +79,6 @@ jest.mock("../../services/enrichmentFailureService", () => ({
         recordFailure: jest.fn().mockResolvedValue({}),
         cleanupOrphanedFailures: jest.fn().mockResolvedValue({ cleaned: 0, checked: 0 }),
         cleanupOldResolved: jest.fn().mockResolvedValue(0),
-        clearAllFailures: jest.fn().mockResolvedValue(0),
     },
 }));
 
@@ -294,10 +293,8 @@ describe("per-track stage gating", () => {
         });
     });
 
-    describe("the deleted workarounds", () => {
-        it("does not drain a purgatory track to permanently_failed", async () => {
-            // A track past its retry cap: the old purgatory drain condemned it
-            // (or "recovered" it) by rewriting analysisStatus.
+    describe("retry-capped tracks", () => {
+        it("re-offers a failed track that is still retryable instead of condemning it", async () => {
             await seedTrack(id("stuck"), {
                 analysisStatus: "pending",
                 analysisStatusOfRecord: "failed",
@@ -311,15 +308,13 @@ describe("per-track stage gating", () => {
                 select: { analysisStatus: true },
             });
             // The record is due and retryable, so the dispatch re-offers it and
-            // stamps the column 'processing' for the running attempt (the
-            // backend stamps state, the analyzer reports). Nothing condemned
-            // the track; the record still holds failed + retryable + attempt 5.
+            // stamps the column 'processing' for the running attempt.
             expect(track?.analysisStatus).toBe("processing");
         });
 
         it("does not flush audio:analysis:queue on a stale analyzer heartbeat", async () => {
-            // Stale heartbeat with work queued: the old dead-analyzer reset
-            // flushed the whole list and flipped every 'queued' row to pending.
+            // Stale heartbeat with work queued: the list is left alone and no
+            // 'queued' row flips to pending.
             jest.mocked(mockRedis.get).mockResolvedValue(
                 String(Date.now() - 10 * 60_000),
             );
@@ -344,16 +339,14 @@ describe("per-track stage gating", () => {
                 where: { id: id("mid") },
                 select: { analysisStatus: true },
             });
-            // Crash recovery is replaced by the stage queue: the record owns
-            // the attempt, so startup does not flip the column back.
+            // The stage record owns the attempt, so startup does not flip the
+            // column back.
             expect(track?.analysisStatus).toBe("processing");
         });
 
         it("does not re-queue tracks from the enrichmentTags record", async () => {
-            // The record-driven re-queue selected tracks whose enrichmentTags
-            // was empty and re-added `track-<id>`. Selection now comes from
-            // the stage record, so a track whose recording stage is answered
-            // is not re-offered just because its tags are empty.
+            // Selection comes from the stage record, so a track whose recording
+            // stage is answered is not re-offered just because its tags are empty.
             await seedTrack(id("answered"), {
                 analysisStatus: "completed",
                 recordingStatus: "done",
@@ -368,7 +361,7 @@ describe("per-track stage gating", () => {
         });
     });
 
-    describe("the stage queue replaces the recurring re-sweep", () => {
+    describe("the stage queue", () => {
         it("offers each stage from its own record, gated per track", async () => {
             // A: recording answered, analysis owed. B: analysis answered,
             // embedding owed. Both must be offered for their owed stage only.
@@ -438,9 +431,8 @@ describe("per-track stage gating", () => {
             expect(await executeAudioPhase()).toBe(0);
 
             // The lease elapses (the analyzer died mid-attempt): the record
-            // comes back on the SAME attempt — only the redelivery count moves
-            // so the offer key changes (`-r1`) without burning a
-            // ladder rung.
+            // comes back on the SAME attempt; only the redelivery count moves,
+            // so the offer key changes (`-r1`) without burning a ladder rung.
             await prisma.$executeRawUnsafe(
                 `UPDATE "TrackStage" SET "nextRetryAt" = now() - interval '1 minute'
                   WHERE "trackId" = $1 AND stage = 'analysis'`,
@@ -472,12 +464,10 @@ describe("per-track stage gating", () => {
         });
     });
 
-    describe("the real dependency graph (principle 4: each stage waits only for what it reads)", () => {
+    describe("stage dependencies: each stage waits only for what it reads", () => {
         it("still offers analysis for a track whose recording stage failed", async () => {
             // MusicBrainz never answered the identity question, but the file
-            // itself is fine: analysis reads only the audio. The 25 tracks the
-            // old engine stranded are exactly this shape — recording failed,
-            // retry due, and analysis never offered behind it.
+            // itself is fine: analysis reads only the audio.
             await seedTrack(id("unheard"), {
                 recordingStatus: "failed",
                 analysisStatus: "pending",

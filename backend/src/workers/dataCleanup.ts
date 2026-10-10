@@ -64,9 +64,6 @@ async function cleanupDiscoveryBatches(): Promise<number> {
 }
 
 export function startDataCleanupCron() {
-    // Run daily at 2 AM
-    // Cron format: minute hour day-of-month month day-of-week
-    // "0 2 * * *" = At 02:00 every day
     const schedule = "0 2 * * *";
 
     logger.debug(
@@ -74,30 +71,22 @@ export function startDataCleanupCron() {
     );
 
     cronTask = cron.schedule(schedule, async () => {
-        logger.debug(`\n === Data Cleanup Cron Triggered ===`);
-        logger.debug(`   Time: ${new Date().toLocaleString()}`);
+        logger.debug("[DataCleanup] Triggered");
 
         try {
-            const jobsDeleted = await cleanupDownloadJobs();
+            const { downloadJobs, webhookEvents, discoveryBatches, total } = await runDataCleanup();
             logger.debug(
-                `   Cleaned up ${jobsDeleted} old download job(s) (>${RETENTION_DAYS.downloadJobs} days)`
+                `   Cleaned up ${downloadJobs} old download job(s) (>${RETENTION_DAYS.downloadJobs} days)`
+            );
+            logger.debug(
+                `   Cleaned up ${webhookEvents} old webhook event(s) (>${RETENTION_DAYS.webhookEvents} days)`
+            );
+            logger.debug(
+                `   Cleaned up ${discoveryBatches} old discovery batch(es) (>${RETENTION_DAYS.discoveryBatches} days)`
             );
 
-            const eventsDeleted = await cleanupWebhookEvents();
-            logger.debug(
-                `   Cleaned up ${eventsDeleted} old webhook event(s) (>${RETENTION_DAYS.webhookEvents} days)`
-            );
-
-            const batchesDeleted = await cleanupDiscoveryBatches();
-            logger.debug(
-                `   Cleaned up ${batchesDeleted} old discovery batch(es) (>${RETENTION_DAYS.discoveryBatches} days)`
-            );
-
-            const totalDeleted = jobsDeleted + eventsDeleted + batchesDeleted;
-            if (totalDeleted > 0) {
-                logger.debug(
-                    `   Total records cleaned: ${totalDeleted}`
-                );
+            if (total > 0) {
+                logger.debug(`   Total records cleaned: ${total}`);
             } else {
                 logger.debug(`   No old records to clean up`);
             }
@@ -117,10 +106,7 @@ export function stopDataCleanupCron() {
     }
 }
 
-/**
- * Manual trigger for testing or on-demand cleanup
- * Returns total number of records deleted
- */
+/** Delete every expired row from the three tables and report how many went from each. */
 export async function runDataCleanup(): Promise<{
     downloadJobs: number;
     webhookEvents: number;

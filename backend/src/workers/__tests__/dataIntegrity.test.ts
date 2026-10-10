@@ -1,6 +1,6 @@
 /**
  * The integrity check deletes only what a scan or re-discovery recreates
- * (expired exclusions, orphaned DiscoveryTrack rows, stale download jobs) and
+ * (expired exclusions, orphaned DiscoveryTrack rows, old notifications) and
  * only reports rows that carry a decision: orphaned DISCOVER albums, ghost
  * albums and orphaned OwnedAlbum keeps. Real database, no prisma mock.
  */

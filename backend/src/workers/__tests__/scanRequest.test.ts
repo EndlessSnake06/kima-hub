@@ -53,7 +53,7 @@ describe('scanDedupeKey', () => {
 });
 
 describe('requestScan', () => {
-    test('enqueues with a BullMQ-valid jobId (the throw this card fixes)', async () => {
+    test('enqueues with a BullMQ-valid jobId', async () => {
         mockedQueue.getJob.mockResolvedValue(undefined as never);
         mockedQueue.add.mockResolvedValue({} as never);
 

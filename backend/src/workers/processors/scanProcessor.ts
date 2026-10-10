@@ -52,7 +52,6 @@ export async function processScan(
     } = job.data;
     const manual = source === "manual-scan";
 
-    logger.debug(`\n═══════════════════════════════════════════════`);
     logger.debug(`[ScanJob ${job.id}] Starting library scan for user ${userId}`);
     if (source) {
         logger.debug(`[ScanJob ${job.id}] Scan source: ${source}`);
@@ -63,7 +62,6 @@ export async function processScan(
     if (artistMbid) {
         logger.debug(`[ScanJob ${job.id}] Artist MBID: ${artistMbid}`);
     }
-    logger.debug(`═══════════════════════════════════════════════`);
 
     // Report progress
     await job.updateProgress(0);

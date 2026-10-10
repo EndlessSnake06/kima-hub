@@ -78,9 +78,7 @@ jest.mock("../../services/enrichmentFailureService", () => ({
         getFailures: jest.fn().mockResolvedValue({ failures: [], total: 0 }),
         getFailure: jest.fn().mockResolvedValue(null),
         getFailureCounts: jest.fn().mockResolvedValue({}),
-        skipFailures: jest.fn().mockResolvedValue(0),
         resetRetryCount: jest.fn().mockResolvedValue(0),
-        deleteFailures: jest.fn().mockResolvedValue(0),
     },
 }));
 

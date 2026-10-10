@@ -1,8 +1,8 @@
 /**
  * Periodic database cleanup. It deletes only rows that carry no user decision:
  * expired exclusions, orphaned discovery tracks, temp and album-less artists,
- * and download jobs and notifications older than 30 days. Albums and OwnedAlbum
- * keeps are reported for a human, never deleted.
+ * and notifications older than 30 days. Albums and OwnedAlbum keeps are reported
+ * for a human, never deleted.
  */
 
 import { logger } from "../utils/logger";
@@ -17,12 +17,11 @@ interface IntegrityReport {
     orphanedOwnedAlbums: number;
     consolidatedArtists: number;
     orphanedArtists: number;
-    oldDownloadJobs: number;
     oldNotifications: number;
 }
 
 export async function runDataIntegrityCheck(): Promise<IntegrityReport> {
-    logger.debug("\nRunning data integrity check...");
+    logger.debug("[DataIntegrity] Running check");
 
     const report: IntegrityReport = {
         expiredExclusions: 0,
@@ -32,7 +31,6 @@ export async function runDataIntegrityCheck(): Promise<IntegrityReport> {
         orphanedOwnedAlbums: 0,
         consolidatedArtists: 0,
         orphanedArtists: 0,
-        oldDownloadJobs: 0,
         oldNotifications: 0,
     };
 
@@ -180,7 +178,7 @@ export async function runDataIntegrityCheck(): Promise<IntegrityReport> {
         
         if (!albumMatches && !artistNameMatches && !artistMbidMatches) continue;
         
-        // KEY FIX: Check if artist has ANY protected OwnedAlbum records:
+        // An artist with any protected OwnedAlbum record is kept:
         // - native_scan = real user library from before discovery
         // - discovery_liked = user liked a discovery album (should be kept!)
         const hasProtectedOwnedAlbum = await prisma.ownedAlbum.findFirst({
@@ -362,53 +360,16 @@ export async function runDataIntegrityCheck(): Promise<IntegrityReport> {
         report.orphanedArtists = orphanedArtists.length;
     }
 
-    // 9. Clean up old DownloadJob records (older than 30 days, completed/failed)
+    // 9. Notifications are news, not history: drop anything older than 30 days
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-    const oldJobs = await prisma.downloadJob.deleteMany({
-        where: {
-            status: { in: ["completed", "failed"] },
-            completedAt: { lt: thirtyDaysAgo },
-        },
-    });
-    report.oldDownloadJobs = oldJobs.count;
-    if (oldJobs.count > 0) {
-        logger.debug(`     Removed ${oldJobs.count} old download jobs`);
-    }
-
-    // 10. Notifications are news, not history: drop anything older than 30 days
     const oldNotifications = await prisma.notification.deleteMany({
         where: { createdAt: { lt: thirtyDaysAgo } },
     });
     report.oldNotifications = oldNotifications.count;
 
     // Summary
-    logger.debug("\nData integrity check complete:");
-    logger.debug(`   - Expired exclusions: ${report.expiredExclusions}`);
-    logger.debug(
-        `   - Orphaned discovery tracks: ${report.orphanedDiscoveryTracks}`
-    );
-    logger.debug(`   - Mislocated albums (LIBRARY->DISCOVER): ${report.mislocatedAlbums}`);
-    logger.debug(`   - Orphaned albums: ${report.orphanedAlbums}`);
-    logger.debug(`   - Orphaned OwnedAlbum keeps: ${report.orphanedOwnedAlbums}`);
-    logger.debug(`   - Consolidated artists: ${report.consolidatedArtists}`);
-    logger.debug(`   - Orphaned artists: ${report.orphanedArtists}`);
-    logger.debug(`   - Old download jobs: ${report.oldDownloadJobs}`);
-    logger.debug(`   - Old notifications: ${report.oldNotifications}`);
+    logger.debug(`[DataIntegrity] Check complete: ${JSON.stringify(report)}`);
 
     return report;
-}
-
-// CLI entry point
-if (require.main === module) {
-    runDataIntegrityCheck()
-        .then(() => {
-            logger.debug("\nData integrity check completed successfully");
-            process.exit(0);
-        })
-        .catch((err) => {
-            logger.error("\n Data integrity check failed:", err);
-            process.exit(1);
-        });
 }

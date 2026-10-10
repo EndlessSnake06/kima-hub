@@ -27,9 +27,8 @@ export async function processDiscoverWeekly(
     await job.updateProgress(10);
 
     try {
-        // Note: The discoverWeeklyService.generatePlaylist doesn't have progress callback yet
-        // For now, we'll just report progress at key stages
-        await job.updateProgress(20); // Starting generation
+        // generatePlaylist has no progress callback; progress is reported at key stages.
+        await job.updateProgress(20);
 
         logger.debug(
             `[DiscoverJob ${job.id}] Calling discoverWeeklyService.generatePlaylist...`

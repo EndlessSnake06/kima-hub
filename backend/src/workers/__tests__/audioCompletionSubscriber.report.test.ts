@@ -77,7 +77,7 @@ async function unseed(id: string) {
     await prisma.$executeRawUnsafe(`DELETE FROM "Artist" WHERE id = $1`, `art_${id}`);
 }
 
-describe("audio completion reports (the analyzer reports, the backend writes)", () => {
+describe("audio completion reports: the analyzer reports, the backend writes", () => {
     beforeAll(async () => {
         await startAudioCompletionSubscriber();
         expect(mockListeners.length).toBeGreaterThan(0);
