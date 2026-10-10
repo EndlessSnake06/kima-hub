@@ -111,7 +111,7 @@ export function invalidateUserCache(userId: string): void {
     userCache.delete(userId);
 }
 
-/** Drop everything; used by tests and on shutdown. */
+/** Empty the user cache. Tests call this between cases. */
 export function clearUserCache(): void {
     userCache.clear();
 }
