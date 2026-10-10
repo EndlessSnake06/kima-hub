@@ -10,7 +10,6 @@ import { prisma } from "../../utils/db";
 import { loadScenario, startLidarrReplay, type LidarrReplay } from "../../__tests__/helpers/lidarrReplay";
 import { closeEngineConnections } from "../../__tests__/helpers/engineConnections";
 import { recoverMissedEvents } from "../lidarrHistoryRecovery";
-import { queueCleaner } from "../../jobs/queueCleaner";
 
 const USER = "history_recovery_user";
 const recorded = loadScenario("missing-tracks");
@@ -36,7 +35,6 @@ afterEach(async () => {
 });
 
 afterAll(async () => {
-    queueCleaner.stop();
     await prisma.webhookEvent.deleteMany({ where: { source: "lidarr" } });
     await prisma.user.deleteMany({ where: { id: USER } });
     await closeEngineConnections();

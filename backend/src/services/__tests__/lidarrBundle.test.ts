@@ -53,7 +53,6 @@ afterEach(async () => {
 });
 
 afterAll(async () => {
-    (await import("../../jobs/queueCleaner")).queueCleaner.stop();
     await prisma.user.deleteMany({ where: { id: USER } });
     await mb.close();
     delete process.env.MUSICBRAINZ_BASE_URL;

@@ -54,7 +54,6 @@ afterEach(async () => {
 
 afterAll(async () => {
     // A grab starts the queue cleaner's 30-second loop; it would outlive the suite.
-    (await import("../../jobs/queueCleaner")).queueCleaner.stop();
     await prisma.user.deleteMany({ where: { id: USER } });
     await mb.close();
     delete process.env.MUSICBRAINZ_BASE_URL;

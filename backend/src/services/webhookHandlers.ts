@@ -5,7 +5,6 @@
 
 import { simpleDownloadManager } from "./simpleDownloadManager";
 import { rejectSingleTrackPost } from "./lidarrFailures";
-import { queueCleaner } from "../jobs/queueCleaner";
 import { requestScan } from "../workers/scanRequest";
 import { prisma } from "../utils/db";
 import { logger } from "../utils/logger";
@@ -116,7 +115,6 @@ async function handleGrab(payload: any): Promise<string | undefined> {
         return undefined;
     }
     await rejectSingleTrackPost(downloadId, payload.release?.releaseTitle);
-    queueCleaner.start();
     return firstJobId;
 }
 

@@ -13,7 +13,6 @@ import { invalidateSystemSettingsCache } from "../../utils/systemSettings";
 import { loadScenario, startLidarrReplay, type LidarrReplay } from "../../__tests__/helpers/lidarrReplay";
 import { closeEngineConnections } from "../../__tests__/helpers/engineConnections";
 import webhookRoutes from "../webhooks";
-import { queueCleaner } from "../../jobs/queueCleaner";
 
 const USER = "webhook_route_user";
 const complete = loadScenario("complete");
@@ -61,7 +60,6 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
-    queueCleaner.stop();
     await lidarr.close();
     await lidarrEvents();
     await prisma.downloadJob.deleteMany({ where: { userId: USER } });

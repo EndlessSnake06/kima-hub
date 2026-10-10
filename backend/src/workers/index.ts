@@ -215,6 +215,18 @@ async function runReconciliationCycle() {
 schedule("reconciliation", runReconciliationCycle, 2 * 60 * 1000);
 logger.debug("Download reconciliation scheduled (every 2 minutes, self-rescheduling)");
 
+async function runStuckWorkCycle() {
+    try {
+        await withTimeout(queueCleaner.recoverStuckWork(), 120000, "stuck work recovery timed out");
+    } catch (err) {
+        logger.error("Stuck work recovery failed:", err);
+    } finally {
+        schedule("stuck-work", runStuckWorkCycle, 2 * 60 * 1000);
+    }
+}
+
+schedule("stuck-work", runStuckWorkCycle, 60 * 1000);
+
 /**
  * Gracefully shutdown all workers and cleanup resources
  */

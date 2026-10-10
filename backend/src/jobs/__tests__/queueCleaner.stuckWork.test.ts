@@ -1,0 +1,64 @@
+/**
+ * Stuck work is recovered whatever the download source: with no Lidarr set up at
+ * all, a Spotify import stuck scanning past its deadline is failed and a Discover
+ * batch stuck past its deadline is closed. Real database.
+ */
+
+import { prisma } from "../../utils/db";
+import { invalidateSystemSettingsCache } from "../../utils/systemSettings";
+import { closeEngineConnections } from "../../__tests__/helpers/engineConnections";
+import { queueCleaner } from "../queueCleaner";
+
+jest.setTimeout(30_000);
+
+const USER = "stuck_work_user";
+const HOURS = 60 * 60 * 1000;
+
+beforeAll(async () => {
+    await prisma.systemSettings.upsert({
+        where: { id: "default" },
+        create: { id: "default", lidarrEnabled: false, lidarrUrl: null, lidarrApiKey: null },
+        update: { lidarrEnabled: false, lidarrUrl: null, lidarrApiKey: null },
+    });
+    invalidateSystemSettingsCache();
+    await prisma.user.deleteMany({ where: { id: USER } });
+    await prisma.user.create({ data: { id: USER, username: USER, passwordHash: "x", role: "user", tokenVersion: 0 } });
+});
+
+afterAll(async () => {
+    await prisma.user.deleteMany({ where: { id: USER } });
+    await closeEngineConnections();
+});
+
+it("fails a Spotify import left scanning past its deadline, with no Lidarr set up", async () => {
+    const job = await prisma.spotifyImportJob.create({
+        data: {
+            userId: USER, spotifyPlaylistId: "37i9dQZF1DXcBWIGoYBM5M", playlistName: "Today's Top Hits",
+            status: "scanning", albumsTotal: 1, tracksTotal: 1, pendingTracks: [],
+        },
+    });
+    await prisma.$executeRaw`UPDATE "SpotifyImportJob" SET "updatedAt" = now() - interval '45 minutes' WHERE id = ${job.id}`;
+
+    await queueCleaner.recoverStuckWork();
+
+    expect(await prisma.spotifyImportJob.findUniqueOrThrow({ where: { id: job.id } })).toMatchObject({
+        status: "failed",
+        error: "Scan timed out after 30 minutes",
+    });
+});
+
+it("closes a Discover batch left downloading past its two-hour limit, with no Lidarr set up", async () => {
+    const batch = await prisma.discoveryBatch.create({
+        data: {
+            userId: USER, weekStart: new Date("2026-10-05T00:00:00.000Z"), targetSongCount: 1, totalAlbums: 1,
+            status: "downloading", createdAt: new Date(Date.now() - 3 * HOURS),
+        },
+    });
+
+    await queueCleaner.recoverStuckWork();
+
+    expect(await prisma.discoveryBatch.findUniqueOrThrow({ where: { id: batch.id } })).toMatchObject({
+        status: "failed",
+        errorMessage: "Batch timed out after 2 hours",
+    });
+});

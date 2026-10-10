@@ -16,7 +16,6 @@ import {
     getGpuStatus,
     setGpuToggles,
 } from "../services/gpuRuntime";
-import { queueCleaner } from "../jobs/queueCleaner";
 import { configureLidarrWebhook } from "../services/lidarrWebhookSetup";
 import { createLidarrClient } from "../services/lidarrClient";
 import { safeError } from "../utils/errors";
@@ -579,35 +578,6 @@ router.post("/test-spotify", async (req, res) => {
   } catch (error) {
     safeError(res, "Spotify credentials test", error);
   }
-});
-
-// Get queue cleaner status
-router.get("/queue-cleaner-status", (_req, res) => {
-  res.json(queueCleaner.getStatus());
-});
-
-// Start queue cleaner manually
-router.post("/queue-cleaner/start", async (_req, res) => {
-  try {
-    await queueCleaner.start();
-    res.json({
-      success: true,
-      message: "Queue cleaner started",
-      status: queueCleaner.getStatus(),
-    });
-  } catch (error) {
-    safeError(res, "Start queue cleaner", error);
-  }
-});
-
-// Stop queue cleaner manually
-router.post("/queue-cleaner/stop", (_req, res) => {
-  queueCleaner.stop();
-  res.json({
-    success: true,
-    message: "Queue cleaner stopped",
-    status: queueCleaner.getStatus(),
-  });
 });
 
 // Redis prefixes "Clear Caches" must never delete: queues, sessions, the

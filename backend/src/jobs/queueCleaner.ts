@@ -1,18 +1,11 @@
 import { prisma } from "../utils/db";
 import { logger } from "../utils/logger";
-import { getSystemSettings } from "../utils/systemSettings";
 import { requestScan } from "../workers/scanRequest";
 import { simpleDownloadManager } from "../services/simpleDownloadManager";
 import { artistIdentityKey } from "../services/artistIdentity";
 import { editionlessKey } from "../services/albumIdentity";
 
 class QueueCleanerService {
-    private isRunning = false;
-    private checkInterval = 30000; // 30 seconds when active
-    private emptyQueueChecks = 0;
-    private maxEmptyChecks = 3; // Stop after 3 consecutive empty checks
-    private timeoutId?: NodeJS.Timeout;
-
     // Imported on first use and cached
     private discoverWeeklyService: typeof import("../services/discoverWeekly")["discoverWeeklyService"] | null = null;
     private spotifyImportService: typeof import("../services/spotifyImport")["spotifyImportService"] | null = null;
@@ -33,97 +26,23 @@ class QueueCleanerService {
         return this.spotifyImportService;
     }
 
-    /** Starts the polling loop; calling it while already running does nothing. */
-    async start() {
-        if (this.isRunning) {
-            logger.debug("Queue cleaner already running");
-            return;
+    /**
+     * Moves on Discover batches and Spotify imports that stopped making progress: past their
+     * deadline a batch is completed or failed and an import re-scanned or failed. Runs on a
+     * schedule whatever the download source.
+     */
+    async recoverStuckWork(): Promise<void> {
+        const [batches, imports] = await Promise.all([
+            prisma.discoveryBatch.count({ where: { status: { in: ["downloading", "scanning"] } } }),
+            prisma.spotifyImportJob.count({ where: { status: { in: ["scanning", "downloading"] } } }),
+        ]);
+        if (batches > 0) {
+            const forced = await (await this.getDiscoverWeeklyService()).checkStuckBatches();
+            if (forced > 0) logger.debug(`Force-completed ${forced} stuck discovery batch(es)`);
         }
-
-        this.isRunning = true;
-        this.emptyQueueChecks = 0;
-        logger.debug("Queue cleaner started (checking every 30s)");
-
-        await this.runCleanup();
-    }
-
-    stop() {
-        if (this.timeoutId) {
-            clearTimeout(this.timeoutId);
-            this.timeoutId = undefined;
-        }
-        this.isRunning = false;
-        logger.debug("Queue cleaner stopped (queue empty)");
-    }
-
-    private async runCleanup() {
-        if (!this.isRunning) return;
-
-        try {
-            const settings = await getSystemSettings();
-
-            if (!settings?.lidarrUrl || !settings?.lidarrApiKey) {
-                logger.debug("Lidarr not configured, stopping queue cleaner");
-                this.stop();
-                return;
-            }
-
-            // Discover batches past their deadline
-            const discoverWeeklyService = await this.getDiscoverWeeklyService();
-            const stuckBatchCount =
-                await discoverWeeklyService.checkStuckBatches();
-            if (stuckBatchCount > 0) {
-                logger.debug(
-                    `Force-completed ${stuckBatchCount} stuck discovery batch(es)`
-                );
-                this.emptyQueueChecks = 0;
-            }
-
-            // Spotify imports stuck scanning or downloading
-            const stuckImportCount = await this.checkStuckSpotifyImports();
-            if (stuckImportCount > 0) {
-                logger.debug(
-                    `Recovered ${stuckImportCount} stuck Spotify import job(s)`
-                );
-                this.emptyQueueChecks = 0;
-            }
-
-            // Stop once nothing is queued
-            const activeJobs = await prisma.downloadJob.count({
-                where: {
-                    status: { in: ["pending", "processing"] },
-                },
-            });
-
-            const hadActivity = activeJobs > 0;
-
-            if (!hadActivity) {
-                this.emptyQueueChecks++;
-                logger.debug(
-                    `Queue empty (${this.emptyQueueChecks}/${this.maxEmptyChecks})`
-                );
-
-                if (this.emptyQueueChecks >= this.maxEmptyChecks) {
-                    logger.debug(
-                        `No activity for ${this.maxEmptyChecks} checks - stopping cleaner`
-                    );
-                    this.stop();
-                    return;
-                }
-            } else {
-                this.emptyQueueChecks = 0;
-            }
-
-            this.timeoutId = setTimeout(
-                () => this.runCleanup(),
-                this.checkInterval
-            );
-        } catch (error) {
-            logger.error("Queue cleanup error:", error);
-            this.timeoutId = setTimeout(
-                () => this.runCleanup(),
-                this.checkInterval
-            );
+        if (imports > 0) {
+            const recovered = await this.checkStuckSpotifyImports();
+            if (recovered > 0) logger.debug(`Recovered ${recovered} stuck Spotify import job(s)`);
         }
     }
 
@@ -248,16 +167,6 @@ class QueueCleanerService {
             logger.debug(`[LOCAL-RECONCILE] ${reconciled} job(s) found in the library`);
         }
         return { reconciled };
-    }
-
-    getStatus() {
-        return {
-            isRunning: this.isRunning,
-            emptyQueueChecks: this.emptyQueueChecks,
-            nextCheckIn: this.isRunning
-                ? `${this.checkInterval / 1000}s`
-                : "stopped",
-        };
     }
 }
 
