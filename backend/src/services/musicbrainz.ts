@@ -354,44 +354,6 @@ class MusicBrainzService {
         });
     }
 
-    /**
-     * Browse release-groups by style tag (replaces tag.getTopAlbums).
-     * Results come back in MB relevance order.
-     */
-    async searchReleaseGroupsByTag(
-        tag: string,
-        limit = 20
-    ): Promise<Outcome<Array<{ id: string; title: string; artistName: string }>>> {
-        const cacheKey = `mb:tag:albums:${tag}:${limit}`;
-        return this.cachedOutcome(cacheKey, async () => {
-            try {
-                const response = await this.rateLimitedGet("/release-group", {
-                    params: {
-                        query: `tag:"${this.escapeLucene(tag)}" AND primary-type:album`,
-                        limit,
-                        fmt: "json",
-                    },
-                });
-                const groups = (response.data["release-groups"] || [])
-                    .filter((rg: any) => rg?.id && rg?.title)
-                    .map((rg: any) => ({
-                        id: rg.id,
-                        title: rg.title,
-                        artistName:
-                            rg["artist-credit"]?.[0]?.name ||
-                            rg["artist-credit"]?.[0]?.artist?.name ||
-                            "",
-                    }));
-                if (groups.length === 0) {
-                    return absent({ tag, limit, hits: 0 });
-                }
-                return answered(groups, { tag, limit, hits: groups.length });
-            } catch (err: any) {
-                return this.classifyError(err, false);
-            }
-        });
-    }
-
     async getReleaseGroup(rgMbid: string): Promise<Outcome<any>> {
         const cacheKey = `mb:rg:${rgMbid}`;
         return this.cachedOutcome(cacheKey, async () => {
@@ -399,26 +361,6 @@ class MusicBrainzService {
                 const response = await this.rateLimitedGet(
                     `/release-group/${rgMbid}`,
                     { params: { inc: "artist-credits+releases", fmt: "json" } }
-                );
-                return answered(response.data, { rgMbid, source: "musicbrainz" });
-            } catch (err: any) {
-                return this.classifyError(err, true);
-            }
-        });
-    }
-
-    async getReleaseGroupDetails(rgMbid: string): Promise<Outcome<any>> {
-        const cacheKey = `mb:rg:details:${rgMbid}`;
-        return this.cachedOutcome(cacheKey, async () => {
-            try {
-                const response = await this.rateLimitedGet(
-                    `/release-group/${rgMbid}`,
-                    {
-                        params: {
-                            inc: "artist-credits+releases+labels",
-                            fmt: "json",
-                        },
-                    }
                 );
                 return answered(response.data, { rgMbid, source: "musicbrainz" });
             } catch (err: any) {
@@ -604,6 +546,14 @@ class MusicBrainzService {
     /**
      * MusicBrainz Lucene requires escaping: + - && || ! ( ) { } [ ] ^ " ~ * ? : \ /
      */
+    /** The exact then fuzzy name queries for a recording; none when the title is all brackets. */
+    private recordingQueries(expected: ExpectedRecording): string[] {
+        const title = this.escapeLucene(this.normalizeForSearch(expected.title));
+        const name = this.escapeLucene(this.normalizeForSearch(expected.artists[0] ?? ""));
+        if (!title.trim()) return [];
+        return [`recording:"${title}" AND artist:"${name}"`, `${title} AND artist:${name}`];
+    }
+
     private escapeLucene(str: string): string {
         return str.replace(/([+\-&|!(){}[\]^"~*?:\\/])/g, "\\$1");
     }
@@ -785,10 +735,8 @@ class MusicBrainzService {
         const artist = expected.artists[0] ?? "";
         const cacheKey = `mb:search:recording:${artist}:${expected.title}:${expected.durationSec ?? ""}`;
         return this.cachedOutcome(cacheKey, async () => {
-            const title = this.escapeLucene(this.normalizeForSearch(expected.title));
-            const name = this.escapeLucene(this.normalizeForSearch(artist));
-            if (!title.trim()) return absent({ title: expected.title, artist, reason: "nothing to search by" });
-            const queries = [`recording:"${title}" AND artist:"${name}"`, `${title} AND artist:${name}`];
+            const queries = this.recordingQueries(expected);
+            if (queries.length === 0) return absent({ title: expected.title, artist, reason: "nothing to search by" });
             let failure: Outcome<never> | undefined;
             for (const query of queries) {
                 try {
@@ -940,14 +888,8 @@ class MusicBrainzService {
         const artist = expected.artists[0] ?? "";
         const cacheKey = `mb:identify:recording:${artist}:${expected.title}:${expected.durationSec ?? ""}`;
         return this.cachedOutcome(cacheKey, async () => {
-            const title = this.escapeLucene(this.normalizeForSearch(expected.title));
-            const name = this.escapeLucene(this.normalizeForSearch(artist));
-            // A title that is all brackets leaves nothing to search by; the next source is asked.
-            if (!title.trim()) return absent({ title: expected.title, artist, reason: "nothing to search by" });
-            const queries = [
-                `recording:"${title}" AND artist:"${name}"`,
-                `${title} AND artist:${name}`,
-            ];
+            const queries = this.recordingQueries(expected);
+            if (queries.length === 0) return absent({ title: expected.title, artist, reason: "nothing to search by" });
             let failure: Outcome<never> | undefined;
             let offered = 0;
             for (const query of queries) {

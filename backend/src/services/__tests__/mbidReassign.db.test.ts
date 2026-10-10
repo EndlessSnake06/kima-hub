@@ -26,12 +26,12 @@ async function seed() {
         },
     });
     await prisma.artist.create({
-        data: { id: id("art"), name: "T25 Artist", identityKey: id("art") },
+        data: { id: id("art"), name: "Reassign Artist", identityKey: id("art") },
     });
     await prisma.album.create({
         data: {
             id: id("alb"),
-            title: "T25 Album",
+            title: "Reassign Album",
             artistId: id("art"),
             rgMbid: OLD,
             primaryType: "Album",
@@ -43,8 +43,8 @@ async function seed() {
                 id: id(leaf),
                 userId,
                 rgMbid,
-                artistName: "T25 Artist",
-                albumTitle: "T25 Album",
+                artistName: "Reassign Artist",
+                albumTitle: "Reassign Album",
                 weekStartDate: week,
             },
         });

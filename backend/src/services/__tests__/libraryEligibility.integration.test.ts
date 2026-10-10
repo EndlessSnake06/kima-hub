@@ -89,7 +89,7 @@ async function seed() {
 
 /**
  * Grep gate: every raw query over track_embeddings in the recommendation
- * consumers must carry the fragment in the same template. Seed lookups
+ * consumers must carry the eligibility fragment in the same template. Seed lookups
  * (a single track by id, chosen by the user) are the allowlisted exception
  * — they read the track the request names, and streaming refuses it.
  */

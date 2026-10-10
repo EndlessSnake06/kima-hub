@@ -1,8 +1,7 @@
 /**
  * The similarity step and the ranking pass on a real database, checked against the
- * formula computed in TypeScript from what the database holds: the stored feel
- * against the probe, the library state against its definition, the vibe map
- * against its arithmetic run directly, and every vibe feature's scores against
+ * formula computed in TypeScript from what the database holds: the stored feel, the
+ * library state, the vibe map's arithmetic, and every vibe feature's scores against
  * `pairScore`.
  */
 import express from "express";

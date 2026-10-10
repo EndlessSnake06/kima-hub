@@ -2,11 +2,10 @@ import { prisma } from "../utils/db";
 import { logger } from "../utils/logger";
 
 /**
- * Can an embedding be written? Plans the analyzer's own upsert with EXPLAIN, which
- * resolves its ON CONFLICT target without running it: nothing is written and no
- * error reaches the database log. A table missing its keys (rebuilt outside
- * `prisma migrate deploy`) fails with 42P10 on every track while every other
- * health check passes.
+ * Can an embedding be written? Plans the analyzer's upsert with EXPLAIN, which
+ * resolves its ON CONFLICT target without running it. A table missing its keys
+ * (rebuilt outside `prisma migrate deploy`) fails with 42P10 on every track while
+ * every other health check passes.
  */
 
 export interface EmbeddingWriteCheck {

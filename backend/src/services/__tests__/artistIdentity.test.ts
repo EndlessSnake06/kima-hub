@@ -12,7 +12,6 @@ import {
 } from "../artistIdentity";
 
 describe("parseCredit — band names must survive intact", () => {
-    // The exact inputs the old heuristic truncated.
     it.each([
         "Dance With the Dead",
         "Dancing With The Dead",

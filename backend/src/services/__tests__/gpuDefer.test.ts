@@ -1,9 +1,7 @@
 /**
- * The GPU embedding-deferral truth table (gpuRuntime.gpuDeferDecision).
- *
- * The rule the release window's "yes" depends on: after the toggle flips on,
- * embedding offers hold while the runtime installs — and nothing else, ever.
- * Every row here is a case someone could ship a bug in, so every row is named.
+ * The GPU embedding-deferral truth table (gpuRuntime.gpuDeferDecision): after the
+ * toggle flips on, embedding offers hold while the runtime installs, and nothing
+ * else ever defers. Every row is a case someone could ship a bug in.
  */
 
 import { GPU_INSTALL_HOLD_MS, gpuDeferDecision } from "../gpuRuntime";

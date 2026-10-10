@@ -101,8 +101,7 @@ const NOT_FILE_MISSING = { OR: [{ failureClass: null }, { failureClass: { not: "
 function stageFailureWhere(stages: string[], includeSkipped: boolean): any {
     const where: any = { stage: { in: stages }, status: "failed", ...NOT_FILE_MISSING };
     if (includeSkipped) {
-        // Blocked rows are the parked ones (the old "skipped"); only list
-        // them when explicitly asked for.
+        // Blocked rows are the parked ones; only list them when asked for.
         where.status = { in: ["failed", "blocked"] };
     }
     return where;
@@ -222,6 +221,12 @@ class EnrichmentFailureService {
                 ? [entityType]
                 : [];
 
+        const ledgerWhere = {
+            entityType: { in: ledgerTypes },
+            ...(includeSkipped ? {} : { skipped: false }),
+            ...(includeResolved ? {} : { resolved: false }),
+        };
+
         const [stageRows, ledgerRows, stageTotal, ledgerTotal] = await Promise.all([
             readStages
                 ? prisma.trackStage.findMany({
@@ -233,11 +238,7 @@ class EnrichmentFailureService {
                 : Promise.resolve([] as unknown as (StageFailureRow & { track: { title: string | null } })[]),
             ledgerTypes.length > 0
                 ? prisma.enrichmentFailure.findMany({
-                      where: {
-                          entityType: { in: ledgerTypes },
-                          ...(includeSkipped ? {} : { skipped: false }),
-                          ...(includeResolved ? {} : { resolved: false }),
-                      },
+                      where: ledgerWhere,
                       orderBy: { lastFailedAt: "desc" },
                       take: limit + offset,
                   })
@@ -246,13 +247,7 @@ class EnrichmentFailureService {
                 ? prisma.trackStage.count({ where: stageFailureWhere(stages, includeSkipped) })
                 : Promise.resolve(0),
             ledgerTypes.length > 0
-                ? prisma.enrichmentFailure.count({
-                      where: {
-                          entityType: { in: ledgerTypes },
-                          ...(includeSkipped ? {} : { skipped: false }),
-                          ...(includeResolved ? {} : { resolved: false }),
-                      },
-                  })
+                ? prisma.enrichmentFailure.count({ where: ledgerWhere })
                 : Promise.resolve(0),
         ]);
 

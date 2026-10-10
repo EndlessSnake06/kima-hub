@@ -1,10 +1,8 @@
 /**
- * Whether a recording a source offers is this track: the same title, the same
- * version, an artist the track is credited to, and the same length. The ISRC,
- * album-tracklist and name-search paths pick through this one check, so none
- * takes a source's first hit on trust. AcoustID's evidence is the audio itself:
- * it takes a fingerprint match of the track's length, preferring the track's
- * title, and asks no artist (acoustidService `pickFingerprintMatch`).
+ * Whether a recording a source offers is this track: the same title, version and
+ * length, and an artist the track is credited to. The ISRC, album-tracklist and
+ * name-search paths all pick through this check; AcoustID, whose evidence is the
+ * audio, matches on length and title and asks no artist (`pickFingerprintMatch`).
  */
 import { titlesAgree } from "./albumIdentity";
 import { artistIdentityKey, artistSortName } from "./artistIdentity";

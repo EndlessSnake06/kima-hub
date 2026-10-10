@@ -47,6 +47,13 @@ class FeatureDetectionService {
         return this.cache;
     }
 
+    private async workerAlive(heartbeatKey: string): Promise<boolean> {
+        const heartbeat = await redisClient.get(heartbeatKey);
+        if (!heartbeat) return false;
+        const timestamp = parseInt(heartbeat, 10);
+        return !isNaN(timestamp) && Date.now() - timestamp < HEARTBEAT_TTL;
+    }
+
     private async checkMusicCNN(): Promise<boolean> {
         try {
             // Analyzer script bundled in image = feature is available
@@ -54,13 +61,7 @@ class FeatureDetectionService {
                 return true;
             }
 
-            const heartbeat = await redisClient.get("audio:worker:heartbeat");
-            if (heartbeat) {
-                const timestamp = parseInt(heartbeat, 10);
-                if (!isNaN(timestamp) && Date.now() - timestamp < HEARTBEAT_TTL) {
-                    return true;
-                }
-            }
+            if (await this.workerAlive("audio:worker:heartbeat")) return true;
 
             const trackWithEnergy = await prisma.track.findFirst({
                 where: { energy: { not: null } },
@@ -85,13 +86,7 @@ class FeatureDetectionService {
                 return true;
             }
 
-            const heartbeat = await redisClient.get("clap:worker:heartbeat");
-            if (heartbeat) {
-                const timestamp = parseInt(heartbeat, 10);
-                if (!isNaN(timestamp) && Date.now() - timestamp < HEARTBEAT_TTL) {
-                    return true;
-                }
-            }
+            if (await this.workerAlive("clap:worker:heartbeat")) return true;
 
             const embeddingCount = await prisma.trackEmbedding.count();
             return embeddingCount > 0;

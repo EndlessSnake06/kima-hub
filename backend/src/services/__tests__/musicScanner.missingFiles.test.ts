@@ -163,7 +163,7 @@ describe("scan with a vanished file", () => {
         const second = await scanner.scanLibrary(musicDir);
         const afterMissing = new Date();
 
-        // The row is NEVER deleted.
+        // The row is never deleted.
         const kept = await findTrack();
         expect(kept).not.toBeNull();
         expect(kept?.title).toBe(TRACK_TITLE);
@@ -224,10 +224,9 @@ describe("scan with a vanished file", () => {
 });
 
 /**
- * A missing file takes its open questions with it, and a returned
- * file takes them back. The offer gate already refused to hand these
- * records out; the bug was that they stayed `pending`, so every consumer
- * of the progress count had to remember the exception.
+ * A missing file takes its open questions with it, and a returned file takes
+ * them back, so no consumer of the progress count has to remember an exception
+ * for records that stay `pending`.
  */
 describe("stage records follow the file", () => {
     async function putStage(
@@ -350,9 +349,9 @@ describe("stage records follow the file", () => {
     });
 
     it("a track flagged missing before the closure rule existed gets closed by the next scan", async () => {
-        // The live shape this was cut for: rows flagged missing on an
-        // older scan with their questions still `pending`. No flag flip is
-        // involved — the close runs over every flagged track each scan.
+        // Rows flagged missing on an earlier scan with their questions still
+        // `pending`. No flag flip is involved: the close runs over every
+        // flagged track each scan.
         const scanner = new MusicScannerService();
         await scanner.scanLibrary(musicDir);
         const trackId = (await findTrack())!.id;
@@ -360,7 +359,7 @@ describe("stage records follow the file", () => {
 
         fs.unlinkSync(trackFile);
         await scanner.scanLibrary(musicDir);
-        // Back to the pre-fix state the old code would have left.
+        // Put the record back to `pending`, as a scan from before the closure rule left it.
         await prisma.trackStage.update({
             where: { id: `${trackId}__recording` },
             data: {

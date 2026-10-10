@@ -14,7 +14,7 @@ function unitVectorAt(cos: number, axis: number): number[] {
 }
 
 const QUERY = unitVectorAt(1, 1);
-// Every seeded track is below the old 0.40 floor; the order must still hold.
+// Every seeded track scores below 0.40; the order must still hold.
 const SEEDS: Array<[string, number]> = [
     ["low", 0.1],
     ["best", 0.35],

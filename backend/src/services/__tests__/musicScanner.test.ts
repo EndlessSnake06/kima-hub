@@ -64,8 +64,6 @@ jest.mock('../../services/fpcalc', () => ({
 // music-metadata is pure ESM; provide a CJS-compatible stub
 jest.mock('music-metadata', () => ({ parseFile: jest.fn() }), { virtual: true });
 
-// p-queue is mapped to a CJS mock in jest.config.js -- no extra mock needed
-
 import { MusicScannerService } from '../musicScanner';
 import { normalizeArtistName } from '../artistIdentity';
 import {

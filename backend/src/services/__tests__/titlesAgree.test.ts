@@ -47,7 +47,7 @@ describe("titlesAgree", () => {
         expect(titlesAgree("Café Tacvba", "Cafe Tacuba")).toBe(false); // different words
         expect(titlesAgree("Café del Mar", "Cafe del Mar")).toBe(true);
         expect(titlesAgree("Björk", "Bjork")).toBe(true);
-        // The old fold turned "Café" into "caf", so "Caf" matched it.
+        // Folding must keep the accented letter: "Café" is not "Caf".
         expect(titlesAgree("Café", "Caf")).toBe(false);
     });
 
