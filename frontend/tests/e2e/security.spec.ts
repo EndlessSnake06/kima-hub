@@ -15,10 +15,9 @@ test.describe("Security", () => {
     // ── IDOR ─────────────────────────────────────────────────────────────────
 
     test.describe("IDOR -- cross-user isolation", () => {
-
         test.beforeAll(async ({ request }) => {
-            // Create attacker account using the admin test user's credentials.
-            // A test user without the admin role fails every test here: a skipped security test is a pass nobody earned.
+            // The admin test user creates the attacker account; without admin rights this
+            // fails and every test below fails at its own attacker login.
             try {
                 const loginRes = await request.post("/api/auth/login", {
                     data: { username, password },
@@ -30,7 +29,7 @@ test.describe("Security", () => {
                     headers: { Authorization: `Bearer ${token}` },
                 });
             } catch {
-                // Non-fatal: individual tests skip if attacker login fails
+                // Each test asserts the attacker login itself.
             }
         });
 

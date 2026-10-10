@@ -310,7 +310,7 @@ test.describe("Vibe", () => {
         const noData = page.locator("text=/No tracks with vibe/i").first();
         await Promise.race([field.waitFor({ timeout: 35_000 }), noData.waitFor({ timeout: 35_000 })]);
         if ((await noData.count()) > 0) {
-            test.skip(true, "no vibe tracks available on this testbed");
+            test.skip(true, "no vibe tracks available");
         }
 
         // Let the opening camera flight settle so hovered points stay put.
@@ -369,7 +369,7 @@ test.describe("Vibe", () => {
         const noData = page.locator("text=/No tracks with vibe/i").first();
         await Promise.race([gallery.waitFor({ timeout: 35_000 }), noData.waitFor({ timeout: 35_000 })]);
         if ((await noData.count()) > 0) {
-            test.skip(true, "no vibe tracks available on this testbed");
+            test.skip(true, "no vibe tracks available");
         }
 
         // Pick a real vibe track and set it as the server-side playback state —
