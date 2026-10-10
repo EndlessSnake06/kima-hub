@@ -688,7 +688,6 @@ class SpotifyImportService {
         // Continue with original tracks - graceful degradation
       }
 
-      // Log remaining unknown after resolution
       const stillUnknown = tracks.filter(
         (t) => t.album === "Unknown Album",
       ).length;
@@ -1085,7 +1084,6 @@ class SpotifyImportService {
       ),
     );
 
-    // Sort by original track order
     resolvedTracks.sort((a, b) => a.trackNumber - b.trackNumber);
 
     if (resolvedTracks.length === 0) {
@@ -1202,7 +1200,6 @@ class SpotifyImportService {
       .toString(36)
       .substring(7)}`;
 
-    // Create dedicated logger for this job
     const jobLogger = createPlaylistLogger(jobId);
     jobLoggers.set(jobId, jobLogger);
 
@@ -1211,7 +1208,6 @@ class SpotifyImportService {
     jobLogger.info(`Albums to download: ${albumMbidsToDownload.length}`);
     jobLogger.info(`Tracks already in library: ${preview.summary.inLibrary}`);
 
-    // Calculate tracks that will come from downloads
     const tracksFromDownloads = preview.albumsToDownload
       .filter((a) =>
         albumMbidsToDownload.includes(a.albumMbid || a.spotifyAlbumId),
@@ -1240,7 +1236,6 @@ class SpotifyImportService {
       pendingTracks,
     };
 
-    // Save to database and memory cache
     await saveImportJob(job);
 
     // Cache preview for the BullMQ worker to retrieve
@@ -1287,7 +1282,6 @@ class SpotifyImportService {
         return;
       }
 
-      // Create AbortController for cancellation support
       abortController = new AbortController();
       const { signal } = abortController;
       this.activeImportControllers.set(job.id, abortController);
@@ -1388,7 +1382,6 @@ class SpotifyImportService {
                     context,
                   );
 
-                  // Check if at least 50% succeeded
                   const successCount = trackResults.filter(
                     (r) => r.success,
                   ).length;
@@ -1511,7 +1504,6 @@ class SpotifyImportService {
         }
 
         // No downloads needed - all tracks already in library
-        // Create playlist immediately
         await this.buildPlaylist(job);
       } finally {
         this.activeImportControllers.delete(job.id);
@@ -1590,7 +1582,6 @@ class SpotifyImportService {
     );
     jobLogger?.logDownloadProgress(completed, failed, pending);
 
-    // Update progress
     job.progress =
       total > 0
         ? 30 + Math.round((completed / total) * 40) // 30-70% for downloads
@@ -1598,7 +1589,6 @@ class SpotifyImportService {
     job.updatedAt = new Date();
 
     if (pending > 0) {
-      // Check how long we've been waiting for these downloads
       const oldestPending = downloadJobs
         .filter((j) => j.status === "pending" || j.status === "processing")
         .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())[0];
@@ -1626,7 +1616,6 @@ class SpotifyImportService {
         `Download timeout: ${pending} pending after ${waitTimeMins}m, proceeding with available tracks`,
       );
 
-      // Mark stale pending jobs as failed
       await prisma.downloadJob.updateMany({
         where: {
           metadata: {
@@ -1834,7 +1823,6 @@ class SpotifyImportService {
 
       jobLogger?.log(`   Matching: "${pendingTrack.title}" by ${pendingTrack.artist}`);
 
-      // Get candidates for this artist from pre-loaded index
       const candidates = tracksByArtistWord.get(artistFirstWord.toLowerCase()) || [];
 
       // The matching ladder lives in one place (services/trackMatching);
@@ -1924,7 +1912,6 @@ class SpotifyImportService {
     jobLogger?.info(
       `Matched tracks after scan: ${uniqueTrackIds.length}/${job.tracksTotal}`,
     );
-    // Create the playlist with Spotify metadata
     const playlist = await prisma.playlist.create({
       data: {
         userId: job.userId,
@@ -1953,7 +1940,6 @@ class SpotifyImportService {
       const dbArtist = normalizeArtistName(pendingTrack.artist);
       const strippedTitle = stripTrackSuffix(pendingTrack.title);
 
-      // Check if this track was matched by looking for it in the created items
       const found = await prisma.track.findFirst({
         where: {
           id: { in: uniqueTrackIds },
@@ -1979,7 +1965,6 @@ class SpotifyImportService {
       }
     }
 
-    // Save pending tracks that weren't matched
     const pendingTracksToSave = job.pendingTracks
       .map((track, index) => ({ ...track, originalIndex: index }))
       .filter((track) => {
@@ -2081,7 +2066,6 @@ class SpotifyImportService {
       playlist.id,
     );
 
-    // Send notification about import completion
     try {
       await notificationService.notifyImportComplete(
         job.userId,
@@ -2208,14 +2192,12 @@ class SpotifyImportService {
 
     let added = 0;
 
-    // Get existing tracks in playlist
     const existingItems = await prisma.playlistItem.findMany({
       where: { playlistId: job.createdPlaylistId },
       select: { trackId: true },
     });
     const existingTrackIds = new Set(existingItems.map((item) => item.trackId));
 
-    // Get next position
     const maxPosition = existingItems.length;
     let nextPosition = maxPosition;
 
@@ -2321,7 +2303,6 @@ class SpotifyImportService {
    * Does NOT touch downloaded files on disk (those become part of the library).
    */
   private async cleanupImportArtifacts(jobId: string): Promise<void> {
-    // Delete all download jobs associated with this import
     await prisma.downloadJob.deleteMany({
       where: {
         metadata: {
@@ -2331,7 +2312,6 @@ class SpotifyImportService {
       },
     });
 
-    // Delete the import job from Postgres
     try {
       await prisma.spotifyImportJob.delete({ where: { id: jobId } });
     } catch (err: any) {
@@ -2339,7 +2319,6 @@ class SpotifyImportService {
       if (err.code !== "P2025") throw err;
     }
 
-    // Delete from Redis
     try {
       await redisClient.del(IMPORT_JOB_KEY(jobId));
       await redisClient.del(`import:preview:${jobId}`);
@@ -2426,7 +2405,6 @@ class SpotifyImportService {
       `\n[Spotify Import] Reconciling pending tracks across all playlists...`,
     );
 
-    // Get all pending tracks grouped by playlist
     const allPendingTracks = await prisma.playlistPendingTrack.findMany({
       include: {
         playlist: {
@@ -2462,7 +2440,6 @@ class SpotifyImportService {
     }
 
     for (const [playlistId, pendingTracks] of tracksByPlaylist) {
-      // Get current max sort position in playlist
       const maxSortResult = await prisma.playlistItem.aggregate({
         where: { playlistId },
         _max: { sort: true },
@@ -2475,7 +2452,6 @@ class SpotifyImportService {
         await allocateAppendRanks(prisma, playlistId, 1)
       )[0];
 
-      // Get existing track IDs in playlist to avoid duplicates
       const existingItems = await prisma.playlistItem.findMany({
         where: { playlistId },
         select: { trackId: true },
@@ -2530,7 +2506,6 @@ class SpotifyImportService {
           : null;
 
         if (localTrack && !existingTrackIds.has(localTrack.id)) {
-          // Add to playlist
           await prisma.playlistItem.create({
             data: {
               playlistId,
@@ -2553,14 +2528,12 @@ class SpotifyImportService {
       }
     }
 
-    // Delete the matched pending tracks
     if (matchedPendingTrackIds.length > 0) {
       await prisma.playlistPendingTrack.deleteMany({
         where: { id: { in: matchedPendingTrackIds } },
       });
     }
 
-    // Send notifications for each playlist that was updated
     if (playlistsWithAdditions.size > 0) {
       const { notificationService } = await import("./notificationService");
 
@@ -2929,7 +2902,6 @@ class SpotifyImportService {
       throw new Error(`Preview not found for import job ${importJobId}`);
     }
 
-    // Create job logger
     const jobLogger = createPlaylistLogger(importJobId);
     jobLoggers.set(importJobId, jobLogger);
 
@@ -2958,7 +2930,6 @@ class SpotifyImportService {
       normalizedUrl = url;
     }
 
-    // Check for existing active import of same URL
     const existingJobs = await this.getUserJobs(userId);
     const activeStatuses = ["pending", "fetching", "downloading", "scanning", "creating_playlist", "matching_tracks"];
     const activeJob = existingJobs.find(
@@ -2987,7 +2958,6 @@ class SpotifyImportService {
       }
     }
 
-    // Create a minimal ImportJob record so status polling works immediately
     const job: ImportJob = {
       id: jobId,
       userId,
@@ -3087,7 +3057,6 @@ class SpotifyImportService {
         jobLogger.info(`[Quick Import] No albums to download, creating playlist from matched tracks`);
       }
 
-      // Calculate tracks from downloads
       const tracksFromDownloads = preview.albumsToDownload.reduce(
         (sum, a) => sum + a.tracksNeeded.length, 0,
       );
