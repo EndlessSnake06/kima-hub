@@ -82,6 +82,10 @@
         from { opacity: 1; transform: translateY(0); }
         to { opacity: 0; transform: translateY(8px); }
     }
+    @keyframes slide-in {
+        from { transform: translateX(100%); }
+        to { transform: translateX(0); }
+    }
     @keyframes sweep {
         from { transform: translateX(-100%); }
         to { transform: translateX(300%); }
@@ -104,7 +108,6 @@
     --bg-secondary: #0f0f0f; /* Cards, panels */
     --bg-tertiary: #141414; /* Nested content, wells */
     --bg-hover: #1a1a1a; /* Modals, dropdowns, hover */
-    --bg-active: #1c1c1c; /* Active/selected states */
 
     /* Borders */
     --border-subtle: #1c1c1c; /* Subtle borders (default) */
@@ -114,9 +117,7 @@
     /* Three text tones, contrast measured against the #0a0a0a ground. */
     --text-primary: #e5e5e5; /* 16.4:1 -- titles, values, emphasis */
     --text-secondary: #a3a3a3; /* 8.6:1  -- sentences, descriptions, help text */
-    /* 5.4:1 on the page ground, and still 4.7:1 on the lightest card surface
-     * (#1a1a1a) -- the previous #7d7d7d cleared AA on the page but fell to
-     * 4.46:1 inside a card, which is where most labels actually live. */
+    /* 5.4:1 on the page ground, 4.7:1 on the lightest card surface (#1a1a1a). */
     --text-muted: #858585; /* labels, meta, timestamps */
 
 /* Stacking order: one ladder, named by what sits on each rung. */
@@ -133,7 +134,6 @@
     --z-modal: 80;             /* dialogs, above the activity panel */
     --z-panel-backdrop: 75;    /* activity panel scrim */
     --z-panel: 76;             /* activity panel, below any dialog it opens */
-    --z-toast: 100;            /* app-level prompts such as "update available" */
     --z-overlay: 200;          /* full-screen player */
 }
 
@@ -231,13 +231,6 @@ code {
     }
 }
 
-/* Wider cards for content whose titles need the room -- playlists, podcasts. */
-@layer components {
-    .grid-media-wide {
-        --card-min: clamp(11rem, 15vw, 14rem);
-    }
-}
-
 /* ── Hover-revealed controls on a device that cannot hover ────────────────
  * opacity: 0 hides a control from the eye but not from a tap, so on touch
  * screens hover-revealed controls are either shown or made non-interactive. */
@@ -292,7 +285,6 @@ code {
     }
 }
 
-/* The page column: one width and one side gutter for every page. */
 @layer components {
     /* Every card's cover on hover: a slow, slight push-in. Touch screens and
      * reduced motion keep the cover still. */
@@ -306,6 +298,7 @@ code {
         }
     }
 
+    /* The page column: one width and one side gutter for every page. */
     .page-shell {
         max-width: 1800px;
         margin-inline: auto;
@@ -361,10 +354,6 @@ code, pre, .font-mono {
     outline: 2px solid var(--color-brand);
     outline-offset: 2px;
 }
-/* Elements that manage their own focus ring can opt out */
-.focus-ring-none:focus-visible {
-    outline: none;
-}
 
 /* Make all buttons have pointer cursor */
 button {
@@ -417,91 +406,6 @@ button:disabled {
     }
 }
 
-/* =====================================================
-   Metro Tile Sidebar
-   ===================================================== */
-
-.metro-tile-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 4px;
-}
-
-.metro-tile {
-    position: relative;
-    cursor: pointer;
-    transition: transform 0.15s ease, box-shadow 0.15s ease;
-    text-decoration: none;
-}
-
-.metro-tile-tall {
-    min-height: 88px;
-}
-
-.metro-tile-normal {
-    min-height: 68px;
-}
-
-.metro-tile-micro {
-    min-height: 36px;
-}
-
-/* Tile hover - subtle lift and 3D tilt */
-.metro-tile:hover {
-    transform: scale(1.02);
-    z-index: 2;
-}
-
-.metro-tile:active {
-    transform: scale(0.97);
-    transition-duration: 0.08s;
-}
-
-/* Stagger entrance animation */
-.metro-tile {
-    animation: metro-tile-enter 0.35s ease-out both;
-    animation-delay: calc(var(--tile-index, 0) * 60ms);
-}
-
-@keyframes metro-tile-enter {
-    from {
-        opacity: 0;
-        transform: scale(0.85) translateY(8px);
-    }
-    to {
-        opacity: 1;
-        transform: scale(1) translateY(0);
-    }
-}
-
-/* Playlist tile styles */
-.metro-playlist-tile {
-    border-left: 2px solid transparent;
-}
-
-.metro-playlist-active {
-    background: rgba(255, 255, 255, 0.04);
-    border-left-color: var(--color-brand);
-}
-
-/* Animated Gradient Background */
-@keyframes gradient-shift {
-    0% {
-        background-position: 0% 50%;
-    }
-    50% {
-        background-position: 100% 50%;
-    }
-    100% {
-        background-position: 0% 50%;
-    }
-}
-
-.animate-gradient-shift {
-    background-size: 200% 200%;
-    animation: gradient-shift 15s ease infinite;
-}
-
 /* Fade in animation for login page artist info */
 @keyframes fade-in {
     from {
@@ -516,11 +420,6 @@ button:disabled {
 
 .animate-fade-in {
     animation: fade-in 0.6s ease-out forwards;
-}
-
-@keyframes slide-in {
-    from { transform: translateX(100%); }
-    to { transform: translateX(0); }
 }
 
 /* Shake animation for error messages */
@@ -866,29 +765,12 @@ body.tv-mode * {
     scrollbar-width: none;
 }
 
-/* ===== QR Scanner Mode ===== */
-/* When QR scanner is active, hide the WebView content to show camera */
-body.scanner-active {
-    background: transparent !important;
-}
-
-body.scanner-active > * {
-    visibility: hidden;
-}
-
-body.scanner-active .scanner-overlay {
-    visibility: visible;
-}
-
 /* ===== PWA Standalone Mode Styles ===== */
 
 /* Safe area insets for notched devices and PWA window controls */
 :root {
     /* Window Controls Overlay (Desktop PWA title bar) */
     --titlebar-height: env(titlebar-area-height, 0px);
-    --titlebar-width: env(titlebar-area-width, 100%);
-    --titlebar-x: env(titlebar-area-x, 0px);
-    --titlebar-y: env(titlebar-area-y, 0px);
 
     /* Safe-area insets apply only in the installed PWA (display-mode:
      * standalone); in a browser the chrome already clears the notch. */
@@ -927,11 +809,6 @@ body.scanner-active .scanner-overlay {
         app-region: no-drag;
     }
 }
-
-/* =====================================================
-   Vibe Map - First-run hint entrance
-   ===================================================== */
-
 
 /* =====================================================
    Vibe map — the library as a night sky
