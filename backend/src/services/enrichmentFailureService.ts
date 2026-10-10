@@ -2,7 +2,8 @@
  * Enrichment failures for the settings screen, with selective retry. Per-track
  * stage failures are read from TrackStage and mapped onto the EnrichmentFailure
  * shape; the EnrichmentFailure table holds only entities without stage records
- * (artists, podcasts). Rows are resolved, never deleted.
+ * (artists, podcasts). Failures are resolved rather than deleted;
+ * cleanupOldResolved purges rows that have stayed resolved.
  */
 
 import { logger } from "../utils/logger";
@@ -645,31 +646,31 @@ class EnrichmentFailureService {
         return { cleaned: toResolve.length, checked: failures.length };
     }
 
-     /**
-      * Resolve failure records for an entity (track/artist) that succeeded.
-      * Used when a track's vibe embedding succeeds after previous failures.
-      */
-     async resolveByEntity(entityType: "vibe" | "audio" | "artist", entityId: string): Promise<boolean> {
-         const result = await prisma.enrichmentFailure.updateMany({
-             where: {
-                 entityType,
-                 entityId,
-                 resolved: false,
-             },
-             data: {
-                 resolved: true,
-                 resolvedAt: new Date(),
-             },
-         });
+    /**
+     * Resolve an entity's leftover failure rows after it enriched
+     * successfully.
+     */
+    async resolveByEntity(entityType: "vibe" | "audio" | "artist", entityId: string): Promise<boolean> {
+        const result = await prisma.enrichmentFailure.updateMany({
+            where: {
+                entityType,
+                entityId,
+                resolved: false,
+            },
+            data: {
+                resolved: true,
+                resolvedAt: new Date(),
+            },
+        });
 
-         if (result.count > 0) {
-             logger.debug(
-                 `[Enrichment Failures] Resolved ${result.count} failures for ${entityType}:${entityId}`
-             );
-         }
+        if (result.count > 0) {
+            logger.debug(
+                `[Enrichment Failures] Resolved ${result.count} failures for ${entityType}:${entityId}`
+            );
+        }
 
-         return result.count > 0;
-     }
+        return result.count > 0;
+    }
 
 }
 
