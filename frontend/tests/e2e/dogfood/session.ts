@@ -27,11 +27,9 @@ interface StepRecord {
 }
 
 /**
- * Console noise that is not worth failing a deployment over.
- *
- * Keep this list short and specific. Every pattern here is a fault the walkthrough will no
- * longer report, so a loose regex silently buys back the exact coverage this test exists to
- * provide. Anything added here needs a reason next to it.
+ * Console noise that is not worth failing a deployment over. Keep it short and
+ * specific: a loose pattern stops the walkthrough reporting real faults, so each
+ * one carries its reason.
  */
 const IGNORED_CONSOLE = [
     /favicon/i,
@@ -43,14 +41,11 @@ const IGNORED_CONSOLE = [
     // Navigating away cancels an in-flight position save, logged as "Failed to
     // fetch"; the next save writes it again. A real outage fails other requests too.
     /\[AudioState\] Failed to save to server: TypeError: Failed to fetch/,
-    // Same cause, same reasoning, two more background jobs the player runs while you read
-    // a page: saving episode position, and fetching related podcasts. Navigating away
-    // cancels whichever is in flight.
+    // Same cause: navigating away cancels the position saves and the related-podcasts fetch.
     /\[AudioControls\] Failed to save (podcast|audiobook) progress: TypeError: Failed to fetch/,
     /Failed to load similar podcasts: TypeError: Failed to fetch/,
-    // Headless Chromium + SwiftShader cannot importScripts inside blob: workers.
-    // Real browsers load them fine now that CSP has worker-src; deck.gl falls back
-    // to main-thread and the map renders.
+    // Headless Chromium + SwiftShader cannot importScripts inside blob: workers;
+    // deck.gl falls back to the main thread and the map still renders.
     /Failed to execute 'importScripts' on 'WorkerGlobalScope'/,
     /worker module init function failed to rehydrate/,
 ];
@@ -81,11 +76,8 @@ export class DogfoodSession {
     }
 
     /**
-     * Point the per-step checks at a different page.
-     *
-     * The phone journey opens its own context, because touch emulation can only be set when
-     * a context is created and a narrow desktop window is not a phone. Layout and heap
-     * readings have to follow the page the steps are actually driving.
+     * Points the per-step layout and heap checks at another page. The phone journey
+     * opens its own context, because touch emulation is set only when a context is created.
      */
     setActivePage(target: Page): void {
         this.activePage = target;
@@ -113,8 +105,7 @@ export class DogfoodSession {
         // An uncaught exception in page code. React's error boundary may hide the visual
         // result, so the page can look fine while this fires.
         page.on("pageerror", (err) => {
-            // Headless Chromium + SwiftShader: deck.gl blob workers crash with this
-            // error when importScripts fails. The map still renders (main-thread fallback).
+            // The blob-worker failure from IGNORED_CONSOLE, surfaced as an uncaught error.
             if (/Worker module function was called but .init. did not return a callable function/.test(err.message)) return;
             this.record("pageerror", `${err.name}: ${err.message}`.slice(0, 300));
         });
@@ -154,10 +145,7 @@ export class DogfoodSession {
         this.expectedFailures.push(f);
     }
 
-    /**
-     * Whether a failure was declared expected. `haystack` is the URL or the console
-     * text, and the status must match too, so an allowed 404 never excuses a 500.
-     */
+    /** Whether a failure was declared expected. The status must match too, so an allowed 404 never excuses a 500. */
     private isExpected(url: string, textOrStatus: string): boolean {
         return this.expectedFailures.some(
             (e) =>
@@ -197,11 +185,9 @@ export class DogfoodSession {
     }
 
     /**
-     * Run one interaction and record what it saw.
-     *
-     * The callback returns whatever the step observed -- a track count, a stream URL, a
-     * playlist id. Those values become the evidence in the report: they are how a reader
-     * tells "the page rendered" from "the page rendered the user's actual music".
+     * Runs one interaction. The callback returns what the step observed (a track count,
+     * a stream URL, a playlist id); the report shows it, so a reader can tell "the page
+     * rendered" from "the page rendered the user's actual music".
      */
     async step(name: string, fn: () => Promise<Observed | void>): Promise<void> {
         this.currentStep = name;
@@ -227,7 +213,6 @@ export class DogfoodSession {
             });
             throw err;
         }
-
 
         await this.checkLayout();
         await this.sampleHeap(name);
@@ -317,11 +302,7 @@ export class DogfoodSession {
         return this.heapSamples[this.heapSamples.length - 1].mb - this.heapSamples[0].mb;
     }
 
-    /**
-     * Write the evidence trail. This is what makes the walkthrough a deployment gate rather
-     * than just a test: a reader who was not watching it run can see which journeys ran,
-     * what data each step actually saw, and what went wrong where.
-     */
+    /** Writes the evidence trail: which journeys ran, what each step saw, and what went wrong where. */
     writeReport(outDir: string): string {
         fs.mkdirSync(outDir, { recursive: true });
 
@@ -436,11 +417,8 @@ export async function openAlbumsTab(page: Page, timeoutMs = 15_000): Promise<voi
 }
 
 /**
- * Wait for the app to settle.
- *
- * networkidle is unusable here: the app holds a server-sent-events stream open for live
- * updates, so the network is never idle and the wait times out. Settle on the DOM instead,
- * then give React a moment to paint the data it fetched.
+ * Waits for the app to settle. networkidle never fires because the app holds a
+ * server-sent-events stream open, so this waits for the DOM and then lets React paint.
  */
 export async function settle(page: Page, ms = 800): Promise<void> {
     await page.waitForLoadState("domcontentloaded");

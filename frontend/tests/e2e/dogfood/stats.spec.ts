@@ -1,9 +1,8 @@
 /**
  * The stats page, period filter, play-history audit, player play count and queue
  * limit as one watched session, apart from the hours-long walkthrough. Needs a
- * real play history: `preflight` refuses an empty one.
+ * real play history: more than 50 plays.
  */
-
 import { test, expect, Browser, Page, BrowserContext } from "@playwright/test";
 import { DogfoodSession, settle } from "./session";
 import { PLAYER } from "../fixtures/shared";

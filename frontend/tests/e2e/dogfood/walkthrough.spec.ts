@@ -5,7 +5,7 @@
  */
 import { test, expect, devices, Browser, Page, BrowserContext } from "@playwright/test";
 import { DogfoodSession, navigateByClick, settle, firstAlbumCard, openAlbumsTab } from "./session";
-import { readLibraryFacts, assertReady, availableJourneys, LibraryFacts } from "./preflight";
+import { readLibraryFacts, assertReady, coverageGaps, LibraryFacts } from "./preflight";
 import { PLAYER, escapeRegExp, softwareWebGL } from "../fixtures/shared";
 
 const baseUrl = process.env.KIMA_UI_BASE_URL || "http://127.0.0.1:3030";
@@ -27,7 +27,7 @@ test.describe("Dogfood walkthrough", () => {
     let page: Page;
     let session: DogfoodSession;
     let facts: LibraryFacts;
-    let journeys: ReturnType<typeof availableJourneys>;
+    let gaps: string[] = [];
     let token = "";
     const createdPlaylistIds: string[] = [];
     let movedTrackTitle = "";
@@ -66,7 +66,7 @@ test.describe("Dogfood walkthrough", () => {
             }
             // Preflight gaps and gaps discovered mid-run print together -- both mean the
             // same thing to whoever reads this before deploying.
-            for (const r of [...(journeys?.reasons ?? []), ...session.gaps]) {
+            for (const r of [...gaps, ...session.gaps]) {
                 console.log(`[dogfood] NOT COVERED -- ${r}`);
             }
         }
@@ -108,7 +108,7 @@ test.describe("Dogfood walkthrough", () => {
         await session.step("check this instance holds enough music to test", async () => {
             facts = await readLibraryFacts(page.request, token);
             assertReady(facts, baseUrl);
-            journeys = availableJourneys(facts);
+            gaps = coverageGaps(facts);
             return { ...facts };
         });
 
@@ -997,11 +997,9 @@ test.describe("Dogfood walkthrough", () => {
             );
             expect(newTitles.length, "track count changed after reorder").toBe(trackIds.length);
 
-            // The track that was last should no longer be last after two up-moves.
             const lastRow = rows.last();
             const newLastTitle = await lastRow.locator("p.text-sm.font-bold, p").first().textContent() ?? "";
-            // After two up-moves from the bottom, the original last track should
-            // be at position length-3 (third from end) or higher.
+            // Two up-moves put the moved track third from the end; the check only requires it off the last row.
             const movedTitleIdx = newTitles.indexOf(movedTrackTitle);
             expect(
                 movedTitleIdx,
