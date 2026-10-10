@@ -103,10 +103,9 @@ export class SlskClient extends (EventEmitter as new () => TypedEventEmitter<Sls
 
     this.wirePeerMessageHandlers()
 
-    // Start download cleanup interval
     this.downloadCleanupInterval = setInterval(() => {
       this.cleanupStuckDownloads()
-    }, 60000) // Check every minute
+    }, 60000)
   }
 
   private registerPeer(peer: SlskPeer, username: string) {
@@ -245,7 +244,6 @@ export class SlskClient extends (EventEmitter as new () => TypedEventEmitter<Sls
                     download.status = 'downloading'
                     download.events.emit('status', 'downloading', makeDownloadStatusData(download))
 
-                    // send file offset message
                     const fileOffsetBuffer = Buffer.alloc(8)
                     fileOffsetBuffer.writeBigUInt64LE(download.receivedBytes, 0)
                     conn.write(fileOffsetBuffer)
@@ -506,7 +504,7 @@ export class SlskClient extends (EventEmitter as new () => TypedEventEmitter<Sls
     this.downloads = this.downloads.filter((download) => {
       const downloadWithTime = download as RequestedDownload & { startedAt?: number }
       if (!downloadWithTime.startedAt) {
-        return true // Keep downloads without timestamp (shouldn't happen)
+        return true
       }
 
       const age = now - downloadWithTime.startedAt
@@ -516,9 +514,9 @@ export class SlskClient extends (EventEmitter as new () => TypedEventEmitter<Sls
         } catch {
           // Ignore cleanup errors
         }
-        return false // Remove from array
+        return false
       }
-      return true // Keep in array
+      return true
     })
 
     const cleaned = before - this.downloads.length
@@ -623,7 +621,7 @@ export class SlskClient extends (EventEmitter as new () => TypedEventEmitter<Sls
       throw new Error(`Could not connect to ${username}`)
     }
 
-    // Destroy the losing peer to prevent socket leak
+    // The peer that lost the race is closed so its socket does not leak.
     const cleanupLoser = async (loserPromise: Promise<SlskPeer>) => {
       try {
         const loser = await loserPromise
