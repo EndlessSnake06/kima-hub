@@ -533,16 +533,6 @@ class MusicBrainzService {
         });
     }
 
-    extractPrimaryArtist(artistCredits: any[]): string {
-        if (!artistCredits || artistCredits.length === 0)
-            return "Unknown Artist";
-        return (
-            artistCredits[0].name ||
-            artistCredits[0].artist?.name ||
-            "Unknown Artist"
-        );
-    }
-
     /**
      * MusicBrainz Lucene requires escaping: + - && || ! ( ) { } [ ] ^ " ~ * ? : \ /
      */
@@ -575,18 +565,6 @@ class MusicBrainzService {
                 .replace(/\s+/g, " ")
                 .trim()
         );
-    }
-
-    /**
-     * Strip punctuation for fuzzy matching. Letters, combining marks and
-     * numbers of every script survive; `\w` alone is ASCII-only and would
-     * turn any Japanese or Cyrillic title into "".
-     */
-    stripPunctuation(str: string): string {
-        return str
-            .replace(/[^\p{L}\p{M}\p{N}\s]/gu, "")
-            .replace(/\s+/g, " ")
-            .trim();
     }
 
     /**
