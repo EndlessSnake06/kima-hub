@@ -44,7 +44,7 @@ afterEach(() => {
     (api as unknown as ApiClientInternals).token = null;
 });
 
-describe("ApiClient.request -- 401 refresh three-way (C6)", () => {
+describe("ApiClient.request -- 401 refresh three-way", () => {
     it("refresh network-error -> throws a distinguishable NetworkError, tokens left intact, no retry-as-auth", async () => {
         const fetchMock = vi
             .fn()
