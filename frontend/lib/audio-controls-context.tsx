@@ -24,7 +24,6 @@ import { useAudioPlayback } from "./audio-playback-context";
 import { api, getApiBaseUrl } from "@/lib/api";
 import { useAudioController } from "./audio-controller-context";
 import { dispatchQueryEvent } from "@/lib/query-events";
-import { iosAudioLog } from "./iosAudioLog";
 import { notify } from "@/lib/notify";
 import { BookSession, BookSessionUnavailableError } from "@/lib/book-session";
 import { insertTrack, removeTrack } from "@/lib/queue-edit";
@@ -251,7 +250,6 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
 
     const playTrack = useCallback(
         (track: Track) => {
-            iosAudioLog("playTrack", "audio-controls-context");
             if (state.activeOperation.type !== 'idle') {
                 const opTrackIds = 'trackIds' in state.activeOperation
                     ? state.activeOperation.trackIds
@@ -320,7 +318,6 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
 
     const startAudiobookSession = useCallback(
         async (audiobook: Audiobook, bookTime: number) => {
-            iosAudioLog("playAudiobook", "audio-controls-context");
             let session: BookSession;
             try {
                 session = await BookSession.open(audiobook);
@@ -1143,7 +1140,6 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
                 const reachedEnd = dur > 0 && pos >= dur - 1.5;
                 if (!reachedEnd) return;
             }
-            iosAudioLog("ended:queue-advance", "audio-controls-context", null, { currentIndex: currentIndexRef.current, queueLength: queueRef.current.length });
             if (playbackTypeRef.current === "audiobook") {
                 const audiobook = currentAudiobookRef.current;
                 const session = bookSessionRef.current;
@@ -1521,7 +1517,6 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
     // when the app is suspended/resumed from the app switcher.
     useEffect(() => {
         const handleBackground = () => {
-            iosAudioLog("vis:background", "audio-controls-context");
             if (playbackTypeRef.current === "audiobook") {
                 saveAudiobookProgressRef.current();
             } else if (playbackTypeRef.current === "podcast") {
@@ -1531,7 +1526,6 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
 
         const handleForeground = () => {
             const ctrl = controllerRef.current;
-            iosAudioLog("vis:foreground", "audio-controls-context");
             if (!ctrl) return;
 
             ctrl.notifyForeground();
@@ -1546,7 +1540,6 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
         };
 
         const handlePageShow = (e: PageTransitionEvent) => {
-            iosAudioLog("pageshow", "audio-controls-context", null, { persisted: e.persisted });
             if (e.persisted) handleForeground();
         };
 
@@ -1557,7 +1550,6 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
         let deviceChangeAbort: (() => void) | undefined;
         try {
             const handler = () => {
-                iosAudioLog("devicechange", "audio-controls-context", null);
                 controllerRef.current?.notifyForeground();
             };
             navigator.mediaDevices?.addEventListener("devicechange", handler);

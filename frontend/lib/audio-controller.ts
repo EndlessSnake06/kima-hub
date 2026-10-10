@@ -1,6 +1,5 @@
 "use client";
 
-import { iosAudioLog } from "./iosAudioLog";
 import { STORAGE_KEYS } from "./storage-keys";
 import type {
     EngineStatus,
@@ -220,12 +219,6 @@ export class AudioController {
             this.audioContext = new AC();
             this.audioContextStateHandler = () => {
                 const state = this.audioContext?.state;
-                iosAudioLog(
-                    "audio-context:statechange",
-                    "audio-controller:setupAudioContextBridge",
-                    this.audio,
-                    { state, paused: this.audio.paused },
-                );
                 // Interruption over: re-claim the session category but never call
                 // play(). iOS gives no signal to tell an earbud unplug from an
                 // interruption end, so resuming here would play through the speaker.
@@ -258,19 +251,8 @@ export class AudioController {
             // early-return path above permanently latching it half-wired.
             this.audioContextBridgeAttempted = true;
             this.ensureContextRunning();
-            iosAudioLog(
-                "audio-context:bridge-up",
-                "audio-controller:setupAudioContextBridge",
-                this.audio,
-                { state: this.audioContext.state },
-            );
-        } catch (err) {
-            iosAudioLog(
-                "audio-context:bridge-fail",
-                "audio-controller:setupAudioContextBridge",
-                this.audio,
-                { error: err instanceof Error ? err.message : String(err) },
-            );
+        } catch {
+            // The bridge is optional: without it audio plays through the element alone.
         }
     }
 
@@ -336,9 +318,6 @@ export class AudioController {
                         // Play succeeded -- nothing to do; native-playing fires
                     }).catch((err: unknown) => {
                         if (!(err instanceof DOMException)) {
-                            iosAudioLog("play:error", "audio-controller:call-play", this.audio, {
-                                error: err instanceof Error ? err.message : String(err),
-                            });
                             this.dispatch({
                                 type: "play-rejected",
                                 reason: "other",
@@ -349,7 +328,6 @@ export class AudioController {
                         }
                         const name = (err as DOMException).name;
                         if (name === "AbortError") {
-                            iosAudioLog("play:abort-error", "audio-controller:call-play", this.audio);
                             // Superseded generations are silently ignored by the policy.
                             this.dispatch({
                                 type: "play-rejected",
@@ -358,7 +336,6 @@ export class AudioController {
                                 now: Date.now(),
                             });
                         } else if (name === "NotAllowedError") {
-                            iosAudioLog("play:not-allowed", "audio-controller:call-play", this.audio);
                             // Retry once after a short delay -- in headless Playwright
                             // the element may still be loading when play() is first
                             // called; a brief retry lets the browser settle.
@@ -393,7 +370,6 @@ export class AudioController {
                                 });
                             }, 100);
                         } else {
-                            iosAudioLog("play:error", "audio-controller:call-play", this.audio, { error: (err as DOMException).message });
                             this.dispatch({
                                 type: "play-rejected",
                                 reason: "other",
@@ -591,12 +567,10 @@ export class AudioController {
         const add = listenerAdder(el, store);
 
         add("playing", () => {
-            iosAudioLog("playing", "audio-controller:listeners", el);
             this.dispatch({ type: "native-playing", now: Date.now() });
         });
 
         add("pause", () => {
-            iosAudioLog("pause", "audio-controller:listeners", el);
             if (this.expectingPause) {
                 // Our own call-pause effect fired this -- do not dispatch native-pause
                 this.expectingPause = false;
@@ -607,7 +581,6 @@ export class AudioController {
         });
 
         add("ended", () => {
-            iosAudioLog("ended", "audio-controller:listeners", el);
             this.handleActiveEnded(el);
         });
 
@@ -620,10 +593,6 @@ export class AudioController {
 
         add("canplay", () => {
             const dur = el.duration;
-            iosAudioLog("canplay", "audio-controller:listeners", el, {
-                gen: this.snapshot.generation,
-                pendingSeek: this.snapshot.pendingSeek,
-            });
             // Dispatch first so policy applies the pending seek (if any)
             this.dispatch({ type: "native-canplay", duration: isFinite(dur) ? dur : 0, now: Date.now() });
             // Then emit upstream -- pendingSeek is now applied
@@ -640,10 +609,6 @@ export class AudioController {
 
         add("error", () => {
             const err = el.error;
-            iosAudioLog("error", "audio-controller:listeners", el, {
-                code: err?.code,
-                message: err?.message,
-            });
             this.dispatch({
                 type: "native-error",
                 code: err?.code ?? 0,
@@ -877,11 +842,6 @@ export class AudioController {
         const { autoplay = false, seekTo, expectedDurationS } = opts;
         this.armDetectorUntil = Date.now() + 15000;
         this.lastAnalyserCurrentTime = this.audio.currentTime;
-        iosAudioLog("load:entry", "audio-controller:load", this.audio, {
-            autoplay,
-            seekTo,
-            sameSrc: this.snapshot.src === src,
-        });
 
         // Same-src dedup: if already loading this src, only update intent
         if (src === this.snapshot.src && this.snapshot.status === "loading") {
@@ -902,12 +862,10 @@ export class AudioController {
     }
 
     play(): void {
-        iosAudioLog("play:entry", "audio-controller:play", this.audio);
         this.dispatch({ type: "play-requested", now: Date.now() });
     }
 
     pause(cls: "user" | "system" = "user"): void {
-        iosAudioLog("pause", "audio-controller:pause", this.audio, { cls });
         this.dispatch({ type: "pause-requested", cls, now: Date.now() });
     }
 

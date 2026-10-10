@@ -43,7 +43,6 @@ import systemRoutes from "./routes/system";
 import shareRoutes from "./routes/share";
 import eventsRoutes from "./routes/events";
 import eventsTicketRoutes from "./routes/eventsTicket";
-import debugRouter from "./routes/debug";
 import { subsonicRouter } from "./routes/subsonic/index";
 import { dataCacheService } from "./services/dataCache";
 import { enrichmentStateService } from "./services/enrichmentState";
@@ -189,7 +188,6 @@ app.use("/api/system", apiLimiter, systemRoutes);
 app.use("/api/events/ticket", apiLimiter, eventsTicketRoutes);
 // SSE - no rate limit, long-lived connections
 app.use("/api/events", eventsRoutes);
-app.use("/api/debug", apiLimiter, debugRouter);
 
 // Subsonic-compatible API — rate limiting is internal to the router
 app.use("/rest", subsonicRouter);
