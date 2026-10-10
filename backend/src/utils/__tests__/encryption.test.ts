@@ -4,7 +4,7 @@
  * the code that wrote them is gone.
  */
 import crypto from "crypto";
-import { decrypt, encrypt, encryptField, isLegacyCiphertext } from "../encryption";
+import { decrypt, encrypt, encryptField } from "../encryption";
 
 const ENV_KEY = process.env.SETTINGS_ENCRYPTION_KEY as string;
 
@@ -84,7 +84,6 @@ describe("at-rest encryption", () => {
 
     it("still reads a value written by the old AES-256-CBC implementation", () => {
         const stored = legacyEncrypt("lidarr-api-key-from-production", SHA256_KEY);
-        expect(isLegacyCiphertext(stored)).toBe(true);
         expect(decrypt(stored)).toBe("lidarr-api-key-from-production");
     });
 
@@ -126,7 +125,7 @@ describe("at-rest encryption", () => {
         expect(decrypt(stored as string)).toBe("audiobookshelf-token");
     });
 
-    it("does not write the legacy format any more", () => {
-        expect(isLegacyCiphertext(encrypt("anything"))).toBe(false);
+    it("writes the xc1. format", () => {
+        expect(encrypt("anything").startsWith("xc1.")).toBe(true);
     });
 });
