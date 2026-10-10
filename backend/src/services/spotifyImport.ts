@@ -2203,7 +2203,7 @@ class SpotifyImportService {
 
     // Batch-load all candidate tracks matching any pending track's artist
     const uniqueArtists = [
-      ...new Set(job.pendingTracks.map((t) => normalizeString(t.artist))),
+      ...new Set(job.pendingTracks.map((t) => normalizeArtistName(t.artist))),
     ];
     const allCandidates = uniqueArtists.length > 0
       ? await prisma.track.findMany({
@@ -2221,7 +2221,7 @@ class SpotifyImportService {
     // Index by normalized artist name for fast lookup
     const candidatesByArtist = new Map<string, typeof allCandidates>();
     for (const track of allCandidates) {
-      const key = track.album.artist.normalizedName?.toLowerCase() || "";
+      const key = track.album.artist.normalizedName ?? "";
       const existing = candidatesByArtist.get(key) || [];
       existing.push(track);
       candidatesByArtist.set(key, existing);
@@ -2230,8 +2230,7 @@ class SpotifyImportService {
     // Match pending tracks in-memory
     const newPlaylistItems: { playlistId: string; trackId: string; sort: number; rank: string }[] = [];
     for (const pendingTrack of job.pendingTracks) {
-      const dbArtist = normalizeArtistName(pendingTrack.artist);
-      const candidates = candidatesByArtist.get(dbArtist.toLowerCase()) || [];
+      const candidates = candidatesByArtist.get(normalizeArtistName(pendingTrack.artist)) || [];
 
       const localTrack = candidates.find(
         (c) => c.title.toLowerCase() === pendingTrack.title.toLowerCase(),
