@@ -12,7 +12,8 @@ import {
     FEATURES_ONLY_WEIGHTS,
     SimilarTrack,
 } from "../hybridSimilarity";
-import { MATCHING_MODEL, buildMatching } from "../matching/state";
+import { buildMatching } from "../matching/state";
+import { seedEmbedding, unitVectorAt } from "../../__tests__/helpers/embeddingFixtures";
 
 jest.mock("../../services/featureDetection", () => ({
     featureDetection: { getFeatures: jest.fn() },
@@ -54,29 +55,6 @@ async function seedTrack(id: string, over: Record<string, unknown>) {
             ...over,
         },
     });
-}
-
-// A unit 512-dim vector whose cosine with the axis-0 unit vector is `cos`:
-// cos on axis 0, the remainder on `axis`, so each track's fingerprint
-// similarity to an axis-0 source is exactly `cos`.
-function unitVectorAt(cos: number, axis: number): string {
-    const v = Array(512).fill(0);
-    v[0] = cos;
-    v[axis] = Math.sqrt(1 - cos * cos);
-    return `[${v.join(",")}]`;
-}
-
-async function seedEmbedding(trackId: string, vector: string) {
-    // Mirrors services/audio-analyzer-clap/analyzer.py's insert shape
-    // (%s::vector). Prisma cannot write Unsupported("vector") columns.
-    await prisma.$executeRawUnsafe(
-        `INSERT INTO track_embeddings (track_id, embedding, model_version, analyzed_at)
-         VALUES ($1, $2::vector, $3, now())
-         ON CONFLICT (track_id) DO NOTHING`,
-        trackId,
-        vector,
-        MATCHING_MODEL,
-    );
 }
 
 afterAll(async () => {

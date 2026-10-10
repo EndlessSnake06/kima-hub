@@ -8,7 +8,8 @@
 import { prisma } from "../../utils/db";
 import { featureDetection } from "../../services/featureDetection";
 import { findSimilarTracks } from "../hybridSimilarity";
-import { MATCHING_MODEL, buildMatching } from "../matching/state";
+import { buildMatching } from "../matching/state";
+import { seedEmbedding, unitVectorAt } from "../../__tests__/helpers/embeddingFixtures";
 
 jest.mock("../../services/featureDetection", () => ({
     featureDetection: { getFeatures: jest.fn() },
@@ -27,27 +28,6 @@ function setMode(mode: "hybrid" | "featuresOnly") {
         vibeEmbeddings: mode === "hybrid",
         audiobookshelfEnabled: false,
     });
-}
-
-/** A unit 512-dim vector with cosine `cos` to axis 0; no ties, so rankings are exact. */
-function unitVectorAt(cos: number, axis: number): string {
-    const v = Array(512).fill(0);
-    v[0] = cos;
-    v[axis] = Math.sqrt(1 - cos * cos);
-    return `[${v.join(",")}]`;
-}
-
-async function seedEmbedding(trackId: string, vector: string) {
-    // Mirrors services/audio-analyzer-clap/analyzer.py's insert shape
-    // (%s::vector). Prisma cannot write Unsupported("vector") columns.
-    await prisma.$executeRawUnsafe(
-        `INSERT INTO track_embeddings (track_id, embedding, model_version, analyzed_at)
-         VALUES ($1, $2::vector, $3, now())
-         ON CONFLICT (track_id) DO NOTHING`,
-        trackId,
-        vector,
-        MATCHING_MODEL,
-    );
 }
 
 async function seedArtist(id: string) {
@@ -187,8 +167,7 @@ afterAll(async () => {
 
 describe("hybridSimilarity diversification (DB, shipped functions)", () => {
     // ------------------------------------------------------------------
-    // Test 1 — flooding: one big album + scattered tracks. Red on the
-    // current code, which returns 20 tracks all from the seed's album.
+    // Flooding: one big album + scattered tracks.
     // ------------------------------------------------------------------
     it("caps the seed's album at 2 (seed counted => at most 1 more) and still fills 20", async () => {
         setMode("hybrid");
@@ -241,8 +220,8 @@ describe("hybridSimilarity diversification (DB, shipped functions)", () => {
     });
 
     // ------------------------------------------------------------------
-    // Test 2 — single-artist library: the artist cap is a hard ceiling,
-    // so the list legitimately comes back short. Red on current code.
+    // Single-artist library: the artist cap is a hard ceiling, so the list
+    // legitimately comes back short.
     // ------------------------------------------------------------------
     it("returns at most 4 rows for a one-artist library (seed counted => 3)", async () => {
         setMode("hybrid");
@@ -356,8 +335,7 @@ describe("hybridSimilarity diversification (DB, shipped functions)", () => {
     }, 60_000);
 
     // ------------------------------------------------------------------
-    // Test 5 — the features-only fallback (no CLAP) must obey the same
-    // caps. Red on the current code, which returns 20 from the seed's album.
+    // The features-only fallback (no CLAP) must obey the same caps.
     // ------------------------------------------------------------------
     it("features-only fallback: same 2-per-album / 4-per-artist caps and full length", async () => {
         setMode("featuresOnly");
