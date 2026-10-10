@@ -4,8 +4,10 @@ import { useState } from "react";
 import { SettingsSection, SettingsRow } from "../ui";
 import { api } from "@/lib/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ChevronDown, ChevronUp, Loader2, RotateCcw } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronUp, RotateCcw } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { Button } from "@/components/ui/Button";
+import { GradientSpinner } from "@/components/ui/GradientSpinner";
 
 export function CorruptTracksSection() {
     const queryClient = useQueryClient();
@@ -40,7 +42,7 @@ export function CorruptTracksSection() {
             >
                 <div className="flex items-center gap-3">
                     {isLoading ? (
-                        <Loader2 className="w-4 h-4 animate-spin text-[var(--text-muted)]" />
+                        <GradientSpinner size="sm" />
                     ) : (
                         <span className={`text-sm tabular-nums ${count > 0 ? "text-warning": "text-[var(--text-muted)]"}`}>
                             {count} file{count !== 1 ? "s" : ""}
@@ -90,18 +92,15 @@ export function CorruptTracksSection() {
                     </div>
 
                     <div className="px-4 py-2">
-                        <button
+                        <Button
+                            variant="danger"
+                            size="sm"
                             onClick={() => setShowConfirm(true)}
-                            disabled={clearMutation.isPending}
-                            className="flex items-center gap-2 px-4 py-2 text-xs tabular-nums text-danger-light hover:brightness-125 bg-danger/10 hover:bg-danger/20 border border-danger/20 rounded-lg transition-colors disabled:opacity-50"
+                            isLoading={clearMutation.isPending}
                         >
-                            {clearMutation.isPending ? (
-                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            ) : (
-                                <RotateCcw className="w-3.5 h-3.5" />
-                            )}
+                            {!clearMutation.isPending && <RotateCcw className="w-3.5 h-3.5" />}
                             Clear the corrupt marks
-                        </button>
+                        </Button>
                     </div>
                 </>
             )}

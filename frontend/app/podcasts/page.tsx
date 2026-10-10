@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { notify } from "@/lib/notify";
-import { Mic2, Search, Plus, RefreshCw, Rss, X, Loader2 } from "lucide-react";
+import { Mic2, Search, Plus, RefreshCw, Rss, X } from "lucide-react";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { Pagination } from "@/components/ui/Pagination";
 import { usePodcastsQuery, useTopPodcastsQuery, queryKeys } from "@/hooks/useQueries";
@@ -331,10 +331,11 @@ export default function PodcastsPage() {
                                 <Button
                                     variant="primary"
                                     onClick={handleRssSubscribe}
-                                    disabled={isSubscribingRss || !rssUrl.trim()}
+                                    disabled={!rssUrl.trim()}
+                                    isLoading={isSubscribingRss}
                                     className="whitespace-nowrap"
                                 >
-                                    {isSubscribingRss ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                                    {!isSubscribingRss && <Plus className="w-4 h-4" />}
                                     Subscribe
                                 </Button>
                                 <button

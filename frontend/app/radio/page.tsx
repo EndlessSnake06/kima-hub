@@ -13,6 +13,7 @@ import {
     useRadioPlayer,
 } from "@/features/home/radioData";
 import { SectionHeader } from "@/components/ui/SectionHeader";
+import { Button } from "@/components/ui/Button";
 import { PageHeader } from "@/components/layout/PageHeader";
 
 function SectionSkeleton() {
@@ -97,13 +98,12 @@ export default function RadioPage() {
                                         <p className="text-sm text-[var(--text-secondary)]">
                                             Could not load genre stations.
                                         </p>
-                                        <button
+                                        <Button
                                             onClick={() => refetchGenres()}
                                             aria-label="Retry loading genre stations"
-                                            className="min-h-[44px] px-4 py-2 text-sm border border-[var(--color-brand)] text-[var(--color-brand)] rounded hover:bg-[var(--color-brand)]/10 transition-colors focus-visible:outline-2 focus-visible:outline-[var(--color-brand)]"
                                         >
                                             Retry
-                                        </button>
+                                        </Button>
                                     </div>
                                 ) : (
                                     <div className="grid-media">
@@ -141,13 +141,12 @@ export default function RadioPage() {
                                         <p className="text-sm text-[var(--text-secondary)]">
                                             Could not load decade stations.
                                         </p>
-                                        <button
+                                        <Button
                                             onClick={() => refetchDecades()}
                                             aria-label="Retry loading decade stations"
-                                            className="min-h-[44px] px-4 py-2 text-sm border border-[var(--color-brand)] text-[var(--color-brand)] rounded hover:bg-[var(--color-brand)]/10 transition-colors focus-visible:outline-2 focus-visible:outline-[var(--color-brand)]"
                                         >
                                             Retry
-                                        </button>
+                                        </Button>
                                     </div>
                                 ) : (
                                     <div className="grid-media">

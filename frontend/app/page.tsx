@@ -74,13 +74,14 @@ export default function HomePage() {
                                     type="track"
                                     action={
                                         <div className="flex items-center gap-2">
-                                            <button
+                                            <Button
+                                                variant="primary"
+                                                size="sm"
                                                 onClick={() => setShowMoodMixer(true)}
-                                                className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-black bg-brand hover:bg-brand-hover rounded-lg transition-colors"
                                             >
                                                 <AudioWaveform className="w-3.5 h-3.5" />
                                                 <span className="hidden sm:inline">Mood Mixer</span>
-                                            </button>
+                                            </Button>
                                             <Button
                                                 variant="secondary"
                                                 size="sm"

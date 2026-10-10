@@ -18,7 +18,6 @@ import {
     Link2,
     FileMusic,
     Compass,
-    Loader2,
     X,
     Check,
 } from "lucide-react";
@@ -192,9 +191,10 @@ function CreatePanel({ onClose }: { onClose: () => void }) {
                 variant="primary"
                 size="sm"
                 type="submit"
-                disabled={!name.trim() || isSubmitting}
+                disabled={!name.trim()}
+                isLoading={isSubmitting}
             >
-                {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                {!isSubmitting && <Check className="w-3.5 h-3.5" />}
                 Create
             </Button>
             <button
@@ -266,9 +266,10 @@ function ImportUrlPanel({ onClose }: { onClose: () => void }) {
                 variant="primary"
                 size="sm"
                 type="submit"
-                disabled={!url.trim() || isSubmitting}
+                disabled={!url.trim()}
+                isLoading={isSubmitting}
             >
-                {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Link2 className="w-3.5 h-3.5" />}
+                {!isSubmitting && <Link2 className="w-3.5 h-3.5" />}
                 Import
             </Button>
             <button
@@ -387,9 +388,10 @@ function ImportM3UPanel({ onClose }: { onClose: () => void }) {
                         variant="primary"
                         size="sm"
                         type="submit"
-                        disabled={!playlistName.trim() || isSubmitting}
+                        disabled={!playlistName.trim()}
+                        isLoading={isSubmitting}
                     >
-                        {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                        {!isSubmitting && <Check className="w-3.5 h-3.5" />}
                         Create Playlist
                     </Button>
                     <button

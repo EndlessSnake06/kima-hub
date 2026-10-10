@@ -285,12 +285,9 @@ export default function AudiobooksPage() {
                         Couldn&apos;t load audiobooks
                     </h1>
                     <p className="mt-1 text-xs text-[var(--text-muted)]">{(error as Error).message}</p>
-                    <button
-                        onClick={() => refetch()}
-                        className="mt-4 min-h-[44px] px-5 rounded-lg bg-brand text-black font-semibold hover:bg-brand-hover transition-colors"
-                    >
+                    <Button variant="primary" onClick={() => refetch()} className="mt-4">
                         Try again
-                    </button>
+                    </Button>
                 </div>
             </div>
         );
