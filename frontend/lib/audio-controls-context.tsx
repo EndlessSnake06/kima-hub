@@ -27,6 +27,15 @@ import { dispatchQueryEvent } from "@/lib/query-events";
 import { notify } from "@/lib/notify";
 import { BookSession, BookSessionUnavailableError } from "@/lib/book-session";
 import { insertTrack, removeTrack } from "@/lib/queue-edit";
+import { shuffleArray } from "@/lib/shuffle";
+
+/** The track ids the active vibe operation holds, under whichever field its kind uses. */
+function operationTrackIds(operation: VibeOperation): string[] {
+    return 'trackIds' in operation ? operation.trackIds
+        : 'pathTrackIds' in operation ? operation.pathTrackIds
+        : 'resultTrackIds' in operation ? operation.resultTrackIds
+        : [];
+}
 
 interface AudioControlsContextType {
     // Track methods
@@ -236,14 +245,10 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
 
     const generateShuffleIndices = useCallback(
         (length: number, currentIdx: number) => {
-            const indices = Array.from({ length }, (_, i) => i).filter(
+            const others = Array.from({ length }, (_, i) => i).filter(
                 (i) => i !== currentIdx
             );
-            for (let i = indices.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [indices[i], indices[j]] = [indices[j], indices[i]];
-            }
-            return [currentIdx, ...indices];
+            return [currentIdx, ...shuffleArray(others)];
         },
         []
     );
@@ -251,13 +256,7 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
     const playTrack = useCallback(
         (track: Track) => {
             if (state.activeOperation.type !== 'idle') {
-                const opTrackIds = 'trackIds' in state.activeOperation
-                    ? state.activeOperation.trackIds
-                    : 'pathTrackIds' in state.activeOperation
-                        ? state.activeOperation.pathTrackIds
-                        : 'resultTrackIds' in state.activeOperation
-                            ? state.activeOperation.resultTrackIds
-                            : [];
+                const opTrackIds = operationTrackIds(state.activeOperation);
                 if (!opTrackIds.includes(track.id)) {
                     state.setActiveOperation({ type: 'idle' });
                 }
@@ -285,13 +284,7 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
             if (tracks.length === 0) return;
 
             if (!skipOperationCheck && state.activeOperation.type !== 'idle') {
-                const opTrackIds = 'trackIds' in state.activeOperation
-                    ? state.activeOperation.trackIds
-                    : 'pathTrackIds' in state.activeOperation
-                        ? state.activeOperation.pathTrackIds
-                        : 'resultTrackIds' in state.activeOperation
-                            ? state.activeOperation.resultTrackIds
-                            : [];
+                const opTrackIds = operationTrackIds(state.activeOperation);
                 if (!opTrackIds.includes(tracks[startIndex]?.id)) {
                     state.setActiveOperation({ type: 'idle' });
                 }
@@ -899,10 +892,7 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
         }
 
         const currentTrackId = state.currentTrack?.id;
-        const opTrackIds = 'trackIds' in op ? op.trackIds
-            : 'pathTrackIds' in op ? op.pathTrackIds
-            : 'resultTrackIds' in op ? op.resultTrackIds
-            : [];
+        const opTrackIds = operationTrackIds(op);
 
         if (!currentTrackId || !opTrackIds.includes(currentTrackId)) {
             start();

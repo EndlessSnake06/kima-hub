@@ -1,10 +1,8 @@
 // Every localStorage key the audio stack uses. Writers and readers import from here.
 export const STORAGE_KEYS = {
-    CURRENT_TRACK: "kima_current_track",
     CURRENT_AUDIOBOOK: "kima_current_audiobook",
     CURRENT_PODCAST: "kima_current_podcast",
     PLAYBACK_TYPE: "kima_playback_type",
-    QUEUE: "kima_queue",
     CURRENT_INDEX: "kima_current_index",
     IS_SHUFFLE: "kima_is_shuffle",
     REPEAT_MODE: "kima_repeat_mode",

@@ -336,7 +336,7 @@ export function transition(
                         ...snap,
                         intent: "play",
                         error: null,
-                        status: snap.src ? "loading" : "idle",
+                        status: "idle",
                     },
                     effects: [{ kind: "claim-session" }, { kind: "call-play" }],
                 };

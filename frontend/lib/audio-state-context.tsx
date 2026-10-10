@@ -444,14 +444,6 @@ export function AudioStateProvider({ children }: { children: ReactNode }) {
 
         const timeoutId = setTimeout(() => {
             try {
-                if (currentTrack) {
-                    localStorage.setItem(
-                        STORAGE_KEYS.CURRENT_TRACK,
-                        JSON.stringify(currentTrack)
-                    );
-                } else {
-                    localStorage.removeItem(STORAGE_KEYS.CURRENT_TRACK);
-                }
                 if (currentAudiobook) {
                     localStorage.setItem(
                         STORAGE_KEYS.CURRENT_AUDIOBOOK,
@@ -500,7 +492,6 @@ export function AudioStateProvider({ children }: { children: ReactNode }) {
 
         return () => clearTimeout(timeoutId);
     }, [
-        currentTrack,
         currentAudiobook,
         currentPodcast,
         playbackType,
