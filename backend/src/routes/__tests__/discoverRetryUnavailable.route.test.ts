@@ -63,8 +63,8 @@ jest.mock('../../utils/distributedLock', () => ({
 }));
 jest.mock('../../config', () => ({ config: { music: { musicPath: '/music' } } }));
 
-// The two services the IIFE dynamically imports. acquireAlbum drives the loop;
-// checkBatchCompletion is the proven flow the fix MUST hand off to.
+// The two services the route imports dynamically. acquireAlbum drives the loop;
+// checkBatchCompletion is where a retry must hand off.
 const mockAcquireAlbum = jest.fn();
 const mockCheckBatchCompletion = jest.fn();
 jest.mock('../../services/acquisitionService', () => ({

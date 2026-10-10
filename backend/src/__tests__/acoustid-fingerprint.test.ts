@@ -334,9 +334,7 @@ describe("AcoustID: the fingerprint is the fingerprint stage's stored answer", (
             select: { recordingMbid: true, enrichmentTags: true },
         });
         expect(track?.recordingMbid).toBeNull();
-        // No `_not_found` here: nothing was identified AND nothing was
-        // excluded — the step refused to ask at all, which is not a
-        // no-match to quarantine against.
+        // No `_not_found` tag: the step never asked, so there is no no-match to record.
         expect(track?.enrichmentTags).toEqual([]);
     });
 });

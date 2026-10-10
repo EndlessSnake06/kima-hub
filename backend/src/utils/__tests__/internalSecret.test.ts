@@ -1,6 +1,6 @@
 /**
  * The analyzers' report secret is made at random per server and kept in Redis, so no install runs with a
- * value anyone knows: the old fixed values and the environment variable open nothing. Real Redis.
+ * value anyone knows: fixed values and the environment variable open nothing. Real Redis.
  */
 import { redisClient, waitForRedisReady } from "../redis";
 import { INTERNAL_SECRET_KEY, internalSecret, isInternalSecret } from "../internalSecret";

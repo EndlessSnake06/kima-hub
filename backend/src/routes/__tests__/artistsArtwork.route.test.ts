@@ -26,9 +26,8 @@ const mockGetArtistInfo = jest.fn();
 const mockGetTopTracks = jest.fn();
 const mockGetBestImage = jest.fn();
 
-// The swap moved similar artists off the old Last.fm service's getSimilarArtists onto
-// the local-centroid / ListenBrainz engine, and bios onto Wikidata. Mock
-// both doors so the suite stays offline and the assertions below hold.
+// Similar artists come from the local-centroid / ListenBrainz engine; mock it so
+// the suite stays offline.
 const mockGetSimilarArtists = jest.fn();
 jest.mock("../../services/artistSimilarity", () => ({
     getSimilarArtists: (...a: unknown[]) => mockGetSimilarArtists(...a),
