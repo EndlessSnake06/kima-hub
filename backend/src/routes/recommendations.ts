@@ -2,6 +2,7 @@ import { Router } from "express";
 import { logger } from "../utils/logger";
 import { requireAuthOrToken } from "../middleware/auth";
 import { prisma } from "../utils/db";
+import { redisClient } from "../utils/redis";
 import { findSimilarTracks } from "../services/hybridSimilarity";
 
 const router = Router();
@@ -117,20 +118,18 @@ router.get("/for-you", async (req, res) => {
 
         // Only use cached data (DB heroUrl or Redis cache) - no API calls during page loads.
         // Background enrichment worker will populate cache over time.
-        const { redisClient } = await import("../utils/redis");
-
         // Get all cached images in a single Redis call for efficiency
         const artistsToCheck = newArtists.slice(0, limitNum);
         const cacheKeys = artistsToCheck
             .filter(a => !a.heroUrl)
             .map(a => `hero:${a.id}`);
-        
+
         let cachedImages: (string | null)[] = [];
         if (cacheKeys.length > 0) {
             try {
                 cachedImages = await redisClient.mget(cacheKeys);
-            } catch (err) {
-                // Redis errors are non-critical
+            } catch {
+                // Redis is down: these artists go out without a cached image.
             }
         }
 

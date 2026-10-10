@@ -121,10 +121,7 @@ playlistRouter.all("/createPlaylist.view", wrap(async (req, res) => {
             prisma.playlistItem.deleteMany({ where: { playlistId } }),
             ...(songIds.length > 0 ? [
                 prisma.playlistItem.createMany({
-                    // rank is the authoritative order and is UNIQUE per playlist.
-                    // Writing only `sort` left every row at the "" default, so the
-                    // unique index rejected all but the first and skipDuplicates
-                    // swallowed it -- an N-track playlist silently stored ONE.
+                    // rank is the playlist order and must be unique per playlist.
                     data: songIds.map((trackId, index) => ({
                         playlistId,
                         trackId,
@@ -269,9 +266,8 @@ playlistRouter.all("/updatePlaylist.view", wrap(async (req, res) => {
                 });
                 const maxSort = aggregate._max.sort ?? -1;
 
-                // Chain past the highest rank across BOTH tables: pending tracks
-                // share this key space, so a max taken from items alone can
-                // collide with one and the per-table unique index cannot catch it.
+                // Pending tracks share the rank key space, so start past the
+                // highest rank in both tables.
                 const [lastItem, lastPending] = await Promise.all([
                     tx.playlistItem.findFirst({
                         where: { playlistId },

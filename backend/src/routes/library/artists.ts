@@ -1,4 +1,6 @@
 import { Router } from "express";
+import fs from "fs";
+import path from "path";
 import { normalizeArtistName } from "../../services/artistIdentity";
 import { requireAdmin } from "../../middleware/auth";
 import { prisma, Prisma } from "../../utils/db";
@@ -789,9 +791,6 @@ router.delete("/artists/:id", requireAdmin, async (req, res) => {
     if (!artist) {
       return res.status(404).json({ error: "Artist not found" });
     }
-
-    const path = await import("path");
-    const fs = await import("fs");
 
     let deletedFiles = 0;
     const artistFoldersToDelete = new Set<string>();
