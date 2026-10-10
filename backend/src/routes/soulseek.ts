@@ -173,7 +173,7 @@ router.post(
                 if (oldestId) searchSessions.delete(oldestId);
             }
 
-            const userId = (req as any).user?.id;
+            const userId = req.user!.id;
 
             const searchId = randomUUID();
             searchSessions.set(searchId, {
@@ -271,7 +271,7 @@ router.get("/search/:searchId", requireAuth, async (req, res) => {
     try {
         const { searchId } = req.params;
         const session = searchSessions.get(searchId);
-        const userId = (req as any).user?.id;
+        const userId = req.user!.id;
 
         if (!session || session.userId !== userId) {
             return res.status(404).json({
