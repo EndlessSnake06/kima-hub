@@ -76,7 +76,6 @@ interface ImportPreview {
         total: number;
         inLibrary: number;
         downloadable: number;
-        notFound: number;
     };
 }
 
@@ -140,7 +139,7 @@ function ImportPlaylistPageContent() {
         string | null
     >(null);
     const [expandedSection, setExpandedSection] = useState<
-        "matched" | "download" | "notfound" | null
+        "matched" | "download" | null
     >("matched");
 
     // Pre-fill URL from query params and reconnect to active import if one exists
@@ -597,25 +596,14 @@ function ImportPlaylistPageContent() {
                                     To Download
                                 </div>
                             </div>
-                            {preview.summary.notFound > 0 ? (
-                                <div className="animate-rise text-center py-3 bg-danger/10 rounded-lg" style={{ "--i": 3 } as CSSProperties}>
-                                    <div className="text-xl font-bold text-danger-light">
-                                        {preview.summary.notFound}
-                                    </div>
-                                    <div className="text-xs text-[var(--text-muted)]">
-                                        Not Found
-                                    </div>
+                            <div className="animate-rise text-center py-3 bg-success/10 rounded-lg" style={{ "--i": 3 } as CSSProperties}>
+                                <div className="text-xl font-bold text-success">
+                                    ✓
                                 </div>
-                            ) : (
-                                <div className="animate-rise text-center py-3 bg-success/10 rounded-lg" style={{ "--i": 3 } as CSSProperties}>
-                                    <div className="text-xl font-bold text-success">
-                                        ✓
-                                    </div>
-                                    <div className="text-xs text-[var(--text-muted)]">
-                                        All Matched
-                                    </div>
+                                <div className="text-xs text-[var(--text-muted)]">
+                                    All Matched
                                 </div>
-                            )}
+                            </div>
                         </div>
 
                         {/* Tracks already in library */}
@@ -793,65 +781,6 @@ function ImportPlaylistPageContent() {
                                                 }
                                             )}
                                         </div>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {/* Tracks not found */}
-                        {preview.summary.notFound > 0 && (
-                            <div className="bg-white/5 rounded-lg overflow-hidden">
-                                <button
-                                    onClick={() =>
-                                        setExpandedSection(
-                                            expandedSection === "notfound"
-                                                ? null
-                                                : "notfound"
-                                        )
-                                    }
-                                    className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/5 transition-colors"
-                                >
-                                    <div className="flex items-center gap-2">
-                                        <X className="w-4 h-4 text-danger-light" />
-                                        <span className="text-sm font-medium text-white">
-                                            {preview.summary.notFound} songs not
-                                            found
-                                        </span>
-                                    </div>
-                                    {expandedSection === "notfound" ? (
-                                        <ChevronUp className="w-4 h-4 text-[var(--text-muted)]" />
-                                    ) : (
-                                        <ChevronDown className="w-4 h-4 text-[var(--text-muted)]" />
-                                    )}
-                                </button>
-                                {expandedSection === "notfound" && (
-                                    <div className="border-t border-white/5 max-h-48 overflow-y-auto">
-                                        {preview.albumsToDownload
-                                            .filter(
-                                                (a) =>
-                                                    !a.albumMbid &&
-                                                    a.albumName !==
-                                                        "Unknown Album"
-                                            )
-                                            .flatMap(
-                                                (album) => album.tracksNeeded
-                                            )
-                                            .map((track) => (
-                                                <div
-                                                    key={track.spotifyId}
-                                                    className="flex items-center gap-3 px-4 py-2 hover:bg-white/5"
-                                                >
-                                                    <div className="flex-1 min-w-0">
-                                                        <div className="text-sm text-[var(--text-secondary)] truncate">
-                                                            {track.title}
-                                                        </div>
-                                                        <div className="text-xs text-[var(--text-muted)] truncate">
-                                                            {track.artist} ·{" "}
-                                                            {track.album}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            ))}
                                     </div>
                                 )}
                             </div>
