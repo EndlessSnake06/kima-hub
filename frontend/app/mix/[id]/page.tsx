@@ -172,7 +172,6 @@ export default function MixPage() {
 
     return (
         <div className="min-h-screen">
-            {/* Compact Hero - Spotify Style */}
             <div
                 className="relative pt-16 pb-10 page-shell"
                 style={{
@@ -212,7 +211,6 @@ export default function MixPage() {
                             )}
                         </div>
 
-                        {/* Mix Info - Bottom Aligned */}
                         <div className="flex-1 min-w-0 pb-1">
                             <p className="text-xs font-medium text-[var(--text-primary)] mb-1">Mix</p>
                             <h1 className="text-2xl md:text-4xl lg:text-5xl font-bold text-white leading-tight line-clamp-2 mb-2">

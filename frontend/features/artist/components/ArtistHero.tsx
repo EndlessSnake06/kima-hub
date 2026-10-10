@@ -49,10 +49,8 @@ export function ArtistHero({
                 fallback={["#3d2a1e", "#1a1a1a"]}
             />
 
-            {/* Compact Hero Content - Full Width */}
             <div className="relative page-shell pt-16 pb-6">
                 <div className="flex items-end gap-6">
-                    {/* Artist Image - Circular */}
                     <div className="w-[140px] h-[140px] md:w-[192px] md:h-[192px] bg-[#282828] rounded-full shrink-0 overflow-hidden relative">
                         {heroImage ? (
                             <CachedImage
@@ -70,7 +68,6 @@ export function ArtistHero({
                         )}
                     </div>
 
-                    {/* Artist Info - Bottom Aligned */}
                     <div className="flex-1 min-w-0 pb-1">
                         <div className="flex items-center gap-2 mb-1">
                             <div className="w-1.5 h-1.5 bg-type-artist rounded-full" />
@@ -142,7 +139,6 @@ export function ArtistHero({
                 </div>
             </div>
 
-            {/* Action Bar - Full Width */}
             {children && (
                 <div className="relative page-shell pb-4">{children}</div>
             )}
