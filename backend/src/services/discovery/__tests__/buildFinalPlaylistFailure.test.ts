@@ -10,23 +10,18 @@ jest.mock("../../discovery/optimisticBatchUpdate", () => ({
     updateBatchStatus: jest.fn().mockResolvedValue({ success: true, retries: 0 }),
 }));
 
-// The batch fixture carries `jobs: []` because the cleanup after the catch
-// iterates batch.jobs.
 jest.mock("../../../utils/db", () => ({
     prisma: {
         discoveryBatch: { findUnique: jest.fn(), update: jest.fn() },
         downloadJob: { findMany: jest.fn().mockResolvedValue([]) },
         track: { findMany: jest.fn().mockResolvedValue([]) },
-        // Hoisted out of the $transaction by DISC-8, so it now runs against the
-        // real (mocked) client before the transaction. Returns undefined -> the
-        // service falls back to exclusionMonths=6, which these failure tests don't assert on.
+        // Read before the transaction; undefined makes the service use its default exclusion window.
         userDiscoverConfig: { findUnique: jest.fn() },
         $transaction: jest.fn(),
     },
 }));
 
-// Mock the discovery barrel; getSeedArtists returns [] so only the popular
-// fallback runs.
+// getSeedArtists returns [] so only the popular fallback runs.
 jest.mock("../../discovery", () => ({
     discoveryBatchLogger: { info: jest.fn(), error: jest.fn() },
     discoverySeeding: { getSeedArtists: jest.fn().mockResolvedValue([]) },
@@ -66,65 +61,62 @@ jest.mock("../../artistCountsService", () => ({
     updateArtistCounts: jest.fn(),
 }));
 
+const statusCalls = (status: string) =>
+    (updateBatchStatus as jest.Mock).mock.calls.filter(
+        ([, data]) => data && data.status === status
+    );
+
+// The batch is `scanning`, so the already-completed/failed guard does not
+// short-circuit; `jobs: []` keeps the cleanup after the catch from throwing. The
+// completed job has the metadata the search criteria need, and the matching
+// track lets the build reach the playlist transaction.
+function arrangeBatchWithOneAlbum(batchId: string) {
+    (prisma.discoveryBatch.findUnique as jest.Mock).mockResolvedValue({
+        id: batchId,
+        userId: "u1",
+        status: "scanning",
+        targetSongCount: 30,
+        weekStart: new Date("2026-05-25T00:00:00.000Z"),
+        jobs: [],
+    });
+    (prisma.downloadJob.findMany as jest.Mock).mockResolvedValue([
+        {
+            id: `job-${batchId}`,
+            discoveryBatchId: batchId,
+            status: "completed",
+            metadata: {
+                artistName: "Test Artist",
+                albumTitle: "Test Album",
+                albumMbid: "mbid-123",
+            },
+        },
+    ]);
+    (prisma.track.findMany as jest.Mock).mockResolvedValue([
+        {
+            id: "t1",
+            title: "T",
+            filePath: "/m/t1.flac",
+            album: {
+                id: "alb-1",
+                rgMbid: "mbid-123",
+                title: "Test Album",
+                artist: { name: "Test Artist" },
+            },
+        },
+    ]);
+}
+
 describe("buildFinalPlaylist failure handling", () => {
     beforeEach(() => jest.clearAllMocks());
 
-    it("marks the batch failed via the build-transaction CATCH, not the no-tracks short-circuit", async () => {
-        // Batch is `scanning` so the already-completed/failed guard does not
-        // short-circuit. jobs:[] keeps the post-catch cleanup from throwing on
-        // `for (job of batch.jobs)`.
-        (prisma.discoveryBatch.findUnique as jest.Mock).mockResolvedValue({
-            id: "batch-1",
-            userId: "u1",
-            status: "scanning",
-            targetSongCount: 30,
-            weekStart: new Date("2026-05-25T00:00:00.000Z"),
-            jobs: [],
-        });
-
-        // A completed job with valid metadata so searchCriteria survives the
-        // `.filter(c => c.artistName && c.albumTitle)`. metadata:{} would empty
-        // it, giving 0 tracks and the no-tracks short-circuit (a different
-        // errorMessage), which is the wrong path to hit.
-        (prisma.downloadJob.findMany as jest.Mock).mockResolvedValue([
-            {
-                id: "job-1",
-                discoveryBatchId: "batch-1",
-                status: "completed",
-                metadata: {
-                    artistName: "Test Artist",
-                    albumTitle: "Test Album",
-                    albumMbid: "mbid-123",
-                },
-            },
-        ]);
-
-        // The MBID track search returns a real track, so allTracks is non-empty:
-        // the method skips the no-tracks return and reaches the $transaction.
-        // The anchor fallback gets the same value, which only pads anchors.
-        (prisma.track.findMany as jest.Mock).mockResolvedValue([
-            {
-                id: "t1",
-                title: "T",
-                filePath: "/m/t1.flac",
-                album: {
-                    id: "alb-1",
-                    rgMbid: "mbid-123",
-                    title: "Test Album",
-                    artist: { name: "Test Artist" },
-                },
-            },
-        ]);
-
-        // The transaction throws, which drives the build-transaction catch.
+    it("marks the batch failed when the playlist transaction throws, not through the no-tracks exit", async () => {
+        arrangeBatchWithOneAlbum("batch-1");
         (prisma.$transaction as jest.Mock).mockRejectedValue(
             new Error("constraint violation")
         );
 
         await discoverWeeklyService.buildFinalPlaylist("batch-1");
 
-        // The "Playlist build failed:" prefix is set only by the transaction
-        // catch, never by the no-tracks short-circuit ("No tracks found after scan").
         expect(updateBatchStatus).toHaveBeenCalledWith(
             "batch-1",
             expect.objectContaining({
@@ -132,10 +124,6 @@ describe("buildFinalPlaylist failure handling", () => {
                 errorMessage: expect.stringContaining("Playlist build failed"),
             })
         );
-
-        // Negative guard: ensure we did NOT reach here via the short-circuit.
-        // If the fixture regressed into the no-tracks path, updateBatchStatus
-        // would carry the wrong errorMessage and this would catch it.
         expect(updateBatchStatus).not.toHaveBeenCalledWith(
             "batch-1",
             expect.objectContaining({
@@ -144,42 +132,8 @@ describe("buildFinalPlaylist failure handling", () => {
         );
     });
 
-    // The failed batch gets a completedAt, or the latest-terminal lookup
-    // cannot find it.
-    it("sets completedAt so the failed batch is a real terminal state, not a pending one", async () => {
-        (prisma.discoveryBatch.findUnique as jest.Mock).mockResolvedValue({
-            id: "batch-terminal",
-            userId: "u1",
-            status: "scanning",
-            targetSongCount: 30,
-            weekStart: new Date("2026-05-25T00:00:00.000Z"),
-            jobs: [],
-        });
-        (prisma.downloadJob.findMany as jest.Mock).mockResolvedValue([
-            {
-                id: "job-terminal",
-                discoveryBatchId: "batch-terminal",
-                status: "completed",
-                metadata: {
-                    artistName: "Terminal Artist",
-                    albumTitle: "Terminal Album",
-                    albumMbid: "mbid-terminal",
-                },
-            },
-        ]);
-        (prisma.track.findMany as jest.Mock).mockResolvedValue([
-            {
-                id: "tt",
-                title: "TT",
-                filePath: "/m/tt.flac",
-                album: {
-                    id: "alb-terminal",
-                    rgMbid: "mbid-terminal",
-                    title: "Terminal Album",
-                    artist: { name: "Terminal Artist" },
-                },
-            },
-        ]);
+    it("sets completedAt so the failed batch is a terminal state", async () => {
+        arrangeBatchWithOneAlbum("batch-terminal");
         (prisma.$transaction as jest.Mock).mockRejectedValue(
             new Error("constraint violation")
         );
@@ -195,153 +149,37 @@ describe("buildFinalPlaylist failure handling", () => {
         );
     });
 
-    // The failure path never writes status "completed".
     it("never marks the batch completed once the build transaction has thrown", async () => {
-        (prisma.discoveryBatch.findUnique as jest.Mock).mockResolvedValue({
-            id: "batch-noresurrect",
-            userId: "u1",
-            status: "scanning",
-            targetSongCount: 30,
-            weekStart: new Date("2026-05-25T00:00:00.000Z"),
-            jobs: [],
-        });
-        (prisma.downloadJob.findMany as jest.Mock).mockResolvedValue([
-            {
-                id: "job-nr",
-                discoveryBatchId: "batch-noresurrect",
-                status: "completed",
-                metadata: {
-                    artistName: "NR Artist",
-                    albumTitle: "NR Album",
-                    albumMbid: "mbid-nr",
-                },
-            },
-        ]);
-        (prisma.track.findMany as jest.Mock).mockResolvedValue([
-            {
-                id: "tnr",
-                title: "TNR",
-                filePath: "/m/tnr.flac",
-                album: {
-                    id: "alb-nr",
-                    rgMbid: "mbid-nr",
-                    title: "NR Album",
-                    artist: { name: "NR Artist" },
-                },
-            },
-        ]);
+        arrangeBatchWithOneAlbum("batch-noresurrect");
         (prisma.$transaction as jest.Mock).mockRejectedValue(
             new Error("constraint violation")
         );
 
         await discoverWeeklyService.buildFinalPlaylist("batch-noresurrect");
 
-        // Not a single updateBatchStatus call may carry status:"completed".
-        const completedCalls = (
-            updateBatchStatus as jest.Mock
-        ).mock.calls.filter(
-            ([, data]) => data && data.status === "completed"
-        );
-        expect(completedCalls).toEqual([]);
-
-        // And the batch was in fact transitioned to failed (sanity: the test is
-        // exercising the catch, not silently passing because nothing happened).
-        const failedCalls = (
-            updateBatchStatus as jest.Mock
-        ).mock.calls.filter(([, data]) => data && data.status === "failed");
-        expect(failedCalls.length).toBeGreaterThanOrEqual(1);
+        expect(statusCalls("completed")).toEqual([]);
+        expect(statusCalls("failed").length).toBeGreaterThanOrEqual(1);
     });
 
-    // The batch is marked failed exactly once.
-    it("transitions the batch to failed exactly once on the transaction-failure path", async () => {
-        (prisma.discoveryBatch.findUnique as jest.Mock).mockResolvedValue({
-            id: "batch-once",
-            userId: "u1",
-            status: "scanning",
-            targetSongCount: 30,
-            weekStart: new Date("2026-05-25T00:00:00.000Z"),
-            jobs: [],
-        });
-        (prisma.downloadJob.findMany as jest.Mock).mockResolvedValue([
-            {
-                id: "job-once",
-                discoveryBatchId: "batch-once",
-                status: "completed",
-                metadata: {
-                    artistName: "Once Artist",
-                    albumTitle: "Once Album",
-                    albumMbid: "mbid-once",
-                },
-            },
-        ]);
-        (prisma.track.findMany as jest.Mock).mockResolvedValue([
-            {
-                id: "tonce",
-                title: "TONCE",
-                filePath: "/m/tonce.flac",
-                album: {
-                    id: "alb-once",
-                    rgMbid: "mbid-once",
-                    title: "Once Album",
-                    artist: { name: "Once Artist" },
-                },
-            },
-        ]);
+    it("marks the batch failed exactly once when the transaction throws", async () => {
+        arrangeBatchWithOneAlbum("batch-once");
         (prisma.$transaction as jest.Mock).mockRejectedValue(
             new Error("constraint violation")
         );
 
         await discoverWeeklyService.buildFinalPlaylist("batch-once");
 
-        const failedCalls = (
-            updateBatchStatus as jest.Mock
-        ).mock.calls.filter(([, data]) => data && data.status === "failed");
-        expect(failedCalls).toHaveLength(1);
+        expect(statusCalls("failed")).toHaveLength(1);
     });
 
-    // ---- EDGE: original error message is propagated -------------------------
-    it("includes the underlying transaction error message in the failure reason", async () => {
-        (prisma.discoveryBatch.findUnique as jest.Mock).mockResolvedValue({
-            id: "batch-2",
-            userId: "u1",
-            status: "scanning",
-            targetSongCount: 30,
-            weekStart: new Date("2026-05-25T00:00:00.000Z"),
-            jobs: [],
-        });
-        (prisma.downloadJob.findMany as jest.Mock).mockResolvedValue([
-            {
-                id: "job-2",
-                discoveryBatchId: "batch-2",
-                status: "completed",
-                metadata: {
-                    artistName: "Artist Two",
-                    albumTitle: "Album Two",
-                    albumMbid: "mbid-2",
-                },
-            },
-        ]);
-        (prisma.track.findMany as jest.Mock).mockResolvedValue([
-            {
-                id: "t2",
-                title: "T2",
-                filePath: "/m/t2.flac",
-                album: {
-                    id: "alb-2",
-                    rgMbid: "mbid-2",
-                    title: "Album Two",
-                    artist: { name: "Artist Two" },
-                },
-            },
-        ]);
+    it("includes the transaction's error message in the failure reason", async () => {
+        arrangeBatchWithOneAlbum("batch-2");
         (prisma.$transaction as jest.Mock).mockRejectedValue(
             new Error("P2002 unique constraint failed")
         );
 
         await discoverWeeklyService.buildFinalPlaylist("batch-2");
 
-        // The catch interpolates `${txError.message}` -- assert the specific
-        // underlying cause is carried through, not swallowed.
         expect(updateBatchStatus).toHaveBeenCalledWith(
             "batch-2",
             expect.objectContaining({
@@ -353,19 +191,8 @@ describe("buildFinalPlaylist failure handling", () => {
         );
     });
 
-    // ---- BOUNDARY: short-circuit path must NOT use the catch's message ------
-    it("the no-tracks short-circuit stays distinct (does not borrow the catch errorMessage)", async () => {
-        (prisma.discoveryBatch.findUnique as jest.Mock).mockResolvedValue({
-            id: "batch-3",
-            userId: "u1",
-            status: "scanning",
-            targetSongCount: 30,
-            weekStart: new Date("2026-05-25T00:00:00.000Z"),
-            jobs: [],
-        });
-        // No completed jobs -> empty searchCriteria -> allTracks empty -> the
-        // no-tracks short-circuit fires before any $transaction. It must keep
-        // its own errorMessage so the two failure paths are never conflated.
+    it("a batch with no tracks fails with its own message, not the transaction failure's", async () => {
+        arrangeBatchWithOneAlbum("batch-3");
         (prisma.downloadJob.findMany as jest.Mock).mockResolvedValue([]);
         (prisma.track.findMany as jest.Mock).mockResolvedValue([]);
 
@@ -379,7 +206,6 @@ describe("buildFinalPlaylist failure handling", () => {
                 errorMessage: "No tracks found after scan",
             })
         );
-        // And it must NOT masquerade as the transaction failure.
         expect(updateBatchStatus).not.toHaveBeenCalledWith(
             "batch-3",
             expect.objectContaining({
@@ -388,43 +214,8 @@ describe("buildFinalPlaylist failure handling", () => {
         );
     });
 
-    // ---- HAPPY PATH (last) --------------------------------------------------
-    it("does NOT mark the batch failed when the transaction succeeds", async () => {
-        (prisma.discoveryBatch.findUnique as jest.Mock).mockResolvedValue({
-            id: "batch-4",
-            userId: "u1",
-            status: "scanning",
-            targetSongCount: 30,
-            weekStart: new Date("2026-05-25T00:00:00.000Z"),
-            jobs: [],
-        });
-        (prisma.downloadJob.findMany as jest.Mock).mockResolvedValue([
-            {
-                id: "job-4",
-                discoveryBatchId: "batch-4",
-                status: "completed",
-                metadata: {
-                    artistName: "Happy Artist",
-                    albumTitle: "Happy Album",
-                    albumMbid: "mbid-4",
-                },
-            },
-        ]);
-        (prisma.track.findMany as jest.Mock).mockResolvedValue([
-            {
-                id: "t4",
-                title: "T4",
-                filePath: "/m/t4.flac",
-                album: {
-                    id: "alb-4",
-                    rgMbid: "mbid-4",
-                    title: "Happy Album",
-                    artist: { name: "Happy Artist" },
-                },
-            },
-        ]);
-        // Transaction resolves -> success path -> updateBatchStatus is called
-        // INSIDE the transaction (with the tx client), not via the catch.
+    it("does not mark the batch failed when the transaction succeeds", async () => {
+        arrangeBatchWithOneAlbum("batch-4");
         (prisma.$transaction as jest.Mock).mockResolvedValue({
             albumCount: 1,
             trackCount: 1,
@@ -432,7 +223,6 @@ describe("buildFinalPlaylist failure handling", () => {
 
         await discoverWeeklyService.buildFinalPlaylist("batch-4");
 
-        // The failure catch must not have fired.
         expect(updateBatchStatus).not.toHaveBeenCalledWith(
             "batch-4",
             expect.objectContaining({
