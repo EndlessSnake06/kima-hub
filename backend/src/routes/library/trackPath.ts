@@ -1,4 +1,3 @@
-// backend/src/routes/library/trackPath.ts
 // Shared helper for resolving a Track's stored filePath against the music
 // root, guarding against path traversal (e.g. filePath containing "../../").
 import path from "path";
@@ -23,12 +22,4 @@ export function resolveWithinMusicRoot(...segments: string[]): string | null {
   }
 
   return absolutePath;
-}
-
-/**
- * Resolve a track's stored `filePath` to an absolute path under the music
- * directory. Returns null if the resolved path would escape the music root.
- */
-export function resolveTrackFilePath(filePath: string): string | null {
-  return resolveWithinMusicRoot(filePath);
 }

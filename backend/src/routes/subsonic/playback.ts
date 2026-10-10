@@ -9,7 +9,7 @@ import { getAudioStreamingService } from "../../services/audioStreaming";
 import { config } from "../../config";
 import { bitrateToQuality, firstArtistGenre, mapSong, wrap } from "./mappers";
 import { normalizeArtistName } from "../../services/artistIdentity";
-import { resolveTrackFilePath } from "../library/trackPath";
+import { resolveWithinMusicRoot } from "../library/trackPath";
 import { recordPlay } from "../../services/playRecording";
 import { getLiveState, publicUserId, reportLive } from "../../services/liveListening";
 
@@ -26,7 +26,7 @@ async function streamTrackById(
         return subsonicError(req, res, SubsonicError.NOT_FOUND, "Song not found");
     }
 
-    const absolutePath = resolveTrackFilePath(track.filePath);
+    const absolutePath = resolveWithinMusicRoot(track.filePath);
     if (!absolutePath) {
         return subsonicError(req, res, SubsonicError.NOT_FOUND, "Song not found");
     }
@@ -202,7 +202,7 @@ playbackRouter.all("/download.view", wrap(async (req, res) => {
     const track = await prisma.track.findUnique({ where: { id } });
     if (!track || !track.filePath) return subsonicError(req, res, SubsonicError.NOT_FOUND, "Song not found");
 
-    const absolutePath = resolveTrackFilePath(track.filePath);
+    const absolutePath = resolveWithinMusicRoot(track.filePath);
     if (!absolutePath) {
         return subsonicError(req, res, SubsonicError.NOT_FOUND, "Song not found");
     }

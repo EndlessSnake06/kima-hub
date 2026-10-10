@@ -573,23 +573,9 @@ router.get("/artists/:id", async (req, res) => {
     }
 
     const allTracks = artist.albums.flatMap((a) => a.tracks);
-    let topTracks: any[] = allTracks.slice(0, 10);
+    let topTracks: any[];
 
     const userId = req.user!.id;
-    const trackIds = allTracks.map((t) => t.id);
-    const userPlays = await prisma.play.groupBy({
-      by: ["trackId"],
-      where: {
-        userId,
-        trackId: { in: trackIds },
-      },
-      _count: {
-        id: true,
-      },
-    });
-    const userPlayCounts = new Map(
-      userPlays.map((p) => [p.trackId, p._count.id]),
-    );
 
     // Top tracks: the user's most played by this artist; with no plays, the
     // artist's tracks by MusicBrainz first-release date.
@@ -690,7 +676,7 @@ router.get("/artists/:id", async (req, res) => {
             ...t,
             playCount: 0,
             listeners: 0,
-            userPlayCount: userPlayCounts.get(t.id) || 0,
+            userPlayCount: 0,
             album: {
               ...t.album,
               coverArt: t.album.coverUrl,

@@ -7,7 +7,7 @@
 
 import { parseFile } from "music-metadata";
 import { prisma } from "../utils/db";
-import { resolveTrackFilePath } from "../routes/library/trackPath";
+import { resolveWithinMusicRoot } from "../routes/library/trackPath";
 import { logger } from "../utils/logger";
 import { acoustidTrackIdentityTotal } from "../utils/metrics";
 import {
@@ -81,7 +81,7 @@ export async function readIdentityTags(
     // fpcalc both need the real file. Same escape-safe resolution the
     // stream route uses -- a path that would leave the music folder is
     // not opened.
-    const absolutePath = resolveTrackFilePath(track.filePath);
+    const absolutePath = resolveWithinMusicRoot(track.filePath);
     if (!absolutePath) {
         logger.warn(
             `[AcoustID] Track ${track.id} path escapes the music folder: ${track.filePath}`

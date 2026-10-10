@@ -8,7 +8,7 @@ jest.mock("../../../config", () => ({
   config: { music: { musicPath: "/music" } },
 }));
 
-import { resolveTrackFilePath, resolveWithinMusicRoot } from "../trackPath";
+import { resolveWithinMusicRoot } from "../trackPath";
 
 describe("paths inside the root resolve", () => {
   it("resolves a plain relative path", () => {
@@ -75,14 +75,3 @@ describe("paths that escape the root are refused", () => {
   });
 });
 
-describe("resolveTrackFilePath keeps its old contract", () => {
-  it("resolves a track path", () => {
-    expect(resolveTrackFilePath("Artist/Album/t.mp3")).toBe(
-      "/music/Artist/Album/t.mp3",
-    );
-  });
-
-  it("refuses a traversing track path", () => {
-    expect(resolveTrackFilePath("../../etc/passwd")).toBeNull();
-  });
-});

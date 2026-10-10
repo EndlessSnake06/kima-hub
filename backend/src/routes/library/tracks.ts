@@ -382,10 +382,7 @@ router.get("/tracks/shuffle", async (req, res) => {
         },
       });
 
-      for (let i = tracksData.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [tracksData[i], tracksData[j]] = [tracksData[j], tracksData[i]];
-      }
+      tracksData = shuffleArray(tracksData);
     }
 
     const tracks = tracksData.slice(0, limit).map((track) => ({
