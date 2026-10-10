@@ -35,6 +35,18 @@ function withReleaseArtwork<
     );
 }
 
+/** The release-group mbids among `releases` that the library already owns. */
+async function ownedRgMbids<T extends { albumMbid: string }>(
+    releases: T[]
+): Promise<Set<string>> {
+    const candidates = [...new Set(releases.map(r => r.albumMbid).filter(Boolean))];
+    const rows = await prisma.album.findMany({
+        where: { rgMbid: { in: candidates } },
+        select: { rgMbid: true },
+    });
+    return new Set(rows.map(a => a.rgMbid).filter(Boolean));
+}
+
 interface ReleaseRadarResponse {
     upcoming: ReleaseItem[];
     recent: ReleaseItem[];
@@ -119,12 +131,7 @@ router.get("/radar", async (req, res) => {
         logger.debug(`[Releases] Found ${unmonitoredSimilar.length} unmonitored similar artists`);
 
         // 4. Check which of these releases the library owns, looking up only their MBIDs.
-        const candidateRgMbids = [...new Set(lidarrReleases.map(r => r.albumMbid).filter(Boolean))];
-        const ownedRows = await prisma.album.findMany({
-            where: { rgMbid: { in: candidateRgMbids } },
-            select: { rgMbid: true },
-        });
-        const libraryAlbumMbids = new Set(ownedRows.map(a => a.rgMbid).filter(Boolean));
+        const libraryAlbumMbids = await ownedRgMbids(lidarrReleases);
 
         // 5. Transform Lidarr releases
         const rawReleases: ReleaseItem[] = lidarrReleases.map(release => {
@@ -220,12 +227,7 @@ router.get("/recent", async (req, res) => {
 
         const releases = await lidarrService.getCalendar(startDate, now);
         
-        const candidateRgMbids = [...new Set(releases.map(r => r.albumMbid).filter(Boolean))];
-        const ownedRows = await prisma.album.findMany({
-            where: { rgMbid: { in: candidateRgMbids } },
-            select: { rgMbid: true },
-        });
-        const libraryMbids = new Set(ownedRows.map(a => a.rgMbid).filter(Boolean));
+        const libraryMbids = await ownedRgMbids(releases);
 
         // Filter to releases not in library and sort (newest first)
         const notInLibrary = releases
