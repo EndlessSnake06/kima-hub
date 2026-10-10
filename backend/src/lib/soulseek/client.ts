@@ -24,12 +24,7 @@ interface SlskServerConn {
   readonly writable: boolean
 }
 
-/**
- * The exact public surface SoulseekService depends on. Both the vendored
- * P2P client and the slskd HTTP adapter implement this. Kept deliberately
- * minimal — only what SoulseekService actually calls — so the two backends
- * stay interchangeable.
- */
+/** What SoulseekService calls on a client, and nothing more, so the two backends stay interchangeable. */
 export interface ISlskClient extends EventEmitter {
   loggedIn: boolean
   downloads: Download[]
@@ -41,24 +36,15 @@ export interface ISlskClient extends EventEmitter {
   destroy(): void
 }
 
-// Compile-time contract guard. Each assignment forces TS to verify that the
-// backend's instances satisfy ISlskClient; a drift produces an error at the
-// specific line, so diagnostics point straight at the offending backend.
+// These assignments fail the build if either backend drifts from ISlskClient.
 const _p2p: new () => ISlskClient = P2PClient
 const _slskd: new () => ISlskClient = SlskdClient
 
-// Select the backend by environment. The return type is the interface, not a
-// concrete class, so consumers depend only on the shared contract.
-export const SlskClient: new () => ISlskClient = process.env.SLSKD_URL ? _slskd : _p2p
-
-// Resolve the backend from an explicit mode (e.g. a user setting) instead of the
-// env default: "slskd" -> REST adapter, "p2p" -> built-in client. When mode is
-// unset, fall back to the env-based selection above.
+/** The backend for an explicit mode ("slskd" or "p2p"); any other mode follows SLSKD_URL. */
 export function resolveSlskClient(mode?: string | null): new () => ISlskClient {
   if (mode === 'slskd') return _slskd
   if (mode === 'p2p') return _p2p
   return process.env.SLSKD_URL ? _slskd : _p2p
 }
 
-// Re-export the client events type from the P2P client for type compatibility.
-export type { SlskClientEvents, SlskPeersEvents } from './p2p-client'
+export const SlskClient: new () => ISlskClient = resolveSlskClient()

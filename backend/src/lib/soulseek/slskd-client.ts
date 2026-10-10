@@ -14,37 +14,27 @@ import type { Download, SlskDownloadEventEmitter } from './downloads'
 import type { FileSearchResponse } from './messages/from/peer'
 import type { FileAttribute } from './messages/common'
 
-// Defaults come from the environment; configureSlskd() lets the app override
-// them at runtime from user settings (so slskd is configurable in the UI, not
-// only via env vars). Kept as module-level `let`s so existing references below
-// pick up the configured values without threading config through every call.
+// Defaults come from the environment; configureSlskd() overrides them from user settings.
 let SLSKD_URL = process.env.SLSKD_URL || 'http://gluetun-slsk:5030'
 let SLSKD_API_KEY = process.env.SLSKD_API_KEY || ''
 let SLSKD_DOWNLOADS = process.env.SLSKD_DOWNLOADS || '/soulseek-downloads'
 
-/** Override slskd connection settings (e.g. from SystemSettings). Empty/undefined
- *  values are ignored so an unset field never clobbers a working env default. */
+/** Overrides the slskd connection settings; an empty url or downloads path is ignored so it never clobbers a working default. */
 export function configureSlskd(opts: { url?: string | null; apiKey?: string | null; downloads?: string | null }): void {
   if (opts.url) SLSKD_URL = opts.url
   if (opts.apiKey != null) SLSKD_API_KEY = opts.apiKey
   if (opts.downloads) SLSKD_DOWNLOADS = opts.downloads
 }
 
-/** Snapshot the current slskd connection settings. Lets callers (e.g. the
- *  connection-test endpoint) temporarily reconfigure and then restore, so a
- *  probe against a candidate URL never leaks into the live client. */
+/** The current slskd connection settings, so the connection test can restore them after probing a candidate URL. */
 export function peekSlskdConfig(): { url: string; apiKey: string; downloads: string } {
   return { url: SLSKD_URL, apiKey: SLSKD_API_KEY, downloads: SLSKD_DOWNLOADS }
 }
 
-// ── HTTP helpers ──────────────────────────────────────────────────────
-
 function slskdRequest(method: string, urlPath: string, body?: unknown): Promise<any> {
   return new Promise((resolve, reject) => {
     const base = new URL(SLSKD_URL)
-    // Honour the URL scheme: an https:// slskd must go over TLS (not plaintext
-    // http to port 80, which would leak the API key). Default the port to the
-    // scheme's standard when the URL omits it.
+    // An https:// slskd goes over TLS, never plaintext, which would leak the API key
     const isHttps = base.protocol === 'https:'
     const transport = isHttps ? https : http
     const opts: http.RequestOptions = {
@@ -91,8 +81,6 @@ const slskdPost = (p: string, b?: unknown) => slskdRequest('POST', p, b)
 const slskdDelete = (p: string) => slskdRequest('DELETE', p)
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
-// ── FakeServerConn ────────────────────────────────────────────────────
-
 class FakeServerConn extends EventEmitter {
   destroyed = false
   writable = true
@@ -137,8 +125,6 @@ class FakeServerConn extends EventEmitter {
     this.markDisconnected()
   }
 }
-
-// ── SlskdClient ──────────────────────────────────────────────────────
 
 interface SlskdSearchFile {
   filename: string
@@ -187,8 +173,7 @@ export class SlskdClient extends EventEmitter {
   server: { conn: FakeServerConn }
 
   private _fileSizeCache = new Map<string, number>()
-  // Cap the size cache so a long-running session can't grow it unbounded.
-  // Map keeps insertion order, so deleting the first key is FIFO eviction.
+  // Evicts the oldest entry (Map keeps insertion order) so the cache stays bounded
   private static readonly FILE_SIZE_CACHE_MAX = 10000
 
   private _cacheFileSize(key: string, size: number): void {
@@ -225,8 +210,6 @@ export class SlskdClient extends EventEmitter {
     }
     this.loggedIn = true
   }
-
-  // ── Search ────────────────────────────────────────────────────────
 
   async search(
     query: string,
@@ -315,8 +298,6 @@ export class SlskdClient extends EventEmitter {
     }
   }
 
-  // ── Download ──────────────────────────────────────────────────────
-
   async download(username: string, filename: string, _receivedBytes?: bigint | number): Promise<Download> {
     const stream = new PassThrough()
     const events = new EventEmitter() as SlskDownloadEventEmitter
@@ -329,8 +310,7 @@ export class SlskdClient extends EventEmitter {
       receivedBytes: BigInt(0),
       stream,
       events,
-      // No-op: there's no peer to ask in the REST model. Position is read from
-      // the transfer during download polling (see queuePosition above).
+      // No peer to ask: queuePosition is set while polling
       requestQueuePosition: () => {},
       startedAt: Date.now(),
     }
@@ -380,9 +360,7 @@ export class SlskdClient extends EventEmitter {
 
       ;(dl as any).totalBytes = BigInt(file.size || 0)
       dl.receivedBytes = BigInt(file.bytesTransferred || 0)
-      // slskd reports place in the remote peer's queue on the transfer itself,
-      // so expose it the way the P2P backend does (on the download object)
-      // rather than the no-op requestQueuePosition() the pull model can't use.
+      // Exposed on the download object, as the P2P backend does
       if (typeof file.placeInQueue === 'number') {
         ;(dl as any).queuePosition = file.placeInQueue
       }
@@ -511,8 +489,6 @@ export class SlskdClient extends EventEmitter {
     }
     return null
   }
-
-  // ── Cleanup ───────────────────────────────────────────────────────
 
   removeDownload(dl: Download): void {
     this.downloads = this.downloads.filter((d) => d !== dl)
