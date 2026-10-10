@@ -162,8 +162,8 @@ function primeHandlerPreResponse() {
         }),
     );
 
-    // The IIFE's job list.
-    (prisma.downloadJob.findMany as jest.Mock).mockResolvedValue([RETRY_JOB]);
+    // No download is already working on the album; then the IIFE's job list.
+    (prisma.downloadJob.findMany as jest.Mock).mockResolvedValueOnce([]).mockResolvedValue([RETRY_JOB]);
     (prisma.discoveryBatch.update as jest.Mock).mockResolvedValue({});
     (prisma.downloadJob.update as jest.Mock).mockResolvedValue({});
 }
@@ -275,7 +275,7 @@ describe('POST /discover/retry-unavailable -- routes through checkBatchCompletio
                 unavailableAlbum: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
             }),
         );
-        (prisma.downloadJob.findMany as jest.Mock).mockResolvedValue([
+        (prisma.downloadJob.findMany as jest.Mock).mockResolvedValueOnce([]).mockResolvedValue([
             RETRY_JOB,
             { ...RETRY_JOB, id: 'job-2', targetMbid: 'mbid-bbb' },
         ]);
@@ -349,7 +349,7 @@ describe('POST /discover/retry-unavailable -- routes through checkBatchCompletio
                 unavailableAlbum: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
             }),
         );
-        (prisma.downloadJob.findMany as jest.Mock).mockResolvedValue([
+        (prisma.downloadJob.findMany as jest.Mock).mockResolvedValueOnce([]).mockResolvedValue([
             RETRY_JOB,
             { ...RETRY_JOB, id: 'job-2', targetMbid: 'mbid-bbb' },
         ]);
@@ -475,7 +475,7 @@ describe('POST /discover/retry-unavailable -- routes through checkBatchCompletio
                 unavailableAlbum: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
             }),
         );
-        (prisma.downloadJob.findMany as jest.Mock).mockResolvedValue([
+        (prisma.downloadJob.findMany as jest.Mock).mockResolvedValueOnce([]).mockResolvedValue([
             RETRY_JOB,
             { ...RETRY_JOB, id: 'job-2', targetMbid: 'mbid-bbb' },
         ]);
@@ -499,5 +499,16 @@ describe('POST /discover/retry-unavailable -- routes through checkBatchCompletio
         // One handoff, despite two acquired albums.
         expect(mockCheckBatchCompletion).toHaveBeenCalledTimes(1);
         expect(mockCheckBatchCompletion).toHaveBeenCalledWith(RETRY_BATCH_ID);
+    });
+    it('IN FLIGHT: an album a download is already working on is not queued again', async () => {
+        primeHandlerPreResponse();
+        (prisma.downloadJob.findMany as jest.Mock).mockReset().mockResolvedValueOnce([{ targetMbid: UNAVAILABLE_ALBUM.albumMbid }]);
+
+        const res = await request(app).post('/discover/retry-unavailable');
+
+        expect(res.status).toBe(200);
+        expect(res.body).toMatchObject({ success: true, queued: 0, message: 'The unavailable albums are already downloading' });
+        expect(prisma.$transaction).not.toHaveBeenCalled();
+        expect(mockAcquireAlbum).not.toHaveBeenCalled();
     });
 });

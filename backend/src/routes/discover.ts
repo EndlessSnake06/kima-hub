@@ -864,8 +864,17 @@ router.post("/retry-unavailable", async (req, res) => {
             artist: a.artist.name.toLowerCase().trim(),
         }));
 
+        // Filter 4: albums a download is already working on, from any batch
+        const inFlight = new Set(
+            (await prisma.downloadJob.findMany({
+                where: { targetMbid: { in: allMbids }, status: { in: ["pending", "processing"] } },
+                select: { targetMbid: true },
+            })).map((j) => j.targetMbid)
+        );
+
         const staleIds: string[] = [];
         const retriableAlbums = unavailableAlbums.filter((album) => {
+            if (inFlight.has(album.albumMbid)) return false;
             if (successfulMbids.has(album.albumMbid)) {
                 staleIds.push(album.id);
                 return false;
@@ -899,7 +908,10 @@ router.post("/retry-unavailable", async (req, res) => {
         }
 
         if (retriableAlbums.length === 0) {
-            return res.json({ success: true, queued: 0, message: "All unavailable albums are already in your library" });
+            const message = inFlight.size > 0
+                ? "The unavailable albums are already downloading"
+                : "All unavailable albums are already in your library";
+            return res.json({ success: true, queued: 0, message });
         }
 
         const settings = await getSystemSettings();
