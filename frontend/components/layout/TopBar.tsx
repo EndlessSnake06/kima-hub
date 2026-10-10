@@ -45,7 +45,7 @@ export function TopBar() {
 
     // The scan's state from the server. SSE events update it as they arrive; it
     // is also read every 2 s until the scan ends, so a missed event cannot leave
-    // the button spinning. A job the queue no longer holds has ended.
+    // the button spinning.
     const { data: scanStatus } = useQuery<{
         status: string;
         progress: number;

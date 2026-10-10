@@ -228,7 +228,7 @@ export function MoodMixer({ isOpen, onClose }: MoodMixerProps) {
                                             transition-all duration-200 hover:scale-[1.03] active:scale-[0.97]
                                             disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100
                                             flex flex-col items-center justify-center gap-2 p-3
-                                            ${i < 8 ? `animate-rise [animation-delay:calc(var(--i)*45ms)]` : ""}
+                                            animate-rise [animation-delay:calc(var(--i)*45ms)]
                                         `}
                                         title={
                                             isDisabled
