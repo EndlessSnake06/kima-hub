@@ -446,6 +446,13 @@ test.describe("Dogfood: tray, scrobbling, public feed, GPU, release window", () 
                 await settle(fp, 2500);
                 await expect(dialog).toBeHidden();
             });
+
+            await session.step("the version number reopens the window, and Escape closes it", async () => {
+                await fp.getByRole("button", { name: /what's new in v/i }).click();
+                await expect(dialog).toBeVisible({ timeout: 10_000 });
+                await fp.keyboard.press("Escape");
+                await expect(dialog).toBeHidden({ timeout: 10_000 });
+            });
         } finally {
             session.setActivePage(page);
             await fresh.close();
