@@ -367,7 +367,7 @@ export class SlskdClient extends EventEmitter {
 
       if (state.includes('completed') && state.includes('succeeded')) {
         ;(dl as any).status = 'downloading'
-        await this._pipeCompletedFile(dl, username, filename)
+        await this._pipeCompletedFile(dl, filename)
         return
       }
 
@@ -420,7 +420,7 @@ export class SlskdClient extends EventEmitter {
     return null
   }
 
-  private async _pipeCompletedFile(dl: Download, _username: string, filename: string): Promise<void> {
+  private async _pipeCompletedFile(dl: Download, filename: string): Promise<void> {
     const parts = filename.replace(/\\/g, '/').split('/')
 
     let filePath: string | null = null
