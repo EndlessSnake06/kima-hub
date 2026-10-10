@@ -1,12 +1,9 @@
 /**
- * Bundles against a real Lidarr's answers (recorded run "bundle": "Guess Who's
- * a Mess" already owned, then "I Don't Know What I'm Doing" asked for, with only
- * a discography release out there). The release Lidarr listed is recognised by
- * Lidarr's own fields and grabbed when the album search found nothing; its grab
- * links both albums' jobs; the album it brought completes and the one it brought
- * no files for is a failed release, in either order, without touching the other
- * job; Kima then searches for that album itself and never grabs a bundle for it
- * again; and the size ceiling holds.
+ * Bundles against a real Lidarr's answers (recorded run "bundle": one album already owned, another
+ * asked for, only a discography release out there). The listed release is recognised by Lidarr's own
+ * fields and grabbed when the album search found nothing; its grab links both albums' jobs; the album
+ * it brought completes and the one it brought no files for fails, in either order; Kima then searches
+ * for that album itself and never grabs a bundle for it again; and the size ceiling holds.
  */
 
 import { prisma } from "../../utils/db";
