@@ -8,6 +8,22 @@ import { DogfoodSession, navigateByClick, firstAlbumCard, openAlbumsTab } from "
 import { readLibraryFacts, assertReady, coverageGaps, LibraryFacts } from "./preflight";
 import { PLAYER, escapeRegExp, readPlayer, settle, softwareWebGL } from "../fixtures/shared";
 
+// Read the queue from the server, where it lives.
+const queueLength = (page: Page) =>
+    page.evaluate(async () => {
+        try {
+            const token = localStorage.getItem("auth_token");
+            const res = await fetch("/api/playback-state", {
+                headers: token ? { Authorization: `Bearer ${token}` } : {},
+            });
+            if (!res.ok) return -1;
+            const state = await res.json();
+            return Array.isArray(state?.queue) ? state.queue.length : 0;
+        } catch {
+            return -1;
+        }
+    });
+
 const baseUrl = process.env.KIMA_UI_BASE_URL || "http://127.0.0.1:3030";
 const username = process.env.KIMA_TEST_USERNAME || "";
 const password = process.env.KIMA_TEST_PASSWORD || "";
@@ -263,30 +279,14 @@ test.describe("Dogfood walkthrough", () => {
     test("3. queue: line up more music and confirm every surface agrees", async () => {
         session.setJourney("3. Queue");
 
-        // Read from the server, where the queue lives.
-        const queueLength = () =>
-            page.evaluate(async () => {
-                try {
-                    const token = localStorage.getItem("auth_token");
-                    const res = await fetch("/api/playback-state", {
-                        headers: token ? { Authorization: `Bearer ${token}` } : {},
-                    });
-                    if (!res.ok) return -1;
-                    const state = await res.json();
-                    return Array.isArray(state?.queue) ? state.queue.length : 0;
-                } catch {
-                    return -1;
-                }
-            });
-
         await session.step("add a track to the queue", async () => {
-            const before = await queueLength();
+            const before = await queueLength(page);
             const row = page.locator("[data-track-row]").nth(1);
             await row.waitFor({ state: "visible", timeout: 10_000 });
             await row.hover();
             await row.getByLabel("Add to queue").click();
             await page.waitForTimeout(600);
-            return { queueBefore: before, queueAfter: await queueLength() };
+            return { queueBefore: before, queueAfter: await queueLength(page) };
         });
 
         // Client-side navigation on purpose: the queue lives in React state, so reloading
@@ -295,14 +295,14 @@ test.describe("Dogfood walkthrough", () => {
             await page.getByRole("link", { name: "Queue" }).click();
             await page.waitForURL(/\/queue/, { timeout: 10_000 });
             await settle(page, 1000);
-            return { url: new URL(page.url()).pathname, queueOnArrival: await queueLength() };
+            return { url: new URL(page.url()).pathname, queueOnArrival: await queueLength(page) };
         });
 
         await session.step("the queue shows what is playing and what is next", async () => {
             await expect(page.getByRole("heading", { name: "Now Playing" })).toBeVisible({
                 timeout: 10_000,
             });
-            const len = await queueLength();
+            const len = await queueLength(page);
             const shown = await page
                 .locator("text=/\\d+ track/")
                 .first()
@@ -352,22 +352,6 @@ test.describe("Dogfood walkthrough", () => {
         test.setTimeout(180_000);
         session.setJourney("3a. Queue editing");
 
-        // Read from the server, where the queue lives.
-        const queueLength = () =>
-            page.evaluate(async () => {
-                try {
-                    const token = localStorage.getItem("auth_token");
-                    const res = await fetch("/api/playback-state", {
-                        headers: token ? { Authorization: `Bearer ${token}` } : {},
-                    });
-                    if (!res.ok) return -1;
-                    const state = await res.json();
-                    return Array.isArray(state?.queue) ? state.queue.length : 0;
-                } catch {
-                    return -1;
-                }
-            });
-
         await session.step("start playing and queue two more tracks", async () => {
             await page.goto("/collection?tab=albums");
             await settle(page, 1500);
@@ -390,7 +374,7 @@ test.describe("Dogfood walkthrough", () => {
             await expect
                 .poll(
                     async () => {
-                        len = await queueLength();
+                        len = await queueLength(page);
                         return len;
                     },
                     { timeout: 10_000, intervals: [500, 1_000, 1_000, 2_000] },
@@ -403,13 +387,13 @@ test.describe("Dogfood walkthrough", () => {
             await page.getByRole("link", { name: "Queue" }).click();
             await page.waitForURL(/\/queue/, { timeout: 10_000 });
             await settle(page, 1000);
-            return { queueOnArrival: await queueLength() };
+            return { queueOnArrival: await queueLength(page) };
         });
 
         // Every row action is hover-gated (opacity-0 group-hover:opacity-100), so each
         // one hovers its row first. Selectors are the aria-labels the queue page emits.
         await session.step("remove one upcoming track", async () => {
-            const before = await queueLength();
+            const before = await queueLength(page);
             const rows = page.locator("main [data-track-index], main .group").filter({
                 has: page.locator('[aria-label^="Remove "]'),
             });
@@ -423,7 +407,7 @@ test.describe("Dogfood walkthrough", () => {
             await expect
                 .poll(
                     async () => {
-                        after = await queueLength();
+                        after = await queueLength(page);
                         return after;
                     },
                     { timeout: 10_000, intervals: [500, 1_000, 1_000, 2_000] },
@@ -490,7 +474,7 @@ test.describe("Dogfood walkthrough", () => {
             // Same 1s server-sync debounce as the remove step: poll instead of a
             // fixed wait, so the assertion checks the outcome, not the timing.
             await expect
-                .poll(async () => queueLength(), { timeout: 10_000, intervals: [500, 1_000, 1_000, 2_000] })
+                .poll(async () => queueLength(page), { timeout: 10_000, intervals: [500, 1_000, 1_000, 2_000] })
                 .toBe(0);
             return { cleared: true };
         });
