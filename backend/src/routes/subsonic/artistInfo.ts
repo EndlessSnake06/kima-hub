@@ -50,7 +50,7 @@ artistInfoRouter.all(["/getArtistInfo2.view", "/getArtistInfo.view"], wrap(async
         for (const s of top) {
             const found = candidates.find(
                 (a) => !usedIds.has(a.id) &&
-                    ((s.mbid && a.mbid === s.mbid) || a.normalizedName === s.name.toLowerCase())
+                    ((s.mbid && a.mbid === s.mbid) || a.normalizedName === normalizeArtistName(s.name))
             );
             if (found) {
                 usedIds.add(found.id);
