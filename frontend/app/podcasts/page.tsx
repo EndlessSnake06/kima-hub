@@ -23,6 +23,20 @@ const getProxiedImageUrl = (imageUrl: string | undefined): string | null => {
     return api.getCoverArtUrl(imageUrl, 300);
 };
 
+function PodcastCard({ podcast, index }: { podcast: { id: string; title: string; author: string; coverUrl?: string }; index: number }) {
+    return (
+        <MediaCard
+            href={`/podcasts/${podcast.id}`}
+            title={podcast.title}
+            subtitle={podcast.author}
+            imageUrl={getProxiedImageUrl(podcast.coverUrl)}
+            fallbackIcon={Mic2}
+            type="podcast"
+            index={index}
+        />
+    );
+}
+
 interface SearchResult {
     type?: string;
     id: number | string;
@@ -402,16 +416,7 @@ export default function PodcastsPage() {
                                 data-tv-section="my-podcasts"
                             >
                                 {paginatedPodcasts.map((podcast, index) => (
-                                    <MediaCard
-                                        key={podcast.id}
-                                        href={`/podcasts/${podcast.id}`}
-                                        title={podcast.title}
-                                        subtitle={podcast.author}
-                                        imageUrl={getProxiedImageUrl(podcast.coverUrl)}
-                                        fallbackIcon={Mic2}
-                                        type="podcast"
-                                        index={index}
-                                    />
+                                    <PodcastCard key={podcast.id} podcast={podcast} index={index} />
                                 ))}
                             </div>
 
@@ -433,16 +438,7 @@ export default function PodcastsPage() {
                                 data-tv-section="top-podcasts"
                             >
                                 {topPodcasts.map((podcast, index) => (
-                                    <MediaCard
-                                        key={podcast.id}
-                                        href={`/podcasts/${podcast.id}`}
-                                        title={podcast.title}
-                                        subtitle={podcast.author}
-                                        imageUrl={getProxiedImageUrl(podcast.coverUrl)}
-                                        fallbackIcon={Mic2}
-                                        type="podcast"
-                                        index={index}
-                                    />
+                                    <PodcastCard key={podcast.id} podcast={podcast} index={index} />
                                 ))}
                             </div>
                         </section>
@@ -479,16 +475,7 @@ export default function PodcastsPage() {
                                     data-tv-section={`genre-${genreId}`}
                                 >
                                     {genrePodcasts.map((podcast: { id: string; title: string; author: string; coverUrl?: string; episodeCount?: number }, index: number) => (
-                                        <MediaCard
-                                            key={podcast.id}
-                                            href={`/podcasts/${podcast.id}`}
-                                            title={podcast.title}
-                                            subtitle={podcast.author}
-                                            imageUrl={getProxiedImageUrl(podcast.coverUrl)}
-                                            fallbackIcon={Mic2}
-                                            type="podcast"
-                                            index={index}
-                                        />
+                                        <PodcastCard key={podcast.id} podcast={podcast} index={index} />
                                     ))}
                                 </div>
                             </section>

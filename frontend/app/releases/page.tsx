@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { Calendar, Clock, Download, Disc, ArrowRight, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
@@ -122,47 +122,25 @@ export default function ReleasesPage() {
 
             <div className="page-shell space-y-10 animate-rise">
                 {data?.upcoming && data.upcoming.length > 0 && (
-                    <section>
-                        <div className="flex items-center gap-3 mb-6">
-                            <Clock className="w-5 h-5 text-brand" />
-                            <h2 className="text-xl font-semibold text-white">Coming Soon</h2>
-                            <span className="text-[var(--text-muted)] text-sm">({data.upcoming.length})</span>
-                        </div>
-
-                        <div className="grid-media">
-                            {data.upcoming.map((release) => (
-                                <ReleaseCard
-                                    key={`${release.albumMbid}-${release.id}`}
-                                    release={release}
-                                    formatDate={formatDate}
-                                    onDownload={handleDownload}
-                                    isDownloading={downloadingId === release.id}
-                                />
-                            ))}
-                        </div>
-                    </section>
+                    <ReleaseSection
+                        icon={<Clock className="w-5 h-5 text-brand" />}
+                        title="Coming Soon"
+                        releases={data.upcoming}
+                        formatDate={formatDate}
+                        onDownload={handleDownload}
+                        downloadingId={downloadingId}
+                    />
                 )}
 
                 {data?.recent && data.recent.length > 0 && (
-                    <section>
-                        <div className="flex items-center gap-3 mb-6">
-                            <Disc className="w-5 h-5 text-success" />
-                            <h2 className="text-xl font-semibold text-white">Just Dropped</h2>
-                            <span className="text-[var(--text-muted)] text-sm">({data.recent.length})</span>
-                        </div>
-
-                        <div className="grid-media">
-                            {data.recent.map((release) => (
-                                <ReleaseCard
-                                    key={`${release.albumMbid}-${release.id}`}
-                                    release={release}
-                                    formatDate={formatDate}
-                                    onDownload={handleDownload}
-                                    isDownloading={downloadingId === release.id}
-                                />
-                            ))}
-                        </div>
-                    </section>
+                    <ReleaseSection
+                        icon={<Disc className="w-5 h-5 text-success" />}
+                        title="Just Dropped"
+                        releases={data.recent}
+                        formatDate={formatDate}
+                        onDownload={handleDownload}
+                        downloadingId={downloadingId}
+                    />
                 )}
 
                 {(!data?.upcoming?.length && !data?.recent?.length) && (
@@ -179,6 +157,44 @@ export default function ReleasesPage() {
                 )}
             </div>
         </div>
+    );
+}
+
+function ReleaseSection({
+    icon,
+    title,
+    releases,
+    formatDate,
+    onDownload,
+    downloadingId,
+}: {
+    icon: ReactNode;
+    title: string;
+    releases: ReleaseItem[];
+    formatDate: (date: string) => string;
+    onDownload: (albumMbid: string, releaseId: string | number) => void;
+    downloadingId: string | number | null;
+}) {
+    return (
+        <section>
+            <div className="flex items-center gap-3 mb-6">
+                {icon}
+                <h2 className="text-xl font-semibold text-white">{title}</h2>
+                <span className="text-[var(--text-muted)] text-sm">({releases.length})</span>
+            </div>
+
+            <div className="grid-media">
+                {releases.map((release) => (
+                    <ReleaseCard
+                        key={`${release.albumMbid}-${release.id}`}
+                        release={release}
+                        formatDate={formatDate}
+                        onDownload={onDownload}
+                        isDownloading={downloadingId === release.id}
+                    />
+                ))}
+            </div>
+        </section>
     );
 }
 

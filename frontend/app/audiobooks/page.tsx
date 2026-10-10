@@ -9,7 +9,6 @@ import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { MediaCard } from "@/components/cards/MediaCard";
 import { api } from "@/lib/api";
 import { useAudioState, useAudioControls } from "@/lib/audio-context";
-import { useAuth } from "@/lib/auth-context";
 import { notify } from "@/lib/notify";
 import { useAudiobooksQuery, queryKeys } from "@/hooks/useQueries";
 import { useQueryClient } from "@tanstack/react-query";
@@ -26,35 +25,35 @@ import { Pagination } from "@/components/ui/Pagination";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { Button } from "@/components/ui/Button";
 import { scrollMainToTop } from "@/lib/scroll";
-
-interface Audiobook {
-    id: string;
-    title: string;
-    author: string;
-    narrator?: string;
-    description?: string;
-    coverUrl: string | null;
-    duration: number;
-    libraryId: string;
-    series?: {
-        name: string;
-        sequence: string;
-    } | null;
-    genres?: string[];
-    progress: {
-        currentTime: number;
-        progress: number;
-        isFinished: boolean;
-        lastPlayedAt: Date;
-    } | null;
-}
+import type { Audiobook } from "@/features/audiobook/types";
 
 type FilterType = "all" | "listening" | "finished";
 type SortType = "title" | "author" | "recent" | "series";
 
+function getCoverUrl(coverUrl: string | null, size = 300) {
+    if (!coverUrl) return null;
+    return api.getCoverArtUrl(coverUrl, size);
+}
+
+function BookCard({ book, index }: { book: Audiobook; index: number }) {
+    return (
+        <MediaCard
+            href={`/audiobooks/${book.id}`}
+            title={book.title}
+            subtitle={book.author}
+            imageUrl={getCoverUrl(book.coverUrl)}
+            fallbackIcon={Book}
+            type="audiobook"
+            aspect="portrait"
+            index={index}
+            progress={book.progress?.isFinished ? undefined : book.progress?.progress}
+            corner={book.progress?.isFinished && <CheckCircle className="w-5 h-5 text-success" aria-label="Finished" />}
+        />
+    );
+}
+
 export default function AudiobooksPage() {
     const router = useRouter();
-    useAuth();
     const { currentAudiobook } = useAudioState();
     const { pause } = useAudioControls();
 
@@ -226,11 +225,6 @@ export default function AudiobooksPage() {
         (groupBySeries ? series.length + standalone.length : filteredBooks.length) / itemsPerPage,
     );
 
-    const getCoverUrl = (coverUrl: string | null, size = 300) => {
-        if (!coverUrl) return null;
-        return api.getCoverArtUrl(coverUrl, size);
-    };
-
     const handleShuffleAudiobooks = () => {
         if (audiobooks.length === 0) {
             notify.error("No audiobooks to shuffle");
@@ -332,18 +326,21 @@ export default function AudiobooksPage() {
                     </div>
 
                     <div className="flex flex-col sm:flex-row gap-3 max-w-xl">
-                        <button
+                        <Button
+                            variant="primary"
+                            size="lg"
                             onClick={() => router.push("/settings#audiobookshelf")}
-                            className="flex-1 h-12 px-6 rounded-lg bg-brand hover:bg-brand-hover transition-all font-bold text-sm text-black hover:scale-[1.02] active:scale-[0.98]"
+                            className="flex-1"
                         >
                             Configure Audiobookshelf
-                        </button>
-                        <button
+                        </Button>
+                        <Button
+                            size="lg"
                             onClick={() => window.open("https://hub.docker.com/r/advplyr/audiobookshelf", "_blank")}
-                            className="flex-1 h-12 px-6 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 transition-all font-bold text-sm text-white"
+                            className="flex-1"
                         >
                             Install via Docker
-                        </button>
+                        </Button>
                     </div>
 
                     <div className="mt-8">
@@ -490,19 +487,7 @@ export default function AudiobooksPage() {
                                 data-tv-section="continue-listening"
                             >
                                 {continueListening.map((book, index) => (
-                                    <MediaCard
-                                        key={book.id}
-                                        href={`/audiobooks/${book.id}`}
-                                        title={book.title}
-                                        subtitle={book.author}
-                                        imageUrl={getCoverUrl(book.coverUrl)}
-                                        fallbackIcon={Book}
-                                        type="audiobook"
-                                        aspect="portrait"
-                                        index={index}
-                                        progress={book.progress?.isFinished ? undefined : book.progress?.progress}
-                                        corner={book.progress?.isFinished && <CheckCircle className="w-5 h-5 text-success" aria-label="Finished" />}
-                                    />
+                                    <BookCard key={book.id} book={book} index={index} />
                                 ))}
                             </div>
                         </div>
@@ -548,19 +533,7 @@ export default function AudiobooksPage() {
                                             data-tv-section="standalone"
                                         >
                                             {pageStandalone.map((book, index) => (
-                                                <MediaCard
-                                                    key={book.id}
-                                                    href={`/audiobooks/${book.id}`}
-                                                    title={book.title}
-                                                    subtitle={book.author}
-                                                    imageUrl={getCoverUrl(book.coverUrl)}
-                                                    fallbackIcon={Book}
-                                                    type="audiobook"
-                                                    aspect="portrait"
-                                                    index={index}
-                                                    progress={book.progress?.isFinished ? undefined : book.progress?.progress}
-                                                    corner={book.progress?.isFinished && <CheckCircle className="w-5 h-5 text-success" aria-label="Finished" />}
-                                                />
+                                                <BookCard key={book.id} book={book} index={index} />
                                             ))}
                                         </div>
                                     </div>
@@ -574,19 +547,7 @@ export default function AudiobooksPage() {
                                     data-tv-section="audiobooks"
                                 >
                                     {paginatedBooks.map((book, index) => (
-                                        <MediaCard
-                                            key={book.id}
-                                            href={`/audiobooks/${book.id}`}
-                                            title={book.title}
-                                            subtitle={book.author}
-                                            imageUrl={getCoverUrl(book.coverUrl)}
-                                            fallbackIcon={Book}
-                                            type="audiobook"
-                                            aspect="portrait"
-                                            index={index}
-                                            progress={book.progress?.isFinished ? undefined : book.progress?.progress}
-                                            corner={book.progress?.isFinished && <CheckCircle className="w-5 h-5 text-success" aria-label="Finished" />}
-                                        />
+                                        <BookCard key={book.id} book={book} index={index} />
                                     ))}
                                 </div>
                             </div>

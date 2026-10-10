@@ -80,6 +80,25 @@ export default function SearchPage() {
         router.push(`/search?q=${encodeURIComponent(searchQuery)}`);
     };
 
+    const topMatch = (
+        <TopResult
+            libraryArtist={libraryResults?.artists?.[0]}
+            discoveryArtist={topArtist}
+        />
+    );
+
+    const trackList =
+        filterTab === "all" ? (
+            <UnifiedSongsList
+                tracks={libraryResults?.tracks ?? []}
+                soulseekResults={soulseekResults}
+                downloadingFiles={downloadingFiles}
+                onDownload={handleDownload}
+            />
+        ) : filterTab === "library" ? (
+            <LibraryTracksList tracks={libraryResults?.tracks ?? []} />
+        ) : null;
+
     return (
         <div className="min-h-screen relative overflow-hidden">
             <div className="relative z-(--z-raised) page-shell py-8 animate-rise">
@@ -183,32 +202,12 @@ export default function SearchPage() {
                             <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.5fr] gap-8 animate-fade-soft">
                                 <div className="space-y-4">
                                     <SectionHeader title="Top Match" className="mb-0" />
-                                    <TopResult
-                                        libraryArtist={
-                                            libraryResults?.artists?.[0]
-                                        }
-                                        discoveryArtist={topArtist}
-                                    />
+                                    {topMatch}
                                 </div>
 
                                 <div className="space-y-4">
                                     <SectionHeader type="track" title="Tracks" className="mb-0" />
-                                    {filterTab === "all" ?
-                                        <UnifiedSongsList
-                                            tracks={
-                                                libraryResults?.tracks ?? []
-                                            }
-                                            soulseekResults={soulseekResults}
-                                            downloadingFiles={downloadingFiles}
-                                            onDownload={handleDownload}
-                                        />
-                                    : filterTab === "library" ?
-                                        <LibraryTracksList
-                                            tracks={
-                                                libraryResults?.tracks ?? []
-                                            }
-                                        />
-                                    :   null}
+                                    {trackList}
                                 </div>
                             </div>
                         :   <>
@@ -217,38 +216,14 @@ export default function SearchPage() {
                                     hasTopResult && (
                                         <section className="animate-fade-soft">
                                             <SectionHeader title="Top Match" />
-                                            <TopResult
-                                                libraryArtist={
-                                                    libraryResults?.artists?.[0]
-                                                }
-                                                discoveryArtist={topArtist}
-                                            />
+                                            {topMatch}
                                         </section>
                                     )}
 
                                 {hasSearched && hasTracks && (
                                     <section className="animate-fade-soft">
                                         <SectionHeader type="track" title="Tracks" />
-                                        {filterTab === "all" ?
-                                            <UnifiedSongsList
-                                                tracks={
-                                                    libraryResults?.tracks ?? []
-                                                }
-                                                soulseekResults={
-                                                    soulseekResults
-                                                }
-                                                downloadingFiles={
-                                                    downloadingFiles
-                                                }
-                                                onDownload={handleDownload}
-                                            />
-                                        : filterTab === "library" ?
-                                            <LibraryTracksList
-                                                tracks={
-                                                    libraryResults?.tracks ?? []
-                                                }
-                                            />
-                                        :   null}
+                                        {trackList}
                                     </section>
                                 )}
                             </>

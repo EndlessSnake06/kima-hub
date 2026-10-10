@@ -6,7 +6,6 @@ import Link from "next/link";
 import { usePlaylistsQuery } from "@/hooks/useQueries";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/hooks/useQueries";
-import { useAuth } from "@/lib/auth-context";
 import { useAudioControls } from "@/lib/audio-context";
 import {
     Play,
@@ -575,7 +574,6 @@ function EmptyState({
 // --- Main page ---
 
 export default function PlaylistsPage() {
-    useAuth();
     const { playTracks } = useAudioControls();
     const queryClient = useQueryClient();
     const [showHiddenTab, setShowHiddenTab] = useState(false);
