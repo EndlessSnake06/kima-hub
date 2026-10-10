@@ -204,9 +204,7 @@ export async function removeTracks(
     });
 
     if (count > 0) {
-        // The removal already committed, so a failure here is not worth failing
-        // the request over -- but swallowing it silently meant a playlist could
-        // stop advertising changes with nothing to point at. Log it.
+        // The removal is committed: a failed timestamp touch is logged, not raised.
         try {
             await prisma.playlist.update({
                 where: { id: playlistId },
