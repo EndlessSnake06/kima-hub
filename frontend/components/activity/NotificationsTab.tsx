@@ -10,6 +10,8 @@ import {
     Clock,
     ExternalLink,
 } from "lucide-react";
+import { EmptyState } from "../ui/EmptyState";
+import { GradientSpinner } from "../ui/GradientSpinner";
 import { cn } from "@/lib/cn";
 import Link from "next/link";
 import { useNotifications, type Notification } from "@/hooks/useNotifications";
@@ -61,39 +63,35 @@ export function NotificationsTab() {
     if (loading) {
         return (
             <div className="flex items-center justify-center py-8">
-                <div className="w-5 h-5 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
+                <GradientSpinner size="sm" />
             </div>
         );
     }
 
     if (notifications.length === 0) {
         return (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-                <Bell className="w-8 h-8 text-[var(--text-muted)] mb-3" />
-                <p className="text-sm text-[var(--text-muted)]">No notifications</p>
-                <p className="text-xs text-[var(--text-muted)] mt-1">
-                    You&apos;re all caught up!
-                </p>
-            </div>
+            <EmptyState
+                icon={<Bell className="w-8 h-8" />}
+                title="No notifications"
+                description="You're all caught up!"
+            />
         );
     }
 
     return (
         <div className="flex flex-col h-full">
-            {notifications.length > 0 && (
-                <div className="flex items-center justify-between px-3 py-2 border-b-2 border-white/10">
-                    <span className="text-xs tabular-nums font-semibold text-[var(--text-muted)]">
-                        {String(notifications.length).padStart(2, "0")} ITEM
-                        {notifications.length !== 1 ? "S" : ""}
-                    </span>
-                    <button
-                        onClick={handleClearAll}
-                        className="text-micro font-semibold text-[var(--text-muted)] hover:text-white transition-colors"
-                    >
-                        CLEAR
-                    </button>
-                </div>
-            )}
+            <div className="flex items-center justify-between px-3 py-2 border-b-2 border-white/10">
+                <span className="text-xs tabular-nums font-semibold text-[var(--text-muted)]">
+                    {String(notifications.length).padStart(2, "0")} ITEM
+                    {notifications.length !== 1 ? "S" : ""}
+                </span>
+                <button
+                    onClick={handleClearAll}
+                    className="text-micro font-semibold text-[var(--text-muted)] hover:text-white transition-colors"
+                >
+                    CLEAR
+                </button>
+            </div>
 
             <div className="flex-1 overflow-y-auto">
                 {notifications.map((notification, index) => {

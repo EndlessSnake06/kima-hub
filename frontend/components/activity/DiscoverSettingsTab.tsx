@@ -1,10 +1,46 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, type ReactNode } from "react";
 import { api } from "@/lib/api";
 import { notify } from "@/lib/notify";
 import { Trash2, Loader2, ArrowLeft } from "lucide-react";
 import type { DiscoverConfig } from "@/features/discover/types";
+
+interface ConfigSliderProps {
+    label: string;
+    display: ReactNode;
+    unit?: string;
+    min: number;
+    max: number;
+    step: number;
+    value: number;
+    onChange: (value: number) => void;
+    caption: string;
+}
+
+function ConfigSlider({ label, display, unit, min, max, step, value, onChange, caption }: ConfigSliderProps) {
+    return (
+        <div>
+            <label className="block text-xs text-[var(--text-muted)] mb-4">{label}</label>
+            <div className="border border-white/10 p-4 mb-3">
+                <div className="flex items-baseline justify-between">
+                    <span className="text-4xl font-bold text-brand tabular-nums">{display}</span>
+                    {unit && <span className="text-xs text-[var(--text-muted)]">{unit}</span>}
+                </div>
+            </div>
+            <input
+                type="range"
+                min={min}
+                max={max}
+                step={step}
+                value={value}
+                onChange={(e) => onChange(parseFloat(e.target.value))}
+                className="w-full h-1 bg-white/10 appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-brand [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-white/20 hover:[&::-webkit-slider-thumb]:bg-white"
+            />
+            <p className="text-xs tabular-nums text-[var(--text-muted)] mt-3">{caption}</p>
+        </div>
+    );
+}
 
 interface DiscoverSettingsTabProps {
     config: DiscoverConfig | null;
@@ -32,7 +68,6 @@ export function DiscoverSettingsTab({
         key: K,
         value: DiscoverConfig[K]
     ) {
-        // Update local state immediately for responsive UI
         if (config) {
             onUpdateConfig({ ...config, [key]: value });
         }
@@ -96,99 +131,41 @@ export function DiscoverSettingsTab({
             </div>
 
             <div className="flex-1 overflow-y-auto p-5 space-y-8">
-                <div>
-                    <label className="block text-xs text-[var(--text-muted)] mb-4">
-                        Playlist Size
-                    </label>
-                    <div className="border border-white/10 p-4 mb-3">
-                        <div className="flex items-baseline justify-between">
-                            <span className="text-4xl font-bold text-brand tabular-nums">
-                                {config?.playlistSize || 10}
-                            </span>
-                            <span className="text-xs text-[var(--text-muted)]">
-                                tracks
-                            </span>
-                        </div>
-                    </div>
-                    <input
-                        type="range"
-                        min="5"
-                        max="50"
-                        step="5"
-                        value={config?.playlistSize || 10}
-                        onChange={(e) =>
-                            handleConfigChange("playlistSize", parseInt(e.target.value))
-                        }
-                        className="w-full h-1 bg-white/10 appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-brand [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-white/20 hover:[&::-webkit-slider-thumb]:bg-white"
-                    />
-                    <p className="text-xs text-[var(--text-muted)] mt-3">
-                        One track per album / Larger = more discovery
-                    </p>
-                </div>
+                <ConfigSlider
+                    label="Playlist Size"
+                    display={config?.playlistSize || 10}
+                    unit="tracks"
+                    min={5}
+                    max={50}
+                    step={5}
+                    value={config?.playlistSize || 10}
+                    onChange={(value) => handleConfigChange("playlistSize", value)}
+                    caption="One track per album / Larger = more discovery"
+                />
 
-                <div>
-                    <label className="block text-xs text-[var(--text-muted)] mb-4">
-                        Download Buffer
-                    </label>
-                    <div className="border border-white/10 p-4 mb-3">
-                        <div className="flex items-baseline justify-between">
-                            <span className="text-4xl font-bold text-brand tabular-nums">
-                                {((config?.downloadRatio ?? 1.3) * 100 - 100).toFixed(0)}%
-                            </span>
-                            <span className="text-xs text-[var(--text-muted)]">
-                                extra
-                            </span>
-                        </div>
-                    </div>
-                    <input
-                        type="range"
-                        min="1.0"
-                        max="2.0"
-                        step="0.1"
-                        value={config?.downloadRatio ?? 1.3}
-                        onChange={(e) =>
-                            handleConfigChange("downloadRatio", parseFloat(e.target.value))
-                        }
-                        className="w-full h-1 bg-white/10 appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-brand [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-white/20 hover:[&::-webkit-slider-thumb]:bg-white"
-                    />
-                    <p className="text-xs text-[var(--text-muted)] mt-3">
-                        Redundancy for failed downloads / Higher = more reliable
-                    </p>
-                </div>
+                <ConfigSlider
+                    label="Download Buffer"
+                    display={`${((config?.downloadRatio ?? 1.3) * 100 - 100).toFixed(0)}%`}
+                    unit="extra"
+                    min={1}
+                    max={2}
+                    step={0.1}
+                    value={config?.downloadRatio ?? 1.3}
+                    onChange={(value) => handleConfigChange("downloadRatio", value)}
+                    caption="Redundancy for failed downloads / Higher = more reliable"
+                />
 
-                <div>
-                    <label className="block text-xs text-[var(--text-muted)] mb-4">
-                        Album Exclusion
-                    </label>
-                    <div className="border border-white/10 p-4 mb-3">
-                        <div className="flex items-baseline justify-between">
-                            <span className="text-4xl font-bold text-brand tabular-nums">
-                                {(config?.exclusionMonths ?? 6) === 0
-                                    ? "--"
-                                    : config?.exclusionMonths ?? 6}
-                            </span>
-                            {(config?.exclusionMonths ?? 6) !== 0 && (
-                                <span className="text-xs text-[var(--text-muted)]">
-                                    months
-                                </span>
-                            )}
-                        </div>
-                    </div>
-                    <input
-                        type="range"
-                        min="0"
-                        max="12"
-                        step="1"
-                        value={config?.exclusionMonths ?? 6}
-                        onChange={(e) =>
-                            handleConfigChange("exclusionMonths", parseInt(e.target.value))
-                        }
-                        className="w-full h-1 bg-white/10 appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-brand [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-white/20 hover:[&::-webkit-slider-thumb]:bg-white"
-                    />
-                    <p className="text-xs tabular-nums text-[var(--text-muted)] mt-3">
-                        Cooldown period for repeat recommendations / 0 = disabled
-                    </p>
-                </div>
+                <ConfigSlider
+                    label="Album Exclusion"
+                    display={(config?.exclusionMonths ?? 6) === 0 ? "--" : config?.exclusionMonths ?? 6}
+                    unit={(config?.exclusionMonths ?? 6) !== 0 ? "months" : undefined}
+                    min={0}
+                    max={12}
+                    step={1}
+                    value={config?.exclusionMonths ?? 6}
+                    onChange={(value) => handleConfigChange("exclusionMonths", value)}
+                    caption="Cooldown period for repeat recommendations / 0 = disabled"
+                />
 
                 <div className="pt-6 border-t-2 border-white/20">
                     <label className="block text-xs text-[var(--text-muted)] mb-4">
