@@ -148,8 +148,8 @@ def probe_score(E: np.ndarray, y: np.ndarray, groups: Optional[np.ndarray]) -> t
 
 
 # --------------------------------------------------------------------------
-# Soundtracks Set 1 "blunt test" (the new engine's four checks), applied to
-# the out-of-fold valence probe of this embedding
+# Soundtracks Set 1 "blunt test": four label pairs, one must score above the other on the
+# out-of-fold valence probe of this embedding
 # --------------------------------------------------------------------------
 BLUNT = [('TENDER', 'ANGER'), ('TENDER', 'FEAR'), ('HIGH VALENCE', 'LOW VALENCE'), ('HAPPY', 'SAD')]
 
