@@ -58,6 +58,12 @@ export interface SystemSettings {
     publicUrl: string;
 }
 
+export interface ConnectionTestResult {
+    success: boolean;
+    version?: string;
+    error?: string;
+}
+
 /**
  * Whether Soulseek can be used: slskd holds its own Soulseek account and needs
  * only its address; Kima's own client needs the account itself. Mirrors the

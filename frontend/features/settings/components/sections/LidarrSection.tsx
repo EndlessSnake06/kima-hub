@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { SettingsSection, SettingsRow, SettingsInput, SettingsToggle, SettingsSelect } from "../ui";
-import { SystemSettings } from "../../types";
-import { InlineStatus, StatusType } from "@/components/ui/InlineStatus";
+import { ConnectionTestResult, SystemSettings } from "../../types";
+import { useConnectionTest } from "../../hooks/useConnectionTest";
+import { InlineStatus } from "@/components/ui/InlineStatus";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 
@@ -15,13 +16,11 @@ interface LidarrProfile {
 interface LidarrSectionProps {
     settings: SystemSettings;
     onUpdate: (updates: Partial<SystemSettings>) => void;
-    onTest: (service: string) => Promise<{ success: boolean; version?: string; error?: string }>;
+    onTest: (service: string) => Promise<ConnectionTestResult>;
     isTesting: boolean;
 }
 
 export function LidarrSection({ settings, onUpdate, onTest, isTesting }: LidarrSectionProps) {
-    const [testStatus, setTestStatus] = useState<StatusType>("idle");
-    const [testMessage, setTestMessage] = useState("");
     const [qualityProfiles, setQualityProfiles] = useState<LidarrProfile[]>([]);
     const [metadataProfiles, setMetadataProfiles] = useState<LidarrProfile[]>([]);
     const [profilesLoaded, setProfilesLoaded] = useState(false);
@@ -41,19 +40,7 @@ export function LidarrSection({ settings, onUpdate, onTest, isTesting }: LidarrS
         }
     };
 
-    const handleTest = async () => {
-        setTestStatus("loading");
-        setTestMessage("Testing...");
-        const result = await onTest("lidarr");
-        if (result.success) {
-            setTestStatus("success");
-            setTestMessage(result.version ? `v${result.version}` : "Connected");
-            fetchProfiles();
-        } else {
-            setTestStatus("error");
-            setTestMessage(result.error || "Failed");
-        }
-    };
+    const connection = useConnectionTest(() => onTest("lidarr"), { onConnected: fetchProfiles });
 
     const hasProfiles = profilesLoaded && (qualityProfiles.length > 0 || metadataProfiles.length > 0);
 
@@ -101,15 +88,15 @@ export function LidarrSection({ settings, onUpdate, onTest, isTesting }: LidarrS
                             <Button
                                 variant="secondary"
                                 size="sm"
-                                onClick={handleTest}
+                                onClick={connection.test}
                                 disabled={isTesting || !settings.lidarrUrl || !settings.lidarrApiKey}
                             >
-                                {testStatus === "loading" ? "Testing..." : "Test Connection"}
+                                {connection.status === "loading" ? "Testing..." : "Test Connection"}
                             </Button>
                             <InlineStatus
-                                status={testStatus}
-                                message={testMessage}
-                                onClear={() => setTestStatus("idle")}
+                                status={connection.status}
+                                message={connection.message}
+                                onClear={connection.clear}
                             />
                         </div>
                     </div>

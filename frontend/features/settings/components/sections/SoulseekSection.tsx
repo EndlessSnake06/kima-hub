@@ -1,35 +1,25 @@
 "use client";
 
-import { useState } from "react";
 import { SettingsSection, SettingsRow, SettingsInput, SettingsSelect } from "../ui";
-import { SystemSettings, soulseekConfigured } from "../../types";
+import { ConnectionTestResult, SystemSettings, soulseekConfigured } from "../../types";
+import { useConnectionTest } from "../../hooks/useConnectionTest";
 import { ExternalLink } from "lucide-react";
-import { InlineStatus, StatusType } from "@/components/ui/InlineStatus";
+import { InlineStatus } from "@/components/ui/InlineStatus";
 import { Button } from "@/components/ui/Button";
 
 interface SoulseekSectionProps {
     settings: SystemSettings;
     onUpdate: (updates: Partial<SystemSettings>) => void;
-    onTest: (service: string) => Promise<{ success: boolean; version?: string; error?: string }>;
+    onTest: (service: string) => Promise<ConnectionTestResult>;
     isTesting: boolean;
 }
 
 export function SoulseekSection({ settings, onUpdate, onTest, isTesting }: SoulseekSectionProps) {
-    const [testStatus, setTestStatus] = useState<StatusType>("idle");
-    const [testMessage, setTestMessage] = useState("");
-
-    const handleTest = async () => {
-        setTestStatus("loading");
-        setTestMessage("Connecting...");
-        const result = await onTest("soulseek");
-        if (result.success) {
-            setTestStatus("success");
-            setTestMessage("Connected to Soulseek");
-        } else {
-            setTestStatus("error");
-            setTestMessage(result.error || "Connection failed");
-        }
-    };
+    const connection = useConnectionTest(() => onTest("soulseek"), {
+        busy: "Connecting...",
+        connected: () => "Connected to Soulseek",
+        failed: "Connection failed",
+    });
 
     const mode = settings.soulseekMode || "p2p";
     const isSlskd = mode === "slskd";
@@ -135,15 +125,15 @@ export function SoulseekSection({ settings, onUpdate, onTest, isTesting }: Souls
                     <Button
                         variant="secondary"
                         size="sm"
-                        onClick={handleTest}
+                        onClick={connection.test}
                         disabled={isTesting || !canTest}
                     >
-                        {testStatus === "loading" ? "Connecting..." : "Test Connection"}
+                        {connection.status === "loading" ? "Connecting..." : "Test Connection"}
                     </Button>
                     <InlineStatus
-                        status={testStatus}
-                        message={testMessage}
-                        onClear={() => setTestStatus("idle")}
+                        status={connection.status}
+                        message={connection.message}
+                        onClear={connection.clear}
                     />
                 </div>
                 <p className="text-xs text-[var(--text-muted)]">

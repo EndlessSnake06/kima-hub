@@ -1,34 +1,20 @@
 "use client";
 
-import { useState } from "react";
 import { SettingsSection, SettingsRow, SettingsInput, SettingsToggle } from "../ui";
-import { SystemSettings } from "../../types";
-import { InlineStatus, StatusType } from "@/components/ui/InlineStatus";
+import { ConnectionTestResult, SystemSettings } from "../../types";
+import { useConnectionTest } from "../../hooks/useConnectionTest";
+import { InlineStatus } from "@/components/ui/InlineStatus";
 import { Button } from "@/components/ui/Button";
 
 interface AIServicesSectionProps {
     settings: SystemSettings;
     onUpdate: (updates: Partial<SystemSettings>) => void;
-    onTest: (service: string) => Promise<{ success: boolean; version?: string; error?: string }>;
+    onTest: (service: string) => Promise<ConnectionTestResult>;
     isTesting: boolean;
 }
 
 export function AIServicesSection({ settings, onUpdate, onTest, isTesting }: AIServicesSectionProps) {
-    const [fanartTestStatus, setFanartTestStatus] = useState<StatusType>("idle");
-    const [fanartTestMessage, setFanartTestMessage] = useState("");
-
-    const handleFanartTest = async () => {
-        setFanartTestStatus("loading");
-        setFanartTestMessage("Testing...");
-        const result = await onTest("fanart");
-        if (result.success) {
-            setFanartTestStatus("success");
-            setFanartTestMessage("Connected");
-        } else {
-            setFanartTestStatus("error");
-            setFanartTestMessage(result.error || "Failed");
-        }
-    };
+    const fanartTest = useConnectionTest(() => onTest("fanart"), { connected: () => "Connected" });
 
     return (
         <SettingsSection
@@ -66,15 +52,15 @@ export function AIServicesSection({ settings, onUpdate, onTest, isTesting }: AIS
                             <Button
                                 variant="secondary"
                                 size="sm"
-                                onClick={handleFanartTest}
+                                onClick={fanartTest.test}
                                 disabled={isTesting || !settings.fanartApiKey}
                             >
-                                {fanartTestStatus === "loading" ? "Testing..." : "Test Connection"}
+                                {fanartTest.status === "loading" ? "Testing..." : "Test Connection"}
                             </Button>
                             <InlineStatus
-                                status={fanartTestStatus}
-                                message={fanartTestMessage}
-                                onClear={() => setFanartTestStatus("idle")}
+                                status={fanartTest.status}
+                                message={fanartTest.message}
+                                onClear={fanartTest.clear}
                             />
                         </div>
                     </div>
