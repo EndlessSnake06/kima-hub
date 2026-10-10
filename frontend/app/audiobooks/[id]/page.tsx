@@ -1,7 +1,7 @@
 "use client";
 
 import DOMPurify from "dompurify";
-import { GradientSpinner } from "@/components/ui/GradientSpinner";
+import { LoadingScreen } from "@/components/ui/LoadingScreen";
 import { useImageColor } from "@/hooks/useImageColor";
 import { formatTime } from "@/lib/format";
 
@@ -32,11 +32,7 @@ export default function AudiobookDetailPage() {
     } = useAudiobookActions(audiobookId, audiobook, refetch);
 
     if (isLoading) {
-        return (
-            <div className="flex items-center justify-center min-h-screen bg-[var(--bg-primary)]">
-                <GradientSpinner size="md" />
-            </div>
-        );
+        return <LoadingScreen />;
     }
 
     if (!audiobook) {

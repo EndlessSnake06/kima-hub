@@ -20,7 +20,7 @@ import {
     X,
     Check,
 } from "lucide-react";
-import { GradientSpinner } from "@/components/ui/GradientSpinner";
+import { LoadingScreen } from "@/components/ui/LoadingScreen";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -620,11 +620,7 @@ export default function PlaylistsPage() {
     };
 
     if (isLoading) {
-        return (
-            <div className="flex items-center justify-center min-h-screen bg-[var(--bg-primary)]">
-                <GradientSpinner size="md" />
-            </div>
-        );
+        return <LoadingScreen />;
     }
 
     const displayedPlaylists = showHiddenTab

@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useSettingsData } from "@/features/settings/hooks/useSettingsData";
 import { useSystemSettings } from "@/features/settings/hooks/useSystemSettings";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
+import { LoadingScreen } from "@/components/ui/LoadingScreen";
 import { InlineStatus, useInlineStatus } from "@/components/ui/InlineStatus";
 import {
     SettingsLayout,
@@ -152,11 +153,7 @@ export default function SettingsPage() {
     }, [testService]);
 
     if (authLoading) {
-        return (
-            <div className="flex items-center justify-center min-h-screen bg-[var(--bg-primary)]">
-                <GradientSpinner size="md" />
-            </div>
-        );
+        return <LoadingScreen />;
     }
 
     if (!isAuthenticated) {

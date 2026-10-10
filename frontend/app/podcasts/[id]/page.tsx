@@ -1,7 +1,7 @@
 "use client";
 
 import DOMPurify from "dompurify";
-import { GradientSpinner } from "@/components/ui/GradientSpinner";
+import { LoadingScreen } from "@/components/ui/LoadingScreen";
 import { useImageColor } from "@/hooks/useImageColor";
 import { api } from "@/lib/api";
 import { notify } from "@/lib/notify";
@@ -71,11 +71,7 @@ export default function PodcastDetailPage() {
     }
 
     if (isLoading) {
-        return (
-            <div className="flex items-center justify-center min-h-screen bg-[var(--bg-primary)]">
-                <GradientSpinner size="md" />
-            </div>
-        );
+        return <LoadingScreen />;
     }
 
     if (!podcast && !previewData) {
@@ -85,11 +81,7 @@ export default function PodcastDetailPage() {
     }
 
     if (!displayData) {
-        return (
-            <div className="flex items-center justify-center min-h-screen bg-[var(--bg-primary)]">
-                <GradientSpinner size="md" />
-            </div>
-        );
+        return <LoadingScreen />;
     }
 
     const isSubscribed = !!podcast;
