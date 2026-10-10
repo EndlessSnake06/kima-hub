@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import SharePageClient from "./SharePageClient";
+import { backendUrl } from "@/lib/backend-url";
 
 interface Props {
     params: Promise<{ token: string }>;
@@ -7,7 +8,6 @@ interface Props {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
     const { token } = await params;
-    const backendUrl = process.env.BACKEND_URL || "http://127.0.0.1:3006";
     try {
         const res = await fetch(`${backendUrl}/api/share/${token}`, {
             next: { revalidate: 0 },
