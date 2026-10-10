@@ -1649,7 +1649,6 @@ class SpotifyImportService {
       `All ${total} download jobs finished (${completed} completed, ${failed} failed)`,
     );
 
-    // Trigger library scan to import the new files
     const { requestScan } = await import("../workers/scanRequest");
     const scanResult = await requestScan({
       userId: job.userId,

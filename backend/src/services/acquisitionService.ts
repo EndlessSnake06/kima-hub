@@ -70,7 +70,6 @@ class AcquisitionService {
     private lastConcurrency: number = 4;
 
     constructor() {
-        // Initialize album queue with default concurrency (will be updated from settings)
         this.albumQueue = new PQueue({ concurrency: 4 });
         logger.debug(
             "[Acquisition] Initialized album queue with default concurrency=4"
@@ -520,7 +519,6 @@ class AcquisitionService {
 
             let tracks: Array<{ title: string; position?: number }>;
 
-            // If specific tracks requested, use those instead of full album
             if (request.requestedTracks && request.requestedTracks.length > 0) {
                 tracks = request.requestedTracks;
                 logger.debug(
@@ -563,7 +561,7 @@ class AcquisitionService {
                 );
             }
 
-            // Use album-level search (1-2 network calls) instead of per-track
+            // One album-level search (1-2 network calls) rather than one per track
             const batchResult = await soulseekService.searchAndDownloadAlbum(
                 request.artistName,
                 request.albumTitle,
