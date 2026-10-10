@@ -7,8 +7,7 @@ jest.mock("../../utils/db", () => ({
     prisma: {
         audiobook: {
             upsert: jest.fn().mockResolvedValue({}),
-            // syncAll's prune pass calls deleteMany after the
-            // upsert loop; not the subject of this file's assertions.
+            // syncAll's prune pass calls deleteMany after the upsert loop.
             deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
         },
     },
