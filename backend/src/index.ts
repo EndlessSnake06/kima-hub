@@ -31,7 +31,6 @@ import discoverRoutes from "./routes/discover";
 import apiKeysRoutes from "./routes/apiKeys";
 import mixesRoutes from "./routes/mixes";
 import enrichmentRoutes from "./routes/enrichment";
-import homepageRoutes from "./routes/homepage";
 import deviceLinkRoutes from "./routes/deviceLink";
 import spotifyRoutes from "./routes/spotify";
 import notificationsRoutes from "./routes/notifications";
@@ -176,13 +175,12 @@ app.use("/api/soulseek", apiLimiter, soulseekRoutes);
 app.use("/api/discover", apiLimiter, discoverRoutes);
 app.use("/api/mixes", apiLimiter, mixesRoutes);
 app.use("/api/enrichment", apiLimiter, enrichmentRoutes);
-app.use("/api/homepage", apiLimiter, homepageRoutes);
 app.use("/api/spotify", apiLimiter, spotifyRoutes);
 app.use("/api/browse", apiLimiter, browseRoutes);
 app.use("/api/analysis", apiLimiter, analysisRoutes);
 app.use("/api/releases", apiLimiter, releasesRoutes);
 app.use("/api/vibe", apiLimiter, vibeRoutes);
-// chevron7.io's read-only surface; it does not exist unless KIMA_PUBLIC_VIBE=true.
+// Read-only public vibe feed; it does not exist unless KIMA_PUBLIC_VIBE=true.
 if (config.publicVibe) {
     app.use("/api/public/vibe", apiLimiter, publicVibeRoutes);
 }
@@ -407,13 +405,12 @@ async function main() {
     const { initGpuRuntimeProjection } = await import("./services/gpuRuntime");
     await initGpuRuntimeProjection();
 
-    // Verify that an audio embedding can actually be stored, and say so plainly
-    // in the log either way. This is the check whose absence let a rebuilt
-    // database store nothing for three weeks while db, redis and every worker
-    // reported healthy.
+    // Verify that an audio embedding can actually be stored, and say so in the
+    // log either way: the database, Redis and workers can all look healthy
+    // while embeddings silently fail to write.
     await reportEmbeddingWritePathAtStartup();
 
-    // Start chevron7.io's export now, so its first request finds one built.
+    // Build the public library export now, so its first request finds one.
     if (config.publicVibe) {
         const { latestLibraryExport } = await import("./services/publicLibraryExport");
         latestLibraryExport();
@@ -497,8 +494,7 @@ async function main() {
         "Bull Board dashboard available at /api/admin/queues (admin-only)"
     );
 
-    // Note: Native library scanning is now triggered manually via POST /library/scan
-    // No automatic sync on startup - user must manually scan their music folder
+    // No automatic sync on startup: library scanning is triggered manually via POST /library/scan.
 
     // Enrichment worker enabled for OWNED content only
     // - Background enrichment: Genres, MBIDs, similar artists for owned albums/artists
