@@ -387,17 +387,10 @@ export default function OnboardingPage() {
                                                 variant="primary"
                                                 size="lg"
                                                 type="submit"
-                                                disabled={submitting}
-                                                className="w-full relative group overflow-hidden mt-8"
+                                                isLoading={submitting}
+                                                className="w-full mt-8"
                                             >
-                                                <span className="relative z-(--z-raised) flex items-center justify-center gap-2">
-                                                    {submitting ?
-                                                        <>
-                                                            <GradientSpinner size="sm" />
-                                                            Creating Account...
-                                                        </>
-                                                    : "Continue"}
-                                                </span>
+                                                {submitting ? "Creating Account..." : "Continue"}
                                             </Button>
                                         </form>
                                     </div>
@@ -557,7 +550,9 @@ export default function OnboardingPage() {
                                         </p>
 
                                         <div className="flex gap-3">
-                                            <button
+                                            <Button
+                                                variant="secondary"
+                                                size="lg"
                                                 onClick={async () => {
                                                     setSubmitting(true);
                                                     try {
@@ -569,24 +564,19 @@ export default function OnboardingPage() {
                                                     }
                                                 }}
                                                 disabled={submitting}
-                                                className="flex-1 bg-white/5 border border-white/10 text-[var(--text-secondary)] font-medium py-3.5 rounded-lg hover:bg-white/10 transition-all disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-brand/30"
+                                                className="flex-1"
                                             >
                                                 Finish without integrations
-                                            </button>
-                                            <button
+                                            </Button>
+                                            <Button
+                                                variant="primary"
+                                                size="lg"
                                                 onClick={handleNextStep}
-                                                disabled={submitting}
-                                                className="flex-1 py-3.5 bg-brand text-black font-bold rounded-lg hover:bg-brand-hover transition-all disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-brand/30"
+                                                isLoading={submitting}
+                                                className="flex-1"
                                             >
-                                                {submitting ?
-                                                    <>
-                                                        <span className="flex items-center justify-center gap-2">
-                                                            <GradientSpinner size="sm" />
-                                                            Saving...
-                                                        </span>
-                                                    </>
-                                                : "Save & Finish"}
-                                            </button>
+                                                {submitting ? "Saving..." : "Save & Finish"}
+                                            </Button>
                                         </div>
                                     </div>
                                 )}
