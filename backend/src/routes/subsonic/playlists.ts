@@ -1,5 +1,6 @@
 import { Router } from "express";
-import { rankAfter, rankForPosition } from "../../utils/lexoRank";
+import { rankForPosition } from "../../utils/lexoRank";
+import { allocateAppendRanks } from "../../services/playlistService";
 import { prisma } from "../../utils/db";
 import { subsonicOk, subsonicError, SubsonicError } from "../../utils/subsonicResponse";
 import { mapSong, wrap } from "./mappers";
@@ -266,33 +267,13 @@ playlistRouter.all("/updatePlaylist.view", wrap(async (req, res) => {
                 });
                 const maxSort = aggregate._max.sort ?? -1;
 
-                // Pending tracks share the rank key space, so start past the
-                // highest rank in both tables.
-                const [lastItem, lastPending] = await Promise.all([
-                    tx.playlistItem.findFirst({
-                        where: { playlistId },
-                        orderBy: { rank: "desc" },
-                        select: { rank: true },
-                    }),
-                    tx.playlistPendingTrack.findFirst({
-                        where: { playlistId },
-                        orderBy: { rank: "desc" },
-                        select: { rank: true },
-                    }),
-                ]);
-                const a = lastItem?.rank ?? "";
-                const b = lastPending?.rank ?? "";
-                let cursor = a > b ? a : b;
-
-                const rows = songIdsToAdd.map((trackId, index) => {
-                    cursor = rankAfter(cursor);
-                    return {
-                        playlistId,
-                        trackId,
-                        sort: maxSort + 1 + index,
-                        rank: cursor,
-                    };
-                });
+                const ranks = await allocateAppendRanks(tx, playlistId, songIdsToAdd.length);
+                const rows = songIdsToAdd.map((trackId, index) => ({
+                    playlistId,
+                    trackId,
+                    sort: maxSort + 1 + index,
+                    rank: ranks[index],
+                }));
 
                 await tx.playlistItem.createMany({
                     data: rows,
