@@ -197,43 +197,6 @@ class DataCacheService {
     }
 
     /**
-     * Batch get album covers - for list views
-     */
-    async getAlbumCoversBatch(
-        albums: Array<{ id: string; coverUrl?: string | null }>
-    ): Promise<Map<string, string | null>> {
-        const results = new Map<string, string | null>();
-
-        for (const album of albums) {
-            if (album.coverUrl) {
-                results.set(album.id, album.coverUrl);
-            }
-        }
-
-        const missingIds = albums
-            .filter((a) => !results.has(a.id))
-            .map((a) => a.id);
-
-        if (missingIds.length > 0) {
-            try {
-                const cacheKeys = missingIds.map((id) => `album-cover:${id}`);
-                const cached = await redisClient.mget(cacheKeys);
-
-                missingIds.forEach((id, index) => {
-                    const value = cached[index];
-                    if (value && value !== "NOT_FOUND") {
-                        results.set(id, value);
-                    }
-                });
-            } catch (err) {
-                // Redis errors are non-critical
-            }
-        }
-
-        return results;
-    }
-
-    /**
      * Fetch artist image from external APIs and store locally
      * Order: the artwork.ts single door (Fanart -> Deezer -> MusicBrainz)
      * Returns native path (e.g., "native:artists/{id}.jpg") or null
@@ -243,7 +206,7 @@ class DataCacheService {
         artistName: string,
         mbid?: string | null
     ): Promise<string | null> {
-        const validMbid = mbid && !mbid.startsWith("temp-") ? mbid : undefined;
+        const validMbid = isRealMbid(mbid) ? mbid : undefined;
         const found = await findArtistArtwork({ name: artistName, mbid: validMbid });
         const externalUrl = found?.url ?? null;
         const source = found?.source ?? "";
@@ -376,18 +339,3 @@ class DataCacheService {
 }
 
 export const dataCacheService = new DataCacheService();
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

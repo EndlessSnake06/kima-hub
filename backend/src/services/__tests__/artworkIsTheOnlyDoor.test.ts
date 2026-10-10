@@ -46,8 +46,8 @@ describe("artwork has one door", () => {
     });
 
     it("nobody builds a Cover Art Archive address by hand", () => {
-        // The exact shape of the original bug: a URL assembled from an MBID and
-        // sent out without anyone asking whether the picture was there.
+        // A URL assembled from an MBID and sent out unchecked may point at a
+        // picture that is not there.
         const guessed = /["'`]https?:\/\/coverartarchive\.org\//;
 
         const offenders = files.filter((f) => guessed.test(read(f))).map(relative);
@@ -56,7 +56,7 @@ describe("artwork has one door", () => {
     });
 
     it("the grey-star placeholder hash is gone with the service that used it", () => {
-        // No source file carries the old grey-star placeholder hash.
+        // No source file carries the grey-star placeholder hash.
         const withHash = sourceFiles(SRC)
             .filter((f) => read(f).includes("2a96cbd8b46e442fc41c2b86b821562f"))
             .map(relative);

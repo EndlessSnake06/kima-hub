@@ -225,20 +225,30 @@ export async function findAlbumArtwork(
     query: AlbumArtworkQuery,
 ): Promise<ArtworkResult | null> {
     if (!query.artistName || !query.albumTitle) return null;
+    return findArtwork(albumKey(query), ALBUM_SOURCES, query, `${query.artistName} - ${query.albumTitle}`);
+}
 
-    const key = albumKey(query);
+/** Find an image for an artist, from whichever source has one. */
+export async function findArtistArtwork(
+    query: ArtistArtworkQuery,
+): Promise<ArtworkResult | null> {
+    if (!query.name) return null;
+    return findArtwork(artistKey(query), ARTIST_SOURCES, query, query.name);
+}
+
+async function findArtwork<Q extends { candidateUrl?: string | null }>(
+    key: string,
+    sources: Source<Q>[],
+    query: Q,
+    label: string,
+): Promise<ArtworkResult | null> {
     const cached = await remembered(key);
     if (cached !== undefined) {
         return cached ? { url: cached, source: "cache" } : null;
     }
 
     return once(key, async () => {
-        const label = `${query.artistName} - ${query.albumTitle}`;
-        const { found: fromSources, everyoneAnswered } = await firstAnswer(
-            ALBUM_SOURCES,
-            query,
-            label,
-        );
+        const { found: fromSources, everyoneAnswered } = await firstAnswer(sources, query, label);
 
         let found = fromSources;
         if (!found && query.candidateUrl && (await addressLoads(query.candidateUrl))) {
@@ -247,40 +257,8 @@ export async function findAlbumArtwork(
 
         // Only write down "nobody has it" when everybody actually said so. A
         // run where a provider was down or rate-limiting is not evidence of
-        // absence, and recording it as one would blank that album for a day
+        // absence, and recording it as one would blank that artwork for a day
         // over a blip. A found picture is always worth remembering.
-        if (found || everyoneAnswered) {
-            await remember(key, found?.url ?? null);
-        }
-        return found;
-    });
-}
-
-/** Find an image for an artist, from whichever source has one. */
-export async function findArtistArtwork(
-    query: ArtistArtworkQuery,
-): Promise<ArtworkResult | null> {
-    if (!query.name) return null;
-
-    const key = artistKey(query);
-    const cached = await remembered(key);
-    if (cached !== undefined) {
-        return cached ? { url: cached, source: "cache" } : null;
-    }
-
-    return once(key, async () => {
-        const { found: fromSources, everyoneAnswered } = await firstAnswer(
-            ARTIST_SOURCES,
-            query,
-            query.name,
-        );
-
-        let found = fromSources;
-        if (!found && query.candidateUrl && (await addressLoads(query.candidateUrl))) {
-            found = { url: query.candidateUrl, source: "given" };
-        }
-
-        // Same rule as albums: absence is only recorded when every source agreed.
         if (found || everyoneAnswered) {
             await remember(key, found?.url ?? null);
         }
