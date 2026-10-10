@@ -404,9 +404,15 @@ test.describe("Dogfood: tray, scrobbling, public feed, GPU, release window", () 
                 await expect(dialog.getByRole("link", { name: /Open the cleanup/ })).toHaveAttribute("href", "/stats#false-starts");
                 await dialog.locator("[data-back]").click();
                 await expect(dialog.locator('[data-item="plays.repair"]')).toBeFocused();
-                await dialog.locator('[data-item="engine.wipe"]').click();
-                await expect(fp.getByTestId("wipe-run")).toBeVisible();
-                await dialog.locator("[data-back]").click();
+                // The wipe is offered only to a library enriched before 1.11.
+                const wipe = dialog.locator('[data-item="engine.wipe"]');
+                if (await wipe.count()) {
+                    await wipe.click();
+                    await expect(fp.getByTestId("wipe-run")).toBeVisible();
+                    await dialog.locator("[data-back]").click();
+                } else {
+                    session.noteNotCovered("release window: the wipe item, since this library was enriched by 1.11 already");
+                }
             });
 
             await session.step("the mood mix is saved as a playlist, then rebuilt", async () => {
@@ -429,9 +435,9 @@ test.describe("Dogfood: tray, scrobbling, public feed, GPU, release window", () 
             await session.step("the GPU answer is kept through closing, and both releases close", async () => {
                 await dialog.locator('[data-item="gpu.accelerate"]').click();
                 const answered = fp.waitForResponse((r) => r.url().includes("/whats-new/1.11.0/choice"));
-                await dialog.getByRole("button", { name: "Turn it on" }).click();
+                await dialog.getByRole("button", { name: "Turn it on", exact: true }).click();
                 expect((await answered).status()).toBe(200);
-                await expect(dialog.getByRole("button", { name: "Turn it on" })).toHaveAttribute("aria-pressed", "true");
+                await expect(dialog.getByRole("button", { name: "Turn it on", exact: true })).toHaveAttribute("aria-pressed", "true");
                 const older = fp.waitForResponse((r) => r.url().includes("/whats-new/1.10.1/dismiss"));
                 const dismissed = fp.waitForResponse((r) => r.url().includes("/whats-new/1.11.0/dismiss"));
                 await fp.getByTestId("whatsnew-done").click();
