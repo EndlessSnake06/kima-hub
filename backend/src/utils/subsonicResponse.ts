@@ -42,13 +42,16 @@ function buildEnvelope(status: "ok" | "failed", data?: object) {
     };
 }
 
-export function subsonicOk(req: Request, res: Response, data?: object) {
-    const envelope = buildEnvelope("ok", data);
+function respond(req: Request, res: Response, envelope: ReturnType<typeof buildEnvelope>) {
     if (req.query.f === "json" || req.query.f === "jsonp") {
         return res.json(stripAttrPrefix(envelope));
     }
     res.set("Content-Type", "text/xml; charset=utf-8");
     res.send('<?xml version="1.0" encoding="UTF-8"?>' + xmlBuilder.build(envelope));
+}
+
+export function subsonicOk(req: Request, res: Response, data?: object) {
+    return respond(req, res, buildEnvelope("ok", data));
 }
 
 export function subsonicError(
@@ -58,14 +61,11 @@ export function subsonicError(
     message: string
 ) {
     // HTTP status is always 200 per Subsonic protocol spec
-    const envelope = buildEnvelope("failed", {
-        error: { "@_code": code, "@_message": message },
-    });
-    if (req.query.f === "json" || req.query.f === "jsonp") {
-        return res.json(stripAttrPrefix(envelope));
-    }
-    res.set("Content-Type", "text/xml; charset=utf-8");
-    res.send('<?xml version="1.0" encoding="UTF-8"?>' + xmlBuilder.build(envelope));
+    return respond(
+        req,
+        res,
+        buildEnvelope("failed", { error: { "@_code": code, "@_message": message } })
+    );
 }
 
 export const SubsonicError = {
