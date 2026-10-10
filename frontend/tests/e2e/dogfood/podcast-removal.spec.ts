@@ -1,27 +1,20 @@
-import { expect, test, type Page } from "@playwright/test";
-
 /**
- * Podcast delete through the UI (Remove → "Remove podcast?"), checked in the
- * database and repeatable. Runs on the testbed after testbed.spec.ts has
- * registered kima_dogfood.
+ * Removing a podcast through the UI (Remove, then Confirm), checked against the API.
+ * Unsubscribing a second time must not fail.
  */
+import { expect, test, type Page } from "@playwright/test";
+import { escapeRegExp } from "./session";
 
-const baseUrl = process.env.KIMA_UI_BASE_URL || "http://127.0.0.1:3056";
+const baseUrl = process.env.KIMA_UI_BASE_URL || "http://127.0.0.1:3030";
 const USERNAME = process.env.KIMA_TEST_USERNAME || "";
 const PASSWORD = process.env.KIMA_TEST_PASSWORD || "";
 
 /** Feed is sourced from the app's own discover API at runtime — never hardcoded. */
 let FEED_URL = "";
 
-function escapeRegExp(s: string): string {
-    return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 /**
- * The release-notes dialog ("What's new") opens over the app on a fresh
- * browser context and intercepts ALL pointer events until dismissed. Its
- * controls: an X (aria-label "Close") and a footer "Done"/"Close" button —
- * both disabled while `closing` runs, and consent items may need answering.
+ * The release-notes dialog opens over the app on a fresh browser context and
+ * intercepts every pointer event until it is dismissed.
  */
 async function dismissWhatsNew(page: Page): Promise<void> {
     const dialog = page.locator('div[role="dialog"][aria-labelledby="whats-new-title"]');
@@ -47,7 +40,7 @@ async function dismissWhatsNew(page: Page): Promise<void> {
     }
 }
 
-test.describe.serial("Testbed removals", () => {
+test.describe.serial("Podcast removal", () => {
     let page: Page;
     let token = "";
     let podcastId = "";
@@ -156,7 +149,7 @@ test.describe.serial("Testbed removals", () => {
         ).toHaveCount(0, { timeout: 30_000 });
     });
 
-    test("R4. the row is gone at the DB level, and deleting again is idempotent", async () => {
+    test("R4. the podcast is gone from the API, and deleting again is idempotent", async () => {
         test.skip(!podcastId, "R1 did not subscribe");
         // API-level: detail 404s
         const detail = await page.request.get(`/api/podcasts/${podcastId}`, {
