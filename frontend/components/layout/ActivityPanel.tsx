@@ -18,6 +18,7 @@ import {
 import { cn } from "@/lib/cn";
 import { useIsMobile, useIsTablet } from "@/hooks/useMediaQuery";
 import { useActivityPanelSettings } from "@/lib/activity-panel-settings-context";
+import { useActivityPanelOpen } from "@/hooks/useActivityPanel";
 
 type ActivityTab = "notifications" | "active" | "imports" | "history" | "settings";
 
@@ -152,31 +153,12 @@ export function ActivityPanel({
     );
 }
 
-const ACTIVITY_PANEL_KEY = "kima_activity_panel_open";
-
 export function ActivityPanelToggle() {
     const { unreadCount } = useNotifications();
     const { downloads: activeDownloads } = useActiveDownloads();
     const isMobile = useIsMobile();
     const isTablet = useIsTablet();
-    const [isPanelOpen, setIsPanelOpen] = useState(() => {
-        if (typeof window === "undefined") return false;
-        return localStorage.getItem(ACTIVITY_PANEL_KEY) === "true";
-    });
-
-    useEffect(() => {
-        const handleToggle = () => setIsPanelOpen((prev) => !prev);
-        const handleOpen = () => setIsPanelOpen(true);
-        const handleClose = () => setIsPanelOpen(false);
-        window.addEventListener("toggle-activity-panel", handleToggle);
-        window.addEventListener("open-activity-panel", handleOpen);
-        window.addEventListener("close-activity-panel", handleClose);
-        return () => {
-            window.removeEventListener("toggle-activity-panel", handleToggle);
-            window.removeEventListener("open-activity-panel", handleOpen);
-            window.removeEventListener("close-activity-panel", handleClose);
-        };
-    }, []);
+    const isPanelOpen = useActivityPanelOpen();
 
     if (isMobile || isTablet) {
         return null;

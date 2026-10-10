@@ -19,6 +19,7 @@ import { notify } from "@/lib/notify";
 import { useDownloadContext } from "@/lib/download-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useIsMobile, useIsTablet } from "@/hooks/useMediaQuery";
+import { useActivityPanelOpen } from "@/hooks/useActivityPanel";
 import { useAuth } from "@/lib/auth-context";
 import { APP_VERSION } from "@/lib/version";
 import { openWhatsNew } from "@/components/whats-new/WhatsNewGate";
@@ -35,10 +36,7 @@ export function TopBar() {
     const isMobileOrTablet = isMobile || isTablet;
     const [searchQuery, setSearchQuery] = useState("");
     const [scanJobId, setScanJobId] = useState<string | null>(null);
-    const [isActivityPanelOpen, setIsActivityPanelOpen] = useState(() => {
-        if (typeof window === "undefined") return false;
-        return localStorage.getItem("kima_activity_panel_open") === "true";
-    });
+    const isActivityPanelOpen = useActivityPanelOpen();
     const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const searchInputRef = useRef<HTMLInputElement | null>(null);
     const queryClient = useQueryClient();
@@ -169,21 +167,6 @@ export function TopBar() {
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [pathname]); // Only re-run when pathname changes
-
-    // Mirror activity panel open state for aria-expanded
-    useEffect(() => {
-        const handleToggle = () => setIsActivityPanelOpen((prev) => !prev);
-        const handleOpen = () => setIsActivityPanelOpen(true);
-        const handleClose = () => setIsActivityPanelOpen(false);
-        window.addEventListener("toggle-activity-panel", handleToggle);
-        window.addEventListener("open-activity-panel", handleOpen);
-        window.addEventListener("close-activity-panel", handleClose);
-        return () => {
-            window.removeEventListener("toggle-activity-panel", handleToggle);
-            window.removeEventListener("open-activity-panel", handleOpen);
-            window.removeEventListener("close-activity-panel", handleClose);
-        };
-    }, []);
 
     // Global "/" keyboard shortcut to focus search
     useEffect(() => {
