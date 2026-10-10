@@ -163,9 +163,8 @@ class ListenBrainzService {
     }
 
     /**
-     * Sitewide top artists (replaces chart.getTopArtists). Cached daily.
-     * Images are resolved by callers via the existing artwork cascade —
-     * LB chart entries carry no images.
+     * Sitewide top artists, cached 6 hours. Images are resolved by callers
+     * via the existing artwork cascade — LB chart entries carry no images.
      */
     async getTopChartArtists(limit = 20): Promise<ChartArtist[]> {
         const cacheKey = `lb:chart:artists:${limit}`;
@@ -264,20 +263,6 @@ class ListenBrainzService {
         }
     }
 
-    /** Validate a candidate token before saving it in Settings. */
-    async validateToken(token: string): Promise<{ valid: boolean; userName?: string }> {
-        try {
-            const data = await this.rateLimitedGet<any>(
-                "/1/validate-token",
-                {},
-                token
-            );
-            return { valid: !!data?.valid, userName: data?.user_name };
-        } catch (error) {
-            logger.warn("ListenBrainz validate-token error:", error);
-            return { valid: false };
-        }
-    }
 }
 
 export const listenBrainzService = new ListenBrainzService();

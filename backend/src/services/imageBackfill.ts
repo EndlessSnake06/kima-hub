@@ -73,32 +73,52 @@ export async function isImageBackfillNeeded(): Promise<{
 }
 
 /**
- * Backfill artist images - download external URLs and store locally
+ * Download external images to local storage, one entity kind at a time.
  */
-async function backfillArtistImages(): Promise<void> {
+type BackfillKind = "artist" | "album";
+
+const BACKFILLS: Record<
+    BackfillKind,
+    { noun: string; cacheKey: (id: string) => string; cacheTtlSeconds: number }
+> = {
+    artist: {
+        noun: "image",
+        cacheKey: (id) => `hero:${id}`,
+        cacheTtlSeconds: 7 * 24 * 60 * 60,
+    },
+    album: {
+        noun: "cover",
+        cacheKey: (id) => `album-cover:${id}`,
+        cacheTtlSeconds: 30 * 24 * 60 * 60,
+    },
+};
+
+async function backfillImages(kind: BackfillKind): Promise<void> {
     if (backfillProgress.inProgress) {
         logger.warn("[ImageBackfill] Backfill already in progress");
         return;
     }
 
-    logger.info("[ImageBackfill] Starting artist image backfill...");
+    const { noun, cacheKey, cacheTtlSeconds } = BACKFILLS[kind];
+    logger.info(`[ImageBackfill] Starting ${kind} ${noun} backfill...`);
 
-    const artistsWithExternalUrls = await prisma.artist.findMany({
-        where: {
-            heroUrl: {
-                not: null,
-                startsWith: "http",
-            },
-        },
-        select: {
-            id: true,
-            name: true,
-            heroUrl: true,
-        },
-    });
+    const rows =
+        kind === "artist"
+            ? (
+                  await prisma.artist.findMany({
+                      where: { heroUrl: { not: null, startsWith: "http" } },
+                      select: { id: true, name: true, heroUrl: true },
+                  })
+              ).map((a) => ({ id: a.id, label: a.name, url: a.heroUrl }))
+            : (
+                  await prisma.album.findMany({
+                      where: { coverUrl: { not: null, startsWith: "http" } },
+                      select: { id: true, title: true, coverUrl: true },
+                  })
+              ).map((a) => ({ id: a.id, label: a.title, url: a.coverUrl }));
 
     backfillProgress = {
-        total: artistsWithExternalUrls.length,
+        total: rows.length,
         processed: 0,
         success: 0,
         failed: 0,
@@ -108,38 +128,45 @@ async function backfillArtistImages(): Promise<void> {
 
     try {
         logger.info(
-            `[ImageBackfill] Found ${artistsWithExternalUrls.length} artists with external URLs`
+            `[ImageBackfill] Found ${rows.length} ${kind}s with external URLs`
         );
 
-        for (let i = 0; i < artistsWithExternalUrls.length; i += BATCH_SIZE) {
-            const batch = artistsWithExternalUrls.slice(i, i + BATCH_SIZE);
+        for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+            const batch = rows.slice(i, i + BATCH_SIZE);
 
             await Promise.all(
-                batch.map(async (artist) => {
+                batch.map(async (row) => {
                     try {
-                        if (!artist.heroUrl || isNativePath(artist.heroUrl)) {
+                        if (!row.url || isNativePath(row.url)) {
                             backfillProgress.skipped++;
                             backfillProgress.processed++;
                             return;
                         }
 
                         const localPath = await downloadAndStoreImage(
-                            artist.heroUrl,
-                            artist.id,
-                            "artist"
+                            row.url,
+                            row.id,
+                            kind
                         );
 
                         if (localPath) {
-                            await prisma.artist.update({
-                                where: { id: artist.id },
-                                data: { heroUrl: localPath },
-                            });
+                            if (kind === "artist") {
+                                await prisma.artist.update({
+                                    where: { id: row.id },
+                                    data: { heroUrl: localPath },
+                                });
+                            } else {
+                                await prisma.album.update({
+                                    where: { id: row.id },
+                                    data: { coverUrl: localPath },
+                                });
+                            }
 
                             // Update Redis cache
                             try {
                                 await redisClient.setex(
-                                    `hero:${artist.id}`,
-                                    7 * 24 * 60 * 60,
+                                    cacheKey(row.id),
+                                    cacheTtlSeconds,
                                     localPath
                                 );
                             } catch {
@@ -148,18 +175,18 @@ async function backfillArtistImages(): Promise<void> {
 
                             backfillProgress.success++;
                             logger.debug(
-                                `[ImageBackfill] Downloaded image for ${artist.name}`
+                                `[ImageBackfill] Downloaded ${noun} for ${row.label}`
                             );
                         } else {
                             backfillProgress.failed++;
                             logger.debug(
-                                `[ImageBackfill] Failed to download image for ${artist.name}`
+                                `[ImageBackfill] Failed to download ${noun} for ${row.label}`
                             );
                         }
                     } catch (error: any) {
                         backfillProgress.failed++;
                         logger.debug(
-                            `[ImageBackfill] Error processing ${artist.name}: ${error.message}`
+                            `[ImageBackfill] Error processing ${row.label}: ${error.message}`
                         );
                     }
 
@@ -168,7 +195,7 @@ async function backfillArtistImages(): Promise<void> {
             );
 
             // Delay between batches to avoid rate limiting
-            if (i + BATCH_SIZE < artistsWithExternalUrls.length) {
+            if (i + BATCH_SIZE < rows.length) {
                 await new Promise((resolve) =>
                     setTimeout(resolve, DELAY_BETWEEN_BATCHES)
                 );
@@ -176,114 +203,7 @@ async function backfillArtistImages(): Promise<void> {
         }
 
         logger.info(
-            `[ImageBackfill] Artist image backfill complete: ${backfillProgress.success} success, ${backfillProgress.failed} failed, ${backfillProgress.skipped} skipped`
-        );
-    } finally {
-        backfillProgress.inProgress = false;
-    }
-}
-
-/**
- * Backfill album covers - download external URLs and store locally
- */
-async function backfillAlbumCovers(): Promise<void> {
-    if (backfillProgress.inProgress) {
-        logger.warn("[ImageBackfill] Backfill already in progress");
-        return;
-    }
-
-    logger.info("[ImageBackfill] Starting album cover backfill...");
-
-    const albumsWithExternalUrls = await prisma.album.findMany({
-        where: {
-            coverUrl: {
-                not: null,
-                startsWith: "http",
-            },
-        },
-        select: {
-            id: true,
-            title: true,
-            coverUrl: true,
-        },
-    });
-
-    backfillProgress = {
-        total: albumsWithExternalUrls.length,
-        processed: 0,
-        success: 0,
-        failed: 0,
-        skipped: 0,
-        inProgress: true,
-    };
-
-    try {
-        logger.info(
-            `[ImageBackfill] Found ${albumsWithExternalUrls.length} albums with external URLs`
-        );
-
-        for (let i = 0; i < albumsWithExternalUrls.length; i += BATCH_SIZE) {
-            const batch = albumsWithExternalUrls.slice(i, i + BATCH_SIZE);
-
-            await Promise.all(
-                batch.map(async (album) => {
-                    try {
-                        if (!album.coverUrl || isNativePath(album.coverUrl)) {
-                            backfillProgress.skipped++;
-                            backfillProgress.processed++;
-                            return;
-                        }
-
-                        const localPath = await downloadAndStoreImage(
-                            album.coverUrl,
-                            album.id,
-                            "album"
-                        );
-
-                        if (localPath) {
-                            await prisma.album.update({
-                                where: { id: album.id },
-                                data: { coverUrl: localPath },
-                            });
-
-                            // Update Redis cache
-                            try {
-                                await redisClient.setex(
-                                    `album-cover:${album.id}`,
-                                    30 * 24 * 60 * 60,
-                                    localPath
-                                );
-                            } catch {
-                                // Redis errors non-critical
-                            }
-
-                            backfillProgress.success++;
-                            logger.debug(
-                                `[ImageBackfill] Downloaded cover for ${album.title}`
-                            );
-                        } else {
-                            backfillProgress.failed++;
-                        }
-                    } catch (error: any) {
-                        backfillProgress.failed++;
-                        logger.debug(
-                            `[ImageBackfill] Error processing ${album.title}: ${error.message}`
-                        );
-                    }
-
-                    backfillProgress.processed++;
-                })
-            );
-
-            if (i + BATCH_SIZE < albumsWithExternalUrls.length) {
-                await new Promise((resolve) =>
-                    setTimeout(resolve, DELAY_BETWEEN_BATCHES)
-                );
-            }
-        }
-
-        logger.info(
-            `[ImageBackfill] Album cover backfill complete: ${backfillProgress.success} success, ${backfillProgress.failed} failed, ${backfillProgress.skipped} skipped`
+            `[ImageBackfill] ${kind} ${noun} backfill complete: ${backfillProgress.success} success, ${backfillProgress.failed} failed, ${backfillProgress.skipped} skipped`
         );
     } finally {
         backfillProgress.inProgress = false;
@@ -294,6 +214,6 @@ async function backfillAlbumCovers(): Promise<void> {
  * Backfill all images (artists and albums)
  */
 export async function backfillAllImages(): Promise<void> {
-    await backfillArtistImages();
-    await backfillAlbumCovers();
+    await backfillImages("artist");
+    await backfillImages("album");
 }

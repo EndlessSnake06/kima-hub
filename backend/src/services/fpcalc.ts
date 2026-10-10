@@ -1,4 +1,4 @@
-import { execFile } from "child_process";
+import { execFile, execFileSync } from "child_process";
 import { promisify } from "util";
 import { logger } from "../utils/logger";
 
@@ -6,6 +6,24 @@ const execFileAsync = promisify(execFile);
 
 /** fpcalc on a full-length track is fast (<1s typical) but be generous. */
 const FPCALC_TIMEOUT_MS = 30000;
+
+const PROBE_TIMEOUT_MS = 5000;
+
+/**
+ * Whether the fpcalc binary runs. ACOUSTID_DISABLED=true counts as absent, so
+ * the feature list and the service agree on one answer.
+ */
+export function fpcalcPresent(): boolean {
+    if (process.env.ACOUSTID_DISABLED === "true") {
+        return false;
+    }
+    try {
+        execFileSync("fpcalc", ["-version"], { timeout: PROBE_TIMEOUT_MS });
+        return true;
+    } catch {
+        return false;
+    }
+}
 
 interface Fingerprint {
     duration: number;
@@ -44,13 +62,10 @@ class FpcalcService {
     /** True when the fpcalc binary exists and executes. Probed once. */
     async isAvailable(): Promise<boolean> {
         if (this.available !== null) return this.available;
-        try {
-            await execFileAsync("fpcalc", ["-version"], { timeout: 5000 });
-            this.available = true;
-        } catch {
-            this.available = false;
+        this.available = fpcalcPresent();
+        if (!this.available && process.env.ACOUSTID_DISABLED !== "true") {
             logger.warn(
-                "[fpcalc] chromaprint fpcalc binary not found — AcoustID identification disabled (install chromaprint or set ACOUSTID_CLIENT_KEY off to silence)"
+                "[fpcalc] chromaprint fpcalc binary not found — AcoustID identification disabled (install chromaprint or set ACOUSTID_DISABLED=true)"
             );
         }
         return this.available;

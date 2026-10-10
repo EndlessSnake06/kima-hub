@@ -1,8 +1,8 @@
 import { existsSync } from "fs";
-import { execFileSync } from "child_process";
 import { redisClient } from "../utils/redis";
 import { prisma } from "../utils/db";
 import { logger } from "../utils/logger";
+import { fpcalcPresent } from "./fpcalc";
 
 // Analyzer script paths in the Docker image
 const ESSENTIA_ANALYZER_PATH = "/app/audio-analyzer/analyzer.py";
@@ -114,15 +114,7 @@ class FeatureDetectionService {
      * off even when the binary exists. Probed once per process.
      */
     private checkFpcalc(): boolean {
-        if (process.env.ACOUSTID_DISABLED === "true") {
-            return false;
-        }
-        try {
-            execFileSync("fpcalc", ["-version"], { timeout: 5000 });
-            return true;
-        } catch {
-            return false;
-        }
+        return fpcalcPresent();
     }
 
     invalidateCache(): void {
