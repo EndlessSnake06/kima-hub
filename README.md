@@ -40,11 +40,11 @@ Open **Vibe** in the sidebar. Your library appears as a 3D picture laid out from
   <img src="assets/screenshots/vibe-map.png" alt="The vibe map: a library drawn as stars in 3D" width="800">
 </p>
 
-Click a star to see the song with four actions: Play, Match Vibe (queue the song and its closest matches), Similar (light up its closest matches on the map) and Song Path. The search box finds songs by name and also by a description of the sound, such as "quiet and rainy".
+Click a star to see the song with four actions: Play, Match Vibe (queue the song and its closest matches), Similar (light up its closest matches on the map) and Song Path. The search box finds songs and artists by name. Song Path and Blend can also start from a description of the sound, such as "quiet piano".
 
 <p align="center">
   <img src="assets/screenshots/vibe-track.png" alt="A selected song on the vibe map" width="49%">
-  <img src="assets/screenshots/vibe-search.png" alt="Searching the map by a description of the sound" width="49%">
+  <img src="assets/screenshots/vibe-search.png" alt="Picking songs by a description of the sound" width="49%">
 </p>
 
 ### Song Path and Blend

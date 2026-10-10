@@ -27,7 +27,7 @@ Open **Vibe** in the sidebar. Your library appears as a 3D space where songs tha
 - **Match Vibe** replaces the queue with the song and its 50 closest matches.
 - **Similar** lights up the 50 closest matches on the map without changing the queue.
 - **Song Path** starts a path from this song. Then click the song the path should end on.
-- The search box at the top finds songs by name, and also by a description of the sound. Words match on sound only, because a sentence has no feel or genre.
+- The search box at the top finds songs and artists by name. Song Path and Blend can also pick songs from a description of the sound; a description matches on sound only, because a sentence has no feel or genre.
 - The mood buttons list the moods in your library, largest first. Pick one to light up its songs.
 
 ### Song Path
