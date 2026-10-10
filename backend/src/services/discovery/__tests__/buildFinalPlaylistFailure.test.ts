@@ -33,9 +33,9 @@ jest.mock("../../discovery", () => ({
     discoveryAlbumLifecycle: { processBeforeGeneration: jest.fn() },
 }));
 
-// cleanupFailedArtists (:1848) calls lidarrService.getDiscoveryArtists after the
-// catch; cleanupOrphanedLidarrQueue (:1725) calls getSystemSettings. Both run
-// on every buildFinalPlaylist exit path, so stub them to no-op/empty.
+// cleanupFailedArtists calls lidarrService.getDiscoveryArtists after the catch
+// and cleanupOrphanedLidarrQueue calls getSystemSettings. Both run on every
+// buildFinalPlaylist exit path, so stub them to no-op/empty.
 jest.mock("../../lidarr", () => ({
     lidarrService: {
         getDiscoveryArtists: jest.fn().mockResolvedValue([]),
@@ -45,8 +45,7 @@ jest.mock("../../../utils/systemSettings", () => ({
     getSystemSettings: jest.fn().mockResolvedValue(null),
 }));
 
-// eventBus.emit (:1468) fires after the catch -- stub to avoid touching the
-// real EventEmitter channel.
+// eventBus.emit fires after the catch; stubbed to leave the real channel alone.
 jest.mock("../../eventBus", () => ({
     eventBus: { emit: jest.fn() },
 }));
@@ -67,14 +66,13 @@ jest.mock("../../artistCountsService", () => ({
     updateArtistCounts: jest.fn(),
 }));
 
-describe("buildFinalPlaylist failure handling (Task 5)", () => {
+describe("buildFinalPlaylist failure handling", () => {
     beforeEach(() => jest.clearAllMocks());
 
-    // ---- FAILURE PATH (the reason this task exists) --------------------------
     it("marks the batch failed via the build-transaction CATCH, not the no-tracks short-circuit", async () => {
-        // Batch is `scanning` so the :881 idempotency guard (completed/failed
-        // only) does NOT short-circuit. jobs:[] keeps the post-catch cleanup
-        // from throwing on `for (job of batch.jobs)`.
+        // Batch is `scanning` so the already-completed/failed guard does not
+        // short-circuit. jobs:[] keeps the post-catch cleanup from throwing on
+        // `for (job of batch.jobs)`.
         (prisma.discoveryBatch.findUnique as jest.Mock).mockResolvedValue({
             id: "batch-1",
             userId: "u1",
@@ -84,10 +82,10 @@ describe("buildFinalPlaylist failure handling (Task 5)", () => {
             jobs: [],
         });
 
-        // A completed job with VALID metadata so searchCriteria survives the
-        // `.filter(c => c.artistName && c.albumTitle)` at :910. metadata:{}
-        // would empty searchCriteria -> 0 tracks -> the no-tracks short-circuit
-        // (DIFFERENT errorMessage), which is exactly the wrong path to hit.
+        // A completed job with valid metadata so searchCriteria survives the
+        // `.filter(c => c.artistName && c.albumTitle)`. metadata:{} would empty
+        // it, giving 0 tracks and the no-tracks short-circuit (a different
+        // errorMessage), which is the wrong path to hit.
         (prisma.downloadJob.findMany as jest.Mock).mockResolvedValue([
             {
                 id: "job-1",
@@ -101,10 +99,9 @@ describe("buildFinalPlaylist failure handling (Task 5)", () => {
             },
         ]);
 
-        // The MBID track-search (:930) returns a real track, so allTracks is
-        // non-empty: the method skips the :1039 no-tracks return and reaches
-        // the $transaction. The same value is returned for the :1180 anchor
-        // fallback (harmless -- it just pads anchors).
+        // The MBID track search returns a real track, so allTracks is non-empty:
+        // the method skips the no-tracks return and reaches the $transaction.
+        // The anchor fallback gets the same value, which only pads anchors.
         (prisma.track.findMany as jest.Mock).mockResolvedValue([
             {
                 id: "t1",
@@ -119,7 +116,7 @@ describe("buildFinalPlaylist failure handling (Task 5)", () => {
             },
         ]);
 
-        // The transaction throws -> drives the CATCH at :1440.
+        // The transaction throws, which drives the build-transaction catch.
         (prisma.$transaction as jest.Mock).mockRejectedValue(
             new Error("constraint violation")
         );
@@ -369,9 +366,8 @@ describe("buildFinalPlaylist failure handling (Task 5)", () => {
             jobs: [],
         });
         // No completed jobs -> empty searchCriteria -> allTracks empty -> the
-        // :1039 short-circuit fires BEFORE any $transaction. This is the OTHER
-        // failure path; it must keep its own errorMessage so the two paths are
-        // never conflated.
+        // no-tracks short-circuit fires before any $transaction. It must keep
+        // its own errorMessage so the two failure paths are never conflated.
         (prisma.downloadJob.findMany as jest.Mock).mockResolvedValue([]);
         (prisma.track.findMany as jest.Mock).mockResolvedValue([]);
 
