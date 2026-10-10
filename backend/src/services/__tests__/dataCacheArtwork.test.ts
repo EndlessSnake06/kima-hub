@@ -97,8 +97,8 @@ describe("dataCache asks every source, not just one", () => {
         });
 
         it("reads the title and artist out of the database, so Deezer can be asked", async () => {
-            // The point of the change. Without these two fields the album
-            // sources can only try the archive, which is where this started.
+            // With the title and artist the album sources can search; without
+            // them only the archive is tried.
             mockAlbumFindUnique.mockResolvedValue({
                 coverUrl: null,
                 title: "Age Of Aquarius",
