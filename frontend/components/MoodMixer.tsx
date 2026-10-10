@@ -86,8 +86,7 @@ export function MoodMixer({ isOpen, onClose }: MoodMixerProps) {
         try {
             const data = await api.getMoodBucketPresets();
             setPresets(data);
-        } catch (error) {
-            console.error("Failed to load mood presets:", error);
+        } catch {
             notify.error("Failed to load mood presets");
         } finally {
             setLoading(false);
@@ -144,7 +143,6 @@ export function MoodMixer({ isOpen, onClose }: MoodMixerProps) {
                 });
             }
         } catch (error: unknown) {
-            console.error("Failed to generate mood mix:", error);
             notify.error("Failed to generate mix", { message: error instanceof Error ? error.message : undefined });
         } finally {
             setGenerating(null);

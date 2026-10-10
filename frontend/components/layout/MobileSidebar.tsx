@@ -46,8 +46,7 @@ export function MobileSidebar({ isOpen, onClose }: MobileSidebarProps) {
             setIsSyncing(true);
             await api.scanLibrary();
             onClose();
-        } catch (error) {
-            console.error("Failed to sync library:", error);
+        } catch {
             notify.error("Could not start the library scan");
         } finally {
             syncTimeoutRef.current = setTimeout(() => setIsSyncing(false), 2000);
@@ -58,8 +57,7 @@ export function MobileSidebar({ isOpen, onClose }: MobileSidebarProps) {
         try {
             await logout();
             onClose();
-        } catch (error) {
-            console.error("Logout error:", error);
+        } catch {
             notify.error("Failed to logout");
         }
     };

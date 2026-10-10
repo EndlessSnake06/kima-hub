@@ -114,8 +114,7 @@ export function Sidebar() {
             setShowCreatePlaylist(false);
             setNewPlaylistName("");
             router.push(`/playlist/${result.id}`);
-        } catch (error) {
-            console.error("Failed to create playlist:", error);
+        } catch {
             notify.error("Failed to create playlist");
         } finally {
             setIsCreating(false);
