@@ -815,7 +815,7 @@ class SoulseekService {
                     "failed",
                     `${this.consecutiveEmptySearches} consecutive search failures`,
                     miss,
-                    () => this.searchTrack(artistName, trackTitle, albumName, true, timeoutMs, onResult)
+                    () => this.searchTrack(artistName, trackTitle, albumName, true, timeoutMs, onResult, signal)
                 );
             }
 
