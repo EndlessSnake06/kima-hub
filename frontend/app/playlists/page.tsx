@@ -28,6 +28,7 @@ import { SectionHeader } from "@/components/ui/SectionHeader";
 import { Button } from "@/components/ui/Button";
 import { plural } from "@/lib/format";
 import { MediaCard } from "@/components/cards/MediaCard";
+import { mosaicCovers } from "@/features/playlist/coverMosaic";
 
 type ActionPanel = "create" | "importUrl" | "importFile" | null;
 
@@ -53,18 +54,9 @@ interface Playlist {
 }
 
 function mosaicUrls(items: PlaylistItem[] | undefined): string[] {
-    const counts = new Map<string, number>();
-    for (const item of items ?? []) {
-        const cover = item.track?.album?.coverUrl;
-        if (cover) counts.set(cover, (counts.get(cover) || 0) + 1);
-    }
-    const urls = [...counts.entries()]
-        .sort((a, b) => b[1] - a[1])
-        .map(([cover]) => api.getCoverArtUrl(cover, 200));
-
-    if (urls.length === 2) return [urls[0], urls[1], urls[1], urls[0]];
-    if (urls.length === 3) return [urls[0], urls[1], urls[2], urls[0]];
-    return urls.slice(0, 4);
+    return mosaicCovers((items ?? []).map((item) => item.track?.album?.coverUrl)).map(
+        (cover) => api.getCoverArtUrl(cover, 200),
+    );
 }
 
 function PlaylistCard({

@@ -13,6 +13,7 @@ import { queryKeys, usePlaylistQuery, useRemoveFromPlaylistMutation, useDeletePl
 import { usePreview } from "@/hooks/usePreview";
 import { useQueryClient } from "@tanstack/react-query";
 import { notify } from "@/lib/notify";
+import { mosaicCovers } from "@/features/playlist/coverMosaic";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import {
     Play,
@@ -284,32 +285,10 @@ export default function PlaylistDetailPage() {
         }
     };
 
-    const coverUrls = useMemo(() => {
-        if (!playlist?.items || playlist.items.length === 0) return [];
-
-        const tracksWithCovers = playlist.items.filter(
-            (item: PlaylistItem) => item.track.album?.coverArt
-        );
-        if (tracksWithCovers.length === 0) return [];
-
-        // Count tracks per cover art, sort by frequency (most tracks first)
-        const coverCounts = new Map<string, number>();
-        for (const item of tracksWithCovers) {
-            const cover = item.track.album.coverArt!;
-            coverCounts.set(cover, (coverCounts.get(cover) || 0) + 1);
-        }
-        const uniqueCovers = Array.from(coverCounts.entries())
-            .sort((a, b) => b[1] - a[1])
-            .map(([cover]) => cover);
-
-        if (uniqueCovers.length >= 4) return uniqueCovers.slice(0, 4);
-        if (uniqueCovers.length <= 1) return uniqueCovers;
-
-        // Fill all 4 slots, duplicate the most-represented album at its diagonal
-        if (uniqueCovers.length === 2)
-            return [uniqueCovers[0], uniqueCovers[1], uniqueCovers[1], uniqueCovers[0]];
-        return [uniqueCovers[0], uniqueCovers[1], uniqueCovers[2], uniqueCovers[0]];
-    }, [playlist]);
+    const coverUrls = useMemo(
+        () => mosaicCovers((playlist?.items ?? []).map((item: PlaylistItem) => item.track.album?.coverArt)),
+        [playlist],
+    );
 
     const handleRemoveTrack = async (trackId: string) => {
         try {
@@ -868,7 +847,7 @@ export default function PlaylistDetailPage() {
 
                         <div className="flex items-end gap-6">
                             <div className="w-[140px] h-[140px] md:w-[192px] md:h-[192px] bg-[var(--bg-primary)] rounded-lg shrink-0 overflow-hidden relative border-2 border-white/10">
-                                {coverUrls && coverUrls.length === 1 ? (
+                                {coverUrls.length === 1 ? (
                                     <CachedImage
                                         src={api.getCoverArtUrl(coverUrls[0], 400)}
                                         alt=""
@@ -876,10 +855,9 @@ export default function PlaylistDetailPage() {
                                         className="object-cover"
                                         sizes="192px"
                                     />
-                                ) : coverUrls && coverUrls.length > 1 ? (
+                                ) : coverUrls.length > 1 ? (
                                     <div className="grid grid-cols-2 gap-0 w-full h-full">
-                                        {coverUrls.slice(0, 4).map((url: string | undefined, index: number) => {
-                                            if (!url) return null;
+                                        {coverUrls.map((url, index) => {
                                             const proxiedUrl = api.getCoverArtUrl(url, 200);
                                             return (
                                                 <div key={index} className="relative bg-[var(--bg-primary)]">
