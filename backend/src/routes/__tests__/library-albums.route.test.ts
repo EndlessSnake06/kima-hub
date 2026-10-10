@@ -334,10 +334,9 @@ describe('DELETE /albums/:id', () => {
     });
 
     it('refuses a track path and an album title that escape the music root', async () => {
-        // Artist.name and Album.title are ID3 tag values, so a file added to
-        // the watched folder chooses them. Before the guard, the album folder
-        // here resolved to /tmp/x and was handed to a recursive delete, and the
-        // track path resolved to /etc/passwd and was handed to unlinkSync.
+        // Artist.name and Album.title are ID3 tag values, so a file added to the
+        // watched folder chooses them. Neither the album folder nor the track
+        // path may reach the recursive delete or unlinkSync.
         const albumToDelete = {
             ...BASE_ALBUM,
             title: '../../../../tmp/x',

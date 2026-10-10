@@ -22,10 +22,8 @@ jest.mock("../../workers/unifiedEnrichment", () => ({
     invalidateEnrichmentProgress: jest.fn(),
 }));
 
-const mockClearAllFailures = jest.fn().mockResolvedValue(0);
 jest.mock("../../services/enrichmentFailureService", () => ({
     enrichmentFailureService: {
-        clearAllFailures: (...a: unknown[]) => mockClearAllFailures(...a),
         getFailures: jest.fn().mockResolvedValue({ failures: [], total: 0 }),
         recordFailure: jest.fn().mockResolvedValue({}),
     },
@@ -208,9 +206,8 @@ describe("POST /api/analysis/vibe/start force=true re-decides without deleting",
         expect(res.body.queued).toBe(2);
         expect(res.body.message).not.toBe("All tracks have vibe embeddings");
 
-        // 4. Nothing else was wiped: no failure clearing, no status nulling,
-        //    and the worker was told to start.
-        expect(mockClearAllFailures).not.toHaveBeenCalled();
+        // 4. Nothing else was wiped: no status nulling, and the worker was
+        //    told to start.
         const tracks = await prisma.track.findMany({
             where: { id: { startsWith: PREFIX } },
             select: { vibeAnalysisStatus: true },

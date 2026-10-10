@@ -89,8 +89,6 @@ jest.mock("../services/enrichmentFailureService", () => ({
         cleanupOldResolved: jest.fn().mockResolvedValue(0),
         recordFailure: jest.fn().mockResolvedValue({}),
         resolveByEntity: jest.fn().mockResolvedValue(true),
-        clearFailure: jest.fn().mockResolvedValue(true),
-        clearAllFailures: jest.fn().mockResolvedValue(0),
     },
 }));
 
@@ -286,8 +284,7 @@ describe("AcoustID: the fingerprint is the fingerprint stage's stored answer", (
         // The fingerprint is untouched — nothing recomputed it.
         expect(track?.acoustidFingerprint).toBe(FINGERPRINT);
         // Nothing matched, so no recording is invented — and nothing is
-        // stamped on the track either (moods come from analysis only,
-        // the record owns the answered question).
+        // stamped on the track either (moods come from analysis only).
         expect(track?.recordingMbid).toBeNull();
         expect(track?.enrichmentTags).toEqual([]);
     });
@@ -335,9 +332,7 @@ describe("AcoustID: the fingerprint is the fingerprint stage's stored answer", (
             select: { recordingMbid: true, enrichmentTags: true },
         });
         expect(track?.recordingMbid).toBeNull();
-        // No `_not_found` here: nothing was identified AND nothing was
-        // excluded — the step refused to ask at all, which is not a
-        // no-match to quarantine against.
+        // No `_not_found` tag: the step never asked, so there is no no-match to record.
         expect(track?.enrichmentTags).toEqual([]);
     });
 });

@@ -1,7 +1,3 @@
-// The TZ that date-fns sees is pinned in jest.config.js before workers start;
-// setting it here has no effect and only documents the assumption.
-process.env.TZ = "UTC";
-
 import {
     resolveGenerationWeekStart,
     resolveViewWeek,
@@ -38,7 +34,7 @@ describe("resolveGenerationWeekStart -- boundary roll-forward", () => {
     });
 
     it("honors a configurable week-start day -- Saturday under Sunday-start (weekStartsOn=0) rolls forward", () => {
-        // The weekStartsOn seam Phase 2 depends on. With Sunday-start, Saturday
+        // The weekStartsOn seam. With Sunday-start, Saturday
         // is the last day, so it must roll forward to the next Sunday. A
         // hard-coded `{weekStartsOn: 1}` would compute the Monday-based week and
         // return 2026-05-25 (Monday) instead of 2026-05-31 (Sunday).
@@ -94,10 +90,8 @@ describe("resolveViewWeek -- fallback, staleness, and the null path", () => {
     });
 
     it("serves a weeks-old completed batch UNCONDITIONALLY, flagged stale (cleanup never deletes the latest week)", () => {
-        // The production data-loss scenario: the only surviving batch is 3 weeks
-        // back. rev-2's discarded "±1 week cliff" would have BLANKED this out.
-        // The discriminator is the pair: weekStart must equal the OLD date (not
-        // the calendar week) AND stale must be true.
+        // The only surviving batch is 3 weeks back and must still be served:
+        // weekStart equals the OLD date (not the calendar week) AND stale is true.
         const old = new Date("2026-05-04T00:00:00.000Z"); // 3 calendar weeks back
         const r = resolveViewWeek(calendar, old);
         expect(r.weekStart).toEqual(old);

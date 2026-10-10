@@ -67,10 +67,6 @@ beforeEach(async () => {
 afterAll(async () => {
     await wipe();
     await prisma.$disconnect();
-    // Importing the real worker module opens connections the unit under
-    // test never uses: four BullMQ queues built at module scope in
-    // enrichmentQueues, the enrichmentState singleton's two clients, and
-    // the shared Redis client. Left open, Jest finishes and outlives it.
     await closeEngineConnections();
 });
 

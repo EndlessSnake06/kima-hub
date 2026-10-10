@@ -24,7 +24,7 @@ export interface AddTracksResult {
  * concurrent writers are ordered; a Postgres advisory lock keyed on the playlist does
  * that without a table lock and is released at commit.
  */
-async function lockPlaylist(
+export async function lockPlaylist(
     tx: Pick<typeof prisma, "$executeRaw">,
     playlistId: string
 ): Promise<void> {

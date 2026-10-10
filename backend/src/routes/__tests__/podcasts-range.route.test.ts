@@ -87,7 +87,7 @@ function makeApp() {
 
 // ── Cached-path range policy ──────────────────────────────────────────────────
 
-describe('cached-path range policy (spec 1.7)', () => {
+describe('cached-path range policy', () => {
     let app: express.Application;
     let tmpFile: string;
     const FILE_SIZE = 16384; // 16 KB

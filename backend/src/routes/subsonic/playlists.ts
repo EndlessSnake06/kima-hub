@@ -1,5 +1,6 @@
 import { Router } from "express";
-import { rankAfter, rankForPosition } from "../../utils/lexoRank";
+import { rankForPosition } from "../../utils/lexoRank";
+import { allocateAppendRanks, lockPlaylist } from "../../services/playlistService";
 import { prisma } from "../../utils/db";
 import { subsonicOk, subsonicError, SubsonicError } from "../../utils/subsonicResponse";
 import { mapSong, wrap } from "./mappers";
@@ -121,10 +122,7 @@ playlistRouter.all("/createPlaylist.view", wrap(async (req, res) => {
             prisma.playlistItem.deleteMany({ where: { playlistId } }),
             ...(songIds.length > 0 ? [
                 prisma.playlistItem.createMany({
-                    // rank is the authoritative order and is UNIQUE per playlist.
-                    // Writing only `sort` left every row at the "" default, so the
-                    // unique index rejected all but the first and skipDuplicates
-                    // swallowed it -- an N-track playlist silently stored ONE.
+                    // rank is the playlist order and must be unique per playlist.
                     data: songIds.map((trackId, index) => ({
                         playlistId,
                         trackId,
@@ -248,6 +246,8 @@ playlistRouter.all("/updatePlaylist.view", wrap(async (req, res) => {
 
     if (indexesToRemove.length > 0 || songIdsToAdd.length > 0) {
         await prisma.$transaction(async (tx) => {
+            await lockPlaylist(tx, playlistId);
+
             if (indexesToRemove.length > 0) {
                 const currentItems = await tx.playlistItem.findMany({
                     where: { playlistId },
@@ -269,34 +269,13 @@ playlistRouter.all("/updatePlaylist.view", wrap(async (req, res) => {
                 });
                 const maxSort = aggregate._max.sort ?? -1;
 
-                // Chain past the highest rank across BOTH tables: pending tracks
-                // share this key space, so a max taken from items alone can
-                // collide with one and the per-table unique index cannot catch it.
-                const [lastItem, lastPending] = await Promise.all([
-                    tx.playlistItem.findFirst({
-                        where: { playlistId },
-                        orderBy: { rank: "desc" },
-                        select: { rank: true },
-                    }),
-                    tx.playlistPendingTrack.findFirst({
-                        where: { playlistId },
-                        orderBy: { rank: "desc" },
-                        select: { rank: true },
-                    }),
-                ]);
-                const a = lastItem?.rank ?? "";
-                const b = lastPending?.rank ?? "";
-                let cursor = a > b ? a : b;
-
-                const rows = songIdsToAdd.map((trackId, index) => {
-                    cursor = rankAfter(cursor);
-                    return {
-                        playlistId,
-                        trackId,
-                        sort: maxSort + 1 + index,
-                        rank: cursor,
-                    };
-                });
+                const ranks = await allocateAppendRanks(tx, playlistId, songIdsToAdd.length);
+                const rows = songIdsToAdd.map((trackId, index) => ({
+                    playlistId,
+                    trackId,
+                    sort: maxSort + 1 + index,
+                    rank: ranks[index],
+                }));
 
                 await tx.playlistItem.createMany({
                     data: rows,

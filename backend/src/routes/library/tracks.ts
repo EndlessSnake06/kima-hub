@@ -15,14 +15,13 @@ import { LIBRARY_TRACK_WHERE, LIBRARY_LOCATION } from "../../services/libraryFil
 import { NOT_MISSING } from "../../utils/libraryEligibility";
 import { toAudioFeaturesDTO, AUDIO_FEATURE_SELECT } from "../../utils/audioFeatures";
 import { resolveWithinMusicRoot } from "./trackPath";
+import { parseLimit } from "./paging";
 import fs from "fs";
 
 const TRACK_SORT_MAP: Record<string, any> = {
   name: { title: "asc" as const },
   "name-desc": { title: "desc" as const },
 };
-
-const MAX_LIMIT = 10000;
 
 const router = Router();
 
@@ -272,10 +271,7 @@ router.get("/tracks", async (req, res) => {
       offset: offsetParam = "0",
       sortBy = "name",
     } = req.query;
-    const limit = Math.min(
-      parseInt(limitParam as string, 10) || 100,
-      MAX_LIMIT,
-    );
+    const limit = parseLimit(limitParam, 100);
     const offset = parseInt(offsetParam as string, 10) || 0;
 
     let orderBy: any;
@@ -331,10 +327,7 @@ router.get("/tracks", async (req, res) => {
 router.get("/tracks/shuffle", async (req, res) => {
   try {
     const { limit: limitParam = "100" } = req.query;
-    const limit = Math.min(
-      parseInt(limitParam as string, 10) || 100,
-      MAX_LIMIT,
-    );
+    const limit = parseLimit(limitParam, 100);
 
     const playable = { ...LIBRARY_TRACK_WHERE, ...NOT_MISSING, corrupt: false };
     const totalTracks = await prisma.track.count({ where: playable });
@@ -523,67 +516,67 @@ router.get("/tracks/:id/lyrics", async (req, res) => {
   }
 });
 
-    router.get("/tracks/:id", async (req, res) => {
-      try {
-        const track = await prisma.track.findUnique({
-          where: { id: req.params.id },
-          select: {
-            id: true,
-            title: true,
-            duration: true,
-            ...AUDIO_FEATURE_SELECT,
-            album: {
-              include: {
-                artist: {
-                  select: {
-                    id: true,
-                    name: true,
-                  },
-                },
+router.get("/tracks/:id", async (req, res) => {
+  try {
+    const track = await prisma.track.findUnique({
+      where: { id: req.params.id },
+      select: {
+        id: true,
+        title: true,
+        duration: true,
+        ...AUDIO_FEATURE_SELECT,
+        album: {
+          include: {
+            artist: {
+              select: {
+                id: true,
+                name: true,
               },
             },
           },
-        });
-
-      if (!track) {
-        return res.status(404).json({ error: "Track not found" });
-      }
-
-      const formattedTrack = {
-        id: track.id,
-        title: track.title,
-        artist: {
-          name: track.album?.artist?.name || "Unknown Artist",
-          id: track.album?.artist?.id,
         },
-        album: {
-          title: track.album?.title || "Unknown Album",
-          coverArt: track.album?.coverUrl,
-          id: track.album?.id,
-        },
-        duration: track.duration,
-        audioFeatures: toAudioFeaturesDTO(track),
-      };
+      },
+    });
 
-      res.json(formattedTrack);
-      } catch (error) {
+    if (!track) {
+      return res.status(404).json({ error: "Track not found" });
+    }
+
+    const formattedTrack = {
+      id: track.id,
+      title: track.title,
+      artist: {
+        name: track.album?.artist?.name || "Unknown Artist",
+        id: track.album?.artist?.id,
+      },
+      album: {
+        title: track.album?.title || "Unknown Album",
+        coverArt: track.album?.coverUrl,
+        id: track.album?.id,
+      },
+      duration: track.duration,
+      audioFeatures: toAudioFeaturesDTO(track),
+    };
+
+    res.json(formattedTrack);
+  } catch (error) {
     logger.error("Get track error:", error);
     res.status(500).json({ error: "Failed to fetch track" });
-      }
-    });
+  }
+});
 
 router.delete("/tracks/:id", requireAdmin, async (req, res) => {
   try {
-const track = await prisma.track.findUnique({
-  where: { id: req.params.id },
-  include: {
-    album: {
+    const track = await prisma.track.findUnique({
+      where: { id: req.params.id },
       include: {
-        artist: true,
+        album: {
+          include: {
+            artist: true,
+          },
+        },
       },
-    },
-  },
-});
+    });
 
     if (!track) {
       return res.status(404).json({ error: "Track not found" });
@@ -809,9 +802,8 @@ router.get("/radio", async (req, res) => {
 
       case "mood":
         const moodValue = ((value as string) || "").toLowerCase();
-        // The five named moods are the bucket verdicts, same as the
-        // mood page; the rest of the values here are audio-feature filters,
-        // not moods, and stay feature queries.
+        // The five named moods are the mood-bucket verdicts, as on the mood page;
+        // the other values are audio-feature filters.
         const BUCKET_MOODS: Record<string, "happy" | "sad" | "chill" | "aggressive" | "party"> = {
           happy: "happy",
           melancholy: "sad",

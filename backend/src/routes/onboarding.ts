@@ -20,16 +20,7 @@ const registerSchema = z.object({
     password: z.string().min(6),
 });
 
-const lidarrConfigSchema = z.object({
-    url: z.string().optional().or(z.literal("")),
-    apiKey: z.string().optional().or(z.literal("")),
-    enabled: z.boolean(),
-}).refine(
-    (data) => !data.enabled || !data.url || data.url === "" || z.string().url().safeParse(data.url).success,
-    { message: "Invalid url", path: ["url"] },
-);
-
-const audiobookshelfConfigSchema = z.object({
+const serviceConfigSchema = z.object({
     url: z.string().optional().or(z.literal("")),
     apiKey: z.string().optional().or(z.literal("")),
     enabled: z.boolean(),
@@ -178,7 +169,7 @@ router.post("/register", async (req, res) => {
  */
 router.post("/lidarr", requireAuth, requireAdmin, async (req, res) => {
     try {
-        const config = lidarrConfigSchema.parse(req.body);
+        const config = serviceConfigSchema.parse(req.body);
 
         // If not enabled, just save as disabled
         if (!config.enabled) {
@@ -255,7 +246,7 @@ router.post("/lidarr", requireAuth, requireAdmin, async (req, res) => {
  */
 router.post("/audiobookshelf", requireAuth, requireAdmin, async (req, res) => {
     try {
-        const config = audiobookshelfConfigSchema.parse(req.body);
+        const config = serviceConfigSchema.parse(req.body);
 
         // If not enabled, just save as disabled
         if (!config.enabled) {

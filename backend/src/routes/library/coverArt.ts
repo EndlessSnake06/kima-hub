@@ -8,7 +8,10 @@ import { findAlbumArtwork } from "../../services/artwork";
 import { musicBrainzService } from "../../services/musicbrainz";
 import { getSystemSettings } from "../../utils/systemSettings";
 import { validateUrlForFetch } from "../../utils/ssrf";
-import { extractColorsFromImage } from "../../utils/colorExtractor";
+import {
+  extractColorsFromImage,
+  FALLBACK_PALETTE,
+} from "../../utils/colorExtractor";
 import {
   resizeImageBuffer,
   getResizedImagePath,
@@ -91,6 +94,51 @@ async function serveNativeImage(
   }
 }
 
+async function serveAudiobookCover(
+  audiobookPath: string,
+  req: any,
+  res: any,
+): Promise<void> {
+  if (audiobookPath.includes("..") || audiobookPath.includes("://")) {
+    return res.status(400).json({ error: "Invalid audiobook cover path" });
+  }
+
+  const settings = await getSystemSettings();
+  const audiobookshelfUrl =
+    settings?.audiobookshelfUrl || process.env.AUDIOBOOKSHELF_URL || "";
+  const audiobookshelfApiKey =
+    settings?.audiobookshelfApiKey || process.env.AUDIOBOOKSHELF_API_KEY || "";
+  const coverUrl = `${audiobookshelfUrl.replace(/\/$/, "")}/api/${audiobookPath}`;
+
+  logger.debug(
+    `[COVER-ART] Fetching audiobook cover: ${coverUrl.substring(0, 100)}...`,
+  );
+  const imageResponse = await fetch(coverUrl, {
+    headers: {
+      Authorization: `Bearer ${audiobookshelfApiKey}`,
+      "User-Agent": USER_AGENT,
+    },
+  });
+
+  if (!imageResponse.ok) {
+    logger.error(
+      `[COVER-ART] Failed to fetch audiobook cover: ${coverUrl} (${imageResponse.status} ${imageResponse.statusText})`,
+    );
+    return res.status(404).json({ error: "Audiobook cover art not found" });
+  }
+
+  const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
+  const contentType = imageResponse.headers.get("content-type");
+
+  if (contentType) {
+    res.setHeader("Content-Type", contentType);
+  }
+  applyCoverArtCorsHeaders(res, req.headers.origin as string | undefined);
+  res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+
+  return res.send(imageBuffer);
+}
+
 const router = Router();
 
 router.get("/cover-art/:id?", imageLimiter, async (req, res) => {
@@ -102,56 +150,11 @@ router.get("/cover-art/:id?", imageLimiter, async (req, res) => {
       const decodedUrl = decodeURIComponent(url as string);
 
       if (decodedUrl.startsWith("audiobook__")) {
-        const audiobookPath = decodedUrl.replace("audiobook__", "");
-
-        if (audiobookPath.includes("..") || audiobookPath.includes("://")) {
-          return res.status(400).json({ error: "Invalid audiobook cover path" });
-        }
-
-        const settings = await getSystemSettings();
-        const audiobookshelfUrl =
-          settings?.audiobookshelfUrl || process.env.AUDIOBOOKSHELF_URL || "";
-        const audiobookshelfApiKey =
-          settings?.audiobookshelfApiKey ||
-          process.env.AUDIOBOOKSHELF_API_KEY ||
-          "";
-        const audiobookshelfBaseUrl = audiobookshelfUrl.replace(/\/$/, "");
-
-        coverUrl = `${audiobookshelfBaseUrl}/api/${audiobookPath}`;
-
-        logger.debug(
-          `[COVER-ART] Fetching audiobook cover: ${coverUrl.substring(
-            0,
-            100,
-          )}...`,
+        return serveAudiobookCover(
+          decodedUrl.replace("audiobook__", ""),
+          req,
+          res,
         );
-        const imageResponse = await fetch(coverUrl, {
-          headers: {
-            Authorization: `Bearer ${audiobookshelfApiKey}`,
-            "User-Agent": USER_AGENT,
-          },
-        });
-
-        if (!imageResponse.ok) {
-          logger.error(
-            `[COVER-ART] Failed to fetch audiobook cover: ${coverUrl} (${imageResponse.status} ${imageResponse.statusText})`,
-          );
-          return res
-            .status(404)
-            .json({ error: "Audiobook cover art not found" });
-        }
-
-        const buffer = await imageResponse.arrayBuffer();
-        const imageBuffer = Buffer.from(buffer);
-        const contentType = imageResponse.headers.get("content-type");
-
-        if (contentType) {
-          res.setHeader("Content-Type", contentType);
-        }
-        applyCoverArtCorsHeaders(res, req.headers.origin as string | undefined);
-        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-
-        return res.send(imageBuffer);
       }
 
       if (decodedUrl.startsWith("native:")) {
@@ -252,56 +255,11 @@ router.get("/cover-art/:id?", imageLimiter, async (req, res) => {
       }
 
       if (decodedId.startsWith("audiobook__")) {
-        const audiobookPath = decodedId.replace("audiobook__", "");
-
-        if (audiobookPath.includes("..") || audiobookPath.includes("://")) {
-          return res.status(400).json({ error: "Invalid audiobook cover path" });
-        }
-
-        const settings = await getSystemSettings();
-        const audiobookshelfUrl =
-          settings?.audiobookshelfUrl || process.env.AUDIOBOOKSHELF_URL || "";
-        const audiobookshelfApiKey =
-          settings?.audiobookshelfApiKey ||
-          process.env.AUDIOBOOKSHELF_API_KEY ||
-          "";
-        const audiobookshelfBaseUrl = audiobookshelfUrl.replace(/\/$/, "");
-
-        coverUrl = `${audiobookshelfBaseUrl}/api/${audiobookPath}`;
-
-        logger.debug(
-          `[COVER-ART] Fetching audiobook cover: ${coverUrl.substring(
-            0,
-            100,
-          )}...`,
+        return serveAudiobookCover(
+          decodedId.replace("audiobook__", ""),
+          req,
+          res,
         );
-        const imageResponse = await fetch(coverUrl, {
-          headers: {
-            Authorization: `Bearer ${audiobookshelfApiKey}`,
-            "User-Agent": USER_AGENT,
-          },
-        });
-
-        if (!imageResponse.ok) {
-          logger.error(
-            `[COVER-ART] Failed to fetch audiobook cover: ${coverUrl} (${imageResponse.status} ${imageResponse.statusText})`,
-          );
-          return res
-            .status(404)
-            .json({ error: "Audiobook cover art not found" });
-        }
-
-        const buffer = await imageResponse.arrayBuffer();
-        const imageBuffer = Buffer.from(buffer);
-        const contentType = imageResponse.headers.get("content-type");
-
-        if (contentType) {
-          res.setHeader("Content-Type", contentType);
-        }
-        applyCoverArtCorsHeaders(res, req.headers.origin as string | undefined);
-        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-
-        return res.send(imageBuffer);
       } else if (
         decodedId.startsWith("http://") ||
         decodedId.startsWith("https://")
@@ -499,14 +457,7 @@ router.get("/cover-art-colors", imageLimiter, async (req, res) => {
       logger.debug(
         `[COLORS] Placeholder image detected, returning fallback colors`,
       );
-      return res.json({
-        vibrant: "#1db954",
-        darkVibrant: "#121212",
-        lightVibrant: "#181818",
-        muted: "#535353",
-        darkMuted: "#121212",
-        lightMuted: "#b3b3b3",
-      });
+      return res.json(FALLBACK_PALETTE);
     }
 
     const cacheKey = `colors:${crypto

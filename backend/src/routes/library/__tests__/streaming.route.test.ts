@@ -1,7 +1,3 @@
-/**
- * Streaming route tests -- spec 1.1 (no eviction) and 1.9 (claim release on failure).
- */
-
 jest.mock('../../../utils/db', () => ({
     prisma: {
         track: {
@@ -78,9 +74,7 @@ function makeApp() {
     return app;
 }
 
-// ── Spec 1.1: no per-user eviction ───────────────────────────────────────────
-
-describe('GET /tracks/:id/stream -- no per-user eviction (spec 1.1)', () => {
+describe('GET /tracks/:id/stream -- no per-user eviction', () => {
     let app: express.Application;
     let tmpFile: string;
 

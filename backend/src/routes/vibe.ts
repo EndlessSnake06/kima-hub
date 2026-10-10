@@ -1,5 +1,4 @@
 import { Router, type Request, type Response } from "express";
-import fs from "node:fs";
 import { promisify } from "node:util";
 import { gzip } from "node:zlib";
 import { logger } from "../utils/logger";
@@ -54,17 +53,10 @@ async function sendMapJson(req: Request, res: Response, mapData: MapResponse) {
 
 /**
  * GET /api/vibe/map: every track's position and colour from the similarity
- * step; 202 while the first layout is pending. MOCK_VIBE_MAP names a JSON
- * snapshot of a real response to serve instead, for design work; the snapshot
- * is a private library and must stay out of the repo.
+ * step; 202 while the first layout is pending.
  */
 router.get("/map", requireAuth, async (req, res) => {
     try {
-        const mockPath = process.env.MOCK_VIBE_MAP;
-        if (mockPath && fs.existsSync(mockPath)) {
-            res.json(JSON.parse(fs.readFileSync(mockPath, "utf8")));
-            return;
-        }
         const state = await getVibeMap();
         if (state.status === "computing") {
             res.status(202).json({ computing: true });

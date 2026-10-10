@@ -151,17 +151,6 @@ function decryptLegacy(text: string): string {
     }
 }
 
-/**
- * Whether a stored value is still in the old AES-256-CBC format.
- *
- * Exported for the migration that has to exist before the legacy branch above
- * can go: settings fields re-encrypt whenever they are saved, but nothing ever
- * rewrites `User.twoFactorSecret`.
- */
-export function isLegacyCiphertext(value: string | null | undefined): boolean {
-    return Boolean(value) && LEGACY_SHAPE.test(value as string);
-}
-
 /** Whether a value carries either recognised format (`xc1.` or `iv:cipher`). */
 export function isEncryptedFormat(value: string): boolean {
     return value.startsWith(V2_PREFIX) || LEGACY_SHAPE.test(value);

@@ -87,8 +87,7 @@ describe('POST /playlists/:id/items/batch', () => {
 
         expect(res.status).toBe(200);
         expect(playlistService.addTracks).toHaveBeenCalledWith('pl-1', trackIds);
-        // A local insert here is exactly the bug: it cannot know the current
-        // max rank and has no lock.
+        // Ranks are assigned under the playlist service's lock, never by a local insert.
         expect(prisma.playlistItem.createMany).not.toHaveBeenCalled();
     });
 

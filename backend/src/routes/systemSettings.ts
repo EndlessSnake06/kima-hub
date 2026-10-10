@@ -1,7 +1,9 @@
 import { Router } from "express";
+import axios from "axios";
 import { logger } from "../utils/logger";
 import { requireAuth, requireAdmin } from "../middleware/auth";
 import { prisma } from "../utils/db";
+import { redisClient } from "../utils/redis";
 import { z } from "zod";
 import { writeEnvFile } from "../utils/envWriter";
 import { invalidateSystemSettingsCache } from "../utils/systemSettings";
@@ -57,7 +59,6 @@ const systemSettingsSchema = z.object({
   fanartEnabled: z.boolean().optional(),
   fanartApiKey: z.string().nullable().optional(),
   acoustidApiKey: z.string().nullable().optional(),
-
 
   // Media Services
   audiobookshelfEnabled: z.boolean().optional(),
@@ -381,7 +382,6 @@ router.post("/test-openai", async (req, res) => {
       return res.status(400).json({ error: "API key is required" });
     }
 
-    const axios = require("axios");
     const response = await axios.post(
       "https://api.openai.com/v1/chat/completions",
       {
@@ -414,7 +414,6 @@ router.post("/test-fanart", async (req, res) => {
       return res.status(400).json({ error: "API key is required" });
     }
 
-    const axios = require("axios");
 
     // Test with a known artist (The Beatles MBID)
     const testMbid = "b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d";
@@ -446,7 +445,6 @@ router.post("/test-audiobookshelf", async (req, res) => {
       return res.status(400).json({ error: "URL and API key are required" });
     }
 
-    const axios = require("axios");
 
     const response = await axios.get(`${url}/api/libraries`, {
       headers: {
@@ -550,7 +548,6 @@ router.post("/test-spotify", async (req, res) => {
     }
 
     // Test credentials by trying to get an access token
-    const axios = require("axios");
     try {
       const response = await axios.post(
         "https://accounts.spotify.com/api/token",
@@ -629,8 +626,6 @@ const PROTECTED_KEY_PREFIXES = [
 // Clear all rebuildable caches (never queue, session, or control-plane state)
 router.post("/clear-caches", async (_req, res) => {
   try {
-    const { redisClient } = require("../utils/redis");
-
     // SCAN with the ioredis signature: positional MATCH/COUNT args, and an
     // [nextCursor, keys] array result; the cursor is a string, "0" terminates.
     const keysToDelete: string[] = [];

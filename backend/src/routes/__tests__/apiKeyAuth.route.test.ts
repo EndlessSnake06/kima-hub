@@ -105,7 +105,7 @@ describe("API key auth, hashed at rest", () => {
     });
 
     it("legacy t=/s= MD5-token auth is explicitly rejected with TOKEN_AUTH_NOT_SUPPORTED (41) -- not silently mistaken for a wrong password", async () => {
-        // MD5 token auth needs the plaintext key, which is no longer stored. A
+        // MD5 token auth needs the plaintext key, which is not stored. A
         // correctly computed token is still refused, so the refusal is deliberate.
         const user = await mkUser("md5legacy");
         const created = await createApiKey(user.id, "legacy client");

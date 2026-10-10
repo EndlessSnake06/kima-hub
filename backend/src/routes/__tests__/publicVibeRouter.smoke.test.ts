@@ -1,5 +1,5 @@
 /**
- * The public vibe routes as chevron7.io's server calls them: the token guard,
+ * The public vibe routes as a consuming server calls them: the token guard,
  * the gzipped library export with its ETag, the live state and its event
  * stream, text search and covers.
  */

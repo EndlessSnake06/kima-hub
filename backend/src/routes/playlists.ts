@@ -440,9 +440,7 @@ router.delete("/:id/items", requirePlaylistOwner, async (req, res) => {
 });
 
 // POST /playlists/:id/items/batch
-// Append multiple tracks in one ordered call, preserving the submitted order. iOS
-// uses this to add a whole album/artist without a serial round-trip per track
-// (which would also risk scrambled order under the single-item max-sort+1 append).
+// Appends many tracks in one call, in the submitted order.
 const addTracksBatchSchema = z.object({
     trackIds: z.array(z.string()).min(1).max(500),
 });
@@ -523,9 +521,7 @@ router.delete("/:id/items/:trackId", requirePlaylistOwner, async (req, res) => {
 });
 
 // PATCH /playlists/:id/items/:itemId/move  { afterItemId: string | null }
-//
-// Replaces PUT /items/reorder, which required the client to send the complete
-// ordering, rewrote every row one UPDATE at a time, and silently reshuffled the
+// Moves one item to sit directly after the anchor, or first when null.
 router.patch("/:id/items/:itemId/move", requirePlaylistOwner, async (req, res) => {
     try {
         const parsed = moveItemSchema.safeParse(req.body);
@@ -560,11 +556,6 @@ router.patch("/:id/items/:itemId/move", requirePlaylistOwner, async (req, res) =
         res.status(500).json({ error: "Failed to move item" });
     }
 });
-
-/**
- * GET /playlists/:id/pending
- * Get pending tracks for a playlist (tracks from Spotify that haven't been matched yet)
- */
 
 /**
  * DELETE /playlists/:id/pending/:trackId

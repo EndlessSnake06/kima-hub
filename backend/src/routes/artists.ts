@@ -131,8 +131,8 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
                 logger.debug(`[Discovery] Cache hit for artist: ${nameOrMbid}`);
                 return res.json(JSON.parse(cached));
             }
-        } catch (err) {
-            // Redis errors are non-critical
+        } catch {
+            // A failed cache read falls through to a fresh lookup.
         }
 
         // Check if it's an MBID (UUID format) or name
@@ -387,8 +387,8 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
                     JSON.stringify(response)
                 );
                 logger.debug(`[Discovery] Cached artist: ${artistName}`);
-            } catch (err) {
-                // Redis errors are non-critical
+            } catch {
+                // A failed cache write only means the next request looks it up again.
             }
         }
 
@@ -422,8 +422,8 @@ router.get("/album/:mbid", async (req, res) => {
                 logger.debug(`[Discovery] Cache hit for album: ${mbid}`);
                 return res.json(JSON.parse(cached));
             }
-        } catch (err) {
-            // Redis errors are non-critical
+        } catch {
+            // A failed cache read falls through to a fresh lookup.
         }
 
         let releaseGroup: any = null;
@@ -573,7 +573,6 @@ router.get("/album/:mbid", async (req, res) => {
                 duration: track.length ? Math.floor(track.length / 1000) : 0,
                 artist: { name: artistName },
             })),
-            similarAlbums: [], // Similar album recommendations not yet implemented
             owned: false,
             source: "discovery",
         };
@@ -587,8 +586,8 @@ router.get("/album/:mbid", async (req, res) => {
                     JSON.stringify(response)
                 );
                 logger.debug(`[Discovery] Cached album: ${albumTitle}`);
-            } catch (err) {
-                // Redis errors are non-critical
+            } catch {
+                // A failed cache write only means the next request looks it up again.
             }
         }
 

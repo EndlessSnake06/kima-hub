@@ -38,7 +38,7 @@ jest.mock("../../workers/unifiedEnrichment", () => ({
     invalidateEnrichmentProgress: jest.fn(),
 }));
 jest.mock("../../services/enrichmentFailureService", () => ({
-    enrichmentFailureService: { clearAllFailures: jest.fn(), deleteFailures: jest.fn() },
+    enrichmentFailureService: {},
 }));
 jest.mock("../../utils/systemSettings", () => ({
     getSystemSettings: jest.fn(),

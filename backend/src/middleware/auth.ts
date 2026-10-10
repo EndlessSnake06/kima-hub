@@ -91,12 +91,6 @@ export function generateRefreshToken(user: {
 }
 
 /**
- * Helper function to authenticate a request using session, API key, or JWT
- * @param req Express request object
- * @param checkQueryToken Whether to check for token in query params (for streaming)
- * @returns User object if authenticated, null otherwise
- */
-/**
  * In-process 30 s cache of the user row every authenticated request needs.
  * SECURITY: `tokenVersion` (which revokes tokens) is read from here, so every
  * site that bumps it calls `invalidateUserCache`; the TTL backstops the rest.
@@ -117,7 +111,7 @@ export function invalidateUserCache(userId: string): void {
     userCache.delete(userId);
 }
 
-/** Drop everything; used by tests and on shutdown. */
+/** Empty the user cache. Tests call this between cases. */
 export function clearUserCache(): void {
     userCache.clear();
 }
@@ -139,6 +133,10 @@ async function loadUser(userId: string): Promise<CachedUser | null> {
     return user;
 }
 
+/**
+ * Authenticate a request by session, API key or JWT, in that order. A token in
+ * the query string counts only when `checkQueryToken` is set (streaming URLs).
+ */
 async function authenticateRequest(
     req: Request,
     checkQueryToken: boolean = false
@@ -240,8 +238,8 @@ async function authenticateRequest(
                     return { id: user.id, username: user.username, role: user.role };
                 }
             }
-        } catch (error) {
-            // Token invalid
+        } catch {
+            // An unverifiable token is no credential.
         }
     }
 

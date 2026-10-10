@@ -162,7 +162,7 @@ describe("TrackStage", () => {
 
     it("backs the per-stage queue with a (stage, status, nextRetryAt) index", async () => {
         // getNextWork runs one query over TrackStage keyed by
-        // stage + status + nextRetryAt; the design requires that index.
+        // stage + status + nextRetryAt.
         const rows = await prisma.$queryRawUnsafe<{ indexdef: string }[]>(
             `SELECT indexdef FROM pg_indexes
              WHERE tablename = 'TrackStage'

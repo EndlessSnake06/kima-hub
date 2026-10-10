@@ -6,6 +6,7 @@ import { deezerService } from "../../services/deezer";
 import { lidarrService } from "../../services/lidarr";
 import { safeError } from "../../utils/errors";
 import { resolveWithinMusicRoot } from "./trackPath";
+import { parseLimit } from "./paging";
 import fs from "fs";
 import pLimit from "p-limit";
 import { toAudioFeaturesDTO } from "../../utils/audioFeatures";
@@ -19,8 +20,6 @@ const ALBUM_SORT_MAP: Record<string, any> = {
   recent: { year: "desc" as const },
 };
 
-const MAX_LIMIT = 10000;
-
 const router = Router();
 
 router.get("/albums", async (req, res) => {
@@ -33,10 +32,7 @@ router.get("/albums", async (req, res) => {
       filter = "owned",
       sortBy = "name",
     } = req.query;
-    const limit = Math.min(
-      parseInt(limitParam as string, 10) || 500,
-      MAX_LIMIT,
-    );
+    const limit = parseLimit(limitParam, 500);
     const offset = parseInt(offsetParam as string, 10) || 0;
 
     const orderBy = ALBUM_SORT_MAP[sortBy as string] ?? {
@@ -48,7 +44,7 @@ router.get("/albums", async (req, res) => {
     };
 
     if (filter === "owned") {
-      // Defect #2: Bound ownedAlbum query so it cannot fetch every row
+      // Bounded so the query cannot fetch every row.
       const ownedAlbumMbids = await prisma.ownedAlbum.findMany({
         select: { rgMbid: true },
         take: 20000,

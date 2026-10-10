@@ -1,4 +1,4 @@
-import { Router, Request, Response } from "express";
+import { Router } from "express";
 import { asyncHandler } from "../middleware/asyncHandler";
 import { eventBus, SSEEvent, SSESubscriber } from "../services/eventBus";
 import { logger } from "../utils/logger";
@@ -12,11 +12,7 @@ const router = Router();
  */
 const MAX_BUFFERED_BYTES = 512 * 1024;
 
-/**
- * Per-user connection cap. Nothing stopped a client opening streams in a loop;
- * each one held a Response object and a subscription for the life of the
- * process.
- */
+/** Per-user connection cap: each stream holds a Response and a subscription until it closes. */
 const MAX_CONNECTIONS_PER_USER = 5;
 
 /**
@@ -26,7 +22,7 @@ const MAX_CONNECTIONS_PER_USER = 5;
  */
 // asyncHandler routes a rejection (Redis down during the ticket lookup) to
 // errorHandler: a 500 before the headers, a closed connection after.
-router.get("/", asyncHandler(async (req: Request, res: Response) => {
+router.get("/", asyncHandler(async (req, res) => {
     const ticket = req.query.ticket as string | undefined;
     if (!ticket) {
         res.status(401).json({ error: "Unauthorized" });

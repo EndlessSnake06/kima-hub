@@ -256,8 +256,7 @@ describe("computeWaveformPeaks", () => {
     });
 
     it("carry byte across chunk boundaries yields identical peaks to whole-buffer", async () => {
-        // Values vary per mini-block so a corrupted/shifted straddling sample
-        // changes the result (a constant signal would hide the bug).
+        // Values vary per mini-block so a shifted straddling sample changes the result.
         const samples = Array.from({ length: 4000 }, (_, i) =>
             (Math.floor(i / 100) * 6151) % 32768,
         );

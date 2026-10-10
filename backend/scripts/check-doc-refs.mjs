@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Every backticked `*.ts/.test.ts/.sql/.js` reference and every relative markdown
+// Every backticked reference to a .ts, .js or .sql file and every relative markdown
 // link in a tracked .md must resolve to a real tracked file. CHANGELOG.md and
 // Exits 1 on any dead reference.
 import { execSync } from "node:child_process";
@@ -8,7 +8,7 @@ import { dirname, join } from "node:path";
 const md = execSync("git ls-files '*.md'", { encoding: "utf8", maxBuffer: 64 << 20 }).split("\n").filter(Boolean)
   .filter(f => f !== "CHANGELOG.md");
 const linkRe = /\[[^\]]*\]\(([^)]+)\)/g;
-const refRe = /`([\w./-]+\.(?:ts|test\.ts|js|sql))`/g;
+const refRe = /`([\w./-]+\.(?:ts|js|sql))`/g;
 const tracked = new Set(execSync("git ls-files", { encoding: "utf8", maxBuffer: 64 << 20 }).split("\n").filter(Boolean).map(f => f.split("/").pop()));
 let dead = 0;
 for (const f of md) {

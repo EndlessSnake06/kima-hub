@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, Response } from "express";
 import { logger } from "../utils/logger";
 import { safeError } from "../utils/errors";
 import { requireAuth, requireAdmin } from "../middleware/auth";
@@ -29,6 +29,18 @@ import { artistSortName } from "../services/artistIdentity";
 
 const router = Router();
 
+/** Answer 404 when a Prisma update hit a row that was deleted meanwhile (P2025). */
+function respondIfDeleted(res: Response, error: unknown, entity: string): boolean {
+  if (typeof error !== "object" || error === null || (error as { code?: string }).code !== "P2025") {
+    return false;
+  }
+  res.status(404).json({
+    error: `${entity[0].toUpperCase()}${entity.slice(1)} not found`,
+    message: `The ${entity} may have been deleted`,
+  });
+  return true;
+}
+
 // Authentication is per-route: a path that matches no route must 404, not 401,
 // so the settings UI sees "no such control", not "log in".
 
@@ -54,9 +66,8 @@ router.get("/status", requireAuth, async (_req, res) => {
   try {
     const state = await enrichmentStateService.getState();
     const base = state || { status: "idle", currentPhase: null };
-    // Surface the hang class to the UI: status says running but nothing has
-    // actually moved (honest lastActivity) for > 15 min. Before the heartbeat
-    // fix this could never fire -- every cycle write refreshed lastActivity.
+    // Surface a hang to the UI: status says running but lastActivity has not
+    // moved for over 15 minutes.
     const hung =
       base.status === "running" &&
       (await enrichmentStateService.detectHang());
@@ -195,8 +206,6 @@ router.post("/sync", requireAuth, requireAdmin, async (_req, res) => {
     safeError(res, "Trigger incremental sync", error);
   }
 });
-
-
 
 /**
  * POST /enrichment/artist/:id
@@ -395,10 +404,10 @@ router.post("/retry", requireAuth, requireAdmin, async (req, res) => {
           queued++;
         }
       } else {
-        // Track-stage failure (track/audio/vibe/scan): a stage record.
-        // Retrying reopens the QUESTION on the record — pending, fresh
-        // attempt, error cleared — and the queue re-asks it. No Track-column
-        // resets: the record is what the engine decides from.
+        // Track-stage failure (track/audio/vibe/scan): retrying reopens the
+        // question on the stage record (pending, fresh attempt, error cleared)
+        // and the queue re-asks it. The record is what the engine decides from,
+        // so no Track columns are reset.
         if (!existingTrackIds.has(failure.entityId)) {
           toResolve.push(failure.id);
           skipped++;
@@ -409,9 +418,8 @@ router.post("/retry", requireAuth, requireAdmin, async (req, res) => {
       }
     }
 
-    // One batch update per kind instead of one per failure. Each is isolated
-    // so a failure resetting one kind doesn't block the others (mirrors the
-    // previous per-failure try/catch's "don't re-throw, keep going" behavior).
+    // One batch update per kind. Each is isolated so a failure resetting one
+    // kind doesn't block the others.
     try {
       if (artistIdsToReset.length > 0) {
         await prisma.artist.updateMany({
@@ -751,13 +759,9 @@ router.post("/artists/:id/reset", requireAuth, async (req, res) => {
       artist,
     });
   } catch (error) {
-    if (typeof error === "object" && error !== null && "code" in error && (error as { code: string }).code === "P2025") {
-      return res.status(404).json({
-        error: "Artist not found",
-        message: "The artist may have been deleted",
-      });
+    if (!respondIfDeleted(res, error, "artist")) {
+      safeError(res, "Reset artist metadata", error);
     }
-    safeError(res, "Reset artist metadata", error);
   }
 });
 
@@ -816,13 +820,9 @@ router.post("/albums/:id/reset", requireAuth, async (req, res) => {
       album,
     });
   } catch (error) {
-    if (typeof error === "object" && error !== null && "code" in error && (error as { code: string }).code === "P2025") {
-      return res.status(404).json({
-        error: "Album not found",
-        message: "The album may have been deleted",
-      });
+    if (!respondIfDeleted(res, error, "album")) {
+      safeError(res, "Reset album metadata", error);
     }
-    safeError(res, "Reset album metadata", error);
   }
 });
 
@@ -873,13 +873,9 @@ router.post("/tracks/:id/reset", requireAuth, async (req, res) => {
       track,
     });
   } catch (error) {
-    if (typeof error === "object" && error !== null && "code" in error && (error as { code: string }).code === "P2025") {
-      return res.status(404).json({
-        error: "Track not found",
-        message: "The track may have been deleted",
-      });
+    if (!respondIfDeleted(res, error, "track")) {
+      safeError(res, "Reset track metadata", error);
     }
-    safeError(res, "Reset track metadata", error);
   }
 });
 

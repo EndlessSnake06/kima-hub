@@ -54,8 +54,8 @@ afterAll(async () => {
     await prisma.$disconnect();
 });
 
-describe("subsonicAuth -- 2FA on the password path", () => {
-    it("LEAK CLOSED: a 2FA-enabled account with the correct password gets refused, not a session", async () => {
+describe("subsonicAuth: 2FA on the password path", () => {
+    it("refuses a 2FA-enabled account that sends the correct password", async () => {
         const user = await mkUser("2fa", { twoFactorEnabled: true });
         const res = await request(app)
             .get("/rest/ping.view")
@@ -63,13 +63,12 @@ describe("subsonicAuth -- 2FA on the password path", () => {
 
         const body = res.body["subsonic-response"];
         expect(body.status).toBe("failed");
-        expect(body.error.code).toBe(40); // WRONG_CREDENTIALS -- see subsonicAuth.ts's own comment on why
+        expect(body.error.code).toBe(40); // WRONG_CREDENTIALS
     });
 
-    it("the refusal message tells a 2FA user with NO API key yet exactly what to do -- this is the person the message exists for", async () => {
+    it("tells a 2FA user with no API key yet to create an app key in Settings", async () => {
         const user = await mkUser("noKeyYet", { twoFactorEnabled: true });
-        // Deliberately zero ApiKey rows for this user -- confirms the
-        // message doesn't depend on one already existing.
+        // No ApiKey rows exist for this user.
         const res = await request(app)
             .get("/rest/ping.view")
             .query({ u: user.username, p: PLAIN_PASSWORD, f: "json", v: "1.16.1", c: "test" });
@@ -79,7 +78,7 @@ describe("subsonicAuth -- 2FA on the password path", () => {
         expect(message).toContain("Settings");
     });
 
-    it("a NON-2FA account is unaffected -- same password, same route, still gets a session", async () => {
+    it("accepts the password for an account without 2FA", async () => {
         const user = await mkUser("plain");
         const res = await request(app)
             .get("/rest/ping.view")
@@ -88,7 +87,7 @@ describe("subsonicAuth -- 2FA on the password path", () => {
         expect(res.body["subsonic-response"].status).toBe("ok");
     });
 
-    it("a 2FA-enabled account can still connect with an API key -- the credential class that was always meant to work here", async () => {
+    it("accepts an API key for a 2FA-enabled account", async () => {
         const user = await mkUser("2faWithKey", { twoFactorEnabled: true });
         const { key } = await createApiKey(user.id, "test device");
 
@@ -100,7 +99,7 @@ describe("subsonicAuth -- 2FA on the password path", () => {
     });
 
     // Native clients are told to paste their API key into the password field.
-    it("an API key sent through p= (not apiKey=) authenticates a NON-2FA account", async () => {
+    it("accepts an API key sent as p= for an account without 2FA", async () => {
         const user = await mkUser("keyViaP");
         const { key } = await createApiKey(user.id, "test device");
 
@@ -111,7 +110,7 @@ describe("subsonicAuth -- 2FA on the password path", () => {
         expect(res.body["subsonic-response"].status).toBe("ok");
     });
 
-    it("an API key sent through p= authenticates a 2FA-enabled account -- the whole point of it: 2FA has no route in otherwise, since t= is gone and this client only ever sends p=", async () => {
+    it("accepts an API key sent as p= for a 2FA-enabled account", async () => {
         const user = await mkUser("keyViaP2fa", { twoFactorEnabled: true });
         const { key } = await createApiKey(user.id, "test device");
 
@@ -122,7 +121,7 @@ describe("subsonicAuth -- 2FA on the password path", () => {
         expect(res.body["subsonic-response"].status).toBe("ok");
     });
 
-    it("a key that belongs to a DIFFERENT user, sent through p= while claiming this username, is refused -- not silently authenticated as its real owner or as the claimed one", async () => {
+    it("refuses another user's API key sent as p=", async () => {
         const owner = await mkUser("keyOwner");
         const claimant = await mkUser("keyClaimant");
         const { key } = await createApiKey(owner.id, "owner's device");
@@ -136,7 +135,7 @@ describe("subsonicAuth -- 2FA on the password path", () => {
         expect(body.error.code).toBe(40); // WRONG_CREDENTIALS -- falls through to the (wrong) password check, same as any other non-matching p=
     });
 
-    it("a value through p= that is neither a real key nor the real password is refused, for both a 2FA and a non-2FA account", async () => {
+    it("refuses a p= value that is neither a key nor the password, with or without 2FA", async () => {
         const plain = await mkUser("wrongValuePlain");
         const twoFa = await mkUser("wrongValue2fa", { twoFactorEnabled: true });
 
@@ -152,8 +151,8 @@ describe("subsonicAuth -- 2FA on the password path", () => {
     });
 });
 
-describe("startScan.view -- the missing admin check", () => {
-    it("a plain authenticated user is refused, not allowed to trigger a scan", async () => {
+describe("startScan.view admin check", () => {
+    it("refuses a non-admin user", async () => {
         const user = await mkUser("scanner");
         const res = await request(app)
             .get("/rest/startScan.view")
@@ -164,7 +163,7 @@ describe("startScan.view -- the missing admin check", () => {
         expect(body.error.code).toBe(50); // NOT_AUTHORIZED
     });
 
-    it("an admin is NOT blocked by the new check -- confirms the fix didn't also break the legitimate case", async () => {
+    it("lets an admin through the admin check", async () => {
         seq += 1;
         const admin = await prisma.user.create({
             data: {
@@ -178,14 +177,13 @@ describe("startScan.view -- the missing admin check", () => {
             .query({ u: admin.username, p: PLAIN_PASSWORD, f: "json", v: "1.16.1", c: "test" });
 
         const body = res.body["subsonic-response"];
-        // Whatever else it does (queues a real scan job via BullMQ), it must
-        // NOT be the admin-check failure the non-admin test above gets.
+        // The scan job itself is queued; only the admin check is under test.
         expect(body.error?.code).not.toBe(50);
     });
 });
 
-describe("changePassword.view -- an API key can't silently take over the login password", () => {
-    it("a self-change made with an API key is refused", async () => {
+describe("changePassword.view with an API key", () => {
+    it("refuses a self-change made with an API key", async () => {
         const user = await mkUser("selfApiKey");
         const { key } = await createApiKey(user.id, "test device");
 
@@ -197,8 +195,7 @@ describe("changePassword.view -- an API key can't silently take over the login p
         expect(body.status).toBe("failed");
         expect(body.error.code).toBe(50); // NOT_AUTHORIZED
 
-        // Confirms this wasn't just an error response with the password
-        // silently changed anyway underneath it.
+        // The stored password is unchanged.
         const stillOldPassword = await bcrypt.compare(
             PLAIN_PASSWORD,
             (await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).passwordHash,
@@ -207,7 +204,7 @@ describe("changePassword.view -- an API key can't silently take over the login p
     });
 
     // A key sent through p= is still a key, and gets the same restriction.
-    it("a self-change made with an API key sent through p= is ALSO refused -- same restriction, same credential, different query param", async () => {
+    it("refuses a self-change made with an API key sent as p=", async () => {
         const user = await mkUser("selfApiKeyViaP");
         const { key } = await createApiKey(user.id, "test device");
 
@@ -226,7 +223,7 @@ describe("changePassword.view -- an API key can't silently take over the login p
         expect(stillOldPassword).toBe(true);
     });
 
-    it("a self-change made with the account PASSWORD still works -- unaffected by the new check", async () => {
+    it("accepts a self-change made with the account password", async () => {
         const user = await mkUser("selfPassword");
         const res = await request(app)
             .get("/rest/changePassword.view")
@@ -240,7 +237,7 @@ describe("changePassword.view -- an API key can't silently take over the login p
         expect(nowMatchesNew).toBe(true);
     });
 
-    it("an admin changing SOMEONE ELSE's password with an API key still works -- the restriction is on SELF-change-by-key, not on API keys generally", async () => {
+    it("lets an admin change another user's password with an API key", async () => {
         seq += 1;
         const admin = await prisma.user.create({
             data: {

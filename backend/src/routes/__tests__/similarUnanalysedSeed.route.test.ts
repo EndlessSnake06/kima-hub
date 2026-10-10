@@ -165,8 +165,6 @@ describe("similar tracks for an unanalysed seed (S2)", () => {
         expect(res.body).toEqual({ error: "Track not found" });
     });
 
-    // Guard: the fix must not turn every request into a 404 -- an analysed
-    // seed with a neighbour in the library still ranks and serves 200.
     it("an analysed seed still returns its neighbours with the documented shape", async () => {
         const res = await request(vibeApp).get(`/api/vibe/similar/${SEED_ID}`);
         expect(res.status).toBe(200);
@@ -180,9 +178,8 @@ describe("similar tracks for an unanalysed seed (S2)", () => {
         expect(res.body.tracks[0].artist.name).toBe(`A ${NEIGHBOUR_ID}`);
     });
 
-    // The diversification CTE's ROW_NUMBER() ranks are BIGINT; a `SELECT *` leaked
-    // them into the rows, and this route spreads rows into its JSON, so every
-    // analysed seed answered 500 ("Do not know how to serialize a BigInt").
+    // The diversification query returns BIGINT row numbers; none may reach the
+    // JSON body, which cannot serialize them.
     it("GET /api/recommendations/tracks serves 200 for an analysed seed", async () => {
         const res = await request(recApp).get(`/api/recommendations/tracks`).query({
             seedTrackId: SEED_ID,

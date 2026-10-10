@@ -72,52 +72,41 @@ router.post("/", requireAuth, async (req, res) => {
             isShuffle,
         } = req.body;
 
-        // Validate required field
         if (!playbackType) {
             return res.status(400).json({ error: "playbackType is required" });
         }
 
-        // Validate playback type
         const validPlaybackTypes = ["track", "audiobook", "podcast"];
         if (!validPlaybackTypes.includes(playbackType)) {
             logger.warn(`[PlaybackState] Invalid playbackType: ${playbackType}`);
             return res.status(400).json({ error: "Invalid playbackType" });
         }
 
-        // Limit queue size and sanitize queue items to prevent database issues
         let safeQueue: any[] | null = null;
         if (Array.isArray(queue) && queue.length > 0) {
-            // Only keep essential fields from each queue item to reduce JSON size
-            // Filter out any invalid items first
-            try {
-                safeQueue = queue
-                    .slice(0, await queueLimit())
-                    .filter((item: any) => item && item.id) // Must have at least an ID
-                    .map((item: any) => ({
-                        id: String(item.id || ""),
-                        title: String(item.title || "Unknown").substring(0, 500), // Limit title length
-                        duration: Number(item.duration) || 0,
-                        artist: item.artist ? {
-                            id: String(item.artist.id || ""),
-                            name: String(item.artist.name || "Unknown").substring(0, 200),
-                        } : null,
-                        album: item.album ? {
-                            id: String(item.album.id || ""),
-                            title: String(item.album.title || "Unknown").substring(0, 500),
-                            coverArt: item.album.coverArt ? String(item.album.coverArt).substring(0, 1000) : null,
-                        } : null,
-                    }));
-                
-                // If sanitization removed all items, set to null
-                if (safeQueue.length === 0) {
-                    safeQueue = null;
-                }
-            } catch (sanitizeError: any) {
-                logger.error("[PlaybackState] Queue sanitization failed:", sanitizeError?.message);
-                safeQueue = null; // Fall back to null queue
+            safeQueue = queue
+                .slice(0, await queueLimit())
+                .filter((item: any) => item && item.id)
+                .map((item: any) => ({
+                    id: String(item.id || ""),
+                    title: String(item.title || "Unknown").substring(0, 500),
+                    duration: Number(item.duration) || 0,
+                    artist: item.artist ? {
+                        id: String(item.artist.id || ""),
+                        name: String(item.artist.name || "Unknown").substring(0, 200),
+                    } : null,
+                    album: item.album ? {
+                        id: String(item.album.id || ""),
+                        title: String(item.album.title || "Unknown").substring(0, 500),
+                        coverArt: item.album.coverArt ? String(item.album.coverArt).substring(0, 1000) : null,
+                    } : null,
+                }));
+
+            if (safeQueue.length === 0) {
+                safeQueue = null;
             }
         }
-        
+
         // A request without a `queue` is a partial update — a shuffle toggle, or a
         // track change within the queue the client already has. It must NOT clear
         // the stored queue: only an explicit array replaces it. Same for the fields
@@ -164,20 +153,9 @@ router.post("/", requireAuth, async (req, res) => {
         });
 
         res.json(playbackState);
-    } catch (error: any) {
-        logger.error("[PlaybackState] Error saving state:", error?.message || error);
-        logger.error("[PlaybackState] Full error:", JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
-        if (error?.code) {
-            logger.error("[PlaybackState] Error code:", error.code);
-        }
-        if (error?.meta) {
-            logger.error("[PlaybackState] Prisma meta:", error.meta);
-        }
-        // Return more specific error for debugging
-        res.status(500).json({ 
-            error: "Internal server error",
-            details: error?.message || "Unknown error"
-        });
+    } catch (error) {
+        logger.error("Save playback state error:", error);
+        res.status(500).json({ error: "Failed to save playback state" });
     }
 });
 

@@ -4,13 +4,8 @@
  * to handle case-sensitivity and other variations
  */
 
-/**
- * Canonical name and MBID for compilation/various artists
- */
-// Exported because services/soulseek.ts imports it. Upstream un-exported this
-// when it removed Soulseek; this line keeps that subsystem.
+/** Canonical name for compilation/various artists. */
 export const VARIOUS_ARTISTS_CANONICAL = "Various Artists";
-
 
 /**
  * Check if an artist name is a variation of "Various Artists"

@@ -1,6 +1,6 @@
 /**
- * The public vibe routes at /api/public/vibe, for chevron7.io's server. Mounted
- * only when KIMA_PUBLIC_VIBE=true (config.publicVibe); every request carries
+ * The public vibe routes at /api/public/vibe. Mounted only when
+ * KIMA_PUBLIC_VIBE=true (config.publicVibe); every request carries
  * `Authorization: Bearer <KIMA_PUBLIC_VIBE_TOKEN>`. All routes are read-only.
  */
 import { Router, Request, Response, NextFunction } from "express";

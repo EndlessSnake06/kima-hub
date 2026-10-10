@@ -96,9 +96,7 @@ router.get("/tracks", async (req, res) => {
             slice: of,
             key: typeof req.query.key === "string" ? req.query.key : undefined,
             decade: req.query.decade ? Number(req.query.decade) : undefined,
-            // `Number("abc")` is NaN, which is not nullish, so it survived
-            // `?? 40` and `Math.min`/`Math.max` and reached LIMIT — a 500 where
-            // the answer is "that is not a number".
+            // NaN is not nullish, so it must be dropped here rather than defaulted later.
             limit: Number.isFinite(Number(req.query.limit))
                 ? Number(req.query.limit)
                 : undefined,
