@@ -54,9 +54,9 @@ export async function runDataIntegrityCheck(): Promise<IntegrityReport> {
             trackId: null,
         },
     });
-    // 2b. Rows whose Track was deleted out from under them. trackId has no FK constraint
-    // (intentionally -- see DB-5), so deleting a Track never nulls or cascades this out;
-    // an anti-join against Track is the only way to catch these.
+    // 2b. Rows whose Track was deleted out from under them. trackId has no FK
+    // constraint by design, so deleting a Track never nulls or cascades this
+    // out; an anti-join against Track is the only way to catch these.
     const orphanedDiscoveryTracksDangling = await prisma.$executeRaw`
         DELETE FROM "DiscoveryTrack"
         WHERE "trackId" IS NOT NULL
