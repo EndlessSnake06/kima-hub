@@ -17,8 +17,6 @@ function generateLinkCode(): string {
     return code;
 }
 
-// Generate API key
-// POST /device-link/generate - Generate a new device link code (requires auth)
 router.post("/generate", requireAuthOrToken, async (req, res) => {
     try {
         const userId = req.user!.id;
