@@ -228,7 +228,7 @@ router.post("/generate", async (req, res) => {
                     };
                 }
 
-                logger.debug(`\n Queuing Discover Weekly generation for user ${userId}`);
+                logger.debug(`\nQueuing Discover Weekly generation for user ${userId}`);
 
                 const weekKey = weekStartKey(resolveGenerationWeekStart(new Date(), 1));
                 const jobId = `discover-weekly-${userId}-${weekKey}`;
@@ -696,7 +696,7 @@ router.post("/like", async (req, res) => {
                 },
             });
             logger.debug(
-                ` Added liked album to library: ${dbAlbum.artist.name} - ${dbAlbum.title} (matched from discovery)`
+                `Added liked album to library: ${dbAlbum.artist.name} - ${dbAlbum.title} (matched from discovery)`
             );
         } else {
             logger.debug(
@@ -1182,7 +1182,7 @@ router.delete("/clear", async (req, res) => {
     try {
         const userId = req.user!.id;
 
-        logger.debug(`\n Clearing Discover Weekly playlist for user ${userId}`);
+        logger.debug(`\nClearing Discover Weekly playlist for user ${userId}`);
 
         const discoveryAlbums = await prisma.discoveryAlbum.findMany({
             where: {
@@ -1385,7 +1385,6 @@ router.delete("/clear", async (req, res) => {
                         });
 
                         if (dbAlbum) {
-                            // Delete tracks first
                             await tx.track.deleteMany({
                                 where: { albumId: dbAlbum.id },
                             });
@@ -1428,7 +1427,6 @@ router.delete("/clear", async (req, res) => {
                 allDiscoveryAlbums.map((da) => da.rgMbid)
             );
 
-            // Build a set of liked artist names (case-insensitive) for extra protection
             const likedArtistNames = new Set(
                 allDiscoveryAlbums
                     .filter(
@@ -1509,10 +1507,8 @@ router.delete("/clear", async (req, res) => {
             },
         });
 
-        // === PHASE 2: Clean up orphaned discovery records ===
-        // These are Album/Track records with location="DISCOVER" that weren't linked to a DiscoveryAlbum
-        // This can happen if downloads failed or playlist build failed
-        logger.debug(`\n Cleaning up orphaned discovery records...`);
+        // Albums and tracks located in DISCOVER that no DiscoveryAlbum row points at, left by failed downloads or a failed playlist build
+        logger.debug(`\nCleaning up orphaned discovery records...`);
 
         const orphanedAlbums = await prisma.album.findMany({
             where: {
@@ -1564,7 +1560,7 @@ router.delete("/clear", async (req, res) => {
             );
         }
 
-        // Clean up orphaned artists (artists with no albums)
+        // Artists left with no albums
         const orphanedArtists = await prisma.artist.findMany({
             where: {
                 albums: { none: {} },
@@ -1621,7 +1617,7 @@ router.delete("/clear", async (req, res) => {
             );
         }
 
-        // === PHASE 3: remove Discover-tagged artists; lidarrRemoval decides whether files go ===
+        // Remove Discover-tagged artists; lidarrRemoval decides whether files go
         let lidarrArtistsRemoved = 0;
         if (isLidarrConfigured(settings)) {
             logger.debug(
@@ -1638,7 +1634,7 @@ router.delete("/clear", async (req, res) => {
                 for (const lidarrArtist of discoveryArtists) {
                     if (await removeDiscoveryArtist(lidarrArtist)) {
                         lidarrArtistsRemoved++;
-                        logger.debug(` Removed: ${lidarrArtist.artistName}`);
+                        logger.debug(`Removed: ${lidarrArtist.artistName}`);
                     }
                 }
 
@@ -1650,14 +1646,12 @@ router.delete("/clear", async (req, res) => {
             }
         }
 
-        // === PHASE 4: Trigger library scan to sync database with filesystem ===
         logger.debug(`\n[SCAN] Triggering library scan to sync database...`);
         try {
             await requestScan({ userId, source: "discover-cleanup" });
             logger.debug(`   Library scan queued successfully`);
         } catch (scanError: any) {
             logger.debug(`   Library scan queue failed: ${scanError.message}`);
-            // Non-fatal - continue with response
         }
 
         logger.debug(
@@ -1928,8 +1922,7 @@ router.post("/fix-tagging", requireAdmin, async (req, res) => {
                 continue;
             }
 
-            // This artist has NO protected content - they're purely an ACTIVE discovery artist
-            // Fix any of their albums that are incorrectly tagged as LIBRARY
+            // No protected content: a purely active discovery artist, so any album tagged LIBRARY is a mistag
             const mistaggedCount = await prisma.album.count({
                 where: {
                     artist: { mbid: da.artistMbid },

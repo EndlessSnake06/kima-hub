@@ -77,9 +77,6 @@ function getTierFromSimilarity(
 }
 
 class DiscoverWeeklyService {
-    /**
-     * Main entry: Generate Discovery Weekly
-     */
     async generatePlaylist(userId: string, jobId?: number) {
         const logPath = discoveryLogger.start(userId, jobId);
         discoveryLogger.info(`Log file: ${logPath}`);
@@ -443,10 +440,7 @@ class DiscoverWeeklyService {
         return cache;
     }
 
-    /**
-     * Check for batches stuck in "downloading" or "scanning" status for too long
-     * Called periodically from queue cleaner
-     */
+    /** Fails batches stuck in "downloading" or "scanning" for too long; the queue cleaner calls it. */
     async checkStuckBatches(): Promise<number> {
         const BATCH_TIMEOUT_WITH_COMPLETIONS = 30 * 60 * 1000; // 30 minutes
         const BATCH_TIMEOUT_NO_COMPLETIONS = 60 * 60 * 1000; // 60 minutes
@@ -579,9 +573,6 @@ class DiscoverWeeklyService {
         return forcedCount;
     }
 
-    /**
-     * Check if discovery batch is complete and trigger final steps
-     */
     async checkBatchCompletion(batchId: string) {
         logger.debug(`\n[BATCH ${batchId}] Checking completion...`);
 
@@ -646,7 +637,7 @@ class DiscoverWeeklyService {
             logger.debug(`[BATCH ${batchId}] All jobs done via Soulseek, no Lidarr wait needed`);
         }
 
-        // Re-check batch status after wait to prevent concurrent callers from both proceeding
+        // Another caller may have finished the batch while this one waited
         const freshBatch = await prisma.discoveryBatch.findUnique({
             where: { id: batchId },
             select: { status: true },
@@ -690,7 +681,7 @@ class DiscoverWeeklyService {
                             attemptNumber: { increment: 1 },
                         },
                     });
-                } catch (e) {
+                } catch {
                     // Ignore duplicate errors
                 }
             }
@@ -764,11 +755,8 @@ class DiscoverWeeklyService {
         );
     }
 
-    /**
-     * Build final playlist after scan completes (atomic transaction)
-     */
     async buildFinalPlaylist(batchId: string) {
-        logger.debug(`\n Building final playlist for batch ${batchId}...`);
+        logger.debug(`\nBuilding final playlist for batch ${batchId}...`);
 
         const batch = await prisma.discoveryBatch.findUnique({
             where: { id: batchId },
@@ -779,7 +767,6 @@ class DiscoverWeeklyService {
             return;
         }
 
-        // Idempotency guard: if playlist already built, skip duplicate execution
         if (batch.status === "completed" || batch.status === "failed") {
             logger.debug(`   Batch already ${batch.status} (finalSongCount=${batch.finalSongCount}) - skipping duplicate buildFinalPlaylist`);
             return;
@@ -1713,7 +1700,7 @@ class DiscoverWeeklyService {
             }
 
             if (await removeDiscoveryArtist(lidarrArtist)) {
-                logger.debug(` Removed: ${artistName}`);
+                logger.debug(`Removed: ${artistName}`);
                 removed++;
             } else {
                 kept++;
@@ -1727,10 +1714,7 @@ class DiscoverWeeklyService {
         );
     }
 
-    /**
-     * Check if an artist is already in the user's library
-     * Discovery should find NEW artists, not more albums from artists they already own
-     */
+    /** Discovery looks for new artists, so one already in the user's library is skipped. */
     private async isArtistInLibrary(
         artistName: string,
         artistMbid: string | undefined
@@ -1789,9 +1773,7 @@ class DiscoverWeeklyService {
         return owned;
     }
 
-    /**
-     * Check if album was recommended recently (6 months)
-     */
+    /** Whether the album was recommended in the last six months. */
     private async isAlbumExcluded(
         albumMbid: string,
         userId: string
@@ -1837,9 +1819,6 @@ class DiscoverWeeklyService {
         return { valid: true, reason: null };
     }
 
-    /**
-     * The best-scoring album of the artist that passes every check.
-     */
     private async findValidAlbumForArtist(
         artist: any,
         userId: string,
@@ -1926,7 +1905,6 @@ class DiscoverWeeklyService {
                     continue;
                 }
 
-                // Studio albums only
                 if (details.value.primaryType !== 'Album') {
                     continue;
                 }
@@ -2027,10 +2005,7 @@ class DiscoverWeeklyService {
         };
     }
 
-    /**
-     * Check if candidate provides sufficient variety from recent picks.
-     * Prevents consecutive similar artists (e.g., 5 shoegaze bands in a row).
-     */
+    /** False when the recent picks and this candidate are all closely similar, so playlists do not run five shoegaze bands in a row. */
     private checkVariety(
         candidate: any,
         recentPicks: RecommendedAlbum[],
@@ -2041,9 +2016,6 @@ class DiscoverWeeklyService {
         const recentWindow = recentPicks.slice(-lookbackWindow);
         const avgRecentSimilarity = recentWindow.reduce((sum, p) => sum + p.similarity, 0) / recentWindow.length;
 
-        // If recent picks are all high similarity (>70%)
-        // and candidate is also high similarity (>70%)
-        // reject to enforce variety
         const SIMILARITY_CLUSTER_THRESHOLD = 0.70;
 
         const recentAreClusteredHigh = avgRecentSimilarity >= SIMILARITY_CLUSTER_THRESHOLD;
@@ -2121,10 +2093,7 @@ class DiscoverWeeklyService {
         return recommendations;
     }
 
-    /**
-     * Calculate tier distribution dynamically based on available candidates.
-     * If a tier has insufficient candidates, redistribute to other tiers.
-     */
+    /** Tier targets from the candidates available; a short tier's deficit moves to the tiers below it. */
     private calculateDynamicTierDistribution(
         targetCount: number,
         tierCandidates: {
@@ -2184,10 +2153,7 @@ class DiscoverWeeklyService {
         };
     }
 
-    /**
-     * Score artists by how many seed lists they appear in
-     * Artists recommended by multiple seeds = stronger signal
-     */
+    /** Scores an artist by how many seeds list it: several seeds recommending it is the stronger signal. */
     private scoreArtistsByCrossSeedFrequency(
         similarCache: Map<string, any[]>
     ): Array<{
@@ -2457,7 +2423,6 @@ class DiscoverWeeklyService {
             await fillFromRemaining("EXISTING", false);
         }
 
-        // Add deep cuts for adventurous variety
         logger.debug(
             `\n   === Adding ${wildcardCount} DEEP CUT picks ===`
         );
@@ -2472,7 +2437,6 @@ class DiscoverWeeklyService {
             recommendations.push(wc);
         }
 
-        // Summary
         const tierCounts = {
             high: recommendations.filter((r) => r.tier === "high").length,
             medium: recommendations.filter((r) => r.tier === "medium").length,

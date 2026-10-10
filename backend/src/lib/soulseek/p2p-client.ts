@@ -652,7 +652,7 @@ export class SlskClient extends (EventEmitter as new () => TypedEventEmitter<Sls
     let peer: SlskPeer
     try {
       peer = await Promise.any([peerA, peerB])
-    } catch (error) {
+    } catch {
       throw new Error(`Could not connect to ${username}`)
     }
 

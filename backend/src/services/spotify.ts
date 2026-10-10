@@ -191,7 +191,7 @@ class SpotifyService {
                             logger.debug(`Spotify Scraper: Extracted ${tracks.length} tracks from Apollo cache`);
                             return tracks;
                         }
-                    } catch (parseError) {
+                    } catch {
                         logger.debug("Spotify Scraper: Failed to parse Apollo cache JSON");
                     }
                 }
@@ -487,8 +487,8 @@ class SpotifyService {
                     });
                     logger.debug(`[Deezer Fallback] Found album for "${track.title}": "${result.albumName}"`);
                 }
-            } catch (error: unknown) {
-                logger.debug(`[Deezer Fallback] Rate limit hit for "${track.title}", skipping`);
+            } catch (error: any) {
+                logger.debug(`[Deezer Fallback] Lookup failed for "${track.title}", skipping: ${error.message}`);
             }
         }
 

@@ -192,7 +192,6 @@ router.get(
                 take: 100, // Fetch more to account for duplicates
             });
 
-            // Deduplicate by subject - keep only the most recent entry per album
             const seen = new Set<string>();
             const deduplicated = downloads.filter((download) => {
                 if (seen.has(download.subject)) {
@@ -202,7 +201,6 @@ router.get(
                 return true; // Keep first occurrence (most recent due to ordering)
             });
 
-            // Return top 50 after deduplication
             res.json(deduplicated.slice(0, 50));
         } catch (error: any) {
             logger.error("Error fetching download history:", error);
@@ -293,7 +291,6 @@ router.post(
     requireAuth,
     async (req: Request, res: Response) => {
         try {
-            // Get the failed download
             const failedJob = await prisma.downloadJob.findFirst({
                 where: {
                     id: req.params.id,
@@ -325,7 +322,6 @@ router.post(
                     });
                 }
 
-                // Mark old job as cleared
                 await prisma.downloadJob.update({
                     where: { id: failedJob.id },
                     data: { cleared: true },
@@ -564,13 +560,11 @@ router.post(
                     }
                 }
 
-                // Mark old job as cleared
                 await prisma.downloadJob.update({
                     where: { id: failedJob.id },
                     data: { cleared: true },
                 });
 
-                // Create a NEW download job record for the retry
                 const newJobRecord = await prisma.downloadJob.create({
                     data: {
                         userId: req.user!.id,
@@ -723,7 +717,6 @@ router.post(
                 return res.json({ success: true, newJobId: newJobRecord.id });
             }
 
-            // Validate that we have the required MBIDs
             if (!failedJob.targetMbid) {
                 return res
                     .status(400)
@@ -748,13 +741,11 @@ router.post(
                 });
             }
 
-            // Mark old job as cleared
             await prisma.downloadJob.update({
                 where: { id: failedJob.id },
                 data: { cleared: true },
             });
 
-            // Extract parameters from the failed job
             // Subject is typically "Artist - Album" format
             const subjectParts = failedJob.subject.split(" - ");
             const artistName = subjectParts[0] || failedJob.subject;
@@ -763,7 +754,6 @@ router.post(
                 subjectParts[1] ||
                 failedJob.subject;
 
-            // Create a NEW download job record for the retry
             const newJobRecord = await prisma.downloadJob.create({
                 data: {
                     userId: req.user!.id,
@@ -776,7 +766,6 @@ router.post(
                 },
             });
 
-            // Import the download manager dynamically to avoid circular deps
             const { simpleDownloadManager } = await import(
                 "../services/simpleDownloadManager"
             );

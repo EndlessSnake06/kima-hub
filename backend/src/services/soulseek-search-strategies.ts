@@ -18,31 +18,22 @@ interface SearchStrategy {
     priority: number;
 }
 
-/**
- * Strip classical music metadata that doesn't appear in real filenames
- */
+/** Strips classical metadata (movements, catalogue numbers, keys, arrangements) that real filenames lack. */
 function stripClassicalMetadata(title: string): string {
     return title
-        // Remove movement numbers: "I.", "II.", "III.", "IV.", etc.
-        // Matches Roman numerals (I, V, X combinations) followed by period
+        // Movement numbers: "I.", "II.", "IV."
         .replace(/\b[IVX]+\.\s*/g, "")
-        // Replace colons with spaces (used as separators in classical titles)
         .replace(/:\s*/g, " ")
-        // Strip classical catalogue numbers: Op., K., BWV, RV, Hob., D., WoO.
+        // Catalogue numbers: Op., K., BWV, RV, Hob., D., WoO.
         .replace(/\b(Op\.|K\.|BWV|RV|Hob\.|D\.|WoO)\s*\d+[a-z]?/gi, "")
-        // Remove key signatures that appear in classical titles
         .replace(/\bin\s+[A-G]\s+(Major|Minor|sharp|flat)/gi, "")
-        // Remove arrangement notes like "(Arr. for Piano from Concerto)"
+        // Arrangement notes: "(Arr. for Piano from Concerto)"
         .replace(/\(Arr\.[^)]+\)/gi, "")
-        // Remove "inspired by" phrases that don't appear in filenames
         .replace(/inspired by[^,]+,?\s*/gi, "")
         .replace(/\s+/g, " ")
         .trim();
 }
 
-/**
- * Strip featuring artists from track titles
- */
 function stripFeaturingArtists(title: string): string {
     return title
         .replace(/\s*[\(\[]?\s*(feat\.|ft\.|featuring|with)\s+[^\)\]]+[\)\]]?\s*/gi, " ")
@@ -120,9 +111,7 @@ export function prepareArtistForSearch(artist: string): string {
         .trim();
 }
 
-/**
- * All available search strategies, ordered by priority (simple to complex)
- */
+/** The search strategies, simplest first. */
 const SEARCH_STRATEGIES: SearchStrategy[] = [
     {
         name: "artist-title-aggressive",
@@ -171,9 +160,7 @@ const SEARCH_STRATEGIES: SearchStrategy[] = [
     },
 ];
 
-/**
- * Execute multi-strategy search with fallbacks
- */
+/** Tries each strategy in order until one returns audio files. */
 export async function searchWithStrategies(
     search: SearchFn,
     artistName: string,
@@ -185,14 +172,13 @@ export async function searchWithStrategies(
 ): Promise<FileSearchResponse[]> {
     const audioExtensions = [".flac", ".mp3", ".m4a", ".ogg", ".opus", ".wav", ".aac"];
 
-    // Build queries once and filter strategies that produce valid queries
     const applicableStrategies = SEARCH_STRATEGIES
         .map(strategy => ({
             strategy,
             query: strategy.buildQuery(artistName, trackTitle, albumName)
         }))
         .filter(({ query, strategy }) => {
-            // Skip strategies that produce overly long queries (Soulseek best practice)
+            // Soulseek matches long queries poorly
             if (query.length > 100) {
                 sessionLog(
                     "SOULSEEK",
@@ -208,7 +194,6 @@ export async function searchWithStrategies(
     let successfulStrategy: string | null = null;
 
     for (const { strategy, query } of applicableStrategies) {
-        // Log query length and content for debugging
         if (query.length > 80) {
             sessionLog(
                 "SOULSEEK",
@@ -230,7 +215,6 @@ export async function searchWithStrategies(
             });
 
             if (responses && responses.length > 0) {
-                // Count audio files in responses
                 let audioFileCount = 0;
                 for (const response of responses) {
                     for (const file of response.files) {

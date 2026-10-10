@@ -220,7 +220,7 @@ async function processArtistDownload(
     rootFolderPath: string,
     downloadType: string
 ): Promise<{ id: string; subject: string }[]> {
-    logger.debug(`\n Processing artist download: ${artistName}`);
+    logger.debug(`\nProcessing artist download: ${artistName}`);
     logger.debug(`   Artist MBID: ${artistMbid}`);
 
     const batchId = crypto.randomUUID();
@@ -464,7 +464,7 @@ router.delete("/clear-all", async (req, res) => {
         const result = await prisma.downloadJob.deleteMany({ where });
 
         logger.debug(
-            ` Cleared ${result.count} download jobs for user ${userId}`
+            `Cleared ${result.count} download jobs for user ${userId}`
         );
         res.json({ success: true, deleted: result.count });
     } catch (error) {

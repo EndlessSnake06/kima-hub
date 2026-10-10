@@ -201,7 +201,7 @@ async function saveImportJob(job: ImportJob): Promise<void> {
       JSON.stringify(job),
     );
   } catch (error) {
-    logger.warn(`⚠️  Failed to cache import job ${job.id} in Redis:`, error);
+    logger.warn(`Failed to cache import job ${job.id} in Redis:`, error);
     // Continue - Redis is optional, DB is source of truth
   }
 
@@ -275,7 +275,7 @@ async function getImportJob(importJobId: string): Promise<ImportJob | null> {
     }
   } catch (error) {
     logger.warn(
-      `⚠️  Failed to read import job ${importJobId} from Redis:`,
+      `Failed to read import job ${importJobId} from Redis:`,
       error,
     );
   }
@@ -296,7 +296,7 @@ async function getImportJob(importJobId: string): Promise<ImportJob | null> {
     );
   } catch (error) {
     logger.warn(
-      `⚠️  Failed to cache import job ${importJobId} in Redis:`,
+      `Failed to cache import job ${importJobId} in Redis:`,
       error,
     );
     // Continue - Redis is optional
@@ -2016,7 +2016,7 @@ class SpotifyImportService {
                 track.artist,
                 track.title,
               );
-            } catch (e) {
+            } catch {
               // Preview not critical, continue without it
             }
             return {

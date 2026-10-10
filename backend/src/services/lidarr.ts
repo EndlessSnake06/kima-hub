@@ -26,10 +26,7 @@ export enum AcquisitionErrorType {
     LIDARR_UNAVAILABLE = "LIDARR_UNAVAILABLE",
 }
 
-/**
- * Structured error class for acquisition failures
- * Includes error type and recoverability flag for fallback logic
- */
+/** An acquisition failure carrying its type and whether the fallback may try again. */
 export class AcquisitionError extends Error {
     public readonly type: AcquisitionErrorType;
     public readonly isRecoverable: boolean;
@@ -182,10 +179,7 @@ class LidarrService {
         this.enabled = false;
     }
 
-    /**
-     * Get the full artist list with caching (30s TTL).
-     * Turns N artist-list fetches per import into 1-3.
-     */
+    /** The full artist list, cached for 30 s so an import fetches it a few times rather than once per album. */
     private async getArtistList(): Promise<LidarrArtist[]> {
         if (this.artistCache && (Date.now() - this.artistCache.fetchedAt) < this.ARTIST_CACHE_TTL) {
             return this.artistCache.data;
@@ -250,7 +244,7 @@ class LidarrService {
         });
         const artistData = (lookup.data ?? []).find((a) => a.foreignArtistId === mbid);
         if (!artistData) {
-            logger.error(` Lidarr does not know artist ${artistName} (${mbid})`);
+            logger.error(`Lidarr does not know artist ${artistName} (${mbid})`);
             return null;
         }
 
@@ -379,7 +373,7 @@ class LidarrService {
                 }
 
                 if (!artist) {
-                    logger.error(` Failed to add artist`);
+                    logger.error(`Failed to add artist`);
                     return null;
                 }
 
@@ -391,7 +385,7 @@ class LidarrService {
                     `   Waiting for Lidarr to populate album catalog...`
                 );
             } else if (!artist) {
-                logger.error(` Artist not found and no MBID provided`);
+                logger.error(`Artist not found and no MBID provided`);
                 return null;
             } else {
                 logger.debug(
@@ -447,7 +441,7 @@ class LidarrService {
                         );
                     } else {
                         logger.warn(
-                            ` Timeout reached after ${
+                            `Timeout reached after ${
                                 (maxAttempts * this.METADATA_FETCH_DELAY) / 1000
                             }s - artist catalog may still be populating`
                         );
@@ -464,7 +458,7 @@ class LidarrService {
                         `/api/v1/album?artistId=${artist.id}`
                     );
                     artistAlbums = retryResponse.data;
-                } catch (refreshError) {
+                } catch {
                     logger.warn(`   Metadata refresh failed`);
                 }
             }
@@ -530,7 +524,7 @@ class LidarrService {
             }
 
             if ((updatedAlbum.releases?.length || 0) === 0) {
-                logger.warn(` Album has 0 releases - refreshing artist metadata from MusicBrainz...`);
+                logger.warn(`Album has 0 releases - refreshing artist metadata from MusicBrainz...`);
                 await this.refreshArtistAndWait(artist.id);
                 const refreshed = (await this.client.get(`/api/v1/album/${updatedAlbum.id}`)).data;
                 if ((refreshed.releases?.length || 0) === 0) {
@@ -811,10 +805,7 @@ class LidarrService {
         }
     }
 
-    /**
-     * Delete an artist from Lidarr by MusicBrainz ID
-     * This removes the artist and optionally deletes files
-     */
+    /** Deletes an artist from Lidarr by MusicBrainz id, optionally with its files. */
     async deleteArtist(
         mbid: string,
         deleteFiles: boolean = true
@@ -925,10 +916,7 @@ class LidarrService {
         }
     }
 
-    /**
-     * Check if an album exists in Lidarr and has files (already downloaded)
-     * Returns true if the album is already available in Lidarr
-     */
+    /** Whether Lidarr has this album with files already downloaded. */
     async isAlbumAvailable(albumMbid: string): Promise<boolean> {
         await this.ensureInitialized();
 
@@ -965,10 +953,7 @@ class LidarrService {
         }
     }
 
-    /**
-     * Get missing tracks for an album by release-group MBID.
-     * Returns tracks that exist in Lidarr metadata but do not have files yet.
-     */
+    /** The tracks Lidarr knows for a release-group id that have no files yet. */
     async getMissingTracksByAlbumMbid(
         albumMbid: string
     ): Promise<Array<{ title: string; trackNumber: number | null }>> {
@@ -1210,10 +1195,7 @@ class LidarrService {
         return this.getArtistsByTag(tagId);
     }
 
-    /**
-     * Remove discovery tag from an artist by MBID
-     * Used when user likes an album (artist becomes "owned")
-     */
+    /** Takes the discovery tag off an artist, as when the user likes an album and the artist becomes owned. */
     async removeDiscoveryTagByMbid(artistMbid: string): Promise<boolean> {
         await this.ensureInitialized();
 
@@ -1256,9 +1238,7 @@ class LidarrService {
         }
     }
 
-    /**
-     * Delete artist by Lidarr ID (used for cleanup)
-     */
+    /** Deletes an artist by Lidarr id. */
     async deleteArtistById(
         lidarrId: number,
         deleteFiles: boolean = true
@@ -1350,10 +1330,7 @@ class LidarrService {
         return (response.data as LidarrQueueResponse).records;
     }
 
-    /**
-     * Get upcoming and recent releases from Lidarr calendar
-     * Returns albums releasing within the specified date range for monitored artists
-     */
+    /** Albums releasing within the date range for monitored artists, from Lidarr's calendar. */
     async getCalendar(
         startDate: Date,
         endDate: Date
