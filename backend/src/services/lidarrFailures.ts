@@ -87,6 +87,15 @@ export function judgeQueueItem(item: LidarrQueueItem, now = Date.now()): QueueVe
     return null;
 }
 
+/** Records that this caller handles the download; false when another already does. */
+async function claimDownload(downloadId: string, reason: string): Promise<boolean> {
+    const claim = await prisma.handledDownload.createMany({
+        data: [{ downloadId, reason }],
+        skipDuplicates: true,
+    });
+    return claim.count > 0;
+}
+
 /**
  * Tells Lidarr a download it grabbed for one album, and already imported,
  * failed, once per download, as its own "mark as failed" does: the release is
@@ -95,11 +104,7 @@ export function judgeQueueItem(item: LidarrQueueItem, now = Date.now()): QueueVe
  * is tried again rather than searching with the release still allowed.
  */
 export async function failImportedDownload(downloadId: string, reason: string): Promise<boolean> {
-    const claim = await prisma.handledDownload.createMany({
-        data: [{ downloadId, reason }],
-        skipDuplicates: true,
-    });
-    if (claim.count === 0) return false;
+    if (!(await claimDownload(downloadId, reason))) return false;
     try {
         if (await lidarrService.markDownloadFailed(downloadId)) return true;
     } catch (error) {
@@ -125,11 +130,7 @@ export async function removeFailedDownload(
         removeFromClient?: boolean;
     }
 ): Promise<boolean> {
-    const claim = await prisma.handledDownload.createMany({
-        data: [{ downloadId, reason }],
-        skipDuplicates: true,
-    });
-    if (claim.count === 0) return false;
+    if (!(await claimDownload(downloadId, reason))) return false;
 
     const stillQueued = async () => (await lidarrService.getQueueItems()).find((q) => q.downloadId === downloadId);
     let removed = false;

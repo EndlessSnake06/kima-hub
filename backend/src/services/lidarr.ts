@@ -110,6 +110,7 @@ class LidarrService {
 
     private readonly METADATA_FETCH_MAX_ATTEMPTS = 10;
     private readonly METADATA_FETCH_DELAY = 2000;
+    private readonly ARTIST_REFRESH_WAIT_MS = 5000;
 
     private artistCache: { data: LidarrArtist[]; fetchedAt: number } | null = null;
     private readonly ARTIST_CACHE_TTL = 30_000; // 30 seconds
@@ -423,7 +424,7 @@ class LidarrService {
                 logger.debug(`   Waiting for Lidarr to fetch album metadata...`);
 
                 const maxAttempts = this.METADATA_FETCH_MAX_ATTEMPTS;
-                const retryDelay = this.METADATA_FETCH_DELAY; // 3 seconds between retries
+                const retryDelay = this.METADATA_FETCH_DELAY;
 
                 for (let attempt = 1; attempt <= maxAttempts; attempt++) {
                     await new Promise((resolve) =>
@@ -457,11 +458,7 @@ class LidarrService {
                     `   Artist exists but has 0 albums - refreshing metadata...`
                 );
                 try {
-                    await this.client.post("/api/v1/command", {
-                        name: "RefreshArtist",
-                        artistId: artist.id,
-                    });
-                    await new Promise((resolve) => setTimeout(resolve, 5000));
+                    await this.refreshArtistAndWait(artist.id);
 
                     const retryResponse = await this.client.get(
                         `/api/v1/album?artistId=${artist.id}`
@@ -534,11 +531,7 @@ class LidarrService {
 
             if ((updatedAlbum.releases?.length || 0) === 0) {
                 logger.warn(` Album has 0 releases - refreshing artist metadata from MusicBrainz...`);
-                await this.client.post("/api/v1/command", {
-                    name: "RefreshArtist",
-                    artistId: artist.id,
-                });
-                await new Promise((resolve) => setTimeout(resolve, 5000));
+                await this.refreshArtistAndWait(artist.id);
                 const refreshed = (await this.client.get(`/api/v1/album/${updatedAlbum.id}`)).data;
                 if ((refreshed.releases?.length || 0) === 0) {
                     logger.warn(`   Still no releases after refresh; the search may find nothing`);
@@ -683,6 +676,11 @@ class LidarrService {
         );
     }
 
+    private async refreshArtistAndWait(artistId: number): Promise<void> {
+        await this.client!.post("/api/v1/command", { name: "RefreshArtist", artistId });
+        await new Promise((resolve) => setTimeout(resolve, this.ARTIST_REFRESH_WAIT_MS));
+    }
+
     /** Adds exactly this album to an artist already in Lidarr, by its MusicBrainz id; null when Lidarr's metadata does not know it. */
     private async addAlbumById(artist: LidarrArtist, rgMbid: string): Promise<LidarrAlbum | null> {
         const { data: found } = await this.client!.get<LidarrAlbum[]>("/api/v1/album/lookup", {
@@ -798,25 +796,6 @@ class LidarrService {
             AcquisitionErrorType.NO_RELEASES_AVAILABLE,
             true
         );
-    }
-
-    async rescanLibrary(): Promise<void> {
-        await this.ensureInitialized();
-
-        if (!this.enabled || !this.client) {
-            throw new Error("Lidarr not enabled");
-        }
-
-        try {
-            await this.client.post("/api/v1/command", {
-                name: "RescanFolders",
-            });
-
-            logger.debug("Triggered Lidarr library rescan");
-        } catch (error) {
-            logger.error("Lidarr rescan error:", error);
-            throw error;
-        }
     }
 
     async getArtists(): Promise<LidarrArtist[]> {
@@ -1092,27 +1071,6 @@ class LidarrService {
         }
     }
 
-    /**
-     * Check if an artist exists in Lidarr
-     */
-    async isArtistInLidarr(artistMbid: string): Promise<boolean> {
-        await this.ensureInitialized();
-
-        if (!this.enabled || !this.client) {
-            return false;
-        }
-
-        try {
-            const artists = await this.getArtistList();
-            return artists.some((a) => a.foreignArtistId === artistMbid);
-        } catch (error) {
-            return false;
-        }
-    }
-
-    /**
-     * Get all tags from Lidarr
-     */
     async getTags(): Promise<LidarrTag[]> {
         await this.ensureInitialized();
 
@@ -1129,9 +1087,6 @@ class LidarrService {
         }
     }
 
-    /**
-     * Create a new tag in Lidarr
-     */
     async createTag(label: string): Promise<LidarrTag | null> {
         await this.ensureInitialized();
 
@@ -1190,9 +1145,6 @@ class LidarrService {
         }
     }
 
-    /**
-     * Remove tags from an artist
-     */
     async removeTagsFromArtist(
         artistId: number,
         tagIds: number[]
@@ -1232,9 +1184,6 @@ class LidarrService {
         }
     }
 
-    /**
-     * Get all artists that have a specific tag
-     */
     async getArtistsByTag(tagId: number): Promise<LidarrArtist[]> {
         await this.ensureInitialized();
 
@@ -1255,9 +1204,6 @@ class LidarrService {
         }
     }
 
-    /**
-     * Get all discovery-tagged artists (convenience method)
-     */
     async getDiscoveryArtists(): Promise<LidarrArtist[]> {
         const tagId = await this.getOrCreateDiscoveryTag();
         if (!tagId) {
@@ -1463,9 +1409,6 @@ class LidarrService {
         }
     }
 
-    /**
-     * Get all monitored artists from Lidarr
-     */
     async getMonitoredArtists(): Promise<
         { id: number; name: string; mbid: string }[]
     > {
