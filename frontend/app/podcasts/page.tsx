@@ -18,11 +18,8 @@ import { CachedImage } from "@/components/ui/CachedImage";
 import { MediaCard } from "@/components/cards/MediaCard";
 import { scrollMainToTop } from "@/lib/scroll";
 import { PODCAST_GENRES } from "@/features/podcast/genres";
+import { coverArtUrl } from "@/lib/cover-art";
 
-const getProxiedImageUrl = (imageUrl: string | undefined): string | null => {
-    if (!imageUrl) return null;
-    return api.getCoverArtUrl(imageUrl, 300);
-};
 
 function PodcastCard({ podcast, index }: { podcast: { id: string; title: string; author: string; coverUrl?: string }; index: number }) {
     return (
@@ -30,7 +27,7 @@ function PodcastCard({ podcast, index }: { podcast: { id: string; title: string;
             href={`/podcasts/${podcast.id}`}
             title={podcast.title}
             subtitle={podcast.author}
-            imageUrl={getProxiedImageUrl(podcast.coverUrl)}
+            imageUrl={coverArtUrl(podcast.coverUrl)}
             fallbackIcon={Mic2}
             type="podcast"
             index={index}
@@ -276,7 +273,7 @@ export default function PodcastsPage() {
                                     className="absolute top-full left-0 mt-2 w-full bg-[var(--bg-secondary)] border-2 border-white/10 rounded-lg overflow-hidden z-(--z-dropdown) max-h-96 overflow-y-auto"
                                 >
                                     {searchResults.map((result) => {
-                                        const imageUrl = getProxiedImageUrl(result.coverUrl);
+                                        const imageUrl = coverArtUrl(result.coverUrl);
                                         return (
                                             <div
                                                 key={result.id}

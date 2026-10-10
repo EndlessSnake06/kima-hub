@@ -19,10 +19,8 @@ import {
 } from "lucide-react";
 import { CachedImage } from "@/components/ui/CachedImage";
 import type { Audiobook } from "@/features/audiobook/types";
+import { coverArtUrl } from "@/lib/cover-art";
 
-function getCoverUrl(coverUrl: string | null, size: number) {
-    return coverUrl ? api.getCoverArtUrl(coverUrl, size) : null;
-}
 
 export default function SeriesDetailPage() {
     const params = useParams();
@@ -82,7 +80,7 @@ export default function SeriesDetailPage() {
     const author = firstBook.author;
     const genres = firstBook.genres || [];
     const totalDuration = books.reduce((sum, book) => sum + book.duration, 0);
-    const heroImage = getCoverUrl(firstBook.coverUrl, 500);
+    const heroImage = coverArtUrl(firstBook.coverUrl, 500);
 
     return (
         <div className="min-h-screen bg-gradient-to-b from-[#0a0a0a] to-black section-stack">
@@ -184,7 +182,7 @@ export default function SeriesDetailPage() {
                                     currentAudiobook?.id === book.id &&
                                     playbackType === "audiobook";
                                 const isBookPlaying = isCurrentBook && isPlaying;
-                                const bookCover = getCoverUrl(book.coverUrl, 100);
+                                const bookCover = coverArtUrl(book.coverUrl, 100);
 
                                 return (
                                     <div

@@ -26,14 +26,11 @@ import { SectionHeader } from "@/components/ui/SectionHeader";
 import { Button } from "@/components/ui/Button";
 import { scrollMainToTop } from "@/lib/scroll";
 import type { Audiobook } from "@/features/audiobook/types";
+import { coverArtUrl } from "@/lib/cover-art";
 
 type FilterType = "all" | "listening" | "finished";
 type SortType = "title" | "author" | "recent" | "series";
 
-function getCoverUrl(coverUrl: string | null, size = 300) {
-    if (!coverUrl) return null;
-    return api.getCoverArtUrl(coverUrl, size);
-}
 
 function BookCard({ book, index }: { book: Audiobook; index: number }) {
     return (
@@ -41,7 +38,7 @@ function BookCard({ book, index }: { book: Audiobook; index: number }) {
             href={`/audiobooks/${book.id}`}
             title={book.title}
             subtitle={book.author}
-            imageUrl={getCoverUrl(book.coverUrl)}
+            imageUrl={coverArtUrl(book.coverUrl)}
             fallbackIcon={Book}
             type="audiobook"
             aspect="portrait"
@@ -525,7 +522,7 @@ export default function AudiobooksPage() {
                                                         href={`/audiobooks/series/${encodeURIComponent(seriesName)}`}
                                                         title={seriesName}
                                                         subtitle={firstBook.author}
-                                                        imageUrl={getCoverUrl(firstBook.coverUrl)}
+                                                        imageUrl={coverArtUrl(firstBook.coverUrl)}
                                                         fallbackIcon={Book}
                                                         type="audiobook"
                                                         aspect="portrait"

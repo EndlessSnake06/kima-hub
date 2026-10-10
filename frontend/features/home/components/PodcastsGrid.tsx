@@ -3,20 +3,17 @@
 import { Mic2 } from "lucide-react";
 import { Podcast } from "../types";
 import { memo } from "react";
-import { api } from "@/lib/api";
 import { HorizontalCarousel, CarouselItem } from "@/components/ui/HorizontalCarousel";
 import { cascadeStyle } from "@/lib/motion";
 import { MediaCard } from "@/components/cards/MediaCard";
+import { coverArtUrl } from "@/lib/cover-art";
 
 interface PodcastsGridProps {
     podcasts: Podcast[];
 }
 
-const getProxiedImageUrl = (podcast: Podcast): string | null => {
-    const imageUrl = podcast.coverUrl || podcast.coverArt || podcast.imageUrl;
-    if (!imageUrl) return null;
-    return api.getCoverArtUrl(imageUrl, 300);
-};
+const podcastCover = (podcast: Podcast): string | null =>
+    coverArtUrl(podcast.coverUrl || podcast.coverArt || podcast.imageUrl);
 
 const PodcastsGrid = memo(function PodcastsGrid({
     podcasts,
@@ -29,7 +26,7 @@ const PodcastsGrid = memo(function PodcastsGrid({
                         href={`/podcasts/${podcast.id}`}
                         title={podcast.title}
                         subtitle={podcast.author || "Podcast"}
-                        imageUrl={getProxiedImageUrl(podcast)}
+                        imageUrl={podcastCover(podcast)}
                         fallbackIcon={Mic2}
                         type="podcast"
                         index={index}
