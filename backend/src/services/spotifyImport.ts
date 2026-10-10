@@ -103,7 +103,6 @@ interface ImportJob {
     | "downloading"
     | "scanning"
     | "creating_playlist"
-    | "matching_tracks"
     | "completed"
     | "failed"
     | "cancelled";
@@ -267,7 +266,7 @@ function toImportJob(
  * Get import job from Redis cache or database
  * Redis provides cross-process sharing between API and worker processes
  */
-async function getImportJob(importJobId: string): Promise<ImportJob | null> {
+export async function getImportJob(importJobId: string): Promise<ImportJob | null> {
   try {
     const cached = await redisClient.get(IMPORT_JOB_KEY(importJobId));
     if (cached) {
@@ -1016,6 +1015,7 @@ class SpotifyImportService {
       if (hostname.includes("mixcloud.com") && parsed.pathname.includes("/playlist/")) return true;
       return false;
     } catch {
+      // A URL that will not parse is not a playlist link.
       return false;
     }
   }
@@ -2279,13 +2279,6 @@ class SpotifyImportService {
   }
 
   /**
-   * Get import job status (public method for routes)
-   */
-  async getJob(jobId: string): Promise<ImportJob | null> {
-    return await getImportJob(jobId);
-  }
-
-  /**
    * Get all jobs for a user
    */
   async getUserJobs(userId: string): Promise<ImportJob[]> {
@@ -2577,39 +2570,6 @@ class SpotifyImportService {
   }
 
   /**
-   * Get pending tracks count for a playlist
-   */
-  async getPendingTracksCount(playlistId: string): Promise<number> {
-    return prisma.playlistPendingTrack.count({
-      where: { playlistId },
-    });
-  }
-
-  /**
-   * Get pending tracks for a playlist
-   */
-  async getPendingTracks(playlistId: string): Promise<
-    Array<{
-      id: string;
-      artist: string;
-      title: string;
-      album: string;
-    }>
-  > {
-    const tracks = await prisma.playlistPendingTrack.findMany({
-      where: { playlistId },
-      orderBy: { rank: "asc" },
-    });
-
-    return tracks.map((t) => ({
-      id: t.id,
-      artist: t.spotifyArtist,
-      title: t.spotifyTitle,
-      album: t.spotifyAlbum,
-    }));
-  }
-
-  /**
    * Start a background preview job and return the job ID immediately.
    * Progress and completion are broadcast via SSE (preview:progress / preview:complete).
    */
@@ -2708,6 +2668,7 @@ class SpotifyImportService {
       if (!raw) return null;
       return JSON.parse(raw);
     } catch {
+      // A failed cache read counts as no preview yet.
       return null;
     }
   }
@@ -2886,7 +2847,7 @@ class SpotifyImportService {
    * Loads the job and cached preview from Redis/DB, then delegates to processImport.
    */
   async processImportFromQueue(importJobId: string, albumMbidsToDownload: string[]): Promise<void> {
-    const job = await this.getJob(importJobId);
+    const job = await getImportJob(importJobId);
     if (!job) throw new Error(`Import job ${importJobId} not found`);
 
     // Retrieve cached preview from Redis
@@ -2931,7 +2892,7 @@ class SpotifyImportService {
     }
 
     const existingJobs = await this.getUserJobs(userId);
-    const activeStatuses = ["pending", "fetching", "downloading", "scanning", "creating_playlist", "matching_tracks"];
+    const activeStatuses = ["pending", "fetching", "downloading", "scanning", "creating_playlist"];
     const activeJob = existingJobs.find(
       (j) => activeStatuses.includes(j.status) && j.sourceUrl === normalizedUrl,
     );
@@ -3005,7 +2966,7 @@ class SpotifyImportService {
     url: string,
     playlistNameOverride?: string,
   ): Promise<void> {
-    const job = await this.getJob(importJobId);
+    const job = await getImportJob(importJobId);
     if (!job) throw new Error(`Import job ${importJobId} not found`);
 
     const jobLogger = createPlaylistLogger(importJobId);
@@ -3031,7 +2992,7 @@ class SpotifyImportService {
       }
 
       // Re-read from DB to detect cancellation during the fetch phase
-      const freshJob = await this.getJob(importJobId);
+      const freshJob = await getImportJob(importJobId);
       if (!freshJob || freshJob.status === "cancelled") {
         jobLogger.info("[Quick Import] Job cancelled during fetch phase");
         return;
@@ -3092,7 +3053,7 @@ class SpotifyImportService {
    * some tracks is kept so the user can see what happened.
    */
   async markJobFailed(importJobId: string, errorMessage: string): Promise<void> {
-    const job = await this.getJob(importJobId);
+    const job = await getImportJob(importJobId);
     if (!job) return;
     job.error = errorMessage;
     notifyImportFailed(job);

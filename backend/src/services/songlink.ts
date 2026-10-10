@@ -16,7 +16,16 @@ export interface SongLinkResult {
 }
 
 class SongLinkService {
-    // The cache only saves requests: a Redis failure falls through to the API instead of failing the lookup.
+    // The cache only saves requests: a Redis failure counts as a miss on read and a lost entry on write,
+    // and the lookup goes on to the API instead of failing.
+    private async cacheGet(key: string): Promise<string | null> {
+        try {
+            return await redisClient.get(key);
+        } catch {
+            return null;
+        }
+    }
+
     private async cacheSet(key: string, ttlSeconds: number, value: string): Promise<void> {
         try {
             await redisClient.setex(key, ttlSeconds, value);
@@ -25,10 +34,8 @@ class SongLinkService {
 
     async resolve(url: string): Promise<SongLinkResult | null> {
         const cacheKey = `songlink:${url}`;
-        try {
-            const cached = await redisClient.get(cacheKey);
-            if (cached) return cached === "null" ? null : JSON.parse(cached);
-        } catch {}
+        const cached = await this.cacheGet(cacheKey);
+        if (cached) return cached === "null" ? null : JSON.parse(cached);
 
         try {
             const response = await rateLimiter.execute("songlink", () =>

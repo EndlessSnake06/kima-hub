@@ -15,7 +15,6 @@ export type SearchFn = (
 interface SearchStrategy {
     name: string;
     buildQuery: (artist: string, track: string, album?: string) => string;
-    priority: number;
 }
 
 /** Strips classical metadata (movements, catalogue numbers, keys, arrangements) that real filenames lack. */
@@ -120,7 +119,6 @@ const SEARCH_STRATEGIES: SearchStrategy[] = [
             const normalizedTitle = normalizeTrackTitleForSearch(track, 'aggressive');
             return `${normalizedArtist} ${normalizedTitle}`.trim();
         },
-        priority: 1,
     },
     {
         name: "artist-title-moderate",
@@ -129,7 +127,6 @@ const SEARCH_STRATEGIES: SearchStrategy[] = [
             const normalizedTitle = normalizeTrackTitleForSearch(track, 'moderate');
             return `${normalizedArtist} ${normalizedTitle}`.trim();
         },
-        priority: 2,
     },
     {
         name: "title-only-aggressive",
@@ -137,7 +134,6 @@ const SEARCH_STRATEGIES: SearchStrategy[] = [
             const normalizedTitle = normalizeTrackTitleForSearch(track, 'aggressive');
             return normalizedTitle.trim();
         },
-        priority: 3,
     },
     {
         name: "album-title",
@@ -146,7 +142,6 @@ const SEARCH_STRATEGIES: SearchStrategy[] = [
             const normalizedTitle = normalizeTrackTitleForSearch(track, 'moderate');
             return `${album} ${normalizedTitle}`.trim();
         },
-        priority: 4,
     },
     {
         name: "artist-album-title",
@@ -156,7 +151,6 @@ const SEARCH_STRATEGIES: SearchStrategy[] = [
             const normalizedTitle = normalizeTrackTitleForSearch(track, 'moderate');
             return `${normalizedArtist} ${album} ${normalizedTitle}`.trim();
         },
-        priority: 5,
     },
 ];
 

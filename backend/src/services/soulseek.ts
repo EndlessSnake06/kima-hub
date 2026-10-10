@@ -217,18 +217,17 @@ class SoulseekService {
     private maxConcurrentDownloads = 0;
 
     private userConnectionCooldowns = new Map<string, number>();
-    private readonly USER_CONNECTION_COOLDOWN = 5000; // Increased from 3s to 5s
+    private readonly USER_CONNECTION_COOLDOWN = 5000; // 5 s before retrying the same user
     private cooldownCleanupInterval: NodeJS.Timeout | null = null;
 
     private connectedAt: Date | null = null;
     private consecutiveEmptySearches = 0;
     private totalSearches = 0;
-    private totalSuccessfulSearches = 0;
-    private readonly MAX_CONSECUTIVE_EMPTY = 20; // Increased from 10 to reduce reconnect spam
+    private readonly MAX_CONSECUTIVE_EMPTY = 20; // 20 empty searches in a row force a reconnect
 
-    // slskd-inspired timeout values (from slskd.example.yml)
-    private readonly CONNECT_TIMEOUT = 10000; // 10s (slskd default)
-    private readonly LOGIN_TIMEOUT = 10000; // 10s (reduced from 15s)
+    // slskd-inspired timeouts
+    private readonly CONNECT_TIMEOUT = 10000;
+    private readonly LOGIN_TIMEOUT = 10000;
 
     private searchRateLimiter = new SlidingWindowRateLimiter(30, 220_000);
 
@@ -599,6 +598,7 @@ class SoulseekService {
                 soulseekPassword: settings.password,
             });
         } catch {
+            // A settings read failure counts as not configured.
             return false;
         }
     }
@@ -614,6 +614,7 @@ class SoulseekService {
                 username: settings.username || null,
             };
         } catch {
+            // A settings read failure still reports the connection, just without the username.
             return {
                 connected: this.client !== null && this.client.loggedIn,
                 username: null,
@@ -750,7 +751,6 @@ class SoulseekService {
             }
 
             this.consecutiveEmptySearches = 0;
-            this.totalSuccessfulSearches++;
 
             const flatResults = this.flattenSearchResults(responses);
 

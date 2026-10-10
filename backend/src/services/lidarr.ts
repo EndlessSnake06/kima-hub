@@ -167,6 +167,12 @@ class LidarrService {
         this.initialized = true;
     }
 
+    private async requireClient(): Promise<AxiosInstance> {
+        await this.ensureInitialized();
+        if (!this.enabled || !this.client) throw new Error("Lidarr not enabled");
+        return this.client;
+    }
+
     async isEnabled(): Promise<boolean> {
         await this.ensureInitialized();
         return this.enabled;
@@ -229,16 +235,12 @@ class LidarrService {
         rootFolderPath: string,
         isDiscovery: boolean = false
     ): Promise<LidarrArtist | null> {
-        await this.ensureInitialized();
-
-        if (!this.enabled || !this.client) {
-            throw new Error("Lidarr not enabled");
-        }
+        const client = await this.requireClient();
         const existing = (await this.getArtistList()).find((a) => a.foreignArtistId === mbid);
         if (existing) return existing;
         const target = await this.newArtistTarget(rootFolderPath);
 
-        const lookup = await this.client.get<LidarrArtist[]>("/api/v1/artist/lookup", {
+        const lookup = await client.get<LidarrArtist[]>("/api/v1/artist/lookup", {
             params: { term: `lidarr:${mbid}` },
         });
         const artistData = (lookup.data ?? []).find((a) => a.foreignArtistId === mbid);
@@ -260,7 +262,7 @@ class LidarrService {
 
         let added: LidarrArtist;
         try {
-            added = (await this.client.post("/api/v1/artist", artistPayload)).data;
+            added = (await client.post("/api/v1/artist", artistPayload)).data;
         } catch (postError: any) {
             const errorMsg = postError.response?.data?.[0]?.errorMessage || postError.message || "";
             if (errorMsg.includes("already exists") || errorMsg.includes("UNIQUE constraint failed")) {
@@ -275,7 +277,7 @@ class LidarrService {
 
         await new Promise((resolve) => setTimeout(resolve, this.ARTIST_ADD_SETTLE_MS));
         try {
-            await this.client.post("/api/v1/command", { name: "RefreshArtist", artistId: added.id });
+            await client.post("/api/v1/command", { name: "RefreshArtist", artistId: added.id });
         } catch (refreshError: any) {
             logger.warn(`   Metadata refresh for ${artistName} failed: ${refreshError.message}`);
         }
@@ -320,11 +322,7 @@ class LidarrService {
         artistMbid?: string,
         isDiscovery: boolean = false
     ): Promise<{ album: LidarrAlbum; searchCommandId?: number } | null> {
-        await this.ensureInitialized();
-
-        if (!this.enabled || !this.client) {
-            throw new Error("Lidarr not enabled");
-        }
+        const client = await this.requireClient();
 
         if (await sourcePauseController.isPaused("lidarr")) {
             throw new AcquisitionError(
@@ -408,7 +406,7 @@ class LidarrService {
 
             let artistAlbums: LidarrAlbum[] = [];
 
-            const artistAlbumsResponse = await this.client.get(
+            const artistAlbumsResponse = await client.get(
                 `/api/v1/album?artistId=${artist.id}`
             );
             artistAlbums = artistAlbumsResponse.data;
@@ -424,7 +422,7 @@ class LidarrService {
                         setTimeout(resolve, retryDelay)
                     );
 
-                    const retryResponse = await this.client.get(
+                    const retryResponse = await client.get(
                         `/api/v1/album?artistId=${artist.id}`
                     );
                     artistAlbums = retryResponse.data;
@@ -453,7 +451,7 @@ class LidarrService {
                 try {
                     await this.refreshArtistAndWait(artist.id);
 
-                    const retryResponse = await this.client.get(
+                    const retryResponse = await client.get(
                         `/api/v1/album?artistId=${artist.id}`
                     );
                     artistAlbums = retryResponse.data;
@@ -500,7 +498,7 @@ class LidarrService {
 
             if (!artist.monitored) {
                 logger.debug(`   Enabling artist monitoring...`);
-                await this.client.put(`/api/v1/artist/${artist.id}`, {
+                await client.put(`/api/v1/artist/${artist.id}`, {
                     ...artist,
                     monitored: true,
                 });
@@ -511,13 +509,13 @@ class LidarrService {
 
             // Kima asks for the album, not one edition: anyReleaseOk lets Lidarr grab any
             // edition and, on import, monitor whichever one the files match.
-            const fullAlbum = (await this.client.get(`/api/v1/album/${albumData.id}`)).data;
-            await this.client.put(`/api/v1/album/${fullAlbum.id}`, {
+            const fullAlbum = (await client.get(`/api/v1/album/${albumData.id}`)).data;
+            await client.put(`/api/v1/album/${fullAlbum.id}`, {
                 ...fullAlbum,
                 monitored: true,
                 anyReleaseOk: true,
             });
-            const updatedAlbum = (await this.client.get(`/api/v1/album/${fullAlbum.id}`)).data;
+            const updatedAlbum = (await client.get(`/api/v1/album/${fullAlbum.id}`)).data;
             if (!updatedAlbum.monitored || !updatedAlbum.anyReleaseOk) {
                 logger.error(`   Lidarr did not keep monitoring for "${updatedAlbum.title}" (ID: ${updatedAlbum.id})`);
             }
@@ -525,7 +523,7 @@ class LidarrService {
             if ((updatedAlbum.releases?.length || 0) === 0) {
                 logger.warn(`Album has 0 releases - refreshing artist metadata from MusicBrainz...`);
                 await this.refreshArtistAndWait(artist.id);
-                const refreshed = (await this.client.get(`/api/v1/album/${updatedAlbum.id}`)).data;
+                const refreshed = (await client.get(`/api/v1/album/${updatedAlbum.id}`)).data;
                 if ((refreshed.releases?.length || 0) === 0) {
                     logger.warn(`   Still no releases after refresh; the search may find nothing`);
                 }
@@ -556,9 +554,8 @@ class LidarrService {
 
     /** Ask Lidarr to search for one album again; the watcher follows the search by its command id. */
     async startAlbumSearch(albumId: number): Promise<number> {
-        await this.ensureInitialized();
-        if (!this.enabled || !this.client) throw new Error("Lidarr not enabled");
-        const command = await this.client.post("/api/v1/command", { name: "AlbumSearch", albumIds: [albumId] });
+        const client = await this.requireClient();
+        const command = await client.post("/api/v1/command", { name: "AlbumSearch", albumIds: [albumId] });
         return command.data.id;
     }
 
@@ -576,10 +573,9 @@ class LidarrService {
      * command Lidarr no longer lists (it restarted) counts as finished.
      */
     async searchStatus(commandId: number): Promise<SearchCommand> {
-        await this.ensureInitialized();
-        if (!this.enabled || !this.client) throw new Error("Lidarr not enabled");
+        const client = await this.requireClient();
         try {
-            const { status, message, body } = (await this.client.get(`/api/v1/command/${commandId}`)).data;
+            const { status, message, body } = (await client.get(`/api/v1/command/${commandId}`)).data;
             const running = status === "queued" || status === "started";
             return { commandId, status: running ? "running" : status, message: message || body?.records?.[0]?.message || "" };
         } catch (error: any) {
@@ -623,10 +619,9 @@ class LidarrService {
 
     /** Whether Lidarr holds every track of an album, for the edition it monitors; an album it no longer has is not whole. */
     async albumWhole(albumId: number): Promise<boolean> {
-        await this.ensureInitialized();
-        if (!this.enabled || !this.client) throw new Error("Lidarr not enabled");
+        const client = await this.requireClient();
         try {
-            const { data } = await this.client.get<LidarrAlbum>(`/api/v1/album/${albumId}`);
+            const { data } = await client.get<LidarrAlbum>(`/api/v1/album/${albumId}`);
             return (data.statistics?.percentOfTracks ?? 0) >= 100;
         } catch (error: any) {
             if (error.response?.status === 404) return false;
@@ -864,10 +859,9 @@ class LidarrService {
 
     /** One album, or null when Lidarr no longer has it. Any other error throws. */
     async getAlbum(albumId: number): Promise<LidarrAlbum | null> {
-        await this.ensureInitialized();
-        if (!this.enabled || !this.client) throw new Error("Lidarr not enabled");
+        const client = await this.requireClient();
         try {
-            return (await this.client.get(`/api/v1/album/${albumId}`)).data;
+            return (await client.get(`/api/v1/album/${albumId}`)).data;
         } catch (error: any) {
             if (error.response?.status === 404) return null;
             throw error;
@@ -876,10 +870,9 @@ class LidarrService {
 
     /** One artist, or null when Lidarr no longer has it. Any other error throws. */
     async getArtistById(artistId: number): Promise<LidarrArtist | null> {
-        await this.ensureInitialized();
-        if (!this.enabled || !this.client) throw new Error("Lidarr not enabled");
+        const client = await this.requireClient();
         try {
-            return (await this.client.get(`/api/v1/artist/${artistId}`)).data;
+            return (await client.get(`/api/v1/artist/${artistId}`)).data;
         } catch (error: any) {
             if (error.response?.status === 404) return null;
             throw error;
@@ -888,17 +881,15 @@ class LidarrService {
 
     /** Every album Lidarr lists for an artist. Errors throw. */
     async getAlbumsByArtistId(artistId: number): Promise<LidarrAlbum[]> {
-        await this.ensureInitialized();
-        if (!this.enabled || !this.client) throw new Error("Lidarr not enabled");
-        return (await this.client.get("/api/v1/album", { params: { artistId } })).data ?? [];
+        const client = await this.requireClient();
+        return (await client.get("/api/v1/album", { params: { artistId } })).data ?? [];
     }
 
     /** Delete an album from Lidarr; a 404 counts as done. Callers go through discovery/lidarrRemoval. */
     async deleteAlbumById(albumId: number, deleteFiles: boolean): Promise<void> {
-        await this.ensureInitialized();
-        if (!this.enabled || !this.client) throw new Error("Lidarr not enabled");
+        const client = await this.requireClient();
         try {
-            await this.client.delete(`/api/v1/album/${albumId}`, {
+            await client.delete(`/api/v1/album/${albumId}`, {
                 params: { deleteFiles, addImportListExclusion: false },
                 timeout: this.API_TIMEOUT_DEFAULT,
             });
@@ -1282,15 +1273,11 @@ class LidarrService {
         item: { id: number; title?: string },
         opts: { blocklist: boolean; skipRedownload: boolean; removeFromClient?: boolean }
     ): Promise<boolean> {
-        await this.ensureInitialized();
-
-        if (!this.enabled || !this.client) {
-            throw new Error("Lidarr not enabled");
-        }
+        const client = await this.requireClient();
 
         try {
             const { removeFromClient = true, ...queueOpts } = opts;
-            await this.client.delete(`/api/v1/queue/${item.id}`, {
+            await client.delete(`/api/v1/queue/${item.id}`, {
                 params: { removeFromClient, ...queueOpts },
             });
             logger.debug(`[LIDARR] Removed from queue: ${item.title ?? item.id}`);
@@ -1309,13 +1296,9 @@ class LidarrService {
 
     /** Every item in Lidarr's download queue; throws when Lidarr cannot be read. */
     async getQueueItems(): Promise<LidarrQueueItem[]> {
-        await this.ensureInitialized();
+        const client = await this.requireClient();
 
-        if (!this.enabled || !this.client) {
-            throw new Error("Lidarr not enabled");
-        }
-
-        const response = await this.client.get("/api/v1/queue", {
+        const response = await client.get("/api/v1/queue", {
             params: { page: 1, pageSize: 1000, includeUnknownArtistItems: true },
         });
         return (response.data as LidarrQueueResponse).records;

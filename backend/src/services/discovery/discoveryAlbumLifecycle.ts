@@ -6,6 +6,7 @@
 import { prisma } from '../../utils/db';
 import { logger } from '../../utils/logger';
 import { updateArtistCounts } from '../artistCountsService';
+import { LIBRARY_LOCATION } from '../libraryFilters';
 import { removeDiscoveryAlbum } from './lidarrRemoval';
 
 export interface DiscoveryAlbumInfo {
@@ -27,7 +28,7 @@ export class DiscoveryAlbumLifecycle {
         if (dbAlbum) {
             await prisma.album.update({
                 where: { id: dbAlbum.id },
-                data: { location: 'LIBRARY' },
+                data: { location: LIBRARY_LOCATION },
             });
 
             await prisma.ownedAlbum.upsert({

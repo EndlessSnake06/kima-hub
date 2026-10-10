@@ -113,6 +113,16 @@ function mapDeezerPodcast(podcast: any): DeezerPodcast {
     };
 }
 
+function mapRadioStation(radio: any): DeezerRadioStation {
+    return {
+        id: String(radio.id),
+        title: radio.title || "Unknown",
+        description: null,
+        imageUrl: radio.picture_medium || radio.picture || null,
+        type: "radio",
+    };
+}
+
 class DeezerService {
     private readonly cachePrefix = "deezer:";
     private readonly cacheTTL = 86400; // 24 hours
@@ -620,13 +630,7 @@ class DeezerService {
                     timeout: 10000,
                 });
 
-                const stations = (body?.data || []).map((radio: any) => ({
-                    id: String(radio.id),
-                    title: radio.title || "Unknown",
-                    description: null,
-                    imageUrl: radio.picture_medium || radio.picture || null,
-                    type: "radio" as const,
-                }));
+                const stations = (body?.data || []).map(mapRadioStation);
 
                 logger.debug(`Deezer: Got ${stations.length} radio stations, caching...`);
                 return stations;
@@ -654,13 +658,7 @@ class DeezerService {
                 const genres = (body?.data || []).map((genre: any) => ({
                     id: genre.id,
                     name: genre.title || "Unknown",
-                    radios: (genre.radios || []).map((radio: any) => ({
-                        id: String(radio.id),
-                        title: radio.title || "Unknown",
-                        description: null,
-                        imageUrl: radio.picture_medium || radio.picture || null,
-                        type: "radio" as const,
-                    })),
+                    radios: (genre.radios || []).map(mapRadioStation),
                 }));
 
                 logger.debug(`Deezer: Got ${genres.length} genre categories with radios, caching...`);
