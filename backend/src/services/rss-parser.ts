@@ -234,28 +234,17 @@ class RSSParserService {
     private findAudioEnclosure(
         item: any
     ): { url: string; type?: string; length?: string } | null {
-        // Check enclosure field
-        if (item.enclosure) {
-            const enc = item.enclosure;
+        const candidates = [
+            item.enclosure,
+            ...(Array.isArray(item.enclosures) ? item.enclosures : []),
+        ].filter(Boolean);
+        for (const enc of candidates) {
             if (enc.url && this.isAudioMimeType(enc.type)) {
                 return {
                     url: enc.url,
                     type: enc.type,
                     length: enc.length,
                 };
-            }
-        }
-
-        // Check enclosures array
-        if (Array.isArray(item.enclosures)) {
-            for (const enc of item.enclosures) {
-                if (enc.url && this.isAudioMimeType(enc.type)) {
-                    return {
-                        url: enc.url,
-                        type: enc.type,
-                        length: enc.length,
-                    };
-                }
             }
         }
 
