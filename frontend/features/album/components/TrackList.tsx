@@ -35,8 +35,6 @@ interface TrackRowProps {
     onPreview: (track: Track) => void;
 }
 
-
-
 const TrackRow = memo(
     function TrackRow({
         track,

@@ -24,7 +24,6 @@ interface TracksListProps {
     gridKey?: number;
 }
 
-
 interface TrackRowProps {
     track: Track;
     index: number;

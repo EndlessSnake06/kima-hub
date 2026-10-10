@@ -243,6 +243,3 @@ function ReleaseCard({
         />
     );
 }
-
-
-

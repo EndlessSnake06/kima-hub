@@ -249,7 +249,6 @@ export default function DeviceLinkPage() {
                                                     value={getQRValue()}
                                                     size={180}
                                                     level="M"
-                                                    includeMargin={false}
                                                 />
                                             </div>
 

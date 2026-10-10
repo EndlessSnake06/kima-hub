@@ -215,8 +215,6 @@ export default function AlbumPage({ params }: AlbumPageProps) {
                     }}
                 />
 
-
-
                 <div className="relative page-shell py-6 space-y-8">
                     {combinedTracks.length > 0 && (
                         <TrackList

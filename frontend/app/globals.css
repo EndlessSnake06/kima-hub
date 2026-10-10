@@ -755,15 +755,6 @@ body.tv-mode .tv-content {
     scroll-behavior: smooth;
 }
 
-/* Hide scrollbar in TV mode */
-body.tv-mode ::-webkit-scrollbar {
-    display: none;
-}
-
-body.tv-mode * {
-    scrollbar-width: none;
-}
-
 /* ===== PWA Standalone Mode Styles ===== */
 
 /* Safe area insets for notched devices and PWA window controls */
