@@ -135,6 +135,7 @@ class StaleJobCleanupService {
                 status: {
                     in: [
                         "pending",
+                        "fetching",
                         "downloading",
                         "scanning",
                         "creating_playlist",
