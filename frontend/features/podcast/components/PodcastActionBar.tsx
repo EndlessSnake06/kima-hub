@@ -1,13 +1,12 @@
 "use client";
 
-import { ExternalLink, Trash2, Plus, Loader2, Play, Pause, RefreshCw } from "lucide-react";
+import { ExternalLink, Trash2, Plus, Play, Pause, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/cn";
-import type { ColorPalette } from "@/hooks/useImageColor";
+import { Button } from "@/components/ui/Button";
 
 interface PodcastActionBarProps {
     isSubscribed: boolean;
     feedUrl?: string;
-    colors: ColorPalette | null;
     isSubscribing: boolean;
     showDeleteConfirm: boolean;
     onSubscribe: () => void;
@@ -64,23 +63,18 @@ export function PodcastActionBar({
             )}
 
             {!isSubscribed && (
-                <button
+                <Button
+                    variant="primary"
                     onClick={onSubscribe}
-                    disabled={isSubscribing}
-                    className="h-10 px-5 rounded-lg bg-[var(--color-brand)] hover:bg-[var(--color-brand-hover)] transition-all flex items-center gap-2 font-bold text-sm text-black disabled:opacity-50 hover:scale-[1.02] active:scale-[0.98]"
+                    isLoading={isSubscribing}
                 >
-                    {isSubscribing ? (
-                        <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            <span>Subscribing</span>
-                        </>
-                    ) : (
+                    {isSubscribing ? "Subscribing" : (
                         <>
                             <Plus className="w-4 h-4" />
-                            <span>Subscribe</span>
+                            Subscribe
                         </>
                     )}
-                </button>
+                </Button>
             )}
 
             {feedUrl && (

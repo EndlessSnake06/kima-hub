@@ -128,7 +128,6 @@ export default function PodcastDetailPage() {
                 <PodcastActionBar
                     isSubscribed={isSubscribed}
                     feedUrl={podcast?.feedUrl || previewData?.feedUrl}
-                    colors={colors}
                     isSubscribing={isSubscribing}
                     showDeleteConfirm={showDeleteConfirm}
                     onSubscribe={() => handleSubscribe(previewData)}
@@ -195,7 +194,6 @@ export default function PodcastDetailPage() {
                                 onPlayPause={(episode) =>
                                     handlePlayPauseEpisode(episode, podcast)
                                 }
-                                onPlay={(episode) => handlePlayEpisode(episode, podcast)}
                                 onMarkComplete={handleMarkEpisodeComplete}
                                 fallbackCoverUrl={podcast?.coverUrl}
                                 total={episodeCount}
