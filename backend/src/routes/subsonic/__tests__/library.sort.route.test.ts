@@ -10,6 +10,7 @@ jest.mock('../../../utils/db', () => ({
         album: { findMany: jest.fn() },
         $queryRaw: jest.fn(),
     },
+    Prisma: jest.requireActual('@prisma/client').Prisma,
 }));
 
 jest.mock('../../../utils/logger', () => ({
@@ -180,7 +181,7 @@ describe('subsonic getAlbumList byGenre', () => {
             .expect(200);
 
         const call = (prisma.$queryRaw as jest.Mock).mock.calls[0];
-        const sql = call[0].join('');
+        const sql: string = call[0].sql;
         expect(sql).toContain('a."sortName" ASC');
         expect(sql).not.toContain('a.title ASC');
     });

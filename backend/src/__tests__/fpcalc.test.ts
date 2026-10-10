@@ -23,7 +23,8 @@ jest.mock("child_process", () => {
                 }
             });
         });
-    return { execFile: execFileMock };
+    // isAvailable() probes `fpcalc -version` synchronously.
+    return { execFile: execFileMock, execFileSync: jest.fn(() => Buffer.from("fpcalc version 1.5.1")) };
 });
 
 jest.mock("../utils/logger", () => ({
@@ -47,20 +48,15 @@ interface Scenario {
     exitCode: number;
 }
 
-/** Queue the scenario the next non-version fpcalc run resolves with. */
+/** Queue the scenario the next fpcalc run resolves with. */
 function runScenario(sc: Scenario): void {
     execFileMock.mockImplementation(
         (
             _file: string,
-            args: string[],
+            _args: string[],
             _opts: unknown,
             cb: (err: (Error & { code?: number }) | null, stdout: string, stderr: string) => void,
         ) => {
-            // isAvailable() probes `fpcalc -version`; it must keep working.
-            if (args.includes("-version")) {
-                cb(null, "fpcalc 1.5.1", "");
-                return;
-            }
             if (sc.ok) {
                 cb(null, sc.stdout, sc.stderr);
                 return;

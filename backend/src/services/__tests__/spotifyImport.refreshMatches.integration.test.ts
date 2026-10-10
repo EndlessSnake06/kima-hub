@@ -14,7 +14,6 @@ const P = "sprefresh";
 const JOB = `${P}job`;
 
 async function cleanup() {
-    await redisClient.del(`import:job:${JOB}`);
     await prisma.$executeRawUnsafe(`DELETE FROM "Playlist" WHERE id LIKE '${P}%'`);
     await prisma.$executeRawUnsafe(`DELETE FROM "User" WHERE id LIKE '${P}%'`);
     await prisma.$executeRawUnsafe(`DELETE FROM "Track" WHERE id LIKE '${P}%'`);
@@ -43,6 +42,7 @@ const pending = (artist: string, title: string, album: string) => ({
 
 beforeAll(async () => {
     await waitForRedisReady();
+    await redisClient.del(`import:job:${JOB}`);
     await cleanup();
     await artistWithTrack("sg", "Simon & Garfunkel", "The Boxer");
     await artistWithTrack("acdc", "AC/DC", "Thunderstruck");

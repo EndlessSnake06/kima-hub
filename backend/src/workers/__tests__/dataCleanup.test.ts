@@ -25,7 +25,7 @@ describe("Data Cleanup", () => {
     });
 
     it("should clean up old download jobs", async () => {
-        (prisma.downloadJob.deleteMany as jest.Mock).mockResolvedValue({ count: 5 });
+        (prisma.downloadJob.deleteMany as jest.Mock).mockResolvedValueOnce({ count: 5 });
 
         const result = await runDataCleanup();
 
@@ -42,7 +42,7 @@ describe("Data Cleanup", () => {
     });
 
     it("should clean up old webhook events", async () => {
-        (prisma.webhookEvent.deleteMany as jest.Mock).mockResolvedValue({ count: 10 });
+        (prisma.webhookEvent.deleteMany as jest.Mock).mockResolvedValueOnce({ count: 10 });
 
         const result = await runDataCleanup();
 
@@ -59,7 +59,7 @@ describe("Data Cleanup", () => {
     });
 
     it("should clean up old discovery batches", async () => {
-        (prisma.discoveryBatch.deleteMany as jest.Mock).mockResolvedValue({ count: 3 });
+        (prisma.discoveryBatch.deleteMany as jest.Mock).mockResolvedValueOnce({ count: 3 });
 
         const result = await runDataCleanup();
 
@@ -76,9 +76,9 @@ describe("Data Cleanup", () => {
     });
 
     it("should clean up all types in one run", async () => {
-        (prisma.downloadJob.deleteMany as jest.Mock).mockResolvedValue({ count: 15 });
-        (prisma.webhookEvent.deleteMany as jest.Mock).mockResolvedValue({ count: 42 });
-        (prisma.discoveryBatch.deleteMany as jest.Mock).mockResolvedValue({ count: 2 });
+        (prisma.downloadJob.deleteMany as jest.Mock).mockResolvedValueOnce({ count: 15 });
+        (prisma.webhookEvent.deleteMany as jest.Mock).mockResolvedValueOnce({ count: 42 });
+        (prisma.discoveryBatch.deleteMany as jest.Mock).mockResolvedValueOnce({ count: 2 });
 
         const result = await runDataCleanup();
 
