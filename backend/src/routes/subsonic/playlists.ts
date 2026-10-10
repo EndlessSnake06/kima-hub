@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { rankForPosition } from "../../utils/lexoRank";
-import { allocateAppendRanks } from "../../services/playlistService";
+import { allocateAppendRanks, lockPlaylist } from "../../services/playlistService";
 import { prisma } from "../../utils/db";
 import { subsonicOk, subsonicError, SubsonicError } from "../../utils/subsonicResponse";
 import { mapSong, wrap } from "./mappers";
@@ -246,6 +246,8 @@ playlistRouter.all("/updatePlaylist.view", wrap(async (req, res) => {
 
     if (indexesToRemove.length > 0 || songIdsToAdd.length > 0) {
         await prisma.$transaction(async (tx) => {
+            await lockPlaylist(tx, playlistId);
+
             if (indexesToRemove.length > 0) {
                 const currentItems = await tx.playlistItem.findMany({
                     where: { playlistId },
