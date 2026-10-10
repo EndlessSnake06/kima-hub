@@ -1496,7 +1496,7 @@ async searchAndDownloadAlbum(
             return results;
         }
 
-        const { prepareArtistForSearch, normalizeTrackTitle } = await import("./soulseek-search-strategies");
+        const { prepareArtistForSearch, normalizeTrackTitleForSearch } = await import("./soulseek-search-strategies");
         const { stripAlbumEdition, canonicalizeVariousArtists, VARIOUS_ARTISTS_CANONICAL } = await import("../utils/artistNormalization");
         const fuzz = await import("fuzzball");
 
@@ -1663,7 +1663,7 @@ async searchAndDownloadAlbum(
                         stripped = stripped.substring(dashIdx + 3);
                     }
                 }
-                const normalized = normalizeTrackTitle(stripped, 'aggressive').toLowerCase().replace(/[^a-z0-9\s]/g, "");
+                const normalized = normalizeTrackTitleForSearch(stripped, 'aggressive').toLowerCase().replace(/[^a-z0-9\s]/g, "");
                 return { file: f, base, stripped, normalized };
             });
 
@@ -1671,7 +1671,7 @@ async searchAndDownloadAlbum(
             const candidates: MatchCandidate[] = [];
 
             for (let ti = 0; ti < tracks.length; ti++) {
-                const trackNorm = normalizeTrackTitle(tracks[ti].title, 'aggressive').toLowerCase().replace(/[^a-z0-9\s]/g, "");
+                const trackNorm = normalizeTrackTitleForSearch(tracks[ti].title, 'aggressive').toLowerCase().replace(/[^a-z0-9\s]/g, "");
 
                 for (let fi = 0; fi < fileInfos.length; fi++) {
                     const fileNorm = fileInfos[fi].normalized;

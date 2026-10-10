@@ -51,9 +51,10 @@ function stripFeaturingArtists(title: string): string {
 }
 
 /**
- * Normalize track title with different levels of aggression
+ * A track title as a search string, at three levels of aggression. Matching
+ * against the database uses utils/normalization instead.
  */
-export function normalizeTrackTitle(title: string, level: 'aggressive' | 'moderate' | 'minimal'): string {
+export function normalizeTrackTitleForSearch(title: string, level: 'aggressive' | 'moderate' | 'minimal'): string {
     let normalized = title
         .replace(/\u2026/g, "")
         .replace(/[\u2018\u2019\u2032`]/g, "'")
@@ -127,7 +128,7 @@ const SEARCH_STRATEGIES: SearchStrategy[] = [
         name: "artist-title-aggressive",
         buildQuery: (artist, track) => {
             const normalizedArtist = prepareArtistForSearch(artist);
-            const normalizedTitle = normalizeTrackTitle(track, 'aggressive');
+            const normalizedTitle = normalizeTrackTitleForSearch(track, 'aggressive');
             return `${normalizedArtist} ${normalizedTitle}`.trim();
         },
         priority: 1,
@@ -136,7 +137,7 @@ const SEARCH_STRATEGIES: SearchStrategy[] = [
         name: "artist-title-moderate",
         buildQuery: (artist, track) => {
             const normalizedArtist = prepareArtistForSearch(artist);
-            const normalizedTitle = normalizeTrackTitle(track, 'moderate');
+            const normalizedTitle = normalizeTrackTitleForSearch(track, 'moderate');
             return `${normalizedArtist} ${normalizedTitle}`.trim();
         },
         priority: 2,
@@ -144,7 +145,7 @@ const SEARCH_STRATEGIES: SearchStrategy[] = [
     {
         name: "title-only-aggressive",
         buildQuery: (_artist, track) => {
-            const normalizedTitle = normalizeTrackTitle(track, 'aggressive');
+            const normalizedTitle = normalizeTrackTitleForSearch(track, 'aggressive');
             return normalizedTitle.trim();
         },
         priority: 3,
@@ -153,7 +154,7 @@ const SEARCH_STRATEGIES: SearchStrategy[] = [
         name: "album-title",
         buildQuery: (_artist, track, album) => {
             if (!album) return "";
-            const normalizedTitle = normalizeTrackTitle(track, 'moderate');
+            const normalizedTitle = normalizeTrackTitleForSearch(track, 'moderate');
             return `${album} ${normalizedTitle}`.trim();
         },
         priority: 4,
@@ -163,7 +164,7 @@ const SEARCH_STRATEGIES: SearchStrategy[] = [
         buildQuery: (artist, track, album) => {
             if (!album) return "";
             const normalizedArtist = prepareArtistForSearch(artist);
-            const normalizedTitle = normalizeTrackTitle(track, 'moderate');
+            const normalizedTitle = normalizeTrackTitleForSearch(track, 'moderate');
             return `${normalizedArtist} ${album} ${normalizedTitle}`.trim();
         },
         priority: 5,
