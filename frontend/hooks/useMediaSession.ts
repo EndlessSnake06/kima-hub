@@ -5,7 +5,34 @@ import { useAudioControls } from "@/lib/audio-controls-context";
 import { useAudioController } from "@/lib/audio-controller-context";
 import { api } from "@/lib/api";
 import { iosAudioLog } from "@/lib/iosAudioLog";
+import type { AudioController } from "@/lib/audio-controller";
 import type { EngineSnapshot } from "@/lib/audio-engine-policy";
+
+const ARTWORK_SIZES = [96, 128, 192, 256, 384, 512];
+
+function artworkFrom(coverUrl: string | undefined, fallback: MediaImage[]): MediaImage[] {
+    return coverUrl
+        ? ARTWORK_SIZES.map((s) => ({ src: coverUrl, sizes: `${s}x${s}`, type: "image/jpeg" }))
+        : fallback;
+}
+
+/** Pushes the controller's position to the lock screen; false when nothing was set. */
+function pushControllerPosition(controller: AudioController): boolean {
+    if (!("setPositionState" in navigator.mediaSession)) return false;
+    const duration = controller.getDuration();
+    if (duration <= 0) return false;
+    try {
+        navigator.mediaSession.setPositionState({
+            duration,
+            playbackRate: 1,
+            position: Math.min(controller.getCurrentTime(), duration),
+        });
+        return true;
+    } catch {
+        // Position state not supported
+        return false;
+    }
+}
 
 export function useMediaSession() {
     const controller = useAudioController();
@@ -64,21 +91,7 @@ export function useMediaSession() {
         const onEnded = () => { navigator.mediaSession.playbackState = "paused"; };
         const onError = () => { navigator.mediaSession.playbackState = "paused"; };
         const onSeeked = () => {
-            if (!("setPositionState" in navigator.mediaSession)) return;
-            const duration = controller.getDuration();
-            const position = controller.getCurrentTime();
-            if (duration > 0) {
-                try {
-                    navigator.mediaSession.setPositionState({
-                        duration,
-                        playbackRate: 1,
-                        position: Math.min(position, duration),
-                    });
-                    lastPositionUpdateRef.current = Date.now();
-                } catch {
-                    // Position state not supported
-                }
-            }
+            if (pushControllerPosition(controller)) lastPositionUpdateRef.current = Date.now();
         };
         controller.on("ended", onEnded);
         controller.on("error", onError);
@@ -99,21 +112,7 @@ export function useMediaSession() {
         navigator.mediaSession.setActionHandler("play", () => {
             iosAudioLog("ms:play", "useMediaSession", null, { hasController: !!controller });
             // Eagerly push position state before iOS defers JS execution
-            if ("setPositionState" in navigator.mediaSession) {
-                const duration = controller.getDuration();
-                const position = controller.getCurrentTime();
-                if (duration > 0) {
-                    try {
-                        navigator.mediaSession.setPositionState({
-                            duration,
-                            playbackRate: 1,
-                            position: Math.min(position, duration),
-                        });
-                    } catch {
-                        // Position state not supported
-                    }
-                }
-            }
+            pushControllerPosition(controller);
 
             // play() handles retry-from-error/blocked internally; no catch needed.
             controller.play();
@@ -205,11 +204,7 @@ export function useMediaSession() {
                 title: currentTrack.title,
                 artist: currentTrack.artist?.name || "Unknown Artist",
                 album: currentTrack.album?.title || "Unknown Album",
-                artwork: coverUrl
-                    ? [96, 128, 192, 256, 384, 512].map((s) => ({
-                          src: coverUrl, sizes: `${s}x${s}`, type: "image/jpeg",
-                      }))
-                    : fallbackArtwork,
+                artwork: artworkFrom(coverUrl, fallbackArtwork),
             });
         } else if (playbackType === "audiobook" && currentAudiobook) {
             const coverUrl = currentAudiobook.coverUrl
@@ -219,11 +214,7 @@ export function useMediaSession() {
                 title: currentAudiobook.title,
                 artist: currentAudiobook.author,
                 album: currentAudiobook.narrator ? `Narrated by ${currentAudiobook.narrator}` : "Audiobook",
-                artwork: coverUrl
-                    ? [96, 128, 192, 256, 384, 512].map((s) => ({
-                          src: coverUrl, sizes: `${s}x${s}`, type: "image/jpeg",
-                      }))
-                    : fallbackArtwork,
+                artwork: artworkFrom(coverUrl, fallbackArtwork),
             });
         } else if (playbackType === "podcast" && currentPodcast) {
             const coverUrl = currentPodcast.coverUrl
@@ -233,11 +224,7 @@ export function useMediaSession() {
                 title: currentPodcast.title,
                 artist: currentPodcast.podcastTitle,
                 album: "Podcast",
-                artwork: coverUrl
-                    ? [96, 128, 192, 256, 384, 512].map((s) => ({
-                          src: coverUrl, sizes: `${s}x${s}`, type: "image/jpeg",
-                      }))
-                    : fallbackArtwork,
+                artwork: artworkFrom(coverUrl, fallbackArtwork),
             });
         } else {
             navigator.mediaSession.metadata = null;
