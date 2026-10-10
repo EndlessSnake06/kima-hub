@@ -153,12 +153,9 @@ router.post("/", requireAuth, async (req, res) => {
         });
 
         res.json(playbackState);
-    } catch (error: any) {
-        logger.error("[PlaybackState] Error saving state:", error);
-        res.status(500).json({ 
-            error: "Internal server error",
-            details: error?.message || "Unknown error"
-        });
+    } catch (error) {
+        logger.error("Save playback state error:", error);
+        res.status(500).json({ error: "Failed to save playback state" });
     }
 });
 
