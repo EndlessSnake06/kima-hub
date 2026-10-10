@@ -2,6 +2,7 @@
 
 import { ReactNode } from "react";
 import { ErrorBoundary } from "@/components/providers/ErrorBoundary";
+import { Button } from "@/components/ui/Button";
 
 /** Catches errors in the audio providers so the rest of the app keeps running. */
 export function AudioErrorBoundary({ children }: { children: ReactNode }) {
@@ -11,12 +12,9 @@ export function AudioErrorBoundary({ children }: { children: ReactNode }) {
             renderFallback={() => (
                 <div className="flex flex-col items-center justify-center gap-4 p-8 text-center">
                     <p className="text-[var(--text-secondary)]">Playback system error</p>
-                    <button
-                        onClick={() => window.location.reload()}
-                        className="px-4 py-2 rounded-lg bg-brand hover:bg-brand-hover text-black font-semibold transition-all"
-                    >
+                    <Button variant="primary" onClick={() => window.location.reload()}>
                         Reload
-                    </button>
+                    </Button>
                 </div>
             )}
         >
