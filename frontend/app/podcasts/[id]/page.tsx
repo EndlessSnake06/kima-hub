@@ -134,12 +134,10 @@ export default function PodcastDetailPage() {
                 />
             </PodcastHero>
 
-            {/* Main Content */}
             <div className="relative flex-1">
                 <ColorWash colors={colors} />
 
                 <div className="relative page-shell py-8 section-stack">
-                    {/* Continue Listening */}
                     {podcast && inProgressEpisodes.length > 0 && (
                         <div>
                             <ContinueListening
@@ -155,7 +153,6 @@ export default function PodcastDetailPage() {
                         </div>
                     )}
 
-                    {/* Preview Mode */}
                     {!podcast && previewData && (
                         <div>
                             <PreviewEpisodes
@@ -166,7 +163,6 @@ export default function PodcastDetailPage() {
                         </div>
                     )}
 
-                    {/* All Episodes */}
                     {podcast && (
                         <div>
                             <EpisodeList
@@ -188,7 +184,6 @@ export default function PodcastDetailPage() {
                         </div>
                     )}
 
-                    {/* About - for subscribed podcasts */}
                     {podcast?.description && (
                         <div>
                             <SectionHeader title="About" type="podcast" />
@@ -203,7 +198,6 @@ export default function PodcastDetailPage() {
                         </div>
                     )}
 
-                    {/* Similar Podcasts */}
                     {similarPodcasts.length > 0 && (
                         <div>
                             <SimilarPodcasts podcasts={similarPodcasts} />

@@ -70,7 +70,6 @@ export const PopularTracks: React.FC<PopularTracksProps> = ({
                             onDoubleClick={() => activate(track)}
                             onTouchEnd={onTouchEnd}
                         >
-                            {/* Track Number / Play Button */}
                             <div className="flex items-center justify-center">
                                 <button
                                     onClick={(e) => {
@@ -138,7 +137,6 @@ export const PopularTracks: React.FC<PopularTracksProps> = ({
                                 </div>
                             </div>
 
-                            {/* Play Count (hidden on mobile) */}
                             <div className="hidden md:flex items-center text-sm text-[var(--text-secondary)]">
                                 {track.playCount !== undefined &&
                                     track.playCount > 0 && (

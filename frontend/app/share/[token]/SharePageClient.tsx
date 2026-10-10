@@ -300,11 +300,9 @@ export default function SharePageClient() {
                 preload="none"
             />
 
-            {/* Main content */}
             <div className="flex-1 flex flex-col items-center justify-center px-4 py-8 md:py-12">
                 <div className="w-full max-w-lg">
 
-                    {/* Cover art */}
                     <div className="animate-rise relative w-full aspect-square max-w-[280px] mx-auto mb-8 rounded-xl overflow-hidden bg-white/[0.03]" style={{ "--i": 0 } as CSSProperties}>
                         {coverArtUrl ? (
                             <CachedImage
@@ -320,7 +318,6 @@ export default function SharePageClient() {
                         )}
                     </div>
 
-                    {/* Title and subtitle */}
                     <div className="animate-rise text-center mb-6" style={{ "--i": 1 } as CSSProperties}>
                         <h1 className="text-xl font-bold text-white tracking-tight mb-1 line-clamp-2">
                             {getEntityTitle(data)}
@@ -333,7 +330,6 @@ export default function SharePageClient() {
                         </p>
                     </div>
 
-                    {/* Player controls */}
                     {tracks.length > 0 && (
                         <div className="mb-8">
                             {playbackError && (
@@ -342,7 +338,6 @@ export default function SharePageClient() {
                                 </p>
                             )}
 
-                            {/* Progress */}
                             <div
                                 ref={progressBarRef}
                                 className="h-1 bg-white/[0.08] rounded-full cursor-pointer mb-2 group"
@@ -361,7 +356,6 @@ export default function SharePageClient() {
                                 <span>{formatTime(duration)}</span>
                             </div>
 
-                            {/* Buttons */}
                             <div className="flex items-center justify-center gap-6">
                                 {tracks.length > 1 && (
                                     <button
@@ -394,7 +388,6 @@ export default function SharePageClient() {
                                 )}
                             </div>
 
-                            {/* Volume */}
                             <div className="flex items-center justify-center gap-2 mt-4">
                                 <button
                                     onClick={toggleMute}
@@ -421,7 +414,6 @@ export default function SharePageClient() {
                                 />
                             </div>
 
-                            {/* Now playing indicator */}
                             {currentTrack && tracks.length > 1 && (
                                 <p className="text-micro text-[var(--text-muted)] text-center mt-3 truncate">
                                     {currentTrack.title}
@@ -430,7 +422,6 @@ export default function SharePageClient() {
                         </div>
                     )}
 
-                    {/* Track list */}
                     {tracks.length > 1 && (
                         <div className="border-t border-white/[0.04] pt-4" style={cascadeStyle(tracks.length)}>
                             {tracks.map((track, index) => {
@@ -510,7 +501,6 @@ export default function SharePageClient() {
                 </div>
             </div>
 
-            {/* Footer */}
             <div className="px-4 py-6">
                 <div className="max-w-lg mx-auto flex items-center justify-center gap-3">
                     <span className="text-xs text-white/10">

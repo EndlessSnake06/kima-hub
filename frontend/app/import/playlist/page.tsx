@@ -419,7 +419,6 @@ function ImportPlaylistPageContent() {
     return (
         <div className="min-h-screen">
             <div className="max-w-3xl mx-auto px-6 py-6">
-                {/* Header */}
                 <div className="flex items-center gap-4 mb-6">
                     <button
                         onClick={() => router.back()}
@@ -438,7 +437,6 @@ function ImportPlaylistPageContent() {
                     </div>
                 </div>
 
-                {/* Browse Link */}
                 {step === "input" && (
                     <div className="mb-6 p-4 bg-white/5 rounded-lg border border-white/10">
                         <p className="text-sm text-[var(--text-primary)]">
@@ -453,7 +451,6 @@ function ImportPlaylistPageContent() {
                     </div>
                 )}
 
-                {/* Step: Input */}
                 {step === "input" && (
                     <div className="space-y-4">
                         <div>
@@ -507,7 +504,6 @@ function ImportPlaylistPageContent() {
                     </div>
                 )}
 
-                {/* Step: Previewing (async job in progress) */}
                 {step === "previewing" && (
                     <div className="text-center py-12">
                         <GradientSpinner size="lg" className="mx-auto mb-4" />
@@ -518,10 +514,8 @@ function ImportPlaylistPageContent() {
                     </div>
                 )}
 
-                {/* Step: Preview */}
                 {step === "preview" && preview && (
                     <div className="space-y-4">
-                        {/* Playlist Info */}
                         <div className="flex items-start gap-4 p-4 bg-white/5 rounded-lg">
                             {preview.playlist.imageUrl ? (
                                 <div className="relative w-20 h-20">
@@ -570,7 +564,6 @@ function ImportPlaylistPageContent() {
                             </a>
                         </div>
 
-                        {/* Summary Stats */}
                         <div className="grid grid-cols-4 gap-3">
                             <div className="animate-rise text-center py-3 bg-white/5 rounded-lg" style={{ "--i": 0 } as CSSProperties}>
                                 <div className="text-xl font-bold text-white">
@@ -606,7 +599,6 @@ function ImportPlaylistPageContent() {
                             </div>
                         </div>
 
-                        {/* Tracks already in library */}
                         {preview.summary.inLibrary > 0 && (
                             <div className="bg-white/5 rounded-lg overflow-hidden">
                                 <button
@@ -676,7 +668,6 @@ function ImportPlaylistPageContent() {
                             </div>
                         )}
 
-                        {/* Albums to download */}
                         {preview.albumsToDownload.filter((a) => a.albumMbid)
                             .length > 0 && (
                             <div className="bg-white/5 rounded-lg overflow-hidden">
@@ -786,7 +777,6 @@ function ImportPlaylistPageContent() {
                             </div>
                         )}
 
-                        {/* Playlist name input */}
                         <div>
                             <label htmlFor="playlist-name" className="block text-sm font-medium text-[var(--text-primary)] mb-2">
                                 Playlist Name
@@ -803,7 +793,6 @@ function ImportPlaylistPageContent() {
                             />
                         </div>
 
-                        {/* Action buttons */}
                         <div className="flex items-center gap-3 pt-2">
                             <Button
                                 variant="ghost"
@@ -841,7 +830,6 @@ function ImportPlaylistPageContent() {
                     </div>
                 )}
 
-                {/* Step: Importing */}
                 {step === "importing" && importJob && (
                     <div className="animate-rise text-center py-12">
                         <GradientSpinner size="lg" className="mx-auto mb-4" />
@@ -894,7 +882,6 @@ function ImportPlaylistPageContent() {
                             {importJob.progress}% complete • downloads continue
                             in the background
                         </p>
-                        {/* Cancel button */}
                         <Button
                             variant="secondary"
                             onClick={handleCancelImport}
@@ -910,7 +897,6 @@ function ImportPlaylistPageContent() {
                     </div>
                 )}
 
-                {/* Step: Complete */}
                 {step === "complete" && importJob && (
                     <div className="animate-rise text-center py-12">
                         <div

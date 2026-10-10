@@ -20,7 +20,6 @@ export function AIServicesSection({ settings, onUpdate, onTest, isTesting }: AIS
             title="AI & Artwork"
             description="Enhance your library with high-quality artwork"
         >
-            {/* Fanart.tv */}
             <SettingsRow
                 label="Enable Fanart.tv"
                 description="Enhanced artist and album artwork"
@@ -51,7 +50,6 @@ export function AIServicesSection({ settings, onUpdate, onTest, isTesting }: AIS
                 </>
             )}
 
-            {/* AcoustID */}
             <div className="mt-6 pt-6 border-t border-white/5">
                 <div className="mb-4">
                     <p className="text-xs text-[var(--text-muted)]">

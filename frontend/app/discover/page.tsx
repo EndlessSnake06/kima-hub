@@ -190,7 +190,6 @@ export default function DiscoverWeeklyPage() {
                 <div className="page-shell pb-32">
                     {playlist && playlist.tracks.length > 0 ? (
                             <div className="section-stack">
-                                {/* Section header */}
                                 <section>
                                     <SectionHeader type="track" title="Playlist" count={plural(playlist?.totalCount || 0, "track")} className="mb-4" />
                                     <TrackList
@@ -222,10 +221,8 @@ export default function DiscoverWeeklyPage() {
                         ) : (
                             <div className="max-w-3xl mx-auto py-16">
                                 <div className="relative overflow-hidden rounded-lg border-2 border-white/10 bg-gradient-to-br from-[#0f0f0f] to-[#0a0a0a] p-12">
-                                    {/* Accent line */}
                                     <div className="absolute top-0 left-0 w-1 h-full bg-brand" />
 
-                                    {/* Status badge */}
                                     <div className="flex items-center gap-3 mb-8 pb-4 border-b border-white/10">
                                         <div className="w-2 h-2 bg-[var(--color-brand)]" />
                                         <span className="text-xs tabular-nums text-[var(--text-secondary)]">
@@ -259,7 +256,6 @@ export default function DiscoverWeeklyPage() {
                                         </div>
                                     </div>
 
-                                    {/* Placeholder stats */}
                                     <div className="grid grid-cols-3 gap-4 mb-8">
                                         <div className="border border-white/10 rounded-lg p-4 bg-white/[0.02] hover:bg-white/[0.04] transition-colors">
                                             <div className="text-2xl font-bold text-white mb-1">--</div>

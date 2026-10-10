@@ -57,7 +57,6 @@ export function TrackList({
                                 isTrackPlaying && "bg-white/10"
                             )}
                         >
-                            {/* Track Number / Play Button */}
                             <div className="flex items-center justify-center">
                                 <button
                                     onClick={(e) => {
@@ -125,7 +124,6 @@ export function TrackList({
                                 {track.album}
                             </p>
 
-                            {/* Tier Badge (hidden on mobile) */}
                             <div className="hidden md:flex items-center justify-center">
                                 <span
                                     className={cn(

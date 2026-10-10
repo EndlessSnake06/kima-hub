@@ -212,7 +212,6 @@ export default function BrowsePlaylistsPage() {
                         </div>
                     </div>
 
-                    {/* Search Bar & Import URL */}
                     <div className="flex items-center gap-3 mb-6">
                         <form
                             onSubmit={handleSearch}

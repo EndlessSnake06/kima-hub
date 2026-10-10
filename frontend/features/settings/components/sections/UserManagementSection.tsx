@@ -112,7 +112,6 @@ export function UserManagementSection() {
                 description="Manage users who can access this instance"
                 showSeparator={false}
             >
-                {/* Create User Form */}
                 <div className="py-4 px-4 bg-white/5 rounded-lg border border-white/10 mb-4">
                     <h3 className="text-xs text-[var(--text-secondary)] mb-3">Create New User</h3>
                     <div className="space-y-3">
@@ -157,7 +156,6 @@ export function UserManagementSection() {
                     </div>
                 </div>
 
-                {/* Users List */}
                 <div className="space-y-1">
                     {loading ? (
                         <div className="py-4 text-xs text-[var(--text-muted)]">Loading users...</div>
@@ -201,7 +199,6 @@ export function UserManagementSection() {
                 </div>
             </SettingsSection>
 
-            {/* Delete Confirmation Modal */}
             <Modal
                 isOpen={!!confirmDelete}
                 onClose={closeDelete}

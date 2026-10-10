@@ -294,7 +294,6 @@ export default function MixPage() {
                                             isCurrentlyPlaying && "bg-white/10"
                                         )}
                                     >
-                                        {/* Track Number / Play Button */}
                                         <div className="flex items-center justify-center">
                                             <button
                                                 onClick={(e) => {

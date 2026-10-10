@@ -35,7 +35,6 @@ export function PodcastActionBar({
 }: PodcastActionBarProps) {
     return (
         <div className="flex items-center gap-3">
-            {/* Play / Pause for subscribed podcasts */}
             {isSubscribed && onPlayLatest && (
                 <button
                     onClick={isPlayingPodcast ? onPause : onPlayLatest}

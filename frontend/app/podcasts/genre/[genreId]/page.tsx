@@ -97,13 +97,11 @@ export default function GenrePage() {
 
     return (
         <div className="min-h-screen relative bg-gradient-to-b from-[#0a0a0a] to-black">
-            {/* Atmospheric overlay */}
             <div className="fixed inset-0 pointer-events-none opacity-50">
                 <div className="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-transparent" />
             </div>
 
             <div className="relative">
-                {/* Hero */}
                 <div className="relative bg-gradient-to-b from-[#0a0a0a] via-[#0f0f0f] to-transparent pt-6 pb-8 page-shell border-b border-white/5">
                     <div>
                         <button
@@ -130,7 +128,6 @@ export default function GenrePage() {
                     </div>
                 </div>
 
-                {/* Content */}
                 <div className="relative page-shell pb-32 pt-8 animate-rise">
                     <div className="grid-media">
                         {podcasts.map((podcast, index) => (
@@ -147,7 +144,6 @@ export default function GenrePage() {
                         ))}
                     </div>
 
-                    {/* Loading */}
                     {loading && (
                         <div className="flex justify-center items-center py-8">
                             <GradientSpinner size="md" />
@@ -157,7 +153,6 @@ export default function GenrePage() {
                     {/* Intersection observer target */}
                     <div ref={loadMoreRef} className="h-20" />
 
-                    {/* End of results */}
                     {!hasMore && podcasts.length > 0 && (
                         <div className="text-center py-8">
                             <span className="text-xs text-[var(--text-muted)]">
@@ -166,7 +161,6 @@ export default function GenrePage() {
                         </div>
                     )}
 
-                    {/* No results */}
                     {!loading && podcasts.length === 0 && (
                         <div className="text-center py-20">
                             <Mic2 className="w-16 h-16 text-[var(--text-muted)] mx-auto mb-4" />

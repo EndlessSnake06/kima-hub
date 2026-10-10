@@ -134,7 +134,6 @@ export function AvailableAlbums({
 
     return (
         <>
-            {/* Studio Albums Section */}
             {studioAlbums.length > 0 && (
                 <section>
                     <SectionHeader type="album" title="Albums Available" />
@@ -149,7 +148,6 @@ export function AvailableAlbums({
                 </section>
             )}
 
-            {/* EPs, Singles & Demos Section */}
             {epsAndSingles.length > 0 && (
                 <section>
                     <SectionHeader type="album" title="Singles and EPs" />

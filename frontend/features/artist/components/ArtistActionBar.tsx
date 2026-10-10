@@ -64,7 +64,6 @@ export function ArtistActionBar({
                 <Shuffle className="w-5 h-5" />
             </button>
 
-            {/* Radio Button - Only for library artists */}
             {showRadio && (
                 <button
                     onClick={onStartRadio}

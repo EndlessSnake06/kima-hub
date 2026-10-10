@@ -218,7 +218,6 @@ export default function OnboardingPage() {
                 <div className="absolute inset-0 bg-gradient-to-br from-brand/5 via-transparent to-transparent" />
             </div>
 
-            {/* Show loading spinner while checking session */}
             {initialLoading ?
                 <div className="relative z-(--z-raised) min-h-screen flex items-center justify-center">
                     <div className="text-center">
