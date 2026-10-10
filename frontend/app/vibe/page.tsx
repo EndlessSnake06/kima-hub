@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
-import { Loader2, LocateFixed, Tag, X } from "lucide-react";
+import { LocateFixed, Tag, X, type LucideIcon } from "lucide-react";
 import { useVibeMap } from "@/features/vibe/useVibeMap";
 import { VibeToolbar } from "@/features/vibe/VibeToolbar";
 import { VibeSongPath } from "@/features/vibe/VibeSongPath";
@@ -18,6 +18,9 @@ import { api } from "@/lib/api";
 import type { Track, VibeOperation } from "@/lib/audio-state-context";
 import { useIsMobile, useIsTablet } from "@/hooks/useMediaQuery";
 import { notify } from "@/lib/notify";
+import { cn } from "@/lib/cn";
+import { Button } from "@/components/ui/Button";
+import { GradientSpinner } from "@/components/ui/GradientSpinner";
 
 const VibeMapScene = dynamic(
     () => import("@/features/vibe/map/VibeMapScene").then((m) => ({ default: m.VibeMapScene })),
@@ -31,7 +34,7 @@ function CenteredNote({ title, detail, spinner, action }: { title: string; detai
     return (
         <div className="vibe-sky flex h-full w-full items-center justify-center">
             <div className="max-w-xs px-6 text-center">
-                {spinner && <Loader2 className="mx-auto mb-3 h-5 w-5 animate-spin text-white/50" />}
+                {spinner && <GradientSpinner size="sm" className="mx-auto mb-3 block" />}
                 <p className="text-sm text-[var(--text-secondary)]">{title}</p>
                 {detail && <p className="mt-1 text-xs text-[var(--text-muted)]">{detail}</p>}
                 {action}
@@ -53,15 +56,31 @@ class SceneErrorBoundary extends React.Component<{ children: React.ReactNode }, 
                     title="The map could not be drawn"
                     detail={this.state.error}
                     action={
-                        <button onClick={() => this.setState({ error: null })} className="mt-3 rounded-lg bg-white/10 px-4 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-white/15 hover:text-white">
+                        <Button size="sm" className="mt-3" onClick={() => this.setState({ error: null })}>
                             Try again
-                        </button>
+                        </Button>
                     }
                 />
             );
         }
         return this.props.children;
     }
+}
+
+function MapIconButton({ icon: Icon, compact, className, ...props }: { icon: LucideIcon; compact: boolean } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
+    return (
+        <button
+            type="button"
+            className={cn(
+                "vibe-glass flex items-center justify-center transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40",
+                compact ? "h-11 w-11 rounded-full" : "h-9 w-9 rounded-lg",
+                className,
+            )}
+            {...props}
+        >
+            <Icon className={compact ? "h-[18px] w-[18px]" : "h-4 w-4"} />
+        </button>
+    );
 }
 
 function toQueueTrack(t: { id: string; title: string; duration?: number; artist: { id: string; name: string }; album: { id: string; title: string; coverUrl: string | null } }): Track {
@@ -81,7 +100,7 @@ export default function VibePage() {
     } = useVibeMap();
 
     const { currentTrack, playbackType, queue, activeOperation } = useAudioState();
-    const { playTrack, playTracks, replaceOperation } = useAudioControls();
+    const { playTrack, replaceOperation } = useAudioControls();
     const isMobile = useIsMobile();
     const isTablet = useIsTablet();
     const compact = isMobile || isTablet;
@@ -184,15 +203,9 @@ export default function VibePage() {
         void playById(trackId);
     }, [playById]);
 
-    const playSelected = useCallback(async () => {
-        if (!selectedTrackId) return;
-        try {
-            const track = await api.getTrack(selectedTrackId);
-            if (track) playTracks([track], 0);
-        } catch {
-            notify.error("Couldn't play this track");
-        }
-    }, [selectedTrackId, playTracks]);
+    const playSelected = useCallback(() => {
+        if (selectedTrackId) void playById(selectedTrackId);
+    }, [selectedTrackId, playById]);
 
     const finishDrift = useCallback(async (sourceId: string, targetId: string) => {
         try {
@@ -284,9 +297,9 @@ export default function VibePage() {
         setSearchClears((n) => n + 1);
     }, [resetMode]);
 
-    // One Escape handler for the whole page, undoing the most recent thing first:
-    // the menu, then an open Song Path or Blend panel, then a pending song-path pick, then the selection. Inputs that
-    // handle Escape themselves (the search box) mark the event handled.
+    // One Escape handler for the page, undoing the latest thing first: the menu,
+    // an open Song Path or Blend panel, a pending song-path pick, then the
+    // selection. Inputs that handle Escape themselves mark the event handled.
     const escapeState = useRef({ menu: false, panel: false, drift: false, selected: false });
     useEffect(() => {
         escapeState.current = { menu: !!menu, panel: showAlchemy || showPathPicker, drift: !!driftSourceId, selected: !!selectedTrackId };
@@ -329,9 +342,9 @@ export default function VibePage() {
                 title="The music map did not load"
                 detail={error instanceof Error ? error.message : undefined}
                 action={
-                    <button onClick={() => refetch()} className="mt-3 rounded-lg bg-white/10 px-4 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-white/15 hover:text-white">
+                    <Button size="sm" className="mt-3" onClick={() => refetch()}>
                         Try again
-                    </button>
+                    </Button>
                 }
             />
         );
@@ -384,25 +397,23 @@ export default function VibePage() {
             <div className={`absolute z-(--z-scene) flex ${compact
                 ? "right-3 top-[max(0.75rem,env(safe-area-inset-top))] gap-2"
                 : "left-[max(0.75rem,env(safe-area-inset-left))] top-[max(1rem,env(safe-area-inset-top))] gap-1"}`}>
-                <button
-                    type="button"
+                <MapIconButton
+                    icon={Tag}
+                    compact={compact}
                     onClick={toggleLabels}
                     aria-pressed={showLabels}
                     title={showLabels ? "hide labels" : "show labels"}
                     aria-label={showLabels ? "Hide labels" : "Show labels"}
-                    className={`vibe-glass flex items-center justify-center transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 ${compact ? "h-11 w-11 rounded-full" : "h-9 w-9 rounded-lg"} ${showLabels ? "text-white" : "text-white/45"}`}
-                >
-                    <Tag className={compact ? "h-[18px] w-[18px]" : "h-4 w-4"} />
-                </button>
-                <button
-                    type="button"
+                    className={showLabels ? "text-white" : "text-white/45"}
+                />
+                <MapIconButton
+                    icon={LocateFixed}
+                    compact={compact}
                     onClick={() => setResetSignal((n) => n + 1)}
                     title="show the whole library"
                     aria-label="Show the whole library"
-                    className={`vibe-glass flex items-center justify-center text-white/70 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 ${compact ? "h-11 w-11 rounded-full" : "h-9 w-9 rounded-lg"}`}
-                >
-                    <LocateFixed className={compact ? "h-[18px] w-[18px]" : "h-4 w-4"} />
-                </button>
+                    className="text-white/70"
+                />
             </div>
 
             {driftSourceId && (
