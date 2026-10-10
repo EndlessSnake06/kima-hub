@@ -32,6 +32,7 @@ import { SleepTimer } from "./SleepTimer";
 import { usePlaybackProgress } from "@/hooks/usePlaybackProgress";
 import { VibeToggleButton } from "./VibeToggleButton";
 import { CachedImage } from "@/components/ui/CachedImage";
+import { PlayerCover } from "@/components/player/PlayerCover";
 
 export function MiniPlayer() {
     const {
@@ -385,34 +386,13 @@ export function MiniPlayer() {
 
                 <div className="px-3 py-2.5 pt-3">
                     <div className="flex items-center gap-2 mb-2">
-                        {mediaLink ? (
-                            <Link
-                                href={mediaLink}
-                                className="relative flex-shrink-0 w-12 h-12"
-                            >
-                                <div className={cn("relative w-full h-full bg-gradient-to-br from-[#2a2a2a] to-[#1a1a1a] rounded-lg overflow-hidden flex items-center justify-center", "transition-transform duration-300", isPlaying && "scale-[1.03]")}>
-                                    {coverUrl ? (
-                                        <CachedImage
-                                            key={coverUrl}
-                                            src={coverUrl}
-                                            alt={title}
-                                            fill
-                                            sizes="56px"
-                                            className="object-cover"
-                                            priority
-                                        />
-                                    ) : (
-                                        <MusicIcon className="w-6 h-6 text-[var(--text-muted)]" />
-                                    )}
-                                </div>
-                            </Link>
-                        ) : (
-                            <div className="relative flex-shrink-0 w-12 h-12">
-                                <div className={cn("relative w-full h-full bg-gradient-to-br from-[#2a2a2a] to-[#1a1a1a] rounded-lg overflow-hidden flex items-center justify-center", "transition-transform duration-300", isPlaying && "scale-[1.03]")}>
-                                    <MusicIcon className="w-6 h-6 text-[var(--text-muted)]" />
-                                </div>
-                            </div>
-                        )}
+                        <PlayerCover
+                            href={mediaLink}
+                            coverUrl={coverUrl}
+                            title={title}
+                            isPlaying={isPlaying}
+                            className="w-12 h-12"
+                        />
 
                         <div className="flex-1 min-w-0">
                             {mediaLink ? (

@@ -259,7 +259,7 @@ export function OverlayPlayer() {
                             showHandle={false}
                             className="mb-2"
                         />
-                        <div className="flex justify-between text-xs text-[var(--text-muted)] tabular-nums font-medium tabular-nums">
+                        <div className="flex justify-between text-xs text-[var(--text-muted)] tabular-nums font-medium">
                             <span>{formatTime(displayTime)}</span>
                             <span>
                                 {playbackType === "podcast" || playbackType === "audiobook"
