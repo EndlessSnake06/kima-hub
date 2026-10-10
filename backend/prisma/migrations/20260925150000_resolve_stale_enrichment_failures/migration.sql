@@ -1,8 +1,6 @@
 -- Resolve (do NOT delete) stale EnrichmentFailure rows whose track has
--- since completed the stage the failure describes
--- (rows were still
--- "failing" for work that finished weeks ago — the ledger must tell the
--- truth, and deleting the rows would erase the history).
+-- since completed the stage the failure describes: the ledger must tell the
+-- truth, and deleting the rows would erase the history.
 --
 -- Mapping: entityType 'track' -> stage 'recording', 'audio' -> 'analysis',
 -- 'vibe' -> 'embedding'; the entityId is the trackId. Other entityTypes

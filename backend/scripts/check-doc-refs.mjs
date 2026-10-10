@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Every backticked reference to a .ts, .js or .sql file and every relative markdown
-// link in a tracked .md must resolve to a real tracked file. CHANGELOG.md and
-// Exits 1 on any dead reference.
+// link in a tracked .md must resolve to a real tracked file. CHANGELOG.md records
+// the past, so it is skipped. Exits 1 on any dead reference.
 import { execSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";

@@ -110,100 +110,18 @@ pnpm-lock.yaml
 keystore.b64
 **/key.txt
 *.conf
-lidify.keystore
 
 # Backend
 backend/cache/
 **/cache/covers/
 **/cache/transcodes/
-**/mullvad/
 
 # Frontend
 frontend/android/
 frontend/test-*.tsx
 
-# Research/Scraping Cache
-**/.firecrawl/
-
-# AI Tools & Assistants
-.claude/
-**/.claude/
-!.claude/commands/
-.cursor/
-**/.cursor/
-.roo/
-**/.roo/
-.aider*
-.serena/
-**/.serena/
-.opencode/
-**/.opencode/
-.vibe/
-**/.vibe/
-.claudeignore
-CLAUDE.md
-AGENTS.md
-
-# Internal documentation; the public docs live in /docs
-docs/
-**/docs/
-!/docs/
-context_portal/
-issues/
-plans/
-planning/
-systems/
-
-# Dev test scripts
-/e2e/
-
-# Release/Deployment Artifacts
-RELEASE_NOTES_*.md
-RELEASE_*_COMMANDS.sh
-DEPLOYMENT_COMMANDS_*.txt
-*_RELEASE_SUMMARY.md
-CODE_REVIEW_*.md
-
-# Local stress tests
-tests/stress/
-
-# Development
-.worktrees/
-reset-and-setup.sh
-organize-singles.sh
-COMMIT_MESSAGE.txt
-ISSUE_REVIEW.md
-backend/backend/
-postman/
-soularr/
-
-# Legacy (removed from repo)
-/App.tsx
-/app.json
-/src/
-
-# Allow README files
-!README.md
-!readme.md
-
-# Claude Code internal task tracking
-.task/
-
 # Local CLAP model weights (validated hf_audio.onnx, copied into the analyzer)
 services/audio-analyzer-clap/models/
 
-
-# Scratch artifacts
-root_cause_analysis.json
-scoping-report.json
-run_parity_runner.py
-smoke_onnx.py
-frontend/space.mjs
-frontend/README.md
-frontend/pnpm-workspace.yaml
 # Model caches are large binaries, not source
 services/audio-analyzer-clap/cache/
-.mock/
-
-
-# Design-assistant context, kept locally

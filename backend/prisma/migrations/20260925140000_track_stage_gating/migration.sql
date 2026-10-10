@@ -1,4 +1,4 @@
--- one answer per track per stage.
+-- One answer per track per stage.
 --
 -- The stage name is the question ("recording", "analysis", "embedding");
 -- `status` is that question's answer. Because the answer lives on the record
