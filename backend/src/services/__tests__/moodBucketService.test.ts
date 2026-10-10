@@ -63,7 +63,6 @@ const MOCK_MOOD_BUCKETS = [
     { trackId: "regen-track-8", score: 0.5 },
 ];
 
-// ── save WITH explicit trackIds ────────────────────────────────────────────────
 
 describe("saveUserMoodMix with explicit trackIds", () => {
     beforeEach(() => {
@@ -120,7 +119,7 @@ describe("saveUserMoodMix with explicit trackIds", () => {
         expect(trackCall.where).toEqual({ id: { in: explicitTrackIds } });
     });
 
-    it("getUserMoodMix returns the persisted trackIds in the same order", async () => {
+    it("saving then reading back returns the persisted trackIds in the same order", async () => {
         const explicitTrackIds = ["track-1", "track-2", "track-3"];
         const expectedCoverUrls = [
             "https://example.com/cover1.jpg",
@@ -253,7 +252,6 @@ describe("saveUserMoodMix with explicit trackIds", () => {
     });
 });
 
-// ── save WITHOUT explicit trackIds (regenerate path) ───────────────────────────
 
 describe("saveUserMoodMix without explicit trackIds (regenerate path)", () => {
     beforeEach(() => {
@@ -264,50 +262,42 @@ describe("saveUserMoodMix without explicit trackIds (regenerate path)", () => {
         (prisma.moodBucket.findMany as jest.Mock).mockResolvedValue(MOCK_MOOD_BUCKETS);
     });
 
-      it("calls getMoodMix and persists the regenerated mix", async () => {
-          const result = await moodBucketService.saveUserMoodMix(
-              USER_ID,
-              MOOD,
-              15
-          );
+    it("calls getMoodMix and persists the regenerated mix", async () => {
+        const result = await moodBucketService.saveUserMoodMix(
+            USER_ID,
+            MOOD,
+            15
+        );
 
-          expect(result).not.toBeNull();
-          expect(result!.trackIds).toEqual([
-              "regen-track-1", "regen-track-2", "regen-track-3",
-              "regen-track-4", "regen-track-5", "regen-track-6",
-              "regen-track-7", "regen-track-8",
-          ]);
+        expect(result).not.toBeNull();
+        expect(result!.trackIds).toEqual(MOCK_REGEN_TRACKS.map((t) => t.id));
         expect(result!.coverUrls).toEqual([
-            "https://example.com/regen1.jpg",
-            "https://example.com/regen2.jpg",
-            "https://example.com/regen3.jpg",
-            "https://example.com/regen4.jpg",
+          "https://example.com/regen1.jpg",
+          "https://example.com/regen2.jpg",
+          "https://example.com/regen3.jpg",
+          "https://example.com/regen4.jpg",
         ]);
 
-          // Verify getMoodMix was called (track.findMany + moodBucket.findMany)
-          expect(prisma.track.findMany).toHaveBeenCalledTimes(1);
-          expect(prisma.moodBucket.findMany).toHaveBeenCalledTimes(1);
+        // Verify getMoodMix was called (track.findMany + moodBucket.findMany)
+        expect(prisma.track.findMany).toHaveBeenCalledTimes(1);
+        expect(prisma.moodBucket.findMany).toHaveBeenCalledTimes(1);
 
-          // Verify upsert was called with regenerated data
-          expect(prisma.userMoodMix.upsert).toHaveBeenCalledTimes(1);
-          const upsertCall = (prisma.userMoodMix.upsert as jest.Mock).mock.calls[0][0];
-          expect(upsertCall.where).toEqual({ userId: USER_ID });
-          expect(upsertCall.create).toEqual(
-            expect.objectContaining({
-                userId: USER_ID,
-                mood: MOOD,
-                trackIds: [
-                    "regen-track-1", "regen-track-2", "regen-track-3",
-                    "regen-track-4", "regen-track-5", "regen-track-6",
-                    "regen-track-7", "regen-track-8",
-                ],
-                coverUrls: [
-                    "https://example.com/regen1.jpg",
-                    "https://example.com/regen2.jpg",
-                    "https://example.com/regen3.jpg",
-                    "https://example.com/regen4.jpg",
-                ],
-            })
+        // Verify upsert was called with regenerated data
+        expect(prisma.userMoodMix.upsert).toHaveBeenCalledTimes(1);
+        const upsertCall = (prisma.userMoodMix.upsert as jest.Mock).mock.calls[0][0];
+        expect(upsertCall.where).toEqual({ userId: USER_ID });
+        expect(upsertCall.create).toEqual(
+          expect.objectContaining({
+              userId: USER_ID,
+              mood: MOOD,
+              trackIds: MOCK_REGEN_TRACKS.map((t) => t.id),
+              coverUrls: [
+                  "https://example.com/regen1.jpg",
+                  "https://example.com/regen2.jpg",
+                  "https://example.com/regen3.jpg",
+                  "https://example.com/regen4.jpg",
+              ],
+          })
         );
     });
 
@@ -325,25 +315,21 @@ describe("saveUserMoodMix without explicit trackIds (regenerate path)", () => {
         expect(prisma.track.findMany).not.toHaveBeenCalled();
     });
 
-      it("handles undefined trackIds (same as not providing it)", async () => {
-          const result = await moodBucketService.saveUserMoodMix(
-              USER_ID,
-              MOOD,
-              15,
-              undefined
-          );
+    it("handles undefined trackIds (same as not providing it)", async () => {
+        const result = await moodBucketService.saveUserMoodMix(
+            USER_ID,
+            MOOD,
+            15,
+            undefined
+        );
 
-          expect(result).not.toBeNull();
-          // Should use regenerate path
-          expect(result!.trackIds).toEqual([
-              "regen-track-1", "regen-track-2", "regen-track-3",
-              "regen-track-4", "regen-track-5", "regen-track-6",
-              "regen-track-7", "regen-track-8",
-          ]);
-      });
+        expect(result).not.toBeNull();
+        // Should use regenerate path
+        expect(result!.trackIds).toEqual(MOCK_REGEN_TRACKS.map((t) => t.id));
+    });
 
-      it("handles empty array trackIds (same as not providing it)", async () => {
-          const result = await moodBucketService.saveUserMoodMix(
+    it("handles empty array trackIds (same as not providing it)", async () => {
+        const result = await moodBucketService.saveUserMoodMix(
             USER_ID,
             MOOD,
             15,
@@ -352,15 +338,9 @@ describe("saveUserMoodMix without explicit trackIds (regenerate path)", () => {
 
         expect(result).not.toBeNull();
         // Empty array should fall through to regenerate path
-        expect(result!.trackIds).toEqual([
-            "regen-track-1", "regen-track-2", "regen-track-3",
-            "regen-track-4", "regen-track-5", "regen-track-6",
-            "regen-track-7", "regen-track-8",
-        ]);
+        expect(result!.trackIds).toEqual(MOCK_REGEN_TRACKS.map((t) => t.id));
     });
 });
-
-// ── getUserMoodMix ─────────────────────────────────────────────────────────────
 
 describe("getUserMoodMix", () => {
     beforeEach(() => {

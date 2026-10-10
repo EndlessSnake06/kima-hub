@@ -183,14 +183,14 @@ describe("public library export", () => {
             });
         try {
             await prisma.$executeRawUnsafe(`UPDATE matching_map SET x = 0.6 WHERE track_id = 'trk_c'`);
-        await stampMap();
+            await stampMap();
             const first = refreshLibraryExport();
             await inBuild;
             await prisma.$executeRawUnsafe(`UPDATE matching_map SET x = 0.7 WHERE track_id = 'trk_c'`);
-        await stampMap();
+            await stampMap();
             const second = refreshLibraryExport();
             await prisma.$executeRawUnsafe(`UPDATE matching_map SET x = 0.8 WHERE track_id = 'trk_c'`);
-        await stampMap();
+            await stampMap();
             const third = refreshLibraryExport();
             release();
             const [a, b, c] = await Promise.all([first, second, third]);
