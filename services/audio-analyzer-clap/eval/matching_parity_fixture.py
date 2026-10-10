@@ -73,7 +73,8 @@ ALBUMS = {'art_a': 3, 'art_b': 2, 'art_c': 2, 'art_d': 1, 'art_e': 2, 'art_f': 1
 
 
 def main() -> None:
-    names = json.load(open(os.path.join(BACKEND, 'mbGenres.json')))['genres']
+    with open(os.path.join(BACKEND, 'mbGenres.json')) as f:
+        names = json.load(f)['genres']
     mbg = {norm(n) for n in names}
     canon: dict[str, str] = {}
     for n in names:

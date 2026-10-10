@@ -47,10 +47,7 @@ class TestOnxParity(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        # Hard failures, deliberately not skips. A parity harness that quietly
-        # skips when its inputs are missing turns "verified 1.0000 parity" into a
-        # claim nobody can reproduce -- and this harness's own fixtures briefly
-        # looked missing, which is exactly how an unverifiable number survives.
+        # Hard failures, not skips: a parity check that skips when its inputs are missing proves nothing.
         try:
             import onnxruntime  # noqa: F401
         except ImportError as exc:
@@ -66,8 +63,8 @@ class TestOnxParity(unittest.TestCase):
             raise AssertionError(
                 f'ONNX model under test not found at {ONNX_MODEL_PATH}')
 
-        digest = hashlib.sha256(
-            open(ONNX_MODEL_PATH, 'rb').read()).hexdigest()
+        with open(ONNX_MODEL_PATH, 'rb') as f:
+            digest = hashlib.sha256(f.read()).hexdigest()
         if digest != ONNX_MODEL_SHA256:
             raise AssertionError(
                 'the model under test is not the validated export: sha256 '

@@ -3,6 +3,7 @@ The image can run ONNX: requirements.txt carries onnxruntime,
 _ensure_onnx_backend loads the model eagerly, and with CLAP_BACKEND=onnx a
 window failure fails the track instead of falling back to torch.
 """
+import contextlib
 import importlib.util
 import os
 import sys
@@ -106,15 +107,10 @@ def test_text_embeddings_routes_to_onnx_not_torch(monkeypatch):
 
     monkeypatch.setattr(a, "ensure_model", fail_torch)
 
-    try:
+    # Without the text model present this raises; what matters is that it never fell through to torch.
+    with contextlib.suppress(Exception):
         a._text_embeddings(["music with singing vocals"])
-    except Exception:
-        # Without the text model present this raises; the key assertion is that
-        # it did NOT fall through to torch (which would have triggered the
-        # monkeypatched ensure_model above).
-        assert calls["torch"] == 0, "text path fell back to torch in onnx mode"
-        return
-    assert calls["torch"] == 0
+    assert calls["torch"] == 0, "text path fell back to torch in onnx mode"
 
 
 def test_text_embeddings_torch_mode_still_loads_model(monkeypatch):
