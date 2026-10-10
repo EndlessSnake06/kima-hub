@@ -133,6 +133,49 @@ async function loadUser(userId: string): Promise<CachedUser | null> {
     return user;
 }
 
+type AuthUser = { id: string; username: string; role: string };
+
+/**
+ * Check a JWT. Returns the user when it is valid, null when it is refused
+ * outright, and undefined when it proves nothing and the next method may try.
+ */
+async function authenticateToken(
+    token: string,
+    req: Request
+): Promise<AuthUser | null | undefined> {
+    try {
+        const decoded = jwt.verify(token, JWT_SECRET_VALIDATED) as unknown as JWTPayload;
+        // A refresh token verifies with the same secret and claims, so reject it
+        // here: it must only be exchanged at POST /auth/refresh, never used as a
+        // credential (including on requireSessionAuth routes).
+        if (decoded.type === "refresh") {
+            return null;
+        }
+        // Stream-scoped tickets are leak-prone URL tokens: they are valid only
+        // when /stream is the final path segment, whether sent in the query
+        // string or as a Bearer credential. Unscoped tokens are valid everywhere.
+        const isStreamScoped = decoded.scope === "stream";
+        const isStreamPath = req.path.endsWith("/stream");
+        if (!isStreamScoped || isStreamPath) {
+            const user = await loadUser(decoded.userId);
+            if (user) {
+                // Reject if the password was changed since the token was issued
+                if (decoded.tokenVersion === undefined || decoded.tokenVersion !== user.tokenVersion) {
+                    return null;
+                }
+                return { id: user.id, username: user.username, role: user.role };
+            }
+        }
+    } catch (error) {
+        // An unverifiable token is no credential. Anything else is a bug in this
+        // block and is logged, so it does not surface only as a silent 401.
+        if (!(error instanceof jwt.JsonWebTokenError)) {
+            logger.error("Token auth error:", error);
+        }
+    }
+    return undefined;
+}
+
 /**
  * Authenticate a request by session, API key or JWT, in that order. A token in
  * the query string counts only when `checkQueryToken` is set (streaming URLs).
@@ -140,7 +183,7 @@ async function loadUser(userId: string): Promise<CachedUser | null> {
 async function authenticateRequest(
     req: Request,
     checkQueryToken: boolean = false
-): Promise<{ id: string; username: string; role: string } | null> {
+): Promise<AuthUser | null> {
     // Check session-based auth
     if (req.session?.userId) {
         try {
@@ -172,38 +215,8 @@ async function authenticateRequest(
     if (checkQueryToken) {
         const tokenParam = req.query.token as string;
         if (tokenParam) {
-            try {
-                const decoded = jwt.verify(
-                    tokenParam,
-                    JWT_SECRET_VALIDATED
-                ) as unknown as JWTPayload;
-                // See the Bearer branch below for why `type` is checked.
-                if (decoded.type === "refresh") {
-                    return null;
-                }
-                // Stream-scoped tickets are valid only when /stream is the final path
-                // segment; unscoped tokens are valid everywhere.
-                const isStreamScoped = decoded.scope === "stream";
-                const isStreamPath = req.path.endsWith("/stream");
-                if (!isStreamScoped || isStreamPath) {
-                    const user = await loadUser(decoded.userId);
-                    if (user) {
-                        // Validate tokenVersion - reject if password was changed
-                        if (decoded.tokenVersion === undefined || decoded.tokenVersion !== user.tokenVersion) {
-                            return null;
-                        }
-                        return { id: user.id, username: user.username, role: user.role };
-                    }
-                }
-                // Stream-scoped ticket on a non-stream path: fall through to other auth methods
-            } catch (error) {
-                // Token invalid, try other methods. Log non-JWT errors: a bug in
-                // this block (e.g. reading a property off an absent req field)
-                // would otherwise be swallowed and surface only as a silent 401.
-                if (!(error instanceof jwt.JsonWebTokenError)) {
-                    logger.error("Query-token auth error:", error);
-                }
-            }
+            const result = await authenticateToken(tokenParam, req);
+            if (result !== undefined) return result;
         }
     }
 
@@ -214,33 +227,8 @@ async function authenticateRequest(
         : null;
 
     if (token) {
-        try {
-            const decoded = jwt.verify(token, JWT_SECRET_VALIDATED) as unknown as JWTPayload;
-            // A refresh token verifies with the same secret and claims, so reject it
-            // here: it must only be exchanged at POST /auth/refresh, never used as a
-            // credential (including on requireSessionAuth routes).
-            if (decoded.type === "refresh") {
-                return null;
-            }
-            // Stream-scoped tickets are leak-prone URL tokens; they must NOT act as a
-            // full-privilege Bearer credential off the /stream paths. Mirror the
-            // query-param branch above — otherwise the scope restriction is trivially
-            // bypassed by sending the ticket as `Authorization: Bearer <ticket>`.
-            const isStreamScoped = decoded.scope === "stream";
-            const isStreamPath = req.path.endsWith("/stream");
-            if (!isStreamScoped || isStreamPath) {
-                const user = await loadUser(decoded.userId);
-                if (user) {
-                    // Validate tokenVersion - reject if password was changed
-                    if (decoded.tokenVersion === undefined || decoded.tokenVersion !== user.tokenVersion) {
-                        return null;
-                    }
-                    return { id: user.id, username: user.username, role: user.role };
-                }
-            }
-        } catch {
-            // An unverifiable token is no credential.
-        }
+        const result = await authenticateToken(token, req);
+        if (result !== undefined) return result;
     }
 
     return null;
