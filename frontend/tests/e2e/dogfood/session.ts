@@ -415,12 +415,3 @@ export async function openAlbumsTab(page: Page, timeoutMs = 15_000): Promise<voi
     await page.waitForURL(/tab=albums/, { timeout: timeoutMs });
     await firstAlbumCard(page).waitFor({ state: "visible", timeout: timeoutMs });
 }
-
-/**
- * Waits for the app to settle. networkidle never fires because the app holds a
- * server-sent-events stream open, so this waits for the DOM and then lets React paint.
- */
-export async function settle(page: Page, ms = 800): Promise<void> {
-    await page.waitForLoadState("domcontentloaded");
-    await page.waitForTimeout(ms);
-}
