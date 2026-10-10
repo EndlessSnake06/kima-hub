@@ -155,7 +155,7 @@ describe('discoverCron enqueue -- lock + stale-hash guard (Task 9)', () => {
     });
 
     // The lock is taken before getJob and remove, not only around add.
-    it('CRITIC GAP B: getJob and remove happen INSIDE the lock (not before it)', async () => {
+    it('looks up and removes the old job inside the lock, not before it', async () => {
         const stale = fakeJob('completed');
         (discoverQueue.getJob as jest.Mock).mockResolvedValue(stale);
         (prisma.userDiscoverConfig.findMany as jest.Mock).mockResolvedValue([
@@ -172,7 +172,7 @@ describe('discoverCron enqueue -- lock + stale-hash guard (Task 9)', () => {
     });
 
     // A failed job blocks a re-add just as a completed one does.
-    it('CRITIC GAP C: removes a stale FAILED job hash before re-enqueuing (inside the lock)', async () => {
+    it('removes a stale failed job before enqueuing again, inside the lock', async () => {
         const stale = fakeJob('failed');
         (discoverQueue.getJob as jest.Mock).mockResolvedValue(stale);
         (prisma.userDiscoverConfig.findMany as jest.Mock).mockResolvedValue([
@@ -189,7 +189,7 @@ describe('discoverCron enqueue -- lock + stale-hash guard (Task 9)', () => {
     });
 
     // getJob looks up the same id add() enqueues.
-    it('CRITIC GAP D: getJob is looked up with the SAME jobId that add() enqueues', async () => {
+    it('looks the job up by the same id that add() enqueues', async () => {
         const stale = fakeJob('completed');
         (discoverQueue.getJob as jest.Mock).mockResolvedValue(stale);
         (prisma.userDiscoverConfig.findMany as jest.Mock).mockResolvedValue([

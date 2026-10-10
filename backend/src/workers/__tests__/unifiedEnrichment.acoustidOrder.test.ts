@@ -30,8 +30,6 @@ jest.mock("../../services/enrichmentFailureService", () => ({
         cleanupOldResolved: jest.fn().mockResolvedValue(0),
         recordFailure: jest.fn().mockResolvedValue({}),
         resolveByEntity: jest.fn().mockResolvedValue(true),
-        clearFailure: jest.fn().mockResolvedValue(true),
-        clearAllFailures: jest.fn().mockResolvedValue(0),
     },
 }));
 

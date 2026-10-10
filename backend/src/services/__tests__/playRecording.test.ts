@@ -101,7 +101,7 @@ describe("recordPlay", () => {
         expect(prisma.play.create).not.toHaveBeenCalled();
     });
 
-    it("counts exactly the required amount and rejects nonsense listening values", async () => {
+    it("rejects listening just under the required amount, and nonsense values", async () => {
         prisma.track.findUnique.mockResolvedValue(track(200));
         const short = await recordPlay({ userId: "u1", trackId: "t1", secondsListened: 99.9 });
         expect(short).toEqual({ recorded: false, reason: "not-enough-listened" });
