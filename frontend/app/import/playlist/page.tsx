@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, Suspense, type CSSProperties } from "react";
-import { formatTime } from "@/lib/format";
+import { formatTime, plural } from "@/lib/format";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -946,7 +946,7 @@ function ImportPlaylistPageContent() {
                         ) : importJob.status === "cancelled" ? (
                             <p className="text-sm text-[var(--text-secondary)]">
                                 {importJob.createdPlaylistId
-                                    ? `Import cancelled. A playlist was created with ${importJob.tracksMatched} matched track${importJob.tracksMatched === 1 ? "" : "s"}.`
+                                    ? `Import cancelled. A playlist was created with ${plural(importJob.tracksMatched, "matched track")}.`
                                     : "Import cancelled. No tracks had been matched yet."}
                             </p>
                         ) : (
@@ -996,7 +996,7 @@ function ImportPlaylistPageContent() {
                                                 );
                                                 if (result.added > 0) {
                                                     setRefreshStatusMessage(
-                                                        `Added ${result.added} new song(s).`
+                                                        `Added ${plural(result.added, "new song")}.`
                                                     );
                                                     setImportJob((prev) =>
                                                         prev
