@@ -1,7 +1,6 @@
 import { Play, Pause, Shuffle, Download, Radio } from "lucide-react";
 import { cn } from "@/lib/cn";
-import type { Album } from "../types";
-import type { ArtistSource } from "../types";
+import type { Album, ArtistSource } from "../types";
 
 interface ArtistActionBarProps {
     albums: Album[];
@@ -9,11 +8,11 @@ interface ArtistActionBarProps {
     onPlayAll: () => void;
     onShuffle: () => void;
     onDownloadAll: () => void;
-    onStartRadio?: () => void;
+    onStartRadio: () => void;
     isPendingDownload: boolean;
-    isPlaying?: boolean;
-    isPlayingThisArtist?: boolean;
-    onPause?: () => void;
+    isPlaying: boolean;
+    isPlayingThisArtist: boolean;
+    onPause: () => void;
 }
 
 export function ArtistActionBar({
@@ -24,8 +23,8 @@ export function ArtistActionBar({
     onDownloadAll,
     onStartRadio,
     isPendingDownload,
-    isPlaying = false,
-    isPlayingThisArtist = false,
+    isPlaying,
+    isPlayingThisArtist,
     onPause,
 }: ArtistActionBarProps) {
     const availableAlbums = albums.filter(
@@ -33,10 +32,10 @@ export function ArtistActionBar({
     );
     const showDownloadAll = source === "discovery" || availableAlbums.length > 0;
     const showPause = isPlaying && isPlayingThisArtist;
-    const showRadio = source === "library" && onStartRadio;
+    const showRadio = source === "library";
 
     const handlePlayPauseClick = () => {
-        if (showPause && onPause) {
+        if (showPause) {
             onPause();
         } else {
             onPlayAll();

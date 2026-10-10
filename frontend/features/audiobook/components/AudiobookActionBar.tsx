@@ -8,24 +8,24 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 interface AudiobookActionBarProps {
     audiobook: Audiobook;
-    isThisBookPlaying?: boolean;
-    isPlaying?: boolean;
-    currentTime?: number;
-    onPlayPause?: () => void;
+    isThisBookPlaying: boolean;
+    isPlaying: boolean;
+    currentTime: number;
+    onPlayPause: () => void;
     onResetProgress: () => void;
     onMarkAsCompleted: () => void;
-    formatTime?: (seconds: number) => string;
+    formatTime: (seconds: number) => string;
 }
 
 export function AudiobookActionBar({
     audiobook,
-    isThisBookPlaying = false,
-    isPlaying = false,
-    currentTime = 0,
+    isThisBookPlaying,
+    isPlaying,
+    currentTime,
     onPlayPause,
     onResetProgress,
     onMarkAsCompleted,
-    formatTime = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`,
+    formatTime,
 }: AudiobookActionBarProps) {
     const hasProgress = audiobook.progress && audiobook.progress.progress > 0;
     const isFinished = audiobook.progress?.isFinished;
@@ -34,19 +34,17 @@ export function AudiobookActionBar({
 
     return (
         <div className="flex items-center gap-4">
-            {onPlayPause && (
-                <button
-                    onClick={onPlayPause}
-                    className="w-10 h-10 rounded-lg bg-brand hover:bg-brand-hover transition-all flex items-center justify-center hover:scale-105 active:scale-95"
-                    title={showingPause ? "pause" : (hasProgress && !isFinished ? "resume" : "play")}
-                >
-                    {showingPause ? (
-                        <Pause className="w-4 h-4 text-black" />
-                    ) : (
-                        <Play className="w-4 h-4 text-black ml-0.5" fill="black" />
-                    )}
-                </button>
-            )}
+            <button
+                onClick={onPlayPause}
+                className="w-10 h-10 rounded-lg bg-brand hover:bg-brand-hover transition-all flex items-center justify-center hover:scale-105 active:scale-95"
+                title={showingPause ? "pause" : (hasProgress && !isFinished ? "resume" : "play")}
+            >
+                {showingPause ? (
+                    <Pause className="w-4 h-4 text-black" />
+                ) : (
+                    <Play className="w-4 h-4 text-black ml-0.5" fill="black" />
+                )}
+            </button>
 
             {hasProgress && !isFinished && (
                 <div className="hidden sm:flex items-center gap-3">
