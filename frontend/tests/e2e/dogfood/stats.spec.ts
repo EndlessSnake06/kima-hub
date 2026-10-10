@@ -402,10 +402,10 @@ test.describe("Dogfood: stats, filters, audit, queue", () => {
             expect(state.queue.length).toBe(maxQueueLength);
         });
 
-        await session.step("the queue is not being written to localStorage any more", async () => {
+        await session.step("the queue is not written to localStorage", async () => {
             // Nothing reads it, and serialising the whole queue on every skip is costly.
             const stored = await page.evaluate(() => localStorage.getItem("kima_queue"));
-            expect(stored, "kima_queue should no longer be written").toBeNull();
+            expect(stored, "kima_queue should not be written to localStorage").toBeNull();
         });
 
         await session.step("an admin can see the setting in Settings", async () => {
