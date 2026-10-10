@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, Page } from "@playwright/test";
 import { username, password } from "./fixtures/test-helpers";
 
 /**
@@ -33,29 +33,32 @@ test.describe("Security", () => {
             }
         });
 
-        test("attacker cannot READ victim's private playlist -- must be 403 not 404", async ({ page }) => {
-            // Login as victim (the admin test user) and create a private playlist
+        /** The admin test user is the victim: it owns a private playlist, and the attacker is signed in too. */
+        async function seedVictimPlaylist(page: Page, name: string) {
             const victimToken = await page.request.post("/api/auth/login", {
                 data: { username, password },
             }).then(r => r.json()).then((b: { token: string }) => b.token);
-
             expect(victimToken, "security setup failed: victimToken").toBeTruthy();
 
             const createRes = await page.request.post("/api/playlists", {
-                data: { name: `victim-private-${Date.now()}`, isPublic: false },
+                data: { name, isPublic: false },
                 headers: { Authorization: `Bearer ${victimToken}` },
             });
             expect(createRes.ok(), "security setup failed: createRes.ok()").toBeTruthy();
             const { id: playlistId } = await createRes.json() as { id: string };
 
-            // Login as attacker
             const attackerLoginRes = await page.request.post("/api/auth/login", {
                 data: { username: ATTACKER_USER, password: ATTACKER_PASS },
             });
             expect(attackerLoginRes.ok(), "security setup failed: attackerLoginRes.ok()").toBeTruthy();
             const { token: attackerToken } = await attackerLoginRes.json() as { token: string };
 
-            // Attacker attempts to read victim's private playlist
+            return { victimToken, attackerToken, playlistId };
+        }
+
+        test("attacker cannot READ victim's private playlist -- must be 403 not 404", async ({ page }) => {
+            const { victimToken, attackerToken, playlistId } = await seedVictimPlaylist(page, `victim-private-${Date.now()}`);
+
             const readRes = await page.request.get(`/api/playlists/${playlistId}`, {
                 headers: { Authorization: `Bearer ${attackerToken}` },
             });
@@ -64,40 +67,21 @@ test.describe("Security", () => {
             // and would mask a broken ownership check that silently falls through to not found)
             expect(readRes.status()).toBe(403);
 
-            // Cleanup
             await page.request.delete(`/api/playlists/${playlistId}`, {
                 headers: { Authorization: `Bearer ${victimToken}` },
             });
         });
 
         test("attacker cannot UPDATE victim's playlist -- name must be unchanged in DB after attempt", async ({ page }) => {
-            const victimToken = await page.request.post("/api/auth/login", {
-                data: { username, password },
-            }).then(r => r.json()).then((b: { token: string }) => b.token);
-            expect(victimToken, "security setup failed: victimToken").toBeTruthy();
-
             const originalName = `victim-update-${Date.now()}`;
-            const createRes = await page.request.post("/api/playlists", {
-                data: { name: originalName, isPublic: false },
-                headers: { Authorization: `Bearer ${victimToken}` },
-            });
-            expect(createRes.ok(), "security setup failed: createRes.ok()").toBeTruthy();
-            const { id: playlistId } = await createRes.json() as { id: string };
+            const { victimToken, attackerToken, playlistId } = await seedVictimPlaylist(page, originalName);
 
-            const attackerLoginRes = await page.request.post("/api/auth/login", {
-                data: { username: ATTACKER_USER, password: ATTACKER_PASS },
-            });
-            expect(attackerLoginRes.ok(), "security setup failed: attackerLoginRes.ok()").toBeTruthy();
-            const { token: attackerToken } = await attackerLoginRes.json() as { token: string };
-
-            // Attacker attempts rename
             const updateRes = await page.request.put(`/api/playlists/${playlistId}`, {
                 data: { name: "HIJACKED" },
                 headers: { Authorization: `Bearer ${attackerToken}` },
             });
             expect(updateRes.status()).toBe(403);
 
-            // Verify the name was NOT changed -- re-fetch as victim
             const verifyRes = await page.request.get(`/api/playlists/${playlistId}`, {
                 headers: { Authorization: `Bearer ${victimToken}` },
             });
@@ -105,44 +89,24 @@ test.describe("Security", () => {
             const verified = await verifyRes.json() as { name: string };
             expect(verified.name).toBe(originalName); // unchanged
 
-            // Cleanup
             await page.request.delete(`/api/playlists/${playlistId}`, {
                 headers: { Authorization: `Bearer ${victimToken}` },
             });
         });
 
         test("attacker cannot DELETE victim's playlist -- resource must still exist after attempt", async ({ page }) => {
-            const victimToken = await page.request.post("/api/auth/login", {
-                data: { username, password },
-            }).then(r => r.json()).then((b: { token: string }) => b.token);
-            expect(victimToken, "security setup failed: victimToken").toBeTruthy();
+            const { victimToken, attackerToken, playlistId } = await seedVictimPlaylist(page, `victim-delete-${Date.now()}`);
 
-            const createRes = await page.request.post("/api/playlists", {
-                data: { name: `victim-delete-${Date.now()}`, isPublic: false },
-                headers: { Authorization: `Bearer ${victimToken}` },
-            });
-            expect(createRes.ok(), "security setup failed: createRes.ok()").toBeTruthy();
-            const { id: playlistId } = await createRes.json() as { id: string };
-
-            const attackerLoginRes = await page.request.post("/api/auth/login", {
-                data: { username: ATTACKER_USER, password: ATTACKER_PASS },
-            });
-            expect(attackerLoginRes.ok(), "security setup failed: attackerLoginRes.ok()").toBeTruthy();
-            const { token: attackerToken } = await attackerLoginRes.json() as { token: string };
-
-            // Attacker attempts deletion
             const deleteRes = await page.request.delete(`/api/playlists/${playlistId}`, {
                 headers: { Authorization: `Bearer ${attackerToken}` },
             });
             expect(deleteRes.status()).toBe(403);
 
-            // Verify the playlist still exists -- victim can still access it
             const verifyRes = await page.request.get(`/api/playlists/${playlistId}`, {
                 headers: { Authorization: `Bearer ${victimToken}` },
             });
             expect(verifyRes.status()).toBe(200);
 
-            // Cleanup
             await page.request.delete(`/api/playlists/${playlistId}`, {
                 headers: { Authorization: `Bearer ${victimToken}` },
             });
@@ -166,7 +130,6 @@ test.describe("Security", () => {
             expect(createRes.ok(), "security setup failed: createRes.ok()").toBeTruthy();
             const { id: playlistId } = await createRes.json() as { id: string };
 
-            // Navigate in browser and verify the script did not execute
             await page.goto("/playlists");
             await page.waitForLoadState("domcontentloaded");
             await page.waitForTimeout(1000);
@@ -267,7 +230,6 @@ test.describe("Security", () => {
             expect(loginRes.ok(), "security setup failed: loginRes.ok()").toBeTruthy();
             const { token } = await loginRes.json() as { token: string };
 
-            // Capture count before
             const beforeRes = await page.request.get("/api/playlists", {
                 headers: { Authorization: `Bearer ${token}` },
             });
