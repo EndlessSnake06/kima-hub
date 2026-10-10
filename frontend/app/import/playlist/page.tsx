@@ -106,6 +106,20 @@ type Step = "input" | "previewing" | "preview" | "importing" | "complete";
 
 const TERMINAL_IMPORT_STATUSES = ["completed", "failed", "cancelled"];
 
+const pendingImportJob = (id: string, totals: Partial<ImportJob> = {}): ImportJob => ({
+    id,
+    status: "pending",
+    progress: 0,
+    albumsTotal: 0,
+    albumsCompleted: 0,
+    tracksMatched: 0,
+    tracksTotal: 0,
+    tracksDownloadable: 0,
+    createdPlaylistId: null,
+    error: null,
+    ...totals,
+});
+
 function ImportPlaylistPageContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -254,16 +268,10 @@ function ImportPlaylistPageContent() {
         };
         setImportJob(updated);
 
-        if (updated.status === "completed" || updated.status === "cancelled") {
-            setStep("complete");
-        } else if (updated.status === "failed") {
+        if (TERMINAL_IMPORT_STATUSES.includes(updated.status)) {
             setStep("complete");
         }
     }, [sseImportStatus]); // eslint-disable-line react-hooks/exhaustive-deps
-
-    const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setUrl(e.target.value);
-    };
 
     // Fetch preview (async — returns job ID, completion arrives via SSE)
     const handleFetchPreview = async () => {
@@ -297,18 +305,7 @@ function ImportPlaylistPageContent() {
                 { url }
             );
 
-            setImportJob({
-                id: jobId,
-                status: "pending",
-                progress: 0,
-                albumsTotal: 0,
-                albumsCompleted: 0,
-                tracksMatched: 0,
-                tracksTotal: 0,
-                tracksDownloadable: 0,
-                createdPlaylistId: null,
-                error: null,
-            });
+            setImportJob(pendingImportJob(jobId));
             setStep("importing");
         } catch (err) {
             notify.error("Failed to start import", {
@@ -344,18 +341,12 @@ function ImportPlaylistPageContent() {
                 }
             );
 
-            setImportJob({
-                id: response.jobId,
-                status: "pending",
-                progress: 0,
+            setImportJob(pendingImportJob(response.jobId, {
                 albumsTotal: selectedAlbums.size,
-                albumsCompleted: 0,
                 tracksMatched: preview.summary.inLibrary,
                 tracksTotal: preview.summary.total,
                 tracksDownloadable: preview.summary.downloadable,
-                createdPlaylistId: null,
-                error: null,
-            });
+            }));
             setStep("importing");
         } catch (err) {
             notify.error("Failed to start import", {
@@ -474,7 +465,7 @@ function ImportPlaylistPageContent() {
                                 id="playlist-url"
                                 type="text"
                                 value={url}
-                                onChange={handleUrlChange}
+                                onChange={(e) => setUrl(e.target.value)}
                                 placeholder="https://www.deezer.com/playlist/... or https://open.spotify.com/playlist/..."
                                 className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/50 focus:border-[var(--color-brand)] transition-colors"
                                 onKeyDown={(e) =>

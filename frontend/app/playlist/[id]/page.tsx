@@ -166,23 +166,27 @@ export default function PlaylistDetailPage() {
     const handlePlayPreview = (pendingId: string) =>
         preview.toggle(pendingId, api.getPendingTrackPreviewStreamUrl(playlistId, pendingId));
 
+    const showRetryProgress = (reloadAfterMs: number) => {
+        window.dispatchEvent(
+            new CustomEvent("set-activity-panel-tab", {
+                detail: { tab: "active" },
+            })
+        );
+        window.dispatchEvent(new CustomEvent("open-activity-panel"));
+        queryClient.invalidateQueries({ queryKey: ["notifications"] });
+        setTimeout(() => {
+            queryClient.invalidateQueries({
+                queryKey: queryKeys.playlist(playlistId),
+            });
+        }, reloadAfterMs);
+    };
+
     const handleRetryPendingTrack = async (pendingId: string) => {
         setRetryingTrackId(pendingId);
         try {
             const result = await api.retryPendingTrack(playlistId, pendingId);
             if (result.success) {
-                window.dispatchEvent(
-                    new CustomEvent("set-activity-panel-tab", {
-                        detail: { tab: "active" },
-                    })
-                );
-                window.dispatchEvent(new CustomEvent("open-activity-panel"));
-                queryClient.invalidateQueries({ queryKey: ["notifications"] });
-                setTimeout(() => {
-                    queryClient.invalidateQueries({
-                        queryKey: queryKeys.playlist(playlistId),
-                    });
-                }, 10000);
+                showRetryProgress(10000);
             } else {
                 notify.error("Track not found on Soulseek", { message: result.message });
             }
@@ -199,18 +203,7 @@ export default function PlaylistDetailPage() {
         try {
             const result = await api.retryAllPendingTracks(playlistId);
             if (result.success && result.queued > 0) {
-                window.dispatchEvent(
-                    new CustomEvent("set-activity-panel-tab", {
-                        detail: { tab: "active" },
-                    })
-                );
-                window.dispatchEvent(new CustomEvent("open-activity-panel"));
-                queryClient.invalidateQueries({ queryKey: ["notifications"] });
-                setTimeout(() => {
-                    queryClient.invalidateQueries({
-                        queryKey: queryKeys.playlist(playlistId),
-                    });
-                }, 15000);
+                showRetryProgress(15000);
             } else {
                 notify.info("No tracks to retry", { message: result.message });
             }
@@ -981,10 +974,7 @@ export default function PlaylistDetailPage() {
 
                     {playlist.items && playlist.items.length > 1 && (
                         <button
-                            onClick={() => {
-                                if (!playlist?.items || playlist.items.length === 0) return;
-                                playTracks(shuffleArray(playlist.items.map((item: PlaylistItem) => toAudioTrack(item.track))), 0);
-                            }}
+                            onClick={() => playTracks(shuffleArray(playlist.items.map((item: PlaylistItem) => toAudioTrack(item.track))), 0)}
                             className="h-8 w-8 rounded-lg hover:bg-white/10 flex items-center justify-center text-[var(--text-muted)] hover:text-white transition-all"
                             title="shuffle play"
                         >
