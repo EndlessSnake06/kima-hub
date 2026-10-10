@@ -4,20 +4,14 @@
  * and audio position moves, and a bare instance fails instead of skipping.
  */
 import { test, expect, devices, Browser, Page, BrowserContext } from "@playwright/test";
-import { DogfoodSession, navigateByClick, settle, firstAlbumCard, openAlbumsTab } from "./session";
+import { DogfoodSession, PLAYER, escapeRegExp, navigateByClick, settle, firstAlbumCard, openAlbumsTab } from "./session";
 import { readLibraryFacts, assertReady, availableJourneys, LibraryFacts } from "./preflight";
 
 const baseUrl = process.env.KIMA_UI_BASE_URL || "http://127.0.0.1:3030";
 const username = process.env.KIMA_TEST_USERNAME || "";
 const password = process.env.KIMA_TEST_PASSWORD || "";
 
-const PLAYER = '[data-kima-player="main"]';
 const RUN_TAG = `dogfood-${Date.now()}`;
-
-/** Make a literal string safe to drop into a RegExp used as an accessible-name filter. */
-function escapeRegExp(s: string): string {
-    return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
 
 // A walkthrough is a long single thread of interactions: journey 4 has no meaning if
 // journey 2 never got audio playing. Serial mode stops the run at the first real failure

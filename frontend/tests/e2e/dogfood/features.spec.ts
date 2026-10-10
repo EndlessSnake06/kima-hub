@@ -7,14 +7,13 @@
  */
 
 import { test, expect, Browser, Page, BrowserContext, APIRequestContext, request } from "@playwright/test";
-import { DogfoodSession, navigateByClick, openAlbumsTab, firstAlbumCard, settle } from "./session";
+import { DogfoodSession, PLAYER, navigateByClick, openAlbumsTab, firstAlbumCard, settle } from "./session";
 
 const baseUrl = process.env.KIMA_UI_BASE_URL || "http://127.0.0.1:3030";
 const username = process.env.KIMA_TEST_USERNAME || "";
 const password = process.env.KIMA_TEST_PASSWORD || "";
 const vibeToken = process.env.KIMA_PUBLIC_VIBE_TOKEN || "";
 
-const PLAYER = '[data-kima-player="main"]';
 const GPU_INSTALL_MS = 25 * 60_000;
 
 test.describe.configure({ mode: "serial" });

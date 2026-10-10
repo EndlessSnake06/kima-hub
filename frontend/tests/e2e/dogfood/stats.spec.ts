@@ -5,13 +5,11 @@
  */
 
 import { test, expect, Browser, Page, BrowserContext } from "@playwright/test";
-import { DogfoodSession, settle } from "./session";
+import { DogfoodSession, PLAYER, settle } from "./session";
 
 const baseUrl = process.env.KIMA_UI_BASE_URL || "http://127.0.0.1:3030";
 const username = process.env.KIMA_TEST_USERNAME || "";
 const password = process.env.KIMA_TEST_PASSWORD || "";
-
-const PLAYER = '[data-kima-player="main"]';
 
 /** One thread of interaction: the filter journeys mean nothing if the page never loaded. */
 test.describe.configure({ mode: "serial" });
