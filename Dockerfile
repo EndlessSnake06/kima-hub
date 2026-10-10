@@ -391,7 +391,7 @@ RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 WORKDIR /app
 
 # Copy healthcheck script
-COPY healthcheck-prod.js /app/healthcheck.js
+COPY frontend/healthcheck.js /app/healthcheck.js
 
 # Create supervisord config - logs to stdout/stderr for Docker visibility
 RUN cat > /etc/supervisor/conf.d/kima.conf << 'EOF'

@@ -1426,7 +1426,3 @@ Big thanks to everyone who contributed, tested, and helped make this release hap
 - @brokenglasszero - Mood tags feature verification ([#35](https://github.com/Chevron7Locked/kima-hub/issues/35))
 
 And all users who reported bugs, tested fixes, and provided feedback!
-
----
-
-For detailed technical implementation notes, see [docs/PENDING_DEPLOY-2.md](docs/PENDING_DEPLOY-2.md).
