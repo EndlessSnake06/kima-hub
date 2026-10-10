@@ -46,6 +46,7 @@ export function ArtistActionBar({
         <div className="flex items-center gap-4">
             <button
                 onClick={handlePlayPauseClick}
+                aria-label={showPause ? "Pause" : "Play all"}
                 className="h-12 w-12 rounded-full flex items-center justify-center transition-all hover:scale-105 bg-brand"
             >
                 {showPause ? (
