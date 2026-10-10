@@ -16,25 +16,6 @@ import { STORAGE_KEYS } from "./storage-keys";
 export type PlayerMode = "full" | "mini" | "overlay";
 
 // Audio features for vibe mode visualization
-export interface AudioFeatures {
-    bpm?: number | null;
-    energy?: number | null;
-    valence?: number | null;
-    arousal?: number | null;
-    danceability?: number | null;
-    keyScale?: string | null;
-    instrumentalness?: number | null;
-    // ML Mood predictions (Enhanced mode)
-    moodHappy?: number | null;
-    moodSad?: number | null;
-    moodRelaxed?: number | null;
-    moodAggressive?: number | null;
-    moodParty?: number | null;
-    moodAcoustic?: number | null;
-    moodElectronic?: number | null;
-    analysisMode?: string | null;
-}
-
 export interface Track {
     id: string;
     title: string;
