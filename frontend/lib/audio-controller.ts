@@ -653,9 +653,8 @@ export class AudioController {
             });
         });
 
-        // NOTE: "stalled" is intentionally NOT forwarded to the policy.
-        // Production calibration: 1094 stalled events in the 2.5-day iOS trace,
-        // all during healthy playback with readyState=4. Pure noise on iOS.
+        // "stalled" is not forwarded to the policy: on iOS it fires during
+        // healthy playback (readyState 4), so it carries no signal.
     }
 
     // IDLE element gets a minimal listener set -- it never drives the
