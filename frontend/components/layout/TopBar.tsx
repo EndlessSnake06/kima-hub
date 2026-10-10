@@ -67,7 +67,6 @@ export function TopBar() {
 
     const isPolling = !!scanJobId && !scanEnded(scanStatus?.status);
 
-    // Handle scan completion/failure
     useEffect(() => {
         if (!scanStatus || !scanJobId) return;
         if (scanEnded(scanStatus.status)) {
@@ -133,12 +132,10 @@ export function TopBar() {
             return;
         }
 
-        // Clear any existing timeout
         if (searchTimeoutRef.current) {
             clearTimeout(searchTimeoutRef.current);
         }
 
-        // Don't search if query is empty
         if (!searchQuery.trim()) {
             return;
         }
@@ -221,7 +218,6 @@ export function TopBar() {
                 <>
                     <button
                         onClick={() => {
-                            // Dispatch custom event to toggle mobile menu
                             window.dispatchEvent(
                                 new CustomEvent("toggle-mobile-menu")
                             );

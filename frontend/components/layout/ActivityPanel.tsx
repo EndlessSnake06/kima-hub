@@ -63,7 +63,6 @@ export function ActivityPanel({
         }
     }, [resolvedActiveTab, settingsContent, setResolvedActiveTab]);
 
-    // Badge counts
     const notificationBadge = unreadCount > 0 ? unreadCount : null;
     const activeBadge =
         activeDownloads.length > 0 ? activeDownloads.length : null;
@@ -155,7 +154,6 @@ export function ActivityPanel({
 
 const ACTIVITY_PANEL_KEY = "kima_activity_panel_open";
 
-// Toggle button for TopBar
 export function ActivityPanelToggle() {
     const { unreadCount } = useNotifications();
     const { downloads: activeDownloads } = useActiveDownloads();

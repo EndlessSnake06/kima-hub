@@ -32,7 +32,6 @@ export function TVLayout({ children }: { children: React.ReactNode }) {
     const [isSyncing, setIsSyncing] = useState(false);
     const navRef = useRef<HTMLDivElement>(null);
 
-    // TV content navigation hook
     const {
         containerRef: contentRef,
         focusFirstCard,
@@ -64,7 +63,6 @@ export function TVLayout({ children }: { children: React.ReactNode }) {
         seek,
     } = useAudio();
 
-    // Add tv-mode class to body on mount
     useEffect(() => {
         document.documentElement.classList.add('tv-mode');
         document.body.classList.add('tv-mode');
@@ -113,7 +111,6 @@ export function TVLayout({ children }: { children: React.ReactNode }) {
 
     const clampedCurrentTime = clampTime(currentTime, duration);
 
-    // Sync library
     const handleSync = async () => {
         setIsSyncing(true);
         try {
@@ -180,7 +177,6 @@ export function TVLayout({ children }: { children: React.ReactNode }) {
                 router.push(tvNavigation[focusedTabIndex].href);
             }
         } else {
-            // Delegate to content navigation hook
             handleContentKeyDown(e);
         }
     }, [isNavFocused, focusedTabIndex, router, hasMedia, isPlaying, pause, resumeWithGesture, next, previous, seek, focusFirstCard, handleContentKeyDown]);

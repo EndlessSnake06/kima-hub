@@ -69,7 +69,6 @@ export function useKeyboardShortcuts() {
     // Disable keyboard shortcuts on TV - use remote's media keys instead
     if (isTV) return;
 
-    // Don't add shortcuts if nothing is loaded
     if (!playbackType) return;
 
     const handleKeyPress = (e: KeyboardEvent) => {

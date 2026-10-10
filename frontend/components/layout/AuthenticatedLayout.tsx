@@ -35,7 +35,6 @@ export function AuthenticatedLayout({ children }: { children: ReactNode }) {
     const activityPanel = useActivityPanel();
     const { toggle, open, close, setActiveTab } = activityPanel;
 
-    // Listen for activity panel events (toggle/open/close/tab)
     useEffect(() => {
         const handleToggle = () => toggle();
         const handleOpen = () => open();
@@ -104,7 +103,6 @@ export function AuthenticatedLayout({ children }: { children: ReactNode }) {
             );
         }
 
-        // Mobile/Tablet Layout
         if (isMobileOrTablet) {
             return (
                 <PlayerModeWrapper>
@@ -154,7 +152,6 @@ export function AuthenticatedLayout({ children }: { children: ReactNode }) {
             );
         }
 
-        // Desktop Layout
         return (
             <PlayerModeWrapper>
                 <a

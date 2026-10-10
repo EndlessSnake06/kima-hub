@@ -39,7 +39,6 @@ export function MobileSidebar({ isOpen, onClose }: MobileSidebarProps) {
         };
     }, []);
 
-    // Handle library sync
     const handleSync = async () => {
         if (isSyncing) return;
 
@@ -55,7 +54,6 @@ export function MobileSidebar({ isOpen, onClose }: MobileSidebarProps) {
         }
     };
 
-    // Handle logout
     const handleLogout = async () => {
         try {
             await logout();

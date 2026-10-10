@@ -54,7 +54,6 @@ export class AudioController {
     private preloadedTrackId: string | null = null;
     private idleReady = false;
 
-    // Timers keyed by TimerId
     private timers: Map<TimerId, ReturnType<typeof setTimeout>> = new Map();
 
     // 1s ticker
@@ -929,13 +928,11 @@ export class AudioController {
     cleanup(): void {
         this.dispatch({ type: "cleanup", now: Date.now() });
 
-        // Cancel all pending timers
         for (const [, handle] of this.timers) {
             clearTimeout(handle);
         }
         this.timers.clear();
 
-        // Element teardown
         this.audio.pause();
         this.audio.removeAttribute("src");
         this.audio.load();
@@ -957,7 +954,6 @@ export class AudioController {
             this.tickerInterval = null;
         }
 
-        // Bridge teardown
         if (this.audioContext) {
             if (this.audioContextStateHandler) {
                 this.audioContext.removeEventListener("statechange", this.audioContextStateHandler);

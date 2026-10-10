@@ -73,7 +73,6 @@ function toSearchParams(params: Record<string, string | number | boolean | undef
 
 // Dynamically determine API URL based on configuration
 export const getApiBaseUrl = () => {
-    // Server-side rendering
     if (typeof window === "undefined") {
         return process.env.BACKEND_URL || "http://127.0.0.1:3006";
     }
@@ -207,7 +206,6 @@ class ApiClient {
     private ensurePromise: Promise<"fresh" | RefreshResult> | null = null;
 
     constructor() {
-        // Try to load token synchronously
         if (typeof window !== "undefined") {
             this.token = localStorage.getItem(AUTH_TOKEN_KEY);
             if (this.token) {
@@ -249,7 +247,6 @@ class ApiClient {
         return this.token;
     }
 
-    // Store JWT token and optionally refresh token
     setToken(token: string, refreshToken?: string) {
         this.token = token;
         if (typeof window !== "undefined") {
@@ -260,7 +257,6 @@ class ApiClient {
         }
     }
 
-    // Get refresh token from storage
     getRefreshToken(): string | null {
         if (typeof window === "undefined") {
             return null;
@@ -268,7 +264,6 @@ class ApiClient {
         return localStorage.getItem(REFRESH_TOKEN_KEY);
     }
 
-    // Clear both JWT tokens
     clearToken() {
         this.token = null;
         if (typeof window !== "undefined") {
@@ -419,7 +414,6 @@ class ApiClient {
             ...fetchOptions.headers,
         };
 
-        // Add Authorization header if token exists
         if (this.token) {
             (headers as Record<string, string>)[
                 "Authorization"
@@ -472,7 +466,6 @@ class ApiClient {
                 const refreshResult = await this.refreshAccessToken();
 
                 if (refreshResult === "refreshed") {
-                    // Retry the request with new token
                     return this.request<T>(endpoint, {
                         ...options,
                         _retryCount: 1, // Prevent infinite loops
@@ -508,7 +501,6 @@ class ApiClient {
         return data;
     }
 
-    // Generic POST method for convenience
     async post<T = unknown>(endpoint: string, data?: unknown): Promise<T> {
         return this.request<T>(endpoint, {
             method: "POST",
@@ -516,14 +508,12 @@ class ApiClient {
         });
     }
 
-    // Generic GET method for convenience
     async get<T = unknown>(endpoint: string): Promise<T> {
         return this.request<T>(endpoint, {
             method: "GET",
         });
     }
 
-    // Generic DELETE method for convenience
     async delete<T = unknown>(endpoint: string): Promise<T> {
         return this.request<T>(endpoint, {
             method: "DELETE",
@@ -558,7 +548,6 @@ class ApiClient {
             body: JSON.stringify({ username, password, token }),
         });
 
-        // If login returned JWT tokens, store them
         if (data.token) {
             this.setToken(data.token, data.refreshToken);
         }
@@ -580,7 +569,6 @@ class ApiClient {
         await this.request<void>("/auth/logout", {
             method: "POST",
         });
-        // Clear the stored JWT token
         this.clearToken();
     }
 
@@ -1580,7 +1568,7 @@ class ApiClient {
         );
     }
 
-    // Release window: the 1.11 mood-mix question
+    // Release window: the mood-mix question
     async getMoodMixReleaseState() {
         return this.get<MoodMixReleaseState>("/whats-new/mood-mixes");
     }

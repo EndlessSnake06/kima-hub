@@ -15,7 +15,6 @@ export function ActiveDownloadsTab() {
         setCancelling((prev) => new Set(prev).add(id));
         try {
             await api.deleteDownload(id);
-            // Refetch to get updated list
             refetch();
         } catch (error) {
             console.error("Failed to cancel download:", error);
@@ -32,7 +31,6 @@ export function ActiveDownloadsTab() {
         const ids = downloads.map((d) => d.id);
         setCancelling(new Set(ids));
         try {
-            // Cancel all downloads in parallel
             await Promise.all(ids.map((id) => api.deleteDownload(id)));
             refetch();
         } catch (error) {

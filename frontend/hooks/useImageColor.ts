@@ -23,7 +23,6 @@ function extractColorsFromImage(imageUrl: string): Promise<ColorPalette> {
 
         img.onload = () => {
             try {
-                // Create canvas and get context
                 const canvas = document.createElement("canvas");
                 const ctx = canvas.getContext("2d");
                 if (!ctx) {
@@ -35,10 +34,8 @@ function extractColorsFromImage(imageUrl: string): Promise<ColorPalette> {
                 canvas.width = img.width * scaleFactor;
                 canvas.height = img.height * scaleFactor;
 
-                // Draw image
                 ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-                // Get image data
                 const imageData = ctx.getImageData(
                     0,
                     0,
@@ -58,14 +55,12 @@ function extractColorsFromImage(imageUrl: string): Promise<ColorPalette> {
                     const b = pixels[i + 2];
                     const a = pixels[i + 3];
 
-                    // Skip transparent pixels
                     if (a < 125) continue;
 
                     // Skip extremely dark and extremely light pixels
                     const brightness = (r + g + b) / 3;
                     if (brightness < 15 || brightness > 240) continue;
 
-                    // Calculate saturation to favor colorful pixels
                     const saturation = getSaturation(r, g, b);
 
                     // Reduce color precision for better grouping
@@ -89,7 +84,6 @@ function extractColorsFromImage(imageUrl: string): Promise<ColorPalette> {
                 // Sort colors by a weighted score (frequency + saturation)
                 const sortedColors = Array.from(colorMap.entries())
                     .sort((a, b) => {
-                        // Weight both frequency and saturation
                         const scoreA = a[1].count * (1 + a[1].saturation * 2);
                         const scoreB = b[1].count * (1 + b[1].saturation * 2);
                         return scoreB - scoreA;
@@ -100,7 +94,6 @@ function extractColorsFromImage(imageUrl: string): Promise<ColorPalette> {
                     });
 
                 if (sortedColors.length === 0) {
-                    // Fallback colors
                     resolve({
                         vibrant: "#1db954",
                         darkVibrant: "#121212",
@@ -298,7 +291,6 @@ export function useImageColor(imageUrl: string | null | undefined) {
         setIsLoading(resolved.needsAsync);
     }
 
-    // Async extraction for cache misses
     useEffect(() => {
         if (!imageUrl) return;
         if (imageUrl.includes("placeholder") || imageUrl.startsWith("/placeholder")) return;

@@ -92,7 +92,6 @@ export function useMediaSession() {
         };
     }, [controller]);
 
-    // Register action handlers
     useEffect(() => {
         if (!("mediaSession" in navigator)) return;
         if (!controller) return;
@@ -178,7 +177,6 @@ export function useMediaSession() {
         };
     }, [controller]);
 
-    // Metadata
     const getAbsoluteUrl = useCallback((url: string): string => {
         if (!url) return "";
         if (url.startsWith("http://") || url.startsWith("https://")) return url;

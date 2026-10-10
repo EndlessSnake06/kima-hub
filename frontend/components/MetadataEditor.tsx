@@ -92,7 +92,6 @@ export function MetadataEditor({
     const handleSave = async () => {
         setIsSaving(true);
         try {
-            // Call API to update metadata
             let response;
             if (type === "artist") {
                 response = await api.updateArtistMetadata(id, formData);

@@ -9,14 +9,11 @@ import { useInfiniteQuery, useQuery, useMutation, useQueryClient, type QueryClie
 import { api } from "@/lib/api";
 
 export const queryKeys = {
-    // Artist queries
     artist: (id: string) => ["artist", id] as const,
 
-    // Album queries
     album: (id: string) => ["album", id] as const,
     albums: (filters?: Record<string, unknown>) => ["albums", filters] as const,
 
-    // Library queries
     library: () => ["library"] as const,
     libraryArtists: (params: {
         filter?: string;
@@ -40,14 +37,12 @@ export const queryKeys = {
     recentlyAdded: (limit?: number) =>
         ["library", "recently-added", limit] as const,
 
-    // Recommendations
     recommendations: (limit?: number) => ["recommendations", limit] as const,
     similarArtists: (seedArtistId: string, limit?: number) =>
         ["recommendations", "artists", seedArtistId, limit] as const,
     similarAlbums: (seedAlbumId: string, limit?: number) =>
         ["recommendations", "albums", seedAlbumId, limit] as const,
 
-    // Search
     search: (query: string, type?: string, limit?: number) =>
         ["search", query, type, limit] as const,
     discoverSearch: (query: string, type?: string, limit?: number) =>
@@ -55,22 +50,17 @@ export const queryKeys = {
     discoverSimilar: (artist: string, mbid: string) =>
         ["search", "discover", "similar", artist, mbid] as const,
 
-    // Playlists
     playlists: () => ["playlists"] as const,
     playlist: (id: string) => ["playlist", id] as const,
 
-    // Mixes
     mixes: () => ["mixes"] as const,
     mix: (id: string) => ["mix", id] as const,
 
-    // Popular artists
     popularArtists: (limit?: number) => ["popular-artists", limit] as const,
 
-    // Audiobooks
     audiobooks: () => ["audiobooks"] as const,
     audiobook: (id: string) => ["audiobook", id] as const,
 
-    // Podcasts
     podcasts: () => ["podcasts"] as const,
     podcast: (id: string) => ["podcast", id] as const,
     topPodcasts: (limit?: number, genreId?: number) =>
@@ -145,9 +135,7 @@ export function useLibraryArtistsQuery({
         }),
         staleTime: 2 * 60 * 1000,
         enabled,
-        // Add structural sharing to prevent unnecessary re-renders
         structuralSharing: true,
-        // Use placeholder data for better perceived performance
         placeholderData: (previousData) => previousData,
     });
 }
@@ -413,7 +401,6 @@ export function useRefreshMixesMutation() {
     return useMutation({
         mutationFn: () => api.refreshMixes(),
         onSuccess: () => {
-            // Invalidate mixes query to refetch
             queryClient.invalidateQueries({ queryKey: queryKeys.mixes() });
         },
     });
@@ -512,7 +499,6 @@ export function useDeletePlaylistMutation() {
     return useMutation({
         mutationFn: (playlistId: string) => api.deletePlaylist(playlistId),
         onSuccess: () => {
-            // Invalidate playlists list
             queryClient.invalidateQueries({
                 queryKey: queryKeys.playlists(),
             });

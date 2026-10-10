@@ -97,7 +97,6 @@ export function HorizontalCarousel({
                     "flex overflow-x-auto scrollbar-hide scroll-smooth",
                     "snap-x snap-mandatory",
                     gapClass,
-                    // Padding for edge items
                     "px-1"
                 )}
             >
@@ -134,7 +133,6 @@ export function HorizontalCarousel({
     );
 }
 
-// Wrapper for carousel items with consistent sizing
 interface CarouselItemProps {
     children: ReactNode;
     className?: string;

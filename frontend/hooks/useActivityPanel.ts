@@ -11,7 +11,6 @@ export function useActivityPanel() {
     });
     const [activeTab, setActiveTab] = useState<"notifications" | "active" | "imports" | "history" | "settings">("notifications");
 
-    // Persist state to localStorage
     useEffect(() => {
         if (typeof window !== "undefined") {
             localStorage.setItem(ACTIVITY_PANEL_KEY, isOpen ? "true" : "false");

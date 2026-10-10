@@ -38,7 +38,6 @@ export function useTVNavigation(options: UseTVNavigationOptions = {}): UseTVNavi
         onSelectRef.current = onSelect;
     });
 
-    // Get all sections with data-tv-section attribute
     const getSections = useCallback(() => {
         if (!containerRef.current) return [];
         return Array.from(
@@ -53,7 +52,6 @@ export function useTVNavigation(options: UseTVNavigationOptions = {}): UseTVNavi
         );
     }, []);
 
-    // Scroll element into view smoothly
     const scrollIntoView = useCallback((element: HTMLElement) => {
         element.scrollIntoView({
             behavior: 'smooth',
@@ -62,7 +60,6 @@ export function useTVNavigation(options: UseTVNavigationOptions = {}): UseTVNavi
         });
     }, []);
 
-    // Focus a specific card
     const focusCard = useCallback((card: HTMLElement | null) => {
         if (card) {
             card.focus();
@@ -70,7 +67,6 @@ export function useTVNavigation(options: UseTVNavigationOptions = {}): UseTVNavi
         }
     }, [scrollIntoView]);
 
-    // Focus first card in content area
     const focusFirstCard = useCallback(() => {
         const sections = getSections();
         if (sections.length === 0) {
@@ -96,7 +92,6 @@ export function useTVNavigation(options: UseTVNavigationOptions = {}): UseTVNavi
         }
     }, [getSections, getCardsInSection, focusCard]);
 
-    // Handle keyboard navigation
     const handleKeyDown = useCallback((e: KeyboardEvent) => {
         if (!enabled || !isTV) return;
 
@@ -164,7 +159,6 @@ export function useTVNavigation(options: UseTVNavigationOptions = {}): UseTVNavi
             case 'ArrowDown': {
                 e.preventDefault();
                 if (focusedSectionIndex < sections.length - 1) {
-                    // Save current position
                     focusMemory.current.set(focusedSectionIndex, focusedCardIndex);
 
                     const nextSectionIndex = focusedSectionIndex + 1;
@@ -190,7 +184,6 @@ export function useTVNavigation(options: UseTVNavigationOptions = {}): UseTVNavi
             case 'ArrowUp': {
                 e.preventDefault();
                 if (focusedSectionIndex > 0) {
-                    // Save current position
                     focusMemory.current.set(focusedSectionIndex, focusedCardIndex);
 
                     const prevSectionIndex = focusedSectionIndex - 1;
@@ -198,7 +191,6 @@ export function useTVNavigation(options: UseTVNavigationOptions = {}): UseTVNavi
                     const prevCards = getCardsInSection(prevSection);
 
                     if (prevCards.length > 0) {
-                        // Try to restore saved position
                         const savedIndex = focusMemory.current.get(prevSectionIndex);
                         const targetIndex = savedIndex !== undefined
                             ? Math.min(savedIndex, prevCards.length - 1)
@@ -243,7 +235,6 @@ export function useTVNavigation(options: UseTVNavigationOptions = {}): UseTVNavi
         getSections, getCardsInSection, focusCard
     ]);
 
-    // Track when content receives focus from outside
     useEffect(() => {
         const container = containerRef.current;
         if (!container || !isTV) return;
@@ -253,7 +244,6 @@ export function useTVNavigation(options: UseTVNavigationOptions = {}): UseTVNavi
             if (target.hasAttribute('data-tv-card')) {
                 setIsContentFocused(true);
 
-                // Find which section and card index
                 const sections = getSections();
                 for (let sIdx = 0; sIdx < sections.length; sIdx++) {
                     const cards = getCardsInSection(sections[sIdx]);

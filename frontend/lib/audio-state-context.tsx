@@ -367,7 +367,6 @@ export function AudioStateProvider({ children }: { children: ReactNode }) {
             setCurrentIndex(0);
         };
 
-        // Load playback state from server
         api.getPlaybackState()
             .then((serverState) => {
                 if (!serverState) return;
@@ -400,10 +399,7 @@ export function AudioStateProvider({ children }: { children: ReactNode }) {
                             setCurrentPodcast(null);
                         })
                         .catch(() => {
-                            // The audiobook the server says you were on is gone. Without
-                            // this the rejection was unhandled -- a page error on sign-in,
-                            // every sign-in, because the stale server state never cleared
-                            // itself. The track branch above has always done this.
+                            // The remembered audiobook no longer exists: clear the stale server state.
                             api.clearPlaybackState().catch(() => {});
                             clearRestoredPlayback();
                         });
@@ -538,7 +534,6 @@ export function AudioStateProvider({ children }: { children: ReactNode }) {
         isHydrated,
     ]);
 
-    // Save playback state to server
     useEffect(() => {
         if (!isHydrated) return;
         if (!playbackType) return;

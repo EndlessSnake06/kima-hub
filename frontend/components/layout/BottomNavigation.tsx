@@ -45,7 +45,6 @@ export function BottomNavigation() {
     const isTablet = useIsTablet();
     const isMobileOrTablet = isMobile || isTablet;
 
-    // Only render on mobile/tablet
     if (!isMobileOrTablet) return null;
 
     return (

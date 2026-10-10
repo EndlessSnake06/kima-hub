@@ -94,7 +94,6 @@ export function MiniPlayer() {
     const shuffle = shuffleState(hasMedia, playbackType, activeOperation.type);
 
     if (isMobileOrTablet) {
-        // Don't render if no media
         if (!hasMedia) return null;
 
         // Handle swipe gestures:
@@ -130,12 +129,10 @@ export function MiniPlayer() {
                 }
             }
 
-            // Reset
             setSwipeOffset(0);
             touchStartX.current = null;
         };
 
-        // Completely dismissed - don't render anything
         if (isDismissed) {
             return null;
         }
@@ -194,7 +191,6 @@ export function MiniPlayer() {
             );
         }
 
-        // Calculate opacity for swipe feedback
         const swipeOpacity = 1 - Math.abs(swipeOffset) / 200;
 
         return (
