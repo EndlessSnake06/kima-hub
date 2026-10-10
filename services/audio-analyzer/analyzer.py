@@ -17,15 +17,12 @@ os.environ['OPENBLAS_NUM_THREADS'] = str(THREADS_PER_WORKER)
 os.environ['MKL_NUM_THREADS'] = str(THREADS_PER_WORKER)
 os.environ['NUMEXPR_MAX_THREADS'] = str(THREADS_PER_WORKER)
 
-
-# NOW safe to import other dependencies
 import json
 import re
 import time
 import logging
 import gc
 from typing import Dict, Any, Optional, List, Tuple
-import traceback
 import subprocess
 import threading
 import numpy as np
@@ -59,8 +56,6 @@ import gpu_switch
 # runtime installed).
 GPU_ANALYSIS = gpu_switch.started_with_runtime()
 
-
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -153,6 +148,9 @@ def _clamp_workers(count: int) -> int:
     return max(1, min(os.cpu_count() or 8, count))
 
 
+DEFAULT_WORKERS = 2
+
+
 def _get_workers_from_db() -> int:
     """
     Fetch worker count from SystemSettings table.
@@ -162,43 +160,40 @@ def _get_workers_from_db() -> int:
         db = DatabaseConnection(DATABASE_URL)
         db.connect()
         cursor = db.get_cursor()
-        
+
         cursor.execute("""
             SELECT "audioAnalyzerWorkers"
             FROM "SystemSettings"
             WHERE id = 'default'
             LIMIT 1
         """)
-        
+
         result = cursor.fetchone()
         cursor.close()
         db.close()
-        
+
         if result and result['audioAnalyzerWorkers'] is not None:
             workers = _clamp_workers(int(result['audioAnalyzerWorkers']))
             logger.info(f"Loaded worker count from database: {workers}")
             return workers
-        else:
-            logger.info("No worker count found in database, using env var or default")
-            return int(os.getenv('NUM_WORKERS', str(DEFAULT_WORKERS)))
-            
+        logger.info("No worker count found in database, using env var or default")
+        return int(os.getenv('NUM_WORKERS', str(DEFAULT_WORKERS)))
+
     except Exception as e:
         logger.warning(f"Failed to fetch worker count from database: {e}")
         logger.info("Falling back to env var or default")
         return int(os.getenv('NUM_WORKERS', str(DEFAULT_WORKERS)))
-DEFAULT_WORKERS = 2
-# Try to load from database first, fall back to env var or default
+
+
+# The settings page's count first, then the NUM_WORKERS environment variable, then the default.
 NUM_WORKERS = _get_workers_from_db()
-# Bump when stored features change meaning, with a migration that asks every older answer again
-# (backend/prisma/migrations/20261008150000_analysis_v4 is the one for v4).
+# Bump when stored features change meaning, with a migration that asks every older answer again.
 ESSENTIA_VERSION = '2.1b6-enhanced-v4'
 
-# Seconds to allow the single ffmpeg decode before giving up on the track.
-# Replaces PRE_DECODE_PROBE_TIMEOUT: there is no separate integrity probe
-# any more -- the one decode IS the check.
+# Seconds to allow the single ffmpeg decode before giving up on the track; the decode is also
+# the integrity check.
 DECODE_TIMEOUT = int(os.getenv('DECODE_TIMEOUT', '120'))
 
-# Queue names
 ANALYSIS_QUEUE = 'audio:analysis:queue'
 
 # Control channel for enrichment coordination
@@ -338,19 +333,16 @@ def _run_decode(command: List[str], keep_last_bytes: int) -> Tuple[bytes, int, s
 
 
 def _decode_to_stereo(file_path: str, duration: int = 90):
-    """Decode the last ``duration`` seconds of the first audio stream (the whole
-    song when it is shorter), skipping bad frames rather than failing. The decode
-    starts ``duration`` seconds before the length the header gives and runs to the
-    real end, keeping only the last ``duration`` seconds, so a header that
-    understates the length still yields the true end; one that overstates it (a
-    cut-short download) gives a short read, and the whole file is read instead.
-    Songs build toward their end, so that is the part analysed. A mono source
-    stays one channel (ffmpeg's upmix would lower it 3 dB); anything wider
-    becomes stereo.
+    """Decode the last ``duration`` seconds of the first audio stream (the whole song when it is
+    shorter), skipping bad frames rather than failing. Songs build toward their end, so that is
+    the part analysed. The decode seeks ``duration`` seconds before the header's length and runs
+    to the real end, so a header that understates the length still yields the true end; one that
+    overstates it (a cut-short download) gives a short read and the whole file is read instead.
+    A mono source stays one channel (ffmpeg's upmix would lower it 3 dB); wider becomes stereo.
 
-    Returns ``(samples, sample_rate, channels, duration, command, rc, stderr,
-    class)``: samples is ``(channels, n)`` float32 or None, class is the
-    ``classify_failure`` disposition of whatever ffmpeg reported.
+    Returns ``(samples, sample_rate, channels, duration, command, rc, stderr, class)``: samples
+    is ``(channels, n)`` float32 or None, class the ``classify_failure`` disposition of what
+    ffmpeg reported.
     """
     channels, length = _source_stream(file_path)
     frame_bytes = 2 * channels
@@ -391,7 +383,7 @@ class AudioAnalyzer:
     valence/arousal and danceability. Without the models a track is not analysed:
     no hand-made estimate stands in for them.
     """
-    
+
     def __init__(self, musicnn_server=None):
         """``musicnn_server`` is the main process's MusicnnServer address when the GPU runs
         MusiCNN for every worker; without it MusiCNN runs here on the CPU."""
@@ -399,11 +391,12 @@ class AudioAnalyzer:
         self.models_error: Optional[str] = None  # why not, when they are not
         self.musicnn_model = None  # Base MusiCNN model
         self.prediction_models = {}  # Classification head models
-        
+        self._last_load_error: Optional[str] = None
+
         if ESSENTIA_AVAILABLE:
             self._init_essentia()
             self._load_ml_models(musicnn_server)
-    
+
     def _init_essentia(self):
         """Initialize Essentia algorithms for basic feature extraction"""
         # Basic feature extractors (always available)
@@ -415,7 +408,7 @@ class AudioAnalyzer:
         self.resampler = es.Resample(inputSampleRate=44100, outputSampleRate=16000)
 
         logger.info("Essentia basic algorithms initialized")
-    
+
     def _load_ml_models(self, musicnn_server=None):
         """Load MusiCNN and its heads: HEAD_CLASSES' and the two valence/arousal
         regressions. Without all of them, `models_error` says why and no track is
@@ -483,7 +476,7 @@ class AudioAnalyzer:
             'danceability': None,
             'valence': None,
             'arousal': None,
-            'instrumentalness': None,
+            'instrumentalness': None,  # instrumentalness and acousticness come from CLAP zero-shot
             'acousticness': None,
             'moodTags': [],
             'moodHappy': None,
@@ -515,7 +508,7 @@ class AudioAnalyzer:
             result['_error'] = 'MemoryError: audio file too large'
             return result
         if decoded is None:
-            result['_error'] = getattr(self, '_last_load_error', None) or 'Audio failed to load (corrupt or unreadable)'
+            result['_error'] = self._last_load_error or 'Audio failed to load (corrupt or unreadable)'
             return result
         audio_44k = decoded.mean(axis=0) if decoded.shape[0] > 1 else decoded[0]
         if len(audio_44k) < MIN_ANALYZE_SECONDS * 44100 or float(np.max(np.abs(audio_44k))) < SILENCE_PEAK:
@@ -537,7 +530,6 @@ class AudioAnalyzer:
                 logger.warning(f"Tempo extraction failed: {rhythm_error}")
                 result['beatsCount'] = 0
 
-            # Key Detection
             try:
                 key, scale, strength = self.key_extractor(audio_44k)
                 result['key'] = key
@@ -546,8 +538,6 @@ class AudioAnalyzer:
             except Exception as key_error:
                 logger.warning(f"Key extraction failed: {key_error}")
                 # No measured key: report none, never a fabricated C major.
-                key = None
-                scale = None
                 result['key'] = None
                 result['keyScale'] = None
                 result['keyStrength'] = None
@@ -578,14 +568,10 @@ class AudioAnalyzer:
                 result['analysisMode'] = 'enhanced'
                 logger.info(f"Analysis: valence={result['valence']}, arousal={result['arousal']}")
             except Exception as e:
-                logger.error(f"ML analysis failed: {e}")
-                traceback.print_exc()
+                logger.exception(f"ML analysis failed: {e}")
                 result['_error'] = f'ML analysis failed: {e}'
                 return result
 
-            # Acousticness set by CLAP zero-shot in the vibe phase (not derived from dynamicRange).
-
-            # Generate mood tags based on all features
             result['moodTags'] = self._generate_mood_tags(result)
 
             logger.info(f"Analysis complete [{result['analysisMode']}]: BPM={result['bpm']}, Key={result['key']} {result['keyScale']}, Valence={result['valence']}, Arousal={result['arousal']}")
@@ -593,11 +579,10 @@ class AudioAnalyzer:
             logger.error(f"MemoryError during analysis of {file_path}")
             result['_error'] = 'MemoryError: analysis exceeded memory limits'
         except Exception as e:
-            logger.error(f"Analysis error: {e}")
-            traceback.print_exc()
+            logger.exception(f"Analysis error: {e}")
             result['_error'] = f'Analysis error: {e}'
         return result
-    
+
     def _extract_ml_features(self, audio_16k) -> Dict[str, Any]:
         """MusiCNN embeddings fed through the classification heads. MusiCNN was trained
         on pop and rock, so other genres skew; values are stored raw and the backend
@@ -643,7 +628,7 @@ class AudioAnalyzer:
 
         logger.info(f"ML Moods: H={result['moodHappy']}, S={result['moodSad']}, R={result['moodRelaxed']}, A={result['moodAggressive']}, P={result['moodParty']}")
         return result
-    
+
     def _generate_mood_tags(self, features: Dict[str, Any]) -> List[str]:
         """Mood tags from the models' moods, valence/arousal and danceability, and the
         measured tempo and key. A value that was not measured gives no tag; 0 is a value."""
@@ -700,8 +685,9 @@ class AudioAnalyzer:
         return list(dict.fromkeys(tags))[:12]
 
 
-# Global analyzer instance for worker processes (initialized per-process)
+# The analyzer of this worker process, built by _init_worker_process.
 _process_analyzer = None
+
 
 def _pool_health_check():
     """No-op function for pool health checks (lambdas can't be pickled with spawn mode)."""
@@ -712,7 +698,7 @@ def _init_worker_process(musicnn_server=None):
     """
     Initialize the analyzer for a worker process. ``musicnn_server`` is the main
     process's MusiCNN GPU session, when it has one.
-    
+
     If model loading fails, the worker stays up and every track it is given fails with
     the reason (retried), rather than crashing the pool.
     """
@@ -722,10 +708,7 @@ def _init_worker_process(musicnn_server=None):
         state = "models ready" if _process_analyzer.enhanced_mode else f"cannot analyse: {_process_analyzer.models_error}"
         logger.info(f"Worker process {os.getpid()} initialized ({state})")
     except Exception as e:
-        logger.error(f"Worker initialization error: {e}")
-        logger.error("This worker will not be able to process tracks.")
-        logger.error(f"Traceback: {traceback.format_exc()}")
-        # Re-raise to kill this worker - better than silent failures
+        logger.exception(f"Worker initialization error, this worker cannot process tracks: {e}")
         raise
 
 def _analyze_track_in_process(args: Tuple[str, str]) -> Tuple[str, str, Dict[str, Any]]:
@@ -733,33 +716,31 @@ def _analyze_track_in_process(args: Tuple[str, str]) -> Tuple[str, str, Dict[str
     Analyze a single track in a worker process.
     Returns (track_id, file_path, features_dict or error_dict)
     """
-    global _process_analyzer
     track_id, file_path = args
-    
+
     try:
         if isinstance(file_path, bytes):
             file_path = file_path.decode('utf-8', errors='replace')
-        
+
         # Normalize path separators (Windows paths -> Unix)
         normalized_path = file_path.replace('\\', '/')
         full_path = os.path.join(MUSIC_PATH, normalized_path)
-        
+
         # Use os.fsencode/fsdecode for filesystem-safe encoding
         try:
             full_path = os.fsdecode(os.fsencode(full_path))
         except (UnicodeError, AttributeError):
             return (track_id, file_path, {'_error': 'Invalid characters in file path'})
-        
+
         if not os.path.exists(full_path):
             return (track_id, file_path, {'_error': 'File not found'})
 
         if os.path.getsize(full_path) == 0:
             return (track_id, file_path, {'_error': 'Empty file (0 bytes) - likely incomplete download'})
 
-        # Run analysis
         features = _process_analyzer.analyze(full_path)
         return (track_id, file_path, features)
-        
+
     except UnicodeDecodeError as e:
         logger.error(f"UTF-8 decoding error for track {track_id}: {e}")
         return (track_id, file_path, {'_error': f'UTF-8 encoding error: {e}'})
@@ -769,8 +750,7 @@ def _analyze_track_in_process(args: Tuple[str, str]) -> Tuple[str, str, Dict[str
 
 
 class AnalysisWorker:
-    """Worker that processes audio analysis jobs from Redis queue using parallel processing"""
-    
+    """Takes audio analysis jobs from a Redis queue and runs them on a pool of worker processes."""
 
     def __init__(self):
         self.redis = redis.from_url(REDIS_URL)
@@ -827,7 +807,7 @@ class AnalysisWorker:
             initargs=(self.musicnn_server,),
             max_tasks_per_child=50,
         )
-    
+
     def _setup_control_channel(self):
         """Subscribe to control channel for pause/resume/stop signals"""
         try:
@@ -837,7 +817,7 @@ class AnalysisWorker:
         except Exception as e:
             logger.warning(f"Failed to subscribe to control channel: {e}")
             self.pubsub = None
-    
+
     def _is_gate_closed(self) -> bool:
         """Check the synchronous Redis gate key set by Node.js.
         Returns True if Python should NOT process work.
@@ -850,12 +830,10 @@ class AnalysisWorker:
                     self.is_paused = True
                     logger.info("Gate closed by Node.js -- pausing")
                 return True
-            else:
-                if self.is_paused:
-                    # Gate is open but we're still paused -- Node.js has resumed
-                    self.is_paused = False
-                    logger.info("Gate opened by Node.js -- resuming")
-                return False
+            if self.is_paused:
+                self.is_paused = False
+                logger.info("Gate opened by Node.js -- resuming")
+            return False
         except Exception:
             return False
 
@@ -863,12 +841,12 @@ class AnalysisWorker:
         """Check for pause/resume/stop/set_workers control signals (non-blocking)"""
         if not self.pubsub:
             return
-        
+
         try:
             message = self.pubsub.get_message(ignore_subscribe_messages=True, timeout=0.001)
             if message and message['type'] == 'message':
                 data = message['data'].decode('utf-8') if isinstance(message['data'], bytes) else message['data']
-                
+
                 # Try to parse as JSON for structured commands
                 try:
                     cmd = json.loads(data)
@@ -881,10 +859,10 @@ class AnalysisWorker:
                         return
                 except (json.JSONDecodeError, ValueError):
                     pass  # Not JSON, try as plain string
-                
+
                 # Handle plain string signals (pause/resume/stop)
                 logger.info(f"Received control signal: {data}")
-                
+
                 if data == 'pause':
                     self.is_paused = True
                     logger.info("Audio analysis PAUSED")
@@ -896,7 +874,7 @@ class AnalysisWorker:
                     logger.info("Audio analysis STOPPING (graceful shutdown)")
         except Exception as e:
             logger.warning(f"Error checking control signals: {e}")
-    
+
     def _apply_pending_resize(self):
         """Apply buffered resize if debounce period has elapsed."""
         if self._pending_resize is None:
@@ -914,11 +892,11 @@ class AnalysisWorker:
         Gracefully completes in-flight work before resizing.
         """
         global NUM_WORKERS
-        
+
         if new_count == NUM_WORKERS:
             logger.info(f"Worker count unchanged at {new_count}")
             return
-        
+
         logger.info(f"Resizing worker pool: {NUM_WORKERS} -> {new_count} workers")
         NUM_WORKERS = new_count
         if not self.pool_active:
@@ -932,7 +910,7 @@ class AnalysisWorker:
         except Exception as e:
             logger.warning(f"Error shutting down old pool: {e}")
         logger.info(f"Worker pool resized to {NUM_WORKERS} workers")
-    
+
     def _check_pool_health(self) -> bool:
         """
         Check if the process pool is still healthy.
@@ -940,19 +918,15 @@ class AnalysisWorker:
         """
         if self.executor is None:
             return False
-        
-        # Check if pool is explicitly marked as broken
         if hasattr(self.executor, '_broken') and self.executor._broken:
             return False
-        
-        # Try a no-op submission to verify pool works
         try:
             future = self.executor.submit(_pool_health_check)
             result = future.result(timeout=5)
             return result is True
         except Exception:
             return False
-    
+
     def _ensure_pool(self):
         """Lazily start or verify the process pool is running."""
         if self.pool_active and self.executor is not None:
@@ -982,7 +956,7 @@ class AnalysisWorker:
         self.executor = None
         self.pool_active = False
         # The GPU session goes with the workers it serves, so an idle analyzer holds no GPU memory.
-        if getattr(self, '_gpu_server', None) is not None:
+        if self._gpu_server is not None:
             self._gpu_server.close()
             self._gpu_server = None
         self.musicnn_server = None
@@ -1011,7 +985,7 @@ class AnalysisWorker:
                 logger.warning(f"Error during executor shutdown: {e}")
             self.executor = None
             self.pool_active = False
-    
+
     def start(self):
         """Start processing jobs with BRPOP-driven event loop"""
         cpu_count = os.cpu_count() or 4
@@ -1038,7 +1012,7 @@ class AnalysisWorker:
                 try:
                     try:
                         self.redis.set("audio:worker:heartbeat", str(int(time.time() * 1000)))
-                    except Exception:
+                    except Exception:  # the next pass sets it again
                         pass
 
                     # The GPU runtime is put on the path before Python starts, so a changed switch is
@@ -1087,8 +1061,7 @@ class AnalysisWorker:
                     self._drop_pool()
                     continue
                 except Exception as e:
-                    logger.error(f"Worker error: {e}")
-                    traceback.print_exc()
+                    logger.exception(f"Worker error: {e}")
                     self.consecutive_empty += 1
 
                     if self.consecutive_empty >= 5:
@@ -1111,7 +1084,7 @@ class AnalysisWorker:
                 logger.info("Control channel closed")
             self.db.close()
             logger.info("Worker stopped")
-    
+
     def _take_jobs(self, room: int, block: bool) -> List[Dict[str, Any]]:
         """Up to `room` jobs, oldest first; waits up to BRPOP_TIMEOUT for the first only when `block`."""
         jobs: List[Dict[str, Any]] = []
@@ -1214,7 +1187,7 @@ class AnalysisWorker:
         elif self._save_results(job, features):
             logger.info(f"✓ Completed: {file_path}")
         return False
-    
+
     def _save_results(self, job: Dict[str, Any], features: Dict[str, Any]) -> bool:
         """Save analysis results; False when they could not be written, which is
         reported as this track's failure. instrumentalness and acousticness are left
@@ -1319,7 +1292,7 @@ class AnalysisWorker:
         finally:
             cursor.close()
         return True
-    
+
     def _save_failed(self, job: Dict[str, Any], error: str):
         """Report a failure to the backend over the completion channel; the
         backend classifies it, runs the retry ladder, and owns every write."""
@@ -1337,19 +1310,16 @@ class AnalysisWorker:
 
 
 def main():
-    """Main entry point"""
     if len(sys.argv) > 1 and sys.argv[1] == '--test':
-        # Test mode: analyze a single file
         if len(sys.argv) < 3:
             print("Usage: analyzer.py --test <audio_file>")
             sys.exit(1)
-        
+
         analyzer = AudioAnalyzer()
         result = analyzer.analyze(sys.argv[2])
         print(json.dumps(result, indent=2))
         return
-    
-    # Normal worker mode
+
     worker = AnalysisWorker()
     worker.start()
 

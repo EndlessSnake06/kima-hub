@@ -102,6 +102,7 @@ def make_worker(jobs, workers, monkeypatch, run):
     w.pool_active = False
     w._in_flight = {}
     w.musicnn_server = None
+    w._gpu_server = None
     return w
 
 
