@@ -220,8 +220,8 @@ export class DiscoverySeeding {
         const inLidarr = await lidarrService.isAlbumAvailable(albumMbid);
         if (inLidarr) return true;
 
-        const excluded = await this.isAlbumExcluded(albumMbid, userId);
-        if (excluded) return true;
+        const recentlyRecommended = await this.wasRecentlyRecommended(albumMbid, userId);
+        if (recentlyRecommended) return true;
 
         const unavailable = await this.isAlbumUnavailable(albumMbid, userId);
         if (unavailable) return true;
@@ -259,7 +259,7 @@ export class DiscoverySeeding {
     }
 
     /** Whether the album was recommended to this user in the last 12 weeks. */
-    private async isAlbumExcluded(albumMbid: string, userId: string): Promise<boolean> {
+    private async wasRecentlyRecommended(albumMbid: string, userId: string): Promise<boolean> {
         const EXCLUSION_WEEKS = 12;
         const exclusionCutoff = subWeeks(new Date(), EXCLUSION_WEEKS);
 
