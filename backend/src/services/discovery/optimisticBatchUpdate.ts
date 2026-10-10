@@ -1,9 +1,4 @@
-/**
- * Optimistic Locking for DiscoveryBatch Updates
- *
- * Prevents race conditions when multiple processes update the same batch
- * by using a version field and retry logic.
- */
+/** Updates a DiscoveryBatch under a version check, retrying when another process wrote first. */
 
 import { prisma } from '../../utils/db';
 import { logger } from '../../utils/logger';

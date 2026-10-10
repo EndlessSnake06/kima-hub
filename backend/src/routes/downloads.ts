@@ -17,7 +17,6 @@ const router = Router();
 
 router.use(requireAuthOrToken);
 
-// POST /downloads - Create download job
 router.post("/", async (req, res) => {
     try {
         const {
@@ -220,7 +219,7 @@ async function processArtistDownload(
     rootFolderPath: string,
     downloadType: string
 ): Promise<{ id: string; subject: string }[]> {
-    logger.debug(`\n Processing artist download: ${artistName}`);
+    logger.debug(`\nProcessing artist download: ${artistName}`);
     logger.debug(`   Artist MBID: ${artistMbid}`);
 
     const batchId = crypto.randomUUID();
@@ -439,8 +438,7 @@ async function processDownload(
             jobId,
             parsedArtist,
             parsedAlbum,
-            mbid,
-            job.userId
+            mbid
         );
 
         if (!result.success) {
@@ -449,7 +447,6 @@ async function processDownload(
     }
 }
 
-// DELETE /downloads/clear-all - Clear all download jobs for the current user
 // Registered before /:id so "clear-all" is not read as an id.
 router.delete("/clear-all", async (req, res) => {
     try {
@@ -465,7 +462,7 @@ router.delete("/clear-all", async (req, res) => {
         const result = await prisma.downloadJob.deleteMany({ where });
 
         logger.debug(
-            ` Cleared ${result.count} download jobs for user ${userId}`
+            `Cleared ${result.count} download jobs for user ${userId}`
         );
         res.json({ success: true, deleted: result.count });
     } catch (error) {
@@ -474,7 +471,6 @@ router.delete("/clear-all", async (req, res) => {
     }
 });
 
-// POST /downloads/clear-lidarr-queue - Clear stuck/failed items from Lidarr's queue
 router.post("/clear-lidarr-queue", requireAdmin, async (_req, res) => {
     try {
         const result = await sweepFailedDownloads();
@@ -485,7 +481,6 @@ router.post("/clear-lidarr-queue", requireAdmin, async (_req, res) => {
     }
 });
 
-// GET /downloads/failed - List failed/unavailable albums for the current user
 // Registered before /:id so "failed" is not read as an id.
 router.get("/failed", async (req, res) => {
     try {
@@ -503,7 +498,6 @@ router.get("/failed", async (req, res) => {
     }
 });
 
-// DELETE /downloads/failed/:id - Dismiss a failed album notification
 router.delete("/failed/:id", async (req, res) => {
     try {
         const { id } = req.params;
@@ -528,7 +522,6 @@ router.delete("/failed/:id", async (req, res) => {
     }
 });
 
-// GET /downloads/:id - Get download job status
 router.get("/:id", async (req, res) => {
     try {
         const { id } = req.params;
@@ -552,7 +545,6 @@ router.get("/:id", async (req, res) => {
     }
 });
 
-// PATCH /downloads/:id - Update download job (e.g., mark as complete)
 router.patch("/:id", async (req, res) => {
     try {
         const { id } = req.params;
@@ -593,7 +585,6 @@ router.patch("/:id", async (req, res) => {
     }
 });
 
-// DELETE /downloads/:id - Delete download job
 router.delete("/:id", async (req, res) => {
     try {
         const { id } = req.params;
@@ -614,7 +605,6 @@ router.delete("/:id", async (req, res) => {
     }
 });
 
-// GET /downloads - List user's download jobs
 router.get("/", async (req, res) => {
     try {
         const userId = req.user!.id;

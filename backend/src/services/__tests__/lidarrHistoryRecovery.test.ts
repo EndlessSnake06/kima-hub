@@ -1,13 +1,9 @@
 /**
- * Missed webhooks are recovered from Lidarr's history, here the history a real
- * Lidarr returned in the recorded missing-tracks run, on the real test
- * database: a missed grab links its job once under the webhook's own event id,
- * an event already delivered is left alone, Lidarr's import-incomplete record
- * counts no attempt, and the read reaches back to the oldest active download.
- * From the recorded bundle run: a grab covering two albums is recovered as one
- * grab listing both, each album's finished import carries the files Lidarr's
- * history shows for it (none for the album the bundle brought nothing of), and
- * the file history is read only for imports not stored yet.
+ * Missed webhooks recovered from the history a real Lidarr returned (recorded missing-tracks and
+ * bundle runs), on the real test database: a missed grab links its job once under the webhook's own
+ * event id; a delivered event is left alone; an import-incomplete record counts no attempt; the read
+ * reaches back to the oldest active download; a two-album grab is recovered as one grab listing both;
+ * each import carries the files history shows for its album; file history is read only for new imports.
  */
 
 import { prisma } from "../../utils/db";

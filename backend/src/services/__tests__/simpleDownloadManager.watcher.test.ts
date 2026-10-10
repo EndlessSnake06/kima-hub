@@ -102,7 +102,7 @@ it("holds a request while Lidarr cannot be reached, instead of failing it", asyn
     await useLidarr("http://127.0.0.1:9");
     const held = await job({ status: "pending", targetMbid: "16f30346-886a-3144-9377-cbfceb32fd34", metadata: { artistName: "Brad Sucks", albumTitle: "Out of It" } });
 
-    await simpleDownloadManager.startDownload(held.id, "Brad Sucks", "Out of It", "16f30346-886a-3144-9377-cbfceb32fd34", USER);
+    await simpleDownloadManager.startDownload(held.id, "Brad Sucks", "Out of It", "16f30346-886a-3144-9377-cbfceb32fd34");
 
     const r = await row(held.id);
     expect(r.status).toBe("pending");

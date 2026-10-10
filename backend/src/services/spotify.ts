@@ -4,11 +4,8 @@ import { deezerService } from "./deezer";
 import { rateLimiter } from "./rateLimiter";
 
 /**
- * Spotify Service
- *
- * Fetches public playlist data from Spotify using anonymous tokens.
- * No API credentials required - uses Spotify's web player token endpoint.
- * Falls back to Deezer API when Spotify scraping fails.
+ * Fetches public Spotify playlist data with anonymous web-player tokens, so no
+ * API credentials are needed. Falls back to Deezer when Spotify scraping fails.
  */
 
 export interface SpotifyTrack {
@@ -36,17 +33,6 @@ export interface SpotifyPlaylist {
     isPublic: boolean;
 }
 
-
-
-interface SpotifyPlaylistPreview {
-    id: string;
-    name: string;
-    description: string | null;
-    owner: string;
-    imageUrl: string | null;
-    trackCount: number;
-}
-
 // URL patterns
 const SPOTIFY_PLAYLIST_REGEX = /(?:spotify\.com\/playlist\/|spotify:playlist:)([a-zA-Z0-9]+)/;
 const SPOTIFY_ALBUM_REGEX = /(?:spotify\.com\/album\/|spotify:album:)([a-zA-Z0-9]+)/;
@@ -62,23 +48,19 @@ class SpotifyService {
      * Uses promise singleton pattern to prevent race conditions
      */
     private async getAnonymousToken(): Promise<string | null> {
-        // Check if we have a valid token
         if (this.anonymousToken && Date.now() < this.tokenExpiry - 60000) {
             return this.anonymousToken;
         }
 
-        // If already fetching, wait for that promise (prevents race condition)
         if (this.tokenRefreshPromise) {
             return this.tokenRefreshPromise;
         }
 
-        // Start new fetch and store the promise
         this.tokenRefreshPromise = this.performTokenRefresh();
 
         try {
             return await this.tokenRefreshPromise;
         } finally {
-            // Clear the promise once complete
             this.tokenRefreshPromise = null;
         }
     }
@@ -209,7 +191,7 @@ class SpotifyService {
                             logger.debug(`Spotify Scraper: Extracted ${tracks.length} tracks from Apollo cache`);
                             return tracks;
                         }
-                    } catch (parseError) {
+                    } catch {
                         logger.debug("Spotify Scraper: Failed to parse Apollo cache JSON");
                     }
                 }
@@ -253,7 +235,6 @@ class SpotifyService {
                 try {
                     const data = JSON.parse(nextDataMatch[1]);
 
-                    // Log available data structure for debugging
                     const propsKeys = Object.keys(data?.props?.pageProps || {});
                     logger.debug(`Spotify Scraper: pageProps keys: [${propsKeys.join(", ")}]`);
 
@@ -296,18 +277,15 @@ class SpotifyService {
                     for (const item of trackItems) {
                         const track = item.track || item.itemV2?.data || item;
 
-                        // Extract track ID from multiple possible locations
                         const trackId = track.uri?.split(":")[2]
                             || track.id
                             || item.uid
                             || item.itemV2?.data?.uri?.split(":")[2];
 
-                        // Extract album name from multiple possible locations
                         const albumName = track.album?.name
                             || track.albumOfTrack?.name
                             || item.itemV2?.data?.albumOfTrack?.name;
 
-                        // Extract album ID from multiple possible locations
                         const albumId = track.album?.uri?.split(":")[2]
                             || track.album?.id
                             || track.albumOfTrack?.uri?.split(":")[2]
@@ -352,7 +330,6 @@ class SpotifyService {
                 rowCount++;
                 const rowContent = rowMatch[2];
 
-                // Extract track ID from internal-track-link
                 const trackLinkMatch = rowContent.match(/href="\/track\/([a-zA-Z0-9]+)"/);
                 // Extract album info from album link (aria-colindex="3" contains album)
                 const albumLinkMatch = rowContent.match(/href="\/album\/([a-zA-Z0-9]+)"[^>]*>([^<]+)</);
@@ -509,8 +486,8 @@ class SpotifyService {
                     });
                     logger.debug(`[Deezer Fallback] Found album for "${track.title}": "${result.albumName}"`);
                 }
-            } catch (error: unknown) {
-                logger.debug(`[Deezer Fallback] Rate limit hit for "${track.title}", skipping`);
+            } catch (error: any) {
+                logger.debug(`[Deezer Fallback] Lookup failed for "${track.title}", skipping: ${error.message}`);
             }
         }
 
@@ -560,7 +537,6 @@ class SpotifyService {
                 allItems.push(...items);
                 offset += items.length;
 
-                // Update total if API reports a higher number than initially stated
                 if (response.data?.total && response.data.total > total) {
                     total = response.data.total;
                 }
@@ -650,7 +626,6 @@ class SpotifyService {
             logger.debug(`Spotify: Fetched playlist "${playlist.name}" with ${allItems.length}/${totalTracks} tracks`);
 
             const tracks: SpotifyTrack[] = [];
-            let unknownAlbumCount = 0;
 
             for (const item of allItems) {
                 const track = item.track;
@@ -658,12 +633,7 @@ class SpotifyService {
                     continue;
                 }
 
-                // Get album name, handling null, undefined, and empty strings
                 const albumName = track.album?.name?.trim() || "Unknown Album";
-
-                if (albumName === "Unknown Album") {
-                    unknownAlbumCount++;
-                }
 
                 tracks.push({
                     spotifyId: track.id,
@@ -680,72 +650,7 @@ class SpotifyService {
                 });
             }
 
-            // If we have tracks with Unknown Album, try to fill them in via page scraping
-            if (unknownAlbumCount > 0) {
-                logger.debug(`Spotify: ${unknownAlbumCount} tracks have Unknown Album, attempting page scrape...`);
-                const scrapedAlbums = await this.scrapePlaylistPageForAlbums(playlistId);
-
-                if (scrapedAlbums.size > 0) {
-                    let enrichedCount = 0;
-                    for (const track of tracks) {
-                        if (track.album === "Unknown Album" && scrapedAlbums.has(track.spotifyId)) {
-                            const albumData = scrapedAlbums.get(track.spotifyId)!;
-                            track.album = albumData.album;
-                            track.albumId = albumData.albumId;
-                            enrichedCount++;
-                            logger.debug(`Spotify: Enriched "${track.title}" with album "${albumData.album}"`);
-                        }
-                    }
-                    logger.debug(`Spotify: Enriched ${enrichedCount}/${unknownAlbumCount} tracks with scraped album data`);
-                }
-            }
-
-            // If we STILL have tracks with Unknown Album, try individual track pages
-            // Note: scrapeTrackPagesForAlbums internally limits to 30 tracks
-            const remainingUnknown = tracks.filter(t => t.album === "Unknown Album");
-            if (remainingUnknown.length > 0) {
-                logger.debug(`Spotify: ${remainingUnknown.length} tracks still unknown, trying track page scraping...`);
-                const trackPageAlbums = await this.scrapeTrackPagesForAlbums(
-                    remainingUnknown.map(t => ({ spotifyId: t.spotifyId, title: t.title, artist: t.artist }))
-                );
-
-                if (trackPageAlbums.size > 0) {
-                    let enrichedCount = 0;
-                    for (const track of tracks) {
-                        if (track.album === "Unknown Album" && trackPageAlbums.has(track.spotifyId)) {
-                            const albumData = trackPageAlbums.get(track.spotifyId)!;
-                            track.album = albumData.album;
-                            track.albumId = albumData.albumId;
-                            enrichedCount++;
-                            logger.debug(`Spotify: Enriched "${track.title}" via track page: "${albumData.album}"`);
-                        }
-                    }
-                    logger.debug(`Spotify: Enriched ${enrichedCount} tracks via individual track page scraping`);
-                }
-            }
-
-            // Final fallback: Use Deezer to resolve remaining unknown albums
-            const stillUnknown = tracks.filter(t => t.album === "Unknown Album");
-            if (stillUnknown.length > 0) {
-                logger.debug(`Spotify: ${stillUnknown.length} tracks still unknown, trying Deezer fallback...`);
-                const deezerAlbums = await this.resolveAlbumsViaDeezer(
-                    stillUnknown.map(t => ({ spotifyId: t.spotifyId, title: t.title, artist: t.artist }))
-                );
-
-                if (deezerAlbums.size > 0) {
-                    let enrichedCount = 0;
-                    for (const track of tracks) {
-                        if (track.album === "Unknown Album" && deezerAlbums.has(track.spotifyId)) {
-                            const albumData = deezerAlbums.get(track.spotifyId)!;
-                            track.album = albumData.album;
-                            track.albumId = albumData.albumId;
-                            enrichedCount++;
-                            logger.debug(`Spotify: Enriched "${track.title}" via Deezer: "${albumData.album}"`);
-                        }
-                    }
-                    logger.debug(`Spotify: Enriched ${enrichedCount} tracks via Deezer fallback`);
-                }
-            }
+            await this.fillUnknownAlbums(playlistId, tracks);
 
             logger.debug(`Spotify: Processed ${tracks.length} tracks`);
 
@@ -764,6 +669,38 @@ class SpotifyService {
 
             // Fallback to embed HTML parsing
             return await this.fetchPlaylistViaEmbedHtml(playlistId);
+        }
+    }
+
+    /**
+     * Fills in tracks Spotify gave no album for, from the playlist page, then each
+     * track's page, then Deezer, each tier trying only what the last one missed.
+     */
+    private async fillUnknownAlbums(playlistId: string, tracks: SpotifyTrack[]): Promise<void> {
+        const lookup = (pending: SpotifyTrack[]) =>
+            pending.map(t => ({ spotifyId: t.spotifyId, title: t.title, artist: t.artist }));
+        const tiers: Array<[string, (pending: SpotifyTrack[]) => Promise<Map<string, { album: string; albumId: string }>>]> = [
+            ["playlist page scraping", () => this.scrapePlaylistPageForAlbums(playlistId)],
+            ["track page scraping", pending => this.scrapeTrackPagesForAlbums(lookup(pending))],
+            ["Deezer", pending => this.resolveAlbumsViaDeezer(lookup(pending))],
+        ];
+
+        for (const [label, resolve] of tiers) {
+            const pending = tracks.filter(t => t.album === "Unknown Album");
+            if (pending.length === 0) return;
+
+            logger.debug(`Spotify: ${pending.length} tracks have Unknown Album, trying ${label}...`);
+            const found = await resolve(pending);
+
+            let enriched = 0;
+            for (const track of pending) {
+                const albumData = found.get(track.spotifyId);
+                if (!albumData) continue;
+                track.album = albumData.album;
+                track.albumId = albumData.albumId;
+                enriched++;
+            }
+            logger.debug(`Spotify: Enriched ${enriched}/${pending.length} tracks via ${label}`);
         }
     }
 
@@ -813,7 +750,6 @@ class SpotifyService {
                 // subtitle often contains "Artist1, Artist2, Artist3" but we want only primary
                 let primaryArtist = trackData.artists?.[0]?.name;
                 if (!primaryArtist && trackData.subtitle) {
-                    // Extract first artist from subtitle (before any comma)
                     primaryArtist = trackData.subtitle.split(",")[0].trim();
                 }
                 primaryArtist = primaryArtist || "Unknown Artist";
@@ -844,75 +780,7 @@ class SpotifyService {
                 });
             }
 
-            // Count tracks with Unknown Album
-            const unknownAlbumCount = tracks.filter(t => t.album === "Unknown Album").length;
-
-            // If we have tracks with Unknown Album, try to fill them in via page scraping
-            if (unknownAlbumCount > 0) {
-                logger.debug(`Spotify Embed: ${unknownAlbumCount} tracks have Unknown Album, attempting page scrape...`);
-                const scrapedAlbums = await this.scrapePlaylistPageForAlbums(playlistId);
-
-                if (scrapedAlbums.size > 0) {
-                    let enrichedCount = 0;
-                    for (const track of tracks) {
-                        if (track.album === "Unknown Album" && scrapedAlbums.has(track.spotifyId)) {
-                            const albumData = scrapedAlbums.get(track.spotifyId)!;
-                            track.album = albumData.album;
-                            track.albumId = albumData.albumId;
-                            enrichedCount++;
-                            logger.debug(`Spotify Embed: Enriched "${track.title}" with album "${albumData.album}"`);
-                        }
-                    }
-                    logger.debug(`Spotify Embed: Enriched ${enrichedCount}/${unknownAlbumCount} tracks with scraped album data`);
-                }
-            }
-
-            // If we STILL have tracks with Unknown Album, try individual track pages
-            // Note: scrapeTrackPagesForAlbums internally limits to 30 tracks
-            const remainingUnknown = tracks.filter(t => t.album === "Unknown Album");
-            if (remainingUnknown.length > 0) {
-                logger.debug(`Spotify Embed: ${remainingUnknown.length} tracks still unknown, trying track page scraping...`);
-                const trackPageAlbums = await this.scrapeTrackPagesForAlbums(
-                    remainingUnknown.map(t => ({ spotifyId: t.spotifyId, title: t.title, artist: t.artist }))
-                );
-
-                if (trackPageAlbums.size > 0) {
-                    let enrichedCount = 0;
-                    for (const track of tracks) {
-                        if (track.album === "Unknown Album" && trackPageAlbums.has(track.spotifyId)) {
-                            const albumData = trackPageAlbums.get(track.spotifyId)!;
-                            track.album = albumData.album;
-                            track.albumId = albumData.albumId;
-                            enrichedCount++;
-                            logger.debug(`Spotify Embed: Enriched "${track.title}" via track page: "${albumData.album}"`);
-                        }
-                    }
-                    logger.debug(`Spotify Embed: Enriched ${enrichedCount} tracks via individual track page scraping`);
-                }
-            }
-
-            // Final fallback: Use Deezer to resolve remaining unknown albums
-            const stillUnknown = tracks.filter(t => t.album === "Unknown Album");
-            if (stillUnknown.length > 0) {
-                logger.debug(`Spotify Embed: ${stillUnknown.length} tracks still unknown, trying Deezer fallback...`);
-                const deezerAlbums = await this.resolveAlbumsViaDeezer(
-                    stillUnknown.map(t => ({ spotifyId: t.spotifyId, title: t.title, artist: t.artist }))
-                );
-
-                if (deezerAlbums.size > 0) {
-                    let enrichedCount = 0;
-                    for (const track of tracks) {
-                        if (track.album === "Unknown Album" && deezerAlbums.has(track.spotifyId)) {
-                            const albumData = deezerAlbums.get(track.spotifyId)!;
-                            track.album = albumData.album;
-                            track.albumId = albumData.albumId;
-                            enrichedCount++;
-                            logger.debug(`Spotify Embed: Enriched "${track.title}" via Deezer: "${albumData.album}"`);
-                        }
-                    }
-                    logger.debug(`Spotify Embed: Enriched ${enrichedCount} tracks via Deezer fallback`);
-                }
-            }
+            await this.fillUnknownAlbums(playlistId, tracks);
 
             return {
                 id: playlistId,
@@ -937,7 +805,6 @@ class SpotifyService {
         urlOrId: string,
         onProgress?: (fetched: number, total: number) => void,
     ): Promise<SpotifyPlaylist | null> {
-        // Extract ID from URL if needed
         let playlistId = urlOrId;
         const parsed = this.parseUrl(urlOrId);
         if (parsed) {
@@ -977,243 +844,6 @@ class SpotifyService {
             return resp.data?.name || null;
         } catch {
             return null;
-        }
-    }
-
-    /**
-     * Get featured/popular playlists from Spotify
-     * Uses multiple fallback approaches
-     */
-    async getFeaturedPlaylists(limit: number = 20): Promise<SpotifyPlaylistPreview[]> {
-        const token = await this.getAnonymousToken();
-        if (!token) {
-            logger.error("Spotify: Cannot fetch featured playlists without token");
-            return [];
-        }
-
-        // Try official API first
-        try {
-            logger.debug("Spotify: Trying featured playlists via official API...");
-
-            const response = await axios.get(
-                "https://api.spotify.com/v1/browse/featured-playlists",
-                {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                    },
-                    params: {
-                        limit,
-                        country: "US",
-                    },
-                    timeout: 10000,
-                }
-            );
-
-            const playlists = response.data?.playlists?.items || [];
-            if (playlists.length > 0) {
-                logger.debug(`Spotify: Got ${playlists.length} featured playlists via official API`);
-                return playlists.map((playlist: any) => ({
-                    id: playlist.id,
-                    name: playlist.name,
-                    description: playlist.description || null,
-                    owner: playlist.owner?.display_name || "Spotify",
-                    imageUrl: playlist.images?.[0]?.url || null,
-                    trackCount: playlist.tracks?.total || 0,
-                }));
-            }
-        } catch (error: any) {
-            logger.debug("Spotify: Featured playlists API failed, trying search fallback...", error.response?.status || error.message);
-        }
-
-        // Fallback: Search for popular playlists
-        try {
-            logger.debug("Spotify: Trying search fallback for featured playlists...");
-            
-            // Search for popular/curated playlists
-            const searches = ["Today's Top Hits", "Hot Hits", "Viral Hits", "All Out", "Rock Classics", "Chill Hits"];
-            const allPlaylists: SpotifyPlaylistPreview[] = [];
-            
-            for (const query of searches.slice(0, 3)) {
-                const results = await this.searchPlaylists(query, 5);
-                // Filter to only include Spotify-owned playlists
-                const spotifyOwned = results.filter(p => 
-                    p.owner.toLowerCase() === "spotify" || 
-                    p.owner.toLowerCase().includes("spotify")
-                );
-                allPlaylists.push(...spotifyOwned);
-                
-                if (allPlaylists.length >= limit) break;
-            }
-            
-            logger.debug(`Spotify: Got ${allPlaylists.length} playlists via search fallback`);
-            return allPlaylists.slice(0, limit);
-        } catch (searchError: any) {
-            logger.error("Spotify: Search fallback also failed:", searchError.message);
-            return [];
-        }
-    }
-
-    /**
-     * Get playlists by category
-     */
-    async getCategoryPlaylists(categoryId: string, limit: number = 20): Promise<SpotifyPlaylistPreview[]> {
-        const token = await this.getAnonymousToken();
-        if (!token) {
-            return [];
-        }
-
-        try {
-            logger.debug(`Spotify: Fetching playlists for category ${categoryId}...`);
-
-            const response = await axios.get(
-                `https://api.spotify.com/v1/browse/categories/${categoryId}/playlists`,
-                {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                    },
-                    params: {
-                        limit,
-                        country: "US",
-                    },
-                    timeout: 10000,
-                }
-            );
-
-            const playlists = response.data?.playlists?.items || [];
-            return playlists.map((playlist: any) => ({
-                id: playlist.id,
-                name: playlist.name,
-                description: playlist.description || null,
-                owner: playlist.owner?.display_name || "Spotify",
-                imageUrl: playlist.images?.[0]?.url || null,
-                trackCount: playlist.tracks?.total || 0,
-            }));
-        } catch (error: any) {
-            logger.error(`Spotify category playlists error for ${categoryId}:`, error.message);
-            return [];
-        }
-    }
-
-    /**
-     * Search for playlists on Spotify
-     */
-    async searchPlaylists(query: string, limit: number = 20): Promise<SpotifyPlaylistPreview[]> {
-        const token = await this.getAnonymousToken();
-        if (!token) {
-            logger.error("Spotify: Cannot search without token");
-            return [];
-        }
-
-        try {
-            logger.debug(`Spotify: Searching playlists for "${query}"...`);
-
-            const response = await axios.get(
-                "https://api.spotify.com/v1/search",
-                {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                        "Accept": "application/json",
-                    },
-                    params: {
-                        q: query,
-                        type: "playlist",
-                        limit,
-                        market: "US",
-                    },
-                    timeout: 15000,
-                }
-            );
-
-            const playlists = response.data?.playlists?.items || [];
-            logger.debug(`Spotify: Found ${playlists.length} playlists for "${query}"`);
-
-            return playlists
-                .filter((playlist: any) => playlist && playlist.id) // Filter out null entries
-                .map((playlist: any) => ({
-                    id: playlist.id,
-                    name: playlist.name,
-                    description: playlist.description || null,
-                    owner: playlist.owner?.display_name || "Unknown",
-                    imageUrl: playlist.images?.[0]?.url || null,
-                    trackCount: playlist.tracks?.total || 0,
-                }));
-        } catch (error: any) {
-            logger.error("Spotify search playlists error:", error.response?.status, error.response?.data || error.message);
-            // If unauthorized, try refreshing token and retry once
-            if (error.response?.status === 401) {
-                logger.debug("Spotify: Token expired, refreshing...");
-                this.anonymousToken = null;
-                this.tokenExpiry = 0;
-                const newToken = await this.getAnonymousToken();
-                if (newToken) {
-                    try {
-                        const retryResponse = await axios.get(
-                            "https://api.spotify.com/v1/search",
-                            {
-                                headers: {
-                                    Authorization: `Bearer ${newToken}`,
-                                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                                },
-                                params: { q: query, type: "playlist", limit, market: "US" },
-                                timeout: 15000,
-                            }
-                        );
-                        const retryPlaylists = retryResponse.data?.playlists?.items || [];
-                        return retryPlaylists
-                            .filter((p: any) => p && p.id)
-                            .map((p: any) => ({
-                                id: p.id,
-                                name: p.name,
-                                description: p.description || null,
-                                owner: p.owner?.display_name || "Unknown",
-                                imageUrl: p.images?.[0]?.url || null,
-                                trackCount: p.tracks?.total || 0,
-                            }));
-                    } catch (retryError) {
-                        logger.error("Spotify: Retry also failed");
-                    }
-                }
-            }
-            return [];
-        }
-    }
-
-    /**
-     * Get available browse categories
-     */
-    async getCategories(limit: number = 20): Promise<Array<{ id: string; name: string; imageUrl: string | null }>> {
-        const token = await this.getAnonymousToken();
-        if (!token) {
-            return [];
-        }
-
-        try {
-            const response = await axios.get(
-                "https://api.spotify.com/v1/browse/categories",
-                {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                    },
-                    params: {
-                        limit,
-                        country: "US",
-                    },
-                    timeout: 10000,
-                }
-            );
-
-            return (response.data?.categories?.items || []).map((cat: any) => ({
-                id: cat.id,
-                name: cat.name,
-                imageUrl: cat.icons?.[0]?.url || null,
-            }));
-        } catch (error: any) {
-            logger.error("Spotify categories error:", error.message);
-            return [];
         }
     }
 

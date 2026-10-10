@@ -58,9 +58,7 @@ class WebhookEventStore {
         return (await prisma.webhookEvent.count({ where: { eventId } })) > 0;
     }
 
-    /**
-     * Mark an event as processed successfully
-     */
+    /** Marks an event processed. */
     async markProcessed(
         eventId: string,
         correlationId?: string
@@ -77,9 +75,7 @@ class WebhookEventStore {
         logger.debug(`[WEBHOOK-STORE] Marked processed: ${eventId}`);
     }
 
-    /**
-     * Mark an event as failed (stores error and increments retry count)
-     */
+    /** Marks an event failed, storing the error and counting a retry. */
     async markFailed(
         eventId: string,
         error: string
@@ -121,33 +117,6 @@ class WebhookEventStore {
         });
 
         return events as StoredWebhookEvent[];
-    }
-
-    /**
-     * Get events by correlation ID (find all events for a download job)
-     */
-    async getEventsByCorrelationId(
-        correlationId: string
-    ): Promise<StoredWebhookEvent[]> {
-        const events = await prisma.webhookEvent.findMany({
-            where: { correlationId },
-            orderBy: {
-                createdAt: 'asc',
-            },
-        });
-
-        return events as StoredWebhookEvent[];
-    }
-
-    /**
-     * Get event by Lidarr-provided eventId (for deduplication checking)
-     */
-    async getEventByEventId(eventId: string): Promise<StoredWebhookEvent | null> {
-        const event = await prisma.webhookEvent.findUnique({
-            where: { eventId },
-        });
-
-        return event as StoredWebhookEvent | null;
     }
 
     /**

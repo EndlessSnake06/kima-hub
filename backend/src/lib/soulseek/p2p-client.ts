@@ -89,17 +89,7 @@ export class SlskClient extends (EventEmitter as new () => TypedEventEmitter<Sls
 
             // Reuse the inbound socket -- the peer already connected to us,
             // no need to open a new outbound connection
-            const peer = new SlskPeer(socket, msg.username)
-
-            peer.once('close', () => {
-              peer.destroy()
-              this.peers.delete(msg.username)
-            })
-
-            peer.on('message', (msg) => this.peerMessages.emit('message', msg, peer))
-            peer.on('error', (error) => this.emit('peer-error', error, peer))
-
-            this.peers.set(msg.username, peer)
+            this.registerPeer(new SlskPeer(socket, msg.username), msg.username)
 
             break
           }
@@ -113,10 +103,21 @@ export class SlskClient extends (EventEmitter as new () => TypedEventEmitter<Sls
 
     this.wirePeerMessageHandlers()
 
-    // Start download cleanup interval
     this.downloadCleanupInterval = setInterval(() => {
       this.cleanupStuckDownloads()
-    }, 60000) // Check every minute
+    }, 60000)
+  }
+
+  private registerPeer(peer: SlskPeer, username: string) {
+    peer.once('close', () => {
+      peer.destroy()
+      this.peers.delete(username)
+    })
+
+    peer.on('message', (msg) => this.peerMessages.emit('message', msg, peer))
+    peer.on('error', (error) => this.emit('peer-error', error, peer))
+
+    this.peers.set(username, peer)
   }
 
   private wireServerHandlers() {
@@ -165,15 +166,7 @@ export class SlskClient extends (EventEmitter as new () => TypedEventEmitter<Sls
                   })
                 })
 
-                peer.once('close', () => {
-                  peer.destroy()
-                  this.peers.delete(msg.username)
-                })
-
-                peer.on('message', (msg) => this.peerMessages.emit('message', msg, peer))
-                peer.on('error', (error) => this.emit('peer-error', error, peer))
-
-                this.peers.set(msg.username, peer)
+                this.registerPeer(peer, msg.username)
 
                 break
               }
@@ -212,6 +205,29 @@ export class SlskClient extends (EventEmitter as new () => TypedEventEmitter<Sls
                   conn.write(toPeerMessage.pierceFirewall({ token: msg.token }).getBuffer())
                 })
 
+                const receiveFileData = (target: DownloadWithToken, chunk: Buffer) => {
+                  target.receivedBytes += BigInt(chunk.length)
+                  target.stream.write(chunk)
+                  target.events.emit('data', chunk)
+                  target.events.emit('progress', {
+                    receivedBytes: target.receivedBytes,
+                    totalBytes: target.totalBytes,
+                    progress:
+                      target.totalBytes > 0n
+                        ? Number((target.receivedBytes * 100n) / target.totalBytes) / 100
+                        : 0,
+                  })
+
+                  if (target.receivedBytes >= target.totalBytes) {
+                    conn.end()
+                    target.stream.end()
+                    target.status = 'complete'
+                    target.events.emit('complete', target.receivedBytes)
+                    target.events.emit('status', 'complete', makeDownloadStatusData(target))
+                    this.downloads = this.downloads.filter((d) => d !== target)
+                  }
+                }
+
                 conn.on('data', (data) => {
                   if (download === undefined) {
                     const token = data.toString('hex', 0, 4)
@@ -228,65 +244,14 @@ export class SlskClient extends (EventEmitter as new () => TypedEventEmitter<Sls
                     download.status = 'downloading'
                     download.events.emit('status', 'downloading', makeDownloadStatusData(download))
 
-                    // send file offset message
                     const fileOffsetBuffer = Buffer.alloc(8)
                     fileOffsetBuffer.writeBigUInt64LE(download.receivedBytes, 0)
                     conn.write(fileOffsetBuffer)
 
-                    // Process any remaining file data in this chunk beyond the 4-byte token
-                    if (data.length > 4) {
-                      const fileData = data.subarray(4)
-                      download.receivedBytes += BigInt(fileData.length)
-                      download.stream.write(fileData)
-                      download.events.emit('data', fileData)
-                      download.events.emit('progress', {
-                        receivedBytes: download.receivedBytes,
-                        totalBytes: download.totalBytes,
-                        progress:
-                          download.totalBytes > 0n
-                            ? Number((download.receivedBytes * 100n) / download.totalBytes) / 100
-                            : 0,
-                      })
-
-                      const isComplete = download.receivedBytes >= download.totalBytes
-                      if (isComplete) {
-                        conn.end()
-                        download.stream.end()
-                        download.status = 'complete'
-                        download.events.emit('complete', download.receivedBytes)
-                        download.events.emit(
-                          'status',
-                          'complete',
-                          makeDownloadStatusData(download)
-                        )
-                        this.downloads = this.downloads.filter((d) => d !== download)
-                      }
-                    }
+                    // The rest of this chunk after the 4-byte token is file data
+                    if (data.length > 4) receiveFileData(download, data.subarray(4))
                   } else {
-                    download.receivedBytes += BigInt(data.length)
-
-                    download.stream.write(data)
-                    download.events.emit('data', data)
-                    download.events.emit('progress', {
-                      receivedBytes: download.receivedBytes,
-                      totalBytes: download.totalBytes,
-                      progress:
-                        download.totalBytes > 0n
-                          ? Number((download.receivedBytes * 100n) / download.totalBytes) / 100
-                          : 0,
-                    })
-
-                    const isComplete = download.receivedBytes >= download.totalBytes
-                    if (isComplete) {
-                      conn.end()
-                      download.stream.end()
-                      download.status = 'complete'
-                      download.events.emit('complete', download.receivedBytes)
-                      download.events.emit('status', 'complete', makeDownloadStatusData(download))
-
-                      // remove from this.downloads
-                      this.downloads = this.downloads.filter((d) => d !== download)
-                    }
+                    receiveFileData(download, data)
                   }
                 })
 
@@ -505,7 +470,7 @@ export class SlskClient extends (EventEmitter as new () => TypedEventEmitter<Sls
       events: (() => {
         const e = new EventEmitter() as SlskDownloadEventEmitter;
         // Default error listener prevents an uncaughtException if the service-layer
-        // listener has not attached yet when an asynchronous error fires (see #192).
+        // listener has not attached yet when an asynchronous error fires.
         e.on('error', (err: any) => {
           logger.warn('[SOULSEEK] Download error (default listener):', err?.message ?? err);
         });
@@ -539,7 +504,7 @@ export class SlskClient extends (EventEmitter as new () => TypedEventEmitter<Sls
     this.downloads = this.downloads.filter((download) => {
       const downloadWithTime = download as RequestedDownload & { startedAt?: number }
       if (!downloadWithTime.startedAt) {
-        return true // Keep downloads without timestamp (shouldn't happen)
+        return true
       }
 
       const age = now - downloadWithTime.startedAt
@@ -549,9 +514,9 @@ export class SlskClient extends (EventEmitter as new () => TypedEventEmitter<Sls
         } catch {
           // Ignore cleanup errors
         }
-        return false // Remove from array
+        return false
       }
-      return true // Keep in array
+      return true
     })
 
     const cleaned = before - this.downloads.length
@@ -652,11 +617,11 @@ export class SlskClient extends (EventEmitter as new () => TypedEventEmitter<Sls
     let peer: SlskPeer
     try {
       peer = await Promise.any([peerA, peerB])
-    } catch (error) {
+    } catch {
       throw new Error(`Could not connect to ${username}`)
     }
 
-    // Destroy the losing peer to prevent socket leak
+    // The peer that lost the race is closed so its socket does not leak.
     const cleanupLoser = async (loserPromise: Promise<SlskPeer>) => {
       try {
         const loser = await loserPromise

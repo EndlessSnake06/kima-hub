@@ -6,6 +6,12 @@
 import axios, { AxiosInstance, InternalAxiosRequestConfig } from "axios";
 import { lidarrApiCallsTotal, lidarrApiDuration } from "../utils/metrics";
 
+export function isLidarrConfigured<
+    T extends { lidarrEnabled?: boolean | null; lidarrUrl?: string | null; lidarrApiKey?: string | null }
+>(settings: T | null | undefined): settings is T & { lidarrUrl: string; lidarrApiKey: string } {
+    return !!(settings?.lidarrEnabled && settings.lidarrUrl && settings.lidarrApiKey);
+}
+
 export function createLidarrClient(baseURL: string, apiKey: string, timeout = 30_000): AxiosInstance {
     const client = axios.create({
         baseURL: baseURL.replace(/\/+$/, ""),

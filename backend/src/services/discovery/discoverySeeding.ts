@@ -31,17 +31,12 @@ export class DiscoverySeeding {
     private ownedIndexCache: (OwnedAlbumIndex & { builtAt: number }) | null = null;
     private ownedIndexLoad: Promise<OwnedAlbumIndex> | null = null;
 
-    /**
-     * Gets seed artists based on user's listening history.
-     * Falls back to library artists when insufficient play history.
-     * Uses recency weighting: plays in last 2 weeks count 2x more.
-     */
+    /** Seed artists from the user's last four weeks of plays, a play in the last two weeks counting double; the library's most engaged artists when there are too few plays. */
     async getSeedArtists(userId: string, seedCount?: number): Promise<SeedArtist[]> {
         const limit = seedCount ?? this.DEFAULT_SEED_COUNT;
         const twoWeeksAgo = subWeeks(new Date(), 2);
         const fourWeeksAgo = subWeeks(new Date(), 4);
 
-        // Get plays from last 4 weeks with recency weighting
         const recentPlays = await prisma.play.groupBy({
             by: ['trackId'],
             where: {
@@ -53,7 +48,6 @@ export class DiscoverySeeding {
             _max: { playedAt: true },
         });
 
-        // Weight: plays in last 2 weeks count 2x
         const weightedPlays = recentPlays
             .map(play => {
                 const isRecent = play._max.playedAt && play._max.playedAt >= twoWeeksAgo;
@@ -98,14 +92,10 @@ export class DiscoverySeeding {
         return artists;
     }
 
-    /**
-     * Fallback: Get artists with most engagement (albums + tracks) when play history is insufficient.
-     * More tracks = more listened to = better seed.
-     */
+    /** The artists with the most albums and tracks, for users with too little play history. */
     private async getFallbackSeedArtists(limit: number): Promise<SeedArtist[]> {
         logger.debug('[DiscoverySeeding] Insufficient play history, falling back to library');
 
-        // Get artists with their album and track counts
         const artistsWithCounts = await prisma.artist.findMany({
             where: {
                 albums: {
@@ -124,8 +114,7 @@ export class DiscoverySeeding {
             },
         });
 
-        // Calculate composite score: album count + (track count / 10)
-        // More tracks = more listened to
+        // Score: album count + track count / 10
         const scored = artistsWithCounts
             .map(artist => {
                 const albumCount = artist.albums.length;
@@ -151,28 +140,6 @@ export class DiscoverySeeding {
         }));
     }
 
-    /**
-     * Checks if an artist is already in the user's library (has albums).
-     * Discovery should find NEW artists, not more albums from artists they already own.
-     */
-    async isArtistInLibrary(artistMbid: string): Promise<boolean> {
-        if (!this.isValidMbid(artistMbid)) {
-            return false;
-        }
-
-        const artist = await prisma.artist.findFirst({
-            where: { mbid: artistMbid },
-            include: { albums: { take: 1 } },
-        });
-
-        if (artist && artist.albums.length > 0) {
-            logger.debug(`[DiscoverySeeding] Artist ${artistMbid} is in library`);
-            return true;
-        }
-
-        return false;
-    }
-
     /** The owned-album snapshot, cached for OWNED_INDEX_TTL_MS. */
     async getOwnedAlbumIndex(): Promise<OwnedAlbumIndex> {
         const now = Date.now();
@@ -180,8 +147,7 @@ export class DiscoverySeeding {
             return this.ownedIndexCache;
         }
         // Single-flight: concurrent candidate checks on a cold/expired cache share
-        // one DB load instead of each firing the full-table album/ownedAlbum scan
-        // (35b review follow-up).
+        // one DB load instead of each firing the full-table album/ownedAlbum scan.
         if (!this.ownedIndexLoad) {
             this.ownedIndexLoad = this.buildOwnedAlbumIndex().finally(() => {
                 this.ownedIndexLoad = null;
@@ -254,15 +220,12 @@ export class DiscoverySeeding {
         const inLidarr = await lidarrService.isAlbumAvailable(albumMbid);
         if (inLidarr) return true;
 
-        // Check exclusion window (recently discovered albums)
         const excluded = await this.isAlbumExcluded(albumMbid, userId);
         if (excluded) return true;
 
-        // Check if recently unavailable (failed downloads)
         const unavailable = await this.isAlbumUnavailable(albumMbid, userId);
         if (unavailable) return true;
 
-        // OPTIMIZED fuzzy matching - only if names provided
         if (artistName && albumTitle) {
             const normArtist = normalizeForMatching(artistName);
             const artistFirstWord = normArtist.split(' ')[0];
@@ -295,11 +258,8 @@ export class DiscoverySeeding {
         return false;
     }
 
-    /**
-     * Check if album was recently recommended (exclusion window).
-     * Prevents re-recommending albums from last 12 weeks.
-     */
-    async isAlbumExcluded(albumMbid: string, userId: string): Promise<boolean> {
+    /** Whether the album was recommended to this user in the last 12 weeks. */
+    private async isAlbumExcluded(albumMbid: string, userId: string): Promise<boolean> {
         const EXCLUSION_WEEKS = 12;
         const exclusionCutoff = subWeeks(new Date(), EXCLUSION_WEEKS);
 
@@ -319,11 +279,8 @@ export class DiscoverySeeding {
         return false;
     }
 
-    /**
-     * Check if album failed to download in recent weeks.
-     * Prevents wasting slots on albums not available on Soulseek.
-     */
-    async isAlbumUnavailable(albumMbid: string, userId: string): Promise<boolean> {
+    /** Whether the album failed to download for this user in the last 4 weeks. */
+    private async isAlbumUnavailable(albumMbid: string, userId: string): Promise<boolean> {
         const UNAVAILABLE_RETRY_WEEKS = 4;
         const retryCutoff = subWeeks(new Date(), UNAVAILABLE_RETRY_WEEKS);
 
@@ -343,9 +300,7 @@ export class DiscoverySeeding {
         return false;
     }
 
-    /**
-     * Validates that an MBID is not null/undefined and not a temporary ID.
-     */
+    /** An MBID that is present and not a temporary `temp-` id. */
     private isValidMbid(mbid: string | null | undefined): mbid is string {
         return !!mbid && !mbid.startsWith('temp-');
     }

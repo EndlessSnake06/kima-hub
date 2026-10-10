@@ -12,6 +12,7 @@ import {
 } from "../utils/playlistLogger";
 import { notificationService } from "./notificationService";
 import { getSystemSettings } from "../utils/systemSettings";
+import { isLidarrConfigured } from "./lidarrClient";
 import { prisma, Prisma } from "../utils/db";
 import { LIBRARY_ALBUM_WHERE, LIBRARY_LOCATION } from "./libraryFilters";
 import { redisClient } from "../utils/redis";
@@ -40,7 +41,6 @@ import {
   normalizeTrackTitle,
 } from "../utils/normalization";
 
-// Store loggers for each job
 const jobLoggers = new Map<string, ReturnType<typeof createPlaylistLogger>>();
 
 /**
@@ -130,11 +130,9 @@ interface ImportJob {
   }>;
 }
 
-// Redis key pattern for import jobs
 const IMPORT_JOB_KEY = (id: string) => `import:job:${id}`;
 const IMPORT_JOB_TTL = 24 * 60 * 60; // 24 hours
 
-// Redis key pattern for preview jobs
 const PREVIEW_JOB_KEY = (id: string) => `preview:job:${id}`;
 const PREVIEW_JOB_TTL = 2 * 60 * 60; // 2 hours
 
@@ -162,7 +160,6 @@ function extractPlaylistHint(url: string): string {
  * Save import job to both database and Redis cache for cross-process sharing
  */
 async function saveImportJob(job: ImportJob): Promise<void> {
-  // Save to database for durability
   await prisma.spotifyImportJob.upsert({
     where: { id: job.id },
     create: {
@@ -197,7 +194,6 @@ async function saveImportJob(job: ImportJob): Promise<void> {
     },
   });
 
-  // Save to Redis for cross-process sharing
   try {
     await redisClient.setex(
       IMPORT_JOB_KEY(job.id),
@@ -205,11 +201,10 @@ async function saveImportJob(job: ImportJob): Promise<void> {
       JSON.stringify(job),
     );
   } catch (error) {
-    logger?.warn(`⚠️  Failed to cache import job ${job.id} in Redis:`, error);
+    logger.warn(`Failed to cache import job ${job.id} in Redis:`, error);
     // Continue - Redis is optional, DB is source of truth
   }
 
-  // Emit SSE event for real-time frontend updates
   eventBus.emit({
     type: "import:progress",
     userId: job.userId,
@@ -229,34 +224,25 @@ async function saveImportJob(job: ImportJob): Promise<void> {
   });
 }
 
-/**
- * Get import job from Redis cache or database
- * Redis provides cross-process sharing between API and worker processes
- */
-async function getImportJob(importJobId: string): Promise<ImportJob | null> {
-  // Try Redis cache first (shared across all processes)
-  try {
-    const cached = await redisClient.get(IMPORT_JOB_KEY(importJobId));
-    if (cached) {
-      return JSON.parse(cached);
-    }
-  } catch (error) {
-    logger?.warn(
-      `⚠️  Failed to read import job ${importJobId} from Redis:`,
-      error,
-    );
-    // Fall through to DB
-  }
+function toMatchCandidate(t: {
+  id: string;
+  title: string;
+  albumId: string;
+  album: { title: string; artist: { name: string } };
+}): MatchCandidate {
+  return {
+    id: t.id,
+    title: t.title,
+    albumId: t.albumId,
+    albumTitle: t.album.title,
+    artistName: t.album.artist.name,
+  };
+}
 
-  // Load from database as fallback
-  const dbJob = await prisma.spotifyImportJob.findUnique({
-    where: { id: importJobId },
-  });
-
-  if (!dbJob) return null;
-
-  // Convert database job to ImportJob format
-  const job: ImportJob = {
+function toImportJob(
+  dbJob: Prisma.SpotifyImportJobGetPayload<object>,
+): ImportJob {
+  return {
     id: dbJob.id,
     userId: dbJob.userId,
     spotifyPlaylistId: dbJob.spotifyPlaylistId,
@@ -275,8 +261,33 @@ async function getImportJob(importJobId: string): Promise<ImportJob | null> {
     updatedAt: dbJob.updatedAt,
     pendingTracks: (dbJob.pendingTracks as any) || [],
   };
+}
 
-  // Populate Redis for next time
+/**
+ * Get import job from Redis cache or database
+ * Redis provides cross-process sharing between API and worker processes
+ */
+async function getImportJob(importJobId: string): Promise<ImportJob | null> {
+  try {
+    const cached = await redisClient.get(IMPORT_JOB_KEY(importJobId));
+    if (cached) {
+      return JSON.parse(cached);
+    }
+  } catch (error) {
+    logger.warn(
+      `Failed to read import job ${importJobId} from Redis:`,
+      error,
+    );
+  }
+
+  const dbJob = await prisma.spotifyImportJob.findUnique({
+    where: { id: importJobId },
+  });
+
+  if (!dbJob) return null;
+
+  const job = toImportJob(dbJob);
+
   try {
     await redisClient.setex(
       IMPORT_JOB_KEY(importJobId),
@@ -284,8 +295,8 @@ async function getImportJob(importJobId: string): Promise<ImportJob | null> {
       JSON.stringify(job),
     );
   } catch (error) {
-    logger?.warn(
-      `⚠️  Failed to cache import job ${importJobId} in Redis:`,
+    logger.warn(
+      `Failed to cache import job ${importJobId} in Redis:`,
       error,
     );
     // Continue - Redis is optional
@@ -333,20 +344,6 @@ class SpotifyImportService {
         if (!candidates.has(c.id)) candidates.set(c.id, c);
       }
     };
-    type TrackRow = {
-      id: string;
-      title: string;
-      albumId: string;
-      isrc: string | null;
-      album: { title: string; artist: { name: string } };
-    };
-    const toCandidate = (t: TrackRow): MatchCandidate => ({
-      id: t.id,
-      title: t.title,
-      albumId: t.albumId,
-      albumTitle: t.album.title,
-      artistName: t.album.artist.name,
-    });
     const withAlbum = {
       include: { album: { include: { artist: true } } },
     } as const;
@@ -359,7 +356,7 @@ class SpotifyImportService {
         },
         ...withAlbum,
       });
-      add(rows.map(toCandidate));
+      add(rows.map(toMatchCandidate));
     }
 
     const primaryArtist =
@@ -380,12 +377,11 @@ class SpotifyImportService {
       },
       ...withAlbum,
     });
-    add(artistRows.map(toCandidate));
+    add(artistRows.map(toMatchCandidate));
 
-    // Fuzzy candidate sweeps: artists whose normalizedName merely CONTAINS
-    // the first word (covers "Artist A feat. B" stored under a compound
-    // name) — kept from the original ladder, then narrowed to exact-artist
-    // candidates by the matcher itself.
+    // Fuzzy sweeps: artists whose normalizedName contains the first word (covers
+    // "Artist A feat. B" stored under a compound name); the matcher narrows them
+    // to exact-artist candidates.
     if (candidates.size === 0) {
       const firstWord = normalizedPrimaryArtist.split(" ")[0];
       if (firstWord.length >= 3) {
@@ -401,7 +397,7 @@ class SpotifyImportService {
               ...withAlbum,
               take: 50,
             })
-          ).map(toCandidate),
+          ).map(toMatchCandidate),
         );
       }
       if (candidates.size === 0) {
@@ -424,7 +420,7 @@ class SpotifyImportService {
               ...withAlbum,
               take: 50,
             })
-          ).map(toCandidate),
+          ).map(toMatchCandidate),
         );
       }
       if (candidates.size === 0 && primaryArtist !== spotifyTrack.artist) {
@@ -444,7 +440,7 @@ class SpotifyImportService {
               ...withAlbum,
               take: 50,
             })
-          ).map(toCandidate),
+          ).map(toMatchCandidate),
         );
       }
     }
@@ -488,7 +484,7 @@ class SpotifyImportService {
   ): Promise<{ artistMbid: string | null; albumMbid: string | null }> {
     const artist = await resolveArtistMbid(artistName, [albumName]);
     if (artist.kind !== "answered") {
-      logger?.warn(
+      logger.warn(
         `MB artist for "${artistName}" / "${albumName}": ${
           artist.kind === "absent" ? "no verified match" : failureCause(artist)
         }`,
@@ -526,18 +522,16 @@ class SpotifyImportService {
       return { resolved: 0, failed: 0, cached: new Map() };
     }
 
-    // A paused source is not hammered: while MusicBrainz rests, these
-    // tracks simply stay unknown. That is NOT counted as failure — the
-    // question can be re-asked with the same attempt budget once the
-    // pause lifts (a rate limit is the source's weather, not bad work).
+    // While MusicBrainz is rate limited these tracks stay unknown without counting
+    // as failed, so the same attempt budget applies once the pause lifts.
     if (await sourcePauseController.isPaused("musicbrainz")) {
-      logger?.warn(
+      logger.warn(
         `${logPrefix} MusicBrainz paused (rate limited); leaving ${unknownAlbumTracks.length} Unknown-Album tracks unresolved this run`,
       );
       return { resolved: 0, failed: 0, cached: new Map() };
     }
 
-    logger?.info(
+    logger.info(
       `${logPrefix} Resolving ${unknownAlbumTracks.length} tracks with Unknown Album via MusicBrainz...`,
     );
 
@@ -565,7 +559,7 @@ class SpotifyImportService {
           track.album = cached.albumName;
           track.albumId = `mbid:${cached.albumMbid}`;
           resolved++;
-          logger?.debug(
+          logger.debug(
             `${logPrefix} [Cache Hit] "${track.title}" -> "${cached.albumName}"`,
           );
         } else {
@@ -582,7 +576,7 @@ class SpotifyImportService {
         const cacheKey = `${track.artist.toLowerCase()}|||${track.title.toLowerCase()}`;
         const normalizedTitle = stripTrackSuffix(track.title);
 
-        logger?.debug(
+        logger.debug(
           `${logPrefix} Looking up: "${track.title}" by ${track.artist}...`,
         );
 
@@ -607,12 +601,12 @@ class SpotifyImportService {
         // count this track as failed — it stays unresolved instead of
         // burning the retry ladder against a refusing API.
         if (recordingInfo.kind === "rateLimited") {
-          logger?.warn(
+          logger.warn(
             `${logPrefix} MusicBrainz rate-limited — "${track.title}" stays unresolved`,
           );
           return { track, cacheKey, result: null, status: "parked" as const };
         }
-        logger?.error(
+        logger.error(
           `${logPrefix} Error resolving "${track.title}": ${failureCause(recordingInfo)}`,
         );
         return { track, cacheKey, result: null, status: "failed" as const };
@@ -627,25 +621,25 @@ class SpotifyImportService {
         resolutionCache.set(cacheKey, result);
         resultsCache.set(track.spotifyId, result);
         resolved++;
-        logger?.info(
+        logger.info(
           `${logPrefix} Resolved: "${track.title}" -> "${result.albumName}"`,
         );
       } else if (status === "parked") {
         // Rate-limited: do NOT cache the miss (the question stays open
         // for the next run) and do NOT count it as failed.
-        logger?.debug(
+        logger.debug(
           `${logPrefix} Parked (source paused): "${track.title}" by ${track.artist}`,
         );
       } else {
         resolutionCache.set(cacheKey, null);
         failed++;
-        logger?.debug(
+        logger.debug(
           `${logPrefix} Could not resolve: "${track.title}" by ${track.artist}`,
         );
       }
     }
 
-    logger?.info(
+    logger.info(
       `${logPrefix} MusicBrainz resolution complete: ${resolved} resolved, ${failed} still unknown`,
     );
 
@@ -671,7 +665,7 @@ class SpotifyImportService {
 
     // Check if Lidarr is configured -- MusicBrainz resolution is only needed for Lidarr
     const previewSettings = await getSystemSettings();
-    const lidarrEnabled = !!(previewSettings?.lidarrEnabled && previewSettings?.lidarrUrl && previewSettings?.lidarrApiKey);
+    const lidarrEnabled = isLidarrConfigured(previewSettings);
 
     // PHASE 0: Early MusicBrainz resolution for "Unknown Album" tracks
     // This MUST happen BEFORE grouping so tracks get grouped by actual albums
@@ -681,38 +675,35 @@ class SpotifyImportService {
     ).length;
 
     if (unknownCount > 0 && lidarrEnabled) {
-      logger?.info(
+      logger.info(
         `${logPrefix} Found ${unknownCount} tracks with Unknown Album, attempting MusicBrainz resolution...`,
       );
       try {
         await this.enrichUnknownAlbumsViaMusicBrainz(tracks, logPrefix);
       } catch (error: unknown) {
         const errorMsg = error instanceof Error ? error.message : String(error);
-        logger?.error(
+        logger.error(
           `${logPrefix} MusicBrainz enrichment failed: ${errorMsg}`,
         );
         // Continue with original tracks - graceful degradation
       }
 
-      // Log remaining unknown after resolution
       const stillUnknown = tracks.filter(
         (t) => t.album === "Unknown Album",
       ).length;
       if (stillUnknown > 0) {
-        logger?.info(
+        logger.info(
           `${logPrefix} ${stillUnknown} tracks still have Unknown Album after MusicBrainz resolution`,
         );
       }
     } else if (unknownCount > 0) {
-      logger?.info(
+      logger.info(
         `${logPrefix} Skipping MusicBrainz resolution for ${unknownCount} Unknown Album tracks (Lidarr not configured)`,
       );
     }
 
-    // Phase 1: Parallel DB lookups (matchTrack is DB-only, safe to parallelise).
-    // Capped at 8 concurrent queries to avoid exhausting the Prisma connection pool
-    // on large playlists. Promise.all preserves insertion order so matchedTracks[i]
-    // corresponds to tracks[i].
+    // Parallel DB lookups, capped at 8 so a large playlist does not exhaust the Prisma pool.
+    // Promise.all keeps insertion order, so matchedTracks[i] is tracks[i].
     const matchLimit = pLimit(8);
     const matchedTracks: MatchedTrack[] = await Promise.all(
       tracks.map((track) => matchLimit(() => this.matchTrack(track))),
@@ -742,8 +733,8 @@ class SpotifyImportService {
 
         const firstTrack = albumTracks[0];
 
-        logger?.debug(`\n${logPrefix} ========================================`);
-        logger?.debug(
+        logger.debug(`\n${logPrefix} ========================================`);
+        logger.debug(
           `${logPrefix} Looking up: "${artistName}" - "${albumName}"`,
         );
 
@@ -755,12 +746,12 @@ class SpotifyImportService {
 
           if (preResolvedMbid) {
             albumMbid = preResolvedMbid;
-            logger?.debug(`${logPrefix} Using pre-resolved MBID: ${albumMbid}`);
+            logger.debug(`${logPrefix} Using pre-resolved MBID: ${albumMbid}`);
             const group = await musicBrainzService.getReleaseGroup(albumMbid);
             if (group.kind === "answered") {
               artistMbid = group.value?.["artist-credit"]?.[0]?.artist?.id ?? null;
             } else if (group.kind !== "absent") {
-              logger?.debug(
+              logger.debug(
                 `${logPrefix} Release group lookup failed: ${failureCause(group)}`,
               );
             }
@@ -768,11 +759,11 @@ class SpotifyImportService {
             const normalizedAlbumName = stripTrackSuffix(albumName);
             const wasNormalized = normalizedAlbumName !== albumName;
 
-            logger?.debug(
+            logger.debug(
               `${logPrefix} Searching for album "${albumName}" by ${artistName}...`,
             );
             if (wasNormalized) {
-              logger?.debug(
+              logger.debug(
                 `${logPrefix}   → Normalized to: "${normalizedAlbumName}"`,
               );
             }
@@ -785,25 +776,25 @@ class SpotifyImportService {
             albumMbid = mbResult.albumMbid;
 
             if (albumMbid) {
-              logger?.debug(
+              logger.debug(
                 `${logPrefix} ✓ Found album directly: "${albumName}" (MBID: ${albumMbid})`,
               );
             }
           }
 
           if (!albumMbid) {
-            logger?.debug(
+            logger.debug(
               `${logPrefix} Album not found, trying track-based search...`,
             );
             for (const track of albumTracks) {
               const normalizedTrackTitle = stripTrackSuffix(track.title);
               const wasNormalized = normalizedTrackTitle !== track.title;
 
-              logger?.debug(
+              logger.debug(
                 `${logPrefix}   Searching for track "${track.title}"...`,
               );
               if (wasNormalized) {
-                logger?.debug(
+                logger.debug(
                   `${logPrefix}     → Normalized to: "${normalizedTrackTitle}"`,
                 );
               }
@@ -819,13 +810,13 @@ class SpotifyImportService {
                 artistMbid = recordingInfo.value.artistMbid;
                 albumMbid = recordingInfo.value.albumMbid;
 
-                logger?.debug(
+                logger.debug(
                   `${logPrefix} ✓ Found via track: "${resolvedAlbumName}" (MBID: ${albumMbid})`,
                 );
                 break;
               }
               if (recordingInfo.kind !== "absent") {
-                logger?.debug(
+                logger.debug(
                   `${logPrefix}   Track lookup ${recordingInfo.kind}: ${failureCause(recordingInfo)}`,
                 );
               }
@@ -833,12 +824,12 @@ class SpotifyImportService {
           }
 
           if (!albumMbid) {
-            logger?.debug(
+            logger.debug(
               `${logPrefix} ✗ Could not find album MBID for ${artistName} - "${resolvedAlbumName}"`,
             );
           }
         } else {
-          logger?.info(
+          logger.info(
             `${logPrefix} Skipping MBID resolution for "${resolvedAlbumName}" (Lidarr not configured)`,
           );
         }
@@ -854,23 +845,23 @@ class SpotifyImportService {
           tracksNeeded: albumTracks,
         };
 
-        logger?.debug(`${logPrefix} Download strategy:`);
+        logger.debug(`${logPrefix} Download strategy:`);
         if (albumMbid) {
-          logger?.debug(`   Will request album from Lidarr/Soulseek:`);
-          logger?.debug(
+          logger.debug(`   Will request album from Lidarr/Soulseek:`);
+          logger.debug(
             `   Artist: "${artistName}" (MBID: ${artistMbid || "NONE"})`,
           );
-          logger?.debug(`   Album: "${resolvedAlbumName}" (MBID: ${albumMbid})`);
+          logger.debug(`   Album: "${resolvedAlbumName}" (MBID: ${albumMbid})`);
         } else {
-          logger?.debug(
+          logger.debug(
             `   Will request individual tracks via Soulseek (no MBID):`,
           );
-          logger?.debug(`   Artist: "${artistName}"`);
-          logger?.debug(
+          logger.debug(`   Artist: "${artistName}"`);
+          logger.debug(
             `   Tracks: ${albumTracks.map((t) => `"${t.title}"`).join(", ")}`,
           );
         }
-        logger?.debug(`${logPrefix} ========================================\n`);
+        logger.debug(`${logPrefix} ========================================\n`);
 
         return albumToDownload;
       }),
@@ -878,24 +869,14 @@ class SpotifyImportService {
 
     const inLibrary = matchedTracks.filter((m) => m.localTrack !== null).length;
 
-    // All albums are now downloadable via Soulseek (either album-based with MBID or track-based without)
-    const downloadableAlbums = albumsToDownload;
-
-    // No albums are truly "not found" since Soulseek can search for any track
-    const notFoundAlbums: AlbumToDownload[] = [];
-
-    const downloadable = downloadableAlbums.reduce(
-      (sum, a) => sum + a.tracksNeeded.length,
-      0,
-    );
-    const notFound = notFoundAlbums.reduce(
+    const downloadable = albumsToDownload.reduce(
       (sum, a) => sum + a.tracksNeeded.length,
       0,
     );
 
     const withMbid = albumsToDownload.filter(a => a.albumMbid).length;
     const withoutMbid = albumsToDownload.length - withMbid;
-    logger?.info(
+    logger.info(
       `${logPrefix} Preview complete: ${playlistMeta.trackCount} tracks, ${inLibrary} in library, ${albumsToDownload.length} albums to download (${withMbid} with MBID, ${withoutMbid} without)`,
     );
 
@@ -907,7 +888,7 @@ class SpotifyImportService {
         total: playlistMeta.trackCount,
         inLibrary,
         downloadable,
-        notFound,
+        notFound: 0,
       },
     };
   }
@@ -1050,7 +1031,7 @@ class SpotifyImportService {
     const tracksNeedingSongLink = playlist.tracks.filter((t) => !t.hasNativeMetadata);
     const limit = pLimit(3);
 
-    logger?.info(
+    logger.info(
       `[yt-dlp] ${playlist.tracks.length} tracks total, ${tracksNeedingSongLink.length} need song.link resolution`,
     );
 
@@ -1081,7 +1062,9 @@ class SpotifyImportService {
                 });
                 return;
               }
-            } catch {}
+            } catch {
+              // song.link could not resolve it; fall back to yt-dlp's own metadata below
+            }
           }
 
           resolvedTracks.push({
@@ -1095,13 +1078,12 @@ class SpotifyImportService {
             durationMs: track.duration || 0,
             trackNumber: idx + 1,
             previewUrl: null,
-            coverUrl: coverUrl,
+            coverUrl,
           });
         }),
       ),
     );
 
-    // Sort by original track order
     resolvedTracks.sort((a, b) => a.trackNumber - b.trackNumber);
 
     if (resolvedTracks.length === 0) {
@@ -1214,40 +1196,18 @@ class SpotifyImportService {
     albumMbidsToDownload: string[],
     preview: ImportPreview,
   ): Promise<ImportJob> {
-    // Validate userId to prevent NaN/invalid values from entering the system
-    if (
-      !userId ||
-      typeof userId !== "string" ||
-      userId === "NaN" ||
-      userId === "undefined" ||
-      userId === "null"
-    ) {
-      logger?.error(
-        `[Spotify Import] Invalid userId provided to startImport: ${JSON.stringify(
-          {
-            userId,
-            typeofUserId: typeof userId,
-            playlistName,
-          },
-        )}`,
-      );
-      throw new Error(`Invalid userId provided: ${userId}`);
-    }
-
     const jobId = `import_${Date.now()}_${Math.random()
       .toString(36)
       .substring(7)}`;
 
-    // Create dedicated logger for this job
     const jobLogger = createPlaylistLogger(jobId);
     jobLoggers.set(jobId, jobLogger);
 
     jobLogger.logJobStart(playlistName, preview.summary.total, userId);
-    jobLogger?.info(`Playlist ID: ${spotifyPlaylistId}`);
-    jobLogger?.info(`Albums to download: ${albumMbidsToDownload.length}`);
-    jobLogger?.info(`Tracks already in library: ${preview.summary.inLibrary}`);
+    jobLogger.info(`Playlist ID: ${spotifyPlaylistId}`);
+    jobLogger.info(`Albums to download: ${albumMbidsToDownload.length}`);
+    jobLogger.info(`Tracks already in library: ${preview.summary.inLibrary}`);
 
-    // Calculate tracks that will come from downloads
     const tracksFromDownloads = preview.albumsToDownload
       .filter((a) =>
         albumMbidsToDownload.includes(a.albumMbid || a.spotifyAlbumId),
@@ -1276,7 +1236,6 @@ class SpotifyImportService {
       pendingTracks,
     };
 
-    // Save to database and memory cache
     await saveImportJob(job);
 
     // Cache preview for the BullMQ worker to retrieve
@@ -1287,7 +1246,7 @@ class SpotifyImportService {
         JSON.stringify(preview),
       );
     } catch (e: any) {
-      logger?.warn(`[Spotify Import] Failed to cache preview for job ${job.id}: ${e.message}`);
+      logger.warn(`[Spotify Import] Failed to cache preview for job ${job.id}: ${e.message}`);
     }
 
     // Enqueue import job to BullMQ for crash-recoverable processing
@@ -1300,7 +1259,7 @@ class SpotifyImportService {
       jobId: job.id,
     });
 
-    jobLogger?.info(`[Spotify Import] Enqueued job ${job.id} to BullMQ`);
+    jobLogger.info(`[Spotify Import] Enqueued job ${job.id} to BullMQ`);
 
     return job;
   }
@@ -1313,31 +1272,29 @@ class SpotifyImportService {
     albumMbidsToDownload: string[],
     preview: ImportPreview,
   ): Promise<void> {
-    const logger = jobLoggers.get(job.id);
+    const jobLogger = jobLoggers.get(job.id);
     let abortController: AbortController | undefined;
 
     try {
       // Guard: if cancelled between startImport() and here, abort
       if (job.status === "cancelled") {
-        logger?.info("[Spotify Import] Job cancelled before downloading started");
+        jobLogger?.info("[Spotify Import] Job cancelled before downloading started");
         return;
       }
 
-      // Create AbortController for cancellation support
       abortController = new AbortController();
       const { signal } = abortController;
       this.activeImportControllers.set(job.id, abortController);
 
       try {
-        // Phase 1: Download albums using AcquisitionService
         if (albumMbidsToDownload.length > 0) {
           job.status = "downloading";
           job.updatedAt = new Date();
           await saveImportJob(job);
 
-          logger?.logAlbumDownloadStart(albumMbidsToDownload.length);
+          jobLogger?.logAlbumDownloadStart(albumMbidsToDownload.length);
 
-          logger?.info(
+          jobLogger?.info(
             `Processing ${albumMbidsToDownload.length} albums via AcquisitionService`,
           );
 
@@ -1378,7 +1335,7 @@ class SpotifyImportService {
                   tracksNeeded: mergedTracks,
                   trackCount: mergedTracks.length,
                 };
-                logger?.debug(
+                jobLogger?.debug(
                   `[Spotify Import] Merged ${matchingAlbums.length} album editions for "${album.albumName}" (${mergedTracks.length} unique tracks)`,
                 );
               }
@@ -1387,7 +1344,7 @@ class SpotifyImportService {
                 const isUnknownAlbum =
                   album.albumName === "Unknown Album";
 
-                logger?.info(
+                jobLogger?.info(
                   `Album start: ${album.artistName} - ${album.albumName}${
                     album.albumMbid
                       ? ` [MBID: ${album.albumMbid}]`
@@ -1395,27 +1352,9 @@ class SpotifyImportService {
                   } (tracksNeeded=${album.tracksNeeded.length})`,
                 );
 
-                logger?.debug(
+                jobLogger?.debug(
                   `[Spotify Import] Requesting: ${album.artistName} - ${album.albumName}`,
                 );
-
-                // Validate userId before creating acquisition context
-                if (
-                  !job.userId ||
-                  typeof job.userId !== "string" ||
-                  job.userId === "NaN" ||
-                  job.userId === "undefined" ||
-                  job.userId === "null"
-                ) {
-                  logger?.error(
-                    `[Spotify Import] Invalid userId in job: ${JSON.stringify({
-                      jobId: job.id,
-                      userId: job.userId,
-                      typeofUserId: typeof job.userId,
-                    })}`,
-                  );
-                  throw new Error(`Invalid userId in import job: ${job.userId}`);
-                }
 
                 // Acquisition context for tracking
                 const context = {
@@ -1428,7 +1367,7 @@ class SpotifyImportService {
 
                 if (isUnknownAlbum) {
                   // Unknown Album: Use track-based acquisition
-                  logger?.debug(
+                  jobLogger?.debug(
                     `[Spotify Import] Unknown Album detected - using track acquisition`,
                   );
 
@@ -1443,7 +1382,6 @@ class SpotifyImportService {
                     context,
                   );
 
-                  // Check if at least 50% succeeded
                   const successCount = trackResults.filter(
                     (r) => r.success,
                   ).length;
@@ -1456,7 +1394,7 @@ class SpotifyImportService {
                   };
 
                   if (result.success) {
-                    logger?.info(
+                    jobLogger?.info(
                       `Unknown Album tracks success: ${album.artistName} - ${successCount}/${trackRequests.length} tracks`,
                     );
                   }
@@ -1475,7 +1413,7 @@ class SpotifyImportService {
                   );
 
                   if (result.success) {
-                    logger?.info(
+                    jobLogger?.info(
                       `Album acquisition success: ${album.artistName} - ${album.albumName} via ${result.source}`,
                     );
                   }
@@ -1484,10 +1422,10 @@ class SpotifyImportService {
                 if (!result.success) {
                   const errorMsg =
                     result.error || "No download sources available";
-                  logger?.debug(
+                  jobLogger?.debug(
                     `[Spotify Import] ✗ Failed: ${album.albumName} - ${errorMsg}`,
                   );
-                  logger?.logAlbumFailed(
+                  jobLogger?.logAlbumFailed(
                     album.albumName,
                     album.artistName,
                     errorMsg,
@@ -1501,17 +1439,17 @@ class SpotifyImportService {
                 job.updatedAt = new Date();
                 await saveImportJob(job);
 
-                logger?.debug(
+                jobLogger?.debug(
                   `Album done: ${album.artistName} - ${
                     album.albumName
                   } (success=${result.success ? "yes" : "no"})`,
                 );
               } catch (error: any) {
                 if (error?.name === 'AbortError' || signal.aborted) return;
-                logger?.error(
+                jobLogger?.error(
                   `[Spotify Import] Failed: ${album.artistName} - ${album.albumName}: ${error.message}`,
                 );
-                logger?.logAlbumFailed(
+                jobLogger?.logAlbumFailed(
                   album.albumName,
                   album.artistName,
                   error.message,
@@ -1523,7 +1461,7 @@ class SpotifyImportService {
           // Wait for all album acquisitions to complete
           await Promise.all(albumPromises);
 
-          logger?.info(
+          jobLogger?.info(
             `Initial acquisition phase finished for ${albumMbidsToDownload.length} album(s). Checking completion state...`,
           );
 
@@ -1537,7 +1475,7 @@ class SpotifyImportService {
 
           while (true) {
             if (signal.aborted) {
-              logger?.info(`[Spotify Import] Job ${job.id}: aborted during completion poll`);
+              jobLogger?.info(`[Spotify Import] Job ${job.id}: aborted during completion poll`);
               return;
             }
 
@@ -1545,35 +1483,34 @@ class SpotifyImportService {
 
             const currentJob = await getImportJob(job.id);
             if (!currentJob) {
-              logger?.error(`[Spotify Import] Job ${job.id}: not found during completion poll`);
+              jobLogger?.error(`[Spotify Import] Job ${job.id}: not found during completion poll`);
               return;
             }
 
             if (TERMINAL_STATES.includes(currentJob.status)) {
-              logger?.info(`Import job ${job.id} handed off to next phase: ${currentJob.status}`);
+              jobLogger?.info(`Import job ${job.id} handed off to next phase: ${currentJob.status}`);
               return;
             }
 
             if (Date.now() - pollStart > MAX_WAIT_MS) {
-              logger?.warn(`[Spotify Import] Job ${job.id}: timed out after 30 minutes, running final completion check`);
+              jobLogger?.warn(`[Spotify Import] Job ${job.id}: timed out after 30 minutes, running final completion check`);
               await this.checkImportCompletion(job.id);
               return;
             }
 
-            logger?.debug(`[Spotify Import] Job ${job.id}: still ${currentJob.status}, polling again in 15s...`);
+            jobLogger?.debug(`[Spotify Import] Job ${job.id}: still ${currentJob.status}, polling again in 15s...`);
             await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
           }
         }
 
         // No downloads needed - all tracks already in library
-        // Create playlist immediately
         await this.buildPlaylist(job);
       } finally {
         this.activeImportControllers.delete(job.id);
       }
     } catch (error: any) {
       if (error?.name === 'AbortError' || abortController?.signal.aborted) {
-        logger?.info(`[Spotify Import] Job ${job.id}: import cancelled, returning cleanly`);
+        jobLogger?.info(`[Spotify Import] Job ${job.id}: import cancelled, returning cleanly`);
         return;
       }
       job.status = "failed";
@@ -1588,28 +1525,26 @@ class SpotifyImportService {
    * Check if all downloads for this import are complete (called by webhook handler)
    */
   async checkImportCompletion(importJobId: string): Promise<void> {
-    logger?.debug(
+    logger.debug(
       `\n[Spotify Import] Checking completion for job ${importJobId}...`,
     );
 
     const job = await getImportJob(importJobId);
     if (!job) {
-      logger?.debug(`   Job not found`);
+      logger.debug(`   Job not found`);
       jobLoggers.delete(importJobId);
       return;
     }
 
     // Guard: don't re-process if already past the download phase or still fetching (quick import)
     if (["completed", "failed", "cancelled", "scanning", "creating_playlist", "fetching"].includes(job.status)) {
-      logger?.debug(`   Job already in ${job.status} state, skipping`);
+      logger.debug(`   Job already in ${job.status} state, skipping`);
       return;
     }
 
     const jobLogger = jobLoggers.get(importJobId);
 
-    // Check download jobs for this import
-    // NOTE: Jobs are created with auto-generated CUIDs, not prefixed IDs
-    // The spotifyImportJobId is stored in metadata.spotifyImportJobId
+    // Download jobs carry this import's id in metadata.spotifyImportJobId
     const downloadJobs = await prisma.downloadJob.findMany({
       where: {
         metadata: {
@@ -1629,7 +1564,7 @@ class SpotifyImportService {
     if (total === 0 && job.albumsTotal > 0) {
       const message =
         "No download jobs were created for this import. This usually means the import preview did not include the selected albums.";
-      logger?.debug(`   ${message}`);
+      logger.debug(`   ${message}`);
       jobLogger?.warn(message);
 
       job.status = "failed";
@@ -1642,12 +1577,11 @@ class SpotifyImportService {
       return;
     }
 
-    logger?.debug(
+    logger.debug(
       `   Download status: ${completed}/${total} completed, ${failed} failed, ${pending} pending`,
     );
     jobLogger?.logDownloadProgress(completed, failed, pending);
 
-    // Update progress
     job.progress =
       total > 0
         ? 30 + Math.round((completed / total) * 40) // 30-70% for downloads
@@ -1655,7 +1589,6 @@ class SpotifyImportService {
     job.updatedAt = new Date();
 
     if (pending > 0) {
-      // Check how long we've been waiting for these downloads
       const oldestPending = downloadJobs
         .filter((j) => j.status === "pending" || j.status === "processing")
         .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())[0];
@@ -1668,7 +1601,7 @@ class SpotifyImportService {
       // After 10 minutes of waiting, proceed anyway to avoid stuck jobs
       if (waitTimeMs < 600000) {
         // 10 minutes
-        logger?.debug(
+        logger.debug(
           `   Still waiting for ${pending} downloads... (${waitTimeMins} min elapsed)`,
         );
         jobLogger?.info(`Waiting for Soulseek downloads to complete...`);
@@ -1676,14 +1609,13 @@ class SpotifyImportService {
         return;
       }
 
-      logger?.debug(
+      logger.debug(
         `   Timeout: ${pending} downloads still pending after ${waitTimeMins} minutes, proceeding anyway`,
       );
       jobLogger?.warn(
         `Download timeout: ${pending} pending after ${waitTimeMins}m, proceeding with available tracks`,
       );
 
-      // Mark stale pending jobs as failed
       await prisma.downloadJob.updateMany({
         where: {
           metadata: {
@@ -1701,12 +1633,11 @@ class SpotifyImportService {
     }
 
     // All downloads finished (completed or failed)
-    logger?.debug(`   All downloads finished! Triggering library scan...`);
+    logger.debug(`   All downloads finished! Triggering library scan...`);
     jobLogger?.info(
       `All ${total} download jobs finished (${completed} completed, ${failed} failed)`,
     );
 
-    // Trigger library scan to import the new files
     const { requestScan } = await import("../workers/scanRequest");
     const scanResult = await requestScan({
       userId: job.userId,
@@ -1730,20 +1661,20 @@ class SpotifyImportService {
    * Build playlist after library scan completes (called by scan worker)
    */
   async buildPlaylistAfterScan(importJobId: string): Promise<void> {
-    logger?.debug(
+    logger.debug(
       `\n[Spotify Import] Building playlist for job ${importJobId}...`,
     );
 
     const job = await getImportJob(importJobId);
     if (!job) {
-      logger?.debug(`   Job not found`);
+      logger.debug(`   Job not found`);
       jobLoggers.delete(importJobId);
       return;
     }
 
     // Guard: job already reached a terminal state from a previous scan
     if (job.status === "completed" || job.status === "failed" || job.status === "cancelled") {
-      logger?.debug(`   Job already ${job.status}, skipping playlist build`);
+      logger.debug(`   Job already ${job.status}, skipping playlist build`);
       return;
     }
 
@@ -1754,11 +1685,11 @@ class SpotifyImportService {
    * Internal: Build the playlist with matched tracks
    */
   private async buildPlaylist(job: ImportJob): Promise<void> {
-    const logger = jobLoggers.get(job.id);
+    const jobLogger = jobLoggers.get(job.id);
 
     // Guard: playlist already created for this job
     if (job.createdPlaylistId) {
-      logger?.debug(`   Playlist already created: ${job.createdPlaylistId}, skipping`);
+      jobLogger?.debug(`   Playlist already created: ${job.createdPlaylistId}, skipping`);
       return;
     }
 
@@ -1767,10 +1698,10 @@ class SpotifyImportService {
     job.updatedAt = new Date();
     await saveImportJob(job);
 
-    logger?.logPlaylistCreationStart();
-    logger?.logTrackMatchingStart();
+    jobLogger?.logPlaylistCreationStart();
+    jobLogger?.logTrackMatchingStart();
 
-    // --- Batch pre-load: verify pre-matched track IDs ---
+    // Verify pre-matched track ids
     const preMatchedIds = job.pendingTracks
       .map((t) => t.preMatchedTrackId)
       .filter((id): id is string => !!id);
@@ -1783,7 +1714,7 @@ class SpotifyImportService {
         )
       : new Map<string, { id: string; title: string }>();
 
-    // --- Batch pre-load: all library tracks for relevant artists ---
+    // Library tracks of the relevant artists
     const allArtistFirstWords = [
       ...new Set(
         job.pendingTracks.map((t) => normalizeArtistName(t.artist).split(" ")[0]),
@@ -1811,17 +1742,11 @@ class SpotifyImportService {
       const artistName = track.album.artist.normalizedName || track.album.artist.name;
       const firstWord = artistName.toLowerCase().split(" ")[0];
       const existing = tracksByArtistWord.get(firstWord) || [];
-      existing.push({
-        id: track.id,
-        title: track.title,
-        albumId: track.albumId,
-        albumTitle: track.album.title,
-        artistName: track.album.artist.name,
-      });
+      existing.push(toMatchCandidate(track));
       tracksByArtistWord.set(firstWord, existing);
     }
 
-    // --- Batch pre-load: all artists (for debug logging) ---
+    // All artists, for debug logging
     const allArtists = await prisma.artist.findMany({
       where: {
         normalizedName: {
@@ -1835,7 +1760,7 @@ class SpotifyImportService {
       allArtists.map((a) => (a.normalizedName || a.name).toLowerCase().split(" ")[0]),
     );
 
-    // --- Batch pre-load: ISRC-based matches ---
+    // Matches by ISRC
     const pendingIsrcs = job.pendingTracks
       .filter((t) => t.isrc)
       .map((t) => t.isrc!);
@@ -1850,10 +1775,8 @@ class SpotifyImportService {
 
     // Match all pending tracks against the pre-loaded library
     const matchedTrackIds: string[] = [];
-    // Position of each matched track in the ORIGINAL Spotify order. Items used
-    // to be numbered 0..m-1 over the matched subset while pending tracks kept
-    // their true 0..N-1 positions -- two different scales in what the read path
-    // treated as one ordering, which is the scramble at its source.
+    // Position of each matched track in the original Spotify order, the same
+    // scale the pending tracks use.
     const matchedPositions = new Map<string, number>();
     let trackIndex = 0;
     const unmatchedForTitleOnly: Array<{
@@ -1871,10 +1794,10 @@ class SpotifyImportService {
         if (existingTrack) {
           matchedTrackIds.push(existingTrack.id);
           if (!matchedPositions.has(existingTrack.id)) matchedPositions.set(existingTrack.id, trackIndex);
-          logger?.debug(
+          jobLogger?.debug(
             `   ✓ Pre-matched: "${pendingTrack.title}" -> track ${existingTrack.id}`,
           );
-          logger?.logTrackMatch(
+          jobLogger?.logTrackMatch(
             trackIndex, job.tracksTotal, pendingTrack.title, pendingTrack.artist, true, existingTrack.id,
           );
           continue;
@@ -1887,8 +1810,8 @@ class SpotifyImportService {
         if (isrcMatch) {
           matchedTrackIds.push(isrcMatch.id);
           if (!matchedPositions.has(isrcMatch.id)) matchedPositions.set(isrcMatch.id, trackIndex);
-          logger?.debug(`   ISRC match: "${pendingTrack.title}" -> ${isrcMatch.id}`);
-          logger?.logTrackMatch(trackIndex, job.tracksTotal, pendingTrack.title, pendingTrack.artist, true, isrcMatch.id);
+          jobLogger?.debug(`   ISRC match: "${pendingTrack.title}" -> ${isrcMatch.id}`);
+          jobLogger?.logTrackMatch(trackIndex, job.tracksTotal, pendingTrack.title, pendingTrack.artist, true, isrcMatch.id);
           continue;
         }
       }
@@ -1898,9 +1821,8 @@ class SpotifyImportService {
       const strippedTitle = stripTrackSuffix(pendingTrack.title);
       const cleanedTitle = normalizeTrackTitle(pendingTrack.title);
 
-      logger?.log(`   Matching: "${pendingTrack.title}" by ${pendingTrack.artist}`);
+      jobLogger?.log(`   Matching: "${pendingTrack.title}" by ${pendingTrack.artist}`);
 
-      // Get candidates for this artist from pre-loaded index
       const candidates = tracksByArtistWord.get(artistFirstWord.toLowerCase()) || [];
 
       // The matching ladder lives in one place (services/trackMatching);
@@ -1913,27 +1835,27 @@ class SpotifyImportService {
       if (match) {
         matchedTrackIds.push(match.candidate.id);
           if (!matchedPositions.has(match.candidate.id)) matchedPositions.set(match.candidate.id, trackIndex);
-        logger?.debug(
+        jobLogger?.debug(
           `   ✓ Matched: "${pendingTrack.title}" -> track ${match.candidate.id} (${match.matchType} ${match.confidence}%)`,
         );
-        logger?.logTrackMatch(trackIndex, job.tracksTotal, pendingTrack.title, pendingTrack.artist, true, match.candidate.id);
+        jobLogger?.logTrackMatch(trackIndex, job.tracksTotal, pendingTrack.title, pendingTrack.artist, true, match.candidate.id);
       } else if (cleanedTitle.length >= MIN_TITLE_ONLY_LENGTH) {
         // Defer to Strategy 6 batch (title-only, no artist constraint)
         unmatchedForTitleOnly.push({ pendingTrack, trackIndex, strippedTitle });
       } else {
         const artistWord = artistFirstWord.toLowerCase();
         if (artistExistsSet.has(artistWord)) {
-          logger?.debug(`   ✗ No match: "${pendingTrack.title}" by ${pendingTrack.artist} (artist exists but track not found)`);
+          jobLogger?.debug(`   ✗ No match: "${pendingTrack.title}" by ${pendingTrack.artist} (artist exists but track not found)`);
         } else {
-          logger?.debug(`   ✗ No match: "${pendingTrack.title}" by ${pendingTrack.artist} (artist not in library)`);
+          jobLogger?.debug(`   ✗ No match: "${pendingTrack.title}" by ${pendingTrack.artist} (artist not in library)`);
         }
-        logger?.logTrackMatch(trackIndex, job.tracksTotal, pendingTrack.title, pendingTrack.artist, false);
+        jobLogger?.logTrackMatch(trackIndex, job.tracksTotal, pendingTrack.title, pendingTrack.artist, false);
       }
     }
 
     // Strategy 6: Title-only batch fallback for remaining unmatched tracks
     if (unmatchedForTitleOnly.length > 0) {
-      logger?.log(`   Strategy 6: Title-only batch search for ${unmatchedForTitleOnly.length} remaining tracks`);
+      jobLogger?.log(`   Strategy 6: Title-only batch search for ${unmatchedForTitleOnly.length} remaining tracks`);
       const titleSearchTerms = unmatchedForTitleOnly.map(
         (u) => u.strippedTitle.split(" ").slice(0, 4).join(" "),
       );
@@ -1946,13 +1868,7 @@ class SpotifyImportService {
         include: { album: { include: { artist: { select: { name: true, normalizedName: true } } } } },
         take: 500,
       });
-      const titleCandidates: MatchCandidate[] = titleCandidateRows.map((t) => ({
-        id: t.id,
-        title: t.title,
-        albumId: t.albumId,
-        albumTitle: t.album.title,
-        artistName: t.album.artist.name,
-      }));
+      const titleCandidates: MatchCandidate[] = titleCandidateRows.map(toMatchCandidate);
 
       for (const { pendingTrack, trackIndex: tIdx } of unmatchedForTitleOnly) {
         // Same ladder, pool widened to any artist (title-only fallback).
@@ -1963,18 +1879,18 @@ class SpotifyImportService {
         );
         if (match) {
           matchedTrackIds.push(match.candidate.id);
-          logger?.log(
+          jobLogger?.log(
             `      Found via title-only match (${match.confidence}%): "${match.candidate.title}" by ${match.candidate.artistName}`,
           );
-          logger?.logTrackMatch(tIdx, job.tracksTotal, pendingTrack.title, pendingTrack.artist, true, match.candidate.id);
+          jobLogger?.logTrackMatch(tIdx, job.tracksTotal, pendingTrack.title, pendingTrack.artist, true, match.candidate.id);
         } else {
           const artistWord = normalizeArtistName(pendingTrack.artist).split(" ")[0].toLowerCase();
           if (artistExistsSet.has(artistWord)) {
-            logger?.debug(`   ✗ No match: "${pendingTrack.title}" by ${pendingTrack.artist} (artist exists but track not found)`);
+            jobLogger?.debug(`   ✗ No match: "${pendingTrack.title}" by ${pendingTrack.artist} (artist exists but track not found)`);
           } else {
-            logger?.debug(`   ✗ No match: "${pendingTrack.title}" by ${pendingTrack.artist} (artist not in library)`);
+            jobLogger?.debug(`   ✗ No match: "${pendingTrack.title}" by ${pendingTrack.artist} (artist not in library)`);
           }
-          logger?.logTrackMatch(tIdx, job.tracksTotal, pendingTrack.title, pendingTrack.artist, false);
+          jobLogger?.logTrackMatch(tIdx, job.tracksTotal, pendingTrack.title, pendingTrack.artist, false);
         }
       }
     }
@@ -1982,21 +1898,20 @@ class SpotifyImportService {
     const uniqueTrackIds = Array.from(new Set(matchedTrackIds));
     if (uniqueTrackIds.length < matchedTrackIds.length) {
       const removed = matchedTrackIds.length - uniqueTrackIds.length;
-      logger?.debug(
+      jobLogger?.debug(
         `   Removed ${removed} duplicate track references before playlist creation`,
       );
-      logger?.info(
+      jobLogger?.info(
         `Removed ${removed} duplicate track references before playlist creation`,
       );
     }
 
-    logger?.debug(
+    jobLogger?.debug(
       `   Matched ${uniqueTrackIds.length}/${job.tracksTotal} tracks`,
     );
-    logger?.info(
+    jobLogger?.info(
       `Matched tracks after scan: ${uniqueTrackIds.length}/${job.tracksTotal}`,
     );
-    // Create the playlist with Spotify metadata
     const playlist = await prisma.playlist.create({
       data: {
         userId: job.userId,
@@ -2025,7 +1940,6 @@ class SpotifyImportService {
       const dbArtist = normalizeArtistName(pendingTrack.artist);
       const strippedTitle = stripTrackSuffix(pendingTrack.title);
 
-      // Check if this track was matched by looking for it in the created items
       const found = await prisma.track.findFirst({
         where: {
           id: { in: uniqueTrackIds },
@@ -2051,7 +1965,6 @@ class SpotifyImportService {
       }
     }
 
-    // Save pending tracks that weren't matched
     const pendingTracksToSave = job.pendingTracks
       .map((track, index) => ({ ...track, originalIndex: index }))
       .filter((track) => {
@@ -2063,11 +1976,11 @@ class SpotifyImportService {
       });
 
     if (pendingTracksToSave.length > 0) {
-      logger?.debug(
+      jobLogger?.debug(
         `   Saving ${pendingTracksToSave.length} pending tracks for future auto-matching`,
       );
-      logger?.debug(`   Fetching Deezer preview URLs for pending tracks...`);
-      logger?.info(`Saving pending tracks: ${pendingTracksToSave.length}`);
+      jobLogger?.debug(`   Fetching Deezer preview URLs for pending tracks...`);
+      jobLogger?.info(`Saving pending tracks: ${pendingTracksToSave.length}`);
 
       // Fetch Deezer previews with concurrency limit to avoid overwhelming API
       const DEEZER_PREVIEW_CONCURRENCY = 5;
@@ -2084,7 +1997,7 @@ class SpotifyImportService {
                 track.artist,
                 track.title,
               );
-            } catch (e) {
+            } catch {
               // Preview not critical, continue without it
             }
             return {
@@ -2098,10 +2011,10 @@ class SpotifyImportService {
       const previewsFound = pendingTracksWithPreviews.filter(
         (t) => t.deezerPreviewUrl,
       ).length;
-      logger?.debug(
+      jobLogger?.debug(
         `   Found ${previewsFound}/${pendingTracksToSave.length} Deezer preview URLs`,
       );
-      logger?.info(
+      jobLogger?.info(
         `Pending previews found: ${previewsFound}/${pendingTracksToSave.length}`,
       );
 
@@ -2124,7 +2037,7 @@ class SpotifyImportService {
       // Auto-retry: attempt per-track Soulseek download for unmatched tracks
       // This runs in the background - tracks will be reconciled on next scan
       this.autoRetryPendingTracks(job, pendingTracksToSave).catch((err) => {
-        logger?.debug(`Auto-retry error: ${err.message}`);
+        jobLogger?.debug(`Auto-retry error: ${err.message}`);
       });
     }
 
@@ -2136,24 +2049,23 @@ class SpotifyImportService {
 
     await saveImportJob(job);
 
-    logger?.debug(`[Spotify Import] Job ${job.id} completed:`);
-    logger?.debug(`   Playlist created: ${playlist.id}`);
-    logger?.debug(
+    jobLogger?.debug(`[Spotify Import] Job ${job.id} completed:`);
+    jobLogger?.debug(`   Playlist created: ${playlist.id}`);
+    jobLogger?.debug(
       `   Tracks matched: ${matchedTrackIds.length}/${job.tracksTotal}`,
     );
 
-    logger?.logPlaylistCreated(
+    jobLogger?.logPlaylistCreated(
       playlist.id,
       matchedTrackIds.length,
       job.tracksTotal,
     );
-    logger?.logJobComplete(
+    jobLogger?.logJobComplete(
       matchedTrackIds.length,
       job.tracksTotal,
       playlist.id,
     );
 
-    // Send notification about import completion
     try {
       await notificationService.notifyImportComplete(
         job.userId,
@@ -2163,10 +2075,9 @@ class SpotifyImportService {
         job.tracksTotal,
       );
     } catch (notifError) {
-      logger?.error(`Failed to send import notification: ${notifError}`);
+      jobLogger?.error(`Failed to send import notification: ${notifError}`);
     }
 
-    // Clean up job logger to prevent memory leak
     jobLoggers.delete(job.id);
   }
 
@@ -2185,21 +2096,21 @@ class SpotifyImportService {
       artistMbid: string | null;
     }>,
   ): Promise<void> {
-    const logger = jobLoggers.get(job.id);
+    const jobLogger = jobLoggers.get(job.id);
 
     const { soulseekService } = await import("./soulseek");
     if (!soulseekService.isConnected()) {
-      logger?.debug(`Auto-retry: Soulseek not connected, skipping`);
+      jobLogger?.debug(`Auto-retry: Soulseek not connected, skipping`);
       return;
     }
 
     const settings = await getSystemSettings();
     if (!settings?.musicPath) {
-      logger?.debug(`Auto-retry: No music path configured, skipping`);
+      jobLogger?.debug(`Auto-retry: No music path configured, skipping`);
       return;
     }
 
-    logger?.info(
+    jobLogger?.info(
       `Auto-retrying ${pendingTracks.length} unmatched track(s) via per-track search...`,
     );
 
@@ -2214,7 +2125,7 @@ class SpotifyImportService {
         );
 
         if (!searchResult.found || searchResult.allMatches.length === 0) {
-          logger?.debug(
+          jobLogger?.debug(
             `Auto-retry: No results for "${track.title}" by ${track.artist}`,
           );
           continue;
@@ -2232,16 +2143,16 @@ class SpotifyImportService {
 
         if (result.success) {
           downloadedCount++;
-          logger?.info(
+          jobLogger?.info(
             `Auto-retry: Downloaded "${track.title}" by ${track.artist}`,
           );
         } else {
-          logger?.debug(
+          jobLogger?.debug(
             `Auto-retry: Download failed for "${track.title}": ${result.error}`,
           );
         }
       } catch (err: any) {
-        logger?.debug(
+        jobLogger?.debug(
           `Auto-retry: Error for "${track.title}": ${err.message}`,
         );
       }
@@ -2256,11 +2167,11 @@ class SpotifyImportService {
         priority: 1,
         removeOnComplete: true,
       });
-      logger?.info(
+      jobLogger?.info(
         `Auto-retry: ${downloadedCount}/${pendingTracks.length} track(s) downloaded, scan queued`,
       );
     } else {
-      logger?.debug(`Auto-retry: No tracks downloaded`);
+      jobLogger?.debug(`Auto-retry: No tracks downloaded`);
     }
   }
 
@@ -2270,7 +2181,7 @@ class SpotifyImportService {
   async refreshJobMatches(
     jobId: string,
   ): Promise<{ added: number; total: number }> {
-    const logger = jobLoggers.get(jobId);
+    const jobLogger = jobLoggers.get(jobId);
     const job = await getImportJob(jobId);
     if (!job) {
       throw new Error("Import job not found");
@@ -2281,14 +2192,12 @@ class SpotifyImportService {
 
     let added = 0;
 
-    // Get existing tracks in playlist
     const existingItems = await prisma.playlistItem.findMany({
       where: { playlistId: job.createdPlaylistId },
       select: { trackId: true },
     });
     const existingTrackIds = new Set(existingItems.map((item) => item.trackId));
 
-    // Get next position
     const maxPosition = existingItems.length;
     let nextPosition = maxPosition;
 
@@ -2359,10 +2268,10 @@ class SpotifyImportService {
     job.updatedAt = new Date();
     await saveImportJob(job);
 
-    logger?.debug(
+    jobLogger?.debug(
       `[Spotify Import] Refresh job ${jobId}: added ${added} newly downloaded tracks`,
     );
-    logger?.info(
+    jobLogger?.info(
       `Refresh: added ${added} newly downloaded track(s), totalMatchedNow=${job.tracksMatched}`,
     );
 
@@ -2386,35 +2295,14 @@ class SpotifyImportService {
       orderBy: { createdAt: "desc" },
     });
 
-    return dbJobs
-      .map((dbJob) => ({
-        id: dbJob.id,
-        userId: dbJob.userId,
-        spotifyPlaylistId: dbJob.spotifyPlaylistId,
-        playlistName: dbJob.playlistName,
-        status: dbJob.status as ImportJob["status"],
-        progress: dbJob.progress,
-        albumsTotal: dbJob.albumsTotal,
-        albumsCompleted: dbJob.albumsCompleted,
-        tracksMatched: dbJob.tracksMatched,
-        tracksTotal: dbJob.tracksTotal,
-        tracksDownloadable: dbJob.tracksDownloadable,
-        createdPlaylistId: dbJob.createdPlaylistId,
-        error: dbJob.error,
-        sourceUrl: dbJob.sourceUrl,
-        createdAt: dbJob.createdAt,
-        updatedAt: dbJob.updatedAt,
-        pendingTracks: (dbJob.pendingTracks as any) || [],
-      }))
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    return dbJobs.map(toImportJob);
   }
 
   /**
    * Remove all DB and Redis artifacts for an import job.
    * Does NOT touch downloaded files on disk (those become part of the library).
    */
-  private async cleanupImportArtifacts(jobId: string, _userId: string): Promise<void> {
-    // Delete all download jobs associated with this import
+  private async cleanupImportArtifacts(jobId: string): Promise<void> {
     await prisma.downloadJob.deleteMany({
       where: {
         metadata: {
@@ -2424,7 +2312,6 @@ class SpotifyImportService {
       },
     });
 
-    // Delete the import job from Postgres
     try {
       await prisma.spotifyImportJob.delete({ where: { id: jobId } });
     } catch (err: any) {
@@ -2432,7 +2319,6 @@ class SpotifyImportService {
       if (err.code !== "P2025") throw err;
     }
 
-    // Delete from Redis
     try {
       await redisClient.del(IMPORT_JOB_KEY(jobId));
       await redisClient.del(`import:preview:${jobId}`);
@@ -2473,7 +2359,7 @@ class SpotifyImportService {
 
     // If already cancelled or failed, just ensure cleanup
     if (job.status === "cancelled" || job.status === "failed") {
-      await this.cleanupImportArtifacts(jobId, job.userId);
+      await this.cleanupImportArtifacts(jobId);
       return { playlistCreated: false, playlistId: null, tracksMatched: 0 };
     }
 
@@ -2499,7 +2385,7 @@ class SpotifyImportService {
     });
 
     // Full cleanup -- remove all traces from DB and Redis
-    await this.cleanupImportArtifacts(jobId, job.userId);
+    await this.cleanupImportArtifacts(jobId);
 
     jobLogger?.info(`Import cancelled by user — all artifacts removed`);
 
@@ -2515,11 +2401,10 @@ class SpotifyImportService {
     playlistsUpdated: number;
     tracksAdded: number;
   }> {
-    logger?.debug(
+    logger.debug(
       `\n[Spotify Import] Reconciling pending tracks across all playlists...`,
     );
 
-    // Get all pending tracks grouped by playlist
     const allPendingTracks = await prisma.playlistPendingTrack.findMany({
       include: {
         playlist: {
@@ -2534,11 +2419,11 @@ class SpotifyImportService {
     });
 
     if (allPendingTracks.length === 0) {
-      logger?.debug(`   No pending tracks to reconcile`);
+      logger.debug(`   No pending tracks to reconcile`);
       return { playlistsUpdated: 0, tracksAdded: 0 };
     }
 
-    logger?.debug(
+    logger.debug(
       `   Found ${allPendingTracks.length} pending tracks across playlists`,
     );
 
@@ -2555,22 +2440,18 @@ class SpotifyImportService {
     }
 
     for (const [playlistId, pendingTracks] of tracksByPlaylist) {
-      // Get current max sort position in playlist
       const maxSortResult = await prisma.playlistItem.aggregate({
         where: { playlistId },
         _max: { sort: true },
       });
       let nextSort = (maxSortResult._max.sort ?? -1) + 1;
 
-      // Rank is chained from the playlist's real last rank across BOTH tables,
-      // not derived from nextSort. Deriving it produced keys of a different
-      // width from the ones addTracks emits, so an import appended to a
-      // natively-seeded playlist sorted ahead of it entirely.
+      // Chained from the playlist's real last rank across both tables, matching
+      // the key width addTracks emits.
       let nextRank = (
         await allocateAppendRanks(prisma, playlistId, 1)
       )[0];
 
-      // Get existing track IDs in playlist to avoid duplicates
       const existingItems = await prisma.playlistItem.findMany({
         where: { playlistId },
         select: { trackId: true },
@@ -2588,13 +2469,7 @@ class SpotifyImportService {
           where: tracksOfArtistsStartingWith([artistFirstWord]),
           include: { album: { include: { artist: true } } },
         });
-        const artistCandidates: MatchCandidate[] = artistCandidateRows.map((t) => ({
-          id: t.id,
-          title: t.title,
-          albumId: t.albumId,
-          albumTitle: t.album.title,
-          artistName: t.album.artist.name,
-        }));
+        const artistCandidates: MatchCandidate[] = artistCandidateRows.map(toMatchCandidate);
 
         let match = matchTrackToLibrary(
           {
@@ -2615,13 +2490,7 @@ class SpotifyImportService {
             include: { album: { include: { artist: true } } },
             take: 500,
           });
-          const titleCandidates: MatchCandidate[] = titleCandidateRows.map((t) => ({
-            id: t.id,
-            title: t.title,
-            albumId: t.albumId,
-            albumTitle: t.album.title,
-            artistName: t.album.artist.name,
-          }));
+          const titleCandidates: MatchCandidate[] = titleCandidateRows.map(toMatchCandidate);
           match = matchTrackToLibrary(
             {
               title: pendingTrack.spotifyTitle,
@@ -2637,7 +2506,6 @@ class SpotifyImportService {
           : null;
 
         if (localTrack && !existingTrackIds.has(localTrack.id)) {
-          // Add to playlist
           await prisma.playlistItem.create({
             data: {
               playlistId,
@@ -2653,21 +2521,19 @@ class SpotifyImportService {
           totalTracksAdded++;
           playlistsWithAdditions.add(playlistId);
 
-          logger?.debug(
+          logger.debug(
             `   ✓ Matched: "${pendingTrack.spotifyTitle}" by ${pendingTrack.spotifyArtist}`,
           );
         }
       }
     }
 
-    // Delete the matched pending tracks
     if (matchedPendingTrackIds.length > 0) {
       await prisma.playlistPendingTrack.deleteMany({
         where: { id: { in: matchedPendingTrackIds } },
       });
     }
 
-    // Send notifications for each playlist that was updated
     if (playlistsWithAdditions.size > 0) {
       const { notificationService } = await import("./notificationService");
 
@@ -2700,7 +2566,7 @@ class SpotifyImportService {
       }
     }
 
-    logger?.debug(
+    logger.debug(
       `   Reconciliation complete: ${totalTracksAdded} tracks added to ${playlistsWithAdditions.size} playlists`,
     );
 
@@ -2812,7 +2678,7 @@ class SpotifyImportService {
           payload: { jobId, preview },
         });
       } catch (error: any) {
-        logger?.error("[Preview Job] Failed:", error);
+        logger.error("[Preview Job] Failed:", error);
         const isNetworkError = ["ECONNRESET", "ETIMEDOUT", "ECONNREFUSED"].includes(error.code);
         const userMessage = isNetworkError
             ? "Service temporarily unavailable. Please try again in a moment."
@@ -2828,7 +2694,7 @@ class SpotifyImportService {
           payload: { jobId, error: userMessage },
         });
       }
-    })().catch((e) => logger?.error("[Preview Job] Unhandled:", e));
+    })().catch((e) => logger.error("[Preview Job] Unhandled:", e));
 
     return { jobId };
   }
@@ -3029,14 +2895,13 @@ class SpotifyImportService {
       const cached = await redisClient.get(`import:preview:${importJobId}`);
       if (cached) preview = JSON.parse(cached);
     } catch (e: any) {
-      logger?.warn(`[Spotify Import] Failed to read preview cache for job ${importJobId}: ${e.message}`);
+      logger.warn(`[Spotify Import] Failed to read preview cache for job ${importJobId}: ${e.message}`);
     }
 
     if (!preview) {
       throw new Error(`Preview not found for import job ${importJobId}`);
     }
 
-    // Create job logger
     const jobLogger = createPlaylistLogger(importJobId);
     jobLoggers.set(importJobId, jobLogger);
 
@@ -3065,7 +2930,6 @@ class SpotifyImportService {
       normalizedUrl = url;
     }
 
-    // Check for existing active import of same URL
     const existingJobs = await this.getUserJobs(userId);
     const activeStatuses = ["pending", "fetching", "downloading", "scanning", "creating_playlist", "matching_tracks"];
     const activeJob = existingJobs.find(
@@ -3094,7 +2958,6 @@ class SpotifyImportService {
       }
     }
 
-    // Create a minimal ImportJob record so status polling works immediately
     const job: ImportJob = {
       id: jobId,
       userId,
@@ -3128,7 +2991,7 @@ class SpotifyImportService {
       jobId,
     });
 
-    logger?.info(`[Quick Import] Enqueued job ${jobId} for ${url}`);
+    logger.info(`[Quick Import] Enqueued job ${jobId} for ${url}`);
     return { jobId };
   }
 
@@ -3149,11 +3012,10 @@ class SpotifyImportService {
     jobLoggers.set(importJobId, jobLogger);
 
     try {
-      // Phase 1: Fetch playlist
       job.status = "fetching";
       await saveImportJob(job);
 
-      jobLogger?.info(`[Quick Import] Fetching playlist from ${url}`);
+      jobLogger.info(`[Quick Import] Fetching playlist from ${url}`);
 
       let preview: ImportPreview;
       if (url.includes("deezer.com")) {
@@ -3171,11 +3033,10 @@ class SpotifyImportService {
       // Re-read from DB to detect cancellation during the fetch phase
       const freshJob = await this.getJob(importJobId);
       if (!freshJob || freshJob.status === "cancelled") {
-        jobLogger?.info("[Quick Import] Job cancelled during fetch phase");
+        jobLogger.info("[Quick Import] Job cancelled during fetch phase");
         return;
       }
 
-      // Phase 2: Update job with real data
       const resolvedName = playlistNameOverride || preview.playlist.name;
       job.playlistName = resolvedName;
       job.spotifyPlaylistId = preview.playlist.id;
@@ -3184,19 +3045,18 @@ class SpotifyImportService {
       job.status = "downloading";
       await saveImportJob(job);
 
-      jobLogger?.info(`[Quick Import] Playlist: "${resolvedName}" (${preview.summary.total} tracks)`);
-      jobLogger?.info(`[Quick Import] Already in library: ${preview.summary.inLibrary}, downloadable: ${preview.summary.downloadable}`);
+      jobLogger.info(`[Quick Import] Playlist: "${resolvedName}" (${preview.summary.total} tracks)`);
+      jobLogger.info(`[Quick Import] Already in library: ${preview.summary.inLibrary}, downloadable: ${preview.summary.downloadable}`);
 
-      // Phase 3: Auto-select ALL downloadable albums
+      // Every downloadable album is selected
       const albumMbidsToDownload = preview.albumsToDownload.map(
         (a) => a.albumMbid || a.spotifyAlbumId,
       );
 
       if (albumMbidsToDownload.length === 0) {
-        jobLogger?.info(`[Quick Import] No albums to download, creating playlist from matched tracks`);
+        jobLogger.info(`[Quick Import] No albums to download, creating playlist from matched tracks`);
       }
 
-      // Calculate tracks from downloads
       const tracksFromDownloads = preview.albumsToDownload.reduce(
         (sum, a) => sum + a.tracksNeeded.length, 0,
       );
@@ -3217,10 +3077,9 @@ class SpotifyImportService {
           JSON.stringify(preview),
         );
       } catch (e: any) {
-        logger?.warn(`[Quick Import] Failed to cache preview: ${e.message}`);
+        logger.warn(`[Quick Import] Failed to cache preview: ${e.message}`);
       }
 
-      // Phase 4: Hand off to existing import flow
       await this.processImport(job, albumMbidsToDownload, preview);
     } finally {
       jobLoggers.delete(importJobId);
@@ -3243,7 +3102,7 @@ class SpotifyImportService {
     );
 
     if (!hasMatchedTracks) {
-      logger?.info(
+      logger.info(
         `[Spotify Import] Job ${importJobId} failed with zero matched tracks, cleaning up`,
       );
 
@@ -3263,7 +3122,7 @@ class SpotifyImportService {
         },
       });
 
-      await this.cleanupImportArtifacts(importJobId, job.userId);
+      await this.cleanupImportArtifacts(importJobId);
       return;
     }
 

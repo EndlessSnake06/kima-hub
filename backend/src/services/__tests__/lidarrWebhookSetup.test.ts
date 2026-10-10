@@ -5,7 +5,10 @@
  */
 
 const lidarr = { get: jest.fn(), put: jest.fn(), post: jest.fn() };
-jest.mock("../lidarrClient", () => ({ createLidarrClient: () => lidarr }));
+jest.mock("../lidarrClient", () => ({
+    ...jest.requireActual("../lidarrClient"),
+    createLidarrClient: () => lidarr,
+}));
 jest.mock("../../utils/db", () => ({ prisma: { systemSettings: { update: jest.fn() } } }));
 jest.mock("../../utils/systemSettings", () => ({
     getSystemSettings: jest.fn(),

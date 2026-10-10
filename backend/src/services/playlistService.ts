@@ -160,8 +160,7 @@ export async function addTracks(
 
         const ranks = await allocateAppendRanks(tx, playlistId, fresh.length);
 
-        // `sort` is legacy (rank is authoritative) but must stay monotonic while
-        // anything still reads it.
+        // rank orders the items; sort is kept monotonic for readers that still use it.
         const maxSort = await tx.playlistItem.aggregate({
             where: { playlistId },
             _max: { sort: true },
@@ -205,9 +204,7 @@ export async function removeTracks(
     });
 
     if (count > 0) {
-        // The removal already committed, so a failure here is not worth failing
-        // the request over -- but swallowing it silently meant a playlist could
-        // stop advertising changes with nothing to point at. Log it.
+        // The removal is committed: a failed timestamp touch is logged, not raised.
         try {
             await prisma.playlist.update({
                 where: { id: playlistId },

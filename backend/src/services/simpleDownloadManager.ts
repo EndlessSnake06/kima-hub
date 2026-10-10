@@ -1,9 +1,6 @@
 /**
- * Simple Download Manager
- *
- * Stateless download service that uses the database as the single source of truth.
- * Handles album downloads with automatic retry, blocklisting, and completion tracking.
- * No in-memory state - survives server restarts.
+ * Album downloads with automatic retry, blocklisting and completion tracking. Holds no
+ * in-memory state: the database is the single source of truth, so it survives restarts.
  */
 
 import { logger } from "../utils/logger";
@@ -52,9 +49,6 @@ class SimpleDownloadManager {
     private readonly GRAB_WAIT_MS = 15 * 60 * 1000;
     private readonly QUEUE_MISSING_CYCLES = 3;
 
-    /**
-     * Update active downloads metric from database state
-     */
     private async updateActiveDownloadsMetric(): Promise<void> {
         try {
             const [lidarrCount, soulseekCount] = await Promise.all([
@@ -87,9 +81,7 @@ class SimpleDownloadManager {
         return config?.maxRetryAttempts ?? this.DEFAULT_MAX_ATTEMPTS;
     }
 
-    /**
-     * Transaction wrapper with retry logic for serialization conflicts
-     */
+    /** Runs a transaction, retrying on serialization conflicts. */
     private async withTransaction<T>(
         operation: (tx: TransactionClient) => Promise<T>,
         options?: { maxRetries?: number; logPrefix?: string }
@@ -207,19 +199,17 @@ class SimpleDownloadManager {
     }
 
     /**
-     * Start a new download
-     * Returns the correlation ID for webhook matching
-     * @param isDiscovery - If true, tags the artist in Lidarr for discovery cleanup
+     * Starts a download and returns the correlation id webhooks are matched by.
+     * `isDiscovery` tags the artist in Lidarr so discovery cleanup can find it.
      */
     async startDownload(
         jobId: string,
         artistName: string,
         albumTitle: string,
         albumMbid: string,
-        _userId: string,
         isDiscovery: boolean = false
     ): Promise<{ success: boolean; correlationId?: string; error?: string; errorType?: AcquisitionErrorType; isRecoverable?: boolean }> {
-        logger.debug(`\n Starting download: ${artistName} - ${albumTitle}${isDiscovery ? " (discovery)" : ""}`);
+        logger.debug(`\nStarting download: ${artistName} - ${albumTitle}${isDiscovery ? " (discovery)" : ""}`);
 
         const correlationId = generateCorrelationId();
 
@@ -394,7 +384,6 @@ class SimpleDownloadManager {
                 metadata.artistName,
                 metadata.albumTitle,
                 job.targetMbid!,
-                job.userId,
                 !!job.discoveryBatchId
             );
             resumed++;
@@ -652,12 +641,10 @@ class SimpleDownloadManager {
     }> {
         logger.debug(`[COMPLETE] Download completed: ${downloadId}`);
 
-        // Each album is decided by its own import record and arrives only when
-        // Lidarr holds all its tracks. Lidarr's webhook comes for an album that got
-        // files; its history records the finished download against every album the
-        // release was grabbed for, files or not. An album that got files but is not
-        // whole waits, as Lidarr parks it; one that got none is a failed release.
-        // Lidarr's error propagates, so the event is tried again.
+        // Lidarr's webhook comes for an album that got files, but its history records the download
+        // against every album the release was grabbed for. Each album is decided by its own import
+        // record and arrives only when Lidarr holds all its tracks: an incomplete one waits, as
+        // Lidarr parks it; one with no files is a failed release. Lidarr's error propagates.
         const whole = lidarrAlbumId ? await lidarrService.albumWhole(lidarrAlbumId) : true;
 
         const empty: Awaited<ReturnType<typeof prisma.downloadJob.findMany>> = [];
@@ -769,14 +756,10 @@ class SimpleDownloadManager {
     }
 
     /**
-     * A download Lidarr imported brought none of the jobs' album. With junk
-     * removal off the jobs fail saying so. With it on that is a failed release
-     * for these jobs. A release grabbed for this album alone is marked failed in
-     * Lidarr, which blocklists it; a bundle also served other albums and is left.
-     * Kima then searches for each album still under its retry limit, joining the
-     * search Lidarr's own redownload started (Lidarr merges equal commands), and
-     * the watcher follows it. An album at the limit is not searched: Lidarr's
-     * album search ignores monitoring.
+     * A download Lidarr imported brought none of the jobs' album. With junk removal off the jobs fail
+     * saying so. With it on, a single-album release is marked failed in Lidarr (blocklisted; a bundle
+     * is left alone) and each album under its retry limit is searched again; one at the limit is not,
+     * because Lidarr's album search ignores monitoring.
      */
     private async onFailedRelease(
         jobs: { id: string; userId: string; subject: string; discoveryBatchId: string | null; metadata: Prisma.JsonValue; lidarrAlbumId: number | null }[],
@@ -800,10 +783,9 @@ class SimpleDownloadManager {
     }
 
     /**
-     * Count a failed download once against every job on its album, ignoring
-     * Lidarr's report of a removal Kima made itself. Lidarr searches again while
-     * any of those jobs is under its user's retry limit; a job at its limit moves
-     * on or fails, and the album is unmonitored once none still wants it.
+     * Counts a failed download once against every job on its album, ignoring Lidarr's report of a
+     * removal Kima made. Lidarr searches again while any job is under its user's retry limit; one at
+     * its limit moves on or fails, and the album is unmonitored once none wants it.
      */
     async onImportFailed(
         downloadId: string,
@@ -914,11 +896,9 @@ class SimpleDownloadManager {
     }
 
     /**
-     * Lidarr parked a download for a person (tracks missing, or Kima leaves junk
-     * to the user's own setup), or imported only part of an album: the job waits
-     * until the album is whole or a new grab carries on. The user is told once,
-     * when the job first starts waiting. `onlyJobs` names the jobs of the albums
-     * it concerns, when not every job on the download.
+     * Lidarr parked a download for a person (tracks missing, or junk left to the user's own setup) or
+     * imported only part of an album: the job waits until the album is whole or a new grab carries on.
+     * The user is told once, when the job first waits. `onlyJobs` limits it to those jobs.
      */
     async onImportParked(downloadId: string, reason: string, onlyJobs?: string[]): Promise<number> {
         const jobs = await prisma.downloadJob.findMany({
@@ -939,10 +919,9 @@ class SimpleDownloadManager {
     }
 
     /**
-     * The user cancelled these jobs: a running download no other active job
-     * shares comes out of Lidarr's queue without a blocklist or a new search, and
-     * Lidarr stops monitoring an album no other active job still wants. The
-     * caller deletes the rows.
+     * The user cancelled these jobs: a running download no other active job shares leaves Lidarr's
+     * queue without a blocklist or new search, and an album no other active job wants is unmonitored.
+     * The caller deletes the rows.
      */
     async cancelJobs(jobs: { id: string; status: string; lidarrRef: string | null; lidarrAlbumId: number | null }[]): Promise<void> {
         const active = jobs.filter((j) => j.status === "pending" || j.status === "processing");
@@ -1022,13 +1001,10 @@ class SimpleDownloadManager {
     }
 
     /**
-     * Jobs waiting on something other than a running download. A pending job
-     * that has not started in 10 minutes fails, unless it is held for Lidarr. A
-     * job with no download yet takes the one Lidarr queued for its album, waits
-     * while a search for the album runs, and fails with Lidarr's own reason
-     * when Kima's search finished with nothing grabbed, or 15 minutes after the
-     * last search with no download. A download Lidarr holds is never failed by
-     * a clock; its progress is copied onto the job. Returns how many failed.
+     * Jobs waiting on something other than a running download. A pending job not started in 10 minutes
+     * fails unless held for Lidarr. A job with no download takes the one Lidarr queued for its album,
+     * waits while a search runs, and fails with Lidarr's reason when the search grabs nothing or 15
+     * minutes pass since the last search. Returns how many failed.
      */
     async checkWaitingJobs(snapshot: ReconciliationSnapshot | null): Promise<number> {
         const now = Date.now();
@@ -1120,9 +1096,6 @@ class SimpleDownloadManager {
         await this.mergeMetadata(jobId, { progress, downloadStatus: item.status, statusText });
     }
 
-    /**
-     * Get statistics about current downloads
-     */
     async getStats(): Promise<{
         pending: number;
         processing: number;

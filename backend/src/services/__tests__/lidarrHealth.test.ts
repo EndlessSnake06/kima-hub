@@ -5,7 +5,10 @@
  */
 
 const lidarr = { get: jest.fn() };
-jest.mock("../lidarrClient", () => ({ createLidarrClient: () => lidarr }));
+jest.mock("../lidarrClient", () => ({
+    ...jest.requireActual("../lidarrClient"),
+    createLidarrClient: () => lidarr,
+}));
 jest.mock("../../utils/systemSettings", () => ({
     getSystemSettings: jest.fn().mockResolvedValue({ lidarrEnabled: true, lidarrUrl: "http://lidarr", lidarrApiKey: "key" }),
 }));

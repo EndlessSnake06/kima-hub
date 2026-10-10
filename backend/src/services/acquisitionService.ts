@@ -1,8 +1,6 @@
 /**
- * Unified Acquisition Service
- *
- * Consolidates album/track acquisition logic from Discovery Weekly and Playlist Import.
- * Handles download source selection, behavior matrix routing, and job tracking.
+ * Album and track acquisition for Discovery Weekly and playlist import: download source
+ * selection, behavior matrix routing and job tracking.
  */
 
 import { logger } from "../utils/logger";
@@ -11,6 +9,7 @@ import { getSystemSettings } from "../utils/systemSettings";
 import { soulseekService } from "./soulseek";
 import { simpleDownloadManager } from "./simpleDownloadManager";
 import { musicBrainzService } from "./musicbrainz";
+import { isLidarrConfigured } from "./lidarrClient";
 import { failureCause } from "../utils/outcome";
 import { getArtistCorrection } from "./artistCorrection";
 import { isMbid } from "./artistIdentity";
@@ -34,9 +33,6 @@ interface AcquisitionContext {
     signal?: AbortSignal;
 }
 
-/**
- * Request to acquire an album
- */
 interface AlbumAcquisitionRequest {
     albumTitle: string;
     artistName: string;
@@ -44,18 +40,12 @@ interface AlbumAcquisitionRequest {
     requestedTracks?: Array<{ title: string; position?: number }>;
 }
 
-/**
- * Request to acquire individual tracks (for Unknown Album case)
- */
 interface TrackAcquisitionRequest {
     trackTitle: string;
     artistName: string;
     albumTitle?: string;
 }
 
-/**
- * Result of an acquisition attempt
- */
 interface AcquisitionResult {
     success: boolean;
     downloadJobId?: string;
@@ -68,9 +58,6 @@ interface AcquisitionResult {
     correlationId?: string;
 }
 
-/**
- * Download behavior matrix configuration
- */
 interface DownloadBehavior {
     hasPrimarySource: boolean;
     primarySource: "soulseek" | "lidarr" | null;
@@ -83,17 +70,13 @@ class AcquisitionService {
     private lastConcurrency: number = 4;
 
     constructor() {
-        // Initialize album queue with default concurrency (will be updated from settings)
         this.albumQueue = new PQueue({ concurrency: 4 });
         logger.debug(
             "[Acquisition] Initialized album queue with default concurrency=4"
         );
     }
 
-    /**
-     * Update album queue concurrency from user settings
-     * Called before processing to ensure settings are respected
-     */
+    /** Applies the user's concurrency setting to the album queue before it is used. */
     private async updateQueueConcurrency(): Promise<void> {
         const settings = await getSystemSettings();
         const concurrency = settings?.soulseekConcurrentDownloads ?? 1;
@@ -107,25 +90,16 @@ class AcquisitionService {
         }
     }
 
-    /**
-     * Get download behavior configuration (settings + service availability)
-     * Auto-detects and selects download source based on actual availability
-     */
+    /** Picks the download source from the user's settings and which services are actually available. */
     private async getDownloadBehavior(): Promise<DownloadBehavior> {
         const settings = await getSystemSettings();
 
-        // Get download source settings
         const downloadSource =
             settings?.downloadSource === "lidarr" ? "lidarr" : "soulseek";
         const primaryFailureFallback = settings?.primaryFailureFallback;
 
-        // Determine actual availability
         const hasSoulseek = await soulseekService.isAvailable();
-        const hasLidarr = !!(
-            settings?.lidarrEnabled &&
-            settings?.lidarrUrl &&
-            settings?.lidarrApiKey
-        );
+        const hasLidarr = isLidarrConfigured(settings);
 
         // Case 1: No sources available
         if (!hasSoulseek && !hasLidarr) {
@@ -169,7 +143,7 @@ class AcquisitionService {
             primaryFailureFallback === alternative;
 
         // Only auto-enable fallback if the setting is truly undefined/null (first-time users)
-        // "none" = explicit "Skip Track" choice, respect it (Fixes #68)
+        // "none" is the explicit "skip track" choice and stays off
         if (!useFallback && (primaryFailureFallback === undefined || primaryFailureFallback === null)) {
             useFallback = true;
             logger.debug(
@@ -189,10 +163,7 @@ class AcquisitionService {
         };
     }
 
-    /**
-     * Update download job with source-specific status text
-     * Stored in metadata for frontend display
-     */
+    /** Stores source-specific status text in the job's metadata for the frontend. */
     private async updateJobStatusText(
         jobId: string,
         source: "lidarr" | "soulseek",
@@ -256,7 +227,6 @@ class AcquisitionService {
         request: AlbumAcquisitionRequest,
         context: AcquisitionContext
     ): Promise<AcquisitionResult> {
-        // Update queue concurrency from user settings
         await this.updateQueueConcurrency();
 
         // Timeout is applied INSIDE the queue callback so it only counts
@@ -291,9 +261,7 @@ class AcquisitionService {
         return result as AcquisitionResult;
     }
 
-    /**
-     * Internal album acquisition logic (called via queue)
-     */
+    /** The queued body of acquireAlbum. */
     private async acquireAlbumInternal(
         request: AlbumAcquisitionRequest,
         context: AcquisitionContext
@@ -307,14 +275,9 @@ class AcquisitionService {
             `\n[Acquisition] Acquiring album: ${request.artistName} - ${request.albumTitle} (queue: ${this.albumQueue.size} pending, ${this.albumQueue.pending} active)`
         );
 
-        // Check configuration
         const soulseekAvailable = await soulseekService.isAvailable();
         const settings = await getSystemSettings();
-        const lidarrAvailable = !!(
-            settings?.lidarrEnabled &&
-            settings?.lidarrUrl &&
-            settings?.lidarrApiKey
-        );
+        const lidarrAvailable = isLidarrConfigured(settings);
 
         if (!soulseekAvailable && !lidarrAvailable) {
             throw new ConfigurationError(
@@ -333,10 +296,8 @@ class AcquisitionService {
             request = { ...request, artistName };
         }
 
-        // Get download behavior configuration
         const behavior = await this.getDownloadBehavior();
 
-        // Try primary source first
         let result: AcquisitionResult;
 
         try {
@@ -407,7 +368,6 @@ class AcquisitionService {
             }
         } catch (error) {
             if (error instanceof IntegrationError && error.retryable) {
-                // Initialize retry count
                 const currentRetryCount = context.retryCount || 0;
                 const maxRetries = 3;
 
@@ -426,7 +386,6 @@ class AcquisitionService {
             throw error;
         }
 
-        // Record metrics
         const duration = (Date.now() - startTime) / 1000;
         const source = result.source || 'unknown';
         const status = result.success ? 'success' : 'failed';
@@ -446,7 +405,6 @@ class AcquisitionService {
             `\n[Acquisition] Acquiring ${requests.length} individual tracks via Soulseek`
         );
 
-        // Check Soulseek availability
         const soulseekAvailable = await soulseekService.isAvailable();
         if (!soulseekAvailable) {
             logger.error(
@@ -458,7 +416,6 @@ class AcquisitionService {
             }));
         }
 
-        // Get music path
         const settings = await getSystemSettings();
         const musicPath = settings?.musicPath;
         if (!musicPath) {
@@ -469,7 +426,6 @@ class AcquisitionService {
             }));
         }
 
-        // Prepare tracks for batch download
         const tracksToDownload = requests.map((req) => ({
             artist: req.artistName,
             title: req.trackTitle,
@@ -477,7 +433,6 @@ class AcquisitionService {
         }));
 
         try {
-            // Use Soulseek batch download
             const batchResult = await soulseekService.searchAndDownloadBatch(
                 tracksToDownload,
                 musicPath,
@@ -489,10 +444,8 @@ class AcquisitionService {
                 `[Acquisition] Batch result: ${batchResult.successful}/${requests.length} tracks downloaded`
             );
 
-            // Create individual results for each track
             // Note: Batch doesn't return per-track success mapping, so we use error messages to determine failures
             const results: AcquisitionResult[] = requests.map((req) => {
-                // Check if this specific track had an error in the batch result
                 const trackKey = `${req.artistName} - ${req.trackTitle}`;
                 const trackError = batchResult.errors.find((e) =>
                     e.startsWith(trackKey)
@@ -538,7 +491,6 @@ class AcquisitionService {
             `[Acquisition/Soulseek] Downloading: ${request.artistName} - ${request.albumTitle}`
         );
 
-        // Get music path
         const settings = await getSystemSettings();
         const musicPath = settings?.musicPath;
         if (!musicPath) {
@@ -554,10 +506,8 @@ class AcquisitionService {
 
         let job: any;
         try {
-            // Create download job at start for tracking
             job = await this.createDownloadJob(request, context);
 
-            // Calculate attempt number (existing soulseek attempts + 1)
             const jobMetadata = (job.metadata as any) || {};
             const soulseekAttempts = (jobMetadata.soulseekAttempts || 0) + 1;
             await this.updateJobStatusText(
@@ -568,14 +518,13 @@ class AcquisitionService {
 
             let tracks: Array<{ title: string; position?: number }>;
 
-            // If specific tracks requested, use those instead of full album
             if (request.requestedTracks && request.requestedTracks.length > 0) {
                 tracks = request.requestedTracks;
                 logger.debug(
                     `[Acquisition/Soulseek] Using ${tracks.length} requested tracks (not full album)`
                 );
             } else {
-                // Strategy 1: Get track list from MusicBrainz (mbid guaranteed by early guard above)
+                // The track list comes from MusicBrainz; mbid is guaranteed by the guard above
                 const mbTracks = await musicBrainzService.getAlbumCatalogue(request.mbid!);
                 if (mbTracks.kind === "answered") {
                     tracks = mbTracks.value.recordings.map((rec) => ({
@@ -611,7 +560,7 @@ class AcquisitionService {
                 );
             }
 
-            // Use album-level search (1-2 network calls) instead of per-track
+            // One album-level search (1-2 network calls) rather than one per track
             const batchResult = await soulseekService.searchAndDownloadAlbum(
                 request.artistName,
                 request.albumTitle,
@@ -621,7 +570,6 @@ class AcquisitionService {
             );
 
             if (batchResult.successful === 0) {
-                // Mark job as failed
                 await this.updateJobStatus(
                     job.id,
                     "failed",
@@ -652,7 +600,6 @@ class AcquisitionService {
                     : `Only ${batchResult.successful}/${tracks.length} tracks found`
             );
 
-            // Update job metadata with track counts
             // Read current metadata from DB (job object may be a stub with only id)
             const currentJob = await prisma.downloadJob.findUnique({
                 where: { id: job.id },
@@ -687,7 +634,6 @@ class AcquisitionService {
                 return { success: false, error: 'Import cancelled' };
             }
             logger.error(`[Acquisition/Soulseek] Error: ${error.message}`);
-            // Update job status if job was created
             if (job) {
                 await this.updateJobStatus(
                     job.id,
@@ -725,22 +671,18 @@ class AcquisitionService {
 
         let job: any;
         try {
-            // Create download job
             job = await this.createDownloadJob(request, context);
 
-            // Calculate attempt number (existing lidarr attempts + 1)
             const jobMetadata = (job.metadata as any) || {};
             const lidarrAttempts = (jobMetadata.lidarrAttempts || 0) + 1;
             await this.updateJobStatusText(job.id, "lidarr", lidarrAttempts);
 
-            // Start Lidarr download
             const isDiscovery = !!context.discoveryBatchId;
             const result = await simpleDownloadManager.startDownload(
                 job.id,
                 request.artistName,
                 request.albumTitle,
                 request.mbid,
-                context.userId,
                 isDiscovery
             );
 
@@ -760,10 +702,8 @@ class AcquisitionService {
                     `[Acquisition/Lidarr] Failed to start: ${result.error}`
                 );
 
-                // Mark job as failed
                 await this.updateJobStatus(job.id, "failed", result.error);
 
-                // Return structured error info for fallback logic
                 return {
                     success: false,
                     error: result.error,
@@ -773,7 +713,6 @@ class AcquisitionService {
             }
         } catch (error: any) {
             logger.error(`[Acquisition/Lidarr] Error: ${error.message}`);
-            // Update job status if job was created
             if (job) {
                 await this.updateJobStatus(
                     job.id,
@@ -806,23 +745,9 @@ class AcquisitionService {
             return { id: context.existingJobId };
         }
 
-        // Validate userId before creating download job to prevent foreign key constraint violations
-        if (!context.userId || typeof context.userId !== 'string' || context.userId === 'NaN' || context.userId === 'undefined' || context.userId === 'null') {
-            logger.error(
-                `[Acquisition] Invalid userId in context: ${JSON.stringify({
-                    userId: context.userId,
-                    typeofUserId: typeof context.userId,
-                    albumTitle: request.albumTitle,
-                    artistName: request.artistName
-                })}`
-            );
-            throw new Error(`Invalid userId in acquisition context: ${context.userId}`);
-        }
-
         // Dedup key: use MBID if available, otherwise use artist+album as identifier
         const dedupKey = request.mbid || `${request.artistName}::${request.albumTitle}`;
 
-        // Check for existing active download job (before acquiring lock)
         const existingJobWhere: any = {
             userId: context.userId,
             discoveryBatchId: context.discoveryBatchId || null,
@@ -861,7 +786,6 @@ class AcquisitionService {
                 return doubleCheck;
             }
 
-            // Create new download job
             const jobData: any = {
                 userId: context.userId,
                 subject: `${request.artistName} - ${request.albumTitle}`,
@@ -875,7 +799,6 @@ class AcquisitionService {
                 },
             };
 
-            // Add context-based tracking
             if (context.discoveryBatchId) {
                 jobData.discoveryBatchId = context.discoveryBatchId;
                 jobData.metadata.downloadType = "discovery";
@@ -900,13 +823,7 @@ class AcquisitionService {
         });
     }
 
-    /**
-     * Update download job status
-     *
-     * @param jobId - Job ID to update
-     * @param status - New status
-     * @param error - Optional error message
-     */
+    /** Updates a download job's status, recording the error message when given. */
     private async updateJobStatus(
         jobId: string,
         status: string,

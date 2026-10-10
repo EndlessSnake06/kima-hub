@@ -54,11 +54,9 @@ function isSingleTrackPost(title: string): boolean {
 export type QueueVerdict = { action: "reject" | "owned" | "junk" | "parked"; reason: string };
 
 /**
- * What a queue item needs: a single-track post is turned away (not counted as
- * an attempt); an album the library already holds closes its job; junk (not
- * the album at all) is removed so Lidarr tries the next release; anything else
- * Lidarr stopped on, missing tracks above all, is parked for a person. Null
- * while the download is still going or its archive is being extracted.
+ * What a queue item needs: a single-track post is turned away (not an attempt); an album the
+ * library already holds closes its job; junk is removed so Lidarr tries the next release; anything
+ * else Lidarr stopped on, missing tracks above all, is parked for a person. Null while it is running.
  */
 export function judgeQueueItem(item: LidarrQueueItem, now = Date.now()): QueueVerdict | null {
     if (isSingleTrackPost(item.title ?? "")) return { action: "reject", reason: "Single-track post" };
@@ -87,19 +85,22 @@ export function judgeQueueItem(item: LidarrQueueItem, now = Date.now()): QueueVe
     return null;
 }
 
-/**
- * Tells Lidarr a download it grabbed for one album, and already imported,
- * failed, once per download, as its own "mark as failed" does: the release is
- * blocklisted and Lidarr searches again. False for a bundle, or a download
- * Lidarr has no grab for. Lidarr's error is passed on, so the caller's event
- * is tried again rather than searching with the release still allowed.
- */
-export async function failImportedDownload(downloadId: string, reason: string): Promise<boolean> {
+/** Records that this caller handles the download; false when another already does. */
+async function claimDownload(downloadId: string, reason: string): Promise<boolean> {
     const claim = await prisma.handledDownload.createMany({
         data: [{ downloadId, reason }],
         skipDuplicates: true,
     });
-    if (claim.count === 0) return false;
+    return claim.count > 0;
+}
+
+/**
+ * Tells Lidarr a download it grabbed for one album and already imported failed, once per download, as
+ * its own "mark as failed" does: the release is blocklisted and Lidarr searches again. False for a bundle
+ * or a download Lidarr has no grab for. Lidarr's error is passed on so the caller's event is retried.
+ */
+export async function failImportedDownload(downloadId: string, reason: string): Promise<boolean> {
+    if (!(await claimDownload(downloadId, reason))) return false;
     try {
         if (await lidarrService.markDownloadFailed(downloadId)) return true;
     } catch (error) {
@@ -125,11 +126,7 @@ export async function removeFailedDownload(
         removeFromClient?: boolean;
     }
 ): Promise<boolean> {
-    const claim = await prisma.handledDownload.createMany({
-        data: [{ downloadId, reason }],
-        skipDuplicates: true,
-    });
-    if (claim.count === 0) return false;
+    if (!(await claimDownload(downloadId, reason))) return false;
 
     const stillQueued = async () => (await lidarrService.getQueueItems()).find((q) => q.downloadId === downloadId);
     let removed = false;

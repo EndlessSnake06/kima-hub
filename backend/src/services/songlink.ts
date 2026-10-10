@@ -16,6 +16,13 @@ export interface SongLinkResult {
 }
 
 class SongLinkService {
+    // The cache only saves requests: a Redis failure falls through to the API instead of failing the lookup.
+    private async cacheSet(key: string, ttlSeconds: number, value: string): Promise<void> {
+        try {
+            await redisClient.setex(key, ttlSeconds, value);
+        } catch {}
+    }
+
     async resolve(url: string): Promise<SongLinkResult | null> {
         const cacheKey = `songlink:${url}`;
         try {
@@ -61,14 +68,12 @@ class SongLinkService {
                 };
             }
 
-            try {
-                await redisClient.setex(cacheKey, 604800, JSON.stringify(result));
-            } catch {}
+            await this.cacheSet(cacheKey, 604800, JSON.stringify(result));
 
             return result;
         } catch (err: any) {
             if (err.response?.status === 404) {
-                try { await redisClient.setex(cacheKey, 3600, "null"); } catch {}
+                await this.cacheSet(cacheKey, 3600, "null");
                 return null;
             }
             logger.warn(`song.link resolve failed for ${url}:`, err.message);

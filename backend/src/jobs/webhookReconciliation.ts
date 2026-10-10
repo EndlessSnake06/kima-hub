@@ -9,6 +9,7 @@ import { webhookEventStore } from "../services/webhookEventStore";
 import { processStoredEvent } from "../services/webhookHandlers";
 import { recoverMissedEvents } from "../services/lidarrHistoryRecovery";
 import { getSystemSettings } from "../utils/systemSettings";
+import { isLidarrConfigured } from "../services/lidarrClient";
 
 class WebhookReconciliationService {
     private isRunning = false;
@@ -51,7 +52,7 @@ class WebhookReconciliationService {
         try {
             const settings = await getSystemSettings();
 
-            if (!settings?.lidarrEnabled || !settings?.lidarrUrl || !settings?.lidarrApiKey) {
+            if (!isLidarrConfigured(settings)) {
                 logger.debug("[WEBHOOK-RECONCILE] Lidarr not configured, skipping");
                 return;
             }

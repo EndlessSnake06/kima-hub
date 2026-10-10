@@ -17,10 +17,7 @@ export interface DiscoveryAlbumInfo {
 }
 
 export class DiscoveryAlbumLifecycle {
-    /**
-     * Moves a LIKED discovery album to the permanent LIBRARY.
-     * Updates album location, creates OwnedAlbum record, updates artist counts.
-     */
+    /** Moves a LIKED discovery album to the LIBRARY: its location, an OwnedAlbum row and the artist's counts. */
     async moveLikedAlbumToLibrary(album: DiscoveryAlbumInfo): Promise<void> {
         const dbAlbum = await prisma.album.findFirst({
             where: { rgMbid: album.rgMbid },
@@ -103,12 +100,7 @@ export class DiscoveryAlbumLifecycle {
         );
     }
 
-    /**
-     * Processes all previous discovery albums before generating new ones.
-     * - LIKED albums are moved to library
-     * - ACTIVE albums are deleted
-     * - Cleans up unavailable albums for user
-     */
+    /** Before a new generation: liked albums move to the library, active ones are deleted, and the user's unavailable albums are cleared. */
     async processBeforeGeneration(userId: string): Promise<{ moved: number; deleted: number }> {
         logger.debug(`[DiscoveryLifecycle] Processing previous discovery albums...`);
 

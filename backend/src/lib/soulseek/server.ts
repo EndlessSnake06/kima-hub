@@ -8,6 +8,7 @@ import { logger } from '../../utils/logger'
 import type { Address } from './common'
 import type { FromServerMessage } from './messages/from/server'
 import { fromServerMessageParser } from './messages/from/server'
+import type { MessageBuilder } from './messages/message-builder'
 import type { MessageParser } from './messages/message-parser'
 import { MessageStream } from './messages/message-stream'
 import { toServerMessage } from './messages/to/server'
@@ -61,10 +62,10 @@ export class SlskServer extends (EventEmitter as new () => TypedEventEmitter<Sls
     ...args: Parameters<(typeof toServerMessage)[K]>
   ) {
     if (this.conn.destroyed || !this.conn.writable) return
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
-    const result = toServerMessage[message](...args)
-    this.conn.write(result.getBuffer())
+    const build = toServerMessage[message] as (
+      ...a: Parameters<(typeof toServerMessage)[K]>
+    ) => MessageBuilder
+    this.conn.write(build(...args).getBuffer())
   }
 
   destroy() {

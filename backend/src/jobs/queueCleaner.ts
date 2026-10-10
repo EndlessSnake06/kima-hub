@@ -13,13 +13,10 @@ class QueueCleanerService {
     private maxEmptyChecks = 3; // Stop after 3 consecutive empty checks
     private timeoutId?: NodeJS.Timeout;
 
-    // Cached dynamic imports (lazy-loaded once, reused on subsequent calls)
+    // Imported on first use and cached
     private discoverWeeklyService: typeof import("../services/discoverWeekly")["discoverWeeklyService"] | null = null;
     private spotifyImportService: typeof import("../services/spotifyImport")["spotifyImportService"] | null = null;
 
-    /**
-     * Get discoverWeeklyService (lazy-loaded and cached)
-     */
     private async getDiscoverWeeklyService() {
         if (!this.discoverWeeklyService) {
             const module = await import("../services/discoverWeekly");
@@ -28,9 +25,6 @@ class QueueCleanerService {
         return this.discoverWeeklyService;
     }
 
-    /**
-     * Get spotifyImportService (lazy-loaded and cached)
-     */
     private async getSpotifyImportService() {
         if (!this.spotifyImportService) {
             const module = await import("../services/spotifyImport");
@@ -39,47 +33,37 @@ class QueueCleanerService {
         return this.spotifyImportService;
     }
 
-    /**
-     * Start the polling loop
-     * Safe to call multiple times - won't create duplicate loops
-     */
+    /** Starts the polling loop; calling it while already running does nothing. */
     async start() {
         if (this.isRunning) {
-            logger.debug(" Queue cleaner already running");
+            logger.debug("Queue cleaner already running");
             return;
         }
 
         this.isRunning = true;
         this.emptyQueueChecks = 0;
-        logger.debug(" Queue cleaner started (checking every 30s)");
+        logger.debug("Queue cleaner started (checking every 30s)");
 
         await this.runCleanup();
     }
 
-    /**
-     * Stop the polling loop
-     */
     stop() {
         if (this.timeoutId) {
             clearTimeout(this.timeoutId);
             this.timeoutId = undefined;
         }
         this.isRunning = false;
-        logger.debug(" Queue cleaner stopped (queue empty)");
+        logger.debug("Queue cleaner stopped (queue empty)");
     }
 
-    /**
-     * Main cleanup logic - runs every 30 seconds when active
-     */
     private async runCleanup() {
         if (!this.isRunning) return;
 
         try {
-            // Use getSystemSettings() to get decrypted API key
             const settings = await getSystemSettings();
 
             if (!settings?.lidarrUrl || !settings?.lidarrApiKey) {
-                logger.debug(" Lidarr not configured, stopping queue cleaner");
+                logger.debug("Lidarr not configured, stopping queue cleaner");
                 this.stop();
                 return;
             }
@@ -90,9 +74,9 @@ class QueueCleanerService {
                 await discoverWeeklyService.checkStuckBatches();
             if (stuckBatchCount > 0) {
                 logger.debug(
-                    `⏰ Force-completed ${stuckBatchCount} stuck discovery batch(es)`
+                    `Force-completed ${stuckBatchCount} stuck discovery batch(es)`
                 );
-                this.emptyQueueChecks = 0; // Reset counter
+                this.emptyQueueChecks = 0;
             }
 
             // Spotify imports stuck scanning or downloading
@@ -116,12 +100,12 @@ class QueueCleanerService {
             if (!hadActivity) {
                 this.emptyQueueChecks++;
                 logger.debug(
-                    ` Queue empty (${this.emptyQueueChecks}/${this.maxEmptyChecks})`
+                    `Queue empty (${this.emptyQueueChecks}/${this.maxEmptyChecks})`
                 );
 
                 if (this.emptyQueueChecks >= this.maxEmptyChecks) {
                     logger.debug(
-                        ` No activity for ${this.maxEmptyChecks} checks - stopping cleaner`
+                        `No activity for ${this.maxEmptyChecks} checks - stopping cleaner`
                     );
                     this.stop();
                     return;
@@ -130,14 +114,12 @@ class QueueCleanerService {
                 this.emptyQueueChecks = 0;
             }
 
-            // Schedule next check
             this.timeoutId = setTimeout(
                 () => this.runCleanup(),
                 this.checkInterval
             );
         } catch (error) {
-            logger.error(" Queue cleanup error:", error);
-            // Still schedule next check even on error
+            logger.error("Queue cleanup error:", error);
             this.timeoutId = setTimeout(
                 () => this.runCleanup(),
                 this.checkInterval
@@ -224,10 +206,9 @@ class QueueCleanerService {
     }
 
     /**
-     * Complete jobs Lidarr is not fetching whose album the library already
-     * holds: the same album id, or the same artist and title once edition
-     * words are set aside (owning another edition counts). Covers albums that
-     * arrived some other way, and requests for an album already owned.
+     * Closes complete jobs Lidarr is not fetching whose album the library already holds:
+     * the same album id, or the same artist and title with edition words set aside.
+     * Covers albums that arrived some other way and requests for an album already owned.
      */
     async reconcileWithLocalLibrary(): Promise<{ reconciled: number }> {
         // A job Lidarr is fetching is settled by what Lidarr says about its album.
@@ -269,9 +250,6 @@ class QueueCleanerService {
         return { reconciled };
     }
 
-    /**
-     * Get current status (for debugging/monitoring)
-     */
     getStatus() {
         return {
             isRunning: this.isRunning,

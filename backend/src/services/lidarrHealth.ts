@@ -9,7 +9,7 @@ import { logger } from "../utils/logger";
 import { getSystemSettings } from "../utils/systemSettings";
 import { sourcePauseController } from "./sourcePauseController";
 import { notificationService } from "./notificationService";
-import { createLidarrClient } from "./lidarrClient";
+import { createLidarrClient, isLidarrConfigured } from "./lidarrClient";
 
 export const LIDARR_UNHEALTHY = "LIDARR_UNHEALTHY";
 const ALERT_KEY = "lidarr-health";
@@ -67,7 +67,7 @@ class LidarrHealthMonitor {
         let delay = CHECK_INTERVAL_MS;
         try {
             const settings = await getSystemSettings();
-            if (!settings?.lidarrEnabled || !settings.lidarrUrl || !settings.lidarrApiKey) {
+            if (!isLidarrConfigured(settings)) {
                 await this.recover("off");
                 const { simpleDownloadManager } = await import("./simpleDownloadManager");
                 await simpleDownloadManager.failHeldDownloads();

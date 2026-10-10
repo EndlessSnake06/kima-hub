@@ -55,7 +55,7 @@ function runYtDlp(args: string[], timeoutMs = 300_000): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile("yt-dlp", args, { maxBuffer: 50 * 1024 * 1024, timeout: timeoutMs }, (err, stdout, stderr) => {
       if (err) {
-        logger?.warn(`[yt-dlp] stderr: ${stderr}`);
+        logger.warn(`[yt-dlp] stderr: ${stderr}`);
         if ((err as any).killed || (err as any).signal === "SIGTERM") {
           reject(new Error("Playlist extraction timed out. Try a smaller playlist."));
           return;
@@ -120,7 +120,7 @@ export async function extractPlaylist(url: string): Promise<YtDlpPlaylist> {
     };
   });
 
-  logger?.info(`[yt-dlp] Extracted ${tracks.length} tracks from ${platform} playlist "${playlistTitle}"`);
+  logger.info(`[yt-dlp] Extracted ${tracks.length} tracks from ${platform} playlist "${playlistTitle}"`);
 
   return {
     id: playlistId,
