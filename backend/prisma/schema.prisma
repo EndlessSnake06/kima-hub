@@ -746,9 +746,8 @@ model Track {
   danceabilityMl              Float?
   moodTags                    String[]
   essentiaGenres              String[]
-  // Enrichment tags: MusicBrainz genres (was Last.fm tags; service removed,
-  // column renamed). Also carries queue sentinels '_queued' / '_no_mood_tags'
-  // / '_not_found' — see workers/unifiedEnrichment.ts.
+  // Genre tags kept from earlier releases. Nothing writes them now; the mood
+  // radio's fallback filter and the analysis report still read them.
   enrichmentTags              String[]                 @default([])
   analysisStatus              String                   @default("pending")
   analysisVersion             String?
@@ -768,34 +767,21 @@ model Track {
   vibeAnalysisStatusUpdatedAt DateTime?
   isrc                        String?
   isrcSource                  String?
-  // Fingerprint-hash for intra-library duplicate/version detection. Populated
-  // from the AcoustID lookup (the same value used to identify the track) so
-  // two tracks that fingerprint identically can be matched without a live API
-  // call. Kept nullable: pre-AcoustID tracks and tracks never fingerprinted
-  // stay null until the enrichment path fills them in.
-  //
-  // Indexed by an md5(acoustidFingerprint) EXPRESSION index, not a plain
-  // btree on the column: real fpcalc fingerprints are ~3.3–3.6 kB base64,
-  // which overflows the ~2704-byte btree key. Prisma 5.22
-  // cannot express a functional/expression index in @@index, so the index is
-  // created in migration SQL only and is intentionally NOT declared here —
-  // do not re-add @@index([acoustidFingerprint]), it re-creates the broken
-  // btree.
+  // The track's AcoustID fingerprint, for matching duplicates and versions without a
+  // live API call; null until fingerprinted. Its index is an md5(acoustidFingerprint)
+  // expression index made in migration SQL (a btree overflows on ~3.5 kB fingerprints
+  // and Prisma cannot declare one), so do not add @@index here.
   acoustidFingerprint         String?
 
-  // The MusicBrainz recording this track's fingerprint/lookup matched, if any.
-  // The design's Stage 1 answer needs somewhere to live that is not the
-  // EnrichmentFailure text; this column holds the recording MBID itself so a
-  // re-ask can short-circuit on "already answered". Kept nullable: a track
-  // whose lookup found nothing stays null (never a made-up MBID).
+  // The MusicBrainz recording the fingerprint lookup matched; null when it found
+  // nothing, never a made-up MBID. A re-ask short-circuits when it is set.
   recordingMbid String?
 
   corrupt           Boolean            @default(false)
-  // Set (with the time it was found missing) by a library scan whose directory
-  // walk did not see the file; cleared (null) by the next scan that finds it.
-  // Null is the normal present-on-disk state. A missing track is never
-  // deleted: its plays, likes and stage answers must survive a NAS hiccup,
-  // and it is shown as missing rather than offered to streaming/enrichment.
+  // When a library scan's directory walk first missed the file; null when it is
+  // on disk (the next scan that finds it clears it). A missing track is never
+  // deleted, so its plays, likes and stage answers survive a NAS hiccup; it is
+  // shown as missing and not offered to streaming or enrichment.
   missingSince      DateTime?
   scanStatus        String             @default("pending")
   scanError         String?
@@ -1167,11 +1153,8 @@ enum ListenSource {
   SUBSONIC
 }
 
-/// What a user has been shown, and what they decided.
-///
-/// One row per user per release. Its presence means the release window for that
-/// version has been closed; `dismissedAt` says when. A user who has never seen a
-/// release has no row, which is the only "unknown" state the system has.
+/// One row per user per release: its presence means that user closed the release
+/// window for that version, and `dismissedAt` says when.
 model ReleaseAcknowledgement {
   id          String   @id @default(cuid())
   userId      String
@@ -1185,12 +1168,9 @@ model ReleaseAcknowledgement {
   @@index([userId])
 }
 
-/// A decision on one opt-in, recorded for everybody who saw the release.
-///
-/// Closing the window without touching a toggle still writes a row here, with
-/// `decidedBy = DISMISSED` and the choice's default value — which is always off.
-/// That is deliberate: it means there is no third state for later code to read
-/// optimistically, and "how many people opted in" has an honest denominator.
+/// A decision on one opt-in. Closing the release window without touching a toggle
+/// still writes a row, with `decidedBy = DISMISSED` and the default value (always
+/// off), so there is no third state to read and opt-in counts have a real denominator.
 model ReleaseChoice {
   id        String          @id @default(cuid())
   userId    String
@@ -1215,18 +1195,9 @@ enum ChoiceDecidedBy {
   DISMISSED
 }
 
-/// A track the play-history audit has been told to stop flagging.
-///
-/// The audit finds plays it can prove nobody listened to. There are two honest
-/// answers to that: delete them, or say "this is fine, leave it alone". Only the
-/// first is destructive, and only the second needs somewhere to live — without
-/// this table the same rows are offered up every single time the audit runs,
-/// which is how a maintenance tool turns into something people stop opening.
-///
-/// Ignoring is per track, not per play. "This track's count is fine" is the
-/// thing a person actually means, and it keeps applying as new plays arrive.
-/// Nothing about counting changes: an ignored track accumulates plays exactly
-/// like every other track, it is simply never raised again.
+/// A track the play-history audit has been told to stop flagging. Ignoring is per
+/// track, not per play, so it keeps applying as new plays arrive; an ignored track
+/// still counts plays like any other and is simply never raised again.
 model PlayAuditIgnore {
   userId    String
   trackId   String
@@ -1238,17 +1209,10 @@ model PlayAuditIgnore {
   @@index([userId])
 }
 
-/// One answer per track per stage. The stage name is the question ("recording", "analysis",
-/// "embedding", "fingerprint"); `status` is that question's answer, and `evidence` holds the
-/// probe that produced it. Because the answer lives on the record and not in a
-/// reused Track column, a track that is `failed` or `blocked` at one stage
-/// cannot hold another track's stage behind it — the sweep reads records, so a
-/// terminal answer is simply not offered again and a `nextRetryAt` that has not
-/// elapsed is not due yet.
-///
-/// `status` is one of: pending | working | done | failed | blocked.
-/// `failureClass` is one of: DAMAGED | UNSUPPORTED | MULTICANNEL | INCONCLUSIVE
-/// (the classifier's Disposition), or null while nothing has failed.
+/// One answer per track per stage: `stage` is the question ("recording", "analysis",
+/// "embedding", "fingerprint"), `status` its answer (pending | working | done | failed |
+/// blocked) and `evidence` the probe behind it. `failureClass` is the classifier's
+/// Disposition (DAMAGED | UNSUPPORTED | MULTICANNEL | INCONCLUSIVE), null while nothing has failed.
 model TrackStage {
   id               String    @id @default(cuid())
   trackId          String
@@ -1259,8 +1223,8 @@ model TrackStage {
   source           String?
   /// Claims made: each claim's job id carries it (`claimOf`). Retries are counted by `failures`.
   attempt          Int       @default(0)
-  /// Times a claim was re-offered because its lease expired without an
-  /// answer (that never consumes an attempt; at 3 the record closes).
+  /// Times a claim was re-offered because its lease expired without an answer.
+  /// That never consumes an attempt; at 3 the record closes.
   redelivered      Int       @default(0)
   /// Reported failures of this question; only these use up retries (STAGE_RETRY_CAP).
   failures         Int       @default(0)
