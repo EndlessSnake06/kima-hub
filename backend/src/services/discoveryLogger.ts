@@ -21,20 +21,16 @@ class DiscoveryLogger {
      * Start a new log file for a discovery generation
      */
     start(userId: string, jobId?: number): string {
-        // Ensure log directory exists
         if (!fs.existsSync(this.logDir)) {
             fs.mkdirSync(this.logDir, { recursive: true });
         }
 
-        // Create filename with timestamp
         const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
         const filename = `discovery-${timestamp}-job${jobId || "manual"}.log`;
         this.currentLogFile = path.join(this.logDir, filename);
 
-        // Open write stream
         this.currentStream = fs.createWriteStream(this.currentLogFile, { flags: "a" });
 
-        // Write header
         this.write("═".repeat(60));
         this.write(`DISCOVERY WEEKLY GENERATION LOG`);
         this.write(`Started: ${new Date().toISOString()}`);
@@ -53,13 +49,11 @@ class DiscoveryLogger {
         const prefix = "  ".repeat(indent);
         const timestamp = new Date().toISOString().split("T")[1].split(".")[0];
         const line = `[${timestamp}] ${prefix}${message}`;
-        
-        // Write to file
+
         if (this.currentStream) {
             this.currentStream.write(line + "\n");
         }
-        
-        // Also write to console for real-time visibility
+
         logger.debug(message);
     }
 
@@ -139,36 +133,6 @@ class DiscoveryLogger {
     }
 
     /**
-     * Get the path to the current log file
-     */
-    getCurrentLogPath(): string | null {
-        return this.currentLogFile;
-    }
-
-    /**
-     * Get the most recent log file
-     */
-    getLatestLog(): { path: string; content: string } | null {
-        if (!fs.existsSync(this.logDir)) {
-            return null;
-        }
-
-        const files = fs.readdirSync(this.logDir)
-            .filter(f => f.startsWith("discovery-") && f.endsWith(".log"))
-            .sort()
-            .reverse();
-
-        if (files.length === 0) {
-            return null;
-        }
-
-        const latestPath = path.join(this.logDir, files[0]);
-        const content = fs.readFileSync(latestPath, "utf-8");
-        
-        return { path: latestPath, content };
-    }
-
-    /**
      * Get all log files (most recent first)
      */
     getAllLogs(): { filename: string; date: Date; size: number }[] {
@@ -188,17 +152,6 @@ class DiscoveryLogger {
                 };
             })
             .sort((a, b) => b.date.getTime() - a.date.getTime());
-    }
-
-    /**
-     * Get a specific log file content
-     */
-    getLogContent(filename: string): string | null {
-        const filePath = path.join(this.logDir, filename);
-        if (!fs.existsSync(filePath)) {
-            return null;
-        }
-        return fs.readFileSync(filePath, "utf-8");
     }
 
     /**
