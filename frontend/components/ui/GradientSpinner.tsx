@@ -15,8 +15,7 @@ const GradientSpinner = memo(function GradientSpinner({ size = "md", className =
         xl: { size: 64, strokeWidth: 4, radius: 28 },
     };
 
-    // Fallback to "md" if invalid size is provided
-    const sizeConfig = sizeMap[size] || sizeMap.md;
+    const sizeConfig = sizeMap[size];
     const { size: viewBoxSize, strokeWidth, radius } = sizeConfig;
     const center = viewBoxSize / 2;
 

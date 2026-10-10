@@ -31,7 +31,7 @@ export function KeyboardShortcutsTooltip() {
             </button>
 
             {isVisible && (
-                <div className={`${isVisible ? "animate-panel-up" : "animate-panel-down"} absolute bottom-full right-0 mb-2 w-64 bg-[var(--bg-hover)] border border-white/10 rounded-lg p-4 z-(--z-dropdown) backdrop-blur-xl`}>
+                <div className="animate-panel-up absolute bottom-full right-0 mb-2 w-64 bg-[var(--bg-hover)] border border-white/10 rounded-lg p-4 z-(--z-dropdown) backdrop-blur-xl">
                     <div className="absolute -bottom-1 right-3 w-2 h-2 bg-[var(--bg-hover)] border-r border-b border-white/10 rotate-45" />
 
                     <h3 className="text-white font-bold text-sm mb-3 flex items-center gap-2">
