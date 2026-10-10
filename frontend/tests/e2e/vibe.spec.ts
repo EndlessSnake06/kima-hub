@@ -72,7 +72,7 @@ test.use(softwareWebGL);
 // touching the toolbar or the field.
 async function dismissWhatsNew(page: Page) {
     const modal = page.locator('div[role="dialog"][aria-labelledby="whats-new-title"]');
-    const dismiss = modal.locator('[aria-label="Dismiss"]');
+    const dismiss = modal.getByRole("button", { name: "Close" });
     // The modal mounts late (after the version fetch over a cold session) and
     // an aria-modal overlay intercepts every pointer event. Register a handler
     // so any later action that gets blocked by it dismisses it automatically,
