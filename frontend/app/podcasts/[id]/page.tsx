@@ -196,7 +196,7 @@ export default function PodcastDetailPage() {
                                 <div
                                     className="prose prose-invert prose-sm max-w-none text-[var(--text-secondary)] max-w-3xl text-sm leading-relaxed"
                                     dangerouslySetInnerHTML={{
-                                        __html: DOMPurify.sanitize(podcast.description || ""),
+                                        __html: DOMPurify.sanitize(podcast.description),
                                     }}
                                 />
                             </div>
