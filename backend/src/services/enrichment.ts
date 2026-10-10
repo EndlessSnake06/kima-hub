@@ -6,7 +6,7 @@
 import { logger } from "../utils/logger";
 import { isMbid } from "./artistIdentity";
 import { titlesAgree } from "./albumIdentity";
-import { resolveArtistMbid } from "./artistCorrection";
+import { resolveArtistMbidFromDiscography } from "./artistCorrection";
 import { prisma } from "../utils/db";
 import { musicBrainzService } from "./musicbrainz";
 import { topVoted } from "../utils/votes";
@@ -123,13 +123,9 @@ class EnrichmentService {
             config.sources.musicbrainz &&
             !isMbid(artist.mbid)
         ) {
-            const albums = await prisma.album.findMany({
-                where: { artistId: artist.id },
-                select: { title: true },
-            });
-            const found = await resolveArtistMbid(
-                artist.name,
-                albums.map((album) => album.title)
+            const found = await resolveArtistMbidFromDiscography(
+                artist.id,
+                artist.name
             );
             if (found.kind === "answered") {
                 enrichmentData.mbid = found.value.mbid;
@@ -341,7 +337,7 @@ class EnrichmentService {
             }
         }
 
-        // Step 3: Get cover art from multiple sources (Deezer → MusicBrainz → Fanart)
+        // Get cover art from multiple sources (Deezer → MusicBrainz → Fanart)
         try {
             const coverResult = await findAlbumArtwork({
                 rgMbid: enrichmentData.rgMbid,
