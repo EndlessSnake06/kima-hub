@@ -16,7 +16,6 @@ import asyncio
 import secrets
 import threading
 from typing import Optional, Tuple
-import traceback
 import numpy as np
 import librosa
 import requests
@@ -223,9 +222,9 @@ class CLAPAnalyzer:
                 logger.critical(
                     f"ONNX text backend FAILED with CLAP_BACKEND=onnx pinned; "
                     f"NOT falling back to torch. Text embeddings for "
-                    f"{len(prompts)} prompts failed: {e}"
+                    f"{len(prompts)} prompts failed: {e}",
+                    exc_info=True,
                 )
-                traceback.print_exc()
                 raise
         # torch path
         self.ensure_model()
@@ -259,8 +258,7 @@ class CLAPAnalyzer:
 
                 logger.info("CLAP model loaded successfully on CPU")
             except Exception as e:
-                logger.error(f"Failed to load CLAP model: {e}")
-                traceback.print_exc()
+                logger.exception(f"Failed to load CLAP model: {e}")
                 raise
 
     def unload_model(self):
@@ -310,8 +308,7 @@ class CLAPAnalyzer:
             return audio, sr
 
         except Exception as e:
-            logger.error(f"Failed to load window at {start:.1f}s from {audio_path}: {e}")
-            traceback.print_exc()
+            logger.exception(f"Failed to load window at {start:.1f}s from {audio_path}: {e}")
             return None, 0
 
     def get_audio_embedding(self, audio_path: str) -> Optional[np.ndarray]:
@@ -333,8 +330,7 @@ class CLAPAnalyzer:
         try:
             duration = librosa.get_duration(path=audio_path)
         except Exception as e:
-            logger.error(f"Failed to determine duration of {audio_path}: {e}")
-            traceback.print_exc()
+            logger.exception(f"Failed to determine duration of {audio_path}: {e}")
             return None
 
         offsets = compute_window_offsets(duration)
@@ -355,8 +351,7 @@ class CLAPAnalyzer:
                 vectors = list(onnx_backend.embed_clips(clips))
             except Exception as e:
                 # Never fall back to torch: a re-embed must stay in one vector space.
-                logger.critical(f"ONNX backend failed on {audio_path}: {e}")
-                traceback.print_exc()
+                logger.critical(f"ONNX backend failed on {audio_path}: {e}", exc_info=True)
                 return None
         else:
             vectors = []
@@ -390,8 +385,7 @@ class CLAPAnalyzer:
             n = np.linalg.norm(vec)
             return vec / n if n > 0 else vec
         except Exception as e:
-            logger.error(f"Failed to embed window at {start:.1f}s of {audio_path}: {e}")
-            traceback.print_exc()
+            logger.exception(f"Failed to embed window at {start:.1f}s of {audio_path}: {e}")
             return None
 
     def get_text_embedding(self, text: str) -> Optional[np.ndarray]:
@@ -417,8 +411,7 @@ class CLAPAnalyzer:
                 return embedding.astype(np.float32)
 
         except Exception as e:
-            logger.error(f"Failed to generate text embedding: {e}")
-            traceback.print_exc()
+            logger.exception(f"Failed to generate text embedding: {e}")
             return None
 
     def _prompt_similarity(self, audio_embedding: np.ndarray, group: str) -> float:
@@ -850,8 +843,7 @@ class BullMQVibeWorker:
             conn.commit()
             return "stored"
         except Exception as e:
-            logger.error(f"Failed to store embedding for {track_id}: {e}")
-            traceback.print_exc()
+            logger.exception(f"Failed to store embedding for {track_id}: {e}")
             conn.rollback()
             return "failed"
         finally:
@@ -890,8 +882,7 @@ class PubSubHandler:
                         self._handle_message(message)
 
                 except Exception as e:
-                    logger.error(f"{name} error: {e}")
-                    traceback.print_exc()
+                    logger.exception(f"{name} error: {e}")
                     time.sleep(1)
 
         finally:
@@ -949,8 +940,7 @@ class TextEmbedHandler(PubSubHandler):
             logger.info(f"Text embed response sent: {request_id}")
 
         except Exception as e:
-            logger.error(f"Failed to handle text embed request: {e}")
-            traceback.print_exc()
+            logger.exception(f"Failed to handle text embed request: {e}")
             # Publish a failure response so the caller fails fast instead of
             # waiting out its full timeout on an internal analyzer error.
             if request_id:
@@ -1005,8 +995,7 @@ class ControlHandler(PubSubHandler):
                 logger.warning(f"Unknown control command: {command}")
 
         except Exception as e:
-            logger.error(f"Failed to handle control message: {e}")
-            traceback.print_exc()
+            logger.exception(f"Failed to handle control message: {e}")
 
 
 def probe_gpu_session():
