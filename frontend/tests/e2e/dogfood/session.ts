@@ -275,7 +275,7 @@ export class DogfoodSession {
         // Earlier journeys that threw before their assertClean may have
         // left unreported violations that should not penalize the current journey.
         const currentJourneySteps = this.steps
-            .filter((s) => s.name.startsWith(this.currentJourney))
+            .filter((s) => s.journey === this.currentJourney)
             .map((s) => s.name);
         const fresh = this.violations.filter(
             (v) =>
