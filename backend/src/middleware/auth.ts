@@ -238,8 +238,8 @@ async function authenticateRequest(
                     return { id: user.id, username: user.username, role: user.role };
                 }
             }
-        } catch (error) {
-            // Token invalid
+        } catch {
+            // An unverifiable token is no credential.
         }
     }
 
