@@ -231,12 +231,11 @@ afterAll(async () => {
     await prisma.$disconnect();
 });
 
-describe("stages overlap instead of waving", () => {
+describe("stages overlap instead of running in waves", () => {
     it("analysis dispatches while a bigger recording backlog is pending", async () => {
-        // A mixed backlog: every
-        // track still needs its recording AND its analysis. One shared
-        // stage-ordered window made this window all-recording, so the
-        // analyzer got nothing until identification finished.
+        // A mixed backlog: every track still owes its recording AND its
+        // analysis. A single stage-ordered window would fill with recording
+        // alone and starve the analyzer until identification finished.
         await seedTracks(30, [
             ["recording", "pending"],
             ["analysis", "pending"],

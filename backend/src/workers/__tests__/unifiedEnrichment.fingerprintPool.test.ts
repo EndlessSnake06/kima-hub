@@ -229,8 +229,7 @@ describe("the fingerprint stage runs in its own pool", () => {
         for (const t of tracks) await seedTrack(t);
 
         // The dispatch hands out ALL four claims and RETURNS while two
-        // fpcalc subprocesses are still running — the old inline producer
-        // could not have returned here.
+        // fpcalc subprocesses are still running.
         const queued = await executeFingerprintPhase();
 
         expect(queued).toBe(4);

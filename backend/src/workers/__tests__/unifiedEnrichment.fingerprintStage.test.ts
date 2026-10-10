@@ -258,6 +258,14 @@ async function wipe(): Promise<void> {
     await prisma.$executeRawUnsafe(`DELETE FROM "Artist" WHERE id = $1`, id("art"));
 }
 
+/** Dispatch the phase and drain the pool; returns how many were queued.
+ * The dispatch returns immediately; the answers land on the pool's schedule. */
+async function dispatchAndDrain(): Promise<number> {
+    const queued = await executeFingerprintPhase();
+    await waitForFingerprintWork();
+    return queued;
+}
+
 beforeEach(async () => {
     jest.clearAllMocks();
     mockFingerprintFile.mockImplementation(async () => ({
@@ -275,15 +283,13 @@ afterAll(async () => {
 
 describe("the fingerprint stage answers every track", () => {
     it("computes and stores a fingerprint for a track that HAS an ISRC", async () => {
-        // Fully identified already — the exact track class the old path
-        // skipped: with an ISRC, enrichSingleTrack never fingerprinted it.
+        // Fully identified already, ISRC and recording MBID both present:
+        // this class of track is fingerprinted too.
         const trackId = id("isrc");
         await seedTrack(trackId, { isrc: "FR10S1700001", recordingMbid: "mbid-known" });
         await putStage(trackId, "fingerprint", "pending");
 
-        const queued = await executeFingerprintPhase();
-        await waitForFingerprintWork();
-        // The dispatch returns immediately; the answers land on the pool's schedule.
+        const queued = await dispatchAndDrain();
 
         expect(queued).toBe(1);
         // The fingerprint was computed locally and STORED on the track.
@@ -307,8 +313,7 @@ describe("the fingerprint stage answers every track", () => {
         );
         await putStage(trackId, "fingerprint", "pending");
 
-        await executeFingerprintPhase();
-        await waitForFingerprintWork();
+        await dispatchAndDrain();
 
         // The answer already exists — answering the record from it costs no
         // fpcalc run and overwrites nothing with nothing.
@@ -323,8 +328,7 @@ describe("the fingerprint stage answers every track", () => {
         await putStage(trackId, "fingerprint", "pending");
         mockFingerprintFile.mockImplementation(async () => null);
 
-        await executeFingerprintPhase();
-        await waitForFingerprintWork();
+        await dispatchAndDrain();
 
         const row = await stageRow(trackId, "fingerprint");
         expect(row?.status).toBe("failed");
@@ -362,9 +366,7 @@ describe("the fingerprint stage answers every track", () => {
 
         // The phase answers the whole sweep: the two seeded rows plus the
         // never-asked new track.
-        const queued = await executeFingerprintPhase();
-        await waitForFingerprintWork();
-        // The dispatch returns immediately; the answers land on the pool's schedule.
+        const queued = await dispatchAndDrain();
         expect(queued).toBe(3);
         for (const trackId of [a, b, fresh]) {
             expect((await stageRow(trackId, "fingerprint"))?.status).toBe("done");
@@ -386,9 +388,7 @@ describe("a paused 'acoustid' source blocks only the network lookup", () => {
             message: "seeded by test",
         });
 
-        const queued = await executeFingerprintPhase();
-        await waitForFingerprintWork();
-        // The dispatch returns immediately; the answers land on the pool's schedule.
+        const queued = await dispatchAndDrain();
 
         // fpcalc is local — the pause must not stop the sweep.
         expect(queued).toBe(1);
@@ -401,16 +401,13 @@ describe("a paused 'acoustid' source blocks only the network lookup", () => {
             until: new Date(Date.now() + 60_000),
             code: "RATE_LIMITED",
         });
-        const stillQueued = await executeFingerprintPhase();
-        await waitForFingerprintWork();
-        // The dispatch returns immediately; the answers land on the pool's schedule.
+        const stillQueued = await dispatchAndDrain();
         expect(stillQueued).toBe(0); // this track is already answered...
         // ...but a NEW pending question is still offered and answered.
         const other = id("paused2");
         await seedTrack(other);
         await putStage(other, "fingerprint", "pending");
-        expect(await executeFingerprintPhase()).toBe(1);
-        await waitForFingerprintWork();
+        expect(await dispatchAndDrain()).toBe(1);
         expect((await stageRow(other, "fingerprint"))?.status).toBe("done");
     });
 });
@@ -446,8 +443,7 @@ describe("progress includes the fingerprint stage", () => {
         // complete — every other stage here is answered.
         expect(progress.isFullyComplete).toBe(false);
 
-        await executeFingerprintPhase();
-        await waitForFingerprintWork();
+        await dispatchAndDrain();
         invalidateEnrichmentProgress();
         const after = await getEnrichmentProgress();
         expect(after.fingerprints.pending).toBe(0);

@@ -221,6 +221,21 @@ function stageRows(rows: Array<{ trackId: string; stage: string; attempt?: numbe
     }));
 }
 
+/** The claim succeeds; only `stage` is owed, by `trackIds`. */
+function claimOneStage(stage: string, trackIds: string[]) {
+    mockQueryRaw.mockImplementation(async (...args: unknown[]) => {
+        const sql = String(args[0]);
+        if (sql.includes("SET status = 'working'")) return [{ attempt: 1, redelivered: 0 }];
+        if (args[1] === stage) return stageRows(trackIds.map((trackId) => ({ trackId, stage })));
+        return [];
+    });
+}
+
+/** One stage's progress counts, as BigInt the way the SQL returns them. */
+function progressRow(completed: bigint, retryableFailed = 0n) {
+    return [{ total: 10n, completed, working: 0n, retryable_failed: retryableFailed, terminal_failed: 0n }];
+}
+
 // ── Tests ───────────────────────────────────────────────────────────
 
 describe("Enrichment State Machine", () => {
@@ -443,12 +458,7 @@ describe("Enrichment State Machine", () => {
         it("feeds the analysis queue from the stage record, not from analysisStatus", async () => {
             // One track owes analysis; it must be pushed even though no
             // `analysisStatus: "pending"` select drove the choice.
-            mockQueryRaw.mockImplementation(async (...args: unknown[]) => {
-                const sql = String(args[0]); const stage = args[1];
-                if (sql.includes("SET status = 'working'")) return [{ attempt: 1, redelivered: 0 }];
-                if (stage === "analysis") return stageRows([{ trackId: "t1", stage: "analysis" }]);
-                return [];
-            });
+            claimOneStage("analysis", ["t1"]);
 
             const queued = await executeAudioPhase();
 
@@ -461,12 +471,7 @@ describe("Enrichment State Machine", () => {
 
         it("does not re-queue a track whose recording stage is already answered", async () => {
             // Only the recording stage is owed, and only for one track.
-            mockQueryRaw.mockImplementation(async (...args: unknown[]) => {
-                const sql = String(args[0]); const stage = args[1];
-                if (sql.includes("SET status = 'working'")) return [{ attempt: 1, redelivered: 0 }];
-                if (stage === "recording") return stageRows([{ trackId: "t1", stage: "recording" }]);
-                return [];
-            });
+            claimOneStage("recording", ["t1"]);
 
             const queued = await executeIdentificationPhase();
 
@@ -481,14 +486,7 @@ describe("Enrichment State Machine", () => {
         it("embeds a ready track while another track's analysis is still owed", async () => {
             // Only the ready track's embedding record is due; the other is
             // gated by its own unfinished analysis, not by a global count.
-            mockQueryRaw.mockImplementation(async (...args: unknown[]) => {
-                const sql = String(args[0]); const stage = args[1];
-                if (sql.includes("SET status = 'working'")) return [{ attempt: 1, redelivered: 0 }];
-                if (stage === "embedding") {
-                    return stageRows([{ trackId: "ready", stage: "embedding" }]);
-                }
-                return [];
-            });
+            claimOneStage("embedding", ["ready"]);
             // A track still sits at analysisStatus 'pending'; that must not
             // hold back the embedding phase.
             mockPrismaTrackCount.mockResolvedValue(1);
@@ -523,16 +521,9 @@ describe("Enrichment State Machine", () => {
             mockQueryRaw.mockImplementation(async (...args: unknown[]) => {
                 const sql = String(args[0]); const stage = args[1];
                 if (sql.includes("FROM \"Track\"") && sql.includes("count(*) FILTER")) {
-                    if (stage === "recording") {
-                        return [{ total: 10n, completed: 5n, working: 0n,
-                                 retryable_failed: 0n, terminal_failed: 0n }];
-                    }
-                    if (stage === "analysis") {
-                        return [{ total: 10n, completed: 8n, working: 0n,
-                                 retryable_failed: 0n, terminal_failed: 0n }];
-                    }
-                    return [{ total: 10n, completed: 6n, working: 0n,
-                             retryable_failed: 2n, terminal_failed: 0n }];
+                    if (stage === "recording") return progressRow(5n);
+                    if (stage === "analysis") return progressRow(8n);
+                    return progressRow(6n, 2n);
                 }
                 return [{ count: 8n }];
             });

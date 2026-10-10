@@ -178,8 +178,8 @@ describe("getNextWork", () => {
 
   it("does not gate a track's stage on another track's failure", async () => {
     // Track A's analysis is dead; track B's analysis is done and its embedding
-    // is owed. B must still be offered — the old global audioInFlight gate
-    // returned 0 for the whole phase while ANY track was pending/processing.
+    // is owed. Each track's stages gate independently, so B must still be
+    // offered.
     await putStage(id("bad"), "analysis", "failed", { retryable: false, attempt: 3 });
     await putStage(id("ok0"), "embedding", "pending");
 
@@ -221,9 +221,8 @@ describe("getNextWork", () => {
 
   it("gates each stage only on its own declared prerequisite, not the linear chain", async () => {
     // MusicBrainz never answered this track's recording question, but the
-    // file is fine: analysis reads only the audio, so it is owed NOW. Under
-    // the old analysis←recording edge this offer never came (the stranded-25
-    // defect).
+    // file is fine: analysis reads only the audio, so a failed recording
+    // stage does not gate it.
     await putStage(id("ok0"), "recording", "failed", { attempt: 1, retryable: true });
     await putStage(id("ok0"), "analysis", "pending");
 

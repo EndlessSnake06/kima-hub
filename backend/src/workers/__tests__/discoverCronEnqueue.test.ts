@@ -66,7 +66,25 @@ function tickCron(): () => Promise<void> {
     return cb;
 }
 
-describe('discoverCron enqueue -- lock + stale-hash guard (Task 9)', () => {
+/** Tick the cron for one user whose job hash sits in `state`; return that job. */
+async function tickWithStaleJob(state: string) {
+    const stale = fakeJob(state);
+    (discoverQueue.getJob as jest.Mock).mockResolvedValue(stale);
+    (prisma.userDiscoverConfig.findMany as jest.Mock).mockResolvedValue([
+        { userId: 'user-a', playlistSize: 25 },
+    ]);
+    await tickCron()();
+    return stale;
+}
+
+/** remove() must beat add(): a re-add on a live hash is a silent no-op. */
+function expectRemoveBeforeAdd(stale: { remove: jest.Mock }) {
+    const removeOrder = stale.remove.mock.invocationCallOrder[0];
+    const addOrder = (discoverQueue.add as jest.Mock).mock.invocationCallOrder[0];
+    expect(removeOrder).toBeLessThan(addOrder);
+}
+
+describe('discoverCron enqueue -- lock + stale-hash guard', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         (distributedLock.withLock as jest.Mock).mockImplementation(
@@ -77,7 +95,7 @@ describe('discoverCron enqueue -- lock + stale-hash guard (Task 9)', () => {
     });
 
     // The enqueue runs inside withLock under the manual path's key.
-    it('RACE PATH: takes distributedLock with the discover:generate:<userId> key around the enqueue', async () => {
+    it('takes distributedLock with the discover:generate:<userId> key around the enqueue', async () => {
         (prisma.userDiscoverConfig.findMany as jest.Mock).mockResolvedValue([
             { userId: 'user-a', playlistSize: 25 },
         ]);
@@ -95,43 +113,28 @@ describe('discoverCron enqueue -- lock + stale-hash guard (Task 9)', () => {
         expect(lockOrder).toBeLessThan(addOrder);
     });
 
-    // FAILURE PATH (silent drop): a retained COMPLETED hash for this user's
-    // current week must be removed before re-adding, otherwise add() is a no-op
-    // and the cron silently skips the user. Discriminator: remove() called, then
-    // add() called -- and both happen inside the lock callback.
-    it('FAILURE PATH: removes a stale COMPLETED job hash before re-enqueuing (inside the lock)', async () => {
-        const stale = fakeJob('completed');
-        (discoverQueue.getJob as jest.Mock).mockResolvedValue(stale);
-        (prisma.userDiscoverConfig.findMany as jest.Mock).mockResolvedValue([
-            { userId: 'user-a', playlistSize: 25 },
-        ]);
-
-        await tickCron()();
+    // A retained COMPLETED hash for this user's current week must be removed
+    // before re-adding, otherwise add() is a no-op and the cron silently
+    // skips the user.
+    it('removes a stale completed job hash inside the lock before re-enqueuing', async () => {
+        const stale = await tickWithStaleJob('completed');
 
         expect(stale.remove).toHaveBeenCalledTimes(1);
         expect(discoverQueue.add).toHaveBeenCalledTimes(1);
-        const removeOrder = stale.remove.mock.invocationCallOrder[0];
-        const addOrder = (discoverQueue.add as jest.Mock).mock.invocationCallOrder[0];
-        expect(removeOrder).toBeLessThan(addOrder);
+        expectRemoveBeforeAdd(stale);
     });
 
-    // EDGE / SAFETY: a non-terminal (active) hash means a generation is already
-    // running for this user/week. The cron must NOT remove it (that would orphan
-    // a live run). Terminal-only removal, same as the /generate side.
-    it('EDGE: does NOT remove a non-terminal (active) job hash', async () => {
-        const live = fakeJob('active');
-        (discoverQueue.getJob as jest.Mock).mockResolvedValue(live);
-        (prisma.userDiscoverConfig.findMany as jest.Mock).mockResolvedValue([
-            { userId: 'user-a', playlistSize: 25 },
-        ]);
-
-        await tickCron()();
+    // A non-terminal (active) hash means a generation is already running for
+    // this user/week. The cron must NOT remove it (that would orphan a live
+    // run). Terminal-only removal, same as the /generate side.
+    it('does not remove a non-terminal (active) job hash', async () => {
+        const live = await tickWithStaleJob('active');
 
         expect(live.remove).not.toHaveBeenCalled();
     });
 
     // A lock failure for one user skips only that user; the next is enqueued.
-    it('FAILURE ISOLATION: a lock failure for one user does not block the others', async () => {
+    it('a lock failure for one user does not block the others', async () => {
         (prisma.userDiscoverConfig.findMany as jest.Mock).mockResolvedValue([
             { userId: 'user-a', playlistSize: 25 },
             { userId: 'user-b', playlistSize: 25 },
@@ -155,14 +158,8 @@ describe('discoverCron enqueue -- lock + stale-hash guard (Task 9)', () => {
     });
 
     // The lock is taken before getJob and remove, not only around add.
-    it('CRITIC GAP B: getJob and remove happen INSIDE the lock (not before it)', async () => {
-        const stale = fakeJob('completed');
-        (discoverQueue.getJob as jest.Mock).mockResolvedValue(stale);
-        (prisma.userDiscoverConfig.findMany as jest.Mock).mockResolvedValue([
-            { userId: 'user-a', playlistSize: 25 },
-        ]);
-
-        await tickCron()();
+    it('getJob and remove happen inside the lock (not before it)', async () => {
+        const stale = await tickWithStaleJob('completed');
 
         const lockOrder = (distributedLock.withLock as jest.Mock).mock.invocationCallOrder[0];
         const getJobOrder = (discoverQueue.getJob as jest.Mock).mock.invocationCallOrder[0];
@@ -172,31 +169,17 @@ describe('discoverCron enqueue -- lock + stale-hash guard (Task 9)', () => {
     });
 
     // A failed job blocks a re-add just as a completed one does.
-    it('CRITIC GAP C: removes a stale FAILED job hash before re-enqueuing (inside the lock)', async () => {
-        const stale = fakeJob('failed');
-        (discoverQueue.getJob as jest.Mock).mockResolvedValue(stale);
-        (prisma.userDiscoverConfig.findMany as jest.Mock).mockResolvedValue([
-            { userId: 'user-a', playlistSize: 25 },
-        ]);
-
-        await tickCron()();
+    it('removes a stale failed job hash inside the lock before re-enqueuing', async () => {
+        const stale = await tickWithStaleJob('failed');
 
         expect(stale.remove).toHaveBeenCalledTimes(1);
         expect(discoverQueue.add).toHaveBeenCalledTimes(1);
-        const removeOrder = stale.remove.mock.invocationCallOrder[0];
-        const addOrder = (discoverQueue.add as jest.Mock).mock.invocationCallOrder[0];
-        expect(removeOrder).toBeLessThan(addOrder);
+        expectRemoveBeforeAdd(stale);
     });
 
     // getJob looks up the same id add() enqueues.
-    it('CRITIC GAP D: getJob is looked up with the SAME jobId that add() enqueues', async () => {
-        const stale = fakeJob('completed');
-        (discoverQueue.getJob as jest.Mock).mockResolvedValue(stale);
-        (prisma.userDiscoverConfig.findMany as jest.Mock).mockResolvedValue([
-            { userId: 'user-a', playlistSize: 25 },
-        ]);
-
-        await tickCron()();
+    it('getJob is looked up with the same jobId that add() enqueues', async () => {
+        await tickWithStaleJob('completed');
 
         const lookedUpId = (discoverQueue.getJob as jest.Mock).mock.calls[0][0];
         const enqueuedId = (discoverQueue.add as jest.Mock).mock.calls[0][2].jobId;
@@ -204,9 +187,9 @@ describe('discoverCron enqueue -- lock + stale-hash guard (Task 9)', () => {
         expect(lookedUpId).toMatch(/^discover-weekly-user-a-\d{4}-\d{2}-\d{2}$/);
     });
 
-    // HAPPY PATH (last): two enabled users, no stale hashes -> each gets exactly
-    // one locked enqueue with a week-keyed jobId.
-    it('HAPPY PATH: enqueues one locked job per enabled user with a week-keyed jobId', async () => {
+    // Two enabled users, no stale hashes: each gets exactly one locked
+    // enqueue with a week-keyed jobId.
+    it('enqueues one locked job per enabled user with a week-keyed jobId', async () => {
         (prisma.userDiscoverConfig.findMany as jest.Mock).mockResolvedValue([
             { userId: 'user-a', playlistSize: 25 },
             { userId: 'user-b', playlistSize: 30 },

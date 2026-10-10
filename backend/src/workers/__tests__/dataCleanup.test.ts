@@ -1,5 +1,5 @@
 /**
- * Tests for data cleanup cron job
+ * The cleanup cron deletes each finished kind past its own retention period.
  */
 
 import { runDataCleanup } from "../dataCleanup";
@@ -8,13 +8,13 @@ import { prisma } from "../../utils/db";
 jest.mock("../../utils/db", () => ({
     prisma: {
         downloadJob: {
-            deleteMany: jest.fn(),
+            deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
         },
         webhookEvent: {
-            deleteMany: jest.fn(),
+            deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
         },
         discoveryBatch: {
-            deleteMany: jest.fn(),
+            deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
         },
     },
 }));
@@ -25,15 +25,7 @@ describe("Data Cleanup", () => {
     });
 
     it("should clean up old download jobs", async () => {
-        (prisma.downloadJob.deleteMany as jest.Mock).mockResolvedValue({
-            count: 5,
-        });
-        (prisma.webhookEvent.deleteMany as jest.Mock).mockResolvedValue({
-            count: 0,
-        });
-        (prisma.discoveryBatch.deleteMany as jest.Mock).mockResolvedValue({
-            count: 0,
-        });
+        (prisma.downloadJob.deleteMany as jest.Mock).mockResolvedValue({ count: 5 });
 
         const result = await runDataCleanup();
 
@@ -50,15 +42,7 @@ describe("Data Cleanup", () => {
     });
 
     it("should clean up old webhook events", async () => {
-        (prisma.downloadJob.deleteMany as jest.Mock).mockResolvedValue({
-            count: 0,
-        });
-        (prisma.webhookEvent.deleteMany as jest.Mock).mockResolvedValue({
-            count: 10,
-        });
-        (prisma.discoveryBatch.deleteMany as jest.Mock).mockResolvedValue({
-            count: 0,
-        });
+        (prisma.webhookEvent.deleteMany as jest.Mock).mockResolvedValue({ count: 10 });
 
         const result = await runDataCleanup();
 
@@ -75,15 +59,7 @@ describe("Data Cleanup", () => {
     });
 
     it("should clean up old discovery batches", async () => {
-        (prisma.downloadJob.deleteMany as jest.Mock).mockResolvedValue({
-            count: 0,
-        });
-        (prisma.webhookEvent.deleteMany as jest.Mock).mockResolvedValue({
-            count: 0,
-        });
-        (prisma.discoveryBatch.deleteMany as jest.Mock).mockResolvedValue({
-            count: 3,
-        });
+        (prisma.discoveryBatch.deleteMany as jest.Mock).mockResolvedValue({ count: 3 });
 
         const result = await runDataCleanup();
 
@@ -100,15 +76,9 @@ describe("Data Cleanup", () => {
     });
 
     it("should clean up all types in one run", async () => {
-        (prisma.downloadJob.deleteMany as jest.Mock).mockResolvedValue({
-            count: 15,
-        });
-        (prisma.webhookEvent.deleteMany as jest.Mock).mockResolvedValue({
-            count: 42,
-        });
-        (prisma.discoveryBatch.deleteMany as jest.Mock).mockResolvedValue({
-            count: 2,
-        });
+        (prisma.downloadJob.deleteMany as jest.Mock).mockResolvedValue({ count: 15 });
+        (prisma.webhookEvent.deleteMany as jest.Mock).mockResolvedValue({ count: 42 });
+        (prisma.discoveryBatch.deleteMany as jest.Mock).mockResolvedValue({ count: 2 });
 
         const result = await runDataCleanup();
 
@@ -119,44 +89,17 @@ describe("Data Cleanup", () => {
     });
 
     it("should use correct retention periods", async () => {
-        (prisma.downloadJob.deleteMany as jest.Mock).mockResolvedValue({
-            count: 0,
-        });
-        (prisma.webhookEvent.deleteMany as jest.Mock).mockResolvedValue({
-            count: 0,
-        });
-        (prisma.discoveryBatch.deleteMany as jest.Mock).mockResolvedValue({
-            count: 0,
-        });
-
         await runDataCleanup();
 
         const now = new Date();
-        const downloadJobsCutoff = (
-            prisma.downloadJob.deleteMany as jest.Mock
-        ).mock.calls[0][0].where.completedAt.lt as Date;
-        const webhookEventsCutoff = (
-            prisma.webhookEvent.deleteMany as jest.Mock
-        ).mock.calls[0][0].where.createdAt.lt as Date;
-        const discoveryBatchesCutoff = (
-            prisma.discoveryBatch.deleteMany as jest.Mock
-        ).mock.calls[0][0].where.completedAt.lt as Date;
+        /** Whole days between now and a deleteMany call's cutoff. */
+        const daysRetained = (mock: jest.Mock, field: "completedAt" | "createdAt") => {
+            const cutoff = mock.mock.calls[0][0].where[field].lt as Date;
+            return Math.round((now.getTime() - cutoff.getTime()) / (1000 * 60 * 60 * 24));
+        };
 
-        const daysDiffDownloadJobs = Math.round(
-            (now.getTime() - downloadJobsCutoff.getTime()) /
-                (1000 * 60 * 60 * 24)
-        );
-        const daysDiffWebhookEvents = Math.round(
-            (now.getTime() - webhookEventsCutoff.getTime()) /
-                (1000 * 60 * 60 * 24)
-        );
-        const daysDiffDiscoveryBatches = Math.round(
-            (now.getTime() - discoveryBatchesCutoff.getTime()) /
-                (1000 * 60 * 60 * 24)
-        );
-
-        expect(daysDiffDownloadJobs).toBe(30);
-        expect(daysDiffWebhookEvents).toBe(30);
-        expect(daysDiffDiscoveryBatches).toBe(60);
+        expect(daysRetained(prisma.downloadJob.deleteMany as jest.Mock, "completedAt")).toBe(30);
+        expect(daysRetained(prisma.webhookEvent.deleteMany as jest.Mock, "createdAt")).toBe(30);
+        expect(daysRetained(prisma.discoveryBatch.deleteMany as jest.Mock, "completedAt")).toBe(60);
     });
 });
