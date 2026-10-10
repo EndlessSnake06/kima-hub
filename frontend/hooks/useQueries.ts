@@ -59,7 +59,7 @@ export const queryKeys = {
     topPodcasts: (limit?: number, genreId?: number) =>
         ["podcasts", "top", limit, genreId] as const,
 
-    // Browse (Deezer playlists/radios)
+    // Browse (Deezer playlists)
     browseAll: () => ["browse", "all"] as const,
 
     // Library radio data
@@ -537,7 +537,6 @@ interface Genre {
 
 interface BrowseAllResponse {
     playlists: PlaylistPreview[];
-    radios: PlaylistPreview[];
     genres: Genre[];
 }
 
