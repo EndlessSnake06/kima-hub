@@ -271,7 +271,7 @@ export default function QueuePage() {
 
                                             <div className="flex-1 min-w-0">
                                                 <h3 className="text-sm font-medium text-white truncate">
-                                                    {track.title}
+                                                    {track.displayTitle ?? track.title}
                                                 </h3>
                                                 <p className="text-sm text-[var(--text-secondary)] truncate">
                                                     {track.artist?.name}
