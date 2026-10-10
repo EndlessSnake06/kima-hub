@@ -43,7 +43,7 @@ import {
     readIdentityTags,
 } from "../services/acoustidIdentification";
 import { fpcalcService } from "../services/fpcalc";
-import { resolveTrackFilePath } from "../routes/library/trackPath";
+import { resolveWithinMusicRoot } from "../routes/library/trackPath";
 import { buildMatching, matchingProgress } from "../services/matching/state";
 import { updateMap } from "../services/matching/map";
 import {
@@ -1241,7 +1241,7 @@ async function runFingerprintStageWork(item: StageWork): Promise<void> {
                 `Track ${item.trackId} has no file path to fingerprint`,
             );
         }
-        const absolutePath = resolveTrackFilePath(item.filePath);
+        const absolutePath = resolveWithinMusicRoot(item.filePath);
         if (!absolutePath) {
             throw new Error(
                 `Track ${item.trackId} path escapes the music folder: ${item.filePath}`,

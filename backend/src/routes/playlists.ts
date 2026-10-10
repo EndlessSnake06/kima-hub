@@ -1,5 +1,4 @@
 import { Router } from "express";
-import axios from "axios";
 import { logger } from "../utils/logger";
 import { z } from "zod";
 import { requireAuthOrToken } from "../middleware/auth";
@@ -13,7 +12,7 @@ import {
 } from "../middleware/playlistOwner";
 import * as playlistService from "../services/playlistService";
 import { eventBus } from "../services/eventBus";
-import { upstreamHeader } from "../utils/upstreamHeaders";
+import { proxyPreviewStream } from "../utils/previewProxy";
 import { soulseekConfigured } from "../utils/soulseekConfigured";
 
 const router = Router();
@@ -640,47 +639,11 @@ router.get("/:id/pending/:trackId/preview/stream", async (req, res) => {
                 .json({ error: "No preview available on Deezer" });
         }
 
-        const upstream = await axios.get(previewUrl, {
-            responseType: "stream",
-            timeout: 10000,
+        await proxyPreviewStream(res, previewUrl, {
+            notFoundMessage: "No preview available on Deezer",
+            logLabel: "Pending preview stream",
         });
-
-        const upstreamContentLength = upstreamHeader(upstream.headers["content-length"]);
-        const upstreamAcceptRanges = upstreamHeader(upstream.headers["accept-ranges"]);
-
-        res.setHeader(
-            "Content-Type",
-            upstreamHeader(upstream.headers["content-type"]) || "audio/mpeg"
-        );
-        if (upstreamContentLength) {
-            res.setHeader("Content-Length", upstreamContentLength);
-        }
-        if (upstreamAcceptRanges) {
-            res.setHeader("Accept-Ranges", upstreamAcceptRanges);
-        }
-        res.setHeader("Cache-Control", "no-store");
-
-        upstream.data.on("error", (streamErr: unknown) => {
-            logger.error("Pending preview stream pipe error:", streamErr);
-            if (!res.headersSent) {
-                res.status(502).end();
-            } else {
-                res.end();
-            }
-        });
-
-        // Clean up upstream stream when client disconnects (preview cancelled, tab closed, etc)
-        res.on("close", () => {
-            if (!upstream.data.destroyed) {
-                upstream.data.destroy();
-            }
-        });
-
-        upstream.data.pipe(res);
     } catch (error) {
-        if (axios.isAxiosError(error) && error.response?.status === 404) {
-            return res.status(404).json({ error: "No preview available on Deezer" });
-        }
         safeError(res, "Pending track preview stream", error);
     }
 });

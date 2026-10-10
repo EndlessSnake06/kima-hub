@@ -105,7 +105,6 @@ function formatLogLine(level: string, message: string): string {
 
 class PlaylistLogger {
     private logFile: string;
-    private buffer: string[] = [];
 
     constructor(jobId: string) {
         ensureLogsDir();
@@ -118,9 +117,6 @@ class PlaylistLogger {
     }
 
     private write(level: string, message: string): void {
-        const line = formatLogLine(level, message);
-        this.buffer.push(line);
-
         // Write to unified session log
         writeToSessionLog('IMPORT', level, message);
 
@@ -131,14 +127,7 @@ class PlaylistLogger {
             logger.debug(`[Playlist Logger] ${message}`);
         }
 
-        // Flush to file
-        this.flush();
-    }
-
-    private flush(): void {
-        const data = this.buffer.join('');
-        this.buffer = [];
-        fs.promises.appendFile(this.logFile, data).catch((error) => {
+        fs.promises.appendFile(this.logFile, formatLogLine(level, message)).catch((error) => {
             logger.error(`[Playlist Logger] Failed to write to ${this.logFile}:`, error);
         });
     }
@@ -159,9 +148,8 @@ class PlaylistLogger {
         this.write('DEBUG', message);
     }
 
-    // Alias for info - used for generic logging
     log(message: string): void {
-        this.write('DEBUG', message);
+        this.write('INFO', message);
     }
 
     // Structured logging methods
@@ -196,11 +184,6 @@ class PlaylistLogger {
         this.info(`Requesting ${count} album(s) from Lidarr`);
     }
 
-    logAlbumQueued(albumName: string, artistName: string, mbid: string, lidarrId?: number): void {
-        const lidarrInfo = lidarrId ? ` (Lidarr ID: ${lidarrId})` : '';
-        this.info(`✓ Queued: "${albumName}" by ${artistName} [MBID: ${mbid}]${lidarrInfo}`);
-    }
-
     logAlbumFailed(albumName: string, artistName: string, reason: string): void {
         this.error(`✗ Failed: "${albumName}" by ${artistName} - ${reason}`);
     }
@@ -227,17 +210,6 @@ class PlaylistLogger {
             this.info(`Playlist ID: ${playlistId}`);
         }
         this.info(`Log file: ${this.logFile}`);
-    }
-
-    logJobFailed(error: string): void {
-        this.info('');
-        this.error('=== JOB FAILED ===');
-        this.error(error);
-        this.error(`Log file: ${this.logFile}`);
-    }
-
-    getLogFilePath(): string {
-        return this.logFile;
     }
 }
 

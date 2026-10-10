@@ -142,13 +142,9 @@ compatRouter.all("/createShare.view", wrap(async (req: Request, res: Response) =
                 ],
             },
         });
-    } catch (error: any) {
+    } catch (error) {
         if (error instanceof ShareError) {
-            const code =
-                error.code === "FORBIDDEN" ? SubsonicError.NOT_AUTHORIZED
-                : error.code === "NOT_FOUND" ? SubsonicError.NOT_FOUND
-                : SubsonicError.GENERIC;
-            return subsonicError(req, res, code, error.message);
+            return shareFailure(req, res, error);
         }
         // Any other error is ours: answer with the generic code and a fixed string,
         // since a Prisma message names tables and columns. The stack goes to the log.

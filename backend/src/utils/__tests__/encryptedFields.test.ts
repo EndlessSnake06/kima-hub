@@ -32,23 +32,13 @@ import {
     resolveEncryptedSettings,
 } from "../encryptedFields";
 import { encrypt } from "../encryption";
-
-const ENV_KEY = process.env.SETTINGS_ENCRYPTION_KEY as string;
-const SHA256_KEY = crypto.createHash("sha256").update(ENV_KEY).digest();
-
-/** Exactly what the pre-XChaCha implementation wrote: `ivHex:ciphertextHex`. */
-function legacyEncrypt(text: string, key: Buffer): string {
-    const iv = crypto.randomBytes(16);
-    const cipher = crypto.createCipheriv("aes-256-cbc", key, iv);
-    const encrypted = Buffer.concat([cipher.update(text, "utf8"), cipher.final()]);
-    return `${iv.toString("hex")}:${encrypted.toString("hex")}`;
-}
+import { legacyEncrypt, SHA256_KEY } from "./legacyCipherFixtures";
 
 beforeEach(() => {
     jest.clearAllMocks();
 });
 
-describe("the three fields the old lists disagreed about", () => {
+describe("the encrypted settings map", () => {
     it("encrypts on write and decrypts on read with the same map", async () => {
         const submitted = {
             fanartApiKey: "fanart-key",
@@ -110,9 +100,9 @@ describe("broken stored values re-seed to \"needs re-entry\"", () => {
     });
 
     it("re-seeds a value that is in no encrypted format at all", async () => {
-        // Never-decrypted: plaintext written straight into the column, or
-        // an old failure that stored the key unencrypted. Handing it back
-        // would be the fail-open hole the new decrypt refuses.
+        // Never-decrypted: plaintext written straight into the column.
+        // Handing it back would pass a never-encrypted value through as a
+        // credential.
         const settings = { openaiApiKey: "sk-plaintext-never-encrypted" };
 
         const resolved = await resolveEncryptedSettings(settings);
@@ -124,7 +114,7 @@ describe("broken stored values re-seed to \"needs re-entry\"", () => {
     });
 
     it("re-seeds a ciphertext written under a different key", async () => {
-        // Key rotation: the stored value decrypts only under the old key.
+        // Key rotation: the stored value decrypts only under a different key.
         const settings = {
             acoustidApiKey: legacyEncrypt("acoustid-key-from-before-rotation",
                 crypto.randomBytes(32)),

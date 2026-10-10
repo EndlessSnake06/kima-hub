@@ -41,12 +41,6 @@ export enum ErrorCode {
     FFMPEG_NOT_FOUND = "FFMPEG_NOT_FOUND",
     INVALID_CONFIG = "INVALID_CONFIG",
 
-    // File system errors
-    FILE_NOT_FOUND = "FILE_NOT_FOUND",
-    FILE_READ_ERROR = "FILE_READ_ERROR",
-    DISK_FULL = "DISK_FULL",
-    PERMISSION_DENIED = "PERMISSION_DENIED",
-
     // Transcoding errors
     TRANSCODE_FAILED = "TRANSCODE_FAILED",
 

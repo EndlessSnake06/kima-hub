@@ -53,14 +53,6 @@ export interface DeezerPlaylistPreview {
     fans: number;
 }
 
-export interface DeezerRadioStation {
-    id: string;
-    title: string;
-    description: string | null;
-    imageUrl: string | null;
-    type: "radio";
-}
-
 interface DeezerPodcast {
     id: number;
     title: string;
@@ -68,12 +60,6 @@ interface DeezerPodcast {
     fans: number;
     link: string;
     pictureUrl: string | null;
-}
-
-interface DeezerGenreWithRadios {
-    id: number;
-    name: string;
-    radios: DeezerRadioStation[];
 }
 
 function mapDeezerTrack(track: any): DeezerTrack {
@@ -110,16 +96,6 @@ function mapDeezerPodcast(podcast: any): DeezerPodcast {
         fans: podcast.fans || 0,
         link: podcast.link || "",
         pictureUrl: podcast.picture_big || podcast.picture_medium || podcast.picture || null,
-    };
-}
-
-function mapRadioStation(radio: any): DeezerRadioStation {
-    return {
-        id: String(radio.id),
-        title: radio.title || "Unknown",
-        description: null,
-        imageUrl: radio.picture_medium || radio.picture || null,
-        type: "radio",
     };
 }
 
@@ -614,128 +590,6 @@ class DeezerService {
 
     async getGenrePlaylists(genreName: string, limit: number = 20): Promise<DeezerPlaylistPreview[]> {
         return this.searchPlaylists(genreName, limit);
-    }
-
-    /**
-     * Get all radio stations (mood/theme based mixes)
-     * Cached for 24 hours
-     */
-    async getRadioStations(): Promise<DeezerRadioStation[]> {
-        const cacheKey = "radio:stations";
-
-        try {
-            return await this.cachedRequest(cacheKey, async () => {
-                logger.debug("Deezer: Fetching radio stations from API...");
-                const body = await this.deezerGet<any>("/radio", {
-                    timeout: 10000,
-                });
-
-                const stations = (body?.data || []).map(mapRadioStation);
-
-                logger.debug(`Deezer: Got ${stations.length} radio stations, caching...`);
-                return stations;
-            });
-        } catch (error: any) {
-            logger.error("Deezer radio stations error:", error.message);
-            return [];
-        }
-    }
-
-    /**
-     * Get radio stations organized by genre
-     * Cached for 24 hours
-     */
-    async getRadiosByGenre(): Promise<DeezerGenreWithRadios[]> {
-        const cacheKey = "radio:by-genre";
-
-        try {
-            return await this.cachedRequest(cacheKey, async () => {
-                logger.debug("Deezer: Fetching radios by genre from API...");
-                const body = await this.deezerGet<any>("/radio/genres", {
-                    timeout: 10000,
-                });
-
-                const genres = (body?.data || []).map((genre: any) => ({
-                    id: genre.id,
-                    name: genre.title || "Unknown",
-                    radios: (genre.radios || []).map(mapRadioStation),
-                }));
-
-                logger.debug(`Deezer: Got ${genres.length} genre categories with radios, caching...`);
-                return genres;
-            });
-        } catch (error: any) {
-            logger.error("Deezer radios by genre error:", error.message);
-            return [];
-        }
-    }
-
-    /**
-     * Get tracks from a radio station (returns as DeezerPlaylist for consistency)
-     */
-    async getRadioTracks(radioId: string): Promise<DeezerPlaylist | null> {
-        try {
-            // Cache the assembled playlist so radio info and tracks are not fetched on every call.
-            return await this.cachedRequest(`radio:tracks:${radioId}`, async () => {
-                logger.debug(`Deezer: Fetching radio ${radioId} tracks...`);
-
-                const radioInfo = await this.deezerGet<any>(`/radio/${radioId}`, {
-                    timeout: 10000,
-                });
-
-                const tracksBody = await this.deezerGet<any>(`/radio/${radioId}/tracks`, {
-                    params: { limit: 100 },
-                    timeout: 15000,
-                });
-
-                const tracks = (tracksBody?.data || []).map(mapDeezerTrack);
-
-                logger.debug(`Deezer: Fetched radio "${radioInfo.title}" with ${tracks.length} tracks`);
-
-                return {
-                    id: `radio-${radioId}`,
-                    title: radioInfo.title || "Radio Station",
-                    description: `Deezer Radio - ${radioInfo.title}`,
-                    creator: "Deezer",
-                    imageUrl: radioInfo.picture_medium || radioInfo.picture || null,
-                    trackCount: tracks.length,
-                    tracks,
-                    isPublic: true,
-                };
-            });
-        } catch (error: any) {
-            logger.error("Deezer radio tracks error:", error.message);
-            return null;
-        }
-    }
-
-    /**
-     * Get editorial/curated content for a specific genre
-     * Returns releases and playlists for that genre
-     */
-    async getEditorialContent(genreId: number): Promise<{
-        playlists: DeezerPlaylistPreview[];
-        radios: DeezerRadioStation[];
-    }> {
-        try {
-            const genreBody = await this.deezerGet<any>(`/genre/${genreId}`, {
-                timeout: 10000,
-            });
-            const genreName = genreBody?.name || "";
-
-            const playlists = genreName ? await this.searchPlaylists(genreName, 20) : [];
-
-            // Radios come from the cached getRadiosByGenre, not a fresh /radio/genres call.
-            const genreRadios = (await this.getRadiosByGenre()).find(
-                (g) => g.id === genreId
-            );
-            const radios: DeezerRadioStation[] = genreRadios?.radios ?? [];
-
-            return { playlists, radios };
-        } catch (error: any) {
-            logger.error("Deezer editorial content error:", error.message);
-            return { playlists: [], radios: [] };
-        }
     }
 
     // Not cached: queries vary too much and the search is fast. Only the shared popular feed is cached.

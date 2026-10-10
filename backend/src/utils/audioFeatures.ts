@@ -5,7 +5,8 @@
  * For an un-analyzed track (null feature columns), returns an object
  * with all values set to null.
  */
-export function toAudioFeaturesDTO(track: {
+/** The 15 per-track feature columns the DTO carries, all nullable until analysis runs. */
+export interface AudioFeatures {
   bpm: number | null;
   energy: number | null;
   valence: number | null;
@@ -21,23 +22,9 @@ export function toAudioFeaturesDTO(track: {
   moodParty: number | null;
   moodAcoustic: number | null;
   moodElectronic: number | null;
-}): {
-  bpm: number | null;
-  energy: number | null;
-  valence: number | null;
-  arousal: number | null;
-  danceability: number | null;
-  keyScale: string | null;
-  instrumentalness: number | null;
-  analysisMode: string | null;
-  moodHappy: number | null;
-  moodSad: number | null;
-  moodRelaxed: number | null;
-  moodAggressive: number | null;
-  moodParty: number | null;
-  moodAcoustic: number | null;
-  moodElectronic: number | null;
-} {
+}
+
+export function toAudioFeaturesDTO(track: AudioFeatures): AudioFeatures {
   return {
     bpm: track.bpm ?? null,
     energy: track.energy ?? null,

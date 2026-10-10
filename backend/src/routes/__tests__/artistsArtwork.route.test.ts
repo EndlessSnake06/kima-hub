@@ -22,10 +22,6 @@ jest.mock("../../utils/redis", () => ({
     },
 }));
 
-const mockGetArtistInfo = jest.fn();
-const mockGetTopTracks = jest.fn();
-const mockGetBestImage = jest.fn();
-
 // Similar artists come from the local-centroid / ListenBrainz engine; mock it so
 // the suite stays offline.
 const mockGetSimilarArtists = jest.fn();
@@ -95,9 +91,6 @@ const COVER = "https://e-cdns-images.dzcdn.net/images/cover/abc/500x500.jpg";
 describe("the discovery routes and the pictures they promise", () => {
     beforeEach(() => {
         jest.clearAllMocks();
-        mockGetArtistInfo.mockResolvedValue(null);
-        mockGetTopTracks.mockResolvedValue([]);
-        mockGetBestImage.mockReturnValue(null);
         mockGetSimilarArtists.mockResolvedValue([]);
         mockSearchArtist.mockResolvedValue(noData);
         mockGetArtist.mockResolvedValue(answeredWith({ name: "Perturbator", id: MBID }));
@@ -132,7 +125,6 @@ describe("the discovery routes and the pictures they promise", () => {
         });
 
         it("goes through the one door rather than its own three-source chain", async () => {
-            mockGetArtistInfo.mockResolvedValue({ name: "Perturbator" });
             mockFindArtistArtwork.mockResolvedValue({ url: ARTIST_IMG, source: "fanart" });
 
             const res = await request(makeApp()).get(`/artists/discover/${MBID}`);
@@ -144,8 +136,6 @@ describe("the discovery routes and the pictures they promise", () => {
         });
 
         it("asks about each similar artist too, by name and by id", async () => {
-            // Similar artists now come from the local-centroid /
-            // ListenBrainz engine, not from artist.getSimilar.
             mockGetSimilarArtists.mockResolvedValue([
                 {
                     name: "Carpenter Brut",
@@ -170,11 +160,7 @@ describe("the discovery routes and the pictures they promise", () => {
             expect(res.body.similarArtists[0].image).toBe(ARTIST_IMG);
         });
 
-        it("does not source similar artists or their pictures from Last.fm anymore", async () => {
-            // The old chain took similar artists (and their pictures) from
-            // artist.getSimilar. That call is gone — the engine answers
-            // locally or via the ListenBrainz dataset, and pictures come
-            // from the standard artwork cascade only.
+        it("sources similar artists only through the artistSimilarity engine", async () => {
             mockGetSimilarArtists.mockResolvedValue([
                 { name: "Carpenter Brut", mbid: null, match: 0.8, url: "" },
             ]);
@@ -182,8 +168,6 @@ describe("the discovery routes and the pictures they promise", () => {
 
             const res = await request(makeApp()).get(`/artists/discover/${MBID}`);
 
-            expect(mockGetArtistInfo).not.toHaveBeenCalled();
-            expect(mockGetBestImage).not.toHaveBeenCalled();
             expect(mockFindArtistArtwork).toHaveBeenCalledWith(
                 expect.objectContaining({
                     name: "Carpenter Brut",
@@ -200,7 +184,6 @@ describe("the discovery routes and the pictures they promise", () => {
         });
 
         it("runs the whole discography through the artwork sources", async () => {
-            mockGetArtistInfo.mockResolvedValue({ name: "Perturbator" });
             mockGetReleaseGroups.mockResolvedValue(answeredWith([
                 { id: "rg-1", title: "Dangerous Days", "primary-type": "Album", "first-release-date": "2014-05-01" },
             ]));
@@ -215,7 +198,6 @@ describe("the discovery routes and the pictures they promise", () => {
         });
 
         it("names each album by its release-group id when it asks", async () => {
-            mockGetArtistInfo.mockResolvedValue({ name: "Perturbator" });
             mockGetReleaseGroups.mockResolvedValue(answeredWith([
                 { id: "rg-1", title: "Dangerous Days", "primary-type": "Album", "first-release-date": "2014-05-01" },
             ]));
@@ -229,7 +211,6 @@ describe("the discovery routes and the pictures they promise", () => {
         });
 
         it("carries no guessed archive address in its response", async () => {
-            mockGetArtistInfo.mockResolvedValue({ name: "Perturbator" });
             mockGetReleaseGroups.mockResolvedValue(answeredWith([
                 { id: "rg-1", title: "Dangerous Days", "primary-type": "Album", "first-release-date": "2014-05-01" },
             ]));

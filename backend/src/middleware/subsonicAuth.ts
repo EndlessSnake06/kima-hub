@@ -95,9 +95,7 @@ export async function subsonicAuth(
             if (user) {
                 valid = await bcrypt.compare(plainPassword, user.passwordHash);
             } else {
-                // Run bcrypt against a dummy hash for timing safety (prevents username enumeration)
                 await bcrypt.compare(plainPassword, dummyHash);
-                // valid remains false
             }
 
             if (!valid || !user) {

@@ -149,7 +149,7 @@ describe('POST /discover/generate -- drop stale job hash before re-enqueue', () 
     });
 
     // getJob looks up the same id add() enqueues.
-    it('CRITIC GAP A: getJob is looked up with the SAME jobId that add() enqueues', async () => {
+    it('getJob is looked up with the SAME jobId that add() enqueues', async () => {
         const stale = fakeJob('completed');
         (discoverQueue.getJob as jest.Mock).mockResolvedValue(stale);
 

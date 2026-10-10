@@ -1,23 +1,12 @@
 /**
  * Encryption refuses anything it did not produce and still reads legacy
- * AES-256-CBC values. Those fixtures are built with `crypto` directly, since
- * the code that wrote them is gone.
+ * AES-256-CBC values, whose fixtures are built with `crypto` directly.
  */
 import crypto from "crypto";
 import { decrypt, encrypt, encryptField } from "../encryption";
+import { ENV_KEY, legacyEncrypt, SHA256_KEY } from "./legacyCipherFixtures";
 
-const ENV_KEY = process.env.SETTINGS_ENCRYPTION_KEY as string;
-
-/** Exactly what the previous implementation wrote: `ivHex:ciphertextHex`. */
-function legacyEncrypt(text: string, key: Buffer): string {
-    const iv = crypto.randomBytes(16);
-    const cipher = crypto.createCipheriv("aes-256-cbc", key, iv);
-    const encrypted = Buffer.concat([cipher.update(text, "utf8"), cipher.final()]);
-    return `${iv.toString("hex")}:${encrypted.toString("hex")}`;
-}
-
-const SHA256_KEY = crypto.createHash("sha256").update(ENV_KEY).digest();
-/** The pre-SHA-256 derivation: the first 32 bytes of the raw env var. */
+/** The other legacy derivation: the first 32 bytes of the raw env var. */
 const RAW32_KEY = Buffer.from(ENV_KEY.slice(0, 32));
 
 describe("at-rest encryption", () => {
@@ -39,9 +28,8 @@ describe("at-rest encryption", () => {
     });
 
     it("throws when a single byte of the ciphertext is flipped", () => {
-        // The property AES-256-CBC did not have. Under CBC this returned
-        // corrupted plaintext or a padding error depending on where the flip
-        // landed; a caller could not tell a modified credential from a valid one.
+        // Fails closed: the caller must never read back a value an attacker
+        // modified in the database.
         const sealed = encrypt("sk-live-do-not-change-me");
         const blob = Buffer.from(sealed.slice("xc1.".length), "base64url");
         blob[blob.length - 5] ^= 0x01;
@@ -67,10 +55,10 @@ describe("at-rest encryption", () => {
         expect(() => decrypt("xc1." + blob.subarray(0, 30).toString("base64url"))).toThrow();
     });
 
-    it("throws on plaintext, which it used to hand straight back", () => {
-        // The fail-open hole this change closes: anything unrecognised was
-        // returned to the caller as though it were the decrypted value, so
-        // database write access alone was enough to inject a credential.
+    it("throws on plaintext instead of handing it back", () => {
+        // Anything unrecognised must not come back to the caller as though it
+        // were the decrypted value: database write access alone would then be
+        // enough to inject a credential.
         for (const notCiphertext of [
             "sk-attacker-controlled-key",
             "https://evil.example/api",
@@ -82,12 +70,12 @@ describe("at-rest encryption", () => {
         }
     });
 
-    it("still reads a value written by the old AES-256-CBC implementation", () => {
+    it("still reads a legacy AES-256-CBC value", () => {
         const stored = legacyEncrypt("lidarr-api-key-from-production", SHA256_KEY);
         expect(decrypt(stored)).toBe("lidarr-api-key-from-production");
     });
 
-    it("still reads an even older value, from before the key was SHA-256 normalized", () => {
+    it("still reads a value keyed by the first 32 bytes of the raw env var", () => {
         const stored = legacyEncrypt("pre-normalization-secret", RAW32_KEY);
         expect(decrypt(stored)).toBe("pre-normalization-secret");
     });
@@ -95,9 +83,8 @@ describe("at-rest encryption", () => {
     it("throws on an AES-shaped value encrypted under someone else's key", () => {
         const stored = legacyEncrypt("not yours", crypto.randomBytes(32));
         // Not asserted to throw a SPECIFIC error: CBC has no MAC, so a wrong
-        // key fails on padding, which is chance rather than detection. That is
-        // the reason the format changed; here it is only required not to
-        // succeed silently.
+        // key fails on padding, which is chance rather than detection. Here it
+        // is only required not to succeed silently.
         let result: string | undefined;
         let threw = false;
         try {

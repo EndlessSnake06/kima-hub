@@ -7,7 +7,7 @@
 import { rankAfter, rankForPosition, rankSequence } from "../lexoRank";
 
 describe("rank width", () => {
-    it("rankSequence and rankForPosition are NOT comparable — the bug's root", () => {
+    it("rankSequence and rankForPosition keys are not order-comparable", () => {
         const native = rankSequence(3); // what an empty playlist gets
         const derived = rankForPosition(3); // what a position-derived append gave
 

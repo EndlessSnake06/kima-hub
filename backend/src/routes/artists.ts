@@ -1,5 +1,4 @@
 import { Router } from "express";
-import axios from "axios";
 import { logger } from "../utils/logger";
 import { withTimeout } from "../utils/timeout";
 import { getSimilarArtists } from "../services/artistSimilarity";
@@ -14,7 +13,7 @@ import {
     findArtistArtwork,
 } from "../services/artwork";
 import { safeError } from "../utils/errors";
-import { upstreamHeader } from "../utils/upstreamHeaders";
+import { proxyPreviewStream } from "../utils/previewProxy";
 import { failureCause } from "../utils/outcome";
 
 const router = Router();
@@ -23,12 +22,9 @@ router.use(requireAuthOrToken);
 // Cache TTL for discovery content (shorter since it's not owned)
 const DISCOVERY_CACHE_TTL = 24 * 60 * 60; // 24 hours
 
-/**
- * Wrap a promise so a single dead upstream cannot hang the entire
- * /artists/discover/:nameOrMbid handler past the client budget.
- * Uses Promise.race so a 5-second timeout lets the caller fall back
- * to partial data instead of waiting for the HTTP keep-alive to expire.
- */
+// MusicBrainz ids are UUIDs; anything else is a plain name.
+const MBID_PATTERN =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // GET /artists/preview/:artistName/:trackTitle - Get Deezer preview URL for a track
 router.get("/preview/:artistName/:trackTitle", async (req, res) => {
@@ -72,47 +68,11 @@ router.get("/preview/:artistName/:trackTitle/stream", async (req, res) => {
             return res.status(404).json({ error: "Preview not found" });
         }
 
-        const upstream = await axios.get(previewUrl, {
-            responseType: "stream",
-            timeout: 10000,
+        await proxyPreviewStream(res, previewUrl, {
+            notFoundMessage: "Preview not found",
+            logLabel: "Preview stream",
         });
-
-        const upstreamContentLength = upstreamHeader(upstream.headers["content-length"]);
-        const upstreamAcceptRanges = upstreamHeader(upstream.headers["accept-ranges"]);
-
-        res.setHeader(
-            "Content-Type",
-            upstreamHeader(upstream.headers["content-type"]) || "audio/mpeg"
-        );
-        if (upstreamContentLength) {
-            res.setHeader("Content-Length", upstreamContentLength);
-        }
-        if (upstreamAcceptRanges) {
-            res.setHeader("Accept-Ranges", upstreamAcceptRanges);
-        }
-        res.setHeader("Cache-Control", "no-store");
-
-        upstream.data.on("error", (streamErr: unknown) => {
-            logger.error("Preview stream pipe error:", streamErr);
-            if (!res.headersSent) {
-                res.status(502).end();
-            } else {
-                res.end();
-            }
-        });
-
-        // Clean up upstream stream when client disconnects (preview cancelled, tab closed, etc)
-        res.on("close", () => {
-            if (!upstream.data.destroyed) {
-                upstream.data.destroy();
-            }
-        });
-
-        upstream.data.pipe(res);
     } catch (error) {
-        if (axios.isAxiosError(error) && error.response?.status === 404) {
-            return res.status(404).json({ error: "Preview not found" });
-        }
         safeError(res, "Track preview stream", error);
     }
 });
@@ -135,11 +95,7 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
             // A failed cache read falls through to a fresh lookup.
         }
 
-        // Check if it's an MBID (UUID format) or name
-        const isMbid =
-            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-                nameOrMbid
-            );
+        const isMbid = MBID_PATTERN.test(nameOrMbid);
 
         let mbid: string | null = isMbid ? nameOrMbid : null;
         let artistName: string = isMbid ? "" : nameOrMbid;
@@ -206,10 +162,6 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
               ).catch(() => null)
             : { summary: null, heroUrl: null };
         const bio = wdInfo?.summary || null;
-
-        // No global play-count source, and discovery artists have no local
-        // listens: no top tracks; the page shows discography and similar artists.
-        const topTracksPromise = Promise.resolve([] as any[]);
 
         // Artist artwork (parallel)
         const artworkPromise = findArtistArtwork({
@@ -303,9 +255,7 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
             return [];
         })();
 
-        // Await all parallel independent calls
-        const [topTracks, image, discAlbums] = await Promise.all([
-            topTracksPromise,
+        const [image, discAlbums] = await Promise.all([
             artworkPromise,
             discographyPromise,
         ]);
@@ -374,7 +324,9 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
             playcount: 0,
             url: mbid ? `https://musicbrainz.org/artist/${mbid}` : null,
             albums: albums.map((album: any) => ({ ...album, owned: false })), // Mark all as not owned
-            topTracks,
+            // No global play-count source, and discovery artists have no local
+            // listens: no top tracks; the page shows discography and similar artists.
+            topTracks: [],
             similarArtists,
         };
 
@@ -408,8 +360,6 @@ router.get("/album/:mbid", async (req, res) => {
 
         // MusicBrainz ids are UUIDs; anything else cannot exist, so answer 404
         // without spending a rate-limited request.
-        const MBID_PATTERN =
-            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         if (!MBID_PATTERN.test(mbid)) {
             return res.status(404).json({ error: "Album not found" });
         }

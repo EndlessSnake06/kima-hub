@@ -4,7 +4,7 @@ import { prisma } from "../../utils/db";
 import { redisClient } from "../../utils/redis";
 import { logger } from "../../utils/logger";
 import ffmpegPath from "@ffmpeg-installer/ffmpeg";
-import { resolveTrackFilePath } from "./trackPath";
+import { resolveWithinMusicRoot } from "./trackPath";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -262,7 +262,7 @@ router.get("/tracks/:id/waveform", async (req, res) => {
             return res.status(404).json({ error: "Track audio file unavailable" });
         }
 
-        const absolutePath = resolveTrackFilePath(track.filePath);
+        const absolutePath = resolveWithinMusicRoot(track.filePath);
         if (!absolutePath) {
             logger.warn(`[WAVEFORM] Rejected out-of-root path for track ${track.id}`);
             return res.status(404).json({ error: "Track audio file unavailable" });

@@ -1,6 +1,5 @@
-// backend/src/routes/subsonic/library.ts
 import { Router } from "express";
-import { prisma } from "../../utils/db";
+import { prisma, Prisma } from "../../utils/db";
 import { subsonicOk, subsonicError, SubsonicError } from "../../utils/subsonicResponse";
 import { mapArtist, mapAlbum, mapSong, firstArtistGenre, wrap } from "./mappers";
 import { LEADING_ARTICLES } from "../../services/pgTextRules";
@@ -297,6 +296,18 @@ type AlbumWithArtist = {
     tracks?: { duration: number | null }[];
 };
 
+// The four raw album-list queries read the same columns in the same row
+// shape; only the joins, filter and ordering differ.
+const ALBUM_LIST_SELECT = Prisma.sql`
+    SELECT a.id, a.title, a."displayTitle", a.year, a."coverUrl", a."userCoverUrl", a."artistId",
+           json_build_object('id', ar.id, 'name', ar.name, 'displayName', ar."displayName",
+               'genres', ar.genres, 'userGenres', ar."userGenres") as artist,
+           (SELECT COUNT(*)::int FROM "Track" t2 WHERE t2."albumId" = a.id AND t2.corrupt = false AND t2."missingSince" IS NULL) as "songCount",
+           (SELECT COALESCE(SUM(t2.duration), 0) FROM "Track" t2 WHERE t2."albumId" = a.id AND t2.corrupt = false AND t2."missingSince" IS NULL) as "totalDuration"
+    FROM "Album" a
+    JOIN "Artist" ar ON a."artistId" = ar.id
+`;
+
 // getAlbumList2 is ID3-tagged; getAlbumList is the legacy folder-based alias
 libraryRouter.all(["/getAlbumList2.view", "/getAlbumList.view"], wrap(async (req, res) => {
     const type = (req.query.type as string) || "newest";
@@ -374,14 +385,8 @@ libraryRouter.all(["/getAlbumList2.view", "/getAlbumList.view"], wrap(async (req
                 return subsonicError(req, res, SubsonicError.MISSING_PARAM, "byGenre requires genre");
             }
             // Genre lives on Artist, not Album — filter via artist's enriched genres
-            const rows = await prisma.$queryRaw<AlbumWithArtist[]>`
-                SELECT a.id, a.title, a."displayTitle", a.year, a."coverUrl", a."userCoverUrl", a."artistId",
-                       json_build_object('id', ar.id, 'name', ar.name, 'displayName', ar."displayName",
-                           'genres', ar.genres, 'userGenres', ar."userGenres") as artist,
-                       (SELECT COUNT(*)::int FROM "Track" t2 WHERE t2."albumId" = a.id AND t2.corrupt = false AND t2."missingSince" IS NULL) as "songCount",
-                       (SELECT COALESCE(SUM(t2.duration), 0) FROM "Track" t2 WHERE t2."albumId" = a.id AND t2.corrupt = false AND t2."missingSince" IS NULL) as "totalDuration"
-                FROM "Album" a
-                JOIN "Artist" ar ON a."artistId" = ar.id
+            const rows = await prisma.$queryRaw<AlbumWithArtist[]>(Prisma.sql`
+                ${ALBUM_LIST_SELECT}
                 WHERE a."location" = 'LIBRARY'
                   AND EXISTS (
                     SELECT 1 FROM jsonb_array_elements_text(
@@ -391,7 +396,7 @@ libraryRouter.all(["/getAlbumList2.view", "/getAlbumList.view"], wrap(async (req
                   AND EXISTS (SELECT 1 FROM "Track" t WHERE t."albumId" = a.id)
                 ORDER BY a."sortName" ASC
                 LIMIT ${size} OFFSET ${offset}
-            `;
+            `);
             albums = rows;
             break;
         }
@@ -414,32 +419,20 @@ libraryRouter.all(["/getAlbumList2.view", "/getAlbumList.view"], wrap(async (req
             break;
 
         case "random": {
-            const rows = await prisma.$queryRaw<AlbumWithArtist[]>`
-                SELECT a.id, a.title, a."displayTitle", a.year, a."coverUrl", a."userCoverUrl", a."artistId",
-                       json_build_object('id', ar.id, 'name', ar.name, 'displayName', ar."displayName",
-                           'genres', ar.genres, 'userGenres', ar."userGenres") as artist,
-                       (SELECT COUNT(*)::int FROM "Track" t2 WHERE t2."albumId" = a.id AND t2.corrupt = false AND t2."missingSince" IS NULL) as "songCount",
-                       (SELECT COALESCE(SUM(t2.duration), 0) FROM "Track" t2 WHERE t2."albumId" = a.id AND t2.corrupt = false AND t2."missingSince" IS NULL) as "totalDuration"
-                FROM "Album" a
-                JOIN "Artist" ar ON a."artistId" = ar.id
+            const rows = await prisma.$queryRaw<AlbumWithArtist[]>(Prisma.sql`
+                ${ALBUM_LIST_SELECT}
                 WHERE a."location" = 'LIBRARY'
                   AND EXISTS (SELECT 1 FROM "Track" t WHERE t."albumId" = a.id)
                 ORDER BY RANDOM()
                 LIMIT ${size}
-            `;
+            `);
             albums = rows;
             break;
         }
 
         case "recent": {
-            const rows = await prisma.$queryRaw<AlbumWithArtist[]>`
-                SELECT a.id, a.title, a."displayTitle", a.year, a."coverUrl", a."userCoverUrl", a."artistId",
-                       json_build_object('id', ar.id, 'name', ar.name, 'displayName', ar."displayName",
-                           'genres', ar.genres, 'userGenres', ar."userGenres") as artist,
-                       (SELECT COUNT(*)::int FROM "Track" t2 WHERE t2."albumId" = a.id AND t2.corrupt = false AND t2."missingSince" IS NULL) as "songCount",
-                       (SELECT COALESCE(SUM(t2.duration), 0) FROM "Track" t2 WHERE t2."albumId" = a.id AND t2.corrupt = false AND t2."missingSince" IS NULL) as "totalDuration"
-                FROM "Album" a
-                JOIN "Artist" ar ON a."artistId" = ar.id
+            const rows = await prisma.$queryRaw<AlbumWithArtist[]>(Prisma.sql`
+                ${ALBUM_LIST_SELECT}
                 JOIN "Track" t ON t."albumId" = a.id
                 JOIN "Play" p ON p."trackId" = t.id
                 WHERE a."location" = 'LIBRARY'
@@ -448,20 +441,14 @@ libraryRouter.all(["/getAlbumList2.view", "/getAlbumList.view"], wrap(async (req
                          ar.id, ar.name, ar."displayName", ar.genres, ar."userGenres"
                 ORDER BY MAX(p."playedAt") DESC
                 LIMIT ${size} OFFSET ${offset}
-            `;
+            `);
             albums = rows;
             break;
         }
 
         case "frequent": {
-            const rows = await prisma.$queryRaw<AlbumWithArtist[]>`
-                SELECT a.id, a.title, a."displayTitle", a.year, a."coverUrl", a."userCoverUrl", a."artistId",
-                       json_build_object('id', ar.id, 'name', ar.name, 'displayName', ar."displayName",
-                           'genres', ar.genres, 'userGenres', ar."userGenres") as artist,
-                       (SELECT COUNT(*)::int FROM "Track" t2 WHERE t2."albumId" = a.id AND t2.corrupt = false AND t2."missingSince" IS NULL) as "songCount",
-                       (SELECT COALESCE(SUM(t2.duration), 0) FROM "Track" t2 WHERE t2."albumId" = a.id AND t2.corrupt = false AND t2."missingSince" IS NULL) as "totalDuration"
-                FROM "Album" a
-                JOIN "Artist" ar ON a."artistId" = ar.id
+            const rows = await prisma.$queryRaw<AlbumWithArtist[]>(Prisma.sql`
+                ${ALBUM_LIST_SELECT}
                 JOIN "Track" t ON t."albumId" = a.id
                 JOIN "Play" p ON p."trackId" = t.id
                 WHERE a."location" = 'LIBRARY'
@@ -470,7 +457,7 @@ libraryRouter.all(["/getAlbumList2.view", "/getAlbumList.view"], wrap(async (req
                          ar.id, ar.name, ar."displayName", ar.genres, ar."userGenres"
                 ORDER BY COUNT(p.id) DESC
                 LIMIT ${size} OFFSET ${offset}
-            `;
+            `);
             albums = rows;
             break;
         }

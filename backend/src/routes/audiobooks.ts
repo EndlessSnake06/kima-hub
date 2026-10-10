@@ -12,6 +12,7 @@ import { config } from "../config";
 import { resolveWithinMusicRoot } from "./library/trackPath";
 import { artistSortName } from "../services/artistIdentity";
 import { upstreamHeader } from "../utils/upstreamHeaders";
+import type { Audiobook, AudiobookProgress } from "@prisma/client";
 
 /**
  * Access-Control-Allow-Origin for a cover or stream response, using the same
@@ -38,6 +39,51 @@ export function resolveCorsOrigin(
 }
 
 const router = Router();
+
+/** The progress sub-object every audiobook response carries, in one shape. */
+function progressDto(progress: AudiobookProgress) {
+    return {
+        currentTime: progress.currentTime,
+        progress:
+            progress.duration > 0
+                ? (progress.currentTime / progress.duration) * 100
+                : 0,
+        isFinished: progress.isFinished,
+        lastPlayedAt: progress.lastPlayedAt,
+    };
+}
+
+/** One audiobook row as the clients read it; the series sub-object rides along. */
+function toAudiobookDto(book: Audiobook, progress: AudiobookProgress | null) {
+    return {
+        id: book.id,
+        title: book.title,
+        author: book.author || "Unknown Author",
+        narrator: book.narrator,
+        description: book.description,
+        // The /audiobooks/:id/cover endpoint finds the file on disk even when
+        // localCoverPath is not set.
+        coverUrl:
+            book.localCoverPath || book.coverUrl
+                ? `/audiobooks/${book.id}/cover`
+                : null,
+        duration: book.duration || 0,
+        libraryId: book.libraryId,
+        series: book.series
+            ? {
+                  name: book.series,
+                  // Article-stripped series name for client-side series sorting;
+                  // computed per response because nothing sorts by it in SQL.
+                  sortName: artistSortName(book.series),
+                  sequence: book.seriesSequence || "1",
+              }
+            : null,
+        genres: book.genres || [],
+        ...(book.tracksJson != null && { tracks: book.tracksJson }),
+        ...(book.numTracks != null && { trackCount: book.numTracks }),
+        progress: progress ? progressDto(progress) : null,
+    };
+}
 
 /**
  * GET /audiobooks/continue-listening
@@ -155,75 +201,6 @@ router.post("/sync", requireAuthOrToken, apiLimiter, async (_req, res) => {
 });
 
 /**
- * GET /audiobooks/debug-series
- * Debug endpoint to see raw series data from Audiobookshelf
- */
-// Debug endpoint for series data
-router.get("/debug-series", requireAuthOrToken, async (_req, res) => {
-    if (process.env.NODE_ENV === "production") {
-        return res.status(404).json({ error: "Not found" });
-    }
-    logger.debug("[Audiobooks] Debug series endpoint called");
-    try {
-        const settings = await getSystemSettings();
-
-        if (!settings?.audiobookshelfEnabled) {
-            return res
-                .status(400)
-                .json({ error: "Audiobookshelf not enabled" });
-        }
-
-        // Get raw data from Audiobookshelf
-        const rawBooks = await audiobookshelfService.getAllAudiobooks();
-        logger.debug(
-            `[Audiobooks] Got ${rawBooks.length} books from Audiobookshelf`
-        );
-
-        // Find books with series data
-        const booksWithSeries = rawBooks.filter((book: any) => {
-            const metadata = book.media?.metadata || book;
-            return metadata.series || metadata.seriesName;
-        });
-
-        logger.debug(
-            `[Audiobooks] Books with series data: ${booksWithSeries.length}`
-        );
-
-        // Extract series info from all books (first 20)
-        const allSeriesInfo = rawBooks.slice(0, 20).map((book: any) => {
-            const metadata = book.media?.metadata || book;
-            return {
-                title: metadata.title || book.title,
-                rawSeries: metadata.series,
-                seriesName: metadata.seriesName,
-                seriesSequence: metadata.seriesSequence,
-                // Also check if there's series in the top-level book object
-                bookSeries: book.series,
-            };
-        });
-
-        // Get a full sample of one book with series (if any)
-        let fullSample = null;
-        if (booksWithSeries.length > 0) {
-            const sampleBook = booksWithSeries[0];
-            fullSample = {
-                id: sampleBook.id,
-                media: sampleBook.media,
-            };
-        }
-
-        res.json({
-            totalBooks: rawBooks.length,
-            booksWithSeriesCount: booksWithSeries.length,
-            sampleSeriesData: allSeriesInfo,
-            fullSampleWithSeries: fullSample,
-        });
-    } catch (error) {
-        safeError(res, "Debug series fetch failed", error);
-    }
-});
-
-/**
  * GET /audiobooks/search
  * Search audiobooks
  */
@@ -287,55 +264,13 @@ router.get("/", requireAuthOrToken, apiLimiter, async (req, res) => {
             progressEntries.map((entry) => [entry.audiobookshelfId, entry])
         );
 
-        // Get user's progress for each audiobook
-        const audiobooksWithProgress = audiobooks.map((book) => {
-            const progress = progressMap.get(book.id);
-
-            // Cover URL: if we have localCoverPath or coverUrl from Audiobookshelf, serve from our endpoint
-            // The /audiobooks/:id/cover endpoint will find the file on disk even if localCoverPath isn't set
-            const hasCover = book.localCoverPath || book.coverUrl;
-
-            return {
-                id: book.id,
-                title: book.title,
-                // The article-stripped title the list is ordered by. The client re-sorts some
-                // views and cannot derive this: the article rules live in Postgres and in
-                // artistSortName.
-                sortName: book.sortName,
-                author: book.author || "Unknown Author",
-                narrator: book.narrator,
-                description: book.description,
-                coverUrl: hasCover
-                    ? `/audiobooks/${book.id}/cover` // Serve from local disk
-                    : null,
-                duration: book.duration || 0,
-                libraryId: book.libraryId,
-                series: book.series
-                    ? {
-                          name: book.series,
-                          // Article-stripped series name for client-side series sorting; computed per
-                          // response because nothing sorts by it in SQL.
-                          sortName: artistSortName(book.series),
-                          sequence: book.seriesSequence || "1",
-                      }
-                    : null,
-                genres: book.genres || [],
-                ...(book.tracksJson != null && { tracks: book.tracksJson }),
-                ...(book.numTracks != null && { trackCount: book.numTracks }),
-                progress: progress
-                    ? {
-                          currentTime: progress.currentTime,
-                          progress:
-                              progress.duration > 0
-                                  ? (progress.currentTime / progress.duration) *
-                                    100
-                                  : 0,
-                          isFinished: progress.isFinished,
-                          lastPlayedAt: progress.lastPlayedAt,
-                      }
-                    : null,
-            };
-        });
+        // Get user's progress for each audiobook. sortName is list-only: the
+        // client re-sorts some views and cannot derive it — the article rules
+        // live in Postgres and in artistSortName.
+        const audiobooksWithProgress = audiobooks.map((book) => ({
+            ...toAudiobookDto(book, progressMap.get(book.id) ?? null),
+            sortName: book.sortName,
+        }));
 
         res.json(audiobooksWithProgress);
     } catch (error) {
@@ -389,48 +324,9 @@ router.get(
                 ])
             );
 
-            const seriesBooks = audiobooks.map((book) => {
-                const progress = seriesProgressMap.get(book.id);
-
-                return {
-                    id: book.id,
-                    title: book.title,
-                    author: book.author || "Unknown Author",
-                    narrator: book.narrator,
-                    description: book.description,
-                    coverUrl:
-                        book.localCoverPath || book.coverUrl
-                            ? `/audiobooks/${book.id}/cover`
-                            : null,
-                    duration: book.duration || 0,
-                    libraryId: book.libraryId,
-                    series: book.series
-                        ? {
-                              name: book.series,
-                              // Same shape as the list endpoint, so a client never reads a field that is
-                              // only sometimes there.
-                              sortName: artistSortName(book.series),
-                              sequence: book.seriesSequence || "1",
-                          }
-                        : null,
-                    genres: book.genres || [],
-                    ...(book.tracksJson != null && { tracks: book.tracksJson }),
-                    ...(book.numTracks != null && { trackCount: book.numTracks }),
-                    progress: progress
-                        ? {
-                              currentTime: progress.currentTime,
-                              progress:
-                                  progress.duration > 0
-                                      ? (progress.currentTime /
-                                            progress.duration) *
-                                        100
-                                      : 0,
-                              isFinished: progress.isFinished,
-                              lastPlayedAt: progress.lastPlayedAt,
-                          }
-                        : null,
-                };
-            });
+            const seriesBooks = audiobooks.map((book) =>
+                toAudiobookDto(book, seriesProgressMap.get(book.id) ?? null)
+            );
 
             res.json(seriesBooks);
         } catch (error) {
@@ -614,17 +510,7 @@ router.get("/:id", requireAuthOrToken, apiLimiter, async (req, res) => {
             sections,
             libraryId: audiobook.libraryId,
             ...(audiobook.numTracks != null && { trackCount: audiobook.numTracks }),
-            progress: progress
-                ? {
-                      currentTime: progress.currentTime,
-                      progress:
-                          progress.duration > 0
-                              ? (progress.currentTime / progress.duration) * 100
-                              : 0,
-                      isFinished: progress.isFinished,
-                      lastPlayedAt: progress.lastPlayedAt,
-                  }
-                : null,
+            progress: progress ? progressDto(progress) : null,
         });
     } catch (error) {
         safeError(res, "Failed to fetch audiobook", error);
@@ -783,30 +669,10 @@ router.post(
                     ? Math.max(rawDuration, 0)
                     : 0;
 
-            logger.debug(`\n [AUDIOBOOK PROGRESS] Received update:`);
-            logger.debug(`   User: ${req.user!.username}`);
-            logger.debug(`   Audiobook ID: ${id}`);
             logger.debug(
-                `   Current Time: ${currentTime}s (${Math.floor(
-                    currentTime / 60
-                )} mins)`
+                `[Audiobook Progress] update from ${req.user!.username} for ${id}: ` +
+                    `${currentTime}s of ${durationValue}s${isFinished ? ", finished" : ""}`
             );
-            logger.debug(
-                `   Duration: ${durationValue}s (${Math.floor(
-                    durationValue / 60
-                )} mins)`
-            );
-            if (durationValue > 0) {
-                logger.debug(
-                    `   Progress: ${(
-                        (currentTime / durationValue) *
-                        100
-                    ).toFixed(1)}%`
-                );
-            } else {
-                logger.debug("   Progress: duration unknown");
-            }
-            logger.debug(`   Finished: ${!!isFinished}`);
 
             // Pull cached metadata to avoid hitting Audiobookshelf for every update
             const [cachedAudiobook, existingProgress] = await Promise.all([
@@ -878,8 +744,6 @@ router.post(
                 },
             });
 
-            logger.debug(`   Progress saved to database`);
-
             // Also update progress in Audiobookshelf
             try {
                 await audiobookshelfService.updateProgress(
@@ -888,7 +752,7 @@ router.post(
                     fallbackDuration,
                     isFinished
                 );
-                logger.debug(`   Progress synced to Audiobookshelf`);
+                logger.debug(`[Audiobook Progress] synced to Audiobookshelf`);
             } catch (error) {
                 logger.error(
                     "Failed to sync progress to Audiobookshelf:",
@@ -935,9 +799,9 @@ router.delete(
 
             const { id } = req.params;
 
-            logger.debug(`\n[AUDIOBOOK PROGRESS] Removing progress:`);
-            logger.debug(`   User: ${req.user!.username}`);
-            logger.debug(`   Audiobook ID: ${id}`);
+            logger.debug(
+                `[Audiobook Progress] removing progress for ${id} (${req.user!.username})`
+            );
 
             // Delete progress from our database
             await prisma.audiobookProgress.deleteMany({

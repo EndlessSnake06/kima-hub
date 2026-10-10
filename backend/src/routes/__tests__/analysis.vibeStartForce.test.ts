@@ -199,10 +199,8 @@ describe("POST /api/analysis/vibe/start force=true re-decides without deleting",
             expect(row.retryable).toBe(true);
         }
 
-        // 3. The answer is owed NOW — even though an embedding row exists,
-        //    the reopened questions are what the count reports (the old
-        //    branch only counted tracks with NO embedding row, which would
-        //    report zero and never start the worker).
+        // 3. The answer is owed NOW: even though an embedding row exists,
+        //    the reopened questions are what the count reports.
         expect(res.body.queued).toBe(2);
         expect(res.body.message).not.toBe("All tracks have vibe embeddings");
 
@@ -231,10 +229,7 @@ describe("POST /api/analysis/vibe/start without force re-opens missing answers",
         const noRow = id("norow");
         await seedAnalysedTrack(hasRow, { withEmbedding: true });
         await seedAnalysedTrack(noRow, { withEmbedding: false });
-        // The track with no embedding row still has an ANSWERED record from
-        // an earlier answer whose row was lost — exactly the case the old
-        // non-force branch handled by DELETING the record to make the queue
-        // ask again. (A record with no answer row = the answer is missing.)
+        // A record with no answer row means the answer is missing.
         await putStage(noRow, "embedding", "done", 1);
 
         const res = await request(app)

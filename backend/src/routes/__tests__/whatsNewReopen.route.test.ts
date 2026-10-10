@@ -1,8 +1,5 @@
-/**
- * Reading the current release again after closing it, through the real auth
- * middleware and database: it leaves the pending list but is still read in
- * full, with this user's items and each answered choice as it now stands.
- */
+// Reading the current release again after closing it, through the real auth
+// middleware and database.
 
 import express from "express";
 import request from "supertest";

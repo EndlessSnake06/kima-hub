@@ -4,7 +4,7 @@ import { logger } from "../utils/logger";
 import { requireAuthOrToken } from "../middleware/auth";
 import { safeError } from "../utils/errors";
 import { spotifyService } from "../services/spotify";
-import { deezerService, DeezerPlaylistPreview, DeezerRadioStation } from "../services/deezer";
+import { deezerService, DeezerPlaylistPreview } from "../services/deezer";
 
 const router = Router();
 
@@ -17,7 +17,7 @@ router.use(requireAuthOrToken);
 interface PlaylistPreview {
     id: string;
     source: "deezer" | "spotify";
-    type: "playlist" | "radio";
+    type: "playlist";
     title: string;
     description: string | null;
     creator: string;
@@ -40,23 +40,6 @@ function deezerPlaylistToUnified(playlist: DeezerPlaylistPreview): PlaylistPrevi
         imageUrl: playlist.imageUrl,
         trackCount: playlist.trackCount,
         url: `https://www.deezer.com/playlist/${playlist.id}`,
-    };
-}
-
-/**
- * Convert Deezer radio to unified format
- */
-function deezerRadioToUnified(radio: DeezerRadioStation): PlaylistPreview {
-    return {
-        id: radio.id,
-        source: "deezer",
-        type: "radio",
-        title: radio.title,
-        description: radio.description,
-        creator: "Deezer",
-        imageUrl: radio.imageUrl,
-        trackCount: 0, // Radio tracks are dynamic
-        url: `https://www.deezer.com/radio-${radio.id}`,
     };
 }
 
@@ -130,120 +113,6 @@ router.get("/playlists/:id", async (req, res) => {
         });
     } catch (error) {
         safeError(res, "Playlist fetch", error);
-    }
-});
-
-/**
- * GET /api/browse/radios
- * Get all radio stations (mood/theme based mixes)
- */
-router.get("/radios", async (_req, res) => {
-    try {
-        logger.debug("[Browse] Fetching radio stations...");
-        const radios = await deezerService.getRadioStations();
-
-        res.json({
-            radios: radios.map(deezerRadioToUnified),
-            total: radios.length,
-            source: "deezer",
-        });
-    } catch (error) {
-        safeError(res, "Browse radios", error);
-    }
-});
-
-/**
- * GET /api/browse/radios/by-genre
- * Get radio stations organized by genre
- */
-router.get("/radios/by-genre", async (_req, res) => {
-    try {
-        logger.debug("[Browse] Fetching radios by genre...");
-        const genresWithRadios = await deezerService.getRadiosByGenre();
-
-        // Transform to include unified format
-        const result = genresWithRadios.map(genre => ({
-            id: genre.id,
-            name: genre.name,
-            radios: genre.radios.map(deezerRadioToUnified),
-        }));
-
-        res.json({
-            genres: result,
-            total: result.length,
-            source: "deezer",
-        });
-    } catch (error) {
-        safeError(res, "Browse radios by genre", error);
-    }
-});
-
-/**
- * GET /api/browse/radios/:id
- * Get tracks from a radio station (as playlist format for import)
- */
-router.get("/radios/:id", async (req, res) => {
-    try {
-        const { id } = req.params;
-        logger.debug(`[Browse] Fetching radio ${id} tracks...`);
-        
-        const radioPlaylist = await deezerService.getRadioTracks(id);
-
-        if (!radioPlaylist) {
-            return res.status(404).json({ error: "Radio station not found" });
-        }
-
-        res.json({
-            ...radioPlaylist,
-            source: "deezer",
-            type: "radio",
-        });
-    } catch (error) {
-        safeError(res, "Radio tracks", error);
-    }
-});
-
-/**
- * GET /api/browse/genres
- * Get all available genres
- */
-router.get("/genres", async (_req, res) => {
-    try {
-        logger.debug("[Browse] Fetching genres...");
-        const genres = await deezerService.getGenres();
-
-        res.json({
-            genres,
-            total: genres.length,
-            source: "deezer",
-        });
-    } catch (error) {
-        safeError(res, "Browse genres", error);
-    }
-});
-
-/**
- * GET /api/browse/genres/:id
- * Get content for a specific genre (playlists + radios)
- */
-router.get("/genres/:id", async (req, res) => {
-    try {
-        const genreId = parseInt(req.params.id);
-        if (isNaN(genreId)) {
-            return res.status(400).json({ error: "Invalid genre ID" });
-        }
-
-        logger.debug(`[Browse] Fetching content for genre ${genreId}...`);
-        const content = await deezerService.getEditorialContent(genreId);
-
-        res.json({
-            genreId,
-            playlists: content.playlists.map(deezerPlaylistToUnified),
-            radios: content.radios.map(deezerRadioToUnified),
-            source: "deezer",
-        });
-    } catch (error) {
-        safeError(res, "Genre content", error);
     }
 });
 
@@ -357,7 +226,6 @@ router.get("/all", async (_req, res) => {
 
         res.json({
             playlists: playlists.map(deezerPlaylistToUnified),
-            radios: [],
             genres,
             source: "deezer",
         });

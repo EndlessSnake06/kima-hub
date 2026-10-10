@@ -39,10 +39,10 @@ export async function validateMusicConfig(): Promise<MusicConfig> {
         logger.debug(`Database has musicPath=${settings.musicPath}, using ${musicPath} from env/default`);
     }
 
-    // VALIDATE MUSIC PATH EXISTS
     if (!fs.existsSync(musicPath)) {
-        const isDocker = fs.existsSync('/.dockerenv') || process.env.NODE_ENV === 'production';
-        const guidance = isDocker
+        const showDockerGuidance =
+            fs.existsSync('/.dockerenv') || process.env.NODE_ENV === 'production';
+        const guidance = showDockerGuidance
             ? `Docker users: Ensure your volume mount is correct in docker-compose.yml:
    volumes:
      - /path/to/your/music:/music
@@ -56,7 +56,6 @@ export async function validateMusicConfig(): Promise<MusicConfig> {
         );
     }
 
-    // VALIDATE MUSIC PATH IS READABLE
     try {
         fs.accessSync(musicPath, fs.constants.R_OK);
     } catch {
@@ -72,8 +71,7 @@ export async function validateMusicConfig(): Promise<MusicConfig> {
         process.env.TRANSCODE_CACHE_PATH ||
         path.join(process.cwd(), "cache", "transcodes");
 
-    // VALIDATE TRANSCODE CACHE PATH
-    // Create if doesn't exist
+    // The transcode cache directory is created if missing...
     if (!fs.existsSync(transcodeCachePath)) {
         try {
             fs.mkdirSync(transcodeCachePath, { recursive: true });
@@ -90,7 +88,7 @@ export async function validateMusicConfig(): Promise<MusicConfig> {
         }
     }
 
-    // Validate writable
+    // ...and must then be writable.
     try {
         fs.accessSync(transcodeCachePath, fs.constants.W_OK);
     } catch {
@@ -114,7 +112,6 @@ export async function validateMusicConfig(): Promise<MusicConfig> {
         );
     }
 
-    // VALIDATE BUNDLED FFMPEG (from @ffmpeg-installer/ffmpeg)
     try {
         // Check if bundled FFmpeg binary exists
         if (!fs.existsSync(ffmpegPath.path)) {

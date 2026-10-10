@@ -168,7 +168,7 @@ describe("a failed Zod parse is the client's fault, not the server's", () => {
     });
 });
 
-describe("the branches that already existed still behave the same", () => {
+describe("AppError categories and plain Errors", () => {
     it("maps AppError categories to 400 / 503 / 500", async () => {
         const cases: Array<[ErrorCategory, number]> = [
             [ErrorCategory.RECOVERABLE, 400],

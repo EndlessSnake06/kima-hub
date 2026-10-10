@@ -141,7 +141,7 @@ jest.mock("../../services/fpcalc", () => ({
 
 // Let the (mocked) fingerprint stage resolve the seeded /tmp paths.
 jest.mock("../../routes/library/trackPath", () => ({
-    resolveTrackFilePath: (p: string) => p,
+    resolveWithinMusicRoot: (p: string) => p,
 }));
 
 jest.mock("../../services/sourcePauseController", () => ({

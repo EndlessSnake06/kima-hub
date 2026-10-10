@@ -3,7 +3,7 @@ import { prisma } from "../../utils/db";
 import { logger } from "../../utils/logger";
 import { config } from "../../config";
 import { getAudioStreamingService, isQuality } from "../../services/audioStreaming";
-import { resolveTrackFilePath } from "./trackPath";
+import { resolveWithinMusicRoot } from "./trackPath";
 import path from "path";
 
 
@@ -18,7 +18,7 @@ async function resolveAndStream(
   req: Request,
   res: Response,
 ): Promise<void> {
-  const absolutePath = resolveTrackFilePath(track.filePath);
+  const absolutePath = resolveWithinMusicRoot(track.filePath);
   if (!absolutePath) {
     logger.warn(`[STREAM] Rejected out-of-root path for track ${track.id}`);
     res.status(404).json({ error: "Track not available" });
@@ -175,7 +175,7 @@ router.post("/tracks/:id/prewarm", async (req, res) => {
       ? (quality as string)
       : settings?.playbackQuality || "original";
 
-    const absolutePath = resolveTrackFilePath(track.filePath);
+    const absolutePath = resolveWithinMusicRoot(track.filePath);
     if (!absolutePath) {
       logger.warn(`[STREAM] Rejected out-of-root path for track ${track.id}`);
       return res.status(202).json({ ok: true });

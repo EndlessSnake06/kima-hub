@@ -5,7 +5,6 @@ import { createApiKey, listApiKeys, revokeApiKey } from "../services/users/apiKe
 
 const router = Router();
 
-// All API key routes require authentication (session-based)
 router.use(requireAuth);
 
 router.post("/", async (req, res) => {
@@ -16,11 +15,7 @@ router.post("/", async (req, res) => {
             return res.status(400).json({ error: "Device name is required" });
         }
 
-        // Use req.user.id (set by requireAuth middleware) - supports both session and JWT auth
-        const userId = req.user?.id || req.session?.userId;
-        if (!userId) {
-            return res.status(401).json({ error: "Not authenticated" });
-        }
+        const userId = req.user!.id;
 
         // The plaintext key is returned once, in the response below, and is
         // never stored -- the row keeps only a SHA-256 digest. createApiKey owns
@@ -44,11 +39,7 @@ router.post("/", async (req, res) => {
 
 router.get("/", async (req, res) => {
     try {
-        // Use req.user.id (set by requireAuth middleware) - supports both session and JWT auth
-        const userId = req.user?.id || req.session?.userId;
-        if (!userId) {
-            return res.status(401).json({ error: "Not authenticated" });
-        }
+        const userId = req.user!.id;
 
         res.json({ apiKeys: await listApiKeys(userId) });
     } catch (error) {
@@ -59,11 +50,7 @@ router.get("/", async (req, res) => {
 
 router.delete("/:id", async (req, res) => {
     try {
-        // Use req.user.id (set by requireAuth middleware) - supports both session and JWT auth
-        const userId = req.user?.id || req.session?.userId;
-        if (!userId) {
-            return res.status(401).json({ error: "Not authenticated" });
-        }
+        const userId = req.user!.id;
         const keyId = req.params.id;
 
         if (!(await revokeApiKey(userId, keyId))) {
