@@ -124,33 +124,6 @@ class WebhookEventStore {
     }
 
     /**
-     * Get events by correlation ID (find all events for a download job)
-     */
-    async getEventsByCorrelationId(
-        correlationId: string
-    ): Promise<StoredWebhookEvent[]> {
-        const events = await prisma.webhookEvent.findMany({
-            where: { correlationId },
-            orderBy: {
-                createdAt: 'asc',
-            },
-        });
-
-        return events as StoredWebhookEvent[];
-    }
-
-    /**
-     * Get event by Lidarr-provided eventId (for deduplication checking)
-     */
-    async getEventByEventId(eventId: string): Promise<StoredWebhookEvent | null> {
-        const event = await prisma.webhookEvent.findUnique({
-            where: { eventId },
-        });
-
-        return event as StoredWebhookEvent | null;
-    }
-
-    /**
      * The event's id: for Lidarr its type and download id, plus the album for an
      * import event, since Lidarr sends one per album a download carries (a bundle
      * carries several); anything else by a hash of its payload.
