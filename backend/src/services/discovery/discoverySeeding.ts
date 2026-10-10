@@ -180,8 +180,7 @@ export class DiscoverySeeding {
             return this.ownedIndexCache;
         }
         // Single-flight: concurrent candidate checks on a cold/expired cache share
-        // one DB load instead of each firing the full-table album/ownedAlbum scan
-        // (35b review follow-up).
+        // one DB load instead of each firing the full-table album/ownedAlbum scan.
         if (!this.ownedIndexLoad) {
             this.ownedIndexLoad = this.buildOwnedAlbumIndex().finally(() => {
                 this.ownedIndexLoad = null;

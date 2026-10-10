@@ -123,10 +123,8 @@ describe("buildFinalPlaylist failure handling", () => {
 
         await discoverWeeklyService.buildFinalPlaylist("batch-1");
 
-        // DISCRIMINATOR: errorMessage prefix "Playlist build failed:" is set
-        // ONLY by the transaction catch. It can never be produced by the
-        // no-tracks short-circuit ("No tracks found after scan"). This is the
-        // assertion that proves the new behavior specifically.
+        // The "Playlist build failed:" prefix is set only by the transaction
+        // catch, never by the no-tracks short-circuit ("No tracks found after scan").
         expect(updateBatchStatus).toHaveBeenCalledWith(
             "batch-1",
             expect.objectContaining({
