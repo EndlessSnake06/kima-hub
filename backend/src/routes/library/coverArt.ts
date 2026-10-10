@@ -8,7 +8,10 @@ import { findAlbumArtwork } from "../../services/artwork";
 import { musicBrainzService } from "../../services/musicbrainz";
 import { getSystemSettings } from "../../utils/systemSettings";
 import { validateUrlForFetch } from "../../utils/ssrf";
-import { extractColorsFromImage } from "../../utils/colorExtractor";
+import {
+  extractColorsFromImage,
+  FALLBACK_PALETTE,
+} from "../../utils/colorExtractor";
 import {
   resizeImageBuffer,
   getResizedImagePath,
@@ -454,14 +457,7 @@ router.get("/cover-art-colors", imageLimiter, async (req, res) => {
       logger.debug(
         `[COLORS] Placeholder image detected, returning fallback colors`,
       );
-      return res.json({
-        vibrant: "#1db954",
-        darkVibrant: "#121212",
-        lightVibrant: "#181818",
-        muted: "#535353",
-        darkMuted: "#121212",
-        lightMuted: "#b3b3b3",
-      });
+      return res.json(FALLBACK_PALETTE);
     }
 
     const cacheKey = `colors:${crypto

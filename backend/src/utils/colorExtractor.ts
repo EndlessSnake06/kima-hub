@@ -10,6 +10,15 @@ interface ColorPalette {
     lightMuted: string;
 }
 
+/** Colors for an image with none to extract. */
+export const FALLBACK_PALETTE: ColorPalette = {
+    vibrant: "#1db954",
+    darkVibrant: "#121212",
+    lightVibrant: "#181818",
+    muted: "#535353",
+    darkMuted: "#121212",
+    lightMuted: "#b3b3b3",
+};
 
 /**
  * Calculate saturation of an RGB color
@@ -100,15 +109,7 @@ export async function extractColorsFromImage(
             });
 
         if (sortedColors.length === 0) {
-            // Fallback colors
-            return {
-                vibrant: "#1db954",
-                darkVibrant: "#121212",
-                lightVibrant: "#181818",
-                muted: "#535353",
-                darkMuted: "#121212",
-                lightMuted: "#b3b3b3",
-            };
+            return FALLBACK_PALETTE;
         }
 
         // Find vibrant color
@@ -218,14 +219,6 @@ export async function extractColorsFromImage(
         };
     } catch (error) {
         logger.error("[ColorExtractor] Failed to extract colors:", error);
-        // Return fallback colors
-        return {
-            vibrant: "#1db954",
-            darkVibrant: "#121212",
-            lightVibrant: "#181818",
-            muted: "#535353",
-            darkMuted: "#121212",
-            lightMuted: "#b3b3b3",
-        };
+        return FALLBACK_PALETTE;
     }
 }

@@ -345,13 +345,11 @@ router.post("/playlists/parse", async (req, res) => {
 /**
  * GET /api/browse/all
  * Get a combined view of featured content (playlists, genres)
- * Note: Radio stations are now internal (library-based), not from Deezer
  */
 router.get("/all", async (_req, res) => {
     try {
         logger.debug("[Browse] Fetching browse content (playlists + genres)...");
 
-        // Only fetch playlists and genres - radios are now internal library-based
         const [playlists, genres] = await Promise.all([
             deezerService.getFeaturedPlaylists(200),
             deezerService.getGenres(),
