@@ -3,19 +3,17 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect, useRef } from "react";
-import { Plus, Settings, RefreshCw } from "lucide-react";
+import { Plus } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/hooks/useQueries";
-import { useAudioState } from "@/lib/audio-state-context";
 import { useIsMobile, useIsTablet } from "@/hooks/useMediaQuery";
 import { notify } from "@/lib/notify";
 import { useFeatures } from "@/lib/features-context";
 import { MobileSidebar } from "./MobileSidebar";
 import { Button } from "@/components/ui/Button";
-import { KimaMark } from "@/components/ui/KimaMark";
 
 const allNavigation = [
     { name: "Collection", href: "/collection", feature: null },
@@ -43,15 +41,11 @@ export function Sidebar() {
     const router = useRouter();
     const queryClient = useQueryClient();
     const { isAuthenticated } = useAuth();
-    const { currentTrack, currentAudiobook, currentPodcast, playbackType } =
-        useAudioState();
     const { audiobookshelfEnabled } = useFeatures();
     const isMobile = useIsMobile();
     const isTablet = useIsTablet();
     const isMobileOrTablet = isMobile || isTablet;
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-    const [isSyncing, setIsSyncing] = useState(false);
-    const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const [showCreatePlaylist, setShowCreatePlaylist] = useState(false);
     const [newPlaylistName, setNewPlaylistName] = useState("");
     const [isCreating, setIsCreating] = useState(false);
@@ -64,29 +58,6 @@ export function Sidebar() {
         queryFn: () => api.getPlaylists(),
         enabled: isAuthenticated,
     });
-
-    const handleSync = async () => {
-        if (isSyncing) return;
-
-        try {
-            setIsSyncing(true);
-            await api.scanLibrary();
-        } catch (error) {
-            console.error("Failed to trigger library scan:", error);
-            notify.error("Could not start the library scan");
-        } finally {
-            syncTimeoutRef.current = setTimeout(
-                () => setIsSyncing(false),
-                2000,
-            );
-        }
-    };
-
-    useEffect(() => {
-        return () => {
-            if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
-        };
-    }, []);
 
     useEffect(() => {
         setIsMobileMenuOpen(false);
@@ -158,93 +129,9 @@ export function Sidebar() {
     // Render sidebar content inline to prevent component recreation
     const sidebarContent = (
         <>
-            {/* Mobile Only - Logo and App Info */}
-            {isMobileOrTablet && (
-                <div className="px-6 pt-8 pb-6 border-b border-white/[0.08]">
-                    <div className="flex items-center gap-4 mb-5">
-                        <KimaMark size={48} />
-                        <div className="flex-1 min-w-0">
-                            <h2 className="text-2xl font-bold text-white tracking-tight">
-                                Kima
-                            </h2>
-                            {(
-                                !currentTrack &&
-                                !currentAudiobook &&
-                                !currentPodcast
-                            ) ?
-                                <p className="text-sm text-[var(--text-secondary)] font-medium">
-                                    Stream Your Way
-                                </p>
-                            :   <div className="text-xs text-[var(--text-secondary)] truncate">
-                                    <span className="text-[var(--text-muted)]">
-                                        Listening to:{" "}
-                                    </span>
-                                    <span className="text-white font-medium">
-                                        {(
-                                            playbackType === "track" &&
-                                            currentTrack
-                                        ) ?
-                                            `${currentTrack.artist?.name} - ${currentTrack.album?.title}`
-                                        : (
-                                            playbackType === "audiobook" &&
-                                            currentAudiobook
-                                        ) ?
-                                            currentAudiobook.title
-                                        : (
-                                            playbackType === "podcast" &&
-                                            currentPodcast
-                                        ) ?
-                                            currentPodcast.podcastTitle
-                                        :   ""}
-                                    </span>
-                                </div>
-                            }
-                        </div>
-                    </div>
-
-                    {/* Quick Actions - Settings and Sync */}
-                    <div className="flex items-center gap-2">
-                        <button
-                            onClick={handleSync}
-                            disabled={isSyncing}
-                            className={cn(
-                                "w-11 h-11 flex items-center justify-center rounded-full transition-all duration-300",
-                                isSyncing ?
-                                    "bg-brand text-black"
-                                :   "bg-white/10 text-white hover:bg-white/15 active:scale-95",
-                            )}
-                            aria-label={
-                                isSyncing ? "Syncing library" : "Sync library"
-                            }
-                            title={isSyncing ? "syncing..." : "sync library"}
-                        >
-                            <RefreshCw
-                                className={cn(
-                                    "w-4 h-4 transition-transform",
-                                    isSyncing && "animate-spin",
-                                )}
-                            />
-                        </button>
-
-                        <Link
-                            href="/settings"
-                            className={cn(
-                                "w-10 h-10 flex items-center justify-center rounded-full transition-all duration-200",
-                                pathname === "/settings" ?
-                                    "bg-white text-black"
-                                :   "bg-white/10 text-[var(--text-secondary)] hover:text-white hover:bg-white/15 active:scale-95",
-                            )}
-                            aria-label="Settings"
-                            title="settings"
-                        >
-                            <Settings className="w-4 h-4" />
-                        </Link>
-                    </div>
-                </div>
-            )}
 
             <nav
-                className={cn("pt-6", isMobileOrTablet ? "px-4" : "px-3")}
+                className="pt-6 px-3"
                 role="navigation"
                 aria-label="Main navigation"
             >
@@ -314,10 +201,7 @@ export function Sidebar() {
             {/* Playlists Section - Data Stack */}
             <div className="flex-1 overflow-hidden flex flex-col">
                 <div
-                    className={cn(
-                        "mb-3 flex items-center justify-between",
-                        isMobileOrTablet ? "px-4" : "px-3",
-                    )}
+                    className="mb-3 flex items-center justify-between px-3"
                 >
                     <div className="flex items-center gap-2 px-2 animate-rise">
                         <div className="w-1.5 h-1.5 bg-type-track rounded-full" />
@@ -379,10 +263,7 @@ export function Sidebar() {
                     </div>
                 </div>
                 <div
-                    className={cn(
-                        "flex-1 overflow-y-auto space-y-0.5 scrollbar-thin scrollbar-thumb-[#1c1c1c] scrollbar-track-transparent",
-                        isMobileOrTablet ? "px-4" : "px-3",
-                    )}
+                    className="flex-1 overflow-y-auto space-y-0.5 scrollbar-thin scrollbar-thumb-[#1c1c1c] scrollbar-track-transparent px-3"
                 >
                     {isLoadingPlaylists ?
                         <>
