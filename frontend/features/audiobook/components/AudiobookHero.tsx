@@ -12,12 +12,6 @@ interface AudiobookHeroProps {
     audiobook: Audiobook;
     heroImage: string | null;
     colors: ColorPalette | null;
-    metadata: {
-        narrator: string | null;
-        genre: string | null;
-        publishedYear: string | null;
-        description: string | null;
-    } | null;
     formatTime: (seconds: number) => string;
     children?: ReactNode;
 }
@@ -32,7 +26,6 @@ export function AudiobookHero({
     audiobook,
     heroImage,
     colors,
-    metadata,
     formatTime,
     children,
 }: AudiobookHeroProps) {
@@ -91,9 +84,9 @@ export function AudiobookHero({
                                 {audiobook.title}
                             </h1>
 
-                            {metadata?.description && (
+                            {audiobook.description && (
                                 <p className="text-sm text-[var(--text-muted)] line-clamp-2 max-w-3xl mb-3 hidden md:block">
-                                    {truncateDescription(metadata.description, 200)}
+                                    {truncateDescription(audiobook.description, 200)}
                                 </p>
                             )}
 
@@ -101,10 +94,10 @@ export function AudiobookHero({
                                 <span className="font-bold text-white tracking-tight text-sm">
                                     {audiobook.author}
                                 </span>
-                                {metadata?.narrator && (
+                                {audiobook.narrator && (
                                     <>
                                         <span className="text-[var(--text-muted)]">|</span>
-                                        <span>{metadata.narrator}</span>
+                                        <span>{audiobook.narrator}</span>
                                     </>
                                 )}
                                 <span className="text-[var(--text-muted)]">|</span>

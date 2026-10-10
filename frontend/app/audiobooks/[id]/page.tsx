@@ -15,7 +15,7 @@ import { SectionHeader } from "@/components/ui/SectionHeader";
 import { PageMessage } from "@/components/ui/PageMessage";
 
 export default function AudiobookDetailPage() {
-    const { audiobookId, audiobook, isLoading, refetch, heroImage, colorExtractionImage, metadata } =
+    const { audiobookId, audiobook, isLoading, refetch, heroImage, colorExtractionImage } =
         useAudiobookData();
 
     const { colors } = useImageColor(colorExtractionImage);
@@ -59,7 +59,6 @@ export default function AudiobookDetailPage() {
                 audiobook={audiobook}
                 heroImage={heroImage}
                 colors={colors}
-                metadata={metadata}
                 formatTime={formatTime}
             >
                 <AudiobookActionBar
