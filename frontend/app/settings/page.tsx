@@ -264,8 +264,6 @@ export default function SettingsPage() {
                         <StoragePathsSection
                             settings={systemSettings}
                             onUpdate={updateSystemSettings}
-                            onTest={handleTestService}
-                            isTesting={false}
                         />
 
                         <CacheSection

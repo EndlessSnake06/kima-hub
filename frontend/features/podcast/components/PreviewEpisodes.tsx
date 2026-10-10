@@ -1,16 +1,15 @@
 "use client";
 
 import DOMPurify from "dompurify";
-import { Plus, Loader2 } from "lucide-react";
+import { Plus } from "lucide-react";
 import { PodcastPreview } from "../types";
-import type { ColorPalette } from "@/hooks/useImageColor";
 import { formatDuration } from "@/lib/format";
 import { formatDate } from "../utils";
 import { SectionHeader } from "@/components/ui/SectionHeader";
+import { Button } from "@/components/ui/Button";
 
 interface PreviewEpisodesProps {
     previewData: PodcastPreview;
-    colors: ColorPalette | null;
     isSubscribing: boolean;
     onSubscribe: () => void;
 }
@@ -61,23 +60,19 @@ export function PreviewEpisodes({
                     </div>
 
                     <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#0a0a0a]/80 to-[#0a0a0a] flex items-end justify-center pb-8 pointer-events-none">
-                        <button
+                        <Button
+                            variant="primary"
                             onClick={onSubscribe}
-                            disabled={isSubscribing}
-                            className="flex items-center gap-2 pointer-events-auto h-10 px-5 rounded-lg bg-[var(--color-brand)] hover:bg-[var(--color-brand-hover)] transition-all font-bold text-sm text-black disabled:opacity-50 hover:scale-[1.02] active:scale-[0.98]"
+                            isLoading={isSubscribing}
+                            className="pointer-events-auto"
                         >
-                            {isSubscribing ? (
-                                <>
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                    <span>Subscribing</span>
-                                </>
-                            ) : (
+                            {isSubscribing ? "Subscribing" : (
                                 <>
                                     <Plus className="w-4 h-4" />
-                                    <span>Subscribe to Unlock All Episodes</span>
+                                    Subscribe to Unlock All Episodes
                                 </>
                             )}
-                        </button>
+                        </Button>
                     </div>
                 </div>
             ) : (
@@ -85,23 +80,19 @@ export function PreviewEpisodes({
                     <p className="text-xs text-[var(--text-muted)] mb-4">
                         No episodes available for preview
                     </p>
-                    <button
+                    <Button
+                        variant="primary"
                         onClick={onSubscribe}
-                        disabled={isSubscribing}
-                        className="flex items-center gap-2 mx-auto h-10 px-5 rounded-lg bg-[var(--color-brand)] hover:bg-[var(--color-brand-hover)] transition-all font-bold text-sm text-black disabled:opacity-50 hover:scale-[1.02] active:scale-[0.98]"
+                        isLoading={isSubscribing}
+                        className="mx-auto"
                     >
-                        {isSubscribing ? (
-                            <>
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                                <span>Subscribing</span>
-                            </>
-                        ) : (
+                        {isSubscribing ? "Subscribing" : (
                             <>
                                 <Plus className="w-4 h-4" />
-                                <span>Subscribe</span>
+                                Subscribe
                             </>
                         )}
-                    </button>
+                    </Button>
                 </div>
             )}
 

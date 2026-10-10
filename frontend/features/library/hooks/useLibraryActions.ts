@@ -4,7 +4,6 @@ import { useAudioControls } from "@/lib/audio-controls-context";
 import { useAddToPlaylistMutation } from "@/hooks/useQueries";
 import { Track } from "../types";
 
-// Helper to convert library Track to audio context Track format
 const formatTrackForAudio = (track: Track) => ({
     id: track.id,
     title: track.title,
@@ -86,11 +85,7 @@ export function useLibraryActions() {
     }, [playTracks]);
 
     const addTrackToQueue = useCallback((track: Track) => {
-        try {
-            addToQueue(formatTrackForAudio(track));
-        } catch (error) {
-            console.error("Error adding track to queue:", error);
-        }
+        addToQueue(formatTrackForAudio(track));
     }, [addToQueue]);
 
     const addTrackToPlaylist = useCallback(
@@ -103,45 +98,15 @@ export function useLibraryActions() {
         [addToPlaylist],
     );
 
-    const deleteTrack = useCallback(async (id: string): Promise<void> => {
-        try {
-            await api.deleteTrack(id);
-        } catch (error) {
-            throw error;
-        }
-    }, []);
-
-    const deleteAlbum = useCallback(async (id: string): Promise<void> => {
-        try {
-            await api.deleteAlbum(id);
-        } catch (error) {
-            throw error;
-        }
-    }, []);
-
-    const deleteArtist = useCallback(async (id: string): Promise<void> => {
-        try {
-            await api.deleteArtist(id);
-        } catch (error) {
-            throw error;
-        }
-    }, []);
-
     return useMemo(() => ({
         playArtist,
         playAlbum,
         addTrackToQueue,
         addTrackToPlaylist,
-        deleteTrack,
-        deleteAlbum,
-        deleteArtist,
     }), [
         playArtist,
         playAlbum,
         addTrackToQueue,
         addTrackToPlaylist,
-        deleteTrack,
-        deleteAlbum,
-        deleteArtist,
     ]);
 }

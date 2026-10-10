@@ -177,7 +177,6 @@ export default function PodcastDetailPage() {
                         <div>
                             <PreviewEpisodes
                                 previewData={previewData}
-                                colors={colors}
                                 isSubscribing={isSubscribing}
                                 onSubscribe={() => handleSubscribe(previewData)}
                             />

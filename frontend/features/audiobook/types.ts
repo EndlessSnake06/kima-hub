@@ -1,4 +1,6 @@
-export interface AudiobookProgress {
+import type { AudiobookTrack } from "@/lib/audio-state-context";
+
+interface AudiobookProgress {
     currentTime: number;
     progress: number;
     isFinished: boolean;
@@ -11,15 +13,9 @@ export interface AudiobookSection {
     start: number;
 }
 
-export interface AudiobookSeries {
+interface AudiobookSeries {
     name: string;
     sequence: string;
-}
-
-export interface AudiobookTrack {
-    index: number;
-    startOffset: number;
-    duration: number;
 }
 
 export interface Audiobook {
@@ -42,11 +38,4 @@ export interface Audiobook {
     tracks?: AudiobookTrack[];
     trackCount?: number;
     sections?: AudiobookSection[];
-}
-
-export interface AudiobookMetadata {
-    narrator: string | null;
-    genre: string | null;
-    publishedYear: string | null;
-    description: string | null;
 }

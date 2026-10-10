@@ -56,7 +56,6 @@ export default function LibraryPage() {
     const searchParams = useSearchParams();
     const { playTracks } = useAudioControls();
 
-    // Get active tab from URL params, default to "artists"
     const validTabs: Tab[] = ["artists", "albums", "tracks"];
     const tabParam = searchParams.get("tab");
     const activeTab: Tab = validTabs.includes(tabParam as Tab) ? (tabParam as Tab) : "artists";
@@ -121,9 +120,6 @@ export default function LibraryPage() {
         return artistsQuery.data?.artists ?? [];
     }, [activeTab, artistsQuery.data?.artists]);
 
-
-
-
     const albums = useMemo(
         () => (activeTab === "albums" ? (albumsQuery.data?.albums ?? []) : []),
         [activeTab, albumsQuery.data?.albums],
@@ -133,7 +129,6 @@ export default function LibraryPage() {
         [activeTab, tracksQuery.data?.tracks],
     );
 
-    // Loading state based on active tab
     const isLoading =
         (activeTab === "artists" && artistsQuery.isLoading) ||
         (activeTab === "albums" && albumsQuery.isLoading) ||
@@ -180,7 +175,6 @@ export default function LibraryPage() {
         [total, itemsPerPage, currentPage],
     );
 
-    // Reload data function using React Query invalidation
     const reloadData = useCallback(async () => {
         if (activeTab === "artists") {
             await queryClient.invalidateQueries({
@@ -202,9 +196,6 @@ export default function LibraryPage() {
         playAlbum,
         addTrackToQueue,
         addTrackToPlaylist,
-        deleteArtist,
-        deleteAlbum,
-        deleteTrack,
     } = useLibraryActions();
 
     // Increments on tab/filter/sort change to remount grids and replay the
@@ -245,11 +236,9 @@ export default function LibraryPage() {
         }
     }, [outOfRange, activeTab, pagination.totalPages, filter, sortBy, itemsPerPage, router]);
 
-    // Get total items and pages from pagination
     const totalItems = pagination.total;
     const totalPages = pagination.totalPages;
 
-    // Delete confirmation dialog state
     const [deleteConfirm, setDeleteConfirm] = useState<DeleteDialogState>({
         isOpen: false,
         type: "track",
@@ -257,7 +246,6 @@ export default function LibraryPage() {
         title: "",
     });
 
-    // Change tab function
     const changeTab = useCallback(
         (tab: Tab) => {
             // The tracks tab shows owned tracks only and starts the filter over;
@@ -295,7 +283,6 @@ export default function LibraryPage() {
         }));
     }, []);
 
-    // Wrapper for playTracks that converts track format
     const handlePlayTracks = useCallback(
         (libraryTracks: typeof tracks, startIndex?: number) => {
             const formattedTracks = formatTracksForAudio(libraryTracks);
@@ -321,18 +308,17 @@ export default function LibraryPage() {
         }
     }, [formatTracksForAudio, playTracks]);
 
-    // Handle delete confirmation
     const handleDelete = useCallback(async () => {
         try {
             switch (deleteConfirm.type) {
                 case "artist":
-                    await deleteArtist(deleteConfirm.id);
+                    await api.deleteArtist(deleteConfirm.id);
                     break;
                 case "album":
-                    await deleteAlbum(deleteConfirm.id);
+                    await api.deleteAlbum(deleteConfirm.id);
                     break;
                 case "track":
-                    await deleteTrack(deleteConfirm.id);
+                    await api.deleteTrack(deleteConfirm.id);
                     break;
             }
 
@@ -348,7 +334,7 @@ export default function LibraryPage() {
             console.error(`Failed to delete ${deleteConfirm.type}:`, error);
             // Keep dialog open on error so user can retry
         }
-    }, [deleteConfirm, deleteArtist, deleteAlbum, deleteTrack, reloadData]);
+    }, [deleteConfirm, reloadData]);
 
     // Memoize delete handlers to prevent grid re-renders
     const handleDeleteArtist = useCallback((id: string, name: string) => {
