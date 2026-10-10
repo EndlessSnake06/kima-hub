@@ -34,15 +34,6 @@ describe("normalizeNFC", () => {
         expect(result).toBe(expected);
     });
 
-    it("produces a string (not mutating the original)", () => {
-        const nfd = "caf\u0065" + "\u0301"; // café NFD
-        const originalRef = nfd;
-        const result = normalizeNFC(nfd);
-        expect(result).not.toBe(nfd);
-        // Original input is unaffected (strings are immutable anyway, but assert)
-        expect(originalRef.length).toBeGreaterThan(0);
-    });
-
     it("handles empty string", () => {
         expect(normalizeNFC("")).toBe("");
     });

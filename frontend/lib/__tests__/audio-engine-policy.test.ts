@@ -48,8 +48,6 @@ function playingSnap(overrides: Partial<EngineSnapshot> = {}): EngineSnapshot {
     });
 }
 
-// Deliver N ticks without progress (readyState 4 = HAVE_ENOUGH_DATA >= 3).
-
 // ---------------------------------------------------------------------------
 // Table test: every (status x event-type) pair produces a defined status
 // ---------------------------------------------------------------------------

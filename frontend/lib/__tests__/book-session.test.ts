@@ -76,13 +76,6 @@ describe("BookSession.open", () => {
         ).rejects.toBeInstanceOf(BookSessionUnavailableError);
     });
 
-    it("throws when trackCount is null and no tracks anywhere", async () => {
-        mockGetAudiobook.mockResolvedValueOnce({ trackCount: null });
-        await expect(
-            BookSession.open({ id: "book6", duration: 3600, trackCount: undefined })
-        ).rejects.toBeInstanceOf(BookSessionUnavailableError);
-    });
-
     it("never synthesizes when trackCount is null/undefined (UNKNOWN)", async () => {
         mockGetAudiobook.mockResolvedValueOnce({ trackCount: null });
         await expect(
