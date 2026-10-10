@@ -20,10 +20,10 @@ from scipy import stats
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import datasets as D  # noqa: E402
+import embedders as E  # noqa: E402
 import metrics as M  # noqa: E402
 
 DEFAULT_DATA = os.getenv('KIMA_EVAL_DATA', os.path.join(HERE, '.cache', 'data'))
-V1_CACHE = os.path.join(HERE, '.cache', 'emb', 'v1-model37df17afb988-recipeb4c5cac9181b')
 RATING_SETS = ['soundtracks_set1', 'soundtracks_set2', 'deam', 'merge', 'memo2496', 'pmemo']
 SPLIT_SEED = 20260924
 
@@ -155,10 +155,12 @@ def paired_r_delta(pa: np.ndarray, pb: np.ndarray, y: np.ndarray, n_boot: int = 
 
 # ---------------------------------------------------------------------------
 def load_all(data_root: str):
+    # The sound vectors vibe_eval.py cached for the current model and recipe.
+    v1_cache = os.path.join(HERE, '.cache', 'emb', E.default_spec('v1').cache_id)
     sets = {}
     for name in ['mtt_triplets'] + RATING_SETS:
         es = D.LOADERS[name](data_root)
-        z = np.load(os.path.join(V1_CACHE, f'{name}.npz'))
+        z = np.load(os.path.join(v1_cache, f'{name}.npz'))
         emb = {str(k): v for k, v in zip(z['ids'], z['emb'])}
         ids = [i for i in es.ids if i in emb]
         sets[name] = (es, ids, np.vstack([emb[i] for i in ids]).astype(np.float64))
