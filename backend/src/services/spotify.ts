@@ -843,6 +843,7 @@ class SpotifyService {
             );
             return resp.data?.name || null;
         } catch {
+            // A failed playlist lookup counts as no name.
             return null;
         }
     }
@@ -873,6 +874,7 @@ class SpotifyService {
                 coverUrl: t.album?.images?.[0]?.url || null,
             };
         } catch {
+            // A failed track lookup counts as no track.
             return null;
         }
     }
