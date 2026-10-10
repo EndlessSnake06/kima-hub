@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { SettingsSection, SettingsRow } from "../ui";
+import { SettingsSection, SettingsRow, SettingsInput } from "../ui";
 import { useAuth } from "@/lib/auth-context";
 import { api } from "@/lib/api";
 import { InlineStatus, StatusType } from "@/components/ui/InlineStatus";
@@ -88,10 +88,6 @@ export function SubsonicSection() {
         }
     };
 
-    const copyToClipboard = (text: string) => {
-        void copyText(text);
-    };
-
     const formatDate = (dateStr: string) => {
         return new Date(dateStr).toLocaleDateString(undefined, {
             year: "numeric",
@@ -102,7 +98,6 @@ export function SubsonicSection() {
 
     return (
         <SettingsSection id="subsonic" title="Native Apps">
-            {/* Connection Info */}
             <SettingsRow
                 label="Server URL"
                 description="Enter this in your Subsonic-compatible client. Admins can set a persistent URL in Storage settings."
@@ -112,7 +107,7 @@ export function SubsonicSection() {
                         {serverUrl}
                     </span>
                     <button
-                        onClick={() => copyToClipboard(serverUrl)}
+                        onClick={() => void copyText(serverUrl)}
                         className="text-xs text-brand hover:text-brand-hover transition-colors shrink-0"
                     >
                         Copy
@@ -129,19 +124,15 @@ export function SubsonicSection() {
                 </span>
             </SettingsRow>
 
-            {/* Token Generation */}
             <SettingsRow
                 label="API Token"
                 description="Generate a token to use as the password in your client"
             >
                 <div className="flex flex-col gap-2">
-                    <input
-                        type="text"
+                    <SettingsInput
                         value={deviceName}
-                        onChange={(e) => setDeviceName(e.target.value)}
+                        onChange={setDeviceName}
                         placeholder="Client name (e.g. Amperfy, Symfonium, DSub)"
-                        className="text-sm text-white bg-white/5 border border-white/10 px-3 py-2 rounded-lg tabular-nums
-                            placeholder:text-[var(--text-muted)] focus:outline-none focus:border-white/20 w-full"
                     />
                     <div className="inline-flex items-center gap-3">
                         <Button
@@ -161,7 +152,6 @@ export function SubsonicSection() {
                 </div>
             </SettingsRow>
 
-            {/* Newly generated token display */}
             {newToken && (
                 <div className="py-4 space-y-3 border-t border-b border-white/5">
                     <p className="text-xs text-warning">
@@ -172,7 +162,7 @@ export function SubsonicSection() {
                             {newToken}
                         </code>
                         <button
-                            onClick={() => copyToClipboard(newToken)}
+                            onClick={() => void copyText(newToken)}
                             className="text-xs text-brand hover:text-brand-hover transition-colors shrink-0 pt-2"
                         >
                             Copy
@@ -181,7 +171,6 @@ export function SubsonicSection() {
                 </div>
             )}
 
-            {/* Setup guide — shown after a token has been generated */}
             {newToken && (
                 <SettingsRow
                     label="Setup Guide"
@@ -195,7 +184,6 @@ export function SubsonicSection() {
                 </SettingsRow>
             )}
 
-            {/* Existing API keys */}
             {apiKeys.length > 0 && (
                 <SettingsRow
                     label="Active Tokens"
