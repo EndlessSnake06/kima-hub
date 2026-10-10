@@ -576,7 +576,6 @@ test.describe("Dogfood walkthrough", () => {
             }, { sel: PLAYER, before: srcBefore });
             expect(activeInfo.src, 'the active element should have a non-empty src after auto-advance').not.toBe('');
 
-
             // Use the correct selector based on which element was found
             const playSel = activeInfo.which === 'next' ? '[data-kima-player="next"]' : PLAYER;
 

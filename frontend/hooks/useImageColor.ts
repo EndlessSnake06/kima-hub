@@ -279,7 +279,7 @@ function resolveSync(url: string | null | undefined): { colors: ColorPalette | n
         try {
             const cached = localStorage.getItem(`color_cache_${url}`);
             if (cached) return { colors: JSON.parse(cached) as ColorPalette, needsAsync: false };
-        } catch { /* ignore */ }
+        } catch { /* localStorage unavailable */ }
     }
     return { colors: null, needsAsync: true };
 }
@@ -306,7 +306,7 @@ export function useImageColor(imageUrl: string | null | undefined) {
         const cacheKey = `color_cache_${imageUrl}`;
         try {
             if (localStorage.getItem(cacheKey)) return;
-        } catch { /* ignore */ }
+        } catch { /* localStorage unavailable */ }
 
         let cancelled = false;
 
@@ -323,14 +323,14 @@ export function useImageColor(imageUrl: string | null | undefined) {
                         toRemove.forEach(k => localStorage.removeItem(k));
                     }
                     localStorage.setItem(cacheKey, JSON.stringify(palette));
-                } catch { /* ignore */ }
+                } catch { /* localStorage unavailable */ }
             })
             .catch((error) => {
                 if (cancelled) return;
                 console.error("[useImageColor] Failed to extract colors:", error.message || error);
                 setColors(PLACEHOLDER_PALETTE);
                 setIsLoading(false);
-                try { localStorage.removeItem(cacheKey); } catch { /* ignore */ }
+                try { localStorage.removeItem(cacheKey); } catch { /* localStorage unavailable */ }
             });
 
         return () => { cancelled = true; };

@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { api, NetworkError } from "../api";
 
-// 401 → refresh: network error, refresh rejected, or refreshed. Runs under the
-// node environment, so window and localStorage are stubbed; `api` is built at
-// import, so its in-memory token is set directly.
+// 401 → refresh: network error, refresh rejected, or refreshed. window and
+// localStorage are stubbed; `api` is built at import, so its in-memory token
+// is set directly.
 
 type ApiClientInternals = { token: string | null };
 

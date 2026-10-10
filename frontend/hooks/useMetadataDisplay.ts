@@ -52,7 +52,6 @@ interface AlbumMetadata {
     hasUserOverrides?: boolean;
 }
 
-
 /**
  * Compute display data for an artist, merging user overrides with canonical data
  */
@@ -107,7 +106,6 @@ export function useAlbumDisplayData(album: AlbumMetadata | null): AlbumDisplayDa
                 : undefined,
     };
 }
-
 
 /**
  * Merge user genres with canonical genres (user genres first for priority)

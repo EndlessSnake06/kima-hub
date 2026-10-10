@@ -81,7 +81,6 @@ export function OverlayPlayer() {
     const canSkip = playbackType === "track";
     const shuffle = shuffleState(hasMedia, playbackType, activeOperation.type);
 
-
     // A sideways swipe on the artwork skips the track; the seek bar and other
     // controls are outside it. Only a clearly sideways swipe counts.
     const handleTouchStart = (e: React.TouchEvent) => {

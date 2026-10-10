@@ -84,9 +84,6 @@ export const queryKeys = {
     libraryDecades: () => ["library", "decades"] as const,
 };
 
-
-
-
 export function useRecentlyListenedQuery(limit: number = 10) {
     return useQuery({
         queryKey: queryKeys.recentlyListened(limit),
@@ -209,8 +206,6 @@ export function useRecommendationsQuery(limit: number = 10) {
         staleTime: 5 * 60 * 1000, // 5 minutes
     });
 }
-
-
 
 export function useSearchQuery(
     query: string,
@@ -469,7 +464,6 @@ export function useAddToPlaylistMutation() {
         onSettled: (_, __, variables) => invalidatePlaylist(queryClient, variables.playlistId),
     });
 }
-
 
 export function useRemoveFromPlaylistMutation() {
     const queryClient = useQueryClient();

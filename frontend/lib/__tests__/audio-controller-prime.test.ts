@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { AudioController } from "../audio-controller";
 
-// Runs under the node environment. AudioController uses document, window,
-// navigator and localStorage as bare globals, so each is stubbed per test.
+// AudioController uses document, window, navigator and localStorage as bare
+// globals, so each is stubbed per test.
 
 class MockAudioContext {
     static throwOnStart = false;
@@ -139,9 +139,8 @@ function installEnv(opts: {
     return { docListeners, navigator: fakeNavigator };
 }
 
-// The controller now creates + owns its <audio> element via
-// document.createElement("audio") rather than receiving one -- construct it
-// and pull the created element back out via its private field for assertions.
+// The controller creates and owns its <audio> element via
+// document.createElement("audio"); pull it back out through its private field.
 function newController(): { controller: AudioController; audio: FakeAudioElement } {
     const controller = new AudioController();
     const audio = (controller as unknown as { audio: FakeAudioElement }).audio;

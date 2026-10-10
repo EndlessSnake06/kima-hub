@@ -58,7 +58,6 @@ export function NotificationsTab() {
         return null;
     };
 
-
     if (loading) {
         return (
             <div className="flex items-center justify-center py-8">

@@ -34,7 +34,6 @@ function effectsOf(effects: Effect[], kind: Effect["kind"]): Effect[] {
     return effects.filter((e) => e.kind === kind);
 }
 
-
 // Build a minimal "playing" snapshot.
 function playingSnap(overrides: Partial<EngineSnapshot> = {}): EngineSnapshot {
     return snap({

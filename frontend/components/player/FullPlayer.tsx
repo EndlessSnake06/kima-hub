@@ -37,7 +37,6 @@ import { useLyricsToggle } from "@/hooks/useLyricsToggle";
 import { VibeToggleButton } from "./VibeToggleButton";
 import { PlayerCover } from "@/components/player/PlayerCover";
 
-
 export function FullPlayer() {
     // Use split contexts to avoid re-rendering on every currentTime update
     const {
@@ -85,7 +84,6 @@ export function FullPlayer() {
         if (activeOperation.type === 'idle' || !('sourceFeatures' in activeOperation)) return null;
         return computeVibeMatchScore(activeOperation.sourceFeatures, currentTrackFeatures);
     }, [activeOperation, currentTrackFeatures]);
-
 
     const { title, subtitle, coverUrl, artistLink, mediaLink, hasMedia } = useMediaInfo(100);
     const shuffle = shuffleState(hasMedia, playbackType, activeOperation.type);

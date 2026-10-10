@@ -57,10 +57,3 @@ test("core smoke: login → play album → play/pause/next/prev", async ({ page 
     await prevBtn.click();
 });
 
-
-
-
-
-
-
-

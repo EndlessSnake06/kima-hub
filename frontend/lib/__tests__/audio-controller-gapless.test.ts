@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { AudioController } from "../audio-controller";
 
 // Fakes for the dual-element gapless swap, which is not iOS-gated, so a desktop
-// UA is used. Runs under the node environment: browser globals are stubbed per test.
+// UA is used. Browser globals are stubbed per test.
 
 function createFakeAudioElement() {
     const listeners: Record<string, Array<() => void>> = {};

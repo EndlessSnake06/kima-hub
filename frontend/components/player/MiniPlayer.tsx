@@ -85,7 +85,6 @@ export function MiniPlayer() {
         setIsDismissed(false);
     }
 
-
     const { title, subtitle, coverUrl, mediaLink, hasMedia } = useMediaInfo(100);
 
     const countedTrackId = playbackType === "track" ? currentTrack?.id : null;
@@ -93,7 +92,6 @@ export function MiniPlayer() {
     // Check if controls should be enabled (only for tracks)
     const canSkip = playbackType === "track";
     const shuffle = shuffleState(hasMedia, playbackType, activeOperation.type);
-
 
     if (isMobileOrTablet) {
         // Don't render if no media
@@ -382,7 +380,6 @@ export function MiniPlayer() {
                     variant="minimal"
                     className="absolute top-0 left-0 right-0"
                 />
-
 
                 <div className="px-3 py-2.5 pt-3">
                     <div className="flex items-center gap-2 mb-2">
