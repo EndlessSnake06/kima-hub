@@ -3,25 +3,32 @@ import { createWorkerConnection, QUEUE_NAMES } from "./enrichmentQueues";
 import { refreshPodcastFeed } from "../routes/podcasts";
 import { enrichmentFailureService } from "../services/enrichmentFailureService";
 import { logger } from "../utils/logger";
+import { prisma } from "../utils/db";
 
 interface PodcastJobData {
     podcastId: string;
     podcastTitle: string;
 }
 
+/** Refreshes one podcast's feed. A podcast unsubscribed since its job was queued is skipped. */
+export async function processPodcastJob(job: Job<PodcastJobData>): Promise<void> {
+    const { podcastId, podcastTitle } = job.data ?? ({} as PodcastJobData);
+    // A job hash stripped by Redis arrives without data.
+    if (!podcastId) {
+        throw new Error("[PodcastWorker] Job has no podcastId -- corrupt job data");
+    }
+    if (!(await prisma.podcast.findUnique({ where: { id: podcastId }, select: { id: true } }))) {
+        logger.debug(`[PodcastWorker] ${podcastId} (${podcastTitle}) is no longer subscribed; skipping`);
+        return;
+    }
+    logger.debug(`[PodcastWorker] Processing ${podcastId} (${podcastTitle})`);
+    await refreshPodcastFeed(podcastId);
+}
+
 export function startPodcastEnrichmentWorker(): Worker {
     const worker = new Worker<PodcastJobData>(
         QUEUE_NAMES.PODCASTS,
-        async (job: Job<PodcastJobData>) => {
-            const { podcastId, podcastTitle } = job.data ?? ({} as PodcastJobData);
-            // Guard against corrupt job data (a Redis-stripped job hash once left
-            // data-less jobs that threw a confusing `findUnique({ id: undefined })`).
-            if (!podcastId) {
-                throw new Error("[PodcastWorker] Job has no podcastId -- corrupt job data");
-            }
-            logger.debug(`[PodcastWorker] Processing ${podcastId} (${podcastTitle})`);
-            await refreshPodcastFeed(podcastId);
-        },
+        processPodcastJob,
         {
             connection: createWorkerConnection(),
             concurrency: 2,
