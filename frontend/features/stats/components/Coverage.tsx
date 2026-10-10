@@ -8,7 +8,8 @@
 import { percent } from "../format";
 import { useReveal } from "../useReveal";
 import { usePlaySlice } from "../usePlaySlice";
-import { Loader2, Shuffle } from "lucide-react";
+import { Shuffle } from "lucide-react";
+import { Button } from "@/components/ui/Button";
 import type { ShelfStats } from "../types";
 
 interface Row {
@@ -68,15 +69,13 @@ export function Coverage({ shelf }: { shelf: ShelfStats }) {
 
             {shelf.neverPlayed > 0 && (
                 <div className="flex flex-col items-start gap-4">
-                    <button
-                        type="button"
+                    <Button
                         onClick={() => void play("never", { limit: 40 })}
-                        disabled={busy === "never"}
-                        className="h-11 px-4 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-white t-control flex items-center gap-2 transition-colors disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0a]"
+                        isLoading={busy === "never"}
                     >
-                        {busy === "never" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shuffle className="w-4 h-4" />}
+                        {busy !== "never" && <Shuffle className="w-4 h-4" />}
                         shuffle 40 unplayed
-                    </button>
+                    </Button>
                 </div>
             )}
         </div>
