@@ -66,8 +66,6 @@ export interface DeezerRadioStation {
     type: "radio";
 }
 
-
-
 interface DeezerPodcast {
     id: number;
     title: string;
@@ -83,6 +81,43 @@ interface DeezerGenreWithRadios {
     radios: DeezerRadioStation[];
 }
 
+function mapDeezerTrack(track: any): DeezerTrack {
+    return {
+        deezerId: String(track.id),
+        title: track.title || "Unknown",
+        artist: track.artist?.name || "Unknown Artist",
+        artistId: String(track.artist?.id || ""),
+        album: track.album?.title || "Unknown Album",
+        albumId: String(track.album?.id || ""),
+        durationMs: (track.duration || 0) * 1000,
+        previewUrl: track.preview || null,
+        coverUrl: track.album?.cover_medium || track.album?.cover || null,
+    };
+}
+
+function mapPlaylistPreview(playlist: any, defaultCreator: string, fans: number): DeezerPlaylistPreview {
+    return {
+        id: String(playlist.id),
+        title: playlist.title || "Unknown",
+        description: null,
+        creator: playlist.user?.name || defaultCreator,
+        imageUrl: playlist.picture_medium || playlist.picture || null,
+        trackCount: playlist.nb_tracks || 0,
+        fans,
+    };
+}
+
+function mapDeezerPodcast(podcast: any): DeezerPodcast {
+    return {
+        id: podcast.id,
+        title: podcast.title || "Unknown",
+        description: podcast.description || "",
+        fans: podcast.fans || 0,
+        link: podcast.link || "",
+        pictureUrl: podcast.picture_big || podcast.picture_medium || podcast.picture || null,
+    };
+}
+
 class DeezerService {
     private readonly cachePrefix = "deezer:";
     private readonly cacheTTL = 86400; // 24 hours
@@ -93,26 +128,11 @@ class DeezerService {
     }
 
     /**
-     * Get cached value from Redis
-     */
-    private async getCached(key: string): Promise<string | null> {
-        const cached = await this.cache.get<string>(`${this.cachePrefix}${key}`);
-        return cached;
-    }
-
-    /**
-     * Set cached value in Redis
-     */
-    private async setCache(key: string, value: string): Promise<void> {
-        await this.cache.set(`${this.cachePrefix}${key}`, value, this.cacheTTL);
-    }
-
-    /**
      * Redis first; on a miss run `requestFn` (which must call `deezerGet`) and
      * cache the result, including a null answer.
      */
     private async cachedRequest<T>(cacheKey: string, requestFn: () => Promise<T>): Promise<T> {
-        const cached = await this.getCached(cacheKey);
+        const cached = await this.cache.get<string>(`${this.cachePrefix}${cacheKey}`);
         if (cached !== null) {
             try {
                 return cached === "null" ? (null as T) : (JSON.parse(cached) as T);
@@ -122,7 +142,11 @@ class DeezerService {
         }
 
         const data = await requestFn();
-        await this.setCache(cacheKey, data === null || data === undefined ? "null" : JSON.stringify(data));
+        await this.cache.set(
+            `${this.cachePrefix}${cacheKey}`,
+            data === null || data === undefined ? "null" : JSON.stringify(data),
+            this.cacheTTL
+        );
         return data;
     }
 
@@ -461,17 +485,7 @@ class DeezerService {
                 }
             }
 
-            const tracks: DeezerTrack[] = allTrackData.map((track: any) => ({
-                deezerId: String(track.id),
-                title: track.title || "Unknown",
-                artist: track.artist?.name || "Unknown Artist",
-                artistId: String(track.artist?.id || ""),
-                album: track.album?.title || "Unknown Album",
-                albumId: String(track.album?.id || ""),
-                durationMs: (track.duration || 0) * 1000,
-                previewUrl: track.preview || null,
-                coverUrl: track.album?.cover_medium || track.album?.cover || null,
-            }));
+            const tracks = allTrackData.map(mapDeezerTrack);
 
             logger.debug(`Deezer: Fetched playlist "${data.title}" with ${tracks.length}/${totalTracks} tracks`);
 
@@ -501,15 +515,9 @@ class DeezerService {
                 timeout: 10000,
             });
 
-            return (body?.data || []).map((playlist: any) => ({
-                id: String(playlist.id),
-                title: playlist.title || "Unknown",
-                description: null,
-                creator: playlist.user?.name || "Deezer",
-                imageUrl: playlist.picture_medium || playlist.picture || null,
-                trackCount: playlist.nb_tracks || 0,
-                fans: playlist.fans || 0,
-            }));
+            return (body?.data || []).map((playlist: any) =>
+                mapPlaylistPreview(playlist, "Deezer", playlist.fans || 0)
+            );
         } catch (error: any) {
             logger.error("Deezer chart playlists error:", error.message);
             return [];
@@ -526,15 +534,9 @@ class DeezerService {
                 timeout: 10000,
             });
 
-            return (body?.data || []).map((playlist: any) => ({
-                id: String(playlist.id),
-                title: playlist.title || "Unknown",
-                description: null,
-                creator: playlist.user?.name || "Unknown",
-                imageUrl: playlist.picture_medium || playlist.picture || null,
-                trackCount: playlist.nb_tracks || 0,
-                fans: 0,
-            }));
+            return (body?.data || []).map((playlist: any) =>
+                mapPlaylistPreview(playlist, "Unknown", 0)
+            );
         } catch (error: any) {
             logger.error("Deezer playlist search error:", error.message);
             return [];
@@ -705,8 +707,7 @@ class DeezerService {
      */
     async getRadioTracks(radioId: string): Promise<DeezerPlaylist | null> {
         try {
-            // Cache the assembled playlist so we don't hit Deezer twice (radio info +
-            // tracks) on every call (35b review).
+            // Cache the assembled playlist so radio info and tracks are not fetched on every call.
             return await this.cachedRequest(`radio:tracks:${radioId}`, async () => {
             logger.debug(`Deezer: Fetching radio ${radioId} tracks...`);
 
@@ -721,17 +722,7 @@ class DeezerService {
                 timeout: 15000,
             });
 
-            const tracks: DeezerTrack[] = (tracksBody?.data || []).map((track: any) => ({
-                deezerId: String(track.id),
-                title: track.title || "Unknown",
-                artist: track.artist?.name || "Unknown Artist",
-                artistId: String(track.artist?.id || ""),
-                album: track.album?.title || "Unknown Album",
-                albumId: String(track.album?.id || ""),
-                durationMs: (track.duration || 0) * 1000,
-                previewUrl: track.preview || null,
-                coverUrl: track.album?.cover_medium || track.album?.cover || null,
-            }));
+            const tracks = (tracksBody?.data || []).map(mapDeezerTrack);
 
             logger.debug(`Deezer: Fetched radio "${radioInfo.title}" with ${tracks.length} tracks`);
 
@@ -770,8 +761,7 @@ class DeezerService {
             // Search for playlists with this genre
             const playlists = genreName ? await this.searchPlaylists(genreName, 20) : [];
 
-            // Get radios for this genre from getRadiosByGenre (24h cached) instead of
-            // re-fetching /radio/genres uncached on every call (35b review).
+            // Radios come from the cached getRadiosByGenre, not a fresh /radio/genres call.
             const genreRadios = (await this.getRadiosByGenre()).find(
                 (g) => g.id === genreId
             );
@@ -792,14 +782,7 @@ class DeezerService {
                 timeout: 10000,
             });
 
-            return (body?.data || []).map((podcast: any) => ({
-                id: podcast.id,
-                title: podcast.title || "Unknown",
-                description: podcast.description || "",
-                fans: podcast.fans || 0,
-                link: podcast.link || "",
-                pictureUrl: podcast.picture_big || podcast.picture_medium || podcast.picture || null,
-            }));
+            return (body?.data || []).map(mapDeezerPodcast);
         } catch (error: any) {
             logger.error("Deezer podcast search error:", error.message);
             return [];
@@ -816,14 +799,7 @@ class DeezerService {
                     timeout: 10000,
                 });
 
-                return (body?.data || []).map((podcast: any) => ({
-                    id: podcast.id,
-                    title: podcast.title || "Unknown",
-                    description: podcast.description || "",
-                    fans: podcast.fans || 0,
-                    link: podcast.link || "",
-                    pictureUrl: podcast.picture_big || podcast.picture_medium || podcast.picture || null,
-                }));
+                return (body?.data || []).map(mapDeezerPodcast);
             });
         } catch (error: any) {
             logger.error("Deezer top podcasts error:", error.message);
