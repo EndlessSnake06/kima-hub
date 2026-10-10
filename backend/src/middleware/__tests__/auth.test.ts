@@ -77,7 +77,7 @@ function validToken(
 }
 
 function expiredToken(userId = 'user-123', tokenVersion = 1): string {
-    // expiresIn: 0 produces an already-expired token
+    // expiresIn: 1 (one second): expired by the time the test uses it
     return jwt.sign(
         { userId, username: 'testuser', role: 'user', tokenVersion },
         TEST_SECRET,
@@ -170,7 +170,7 @@ describe('requireAuth', () => {
     });
 
     it('returns 401 when token has no tokenVersion claim (legacy token format)', async () => {
-        // Old tokens issued before tokenVersion was added have no tokenVersion claim
+        // A token without a tokenVersion claim
         const legacyToken = jwt.sign(
             { userId: 'user-123', username: 'testuser', role: 'user' }, // no tokenVersion
             TEST_SECRET,
@@ -349,7 +349,6 @@ describe('user row cache', () => {
             await requireAuth(req, res, mockNext());
         }
 
-        // Five authenticated requests, one query. This was five.
         expect(prisma.user.findUnique).toHaveBeenCalledTimes(1);
     });
 
@@ -370,8 +369,7 @@ describe('user row cache', () => {
         await requireAdmin(req, res, next);
 
         expect(next).toHaveBeenCalledTimes(2);
-        // requireAdmin re-authenticated from scratch before; with req.user
-        // already populated it must not query again.
+        // With req.user already populated, requireAdmin must not query again.
         expect(prisma.user.findUnique).toHaveBeenCalledTimes(1);
     });
 
