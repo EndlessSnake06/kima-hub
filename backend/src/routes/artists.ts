@@ -573,7 +573,6 @@ router.get("/album/:mbid", async (req, res) => {
                 duration: track.length ? Math.floor(track.length / 1000) : 0,
                 artist: { name: artistName },
             })),
-            similarAlbums: [], // Similar album recommendations not yet implemented
             owned: false,
             source: "discovery",
         };
