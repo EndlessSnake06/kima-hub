@@ -1,34 +1,18 @@
 "use client";
 
-import { useState } from "react";
-import { SettingsSection, SettingsRow, SettingsInput, SettingsToggle } from "../ui";
-import { SystemSettings } from "../../types";
-import { InlineStatus, StatusType } from "@/components/ui/InlineStatus";
-import { Button } from "@/components/ui/Button";
+import { SettingsSection, SettingsRow, SettingsInput, SettingsToggle, ConnectionTestButton } from "../ui";
+import { ConnectionTestResult, SystemSettings } from "../../types";
+import { useConnectionTest } from "../../hooks/useConnectionTest";
 
 interface AudiobookshelfSectionProps {
     settings: SystemSettings;
     onUpdate: (updates: Partial<SystemSettings>) => void;
-    onTest: (service: string) => Promise<{ success: boolean; version?: string; error?: string }>;
+    onTest: (service: string) => Promise<ConnectionTestResult>;
     isTesting: boolean;
 }
 
 export function AudiobookshelfSection({ settings, onUpdate, onTest, isTesting }: AudiobookshelfSectionProps) {
-    const [testStatus, setTestStatus] = useState<StatusType>("idle");
-    const [testMessage, setTestMessage] = useState("");
-
-    const handleTest = async () => {
-        setTestStatus("loading");
-        setTestMessage("Testing...");
-        const result = await onTest("audiobookshelf");
-        if (result.success) {
-            setTestStatus("success");
-            setTestMessage(result.version ? `v${result.version}` : "Connected");
-        } else {
-            setTestStatus("error");
-            setTestMessage(result.error || "Failed");
-        }
-    };
+    const connection = useConnectionTest(() => onTest("audiobookshelf"));
 
     return (
         <SettingsSection
@@ -70,21 +54,10 @@ export function AudiobookshelfSection({ settings, onUpdate, onTest, isTesting }:
                     </SettingsRow>
 
                     <div className="pt-2">
-                        <div className="inline-flex items-center gap-3">
-                            <Button
-                                variant="secondary"
-                                size="sm"
-                                onClick={handleTest}
-                                disabled={isTesting || !settings.audiobookshelfUrl || !settings.audiobookshelfApiKey}
-                            >
-                                {testStatus === "loading" ? "Testing..." : "Test Connection"}
-                            </Button>
-                            <InlineStatus
-                                status={testStatus}
-                                message={testMessage}
-                                onClear={() => setTestStatus("idle")}
-                            />
-                        </div>
+                        <ConnectionTestButton
+                            connection={connection}
+                            disabled={isTesting || !settings.audiobookshelfUrl || !settings.audiobookshelfApiKey}
+                        />
                     </div>
                 </>
             )}

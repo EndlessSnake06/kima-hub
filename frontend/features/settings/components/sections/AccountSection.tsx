@@ -244,12 +244,13 @@ export function AccountSection() {
                             >
                                 Verify
                             </Button>
-                            <button
+                            <Button
+                                variant="ghost"
+                                size="sm"
                                 onClick={() => { cancel2FASetup(); setTwoFactorToken(""); }}
-                                className="px-4 py-2 text-xs text-[var(--text-muted)] hover:text-white/70 transition-colors"
                             >
                                 Cancel
-                            </button>
+                            </Button>
                             <InlineStatus
                                 status={tfaStatus}
                                 message={tfaMessage}
@@ -277,20 +278,21 @@ export function AccountSection() {
                             placeholder="6-digit code"
                         />
                         <div className="inline-flex items-center gap-3">
-                            <button
+                            <Button
+                                variant="danger"
+                                size="sm"
                                 onClick={handleDisable2FA}
                                 disabled={!disablePassword || disableToken.length !== 6}
-                                className="px-4 py-2 bg-danger text-white text-xs font-semibold rounded-lg
-                                    hover:bg-danger/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             >
                                 Disable 2FA
-                            </button>
-                            <button
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="sm"
                                 onClick={() => { setShowDisableFlow(false); setDisablePassword(""); setDisableToken(""); }}
-                                className="px-4 py-2 text-xs text-[var(--text-muted)] hover:text-white/70 transition-colors"
                             >
                                 Cancel
-                            </button>
+                            </Button>
                             <InlineStatus
                                 status={tfaStatus}
                                 message={tfaMessage}
@@ -316,12 +318,13 @@ export function AccountSection() {
                         ))}
                     </div>
                     <div className="flex gap-2">
-                        <button
+                        <Button
+                            variant="secondary"
+                            size="sm"
                             onClick={() => void copyText(recoveryCodes.join("\n"))}
-                            className="px-4 py-2 bg-white/5 border border-white/10 text-white text-xs rounded-lg hover:bg-white/10 transition-colors"
                         >
                             Copy
-                        </button>
+                        </Button>
                         <Button
                             variant="primary"
                             size="sm"

@@ -40,6 +40,9 @@ const SORT_OPTIONS: { label: string; value: SoulseekSortField }[] = [
     { label: "Filename", value: "filename" },
 ];
 
+const RESULT_GRID =
+    "grid grid-cols-[32px_1fr_minmax(80px,120px)_80px_80px_80px_44px] gap-2 px-3 py-2";
+
 function getResultKey(r: SoulseekResult): string {
     return `${r.username}:${r.path}`;
 }
@@ -134,7 +137,6 @@ export function SoulseekBrowser({
         return () => observer.disconnect();
     }, [hasMore]);
 
-    // Group results by username
     const grouped = useMemo(() => {
         const map = new Map<string, SoulseekResult[]>();
         for (const r of sorted) {
@@ -342,7 +344,7 @@ function FlatView({
 
     return (
         <div>
-            <div className="grid grid-cols-[32px_1fr_minmax(80px,120px)_80px_80px_80px_44px] md:grid-cols-[32px_1fr_minmax(80px,120px)_80px_80px_80px_44px] gap-2 px-3 py-2 text-xs text-[var(--text-muted)] border-b border-white/5">
+            <div className={cn(RESULT_GRID, "text-xs text-[var(--text-muted)] border-b border-white/5")}>
                 <div className="flex items-center justify-center">
                     <input
                         type="checkbox"
@@ -400,7 +402,7 @@ function ResultRow({
 
     return (
         <div
-            className="grid grid-cols-[32px_1fr_minmax(80px,120px)_80px_80px_80px_44px] md:grid-cols-[32px_1fr_minmax(80px,120px)_80px_80px_80px_44px] gap-2 px-3 py-2 items-center hover:bg-white/5 transition-colors rounded"
+            className={cn(RESULT_GRID, "items-center hover:bg-white/5 transition-colors rounded")}
             style={
                 animationDelay > 0
                     ? {

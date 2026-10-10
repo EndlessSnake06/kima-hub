@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Play, Pause, Music, ChevronDown, ChevronUp, RefreshCw } from "lucide-react";
 import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/cn";
 import { UnavailableAlbum } from "../types";
 import { tierColors, tierLabels } from "../constants";
@@ -44,14 +45,16 @@ export function UnavailableAlbums({
                     )}
                 </button>
                 {onRetryAll && (
-                    <button
+                    <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={(e) => { e.stopPropagation(); onRetryAll(); }}
                         disabled={isRetrying}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs tabular-nums text-warning hover:text-warning hover:bg-warning/10 rounded transition-colors disabled:opacity-50"
+                        className="text-warning hover:text-warning hover:bg-warning/10"
                     >
                         <RefreshCw className={cn("w-3 h-3", isRetrying && "animate-spin")} />
                         Retry All
-                    </button>
+                    </Button>
                 )}
             </div>
             {isExpanded && (

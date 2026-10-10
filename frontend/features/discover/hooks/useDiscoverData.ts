@@ -53,7 +53,6 @@ export function useDiscoverData() {
     return data ?? null;
   }, [refetchBatchStatus]);
 
-  // Initial load
   useEffect(() => {
     const init = async () => {
       setLoading(true);
@@ -96,18 +95,15 @@ export function useDiscoverData() {
       loadData();
     }
 
-    // Track if batch is currently active
     if (batchStatus.active) {
       wasActiveRef.current = true;
     }
   }, [batchStatus, loadData, pendingGeneration]);
 
-  // Mark when generation starts
   const markGenerationStart = useCallback(() => {
     generationStartTimeRef.current = Date.now();
   }, []);
 
-  // Optimistically update a track's liked status
   const updateTrackLiked = useCallback((albumId: string, isLiked: boolean) => {
     setPlaylist(prev => {
       if (!prev) return prev;

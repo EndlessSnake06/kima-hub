@@ -6,7 +6,6 @@ import Link from "next/link";
 import { usePlaylistsQuery } from "@/hooks/useQueries";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/hooks/useQueries";
-import { useAuth } from "@/lib/auth-context";
 import { useAudioControls } from "@/lib/audio-context";
 import {
     Play,
@@ -18,7 +17,6 @@ import {
     Link2,
     FileMusic,
     Compass,
-    Loader2,
     X,
     Check,
 } from "lucide-react";
@@ -28,8 +26,10 @@ import { cn } from "@/lib/cn";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { Button } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { plural } from "@/lib/format";
 import { MediaCard } from "@/components/cards/MediaCard";
+import { mosaicCovers } from "@/features/playlist/coverMosaic";
 
 type ActionPanel = "create" | "importUrl" | "importFile" | null;
 
@@ -55,18 +55,9 @@ interface Playlist {
 }
 
 function mosaicUrls(items: PlaylistItem[] | undefined): string[] {
-    const counts = new Map<string, number>();
-    for (const item of items ?? []) {
-        const cover = item.track?.album?.coverUrl;
-        if (cover) counts.set(cover, (counts.get(cover) || 0) + 1);
-    }
-    const urls = [...counts.entries()]
-        .sort((a, b) => b[1] - a[1])
-        .map(([cover]) => api.getCoverArtUrl(cover, 200));
-
-    if (urls.length === 2) return [urls[0], urls[1], urls[1], urls[0]];
-    if (urls.length === 3) return [urls[0], urls[1], urls[2], urls[0]];
-    return urls.slice(0, 4);
+    return mosaicCovers((items ?? []).map((item) => item.track?.album?.coverUrl)).map(
+        (cover) => api.getCoverArtUrl(cover, 200),
+    );
 }
 
 function PlaylistCard({
@@ -132,6 +123,22 @@ function PlaylistCard({
 
 // --- Inline action panels ---
 
+const PANEL_INPUT =
+    "px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm text-white placeholder:text-[var(--text-muted)] focus:outline-none focus:border-brand/50 focus:ring-1 focus:ring-brand/30";
+
+function PanelCloseButton({ onClick, disabled }: { onClick: () => void; disabled?: boolean }) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            disabled={disabled}
+            className="px-3 py-2 rounded-lg text-xs tabular-nums text-[var(--text-muted)] hover:text-white/70 transition-colors"
+        >
+            <X className="w-4 h-4" />
+        </button>
+    );
+}
+
 function CreatePanel({ onClose }: { onClose: () => void }) {
     const router = useRouter();
     const queryClient = useQueryClient();
@@ -173,7 +180,7 @@ function CreatePanel({ onClose }: { onClose: () => void }) {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Playlist name..."
-                className="flex-1 min-w-[180px] px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm text-white placeholder:text-[var(--text-muted)] focus:outline-none focus:border-brand/50 focus:ring-1 focus:ring-brand/30"
+                className={cn("flex-1 min-w-[180px]", PANEL_INPUT)}
                 disabled={isSubmitting}
             />
             <button
@@ -192,18 +199,13 @@ function CreatePanel({ onClose }: { onClose: () => void }) {
                 variant="primary"
                 size="sm"
                 type="submit"
-                disabled={!name.trim() || isSubmitting}
+                disabled={!name.trim()}
+                isLoading={isSubmitting}
             >
-                {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                {!isSubmitting && <Check className="w-3.5 h-3.5" />}
                 Create
             </Button>
-            <button
-                type="button"
-                onClick={onClose}
-                className="px-3 py-2 rounded-lg text-xs tabular-nums text-[var(--text-muted)] hover:text-white/70 transition-colors"
-            >
-                <X className="w-4 h-4" />
-            </button>
+            <PanelCloseButton onClick={onClose} />
             {error && (
                 <p className="w-full text-xs tabular-nums text-danger-light mt-1">{error}</p>
             )}
@@ -259,26 +261,20 @@ function ImportUrlPanel({ onClose }: { onClose: () => void }) {
                 value={url}
                 onChange={(e) => { setUrl(e.target.value); setError(null); }}
                 placeholder="Paste a playlist URL (Spotify, YouTube, SoundCloud...)"
-                className="flex-1 min-w-[220px] px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm text-white placeholder:text-[var(--text-muted)] focus:outline-none focus:border-brand/50 focus:ring-1 focus:ring-brand/30"
+                className={cn("flex-1 min-w-[220px]", PANEL_INPUT)}
                 disabled={isSubmitting}
             />
             <Button
                 variant="primary"
                 size="sm"
                 type="submit"
-                disabled={!url.trim() || isSubmitting}
+                disabled={!url.trim()}
+                isLoading={isSubmitting}
             >
-                {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Link2 className="w-3.5 h-3.5" />}
+                {!isSubmitting && <Link2 className="w-3.5 h-3.5" />}
                 Import
             </Button>
-            <button
-                type="button"
-                onClick={onClose}
-                disabled={isSubmitting}
-                className="px-3 py-2 rounded-lg text-xs tabular-nums text-[var(--text-muted)] hover:text-white/70 transition-colors"
-            >
-                <X className="w-4 h-4" />
-            </button>
+            <PanelCloseButton onClick={onClose} disabled={isSubmitting} />
             {error && (
                 <p className="w-full text-xs tabular-nums text-danger-light mt-1">{error}</p>
             )}
@@ -348,13 +344,7 @@ function ImportM3UPanel({ onClose }: { onClose: () => void }) {
                 >
                     View Playlist
                 </Link>
-                <button
-                    type="button"
-                    onClick={onClose}
-                    className="px-3 py-2 rounded-lg text-xs tabular-nums text-[var(--text-muted)] hover:text-white/70 transition-colors"
-                >
-                    <X className="w-4 h-4" />
-                </button>
+                <PanelCloseButton onClick={onClose} />
             </div>
         );
     }
@@ -380,25 +370,20 @@ function ImportM3UPanel({ onClose }: { onClose: () => void }) {
                         value={playlistName}
                         onChange={(e) => setPlaylistName(e.target.value)}
                         placeholder="Playlist name..."
-                        className="flex-1 min-w-[180px] px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm text-white placeholder:text-[var(--text-muted)] focus:outline-none focus:border-brand/50 focus:ring-1 focus:ring-brand/30"
+                        className={cn("flex-1 min-w-[180px]", PANEL_INPUT)}
                         disabled={isSubmitting}
                     />
                     <Button
                         variant="primary"
                         size="sm"
                         type="submit"
-                        disabled={!playlistName.trim() || isSubmitting}
+                        disabled={!playlistName.trim()}
+                        isLoading={isSubmitting}
                     >
-                        {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                        {!isSubmitting && <Check className="w-3.5 h-3.5" />}
                         Create Playlist
                     </Button>
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className="px-3 py-2 rounded-lg text-xs tabular-nums text-[var(--text-muted)] hover:text-white/70 transition-colors"
-                    >
-                        <X className="w-4 h-4" />
-                    </button>
+                    <PanelCloseButton onClick={onClose} />
                     {error && (
                         <p className="w-full text-xs tabular-nums text-danger-light mt-1">{error}</p>
                     )}
@@ -443,42 +428,55 @@ function ActionButton({
     );
 }
 
-// --- Empty state ---
+// --- Getting started ---
 
-function EmptyState({
-    showHiddenTab,
-    activeAction,
-    setActiveAction,
+function ActionRow({
+    icon: Icon,
+    title,
+    subtitle,
+    brand = false,
+    onClick,
+    children,
 }: {
-    showHiddenTab: boolean;
-    activeAction: ActionPanel;
-    setActiveAction: (a: ActionPanel) => void;
+    icon: React.ComponentType<{ className?: string }>;
+    title: string;
+    subtitle: string;
+    brand?: boolean;
+    onClick: () => void;
+    children?: React.ReactNode;
 }) {
-    if (showHiddenTab) {
-        return (
-        <div className="relative overflow-hidden rounded-lg border-2 border-white/10 bg-gradient-to-br from-[#0f0f0f] to-[#0a0a0a] p-12">
-                <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-brand to-brand-dark" />
-                <div className="flex items-center gap-3 mb-8 pb-4 border-b border-white/10">
-                    <div className="w-2 h-2 bg-brand" />
-                    <span className="text-xs text-[var(--text-secondary)]">
-                        No Hidden Playlists
-                    </span>
+    return (
+        <div className="space-y-3">
+            <button onClick={onClick} className="flex items-center gap-3 text-left group">
+                <div
+                    className={cn(
+                        "w-10 h-10 rounded-lg border flex items-center justify-center shrink-0 transition-colors",
+                        brand
+                            ? "bg-brand/10 border-brand/20 group-hover:bg-brand/20"
+                            : "bg-white/5 border-white/10 group-hover:bg-white/10"
+                    )}
+                >
+                    <Icon className={cn("w-5 h-5", brand ? "text-brand" : "text-[var(--text-muted)]")} />
                 </div>
-                <div className="flex flex-col items-center text-center">
-                    <div className="w-16 h-16 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center mb-6">
-                        <ListMusic className="w-8 h-8 text-white/10" />
-                    </div>
-                    <h2 className="text-2xl font-bold tracking-tight text-white mb-2">
-                        No hidden playlists
-                    </h2>
-                    <p className="text-xs text-[var(--text-muted)] max-w-sm leading-relaxed">
-                        You haven&apos;t hidden any playlists
-                    </p>
+                <div>
+                    <h3 className="text-sm font-bold tracking-tight text-white">{title}</h3>
+                    <p className="text-xs text-[var(--text-muted)]">{subtitle}</p>
                 </div>
-            </div>
-        );
-    }
+            </button>
+            {children && <div className="pl-[52px]">{children}</div>}
+        </div>
+    );
+}
 
+function GettingStarted({
+    activeAction,
+    toggle,
+    close,
+}: {
+    activeAction: ActionPanel;
+    toggle: (a: ActionPanel) => void;
+    close: () => void;
+}) {
     return (
         <div className="relative overflow-hidden rounded-lg border-2 border-white/10 bg-gradient-to-br from-[#0f0f0f] to-[#0a0a0a] p-8 md:p-12">
             <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-brand to-brand-dark" />
@@ -491,65 +489,33 @@ function EmptyState({
             </div>
 
             <div className="grid gap-6 md:grid-cols-2">
-                <div className="space-y-3">
-                    <button
-                        onClick={() => setActiveAction(activeAction === "create" ? null : "create")}
-                        className="flex items-center gap-3 text-left group"
-                    >
-                        <div className="w-10 h-10 rounded-lg bg-brand/10 border border-brand/20 flex items-center justify-center shrink-0 group-hover:bg-brand/20 transition-colors">
-                            <Plus className="w-5 h-5 text-brand" />
-                        </div>
-                        <div>
-                            <h3 className="text-sm font-bold tracking-tight text-white">Create your first playlist</h3>
-                            <p className="text-xs text-[var(--text-muted)]">Start from scratch</p>
-                        </div>
-                    </button>
-                    {activeAction === "create" && (
-                        <div className="pl-[52px]">
-                            <CreatePanel onClose={() => setActiveAction(null)} />
-                        </div>
-                    )}
-                </div>
+                <ActionRow
+                    icon={Plus}
+                    title="Create your first playlist"
+                    subtitle="Start from scratch"
+                    brand
+                    onClick={() => toggle("create")}
+                >
+                    {activeAction === "create" && <CreatePanel onClose={close} />}
+                </ActionRow>
 
-                <div className="space-y-3">
-                    <button
-                        onClick={() => setActiveAction(activeAction === "importUrl" ? null : "importUrl")}
-                        className="flex items-center gap-3 text-left group"
-                    >
-                        <div className="w-10 h-10 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center shrink-0 group-hover:bg-white/10 transition-colors">
-                            <Link2 className="w-5 h-5 text-[var(--text-muted)]" />
-                        </div>
-                        <div>
-                            <h3 className="text-sm font-bold tracking-tight text-white">Import from Spotify or Deezer</h3>
-                            <p className="text-xs text-[var(--text-muted)]">Paste a playlist URL</p>
-                        </div>
-                    </button>
-                    {activeAction === "importUrl" && (
-                        <div className="pl-[52px]">
-                            <ImportUrlPanel onClose={() => setActiveAction(null)} />
-                        </div>
-                    )}
-                </div>
+                <ActionRow
+                    icon={Link2}
+                    title="Import from Spotify or Deezer"
+                    subtitle="Paste a playlist URL"
+                    onClick={() => toggle("importUrl")}
+                >
+                    {activeAction === "importUrl" && <ImportUrlPanel onClose={close} />}
+                </ActionRow>
 
-                <div className="space-y-3">
-                    <button
-                        onClick={() => setActiveAction(activeAction === "importFile" ? null : "importFile")}
-                        className="flex items-center gap-3 text-left group"
-                    >
-                        <div className="w-10 h-10 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center shrink-0 group-hover:bg-white/10 transition-colors">
-                            <FileMusic className="w-5 h-5 text-[var(--text-muted)]" />
-                        </div>
-                        <div>
-                            <h3 className="text-sm font-bold tracking-tight text-white">Import from M3U file</h3>
-                            <p className="text-xs tabular-nums text-[var(--text-muted)]">Upload .m3u or .m3u8</p>
-                        </div>
-                    </button>
-                    {activeAction === "importFile" && (
-                        <div className="pl-[52px]">
-                            <ImportM3UPanel onClose={() => setActiveAction(null)} />
-                        </div>
-                    )}
-                </div>
+                <ActionRow
+                    icon={FileMusic}
+                    title="Import from M3U file"
+                    subtitle="Upload .m3u or .m3u8"
+                    onClick={() => toggle("importFile")}
+                >
+                    {activeAction === "importFile" && <ImportM3UPanel onClose={close} />}
+                </ActionRow>
 
                 <div>
                     <Link
@@ -573,8 +539,6 @@ function EmptyState({
 // --- Main page ---
 
 export default function PlaylistsPage() {
-    useRouter();
-    useAuth();
     const { playTracks } = useAudioControls();
     const queryClient = useQueryClient();
     const [showHiddenTab, setShowHiddenTab] = useState(false);
@@ -768,11 +732,19 @@ export default function PlaylistsPage() {
                         </div>
                     </div>
                 ) : (
-                    <EmptyState
-                        showHiddenTab={showHiddenTab}
-                        activeAction={activeAction}
-                        setActiveAction={setActiveAction}
-                    />
+                    showHiddenTab ? (
+                        <EmptyState
+                            icon={<ListMusic className="w-12 h-12" />}
+                            title="No hidden playlists"
+                            description="You haven't hidden any playlists"
+                        />
+                    ) : (
+                        <GettingStarted
+                            activeAction={activeAction}
+                            toggle={toggleAction}
+                            close={() => setActiveAction(null)}
+                        />
+                    )
                 )}
             </div>
         </div>

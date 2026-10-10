@@ -15,6 +15,7 @@ import {
 import { formatTime, formatDuration } from "@/lib/format";
 import { cascadeStyle } from "@/lib/motion";
 import { CachedImage } from "@/components/ui/CachedImage";
+import { GradientSpinner } from "@/components/ui/GradientSpinner";
 
 interface ShareTrack {
     id: string;
@@ -249,12 +250,11 @@ export default function SharePageClient() {
 
     const totalDuration = tracks.reduce((sum, t) => sum + (t.duration || 0), 0);
 
-    // Loading
     if (loading) {
         return (
             <div className="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center">
                 <div className="flex flex-col items-center gap-3">
-                    <div className="w-8 h-8 border-2 border-brand/30 border-t-brand rounded-full animate-spin" />
+                    <GradientSpinner size="md" />
                     <p className="text-xs text-[var(--text-muted)]">
                         Loading
                     </p>
@@ -263,7 +263,6 @@ export default function SharePageClient() {
         );
     }
 
-    // Error
     if (error || !data) {
         return (
             <div className="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center px-4">
@@ -357,7 +356,7 @@ export default function SharePageClient() {
                                 />
                             </div>
 
-                            <div className="flex justify-between text-micro tabular-nums text-[var(--text-muted)] mb-5 tabular-nums">
+                            <div className="flex justify-between text-micro tabular-nums text-[var(--text-muted)] mb-5">
                                 <span>{formatTime(progress)}</span>
                                 <span>{formatTime(duration)}</span>
                             </div>
@@ -500,7 +499,7 @@ export default function SharePageClient() {
                                             )}
                                         </div>
 
-                                        <span className="text-micro tabular-nums text-[var(--text-muted)] flex-shrink-0 tabular-nums">
+                                        <span className="text-micro tabular-nums text-[var(--text-muted)] flex-shrink-0">
                                             {track.duration ? formatTime(track.duration) : ""}
                                         </span>
                                     </button>

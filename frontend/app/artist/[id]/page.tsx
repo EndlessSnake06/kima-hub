@@ -11,14 +11,12 @@ import { useImageColor } from "@/hooks/useImageColor";
 import { api } from "@/lib/api";
 import { notify } from "@/lib/notify";
 
-// Hooks
 import { useArtistData } from "@/features/artist/hooks/useArtistData";
 import { useArtistActions } from "@/features/artist/hooks/useArtistActions";
 import { useDownloadActions } from "@/features/artist/hooks/useDownloadActions";
 import type { Track, Album } from "@/features/artist/types";
 import { usePreview } from "@/hooks/usePreview";
 
-// Components
 import { ArtistHero } from "@/features/artist/components/ArtistHero";
 import { ArtistActionBar } from "@/features/artist/components/ArtistActionBar";
 import { ArtistBio } from "@/features/artist/components/ArtistBio";
@@ -35,7 +33,6 @@ export default function ArtistPage() {
     const { playTracks, pause } = useAudioControls();
     const { isPendingByMbid } = useDownloadContext();
 
-    // Data hook
     const {
         artist,
         albums,
@@ -47,12 +44,10 @@ export default function ArtistPage() {
         reloadArtist,
     } = useArtistData();
 
-    // Action hooks
     const { playAll, shufflePlay } = useArtistActions();
     const { downloadArtist, downloadAlbum } = useDownloadActions();
     const preview = usePreview();
 
-    // Separate owned and available albums
     const ownedAlbums = albums.filter((a) => a.owned);
     const availableAlbums = albums.filter((a) => !a.owned);
 
@@ -73,7 +68,6 @@ export default function ArtistPage() {
 
     const { colors } = useImageColor(lowResImage || rawImageUrl);
 
-    // Play album handler
     async function handlePlayAlbum(albumId: string) {
         try {
             const albumData = await api.getAlbum(albumId);
@@ -94,7 +88,6 @@ export default function ArtistPage() {
         }
     }
 
-    // Play track handler (for popular tracks)
     function handlePlayTrack(track: Track) {
         if (!artist?.topTracks) return;
 
@@ -117,12 +110,10 @@ export default function ArtistPage() {
         playTracks(formattedTracks, Math.max(0, startIndex));
     }
 
-    // Download album handler
     function handleDownloadAlbum(album: Album) {
         downloadAlbum(album, artist?.name || "");
     }
 
-    // Start artist radio handler
     async function handleStartRadio() {
         if (!artist) return;
 
@@ -142,7 +133,6 @@ export default function ArtistPage() {
         }
     }
 
-    // Loading state
     if (loading) {
         return <LoadingScreen message="Loading artist..." />;
     }

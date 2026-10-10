@@ -7,7 +7,6 @@ import { useSearchData } from "@/features/search/hooks/useSearchData";
 import { useSoulseekSearch } from "@/features/search/hooks/useSoulseekSearch";
 import { SearchFilters } from "@/features/search/components/SearchFilters";
 import { TopResult } from "@/features/search/components/TopResult";
-import { EmptyState } from "@/features/search/components/EmptyState";
 import { LibraryAlbumsGrid } from "@/features/search/components/LibraryAlbumsGrid";
 import { LibraryPodcastsGrid } from "@/features/search/components/LibraryPodcastsGrid";
 import { LibraryAudiobooksGrid } from "@/features/search/components/LibraryAudiobooksGrid";
@@ -18,6 +17,7 @@ import { UnifiedSongsList } from "@/features/search/components/UnifiedSongsList"
 import { SoulseekBrowser } from "@/features/search/components/SoulseekBrowser";
 import { TVSearchInput } from "@/features/search/components/TVSearchInput";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
+import { EmptyState } from "@/components/ui/EmptyState";
 import type { FilterTab } from "@/features/search/types";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 
@@ -80,6 +80,25 @@ export default function SearchPage() {
         router.push(`/search?q=${encodeURIComponent(searchQuery)}`);
     };
 
+    const topMatch = (
+        <TopResult
+            libraryArtist={libraryResults?.artists?.[0]}
+            discoveryArtist={topArtist}
+        />
+    );
+
+    const trackList =
+        filterTab === "all" ? (
+            <UnifiedSongsList
+                tracks={libraryResults?.tracks ?? []}
+                soulseekResults={soulseekResults}
+                downloadingFiles={downloadingFiles}
+                onDownload={handleDownload}
+            />
+        ) : filterTab === "library" ? (
+            <LibraryTracksList tracks={libraryResults?.tracks ?? []} />
+        ) : null;
+
     return (
         <div className="min-h-screen relative overflow-hidden">
             <div className="relative z-(--z-raised) page-shell py-8 animate-rise">
@@ -136,7 +155,13 @@ export default function SearchPage() {
                     </div>
                 )}
 
-                <EmptyState hasSearched={hasSearched} isLoading={isLoading} />
+                {!hasSearched && !isLoading && (
+                    <EmptyState
+                        icon={<SearchIcon className="w-16 h-16" />}
+                        title="Search your library"
+                        description="Use the search bar above to find music, artists, and albums"
+                    />
+                )}
 
                 {hasSearched &&
                     filterTab !== "soulseek" &&
@@ -177,32 +202,12 @@ export default function SearchPage() {
                             <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.5fr] gap-8 animate-fade-soft">
                                 <div className="space-y-4">
                                     <SectionHeader title="Top Match" className="mb-0" />
-                                    <TopResult
-                                        libraryArtist={
-                                            libraryResults?.artists?.[0]
-                                        }
-                                        discoveryArtist={topArtist}
-                                    />
+                                    {topMatch}
                                 </div>
 
                                 <div className="space-y-4">
                                     <SectionHeader type="track" title="Tracks" className="mb-0" />
-                                    {filterTab === "all" ?
-                                        <UnifiedSongsList
-                                            tracks={
-                                                libraryResults?.tracks ?? []
-                                            }
-                                            soulseekResults={soulseekResults}
-                                            downloadingFiles={downloadingFiles}
-                                            onDownload={handleDownload}
-                                        />
-                                    : filterTab === "library" ?
-                                        <LibraryTracksList
-                                            tracks={
-                                                libraryResults?.tracks ?? []
-                                            }
-                                        />
-                                    :   null}
+                                    {trackList}
                                 </div>
                             </div>
                         :   <>
@@ -211,38 +216,14 @@ export default function SearchPage() {
                                     hasTopResult && (
                                         <section className="animate-fade-soft">
                                             <SectionHeader title="Top Match" />
-                                            <TopResult
-                                                libraryArtist={
-                                                    libraryResults?.artists?.[0]
-                                                }
-                                                discoveryArtist={topArtist}
-                                            />
+                                            {topMatch}
                                         </section>
                                     )}
 
                                 {hasSearched && hasTracks && (
                                     <section className="animate-fade-soft">
                                         <SectionHeader type="track" title="Tracks" />
-                                        {filterTab === "all" ?
-                                            <UnifiedSongsList
-                                                tracks={
-                                                    libraryResults?.tracks ?? []
-                                                }
-                                                soulseekResults={
-                                                    soulseekResults
-                                                }
-                                                downloadingFiles={
-                                                    downloadingFiles
-                                                }
-                                                onDownload={handleDownload}
-                                            />
-                                        : filterTab === "library" ?
-                                            <LibraryTracksList
-                                                tracks={
-                                                    libraryResults?.tracks ?? []
-                                                }
-                                            />
-                                        :   null}
+                                        {trackList}
                                     </section>
                                 )}
                             </>
@@ -305,22 +286,15 @@ export default function SearchPage() {
                             !libraryResults.podcasts?.length &&
                             !libraryResults.audiobooks?.length &&
                             !libraryResults.episodes?.length)) && (
-                        <div className="flex flex-col items-center justify-center py-32 text-center animate-fade-soft">
-                            <div className="relative mb-8">
-                                <SearchIcon className="w-20 h-20 text-[var(--text-muted)]" />
-                                <div className="absolute inset-0 bg-gradient-to-br from-brand/20 to-brand-dark/20 blur-2xl" />
-                            </div>
-                            <h3 className="text-2xl font-bold text-white mb-3">
-                                No matches found
-                            </h3>
-                            <p className="text-[var(--text-secondary)] mb-2">
-                                Try a different search term or check your
-                                spelling
-                            </p>
+                        <EmptyState
+                            icon={<SearchIcon className="w-16 h-16" />}
+                            title="No matches found"
+                            description="Try a different search term or check your spelling"
+                        >
                             <p className="text-sm text-[var(--text-muted)]">
                                 Tip: Enable Soulseek to search the P2P network
                             </p>
-                        </div>
+                        </EmptyState>
                     )}
             </div>
         </div>

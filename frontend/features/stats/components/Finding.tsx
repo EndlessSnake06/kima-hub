@@ -6,7 +6,8 @@
  * rule beneath the pair marks where the proof starts.
  */
 
-import { Loader2, Play } from "lucide-react";
+import { Play } from "lucide-react";
+import { Button } from "@/components/ui/Button";
 import { usePlaySlice } from "../usePlaySlice";
 
 export function Finding({
@@ -46,15 +47,15 @@ export function PlayCore({ count, period }: { count: number; period?: string }) 
     const { play, busy } = usePlaySlice();
     const willPlay = Math.min(count, SLICE_CAP);
     return (
-        <button
-            type="button"
+        <Button
+            variant="ghost"
             onClick={() => void play("core", { limit: willPlay, period })}
-            disabled={busy === "core"}
-            className="self-start h-10 px-3.5 -ml-3.5 rounded-lg t-control text-[var(--text-secondary)] hover:text-white hover:bg-white/[0.06] flex items-center gap-2 transition-colors disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0a]"
+            isLoading={busy === "core"}
+            className="self-start -ml-3.5"
         >
-            {busy === "core" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+            {busy !== "core" && <Play className="w-3.5 h-3.5" />}
             {/* Says what will happen, not what was hoped for. */}
             {willPlay < count ? `play the top ${willPlay}` : `play these ${count}`}
-        </button>
+        </Button>
     );
 }

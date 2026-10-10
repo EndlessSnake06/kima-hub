@@ -3,7 +3,7 @@ export const tierColors: Record<string, string> = {
     medium: "text-yellow-400",
     explore: "text-orange-400",
     wildcard: "text-purple-400",
-    // Legacy tier names (kept for backwards compatibility)
+    // Tier names stored by earlier releases.
     low: "text-orange-400",
     wild: "text-purple-400",
 };
@@ -13,7 +13,7 @@ export const tierLabels: Record<string, string> = {
     medium: "Medium Match",
     explore: "Explore",
     wildcard: "Wild Card",
-    // Legacy tier names (kept for backwards compatibility)
+    // Tier names stored by earlier releases.
     low: "Explore",
     wild: "Wild Card",
 };

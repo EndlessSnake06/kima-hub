@@ -17,32 +17,30 @@ export function SimilarArtistsGrid({
     }
 
     return (
-        <div>
-            <div
-                className="grid-media"
-                data-tv-section="search-results-artists"
-                style={cascadeStyle(Math.min(similarArtists.length, 6))}
-            >
-                {similarArtists.map((result, index) => {
-                    const artistId = result.mbid || encodeURIComponent(result.name);
-                    const imageUrl = result.image
-                        ? api.getCoverArtUrl(result.image, 200)
-                        : null;
+        <div
+            className="grid-media"
+            data-tv-section="search-results-artists"
+            style={cascadeStyle(Math.min(similarArtists.length, 6))}
+        >
+            {similarArtists.map((result, index) => {
+                const artistId = result.mbid || encodeURIComponent(result.name);
+                const imageUrl = result.image
+                    ? api.getCoverArtUrl(result.image, 200)
+                    : null;
 
-                    return (
-                        <MediaCard
-                            key={`artist-${artistId}-${index}`}
-                            href={`/artist/${artistId}`}
-                            title={result.name}
-                            subtitle={formatListeners(result.listeners)}
-                            imageUrl={imageUrl}
-                            fallbackIcon={Music}
-                            type="artist"
-                            index={index}
-                        />
-                    );
-                })}
-            </div>
+                return (
+                    <MediaCard
+                        key={`artist-${artistId}-${index}`}
+                        href={`/artist/${artistId}`}
+                        title={result.name}
+                        subtitle={formatListeners(result.listeners)}
+                        imageUrl={imageUrl}
+                        fallbackIcon={Music}
+                        type="artist"
+                        index={index}
+                    />
+                );
+            })}
         </div>
     );
 }

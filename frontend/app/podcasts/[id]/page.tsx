@@ -11,6 +11,7 @@ import { usePodcastData } from "@/features/podcast/hooks/usePodcastData";
 import { usePodcastActions } from "@/features/podcast/hooks/usePodcastActions";
 
 import { PodcastHero } from "@/features/podcast/components/PodcastHero";
+import { ColorWash } from "@/features/spoken/ColorWash";
 import { PodcastActionBar } from "@/features/podcast/components/PodcastActionBar";
 import { ContinueListening } from "@/features/podcast/components/ContinueListening";
 import { EpisodeList } from "@/features/podcast/components/EpisodeList";
@@ -128,7 +129,6 @@ export default function PodcastDetailPage() {
                 <PodcastActionBar
                     isSubscribed={isSubscribed}
                     feedUrl={podcast?.feedUrl || previewData?.feedUrl}
-                    colors={colors}
                     isSubscribing={isSubscribing}
                     showDeleteConfirm={showDeleteConfirm}
                     onSubscribe={() => handleSubscribe(previewData)}
@@ -144,18 +144,9 @@ export default function PodcastDetailPage() {
 
             {/* Main Content */}
             <div className="relative flex-1">
-                {/* Color gradient continuation */}
-                <div
-                    className="absolute inset-x-0 top-0 pointer-events-none"
-                    style={{
-                        height: "25vh",
-                        background: colors
-                            ? `linear-gradient(to bottom, ${colors.vibrant}10 0%, ${colors.vibrant}05 40%, transparent 100%)`
-                            : "transparent",
-                    }}
-                />
+                <ColorWash colors={colors} />
 
-                    <div className="relative page-shell py-8 section-stack">
+                <div className="relative page-shell py-8 section-stack">
                     {/* Continue Listening */}
                     {podcast && inProgressEpisodes.length > 0 && (
                         <div>
@@ -177,7 +168,6 @@ export default function PodcastDetailPage() {
                         <div>
                             <PreviewEpisodes
                                 previewData={previewData}
-                                colors={colors}
                                 isSubscribing={isSubscribing}
                                 onSubscribe={() => handleSubscribe(previewData)}
                             />
@@ -196,7 +186,6 @@ export default function PodcastDetailPage() {
                                 onPlayPause={(episode) =>
                                     handlePlayPauseEpisode(episode, podcast)
                                 }
-                                onPlay={(episode) => handlePlayEpisode(episode, podcast)}
                                 onMarkComplete={handleMarkEpisodeComplete}
                                 fallbackCoverUrl={podcast?.coverUrl}
                                 total={episodeCount}

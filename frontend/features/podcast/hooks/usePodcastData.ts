@@ -25,7 +25,6 @@ export function usePodcastData() {
     return "newest";
   });
 
-  // Use React Query hook for podcast
   const {
     data: podcast,
     isLoading: isPodcastLoading,
@@ -84,13 +83,11 @@ export function usePodcastData() {
     setSimilarPodcasts([]);
   }
 
-  // Get raw cover URL
   const rawCoverUrl = podcast?.coverUrl || previewData?.coverUrl;
   const heroImage = rawCoverUrl ? api.getCoverArtUrl(rawCoverUrl, 1200) : null;
   // Separate URL with token for color extraction (CORS access for canvas)
   const colorExtractionImage = rawCoverUrl ? api.getCoverArtUrl(rawCoverUrl, 300, true) : null;
 
-  // Load similar podcasts when podcast data is available
   useEffect(() => {
     if (!podcast?.id || !isAuthenticated) return;
 
@@ -139,7 +136,6 @@ export function usePodcastData() {
     return () => { cancelled = true; };
   }, [isPodcastLoading, podcast, isAuthenticated, podcastId, router]);
 
-  // Save sort order to localStorage when it changes
   useEffect(() => {
     if (typeof window !== "undefined") {
       localStorage.setItem(
@@ -149,7 +145,6 @@ export function usePodcastData() {
     }
   }, [sortOrder, podcastId]);
 
-  // Computed values
   const displayData = podcast || (previewData ? {
     title: previewData.title,
     author: previewData.author,

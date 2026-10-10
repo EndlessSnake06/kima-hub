@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useRef, useMemo, useCallback, useEffect } from "react";
-import { Radio, ChevronLeft, ChevronRight } from "lucide-react";
+import { Radio } from "lucide-react";
 import { TileCard } from "@/components/cards/TileCard";
+import { HorizontalCarousel } from "@/components/ui/HorizontalCarousel";
 import { cn } from "@/lib/cn";
 import { useIsMobile, useIsTablet } from "@/hooks/useMediaQuery";
 import { cascadeStyle } from "@/lib/motion";
@@ -39,8 +40,6 @@ export function LibraryRadioStations() {
     }, [genres, decades]);
 
     const scrollRef = useRef<HTMLDivElement>(null);
-    const [canScrollLeft, setCanScrollLeft] = useState(false);
-    const [canScrollRight, setCanScrollRight] = useState(false);
     const [currentPage, setCurrentPage] = useState(0);
     const isMobile = useIsMobile();
     const isTablet = useIsTablet();
@@ -54,38 +53,22 @@ export function LibraryRadioStations() {
         return pages;
     }, [allStations]);
 
-    const checkScroll = useCallback(() => {
+    const updatePage = useCallback(() => {
         const el = scrollRef.current;
-        if (!el) return;
-        setCanScrollLeft(el.scrollLeft > 0);
-        setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 1);
-        if (isMobileOrTablet) {
-            const pageWidth = el.clientWidth;
-            setCurrentPage(Math.round(el.scrollLeft / pageWidth));
-        }
-    }, [isMobileOrTablet]);
+        if (el) setCurrentPage(Math.round(el.scrollLeft / el.clientWidth));
+    }, []);
 
     useEffect(() => {
-        checkScroll();
-        const el = scrollRef.current;
-        if (el) {
-            el.addEventListener("scroll", checkScroll);
-            window.addEventListener("resize", checkScroll);
-        }
-        return () => {
-            if (el) el.removeEventListener("scroll", checkScroll);
-            window.removeEventListener("resize", checkScroll);
-        };
-    }, [stationPages, isMobileOrTablet, checkScroll]);
-
-    const scroll = (direction: "left" | "right") => {
         const el = scrollRef.current;
         if (!el) return;
-        el.scrollBy({
-            left: direction === "left" ? -(el.clientWidth * 0.8) : el.clientWidth * 0.8,
-            behavior: "smooth",
-        });
-    };
+        updatePage();
+        el.addEventListener("scroll", updatePage);
+        window.addEventListener("resize", updatePage);
+        return () => {
+            el.removeEventListener("scroll", updatePage);
+            window.removeEventListener("resize", updatePage);
+        };
+    }, [stationPages, isMobileOrTablet, updatePage]);
 
     const renderCard = (station: RadioStation, compact: boolean, globalIdx: number, delayIdx = globalIdx) => (
         <TileCard
@@ -110,42 +93,15 @@ export function LibraryRadioStations() {
         />
     );
 
-    // Desktop: horizontal scroll
     if (!isMobileOrTablet) {
         return (
-            <div className="relative group/carousel">
-                {canScrollLeft && (
-                    <button
-                        onClick={() => scroll("left")}
-                        className="absolute left-0 top-1/2 -translate-y-1/2 z-(--z-raised) w-9 h-9 rounded-lg bg-black/80 flex items-center justify-center opacity-0 group-hover/carousel:opacity-100 focus-visible:opacity-100 transition-opacity hover:bg-black border border-white/10 -translate-x-1/2"
-                        aria-label="Scroll left"
-                    >
-                        <ChevronLeft className="w-5 h-5 text-white" />
-                    </button>
-                )}
-
-                <div
-                    ref={scrollRef}
-                    className="flex overflow-x-auto scrollbar-hide scroll-smooth snap-x snap-mandatory gap-3 px-1"
-                    style={cascadeStyle(allStations.length)}
-                >
-                    {allStations.map((station, i) => renderCard(station, true, i))}
-                    {isLoading &&
-                        Array.from({ length: 6 }).map((_, i) => (
-                            <div key={i} className="flex-shrink-0 w-[180px] h-[80px] rounded-lg bg-[var(--bg-primary)] border border-white/10 animate-pulse" />
-                        ))}
-                </div>
-
-                {canScrollRight && (
-                    <button
-                        onClick={() => scroll("right")}
-                        className="absolute right-0 top-1/2 -translate-y-1/2 z-(--z-raised) w-9 h-9 rounded-lg bg-black/80 flex items-center justify-center opacity-0 group-hover/carousel:opacity-100 focus-visible:opacity-100 transition-opacity hover:bg-black border border-white/10 translate-x-1/2"
-                        aria-label="Scroll right"
-                    >
-                        <ChevronRight className="w-5 h-5 text-white" />
-                    </button>
-                )}
-            </div>
+            <HorizontalCarousel style={cascadeStyle(allStations.length)}>
+                {allStations.map((station, i) => renderCard(station, true, i))}
+                {isLoading &&
+                    Array.from({ length: 6 }).map((_, i) => (
+                        <div key={i} className="flex-shrink-0 w-[180px] h-[80px] rounded-lg bg-[var(--bg-primary)] border border-white/10 animate-pulse" />
+                    ))}
+            </HorizontalCarousel>
         );
     }
 

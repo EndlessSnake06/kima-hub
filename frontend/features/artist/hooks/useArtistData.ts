@@ -46,7 +46,6 @@ export function useArtistData() {
             prevActiveCountRef.current > 0 &&
             currentActiveCount < prevActiveCountRef.current
         ) {
-            // Downloads have completed, refresh data
             refetch();
         }
         prevActiveCountRef.current = currentActiveCount;
@@ -58,7 +57,6 @@ export function useArtistData() {
         return artist.id && !artist.id.includes("-") ? "library" : "discovery";
     }, [artist]);
 
-    // Sort state: 'year' or 'dateAdded'
     const [sortBy, setSortBy] = useState<"year" | "dateAdded">("year");
 
     // Sort albums by year or dateAdded (auto-memoized by React Compiler)

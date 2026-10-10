@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -8,6 +8,9 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useAudioState, useAudioControls } from "@/lib/audio-context";
+import type { Track } from "@/lib/audio-state-context";
+import { cn } from "@/lib/cn";
+import { formatTime } from "@/lib/format";
 import { useAuth } from "@/lib/auth-context";
 import { api } from "@/lib/api";
 
@@ -22,6 +25,36 @@ import {
 } from "lucide-react";
 import { CachedImage } from "@/components/ui/CachedImage";
 
+function QueueCover({
+    track,
+    large = false,
+    children,
+}: {
+    track: Track;
+    large?: boolean;
+    children?: ReactNode;
+}) {
+    const box = large ? "w-16 h-16" : "w-12 h-12";
+    return (
+        <div className={cn("relative flex-shrink-0", box)}>
+            {track.album?.coverArt ? (
+                <CachedImage
+                    src={api.getCoverArtUrl(track.album.coverArt, 100)}
+                    alt={track.album.title}
+                    fill
+                    sizes={large ? "64px" : "48px"}
+                    className="object-cover rounded-sm"
+                />
+            ) : (
+                <div className={cn("bg-[var(--bg-primary)] rounded-sm flex items-center justify-center", box)}>
+                    <Music className={large ? "w-6 h-6 text-[var(--text-muted)]" : "w-5 h-5 text-[var(--text-muted)]"} />
+                </div>
+            )}
+            {children}
+        </div>
+    );
+}
+
 export default function QueuePage() {
     const router = useRouter();
     const { isAuthenticated } = useAuth();
@@ -34,14 +67,6 @@ export default function QueuePage() {
             router.push("/login");
         }
     }, [isAuthenticated, router]);
-
-    const handleClearQueue = () => {
-        clearQueue();
-    };
-
-    const handleRemoveTrack = (index: number) => {
-        removeFromQueue(index);
-    };
 
     const handlePlayFromQueue = (index: number) => {
         playTracks(queue, index);
@@ -75,7 +100,6 @@ export default function QueuePage() {
         return null;
     }
 
-    // Split queue into current, next up, and previous
     const previousTracks = queue.slice(0, currentIndex);
     const nextTracks = queue.slice(currentIndex + 1);
 
@@ -116,27 +140,11 @@ export default function QueuePage() {
                             </h2>
                             <Card>
                                 <div className="flex items-center gap-4 p-4 bg-[var(--bg-hover)] border-l-2 border-brand">
-                                    <div className="relative flex-shrink-0 w-16 h-16">
-                                        {currentTrack.album?.coverArt ? (
-                                            <CachedImage
-                                                src={api.getCoverArtUrl(
-                                                    currentTrack.album.coverArt,
-                                                    100
-                                                )}
-                                                alt={currentTrack.album.title}
-                                                fill
-                                                sizes="64px"
-                                                className="object-cover rounded-sm"
-                                            />
-                                        ) : (
-                                            <div className="w-16 h-16 bg-[var(--bg-primary)] rounded-sm flex items-center justify-center">
-                                                <Music className="w-6 h-6 text-[var(--text-muted)]" />
-                                            </div>
-                                        )}
+                                    <QueueCover track={currentTrack} large>
                                         <div className="absolute inset-0 flex items-center justify-center">
                                             <Play className="w-6 h-6 text-brand fill-brand animate-pulse" />
                                         </div>
-                                    </div>
+                                    </QueueCover>
                                     <div className="flex-1 min-w-0">
                                         <h3 className="text-sm font-medium text-brand truncate">
                                             {currentTrack.displayTitle ??
@@ -150,13 +158,7 @@ export default function QueuePage() {
                                         </p>
                                     </div>
                                     <div className="text-sm text-[var(--text-muted)]">
-                                        {currentTrack.duration
-                                            ? `${Math.floor(
-                                                  currentTrack.duration / 60
-                                              )}:${(currentTrack.duration % 60)
-                                                  .toString()
-                                                  .padStart(2, "0")}`
-                                            : ""}
+                                        {currentTrack.duration ? formatTime(currentTrack.duration) : ""}
                                     </div>
                                 </div>
                             </Card>
@@ -177,25 +179,7 @@ export default function QueuePage() {
                                                 key={`${track.id}-${queueIndex}`}
                                                 className="flex items-center gap-4 p-4 hover:bg-[var(--bg-hover)] transition-colors group"
                                             >
-                                                <div className="relative flex-shrink-0 w-12 h-12">
-                                                    {track.album?.coverArt ? (
-                                                        <CachedImage
-                                                            src={api.getCoverArtUrl(
-                                                                track.album
-                                                                    .coverArt,
-                                                                100
-                                                            )}
-                                                            alt={track.album.title}
-                                                            fill
-                                                            sizes="48px"
-                                                            className="object-cover rounded-sm"
-                                                        />
-                                                    ) : (
-                                                        <div className="w-12 h-12 bg-[var(--bg-primary)] rounded-sm flex items-center justify-center">
-                                                            <Music className="w-5 h-5 text-[var(--text-muted)]" />
-                                                        </div>
-                                                    )}
-                                                </div>
+                                                <QueueCover track={track} />
 
                                                 <div className="flex-1 min-w-0">
                                                     <h3 className="text-sm font-medium text-white truncate">
@@ -208,13 +192,7 @@ export default function QueuePage() {
                                                 </div>
 
                                                 <div className="text-sm text-[var(--text-muted)]">
-                                                    {track.duration
-                                                        ? `${Math.floor(
-                                                              track.duration / 60
-                                                          )}:${(track.duration % 60)
-                                                              .toString()
-                                                              .padStart(2, "0")}`
-                                                        : ""}
+                                                    {track.duration ? formatTime(track.duration) : ""}
                                                 </div>
 
                                                 <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 touch-reveal transition-opacity">
@@ -259,7 +237,7 @@ export default function QueuePage() {
                                                     </button>
                                                     <button
                                                         onClick={() =>
-                                                            handleRemoveTrack(
+                                                            removeFromQueue(
                                                                 queueIndex
                                                             )
                                                         }
@@ -289,24 +267,7 @@ export default function QueuePage() {
                                             key={`${track.id}-${idx}`}
                                             className="flex items-center gap-4 p-4 hover:bg-[var(--bg-hover)] transition-colors group opacity-50"
                                         >
-                                            <div className="relative flex-shrink-0 w-12 h-12">
-                                                {track.album?.coverArt ? (
-                                                    <CachedImage
-                                                        src={api.getCoverArtUrl(
-                                                            track.album.coverArt,
-                                                            100
-                                                        )}
-                                                        alt={track.album.title}
-                                                        fill
-                                                        sizes="48px"
-                                                        className="object-cover rounded-sm"
-                                                    />
-                                                ) : (
-                                                    <div className="w-12 h-12 bg-[var(--bg-primary)] rounded-sm flex items-center justify-center">
-                                                        <Music className="w-5 h-5 text-[var(--text-muted)]" />
-                                                    </div>
-                                                )}
-                                            </div>
+                                            <QueueCover track={track} />
 
                                             <div className="flex-1 min-w-0">
                                                 <h3 className="text-sm font-medium text-white truncate">
@@ -318,13 +279,7 @@ export default function QueuePage() {
                                             </div>
 
                                             <div className="text-sm text-[var(--text-muted)]">
-                                                {track.duration
-                                                    ? `${Math.floor(
-                                                          track.duration / 60
-                                                      )}:${(track.duration % 60)
-                                                          .toString()
-                                                          .padStart(2, "0")}`
-                                                    : ""}
+                                                {track.duration ? formatTime(track.duration) : ""}
                                             </div>
                                         </div>
                                     ))}
@@ -338,7 +293,7 @@ export default function QueuePage() {
             <ConfirmDialog
                 isOpen={confirmClear}
                 onClose={() => setConfirmClear(false)}
-                onConfirm={handleClearQueue}
+                onConfirm={clearQueue}
                 title="Clear the queue?"
                 message={`This removes ${queue.length === 1 ? "the only track" : `all ${queue.length} tracks`} from the queue.`}
                 confirmText="Clear queue"

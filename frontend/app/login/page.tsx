@@ -4,9 +4,9 @@ import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { api } from "@/lib/api";
-import { Loader2 } from "lucide-react";
 import { GalaxyBackground } from "@/components/ui/GalaxyBackground";
 import { Button } from "@/components/ui/Button";
+import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { KimaMark } from "@/components/ui/KimaMark";
 
 const LOGIN_ERROR_MESSAGES: Record<string, string> = {
@@ -111,18 +111,16 @@ export default function LoginPage() {
         }
     };
 
-    // Show loading while checking if onboarding is needed
     if (isCheckingOnboarding) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-black">
-                <Loader2 className="w-8 h-8 animate-spin text-[var(--text-secondary)]" />
+                <GradientSpinner size="md" />
             </div>
         );
     }
 
     return (
         <div className="min-h-screen w-full relative overflow-hidden">
-            {/* Handle error from URL params */}
             <Suspense fallback={null}>
                 <LoginErrorHandler setError={setError} />
             </Suspense>
@@ -303,19 +301,10 @@ export default function LoginPage() {
                                 variant="primary"
                                 size="lg"
                                 type="submit"
-                                disabled={isLoading}
+                                isLoading={isLoading}
                                 className="w-full"
                             >
-                                <span className="flex items-center justify-center gap-2">
-                                    {isLoading ? (
-                                        <>
-                                            <Loader2 className="w-5 h-5 animate-spin" />
-                                            Signing in...
-                                        </>
-                                    ) : (
-                                        "Sign In"
-                                    )}
-                                </span>
+                                {isLoading ? "Signing in..." : "Sign In"}
                             </Button>
 
                             {requires2FA && (

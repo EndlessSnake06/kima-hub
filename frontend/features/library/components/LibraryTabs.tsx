@@ -7,9 +7,7 @@ interface LibraryTabsProps {
   onTabChange: (tab: Tab) => void;
 }
 
-// No per-tab colour. A filter is not a category with an identity, and three
-// saturated hues on one control read as candy rather than hierarchy. The active
-// segment carries the app's one accent; the others carry none.
+// No per-tab colour: only the active segment carries the app accent.
 const tabs = [
   { id: "artists" as Tab, label: "Artists", icon: Users },
   { id: "albums" as Tab, label: "Albums", icon: Disc3 },
@@ -33,8 +31,7 @@ export function LibraryTabs({ activeTab, onTabChange }: LibraryTabsProps) {
             aria-pressed={isActive}
             onClick={() => onTabChange(tab.id)}
             className={cn(
-              // min-h matches the Refine control beside it and clears the 44px
-              // touch guideline; py alone gave a 36px target.
+              // min-h matches the Refine control beside it and meets the 44px touch target.
               "flex items-center gap-2 rounded-lg px-3 sm:px-4 py-2 min-h-[44px] text-sm font-medium transition-colors duration-150",
               isActive
                 ? "bg-brand text-black"

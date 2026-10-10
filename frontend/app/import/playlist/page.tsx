@@ -10,7 +10,6 @@ import {
     Check,
     X,
     Download,
-    Loader2,
     ExternalLink,
     ChevronDown,
     ChevronUp,
@@ -20,9 +19,10 @@ import { api } from "@/lib/api";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { notify } from "@/lib/notify";
 import { Button } from "@/components/ui/Button";
+import { GradientSpinner } from "@/components/ui/GradientSpinner";
+import { LoadingScreen } from "@/components/ui/LoadingScreen";
 import { CachedImage } from "@/components/ui/CachedImage";
 
-// Types for Spotify Import
 interface SpotifyTrack {
     spotifyId: string;
     title: string;
@@ -76,7 +76,6 @@ interface ImportPreview {
         total: number;
         inLibrary: number;
         downloadable: number;
-        notFound: number;
     };
 }
 
@@ -106,13 +105,26 @@ type Step = "input" | "previewing" | "preview" | "importing" | "complete";
 
 const TERMINAL_IMPORT_STATUSES = ["completed", "failed", "cancelled"];
 
+const pendingImportJob = (id: string, totals: Partial<ImportJob> = {}): ImportJob => ({
+    id,
+    status: "pending",
+    progress: 0,
+    albumsTotal: 0,
+    albumsCompleted: 0,
+    tracksMatched: 0,
+    tracksTotal: 0,
+    tracksDownloadable: 0,
+    createdPlaylistId: null,
+    error: null,
+    ...totals,
+});
+
 function ImportPlaylistPageContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const queryClient = useQueryClient();
     const hasAutoFetched = useRef(false);
 
-    // State
     const [step, setStep] = useState<Step>("input");
     const [url, setUrl] = useState("");
     const [isLoading, setIsLoading] = useState(false);
@@ -127,7 +139,7 @@ function ImportPlaylistPageContent() {
         string | null
     >(null);
     const [expandedSection, setExpandedSection] = useState<
-        "matched" | "download" | "notfound" | null
+        "matched" | "download" | null
     >("matched");
 
     // Pre-fill URL from query params and reconnect to active import if one exists
@@ -255,17 +267,10 @@ function ImportPlaylistPageContent() {
         };
         setImportJob(updated);
 
-        if (updated.status === "completed" || updated.status === "cancelled") {
-            setStep("complete");
-        } else if (updated.status === "failed") {
+        if (TERMINAL_IMPORT_STATUSES.includes(updated.status)) {
             setStep("complete");
         }
     }, [sseImportStatus]); // eslint-disable-line react-hooks/exhaustive-deps
-
-    // Handle URL paste/change
-    const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setUrl(e.target.value);
-    };
 
     // Fetch preview (async — returns job ID, completion arrives via SSE)
     const handleFetchPreview = async () => {
@@ -299,18 +304,7 @@ function ImportPlaylistPageContent() {
                 { url }
             );
 
-            setImportJob({
-                id: jobId,
-                status: "pending",
-                progress: 0,
-                albumsTotal: 0,
-                albumsCompleted: 0,
-                tracksMatched: 0,
-                tracksTotal: 0,
-                tracksDownloadable: 0,
-                createdPlaylistId: null,
-                error: null,
-            });
+            setImportJob(pendingImportJob(jobId));
             setStep("importing");
         } catch (err) {
             notify.error("Failed to start import", {
@@ -321,7 +315,6 @@ function ImportPlaylistPageContent() {
         }
     };
 
-    // Start import
     const handleStartImport = async () => {
         if (!preview) return;
 
@@ -347,18 +340,12 @@ function ImportPlaylistPageContent() {
                 }
             );
 
-            setImportJob({
-                id: response.jobId,
-                status: "pending",
-                progress: 0,
+            setImportJob(pendingImportJob(response.jobId, {
                 albumsTotal: selectedAlbums.size,
-                albumsCompleted: 0,
                 tracksMatched: preview.summary.inLibrary,
                 tracksTotal: preview.summary.total,
                 tracksDownloadable: preview.summary.downloadable,
-                createdPlaylistId: null,
-                error: null,
-            });
+            }));
             setStep("importing");
         } catch (err) {
             notify.error("Failed to start import", {
@@ -369,7 +356,6 @@ function ImportPlaylistPageContent() {
         }
     };
 
-    // Toggle album selection
     const toggleAlbum = (albumMbid: string) => {
         setSelectedAlbums((prev) => {
             const next = new Set(prev);
@@ -382,7 +368,6 @@ function ImportPlaylistPageContent() {
         });
     };
 
-    // Select/deselect all albums
     const toggleAllAlbums = () => {
         if (!preview) return;
 
@@ -397,7 +382,6 @@ function ImportPlaylistPageContent() {
         }
     };
 
-    // Cancel import
     const [isCancelling, setIsCancelling] = useState(false);
     const handleCancelImport = async () => {
         if (!importJob) return;
@@ -480,7 +464,7 @@ function ImportPlaylistPageContent() {
                                 id="playlist-url"
                                 type="text"
                                 value={url}
-                                onChange={handleUrlChange}
+                                onChange={(e) => setUrl(e.target.value)}
                                 placeholder="https://www.deezer.com/playlist/... or https://open.spotify.com/playlist/..."
                                 className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/50 focus:border-[var(--color-brand)] transition-colors"
                                 onKeyDown={(e) =>
@@ -496,32 +480,23 @@ function ImportPlaylistPageContent() {
                             </p>
                         </div>
                         <div className="flex gap-3">
-                            <button
+                            <Button
+                                variant="secondary"
                                 onClick={handleFetchPreview}
-                                disabled={isLoading || !url.trim()}
-                                className="flex-1 py-3 rounded-full font-medium bg-white/10 text-white hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                                disabled={!url.trim()}
+                                isLoading={isLoading}
+                                className="flex-1"
                             >
-                                {isLoading ? (
-                                    <>
-                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                        Loading...
-                                    </>
-                                ) : (
-                                    "Preview First"
-                                )}
-                            </button>
+                                {isLoading ? "Loading..." : "Preview First"}
+                            </Button>
                             <Button
                                 variant="primary"
                                 onClick={handleQuickImport}
-                                disabled={isLoading || !url.trim()}
+                                disabled={!url.trim()}
+                                isLoading={isLoading}
                                 className="flex-1"
                             >
-                                {isLoading ? (
-                                    <>
-                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                        Loading...
-                                    </>
-                                ) : (
+                                {isLoading ? "Loading..." : (
                                     <>
                                         <Zap className="w-4 h-4" />
                                         Import Now
@@ -535,7 +510,7 @@ function ImportPlaylistPageContent() {
                 {/* Step: Previewing (async job in progress) */}
                 {step === "previewing" && (
                     <div className="text-center py-12">
-                        <Loader2 className="w-10 h-10 text-spotify animate-spin mx-auto mb-4" />
+                        <GradientSpinner size="lg" className="mx-auto mb-4" />
                         <h2 className="text-lg font-bold text-white mb-1">Analysing Playlist</h2>
                         <p className="text-[var(--text-secondary)] text-sm">
                             {ssePreviewStatus?.message || "Matching tracks to your library..."}
@@ -621,25 +596,14 @@ function ImportPlaylistPageContent() {
                                     To Download
                                 </div>
                             </div>
-                            {preview.summary.notFound > 0 ? (
-                                <div className="animate-rise text-center py-3 bg-danger/10 rounded-lg" style={{ "--i": 3 } as CSSProperties}>
-                                    <div className="text-xl font-bold text-danger-light">
-                                        {preview.summary.notFound}
-                                    </div>
-                                    <div className="text-xs text-[var(--text-muted)]">
-                                        Not Found
-                                    </div>
+                            <div className="animate-rise text-center py-3 bg-success/10 rounded-lg" style={{ "--i": 3 } as CSSProperties}>
+                                <div className="text-xl font-bold text-success">
+                                    ✓
                                 </div>
-                            ) : (
-                                <div className="animate-rise text-center py-3 bg-success/10 rounded-lg" style={{ "--i": 3 } as CSSProperties}>
-                                    <div className="text-xl font-bold text-success">
-                                        ✓
-                                    </div>
-                                    <div className="text-xs text-[var(--text-muted)]">
-                                        All Matched
-                                    </div>
+                                <div className="text-xs text-[var(--text-muted)]">
+                                    All Matched
                                 </div>
-                            )}
+                            </div>
                         </div>
 
                         {/* Tracks already in library */}
@@ -822,65 +786,6 @@ function ImportPlaylistPageContent() {
                             </div>
                         )}
 
-                        {/* Tracks not found */}
-                        {preview.summary.notFound > 0 && (
-                            <div className="bg-white/5 rounded-lg overflow-hidden">
-                                <button
-                                    onClick={() =>
-                                        setExpandedSection(
-                                            expandedSection === "notfound"
-                                                ? null
-                                                : "notfound"
-                                        )
-                                    }
-                                    className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/5 transition-colors"
-                                >
-                                    <div className="flex items-center gap-2">
-                                        <X className="w-4 h-4 text-danger-light" />
-                                        <span className="text-sm font-medium text-white">
-                                            {preview.summary.notFound} songs not
-                                            found
-                                        </span>
-                                    </div>
-                                    {expandedSection === "notfound" ? (
-                                        <ChevronUp className="w-4 h-4 text-[var(--text-muted)]" />
-                                    ) : (
-                                        <ChevronDown className="w-4 h-4 text-[var(--text-muted)]" />
-                                    )}
-                                </button>
-                                {expandedSection === "notfound" && (
-                                    <div className="border-t border-white/5 max-h-48 overflow-y-auto">
-                                        {preview.albumsToDownload
-                                            .filter(
-                                                (a) =>
-                                                    !a.albumMbid &&
-                                                    a.albumName !==
-                                                        "Unknown Album"
-                                            )
-                                            .flatMap(
-                                                (album) => album.tracksNeeded
-                                            )
-                                            .map((track) => (
-                                                <div
-                                                    key={track.spotifyId}
-                                                    className="flex items-center gap-3 px-4 py-2 hover:bg-white/5"
-                                                >
-                                                    <div className="flex-1 min-w-0">
-                                                        <div className="text-sm text-[var(--text-secondary)] truncate">
-                                                            {track.title}
-                                                        </div>
-                                                        <div className="text-xs text-[var(--text-muted)] truncate">
-                                                            {track.artist} ·{" "}
-                                                            {track.album}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
                         {/* Playlist name input */}
                         <div>
                             <label htmlFor="playlist-name" className="block text-sm font-medium text-[var(--text-primary)] mb-2">
@@ -900,29 +805,27 @@ function ImportPlaylistPageContent() {
 
                         {/* Action buttons */}
                         <div className="flex items-center gap-3 pt-2">
-                            <button
+                            <Button
+                                variant="ghost"
                                 onClick={() => {
                                     setStep("input");
                                     setPreview(null);
                                 }}
-                                className="px-6 py-3 rounded-full text-sm font-medium text-[var(--text-primary)] hover:text-white hover:bg-white/5 transition-colors"
                             >
                                 Back
-                            </button>
-                            <button
+                            </Button>
+                            <Button
+                                variant="primary"
                                 onClick={handleStartImport}
                                 disabled={
-                                    isLoading ||
-                                    (preview.summary.inLibrary === 0 &&
-                                        selectedAlbums.size === 0)
+                                    preview.summary.inLibrary === 0 &&
+                                    selectedAlbums.size === 0
                                 }
-                                className="flex-1 py-3 rounded-full font-medium bg-success text-black hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                                isLoading={isLoading}
+                                className="flex-1 bg-success hover:bg-success hover:brightness-110"
                             >
                                 {isLoading ? (
-                                    <>
-                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                        Starting...
-                                    </>
+                                    "Starting..."
                                 ) : preview.summary.inLibrary > 0 &&
                                   selectedAlbums.size > 0 ? (
                                     `Import ${preview.summary.inLibrary} songs + Download ${selectedAlbums.size} albums`
@@ -933,7 +836,7 @@ function ImportPlaylistPageContent() {
                                 ) : (
                                     "Select albums to download"
                                 )}
-                            </button>
+                            </Button>
                         </div>
                     </div>
                 )}
@@ -941,7 +844,7 @@ function ImportPlaylistPageContent() {
                 {/* Step: Importing */}
                 {step === "importing" && importJob && (
                     <div className="animate-rise text-center py-12">
-                        <Loader2 className="w-10 h-10 text-spotify animate-spin mx-auto mb-4" />
+                        <GradientSpinner size="lg" className="mx-auto mb-4" />
                         <h2 className="text-lg font-bold text-white mb-1">
                             {importJob.status === "fetching"
                                 ? "Fetching Playlist"
@@ -995,17 +898,10 @@ function ImportPlaylistPageContent() {
                         <Button
                             variant="secondary"
                             onClick={handleCancelImport}
-                            disabled={isCancelling}
+                            isLoading={isCancelling}
                             className="mt-6"
                         >
-                            {isCancelling ? (
-                                <>
-                                    <Loader2 className="w-3 h-3 animate-spin inline mr-2" />
-                                    Cancelling...
-                                </>
-                            ) : (
-                                "Cancel Import"
-                            )}
+                            {isCancelling ? "Cancelling..." : "Cancel Import"}
                         </Button>
                         <p className="text-xs text-[var(--text-muted)] mt-2">
                             Playlist will be created with tracks downloaded so
@@ -1070,7 +966,8 @@ function ImportPlaylistPageContent() {
                             </>
                         )}
                         <div className="flex items-center justify-center gap-3 mt-6">
-                            <button
+                            <Button
+                                variant="ghost"
                                 onClick={() => {
                                     setStep("input");
                                     setUrl("");
@@ -1078,14 +975,14 @@ function ImportPlaylistPageContent() {
                                     setImportJob(null);
                                     setRefreshStatusMessage(null);
                                 }}
-                                className="px-5 py-2.5 rounded-full text-sm font-medium text-[var(--text-primary)] hover:text-white hover:bg-white/5 transition-colors"
                             >
                                 Import Another
-                            </button>
+                            </Button>
                             {importJob.tracksDownloadable > 0 &&
                                 importJob.tracksMatched <
                                     importJob.tracksTotal && (
-                                    <button
+                                    <Button
+                                        variant="secondary"
                                         onClick={async () => {
                                             try {
                                                 setIsLoading(true);
@@ -1124,12 +1021,11 @@ function ImportPlaylistPageContent() {
                                             }
                                         }}
                                         disabled={isLoading}
-                                        className="px-5 py-2.5 rounded-full text-sm font-medium bg-[var(--bg-primary)] text-white hover:bg-white/20 disabled:opacity-50 transition-colors"
                                     >
                                         {isLoading
                                             ? "Refreshing..."
                                             : "Refresh"}
-                                    </button>
+                                    </Button>
                                 )}
                             {refreshStatusMessage && (
                                 <p className="text-xs text-[var(--text-muted)] mt-3">
@@ -1137,16 +1033,17 @@ function ImportPlaylistPageContent() {
                                 </p>
                             )}
                             {importJob.createdPlaylistId && (
-                                <button
+                                <Button
+                                    variant="primary"
                                     onClick={() =>
                                         router.push(
                                             `/playlist/${importJob.createdPlaylistId}`
                                         )
                                     }
-                                    className="px-5 py-2.5 rounded-full text-sm font-medium bg-success text-black hover:brightness-110 transition-all"
+                                    className="bg-success hover:bg-success hover:brightness-110"
                                 >
                                     View Playlist
-                                </button>
+                                </Button>
                             )}
                         </div>
                     </div>
@@ -1160,9 +1057,7 @@ export default function ImportPlaylistPage() {
     return (
         <Suspense
             fallback={
-                <div className="min-h-screen flex items-center justify-center">
-                    <Loader2 className="w-8 h-8 text-brand animate-spin" />
-                </div>
+                <LoadingScreen />
             }
         >
             <ImportPlaylistPageContent />

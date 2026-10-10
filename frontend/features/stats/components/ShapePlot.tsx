@@ -70,8 +70,7 @@ export function ShapePlot({ listening, period }: { listening: ListeningStats; pe
             }
         }, 180);
         return () => clearTimeout(timer);
-        // Same reason as the hour panel: the URL carries the window, so the
-        // window has to invalidate the fetch.
+        // The URL carries the window, so a new window has to invalidate the fetch.
     }, [probe, period]);
 
     // Derived, so pointing somewhere new shows nothing rather than the last

@@ -36,9 +36,7 @@ export default function OnboardingPage() {
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
 
-    // Use auth context state instead of duplicate API call
     useEffect(() => {
-        // Wait for auth context to finish loading
         if (authLoading) return;
 
         // Only check once to prevent re-renders
@@ -103,7 +101,6 @@ export default function OnboardingPage() {
             setStep(2);
         } catch (err: unknown) {
             const message = err instanceof Error ? err.message : String(err);
-            // Check if user already exists
             if (message?.includes("already taken")) {
                 // Usually a refresh/retry race: the account was created but the
                 // token never persisted client-side. Rather than dead-end on a
@@ -390,17 +387,10 @@ export default function OnboardingPage() {
                                                 variant="primary"
                                                 size="lg"
                                                 type="submit"
-                                                disabled={submitting}
-                                                className="w-full relative group overflow-hidden mt-8"
+                                                isLoading={submitting}
+                                                className="w-full mt-8"
                                             >
-                                                <span className="relative z-(--z-raised) flex items-center justify-center gap-2">
-                                                    {submitting ?
-                                                        <>
-                                                            <GradientSpinner size="sm" />
-                                                            Creating Account...
-                                                        </>
-                                                    : "Continue"}
-                                                </span>
+                                                {submitting ? "Creating Account..." : "Continue"}
                                             </Button>
                                         </form>
                                     </div>
@@ -560,7 +550,9 @@ export default function OnboardingPage() {
                                         </p>
 
                                         <div className="flex gap-3">
-                                            <button
+                                            <Button
+                                                variant="secondary"
+                                                size="lg"
                                                 onClick={async () => {
                                                     setSubmitting(true);
                                                     try {
@@ -572,24 +564,19 @@ export default function OnboardingPage() {
                                                     }
                                                 }}
                                                 disabled={submitting}
-                                                className="flex-1 bg-white/5 border border-white/10 text-[var(--text-secondary)] font-medium py-3.5 rounded-lg hover:bg-white/10 transition-all disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-brand/30"
+                                                className="flex-1"
                                             >
                                                 Finish without integrations
-                                            </button>
-                                            <button
+                                            </Button>
+                                            <Button
+                                                variant="primary"
+                                                size="lg"
                                                 onClick={handleNextStep}
-                                                disabled={submitting}
-                                                className="flex-1 py-3.5 bg-brand text-black font-bold rounded-lg hover:bg-brand-hover transition-all disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-brand/30"
+                                                isLoading={submitting}
+                                                className="flex-1"
                                             >
-                                                {submitting ?
-                                                    <>
-                                                        <span className="flex items-center justify-center gap-2">
-                                                            <GradientSpinner size="sm" />
-                                                            Saving...
-                                                        </span>
-                                                    </>
-                                                : "Save & Finish"}
-                                            </button>
+                                                {submitting ? "Saving..." : "Save & Finish"}
+                                            </Button>
                                         </div>
                                     </div>
                                 )}
@@ -606,47 +593,34 @@ export default function OnboardingPage() {
     );
 }
 
-interface IntegrationCardProps {
+const INPUT_CLASS =
+    "w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-transparent transition-all";
+
+interface IntegrationShellProps {
     title: string;
     description: string;
-    localPort?: string;
     icon: React.ReactNode;
     enabled: boolean;
     onToggle: () => void;
-    url: string;
-    apiKey?: string;
-    username?: string;
-    password?: string;
-    onUrlChange: (url: string) => void;
-    onApiKeyChange?: (apiKey: string) => void;
-    onUsernameChange?: (username: string) => void;
-    onPasswordChange?: (password: string) => void;
+    canTest: boolean;
     onTest: () => void;
     testing: boolean;
     result?: IntegrationResult;
-    useSoulseekCreds?: boolean;
+    children: React.ReactNode;
 }
 
-function IntegrationCard({
+function IntegrationShell({
     title,
     description,
-    localPort,
     icon,
     enabled,
     onToggle,
-    url,
-    apiKey,
-    username,
-    password,
-    onUrlChange,
-    onApiKeyChange,
-    onUsernameChange,
-    onPasswordChange,
+    canTest,
     onTest,
     testing,
     result,
-    useSoulseekCreds = false,
-}: IntegrationCardProps) {
+    children,
+}: IntegrationShellProps) {
     return (
         <div
             className={`border rounded-lg transition-all ${
@@ -692,50 +666,7 @@ function IntegrationCard({
 
                 {enabled && (
                     <div className="space-y-3 mt-4 pt-4 border-t border-white/10">
-                        <input
-                            type="url"
-                            value={url}
-                            onChange={(e) => onUrlChange(e.target.value)}
-                            placeholder={`Server URL (e.g., http://${
-                                localPort || "localhost:PORT"
-                            })`}
-                            className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-transparent transition-all"
-                        />
-                        {useSoulseekCreds ?
-                            <>
-                                <input
-                                    type="text"
-                                    value={username || ""}
-                                    onChange={(e) =>
-                                        onUsernameChange?.(e.target.value)
-                                    }
-                                    placeholder="Soulseek Username"
-                                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-transparent transition-all"
-                                />
-                                <input
-                                    type="password"
-                                    value={password || ""}
-                                    onChange={(e) =>
-                                        onPasswordChange?.(e.target.value)
-                                    }
-                                    placeholder="Soulseek Password"
-                                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-transparent transition-all"
-                                />
-                                <p className="text-xs text-[var(--text-secondary)] mt-2">
-                                    These are your Soulseek network credentials,
-                                    not your Slskd login
-                                </p>
-                            </>
-                        :   <input
-                                type="password"
-                                value={apiKey || ""}
-                                onChange={(e) =>
-                                    onApiKeyChange?.(e.target.value)
-                                }
-                                placeholder="API Key"
-                                className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-transparent transition-all"
-                            />
-                        }
+                        {children}
                         {result && (
                             <p
                                 className={`text-xs ${
@@ -747,29 +678,63 @@ function IntegrationCard({
                                 {result.message}
                             </p>
                         )}
-                        <button
+                        <Button
+                            variant="secondary"
                             onClick={onTest}
-                            disabled={
-                                testing ||
-                                !url ||
-                                (!useSoulseekCreds ? !apiKey : (
-                                    !username || !password
-                                ))
-                            }
-                            tabIndex={0}
-                            className="w-full bg-white/10 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-white/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-brand/30"
+                            disabled={!canTest}
+                            isLoading={testing}
+                            className="w-full"
                         >
-                            {testing ?
-                                <span className="flex items-center justify-center gap-2">
-                                    <GradientSpinner size="sm" />
-                                    Testing...
-                                </span>
-                            : "Test Connection"}
-                        </button>
+                            {testing ? "Testing..." : "Test Connection"}
+                        </Button>
                     </div>
                 )}
             </div>
         </div>
+    );
+}
+
+interface IntegrationCardProps {
+    title: string;
+    description: string;
+    localPort?: string;
+    icon: React.ReactNode;
+    enabled: boolean;
+    onToggle: () => void;
+    url: string;
+    apiKey: string;
+    onUrlChange: (url: string) => void;
+    onApiKeyChange: (apiKey: string) => void;
+    onTest: () => void;
+    testing: boolean;
+    result?: IntegrationResult;
+}
+
+function IntegrationCard({
+    localPort,
+    url,
+    apiKey,
+    onUrlChange,
+    onApiKeyChange,
+    ...shell
+}: IntegrationCardProps) {
+    return (
+        <IntegrationShell {...shell} canTest={!shell.testing && !!url && !!apiKey}>
+            <input
+                type="url"
+                value={url}
+                onChange={(e) => onUrlChange(e.target.value)}
+                placeholder={`Server URL (e.g., http://${localPort || "localhost:PORT"})`}
+                className={INPUT_CLASS}
+            />
+            <input
+                type="password"
+                value={apiKey}
+                onChange={(e) => onApiKeyChange(e.target.value)}
+                placeholder="API Key"
+                className={INPUT_CLASS}
+            />
+        </IntegrationShell>
     );
 }
 
@@ -786,125 +751,59 @@ interface SoulseekCardProps {
 }
 
 function SoulseekCard({
-    enabled,
-    onToggle,
     username,
     password,
     onUsernameChange,
     onPasswordChange,
-    onTest,
-    testing,
-    result,
+    ...shell
 }: SoulseekCardProps) {
     return (
-        <div
-            className={`border rounded-lg transition-all ${
-                enabled ?
-                "bg-[var(--bg-secondary)] border-brand/25"
-                : "bg-white/5 border-white/10"
-            }`}
+        <IntegrationShell
+            {...shell}
+            title="Soulseek"
+            description="Peer-to-peer search to fill in tracks you don't own."
+            icon={
+                <svg
+                    className="w-6 h-6"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                >
+                    <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                    />
+                </svg>
+            }
+            canTest={!shell.testing && !!username && !!password}
         >
-            <div className="p-4">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                        <div
-                            className={`w-9 h-9 rounded-lg flex items-center justify-center ${
-                                enabled ?
-                                "bg-brand/10 border border-brand/20 text-brand"
-                                : "bg-white/5 border border-white/10 text-[var(--text-muted)]"
-                            }`}
-                        >
-                            <svg
-                                className="w-6 h-6"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                            >
-                                <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                                />
-                            </svg>
-                        </div>
-                        <div>
-                            <h3 className="text-white font-bold">Soulseek</h3>
-                            <p className="text-sm text-[var(--text-secondary)]">
-                                Peer-to-peer search to fill in tracks you don&apos;t own.
-                            </p>
-                        </div>
-                    </div>
-                    <button
-                        onClick={onToggle}
-                        aria-label={`${enabled ? "Disable" : "Enable"} Soulseek`}
-                        aria-pressed={enabled}
-                        className={`relative w-11 h-6 rounded-lg transition-all ${
-                            enabled ? "bg-brand" : "bg-white/20"
-                        } focus:outline-none focus:ring-2 focus:ring-brand/30`}
-                    >
-                        <div
-                            className={`absolute top-0.5 left-0.5 w-5 h-5 bg-brand rounded-lg transition-all ${
-                                enabled ? "translate-x-5" : ""
-                            }`}
-                        />
-                    </button>
-                </div>
-
-                {enabled && (
-                    <div className="space-y-3 mt-4 pt-4 border-t border-white/10">
-                        <input
-                            type="text"
-                            value={username}
-                            onChange={(e) => onUsernameChange(e.target.value)}
-                            placeholder="Soulseek Username"
-                            className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-transparent transition-all"
-                        />
-                        <input
-                            type="password"
-                            value={password}
-                            onChange={(e) => onPasswordChange(e.target.value)}
-                            placeholder="Soulseek Password"
-                            className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-transparent transition-all"
-                        />
-                        <p className="text-xs text-[var(--text-secondary)]">
-                            Create an account at{" "}
-                            <a
-                                href="https://www.slsknet.org/news/node/1"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-brand hover:underline"
-                            >
-                                slsknet.org
-                            </a>
-                        </p>
-                        {result && (
-                            <p
-                                className={`text-xs ${
-                                    result.ok ?
-                                    "text-success"
-                                    : "text-danger-light"
-                                }`}
-                            >
-                                {result.message}
-                            </p>
-                        )}
-                        <button
-                            onClick={onTest}
-                            disabled={testing || !username || !password}
-                            tabIndex={0}
-                            className="w-full bg-white/10 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-white/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-brand/30"
-                        >
-                            {testing ?
-                                <span className="flex items-center justify-center gap-2">
-                                    <GradientSpinner size="sm" />
-                                    Testing...
-                                </span>
-                            : "Test Connection"}
-                        </button>
-                    </div>
-                )}
-            </div>
-        </div>
+            <input
+                type="text"
+                value={username}
+                onChange={(e) => onUsernameChange(e.target.value)}
+                placeholder="Soulseek Username"
+                className={INPUT_CLASS}
+            />
+            <input
+                type="password"
+                value={password}
+                onChange={(e) => onPasswordChange(e.target.value)}
+                placeholder="Soulseek Password"
+                className={INPUT_CLASS}
+            />
+            <p className="text-xs text-[var(--text-secondary)]">
+                Create an account at{" "}
+                <a
+                    href="https://www.slsknet.org/news/node/1"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-brand hover:underline"
+                >
+                    slsknet.org
+                </a>
+            </p>
+        </IntegrationShell>
     );
 }

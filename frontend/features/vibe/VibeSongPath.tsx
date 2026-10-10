@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { X, Search, Route, ArrowRight } from "lucide-react";
+import { X, Route, ArrowRight } from "lucide-react";
+import { Button } from "@/components/ui/Button";
 import type { LibraryIndex } from "./librarySearch";
 import { useTrackFinder } from "./useTrackFinder";
+import { FinderNote, TrackFinderResults, TrackSearchInput } from "./TrackFinder";
 
 interface VibeSongPathProps {
     library: LibraryIndex;
@@ -54,72 +56,35 @@ export function VibeSongPath({ library, onStartPath, onClose }: VibeSongPathProp
             </div>
 
             <div className="space-y-2">
-                <div className="relative">
-                    <label htmlFor="path-start" className="sr-only">Start track</label>
-                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-muted)]" />
-                    <input
-                        id="path-start"
-                        type="text"
-                        value={startQuery}
-                        onChange={(e) => { setStartQuery(e.target.value); setStartTrackId(null); }}
-                        onFocus={() => setActiveInput("start")}
-                        placeholder="Start: a track, artist or sound"
-                        className="w-full pl-8 pr-3 py-2 bg-white/8 border border-white/10 rounded-lg text-sm text-white placeholder-white/55 focus:outline-none focus:border-white/20"
-                    />
-                </div>
+                <TrackSearchInput
+                    id="path-start"
+                    label="Start track"
+                    value={startQuery}
+                    onChange={(e) => { setStartQuery(e.target.value); setStartTrackId(null); }}
+                    onFocus={() => setActiveInput("start")}
+                    placeholder="Start: a track, artist or sound"
+                />
 
                 <div className="flex justify-center" aria-hidden="true">
                     <ArrowRight className="w-4 h-4 text-[var(--text-muted)]" />
                 </div>
 
-                <div className="relative">
-                    <label htmlFor="path-end" className="sr-only">End track</label>
-                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--text-muted)]" />
-                    <input
-                        id="path-end"
-                        type="text"
-                        value={endQuery}
-                        onChange={(e) => { setEndQuery(e.target.value); setEndTrackId(null); }}
-                        onFocus={() => setActiveInput("end")}
-                        placeholder="End: a track, artist or sound"
-                        className="w-full pl-8 pr-3 py-2 bg-white/8 border border-white/10 rounded-lg text-sm text-white placeholder-white/55 focus:outline-none focus:border-white/20"
-                    />
-                </div>
+                <TrackSearchInput
+                    id="path-end"
+                    label="End track"
+                    value={endQuery}
+                    onChange={(e) => { setEndQuery(e.target.value); setEndTrackId(null); }}
+                    onFocus={() => setActiveInput("end")}
+                    placeholder="End: a track, artist or sound"
+                />
             </div>
 
-            {finder.items.length > 0 && (
-                <div className="mt-2 max-h-40 overflow-y-auto border border-white/10 rounded-lg">
-                    {finder.items.map(track => (
-                        <button
-                            key={track.id}
-                            onClick={() => selectTrack(track)}
-                            className="w-full px-3 py-2 hover:bg-white/10 text-left"
-                        >
-                            <p className="text-sm text-[var(--text-primary)] truncate">{track.title}</p>
-                            <p className="text-xs text-white/60 truncate">
-                                {track.artist.name}{track.via === "sound" ? " · sounds like it" : ""}
-                            </p>
-                        </button>
-                    ))}
-                </div>
-            )}
-            {finder.searching && <p className="mt-2 px-1 text-xs text-white/60" aria-live="polite">Searching…</p>}
-            {finder.empty && (
-                <p className="mt-2 px-1 text-xs text-white/60" aria-live="polite">
-                    No track or artist matches &ldquo;{activeQuery.trim()}&rdquo;. Try part of a title, an artist, or a sound like &ldquo;piano&rdquo;.
-                </p>
-            )}
+            <TrackFinderResults finder={finder} query={activeQuery} onPick={selectTrack} className="mt-2" />
 
-            {sameTrack && (
-                <p className="mt-2 px-1 text-xs text-white/60" aria-live="polite">Pick a different track for the end.</p>
-            )}
-            <button
-                onClick={handleSubmit}
-                disabled={!startTrackId || !endTrackId || sameTrack}
-                className="w-full mt-3 px-3 py-2 bg-white/10 hover:bg-white/15 disabled:opacity-30 disabled:hover:bg-white/10 rounded-lg text-sm text-[var(--text-primary)] hover:text-white flex items-center justify-center gap-2 transition-colors"
-            >
+            {sameTrack && <FinderNote className="mt-2">Pick a different track for the end.</FinderNote>}
+            <Button className="w-full mt-3" onClick={handleSubmit} disabled={!startTrackId || !endTrackId || sameTrack}>
                 <Route className="w-4 h-4" /> Generate Path
-            </button>
+            </Button>
         </div>
     );
 }

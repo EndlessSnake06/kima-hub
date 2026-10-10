@@ -1,6 +1,6 @@
 "use client";
 
-import { Disc } from "lucide-react";
+import { Mic2 } from "lucide-react";
 import { Podcast } from "../types";
 import { memo } from "react";
 import { api } from "@/lib/api";
@@ -30,7 +30,7 @@ const PodcastsGrid = memo(function PodcastsGrid({
                         title={podcast.title}
                         subtitle={podcast.author || "Podcast"}
                         imageUrl={getProxiedImageUrl(podcast)}
-                        fallbackIcon={Disc}
+                        fallbackIcon={Mic2}
                         type="podcast"
                         index={index}
                         sizes="180px"

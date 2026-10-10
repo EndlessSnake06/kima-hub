@@ -8,7 +8,8 @@
  */
 
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { Button } from "@/components/ui/Button";
 import { api } from "@/lib/api";
 
 interface FalseStartTrack {
@@ -106,14 +107,9 @@ export function FalseStarts() {
                 <p className="t-body max-w-[76ch] text-pretty">
                     finds plays logged for tracks you skipped, recorded before version 1.10.1
                 </p>
-                <button
-                    onClick={load}
-                    disabled={busy}
-                    className="h-11 px-4 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-white t-control flex items-center gap-2 transition-colors disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0a]"
-                >
-                    {busy && <Loader2 className="w-4 h-4 animate-spin" />}
+                <Button onClick={load} isLoading={busy}>
                     scan play history
-                </button>
+                </Button>
                 {busy && (
                     <p className="t-meta" aria-live="polite">
                         scanning
@@ -170,18 +166,16 @@ export function FalseStarts() {
                         </span>
                         {` · ${audit.duplicateRows.toLocaleString()} ${audit.duplicateRows === 1 ? "is a duplicate" : "are duplicates"} written mid-track · merging changes no play counts`}
                     </p>
-                    <button
+                    <Button
                         onClick={() =>
                             act("collapse", [], (r) =>
                                 `merged ${(r.removed ?? 0).toLocaleString()} ${(r.removed ?? 0) === 1 ? "duplicate" : "duplicates"}`,
                             )
                         }
-                        disabled={busy}
-                        className="h-11 px-4 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-white t-control flex items-center gap-2 transition-colors disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0a]"
+                        isLoading={busy}
                     >
-                        {busy && <Loader2 className="w-4 h-4 animate-spin" />}
                         merge {audit.collapsibleRows.toLocaleString()} {audit.collapsibleRows === 1 ? "duplicate" : "duplicates"}
-                    </button>
+                    </Button>
                 </div>
             )}
 
@@ -331,7 +325,8 @@ export function FalseStarts() {
                         {" · ignore keeps all plays and stops flagging the track · music files are never touched"}
                     </p>
                     <div className="flex flex-wrap items-center gap-3">
-                        <button
+                        <Button
+                            variant={arming ? "primary" : "secondary"}
                             onClick={() =>
                                 arming
                                     ? act("remove", [...picked], (r) =>
@@ -342,32 +337,24 @@ export function FalseStarts() {
                                     : setArming(true)
                             }
                             onBlur={() => setArming(false)}
-                            disabled={busy}
-                            className={[
-                                "h-11 px-4 rounded-lg t-control flex items-center gap-2 transition-colors disabled:opacity-60",
-                                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0a]",
-                                arming
-                                    ? "bg-brand text-black"
-                                    : "bg-white/[0.06] text-white hover:bg-white/[0.1]",
-                            ].join(" ")}
+                            isLoading={busy}
                         >
-                            {busy && <Loader2 className="w-4 h-4 animate-spin" />}
                             {arming
                                 ? `delete ${pickedStarts.toLocaleString()} ${pickedStarts === 1 ? "play" : "plays"}?`
                                 : `remove skipped plays (${picked.size} ${picked.size === 1 ? "track" : "tracks"})`}
-                        </button>
+                        </Button>
 
-                        <button
+                        <Button
+                            variant="ghost"
                             onClick={() =>
                                 act("ignore", [...picked], (r) =>
                                     `ignored ${r.ignored ?? 0} ${(r.ignored ?? 0) === 1 ? "track" : "tracks"}`,
                                 )
                             }
                             disabled={busy}
-                            className="h-11 px-4 rounded-lg t-control text-[var(--text-secondary)] hover:text-white hover:bg-white/[0.06] transition-colors disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0a]"
                         >
                             ignore
-                        </button>
+                        </Button>
                     </div>
                 </div>
             )}

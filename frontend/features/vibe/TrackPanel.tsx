@@ -18,7 +18,8 @@ interface TrackPanelProps {
     onSongPath: () => void;
 }
 
-const ACTION = "flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40";
+const ACTION = "flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium text-[var(--text-primary)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40";
+const ACTION_PLAIN = `${ACTION} border-white/10 bg-white/[0.06] hover:bg-white/[0.12]`;
 
 /**
  * The selected track, floating over the right side of the map. It does not
@@ -103,13 +104,13 @@ export function TrackPanel({ track, songPathActive, onClose, onPlay, onVibe, onS
             )}
 
             <div className="mt-4 grid grid-cols-2 gap-2">
-                <button type="button" onClick={onPlay} aria-label="Play this track" className={`${ACTION} border-[var(--color-brand)]/40 bg-[var(--color-brand)]/15 text-[var(--text-primary)] hover:bg-[var(--color-brand)]/25`}>
+                <button type="button" onClick={onPlay} aria-label="Play this track" className={`${ACTION} border-[var(--color-brand)]/40 bg-[var(--color-brand)]/15 hover:bg-[var(--color-brand)]/25`}>
                     <Play className="h-3.5 w-3.5 fill-current" /> Play
                 </button>
-                <button type="button" onClick={onVibe} aria-label="Build vibe playlist from this track" className={`${ACTION} border-white/10 bg-white/[0.06] text-[var(--text-primary)] hover:bg-white/[0.12]`}>
+                <button type="button" onClick={onVibe} aria-label="Build vibe playlist from this track" className={ACTION_PLAIN}>
                     <Sparkles className="h-3.5 w-3.5" /> Match Vibe
                 </button>
-                <button type="button" onClick={onSimilar} aria-label="Find tracks similar to this one" className={`${ACTION} border-white/10 bg-white/[0.06] text-[var(--text-primary)] hover:bg-white/[0.12]`}>
+                <button type="button" onClick={onSimilar} aria-label="Find tracks similar to this one" className={ACTION_PLAIN}>
                     <AudioWaveform className="h-3.5 w-3.5" /> Similar
                 </button>
                 <button
@@ -117,7 +118,7 @@ export function TrackPanel({ track, songPathActive, onClose, onPlay, onVibe, onS
                     onClick={onSongPath}
                     aria-label="Start song path from this track"
                     aria-pressed={songPathActive}
-                    className={`${ACTION} ${songPathActive ? "border-[var(--color-brand)]/60 bg-[var(--color-brand)]/15" : "border-white/10 bg-white/[0.06] hover:bg-white/[0.12]"} text-[var(--text-primary)]`}
+                    className={songPathActive ? `${ACTION} border-[var(--color-brand)]/60 bg-[var(--color-brand)]/15` : ACTION_PLAIN}
                 >
                     <Waypoints className="h-3.5 w-3.5" /> Song Path
                 </button>

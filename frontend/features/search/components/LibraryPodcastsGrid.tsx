@@ -1,4 +1,4 @@
-import { Music } from "lucide-react";
+import { Mic2 } from "lucide-react";
 import { MediaCard } from "@/components/cards/MediaCard";
 import { cascadeStyle } from "@/lib/motion";
 import { Podcast } from "../types";
@@ -28,7 +28,7 @@ export function LibraryPodcastsGrid({ podcasts }: LibraryPodcastsGridProps) {
                                 ? api.getCoverArtUrl(podcast.imageUrl, 200)
                                 : null
                         }
-                        fallbackIcon={Music}
+                        fallbackIcon={Mic2}
                         type="podcast"
                         index={index}
                     />

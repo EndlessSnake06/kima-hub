@@ -1,4 +1,4 @@
-export interface EpisodeProgress {
+interface EpisodeProgress {
     currentTime: number;
     progress: number;
     isFinished: boolean;

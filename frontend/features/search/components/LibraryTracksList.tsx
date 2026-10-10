@@ -1,6 +1,6 @@
 "use client";
 
-import { Play, Pause } from "lucide-react";
+import { Play, Pause, Music } from "lucide-react";
 import Link from "next/link";
 import { useAudioState } from "@/lib/audio-state-context";
 import { useAudioPlayback } from "@/lib/audio-playback-context";
@@ -100,9 +100,7 @@ export function LibraryTracksList({ tracks, limit }: LibraryTracksListProps) {
                                 />
                             ) : (
                                 <div className="w-full h-full flex items-center justify-center">
-                                    <span className="text-[var(--text-muted)] text-xs">
-                                        ♪
-                                    </span>
+                                    <Music className="w-4 h-4 text-[var(--text-muted)]" />
                                 </div>
                             )}
                         </div>

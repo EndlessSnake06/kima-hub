@@ -69,7 +69,6 @@ export default function DiscoverWeeklyPage() {
         }
     };
 
-    // Check if we're playing from this playlist
     const isPlaylistPlaying = playlist?.tracks.some(
         (t) => t.id === currentTrack?.id
     );
@@ -140,7 +139,7 @@ export default function DiscoverWeeklyPage() {
         try {
             await api.cancelDiscoverBatch();
         } catch (error) {
-            console.error('[DiscoverWeekly] Backend cancel failed:', error);
+            console.error('Backend cancel failed:', error);
         }
     };
 

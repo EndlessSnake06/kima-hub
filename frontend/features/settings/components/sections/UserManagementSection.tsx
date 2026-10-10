@@ -217,19 +217,17 @@ export function UserManagementSection() {
                             message={deleteMessage}
                             onClear={() => setDeleteStatus("idle")}
                         />
-                        <button
-                            onClick={closeDelete}
-                            className="px-4 py-2 text-xs text-[var(--text-muted)] hover:text-white/70 transition-colors"
-                        >
+                        <Button variant="ghost" size="sm" onClick={closeDelete}>
                             Cancel
-                        </button>
-                        <button
+                        </Button>
+                        <Button
+                            variant="danger"
+                            size="sm"
                             onClick={() => confirmDelete && handleDelete(confirmDelete)}
                             disabled={deleteStatus === "loading"}
-                            className="px-4 py-2 text-xs font-semibold bg-danger text-white rounded-lg hover:bg-danger/90 transition-colors disabled:opacity-50"
                         >
                             Delete
-                        </button>
+                        </Button>
                     </div>
                 </div>
             </Modal>

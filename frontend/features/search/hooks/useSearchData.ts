@@ -37,7 +37,6 @@ export function useSearchData({ query }: UseSearchDataProps): UseSearchDataRetur
         return discoverData?.aliasInfo || null;
     }, [discoverData]);
 
-    // Derive top artist for the similar artists query
     const topArtist = useMemo(() => {
         const first = discoverResults.find((r) => r.type === "music");
         return first ? { name: first.name, mbid: first.mbid || "" } : null;

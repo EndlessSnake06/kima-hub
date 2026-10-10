@@ -9,7 +9,7 @@
 import Link from "next/link";
 import { useTrackPlays } from "./useTrackPlays";
 import { ordinal } from "./format";
-import { useTrackMood } from "@/features/vibe/useTrackMood";
+import { useTrackMood } from "./useTrackMood";
 import { MOOD_COLORS, moodLabel } from "@/features/vibe/mapUtils";
 
 export function PlayCountLine({

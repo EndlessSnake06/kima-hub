@@ -6,8 +6,6 @@ import { SystemSettings } from "../../types";
 interface StoragePathsSectionProps {
     settings: SystemSettings;
     onUpdate: (updates: Partial<SystemSettings>) => void;
-    onTest: (service: string) => Promise<{ success: boolean; version?: string; error?: string }>;
-    isTesting: boolean;
 }
 
 export function StoragePathsSection({ settings, onUpdate }: StoragePathsSectionProps) {

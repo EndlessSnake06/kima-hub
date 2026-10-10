@@ -1,35 +1,23 @@
 "use client";
 
-import { useState } from "react";
-import { SettingsSection, SettingsRow, SettingsInput, SettingsSelect } from "../ui";
-import { SystemSettings, soulseekConfigured } from "../../types";
+import { SettingsSection, SettingsRow, SettingsInput, SettingsSelect, ConnectionTestButton } from "../ui";
+import { ConnectionTestResult, SystemSettings, soulseekConfigured } from "../../types";
+import { useConnectionTest } from "../../hooks/useConnectionTest";
 import { ExternalLink } from "lucide-react";
-import { InlineStatus, StatusType } from "@/components/ui/InlineStatus";
-import { Button } from "@/components/ui/Button";
 
 interface SoulseekSectionProps {
     settings: SystemSettings;
     onUpdate: (updates: Partial<SystemSettings>) => void;
-    onTest: (service: string) => Promise<{ success: boolean; version?: string; error?: string }>;
+    onTest: (service: string) => Promise<ConnectionTestResult>;
     isTesting: boolean;
 }
 
 export function SoulseekSection({ settings, onUpdate, onTest, isTesting }: SoulseekSectionProps) {
-    const [testStatus, setTestStatus] = useState<StatusType>("idle");
-    const [testMessage, setTestMessage] = useState("");
-
-    const handleTest = async () => {
-        setTestStatus("loading");
-        setTestMessage("Connecting...");
-        const result = await onTest("soulseek");
-        if (result.success) {
-            setTestStatus("success");
-            setTestMessage("Connected to Soulseek");
-        } else {
-            setTestStatus("error");
-            setTestMessage(result.error || "Connection failed");
-        }
-    };
+    const connection = useConnectionTest(() => onTest("soulseek"), {
+        busy: "Connecting...",
+        connected: () => "Connected to Soulseek",
+        failed: "Connection failed",
+    });
 
     const mode = settings.soulseekMode || "p2p";
     const isSlskd = mode === "slskd";
@@ -131,21 +119,7 @@ export function SoulseekSection({ settings, onUpdate, onTest, isTesting }: Souls
             )}
 
             <div className="pt-2 space-y-2">
-                <div className="inline-flex items-center gap-3">
-                    <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={handleTest}
-                        disabled={isTesting || !canTest}
-                    >
-                        {testStatus === "loading" ? "Connecting..." : "Test Connection"}
-                    </Button>
-                    <InlineStatus
-                        status={testStatus}
-                        message={testMessage}
-                        onClear={() => setTestStatus("idle")}
-                    />
-                </div>
+                <ConnectionTestButton connection={connection} disabled={isTesting || !canTest} />
                 <p className="text-xs text-[var(--text-muted)]">
                     Downloads will be saved to your Singles folder automatically
                 </p>

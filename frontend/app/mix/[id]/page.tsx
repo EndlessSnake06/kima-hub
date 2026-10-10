@@ -14,6 +14,7 @@ import { useMixQuery } from "@/hooks/useQueries";
 import { useDoubleTapList } from "@/hooks/useDoubleTap";
 import { CachedImage } from "@/components/ui/CachedImage";
 import { PageMessage } from "@/components/ui/PageMessage";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 interface MixTrack {
     id: string;
@@ -84,7 +85,6 @@ export default function MixPage() {
     const handlePlayMix = () => {
         if (!mix?.tracks || mix.tracks.length === 0) return;
 
-        // If this mix is playing, toggle pause/resume
         if (isThisMixPlaying) {
             if (isPlaying) {
                 pause();
@@ -378,19 +378,12 @@ export default function MixPage() {
                         </div>
                     </div>
                 ) : (
-                    <div className="flex flex-col items-center justify-center py-24 text-center">
-                        <div className="w-20 h-20 bg-[#282828] rounded-full flex items-center justify-center mb-4">
-                            <Music className="w-10 h-10 text-[var(--text-muted)]" />
-                        </div>
-                        <h3 className="text-lg font-medium text-white mb-1">No tracks</h3>
-                        <p className="text-sm text-[var(--text-muted)] mb-4">This mix is empty</p>
-                        <button
-                            onClick={() => router.push("/")}
-                            className="px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 text-white text-sm font-medium transition-all"
-                        >
-                            Back to Mixes
-                        </button>
-                    </div>
+                    <EmptyState
+                        icon={<Music className="w-12 h-12" />}
+                        title="No tracks"
+                        description="This mix is empty"
+                        action={{ label: "Back to Mixes", onClick: () => router.push("/"), variant: "secondary" }}
+                    />
                 )}
             </div>
         </div>

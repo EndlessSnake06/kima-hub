@@ -1,7 +1,6 @@
 import { Play, Pause, Shuffle, Download, ListPlus } from "lucide-react";
 import { cn } from "@/lib/cn";
-import type { Album } from "../types";
-import type { AlbumSource } from "../types";
+import type { Album, AlbumSource } from "../types";
 
 interface AlbumActionBarProps {
     album: Album;
@@ -11,9 +10,9 @@ interface AlbumActionBarProps {
     onDownloadAlbum: () => void;
     onAddToPlaylist: () => void;
     isPendingDownload: boolean;
-    isPlaying?: boolean;
-    isPlayingThisAlbum?: boolean;
-    onPause?: () => void;
+    isPlaying: boolean;
+    isPlayingThisAlbum: boolean;
+    onPause: () => void;
 }
 
 export function AlbumActionBar({
@@ -24,8 +23,8 @@ export function AlbumActionBar({
     onDownloadAlbum,
     onAddToPlaylist,
     isPendingDownload,
-    isPlaying = false,
-    isPlayingThisAlbum = false,
+    isPlaying,
+    isPlayingThisAlbum,
     onPause,
 }: AlbumActionBarProps) {
     const isOwned = album.owned !== undefined ? album.owned : source === "library";
@@ -33,7 +32,7 @@ export function AlbumActionBar({
     const showPause = isPlaying && isPlayingThisAlbum;
 
     const handlePlayPauseClick = () => {
-        if (showPause && onPause) {
+        if (showPause) {
             onPause();
         } else {
             onPlayAll();

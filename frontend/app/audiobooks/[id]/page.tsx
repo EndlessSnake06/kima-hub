@@ -9,13 +9,14 @@ import { useAudiobookData } from "@/features/audiobook/hooks/useAudiobookData";
 import { useAudiobookActions } from "@/features/audiobook/hooks/useAudiobookActions";
 
 import { AudiobookHero } from "@/features/audiobook/components/AudiobookHero";
+import { ColorWash } from "@/features/spoken/ColorWash";
 import { AudiobookActionBar } from "@/features/audiobook/components/AudiobookActionBar";
 import { SectionList } from "@/features/audiobook/components/SectionList";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { PageMessage } from "@/components/ui/PageMessage";
 
 export default function AudiobookDetailPage() {
-    const { audiobookId, audiobook, isLoading, refetch, heroImage, colorExtractionImage, metadata } =
+    const { audiobookId, audiobook, isLoading, refetch, heroImage, colorExtractionImage } =
         useAudiobookData();
 
     const { colors } = useImageColor(colorExtractionImage);
@@ -59,7 +60,6 @@ export default function AudiobookDetailPage() {
                 audiobook={audiobook}
                 heroImage={heroImage}
                 colors={colors}
-                metadata={metadata}
                 formatTime={formatTime}
             >
                 <AudiobookActionBar
@@ -76,16 +76,7 @@ export default function AudiobookDetailPage() {
 
             {/* Main Content */}
             <div className="relative flex-1">
-                {/* Color gradient continuation */}
-                <div
-                    className="absolute inset-x-0 top-0 pointer-events-none"
-                    style={{
-                        height: "25vh",
-                        background: colors
-                            ? `linear-gradient(to bottom, ${colors.vibrant}10 0%, ${colors.vibrant}05 40%, transparent 100%)`
-                            : "transparent",
-                    }}
-                />
+                <ColorWash colors={colors} />
 
                 <div className="relative page-shell py-8 section-stack">
                     {/* Sections */}

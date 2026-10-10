@@ -27,17 +27,6 @@ export function useAudiobookData() {
     ? api.getCoverArtUrl(audiobook.coverUrl, 300, true)
     : null;
 
-  const getMetadata = () => {
-    if (!audiobook) return null;
-
-    return {
-      narrator: audiobook.narrator || null,
-      genre: audiobook.genres?.[0] || null,
-      publishedYear: audiobook.publishedYear ?? null,
-      description: audiobook.description || null,
-    };
-  };
-
   return {
     audiobookId,
     audiobook,
@@ -45,6 +34,5 @@ export function useAudiobookData() {
     refetch,
     heroImage,
     colorExtractionImage,
-    metadata: getMetadata(),
   };
 }

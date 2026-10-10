@@ -7,12 +7,14 @@ import { TileCard } from "@/components/cards/TileCard";
 import {
     GenreCount,
     DecadeCount,
+    RadioStation,
     STATIC_STATIONS,
     buildGenreStations,
     buildDecadeStations,
     useRadioPlayer,
 } from "@/features/home/radioData";
 import { SectionHeader } from "@/components/ui/SectionHeader";
+import { Button } from "@/components/ui/Button";
 import { PageHeader } from "@/components/layout/PageHeader";
 
 function SectionSkeleton() {
@@ -22,6 +24,72 @@ function SectionSkeleton() {
                 <div key={i} className="aspect-[4/3] rounded-lg bg-[var(--bg-primary)] border border-white/10 animate-pulse" />
             ))}
         </div>
+    );
+}
+
+interface StationGridProps {
+    stations: RadioStation[];
+    loadingStation: string | null;
+    onStart: (station: RadioStation) => void;
+}
+
+function StationGrid({ stations, loadingStation, onStart }: StationGridProps) {
+    return (
+        <div className="grid-media">
+            {stations.map((station) => (
+                <TileCard
+                    key={station.id}
+                    title={station.name}
+                    subtitle={station.description}
+                    tint={station.color}
+                    hoverBorder={station.hoverBorder}
+                    accent={station.accentGradient}
+                    onClick={() => onStart(station)}
+                    playable
+                    busy={loadingStation === station.id}
+                    disabled={loadingStation !== null}
+                    className="w-full aspect-[4/3]"
+                />
+            ))}
+        </div>
+    );
+}
+
+interface StationSectionProps extends Omit<StationGridProps, "stations"> {
+    title: string;
+    unit: string;
+    noun: string;
+    stations: RadioStation[];
+    isLoading: boolean;
+    isError: boolean;
+    onRetry: () => void;
+}
+
+function StationSection({ title, unit, noun, stations, isLoading, isError, onRetry, ...grid }: StationSectionProps) {
+    if (!isLoading && !isError && stations.length === 0) return null;
+
+    return (
+        <section>
+            <SectionHeader
+                type="track"
+                title={title}
+                count={!isLoading && !isError ? `${stations.length} ${unit}` : undefined}
+            />
+            {isLoading ? (
+                <SectionSkeleton />
+            ) : isError ? (
+                <div className="flex items-center gap-3 py-4">
+                    <p className="text-sm text-[var(--text-secondary)]">
+                        Could not load {noun} stations.
+                    </p>
+                    <Button onClick={onRetry} aria-label={`Retry loading ${noun} stations`}>
+                        Retry
+                    </Button>
+                </div>
+            ) : (
+                <StationGrid stations={stations} {...grid} />
+            )}
+        </section>
     );
 }
 
@@ -64,112 +132,32 @@ export default function RadioPage() {
                     <div className="section-stack">
                         <section>
                             <SectionHeader title="Quick Start" />
-                            <div className="grid-media">
-                                {STATIC_STATIONS.map((station) => (
-                                    <TileCard
-                                        key={station.id}
-                                        title={station.name}
-                                        subtitle={station.description}
-                                        tint={station.color}
-                                        hoverBorder={station.hoverBorder}
-                                        accent={station.accentGradient}
-                                        onClick={() => startRadio(station)}
-                                        playable
-                                        busy={loadingStation === station.id}
-                                        disabled={loadingStation !== null}
-                                        className="w-full aspect-[4/3]"
-                                    />
-                                ))}
-                            </div>
+                            <StationGrid stations={STATIC_STATIONS} loadingStation={loadingStation} onStart={startRadio} />
                         </section>
 
-                        {(isLoading || genresError || genreStations.length > 0) && (
-                            <section>
-                                <SectionHeader
-                                    type="track"
-                                    title="By Genre"
-                                    count={!isLoading && !genresError ? `${genreStations.length} genres` : undefined}
-                                />
-                                {isLoading ? (
-                                    <SectionSkeleton />
-                                ) : genresError ? (
-                                    <div className="flex items-center gap-3 py-4">
-                                        <p className="text-sm text-[var(--text-secondary)]">
-                                            Could not load genre stations.
-                                        </p>
-                                        <button
-                                            onClick={() => refetchGenres()}
-                                            aria-label="Retry loading genre stations"
-                                            className="min-h-[44px] px-4 py-2 text-sm border border-[var(--color-brand)] text-[var(--color-brand)] rounded hover:bg-[var(--color-brand)]/10 transition-colors focus-visible:outline-2 focus-visible:outline-[var(--color-brand)]"
-                                        >
-                                            Retry
-                                        </button>
-                                    </div>
-                                ) : (
-                                    <div className="grid-media">
-                                        {genreStations.map((station) => (
-                                            <TileCard
-                                                key={station.id}
-                                                title={station.name}
-                                                subtitle={station.description}
-                                                tint={station.color}
-                                                hoverBorder={station.hoverBorder}
-                                                accent={station.accentGradient}
-                                                onClick={() => startRadio(station)}
-                                                playable
-                                                busy={loadingStation === station.id}
-                                                disabled={loadingStation !== null}
-                                                className="w-full aspect-[4/3]"
-                                            />
-                                        ))}
-                                    </div>
-                                )}
-                            </section>
-                        )}
+                        <StationSection
+                            title="By Genre"
+                            unit="genres"
+                            noun="genre"
+                            stations={genreStations}
+                            isLoading={isLoading}
+                            isError={genresError}
+                            onRetry={() => refetchGenres()}
+                            loadingStation={loadingStation}
+                            onStart={startRadio}
+                        />
 
-                        {(isLoading || decadesError || decadeStations.length > 0) && (
-                            <section>
-                                <SectionHeader
-                                    type="track"
-                                    title="By Decade"
-                                    count={!isLoading && !decadesError ? `${decadeStations.length} decades` : undefined}
-                                />
-                                {isLoading ? (
-                                    <SectionSkeleton />
-                                ) : decadesError ? (
-                                    <div className="flex items-center gap-3 py-4">
-                                        <p className="text-sm text-[var(--text-secondary)]">
-                                            Could not load decade stations.
-                                        </p>
-                                        <button
-                                            onClick={() => refetchDecades()}
-                                            aria-label="Retry loading decade stations"
-                                            className="min-h-[44px] px-4 py-2 text-sm border border-[var(--color-brand)] text-[var(--color-brand)] rounded hover:bg-[var(--color-brand)]/10 transition-colors focus-visible:outline-2 focus-visible:outline-[var(--color-brand)]"
-                                        >
-                                            Retry
-                                        </button>
-                                    </div>
-                                ) : (
-                                    <div className="grid-media">
-                                        {decadeStations.map((station) => (
-                                            <TileCard
-                                                key={station.id}
-                                                title={station.name}
-                                                subtitle={station.description}
-                                                tint={station.color}
-                                                hoverBorder={station.hoverBorder}
-                                                accent={station.accentGradient}
-                                                onClick={() => startRadio(station)}
-                                                playable
-                                                busy={loadingStation === station.id}
-                                                disabled={loadingStation !== null}
-                                                className="w-full aspect-[4/3]"
-                                            />
-                                        ))}
-                                    </div>
-                                )}
-                            </section>
-                        )}
+                        <StationSection
+                            title="By Decade"
+                            unit="decades"
+                            noun="decade"
+                            stations={decadeStations}
+                            isLoading={isLoading}
+                            isError={decadesError}
+                            onRetry={() => refetchDecades()}
+                            loadingStation={loadingStation}
+                            onStart={startRadio}
+                        />
 
                         <p className="t-meta">
                             Genre and decade stations appear once your library has enough tracks for them.

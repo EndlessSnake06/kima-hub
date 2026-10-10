@@ -7,7 +7,7 @@
  */
 
 import { useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/Button";
 import { api } from "@/lib/api";
 import { bytes, uptime } from "../format";
 import type { SystemStats } from "../types";
@@ -162,21 +162,14 @@ function Action<TResult extends object>({
 
     return (
         <div className="flex flex-col gap-1.5">
-            <button
+            <Button
+                variant={asking ? "primary" : "secondary"}
                 onClick={run}
                 onBlur={() => setAsking(false)}
-                disabled={busy}
-                className={[
-                    "h-11 px-4 rounded-lg t-control flex items-center gap-2 transition-colors disabled:opacity-60",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0a]",
-                    asking
-                        ? "bg-brand text-black"
-                        : "bg-white/[0.05] text-[var(--text-secondary)] hover:text-white hover:bg-white/[0.09]",
-                ].join(" ")}
+                isLoading={busy}
             >
-                {busy && <Loader2 className="w-4 h-4 animate-spin" />}
                 {asking ? confirmLabel : label}
-            </button>
+            </Button>
             {result && <p className="t-meta text-[var(--text-secondary)]">{result}</p>}
         </div>
     );

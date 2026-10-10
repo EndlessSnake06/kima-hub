@@ -78,7 +78,6 @@ export function RefinePanel({
     const showFilterSection = activeTab === "artists" || activeTab === "albums";
     const hasRefinements = isNonDefault(filter, sortBy, itemsPerPage);
 
-    // Dismiss on click-outside
     useEffect(() => {
         if (!open) return;
 
@@ -97,7 +96,6 @@ export function RefinePanel({
         return () => document.removeEventListener("pointerdown", handlePointerDown);
     }, [open]);
 
-    // Dismiss on Escape
     useEffect(() => {
         if (!open) return;
 
@@ -126,9 +124,7 @@ export function RefinePanel({
                 onClick={() => setOpen((prev) => !prev)}
                 className={cn(
                     // Matches the segmented control beside it: sentence case,
-                    // medium weight, a hairline border. It was set in the
-                    // 12px bold-caps-tracked micro-label style, which is for
-                    // metadata, not for a control you press.
+                    // medium weight, a hairline border.
                     "relative flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border transition-colors min-h-[44px] select-none",
                     open
                         ? "border-[var(--color-brand)] bg-[var(--color-brand)]/10 text-[var(--color-brand)]"
@@ -155,10 +151,8 @@ export function RefinePanel({
                     ref={panelRef}
                     role="dialog"
                     aria-label="Refine options"
-                    // Anchored to the button's LEFT edge, not its right. The
-                    // trigger is the first thing in the toolbar at every
-                    // width, so right-0 hung the panel off the start of the
-                    // page: at 388px, 162px of its 288px was unreachable.
+                    // Anchored to the button's left edge: the trigger starts the
+                    // toolbar at every width, so right-0 would push the panel off the page.
                     className="absolute left-0 top-full mt-2 z-(--z-dropdown) w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)] p-4 flex flex-col gap-5 animate-panel-up"
                 >
                     {/* Panel header */}

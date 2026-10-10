@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { SystemSettings } from "../types";
+import { ConnectionTestResult, SystemSettings } from "../types";
 
 const defaultSystemSettings: SystemSettings = {
     lidarrEnabled: true,
@@ -103,7 +103,7 @@ export function useSystemSettings() {
     };
 
     /** Tests a service connection; the caller shows the result. */
-    const testService = async (service: string): Promise<{ success: boolean; version?: string; error?: string }> => {
+    const testService = async (service: string): Promise<ConnectionTestResult> => {
         try {
             let result;
             switch (service) {

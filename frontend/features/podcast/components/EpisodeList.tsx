@@ -14,6 +14,7 @@ import { Episode } from "../types";
 import { formatDuration } from "@/lib/format";
 import { formatDate } from "../utils";
 import { SectionHeader } from "@/components/ui/SectionHeader";
+import { Button } from "@/components/ui/Button";
 import { CachedImage } from "@/components/ui/CachedImage";
 import { cascadeStyle } from "@/lib/motion";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
@@ -172,7 +173,6 @@ interface EpisodeListProps {
     isEpisodePlaying: (episodeId: string) => boolean;
     isPlaying: boolean;
     onPlayPause: (episode: Episode) => void;
-    onPlay: (episode: Episode) => void;
     onMarkComplete?: (episodeId: string, duration: number) => void;
     fallbackCoverUrl?: string;
     /** Every episode the podcast has, loaded or not. */
@@ -228,13 +228,13 @@ export function EpisodeList({
                 title="Episodes"
                 type="podcast"
                 action={
-                    <button
+                    <Button
+                        size="sm"
                         onClick={() => onSortOrderChange(sortOrder === "newest" ? "oldest" : "newest")}
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 text-xs text-[var(--text-secondary)] hover:text-white transition-colors"
                     >
                         <ArrowUpDown className="w-3.5 h-3.5" />
                         {sortOrder === "newest" ? "Newest" : "Oldest"}
-                    </button>
+                    </Button>
                 }
             />
 
@@ -306,14 +306,9 @@ export function EpisodeList({
 
             {onLoadMore && !updating && (
                 <div className="flex justify-center px-3 pt-2 pb-4">
-                    <button
-                        type="button"
-                        onClick={onLoadMore}
-                        disabled={loadingMore}
-                        className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs tabular-nums text-[var(--text-secondary)] transition-colors hover:border-white/20 hover:bg-white/10 hover:text-white disabled:opacity-50"
-                    >
+                    <Button size="sm" onClick={onLoadMore} disabled={loadingMore}>
                         {loadingMore ? "Loading…" : `Show more (${total - episodes.length} left)`}
-                    </button>
+                    </Button>
                 </div>
             )}
         </section>
