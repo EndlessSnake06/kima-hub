@@ -5,7 +5,7 @@
  */
 
 import { useMemo } from "react";
-import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 
 export const queryKeys = {
@@ -424,6 +424,30 @@ export function useRefreshMixesMutation() {
     });
 }
 
+type PlaylistCache = Record<string, unknown> | undefined;
+
+function invalidatePlaylist(queryClient: QueryClient, playlistId: string) {
+    queryClient.invalidateQueries({ queryKey: queryKeys.playlist(playlistId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.playlists() });
+}
+
+async function applyOptimisticPlaylistEdit(
+    queryClient: QueryClient,
+    playlistId: string,
+    edit: (old: PlaylistCache) => PlaylistCache,
+) {
+    await queryClient.cancelQueries({ queryKey: queryKeys.playlist(playlistId) });
+    const previous = queryClient.getQueryData(queryKeys.playlist(playlistId));
+    queryClient.setQueryData(queryKeys.playlist(playlistId), edit);
+    return { previous };
+}
+
+function rollbackPlaylistEdit(queryClient: QueryClient, playlistId: string, context: { previous: unknown } | undefined) {
+    if (context?.previous) {
+        queryClient.setQueryData(queryKeys.playlist(playlistId), context.previous);
+    }
+}
+
 export function useAddToPlaylistMutation() {
     const queryClient = useQueryClient();
 
@@ -442,14 +466,7 @@ export function useAddToPlaylistMutation() {
             trackIds?.length
                 ? api.addTracksToPlaylist(playlistId, trackIds)
                 : api.addTrackToPlaylist(playlistId, trackId!),
-        onSettled: (_, __, variables) => {
-            queryClient.invalidateQueries({
-                queryKey: queryKeys.playlist(variables.playlistId),
-            });
-            queryClient.invalidateQueries({
-                queryKey: queryKeys.playlists(),
-            });
-        },
+        onSettled: (_, __, variables) => invalidatePlaylist(queryClient, variables.playlistId),
     });
 }
 
@@ -465,10 +482,8 @@ export function useRemoveFromPlaylistMutation() {
             playlistId: string;
             trackId: string;
         }) => api.removeTrackFromPlaylist(playlistId, trackId),
-        onMutate: async (variables) => {
-            await queryClient.cancelQueries({ queryKey: queryKeys.playlist(variables.playlistId) });
-            const previous = queryClient.getQueryData(queryKeys.playlist(variables.playlistId));
-            queryClient.setQueryData(queryKeys.playlist(variables.playlistId), (old: Record<string, unknown> | undefined) => {
+        onMutate: (variables) =>
+            applyOptimisticPlaylistEdit(queryClient, variables.playlistId, (old) => {
                 if (!old || !Array.isArray(old.items)) return old;
                 return {
                     ...old,
@@ -476,22 +491,9 @@ export function useRemoveFromPlaylistMutation() {
                         (item) => item.track?.id !== variables.trackId
                     ),
                 };
-            });
-            return { previous };
-        },
-        onError: (_err, variables, context) => {
-            if (context?.previous) {
-                queryClient.setQueryData(queryKeys.playlist(variables.playlistId), context.previous);
-            }
-        },
-        onSettled: (_, __, variables) => {
-            queryClient.invalidateQueries({
-                queryKey: queryKeys.playlist(variables.playlistId),
-            });
-            queryClient.invalidateQueries({
-                queryKey: queryKeys.playlists(),
-            });
-        },
+            }),
+        onError: (_err, variables, context) => rollbackPlaylistEdit(queryClient, variables.playlistId, context),
+        onSettled: (_, __, variables) => invalidatePlaylist(queryClient, variables.playlistId),
     });
 }
 
@@ -506,14 +508,7 @@ export function useUpdatePlaylistMutation() {
             playlistId: string;
             data: { name?: string; isPublic?: boolean };
         }) => api.updatePlaylist(playlistId, data),
-        onSuccess: (_, variables) => {
-            queryClient.invalidateQueries({
-                queryKey: queryKeys.playlist(variables.playlistId),
-            });
-            queryClient.invalidateQueries({
-                queryKey: queryKeys.playlists(),
-            });
-        },
+        onSuccess: (_, variables) => invalidatePlaylist(queryClient, variables.playlistId),
     });
 }
 
@@ -544,10 +539,8 @@ export function useMoveTrackInPlaylistMutation() {
             itemId: string;
             afterItemId: string | null;
         }) => api.moveTrackInPlaylist(playlistId, itemId, afterItemId),
-        onMutate: async (variables) => {
-            await queryClient.cancelQueries({ queryKey: queryKeys.playlist(variables.playlistId) });
-            const previous = queryClient.getQueryData(queryKeys.playlist(variables.playlistId));
-            queryClient.setQueryData(queryKeys.playlist(variables.playlistId), (old: Record<string, unknown> | undefined) => {
+        onMutate: (variables) =>
+            applyOptimisticPlaylistEdit(queryClient, variables.playlistId, (old) => {
                 if (!old || !Array.isArray(old.items)) return old;
                 // A copy: the cached list is also `previous`, restored if the move fails.
                 const items = [...(old.items as Array<Record<string, unknown>>)];
@@ -565,22 +558,9 @@ export function useMoveTrackInPlaylistMutation() {
                     items.unshift(moved);
                 }
                 return { ...old, items };
-            });
-            return { previous };
-        },
-        onError: (_err, variables, context) => {
-            if (context?.previous) {
-                queryClient.setQueryData(queryKeys.playlist(variables.playlistId), context.previous);
-            }
-        },
-        onSettled: (_, __, variables) => {
-            queryClient.invalidateQueries({
-                queryKey: queryKeys.playlist(variables.playlistId),
-            });
-            queryClient.invalidateQueries({
-                queryKey: queryKeys.playlists(),
-            });
-        },
+            }),
+        onError: (_err, variables, context) => rollbackPlaylistEdit(queryClient, variables.playlistId, context),
+        onSettled: (_, __, variables) => invalidatePlaylist(queryClient, variables.playlistId),
     });
 }
 
