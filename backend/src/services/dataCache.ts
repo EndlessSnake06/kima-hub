@@ -3,7 +3,8 @@
 import { logger } from "../utils/logger";
 import { prisma } from "../utils/db";
 import { redisClient } from "../utils/redis";
-import { findAlbumArtwork, findArtistArtwork, isRealMbid } from "./artwork";
+import { findAlbumArtwork, findArtistArtwork } from "./artwork";
+import { isMbid } from "./artistIdentity";
 import { downloadAndStoreImage } from "./imageStorage";
 
 // Cache TTLs
@@ -113,7 +114,7 @@ class DataCacheService {
         }
 
         // 3. Ask every artwork source, not just the Cover Art Archive.
-        if (!artistName && !isRealMbid(rgMbid)) {
+        if (!artistName && !isMbid(rgMbid)) {
             // Nothing to search on at all: no title, no artist, no real id.
             return null;
         }
@@ -206,7 +207,7 @@ class DataCacheService {
         artistName: string,
         mbid?: string | null
     ): Promise<string | null> {
-        const validMbid = isRealMbid(mbid) ? mbid : undefined;
+        const validMbid = isMbid(mbid) ? mbid : undefined;
         const found = await findArtistArtwork({ name: artistName, mbid: validMbid });
         const externalUrl = found?.url ?? null;
         const source = found?.source ?? "";

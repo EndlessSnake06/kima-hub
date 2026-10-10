@@ -278,7 +278,7 @@ interface SimilarArtistEntry {
 export async function enrichSimilarArtists(similar: SimilarArtist[], limit = 6): Promise<SimilarArtistEntry[]> {
     const { findArtistArtwork } = await import("./artwork");
     const { wikidataService } = await import("./wikidata");
-    const { hasRealMbid } = await import("./artistIdentity");
+    const { isMbid } = await import("./artistIdentity");
 
     const capped = similar.slice(0, limit);
     const enrichCount = Math.min(3, capped.length);
@@ -295,7 +295,7 @@ export async function enrichSimilarArtists(similar: SimilarArtist[], limit = 6):
             bio: null as string | null,
             tags: [] as string[],
         };
-        const validMbid = s.mbid && hasRealMbid(s.mbid) ? s.mbid : undefined;
+        const validMbid = s.mbid && isMbid(s.mbid) ? s.mbid : undefined;
 
         if (!enrich) {
             base.image =

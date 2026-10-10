@@ -5,7 +5,7 @@
 
 import { logger } from "../utils/logger";
 import { normalizeArtistName } from "./artistIdentity";
-import { hasRealMbid } from "./artistIdentity";
+import { isMbid } from "./artistIdentity";
 import { titlesAgree } from "./albumIdentity";
 import type { SeedArtist } from "./discovery/discoverySeeding";
 import { prisma } from "../utils/db";
@@ -1718,7 +1718,7 @@ class DiscoverWeeklyService {
         artistName: string,
         artistMbid: string | undefined
     ): Promise<boolean> {
-        if (hasRealMbid(artistMbid)) {
+        if (isMbid(artistMbid)) {
             const byMbid = await prisma.artist.findFirst({
                 where: { mbid: artistMbid },
                 include: { albums: { take: 1 } },

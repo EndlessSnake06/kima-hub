@@ -20,7 +20,7 @@ import {
   getArtistDisplaySummary,
 } from "../../utils/metadataOverrides";
 import { safeError } from "../../utils/errors";
-import { hasRealMbid } from "../../services/artistIdentity";
+import { isMbid } from "../../services/artistIdentity";
 import { failureCause } from "../../utils/outcome";
 import pLimit from "p-limit";
 import { toAudioFeaturesDTO } from "../../utils/audioFeatures";
@@ -285,7 +285,7 @@ router.get("/artists", async (req, res) => {
 
       return {
         id: artist.id,
-        mbid: hasRealMbid(artist.mbid) ? artist.mbid : null,
+        mbid: isMbid(artist.mbid) ? artist.mbid : null,
         name: artist.name,
         heroUrl: coverArt,
         coverArt,
@@ -456,7 +456,7 @@ router.get("/artists/:id", async (req, res) => {
 
     // Inline guard, not a boolean intermediate: the type predicate has to be in
     // the condition for effectiveMbid to narrow to string inside the block.
-    if (hasRealMbid(effectiveMbid)) {
+    if (isMbid(effectiveMbid)) {
       try {
         const discoCacheKey = `discography:${effectiveMbid}`;
         let releaseGroups: any[] = [];
@@ -643,7 +643,7 @@ router.get("/artists/:id", async (req, res) => {
         // Cold start: earliest-released tracks per MusicBrainz, falling back
         // to the plain first-10 slice when MB has nothing.
         try {
-          const fetched = hasRealMbid(effectiveMbid)
+          const fetched = isMbid(effectiveMbid)
             ? await musicBrainzService.getReleaseGroups(effectiveMbid, ["album"], 50)
             : null;
           const rgs = fetched?.kind === "answered" ? fetched.value : [];
@@ -733,7 +733,7 @@ router.get("/artists/:id", async (req, res) => {
 
         try {
           const validMbid =
-            hasRealMbid(effectiveMbid)
+            isMbid(effectiveMbid)
               ? effectiveMbid
               : "";
           const similar = await getSimilarArtists(
@@ -761,7 +761,7 @@ router.get("/artists/:id", async (req, res) => {
 
     res.json({
       ...artist,
-      mbid: hasRealMbid(artist.mbid) ? artist.mbid : null,
+      mbid: isMbid(artist.mbid) ? artist.mbid : null,
       coverArt: heroUrl,
       bio: getArtistDisplaySummary(artist),
       genres: getMergedGenres(artist),
@@ -917,7 +917,7 @@ router.delete("/artists/:id", requireAdmin, async (req, res) => {
 
     let lidarrDeleted = false;
     let lidarrError: string | null = null;
-    if (hasRealMbid(artist.mbid)) {
+    if (isMbid(artist.mbid)) {
       try {
         const { lidarrService } = await import("../../services/lidarr");
         const lidarrResult = await lidarrService.deleteArtist(

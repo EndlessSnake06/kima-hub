@@ -81,14 +81,6 @@ export function isMbid(value: unknown): value is string {
     return typeof value === "string" && MBID_FORMAT.test(value);
 }
 
-/**
- * Whether a stored id is a real MusicBrainz id that can be asked about. Unknown is
- * NULL; a `temp-` placeholder or a malformed tag value fails, so no source is asked
- * a question it can only refuse.
- */
-export function hasRealMbid(mbid: string | null | undefined): mbid is string {
-    return isMbid(mbid);
-}
 
 export interface ParsedCredit {
     /** The performing artist, never truncated. */

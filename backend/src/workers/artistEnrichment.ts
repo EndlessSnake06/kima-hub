@@ -8,7 +8,7 @@ import { findSimilarArtists } from "../services/artistSimilarity";
 import { STAGE_RETRY_CAP } from "./stageRetry";
 import { musicBrainzService } from "../services/musicbrainz";
 import { normalizeArtistName } from "../services/artistIdentity";
-import { hasRealMbid } from "../services/artistIdentity";
+import { isMbid } from "../services/artistIdentity";
 import { findAlbumArtwork, findArtistArtwork } from "../services/artwork";
 import { redisClient } from "../utils/redis";
 import { downloadAndStoreImage, findLocalArtistImage, isNativePath, nativeFileExists } from "../services/imageStorage";
@@ -94,11 +94,11 @@ export async function enrichSimilarArtist(artist: Artist): Promise<void> {
     let summarySource = "none";
 
     try {
-        if (hasRealMbid(artist.mbid)) {
+        if (isMbid(artist.mbid)) {
             await dropMbidOfAnotherArtist(artist, logPrefix);
         }
 
-        if (!hasRealMbid(artist.mbid)) {
+        if (!isMbid(artist.mbid)) {
             const albums = await prisma.album.findMany({
                 where: { artistId: artist.id },
                 select: { title: true },
@@ -155,7 +155,7 @@ export async function enrichSimilarArtist(artist: Artist): Promise<void> {
             : null;
         let genres: string[] = [];
 
-        if (hasRealMbid(artist.mbid)) {
+        if (isMbid(artist.mbid)) {
             logger.debug(
                 `${logPrefix} Wikidata: Fetching for MBID ${artist.mbid}...`
             );
@@ -182,7 +182,7 @@ export async function enrichSimilarArtist(artist: Artist): Promise<void> {
         if (!heroUrl) {
             const found = await findArtistArtwork({
                 name: artist.name,
-                mbid: hasRealMbid(artist.mbid) ? artist.mbid : undefined,
+                mbid: isMbid(artist.mbid) ? artist.mbid : undefined,
             });
             if (found) {
                 heroUrl = found.url;
@@ -196,7 +196,7 @@ export async function enrichSimilarArtist(artist: Artist): Promise<void> {
         }
 
         // Genre fallback: MusicBrainz curated genres
-        if (genres.length === 0 && hasRealMbid(artist.mbid)) {
+        if (genres.length === 0 && isMbid(artist.mbid)) {
             const mbArtist = await musicBrainzService.getArtist(artist.mbid, ["genres"]);
             if (mbArtist.kind === "answered") {
                 if (Array.isArray(mbArtist.value.genres)) {
@@ -224,7 +224,7 @@ export async function enrichSimilarArtist(artist: Artist): Promise<void> {
         let similarFetchFailed = false;
         try {
             // Filter out temp MBIDs
-            const validMbid = hasRealMbid(artist.mbid) ? artist.mbid : "";
+            const validMbid = isMbid(artist.mbid) ? artist.mbid : "";
             const found = await findSimilarArtists(validMbid, artist.name);
             similarArtists = found.artists;
             similarFetchFailed = found.failed;

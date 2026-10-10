@@ -44,7 +44,6 @@ jest.mock("../artwork", () => ({
     findAlbumArtwork: (...a: unknown[]) => mockFindAlbumArtwork(...a),
     findArtistArtwork: (...a: unknown[]) => mockFindArtistArtwork(...a),
     // Real, not a stub: what counts as a usable id is the thing under test.
-    isRealMbid: (id: string | null | undefined) => Boolean(id) && !id!.startsWith("temp-"),
 }));
 
 const mockDownloadAndStoreImage = jest.fn();
@@ -103,14 +102,14 @@ describe("dataCache asks every source, not just one", () => {
             mockAlbumFindUnique.mockResolvedValue({
                 coverUrl: null,
                 title: "Age Of Aquarius",
-                artist: { name: "Perturbator" },
+                artist: { name: "Brad Sucks" },
             });
 
-            await dataCacheService.getAlbumCover("a1", "rg-1");
+            await dataCacheService.getAlbumCover("a1", "10e85e9b-0f07-33d4-a927-18a273f86eca");
 
             expect(mockFindAlbumArtwork).toHaveBeenCalledWith({
-                rgMbid: "rg-1",
-                artistName: "Perturbator",
+                rgMbid: "10e85e9b-0f07-33d4-a927-18a273f86eca",
+                artistName: "Brad Sucks",
                 albumTitle: "Age Of Aquarius",
             });
         });
@@ -119,11 +118,11 @@ describe("dataCache asks every source, not just one", () => {
             mockAlbumFindUnique.mockResolvedValue({
                 coverUrl: null,
                 title: "Age Of Aquarius",
-                artist: { name: "Perturbator" },
+                artist: { name: "Brad Sucks" },
             });
             mockFindAlbumArtwork.mockResolvedValue({ url: FOUND, source: "deezer" });
 
-            const cover = await dataCacheService.getAlbumCover("a1", "rg-1");
+            const cover = await dataCacheService.getAlbumCover("a1", "10e85e9b-0f07-33d4-a927-18a273f86eca");
 
             expect(cover).toBe(FOUND);
             expect(mockAlbumUpdate).toHaveBeenCalledWith(
@@ -135,10 +134,10 @@ describe("dataCache asks every source, not just one", () => {
             mockAlbumFindUnique.mockResolvedValue({
                 coverUrl: null,
                 title: "Age Of Aquarius",
-                artist: { name: "Perturbator" },
+                artist: { name: "Brad Sucks" },
             });
 
-            expect(await dataCacheService.getAlbumCover("a1", "rg-1")).toBeNull();
+            expect(await dataCacheService.getAlbumCover("a1", "10e85e9b-0f07-33d4-a927-18a273f86eca")).toBeNull();
             expect(mockAlbumUpdate).not.toHaveBeenCalled();
         });
 
@@ -146,11 +145,11 @@ describe("dataCache asks every source, not just one", () => {
             mockAlbumFindUnique.mockResolvedValue(null);
             mockFindAlbumArtwork.mockResolvedValue({ url: FOUND, source: "coverartarchive" });
 
-            const cover = await dataCacheService.getAlbumCover("a1", "rg-1");
+            const cover = await dataCacheService.getAlbumCover("a1", "10e85e9b-0f07-33d4-a927-18a273f86eca");
 
             // Nothing to ask Deezer with, but the archive only needs the id.
             expect(mockFindAlbumArtwork).toHaveBeenCalledWith({
-                rgMbid: "rg-1",
+                rgMbid: "10e85e9b-0f07-33d4-a927-18a273f86eca",
                 artistName: "",
                 albumTitle: "",
             });
@@ -161,10 +160,10 @@ describe("dataCache asks every source, not just one", () => {
             mockAlbumFindUnique.mockResolvedValue({
                 coverUrl: "native:albums/a1.jpg",
                 title: "Age Of Aquarius",
-                artist: { name: "Perturbator" },
+                artist: { name: "Brad Sucks" },
             });
 
-            expect(await dataCacheService.getAlbumCover("a1", "rg-1")).toBe(
+            expect(await dataCacheService.getAlbumCover("a1", "10e85e9b-0f07-33d4-a927-18a273f86eca")).toBe(
                 "native:albums/a1.jpg",
             );
             expect(mockFindAlbumArtwork).not.toHaveBeenCalled();
@@ -173,15 +172,15 @@ describe("dataCache asks every source, not just one", () => {
 
     describe("artist images", () => {
         it("goes through the one door rather than its own hand-rolled chain", async () => {
-            mockArtistFindUnique.mockResolvedValue({ heroUrl: null, name: "Perturbator", mbid: "artist-1" });
+            mockArtistFindUnique.mockResolvedValue({ heroUrl: null, name: "Brad Sucks", mbid: "9c070e4f-28c1-4b98-b371-d8514c31ba55" });
             mockFindArtistArtwork.mockResolvedValue({ url: FOUND, source: "fanart" });
             mockDownloadAndStoreImage.mockResolvedValue("native:artists/x1.jpg");
 
-            const image = await dataCacheService.getArtistImage("x1", "Perturbator", "artist-1");
+            const image = await dataCacheService.getArtistImage("x1", "Brad Sucks", "9c070e4f-28c1-4b98-b371-d8514c31ba55");
 
             expect(mockFindArtistArtwork).toHaveBeenCalledWith({
-                name: "Perturbator",
-                mbid: "artist-1",
+                name: "Brad Sucks",
+                mbid: "9c070e4f-28c1-4b98-b371-d8514c31ba55",
             });
             expect(image).toBe("native:artists/x1.jpg");
         });
@@ -189,23 +188,23 @@ describe("dataCache asks every source, not just one", () => {
         it("does not hand a placeholder MBID to the sources", async () => {
             // A "temp-" id is this app's own invention, not a MusicBrainz id;
             // Fanart would 404 on every one of them.
-            mockArtistFindUnique.mockResolvedValue({ heroUrl: null, name: "Perturbator", mbid: "temp-9" });
+            mockArtistFindUnique.mockResolvedValue({ heroUrl: null, name: "Brad Sucks", mbid: "temp-9" });
             mockFindArtistArtwork.mockResolvedValue(null);
 
-            await dataCacheService.getArtistImage("x1", "Perturbator", "temp-9");
+            await dataCacheService.getArtistImage("x1", "Brad Sucks", "temp-9");
 
             expect(mockFindArtistArtwork).toHaveBeenCalledWith({
-                name: "Perturbator",
+                name: "Brad Sucks",
                 mbid: undefined,
             });
         });
 
         it("falls back to the address itself when the local copy cannot be written", async () => {
-            mockArtistFindUnique.mockResolvedValue({ heroUrl: null, name: "Perturbator", mbid: "artist-1" });
+            mockArtistFindUnique.mockResolvedValue({ heroUrl: null, name: "Brad Sucks", mbid: "9c070e4f-28c1-4b98-b371-d8514c31ba55" });
             mockFindArtistArtwork.mockResolvedValue({ url: FOUND, source: "deezer" });
             mockDownloadAndStoreImage.mockResolvedValue(null);
 
-            expect(await dataCacheService.getArtistImage("x1", "Perturbator", "artist-1")).toBe(FOUND);
+            expect(await dataCacheService.getArtistImage("x1", "Brad Sucks", "9c070e4f-28c1-4b98-b371-d8514c31ba55")).toBe(FOUND);
         });
 
         it("returns null when no source had an image", async () => {

@@ -49,7 +49,7 @@ import { updateMap } from "../services/matching/map";
 import {
     classifyFailure,
 } from "../services/enrichmentErrorCodeClassifier";
-import { hasRealMbid } from "../services/artistIdentity";
+import { isMbid } from "../services/artistIdentity";
 import type { Outcome } from "../utils/outcome";
 
 import { sourcePauseController } from "../services/sourcePauseController";
@@ -1947,7 +1947,7 @@ export async function enrichSingleTrack(
         answerSource = "file_tag";
     }
 
-    if (hasRealMbid(track.album.rgMbid)) {
+    if (isMbid(track.album.rgMbid)) {
         asked.push("album-catalogue");
         const chain = await askWithinBudget(
             () => musicBrainzService.getAlbumCatalogue(track.album.rgMbid!),

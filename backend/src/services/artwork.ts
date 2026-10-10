@@ -8,6 +8,7 @@ import crypto from "crypto";
 import { logger } from "../utils/logger";
 import { redisClient } from "../utils/redis";
 import { validateUrlForFetch } from "../utils/ssrf";
+import { isMbid } from "./artistIdentity";
 import { coverArtService } from "./coverArt";
 import { deezerService } from "./deezer";
 import { fanartService } from "./fanart";
@@ -24,14 +25,6 @@ const NONE_TTL_SECONDS = 24 * 60 * 60;
 const NONE = "NONE";
 const USER_AGENT = "Kima/1.0 (+https://github.com/chevron7locked/kima)";
 
-/**
- * Whether an id is a real MusicBrainz id or a scanner `temp-` placeholder. A
- * placeholder only skips the id-keyed sources (Cover Art Archive, Fanart);
- * Deezer searches by artist and title and is still asked.
- */
-export function isRealMbid(id: string | null | undefined): boolean {
-    return Boolean(id) && !id!.startsWith("temp-");
-}
 
 export interface AlbumArtworkQuery {
     /** MusicBrainz release-group id, when the caller has one. */
@@ -79,12 +72,12 @@ const ALBUM_SOURCES: Source<AlbumArtworkQuery>[] = [
         name: "coverartarchive",
         // coverArtService caches hits for 30 days and misses for 7, and rate-limits.
         find: (q) =>
-            isRealMbid(q.rgMbid) ? coverArtService.getCoverArt(q.rgMbid!) : Promise.resolve(null),
+            isMbid(q.rgMbid) ? coverArtService.getCoverArt(q.rgMbid!) : Promise.resolve(null),
     },
     {
         name: "fanart",
         find: (q) =>
-            isRealMbid(q.rgMbid) ? fanartService.getAlbumCover(q.rgMbid!) : Promise.resolve(null),
+            isMbid(q.rgMbid) ? fanartService.getAlbumCover(q.rgMbid!) : Promise.resolve(null),
     },
 ];
 
@@ -92,7 +85,7 @@ const ARTIST_SOURCES: Source<ArtistArtworkQuery>[] = [
     {
         name: "fanart",
         find: (q) =>
-            isRealMbid(q.mbid)
+            isMbid(q.mbid)
                 ? fanartService.getArtistImage(q.mbid!, { interactive: q.interactive })
                 : Promise.resolve(null),
     },
@@ -166,13 +159,13 @@ function keyFor(kind: string, identity: string): string {
 const albumKey = (q: AlbumArtworkQuery) =>
     keyFor(
         "album",
-        isRealMbid(q.rgMbid)
+        isMbid(q.rgMbid)
             ? `rg:${q.rgMbid}`
             : `nt:${q.artistName.toLowerCase()}|${q.albumTitle.toLowerCase()}`,
     );
 
 const artistKey = (q: ArtistArtworkQuery) =>
-    keyFor("artist", isRealMbid(q.mbid) ? `mb:${q.mbid}` : `n:${q.name.toLowerCase()}`);
+    keyFor("artist", isMbid(q.mbid) ? `mb:${q.mbid}` : `n:${q.name.toLowerCase()}`);
 
 /** `undefined` means we have not asked yet; `null` means we asked and nobody had it. */
 async function remembered(key: string): Promise<string | null | undefined> {

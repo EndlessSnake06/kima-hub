@@ -4,7 +4,7 @@
  */
 
 import { logger } from "../utils/logger";
-import { hasRealMbid } from "./artistIdentity";
+import { isMbid } from "./artistIdentity";
 import { titlesAgree } from "./albumIdentity";
 import { resolveArtistMbid } from "./artistCorrection";
 import { prisma } from "../utils/db";
@@ -121,7 +121,7 @@ class EnrichmentService {
         // Step 1: Get/verify MBID from MusicBrainz
         if (
             config.sources.musicbrainz &&
-            !hasRealMbid(artist.mbid)
+            !isMbid(artist.mbid)
         ) {
             const albums = await prisma.album.findMany({
                 where: { artistId: artist.id },
@@ -147,7 +147,7 @@ class EnrichmentService {
         // per-source toggle for it.
         try {
             const artistMbid = enrichmentData.mbid || artist.mbid;
-            if (hasRealMbid(artistMbid)) {
+            if (isMbid(artistMbid)) {
                 const wd = await wikidataService.getArtistInfo(
                     artist.name,
                     artistMbid
@@ -175,7 +175,7 @@ class EnrichmentService {
             const artistMbid = enrichmentData.mbid || artist.mbid;
             const imageResult = await findArtistArtwork({
                 name: artist.name,
-                mbid: hasRealMbid(artistMbid) ? artistMbid : undefined,
+                mbid: isMbid(artistMbid) ? artistMbid : undefined,
             });
 
             if (imageResult) {
@@ -239,7 +239,7 @@ class EnrichmentService {
         if (config.sources.musicbrainz) {
             if (
                 album.artist.mbid &&
-                hasRealMbid(album.artist.mbid)
+                isMbid(album.artist.mbid)
             ) {
                 const discography =
                     await musicBrainzService.getReleaseGroups(
