@@ -62,7 +62,7 @@ setInterval(() => {
             searchSessions.delete(searchId);
         }
     }
-}, 60000);
+}, 60_000).unref();
 
 async function requireSoulseekConfigured(_req: any, res: any, next: any) {
     try {
