@@ -4,6 +4,18 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 
 export const ACTIVITY_PANEL_KEY = "kima_activity_panel_open";
 
+export type ActivityPanelTab = "notifications" | "active" | "imports" | "history" | "settings";
+
+export function setActivityPanelTab(tab: ActivityPanelTab) {
+    window.dispatchEvent(new CustomEvent("set-activity-panel-tab", { detail: { tab } }));
+}
+
+/** Opens the activity panel, on `tab` when one is given. */
+export function openActivityPanel(tab?: ActivityPanelTab) {
+    if (tab) setActivityPanelTab(tab);
+    window.dispatchEvent(new CustomEvent("open-activity-panel"));
+}
+
 /** Follows the panel's open state from the window events, for controls that only show it. */
 export function useActivityPanelOpen(): boolean {
     const [isOpen, setIsOpen] = useState(() => {
@@ -33,7 +45,7 @@ export function useActivityPanel() {
         if (typeof window === "undefined") return false;
         return localStorage.getItem(ACTIVITY_PANEL_KEY) === "true";
     });
-    const [activeTab, setActiveTab] = useState<"notifications" | "active" | "imports" | "history" | "settings">("notifications");
+    const [activeTab, setActiveTab] = useState<ActivityPanelTab>("notifications");
 
     useEffect(() => {
         if (typeof window !== "undefined") {

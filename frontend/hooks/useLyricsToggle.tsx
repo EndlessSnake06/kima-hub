@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import { useActivityPanelSettings } from "@/lib/activity-panel-settings-context";
 import { useAudioState } from "@/lib/audio-state-context";
+import { openActivityPanel, setActivityPanelTab } from "@/hooks/useActivityPanel";
 import { LyricsPanel } from "@/components/lyrics/LyricsPanel";
 
 interface UseLyricsToggleOptions {
@@ -27,11 +28,7 @@ export function useLyricsToggle({ inline }: UseLyricsToggleOptions) {
 
     const closeLyrics = useCallback(() => {
         setSettingsContent(null);
-        window.dispatchEvent(
-            new CustomEvent("set-activity-panel-tab", {
-                detail: { tab: "active" },
-            })
-        );
+        setActivityPanelTab("active");
     }, [setSettingsContent]);
 
     const handleLyricsToggle = useCallback(() => {
@@ -46,12 +43,7 @@ export function useLyricsToggle({ inline }: UseLyricsToggleOptions) {
         }
 
         setSettingsContent(<LyricsPanel onBack={closeLyrics} />, "lyrics");
-        window.dispatchEvent(new CustomEvent("open-activity-panel"));
-        window.dispatchEvent(
-            new CustomEvent("set-activity-panel-tab", {
-                detail: { tab: "settings" },
-            })
-        );
+        openActivityPanel("settings");
     }, [setSettingsContent, closeLyrics, settingsOwner, inline]);
 
     return { handleLyricsToggle, isLyricsActive };

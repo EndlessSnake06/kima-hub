@@ -18,7 +18,7 @@ import { GradientSpinner } from "../ui/GradientSpinner";
 import { ReactNode } from "react";
 import { useIsMobile, useIsTablet } from "@/hooks/useMediaQuery";
 import { useIsTV } from "@/lib/tv-utils";
-import { useActivityPanel } from "@/hooks/useActivityPanel";
+import { useActivityPanel, type ActivityPanelTab } from "@/hooks/useActivityPanel";
 
 // Paths that render without the sidebar, top bar and player. Not the same list
 // as auth-context's (no login) or ConditionalAudioProvider's (no audio): /share
@@ -40,7 +40,7 @@ export function AuthenticatedLayout({ children }: { children: ReactNode }) {
         const handleOpen = () => open();
         const handleClose = () => close();
         const handleSetTab = (
-            e: CustomEvent<{ tab: "notifications" | "active" | "imports" | "history" | "settings" }>
+            e: CustomEvent<{ tab: ActivityPanelTab }>
         ) => {
             setActiveTab(e.detail.tab);
         };
