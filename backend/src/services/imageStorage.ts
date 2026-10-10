@@ -32,6 +32,17 @@ function ensureCoversDir(subdir: string): string {
     return dirPath;
 }
 
+/** The path under the covers directory, or null when it escapes that directory. */
+function resolveInCoversDir(relativePath: string): string | null {
+    const basePath = getCoversBasePath();
+    const resolvedBase = path.resolve(basePath);
+    const fullPath = path.resolve(basePath, relativePath);
+    if (!fullPath.startsWith(resolvedBase + path.sep) && fullPath !== resolvedBase) {
+        return null;
+    }
+    return fullPath;
+}
+
 /**
  * Download an image from URL and save locally
  * Returns the native path (e.g., "native:artists/artistId.jpg") or null on failure
@@ -92,24 +103,14 @@ export async function downloadAndStoreImage(
 export function getLocalImagePath(nativePath: string): string | null {
     if (!nativePath.startsWith("native:")) return null;
 
-    const relativePath = nativePath.replace("native:", "");
-    const basePath = getCoversBasePath();
-    const resolvedBase = path.resolve(basePath);
-    const fullPath = path.resolve(basePath, relativePath);
-
-    if (!fullPath.startsWith(resolvedBase + path.sep) && fullPath !== resolvedBase) {
-        return null;
-    }
-
-    if (!fs.existsSync(fullPath)) return null;
-    return fullPath;
+    const fullPath = resolveInCoversDir(nativePath.replace("native:", ""));
+    return fullPath && fs.existsSync(fullPath) ? fullPath : null;
 }
 
 /** Whether a native image path points to an existing file on disk. */
 export function nativeFileExists(nativePath: string | null | undefined): boolean {
     return nativePath ? getLocalImagePath(nativePath) !== null : false;
 }
-
 
 /**
  * Check for a local artist image file in the artist's music directory.
@@ -153,7 +154,6 @@ async function checkLocalArtistImage(
     }
     return null;
 }
-
 
 /**
  * An artist image in a folder above one of the artist's tracks (`relativeTrackPath`,
@@ -217,14 +217,5 @@ export function getResizedImagePath(nativePath: string, width: number): string |
 
     const relativePath = nativePath.replace("native:", "");
     const parsed = path.parse(relativePath);
-    const resizedRelative = path.join(parsed.dir, `${parsed.name}_w${width}.jpg`);
-    const basePath = getCoversBasePath();
-    const resolvedBase = path.resolve(basePath);
-    const fullPath = path.resolve(basePath, resizedRelative);
-
-    if (!fullPath.startsWith(resolvedBase + path.sep) && fullPath !== resolvedBase) {
-        return null;
-    }
-
-    return fullPath;
+    return resolveInCoversDir(path.join(parsed.dir, `${parsed.name}_w${width}.jpg`));
 }
