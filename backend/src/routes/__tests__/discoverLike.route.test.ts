@@ -107,7 +107,7 @@ const ACTIVE_DISCOVERY_ALBUM = {
     status: 'ACTIVE',
 };
 
-describe('POST /discover/like -- symmetric claim guard (Task 7 Step 5)', () => {
+describe('POST /discover/like -- symmetric claim guard', () => {
     let app: express.Application;
 
     beforeAll(() => {
@@ -143,20 +143,20 @@ describe('POST /discover/like -- symmetric claim guard (Task 7 Step 5)', () => {
 
         const res = await request(app).post('/discover/like').send({ albumId: ALBUM_ID });
 
-        // DISCRIMINATOR 1: the legacy bare update({where:{id}}) would have
-        // overwritten DELETED->LIKED and returned 200. The claim guard returns 409.
+        // A bare update({where:{id}}) would overwrite DELETED->LIKED and return
+        // 200; the claim guard returns 409.
         expect(res.status).toBe(409);
         expect(res.body.code).toBe('ALBUM_GONE');
 
-        // DISCRIMINATOR 2: the claim where-clause must be gated on status:"ACTIVE",
-        // not {id} alone -- the missing status condition IS the resurrection bug.
+        // The claim must be gated on status:"ACTIVE", not {id} alone, or a
+        // deleted album could be resurrected.
         expect(prisma.discoveryAlbum.updateMany).toHaveBeenCalledWith({
             where: { id: 'da-1', status: 'ACTIVE' },
             data: { status: 'LIKED', likedAt: expect.any(Date) },
         });
 
-        // DISCRIMINATOR 3: the body short-circuits at the guard, so NONE of the
-        // post-claim side effects (Lidarr tag removal, OwnedAlbum upsert) may run.
+        // The handler stops at the guard: no post-claim side effect (Lidarr tag
+        // removal, OwnedAlbum upsert) may run.
         expect(mockRemoveDiscoveryTagByMbid).not.toHaveBeenCalled();
         expect(mockGetArtists).not.toHaveBeenCalled();
         expect(mockRemoveTagsFromArtist).not.toHaveBeenCalled();
@@ -177,7 +177,7 @@ describe('POST /discover/like -- symmetric claim guard (Task 7 Step 5)', () => {
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
 
-        // DISCRIMINATOR: the claim ran with the ACTIVE-gated conditional where.
+        // The claim ran with the ACTIVE-gated where.
         expect(prisma.discoveryAlbum.updateMany).toHaveBeenCalledWith({
             where: { id: 'da-1', status: 'ACTIVE' },
             data: { status: 'LIKED', likedAt: expect.any(Date) },
