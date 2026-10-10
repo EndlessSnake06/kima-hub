@@ -241,10 +241,7 @@ router.put("/workers", requireAuth, requireAdmin, async (req, res) => {
             });
         }
         
-        // Update SystemSettings
-        // upsert, not update: SystemSettings has no row until something writes
-        // one, so on a fresh install `update` threw and the endpoint answered
-        // 500 -- the worker count could never be changed on a new deployment.
+        // upsert: SystemSettings has no row on a fresh install.
         await prisma.systemSettings.upsert({
             where: { id: "default" },
             create: { id: "default", audioAnalyzerWorkers: workers },
@@ -319,10 +316,7 @@ router.put("/clap-workers", requireAuth, requireAdmin, async (req, res) => {
             });
         }
 
-        // Update SystemSettings
-        // upsert, not update: SystemSettings has no row until something writes
-        // one, so on a fresh install `update` threw and the endpoint answered
-        // 500 -- the worker count could never be changed on a new deployment.
+        // upsert: SystemSettings has no row on a fresh install.
         await prisma.systemSettings.upsert({
             where: { id: "default" },
             create: { id: "default", clapWorkers: workers },
@@ -373,13 +367,10 @@ router.post("/vibe/failure", async (req, res) => {
             return res.status(400).json({ error: "trackId is required" });
         }
 
-        // The stage record is the ONLY record of this failure:
-        // the failures API reads TrackStage for track stages, so no second
-        // EnrichmentFailure write happens here — two ledgers for one fact
-        // drifted apart until one was superseded.
-
-        // Record the CLAP worker's failure on the stage record's retry ladder, so it
-        // closes when the ladder runs out.
+        // The stage record is the only record of this failure: the failures API
+        // reads TrackStage for track stages, so no EnrichmentFailure row is written.
+        // Record the CLAP worker's failure on its retry ladder, so it closes when
+        // the ladder runs out.
         await recordStageFailure(
             trackId,
             "embedding",

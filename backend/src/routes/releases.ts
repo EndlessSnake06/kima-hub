@@ -1,5 +1,3 @@
-import { logger } from "../utils/logger";
-
 /**
  * Release Radar API
  *
@@ -9,6 +7,7 @@ import { logger } from "../utils/logger";
  */
 
 import { Router } from "express";
+import { logger } from "../utils/logger";
 import { lidarrService } from "../services/lidarr";
 import { prisma } from "../utils/db";
 import { ConfigurationError } from "../utils/errors";
@@ -18,6 +17,23 @@ import { z } from "zod";
 
 const router = Router();
 router.use(requireAuthOrToken);
+
+// Lidarr's Cover Art Archive address is empty for most unowned albums, so ask
+// the library's artwork providers instead.
+function withReleaseArtwork<
+    T extends { albumMbid?: string; artistName: string; title: string; coverUrl?: string | null },
+>(releases: T[]): Promise<T[]> {
+    return withAlbumArtwork(
+        releases,
+        (r) => ({
+            rgMbid: r.albumMbid,
+            artistName: r.artistName,
+            albumTitle: r.title,
+            candidateUrl: r.coverUrl,
+        }),
+        (r, coverUrl) => ({ ...r, coverUrl }),
+    );
+}
 
 interface ReleaseRadarResponse {
     upcoming: ReleaseItem[];
@@ -131,18 +147,7 @@ router.get("/radar", async (req, res) => {
             };
         });
 
-        // Lidarr's Cover Art Archive address is empty for most unowned albums, so ask
-        // the library's artwork providers instead.
-        const releases = await withAlbumArtwork(
-            rawReleases,
-            (r) => ({
-                rgMbid: r.albumMbid,
-                artistName: r.artistName,
-                albumTitle: r.title,
-                candidateUrl: r.coverUrl,
-            }),
-            (r, coverUrl) => ({ ...r, coverUrl }),
-        );
+        const releases = await withReleaseArtwork(rawReleases);
 
         // 6. Split into upcoming and recent
         const upcoming = releases
@@ -187,17 +192,7 @@ router.get("/upcoming", async (req, res) => {
             new Date(a.releaseDate).getTime() - new Date(b.releaseDate).getTime()
         );
 
-        // Same providers as the radar, for the same reason.
-        const checked = await withAlbumArtwork(
-            sorted,
-            (r) => ({
-                rgMbid: r.albumMbid,
-                artistName: r.artistName,
-                albumTitle: r.title,
-                candidateUrl: r.coverUrl,
-            }),
-            (r, coverUrl) => ({ ...r, coverUrl }),
-        );
+        const checked = await withReleaseArtwork(sorted);
 
         res.json({
             releases: checked,
@@ -239,17 +234,7 @@ router.get("/recent", async (req, res) => {
                 new Date(b.releaseDate).getTime() - new Date(a.releaseDate).getTime()
             );
 
-        // Same providers as the radar, for the same reason.
-        const checked = await withAlbumArtwork(
-            notInLibrary,
-            (r) => ({
-                rgMbid: r.albumMbid,
-                artistName: r.artistName,
-                albumTitle: r.title,
-                candidateUrl: r.coverUrl,
-            }),
-            (r, coverUrl) => ({ ...r, coverUrl }),
-        );
+        const checked = await withReleaseArtwork(notInLibrary);
 
         res.json({
             releases: checked,

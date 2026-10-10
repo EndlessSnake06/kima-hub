@@ -23,6 +23,7 @@ import { failureCause } from "../../utils/outcome";
 import pLimit from "p-limit";
 import { toAudioFeaturesDTO } from "../../utils/audioFeatures";
 import { resolveWithinMusicRoot } from "./trackPath";
+import { parseLimit } from "./paging";
 import { findArtistArtwork, withAlbumArtwork } from "../../services/artwork";
 import { LIBRARY_LOCATION } from "../../services/libraryFilters";
 import { editionlessKey } from "../../services/albumIdentity";
@@ -36,8 +37,6 @@ const ARTIST_SORT_MAP: Record<string, any> = {
   tracks: { totalTrackCount: "desc" as const },
 };
 
-const MAX_LIMIT = 10000;
-
 // The shape both artist-list branches return: the raw-SQL name-sort query
 // and the Prisma `select` below produce it independently.
 type ArtistListRow = {
@@ -50,6 +49,86 @@ type ArtistListRow = {
   discoveryAlbumCount: number;
   totalTrackCount: number;
 };
+
+type SimilarArtistSource = {
+  name: string;
+  mbid?: string | null;
+  match: number;
+};
+
+// Flags each similar artist that is in the library (with its owned album count)
+// and gives it an image: the library's own, else whatever findArtistArtwork finds.
+async function resolveSimilarArtists(similar: SimilarArtistSource[]) {
+  // normalizeArtistName writes normalizedName and folds accents and
+  // ampersands, so lowercasing alone would miss "Sigur Rós" or "Hall & Oates".
+  const similarNames = similar.map((s) => normalizeArtistName(s.name));
+  const similarMbids = similar
+    .map((s) => s.mbid)
+    .filter(Boolean) as string[];
+
+  const libraryMatches = await prisma.artist.findMany({
+    where: {
+      OR: [
+        { normalizedName: { in: similarNames } },
+        ...(similarMbids.length > 0 ? [{ mbid: { in: similarMbids } }] : []),
+      ],
+    },
+    select: {
+      id: true,
+      name: true,
+      normalizedName: true,
+      mbid: true,
+      heroUrl: true,
+      _count: {
+        select: {
+          albums: {
+            where: {
+              location: LIBRARY_LOCATION,
+              tracks: { some: {} },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const libraryByName = new Map(
+    libraryMatches.map((a) => [
+      a.normalizedName?.toLowerCase() || a.name.toLowerCase(),
+      a,
+    ]),
+  );
+  const libraryByMbid = new Map(
+    libraryMatches.filter((a) => a.mbid).map((a) => [a.mbid!, a]),
+  );
+
+  const imageLimit = pLimit(3);
+  return Promise.all(
+    similar.map((s) => imageLimit(async () => {
+      const libraryArtist =
+        (s.mbid && libraryByMbid.get(s.mbid)) ||
+        libraryByName.get(s.name.toLowerCase());
+
+      let image = libraryArtist?.heroUrl || null;
+      if (!image) {
+        image =
+          (await findArtistArtwork({ name: s.name, mbid: s.mbid || undefined }))
+            ?.url ?? null;
+      }
+
+      return {
+        id: libraryArtist?.id || s.name,
+        name: s.name,
+        mbid: s.mbid || null,
+        coverArt: image,
+        albumCount: 0,
+        ownedAlbumCount: libraryArtist?._count?.albums || 0,
+        weight: s.match,
+        inLibrary: !!libraryArtist,
+      };
+    })),
+  );
+}
 
 const router = Router();
 
@@ -92,7 +171,7 @@ router.get("/artists", async (req, res) => {
       sortBy = "name",
     } = req.query;
 
-    const limit = Math.min(parseInt(limitParam as string, 10) || 50, MAX_LIMIT);
+    const limit = parseLimit(limitParam, 50);
     const offset = parseInt(offsetParam as string, 10) || 0;
 
     const orderBy = ARTIST_SORT_MAP[sortBy as string] ?? {
@@ -639,86 +718,7 @@ router.get("/artists/:id", async (req, res) => {
         `[Artist] Using ${enrichedSimilar.length} similar artists from enriched JSON`,
       );
 
-      // normalizeArtistName writes normalizedName and folds accents and
-      // ampersands, so lowercasing alone would miss "Sigur Rós" or "Hall & Oates".
-      const similarNames = enrichedSimilar
-        .slice(0, 10)
-        .map((s) => normalizeArtistName(s.name));
-      const similarMbids = enrichedSimilar
-        .slice(0, 10)
-        .map((s) => s.mbid)
-        .filter(Boolean) as string[];
-
-      const libraryMatches = await prisma.artist.findMany({
-        where: {
-          OR: [
-            { normalizedName: { in: similarNames } },
-            ...(similarMbids.length > 0
-              ? [{ mbid: { in: similarMbids } }]
-              : []),
-          ],
-        },
-        select: {
-          id: true,
-          name: true,
-          normalizedName: true,
-          mbid: true,
-          heroUrl: true,
-          _count: {
-            select: {
-              albums: {
-                where: {
-                  location: LIBRARY_LOCATION,
-                  tracks: { some: {} },
-                },
-              },
-            },
-          },
-        },
-      });
-
-      const libraryByName = new Map(
-        libraryMatches.map((a) => [
-          a.normalizedName?.toLowerCase() || a.name.toLowerCase(),
-          a,
-        ]),
-      );
-      const libraryByMbid = new Map(
-        libraryMatches.filter((a) => a.mbid).map((a) => [a.mbid!, a]),
-      );
-
-      const deezerLimit = pLimit(3);
-      const similarWithImages = await Promise.all(
-        enrichedSimilar.slice(0, 10).map((s) => deezerLimit(async () => {
-          const libraryArtist =
-            (s.mbid && libraryByMbid.get(s.mbid)) ||
-            libraryByName.get(s.name.toLowerCase());
-
-          let image = libraryArtist?.heroUrl || null;
-
-          // Asked Deezer and nothing else, behind its own ad-hoc cache. Both
-          // jobs now belong to findArtistArtwork, which tries every source and
-          // keeps one cache for all of them.
-          if (!image) {
-            image =
-              (await findArtistArtwork({ name: s.name, mbid: s.mbid || undefined }))
-                ?.url ?? null;
-          }
-
-          return {
-            id: libraryArtist?.id || s.name,
-            name: s.name,
-            mbid: s.mbid || null,
-            coverArt: image,
-            albumCount: 0,
-            ownedAlbumCount: libraryArtist?._count?.albums || 0,
-            weight: s.match,
-            inLibrary: !!libraryArtist,
-          };
-        })),
-      );
-
-      similarArtists = similarWithImages;
+      similarArtists = await resolveSimilarArtists(enrichedSimilar.slice(0, 10));
     } else {
       const cachedSimilar = await redisClient.get(similarCacheKey);
       if (cachedSimilar && cachedSimilar !== "NOT_FOUND") {
@@ -740,81 +740,7 @@ router.get("/artists/:id", async (req, res) => {
             10,
           );
 
-          const similarNames = similar.map((s) =>
-            normalizeArtistName(s.name),
-          );
-          const similarMbids = similar
-            .map((s) => s.mbid)
-            .filter(Boolean) as string[];
-
-          const libraryMatches = await prisma.artist.findMany({
-            where: {
-              OR: [
-                { normalizedName: { in: similarNames } },
-                ...(similarMbids.length > 0
-                  ? [{ mbid: { in: similarMbids } }]
-                  : []),
-              ],
-            },
-            select: {
-              id: true,
-              name: true,
-              normalizedName: true,
-              mbid: true,
-              heroUrl: true,
-              _count: {
-                select: {
-                  albums: {
-                    where: {
-                      location: LIBRARY_LOCATION,
-                      tracks: { some: {} },
-                    },
-                  },
-                },
-              },
-            },
-          });
-
-          const libraryByName = new Map(
-            libraryMatches.map((a) => [
-              a.normalizedName?.toLowerCase() || a.name.toLowerCase(),
-              a,
-            ]),
-          );
-          const libraryByMbid = new Map(
-            libraryMatches.filter((a) => a.mbid).map((a) => [a.mbid!, a]),
-          );
-
-          const sourceLimit = pLimit(3);
-          const similarWithImages = await Promise.all(
-            similar.map((s) => sourceLimit(async () => {
-              const libraryArtist =
-                (s.mbid && libraryByMbid.get(s.mbid)) ||
-                libraryByName.get(s.name.toLowerCase());
-
-              let image = libraryArtist?.heroUrl || null;
-
-              // Same as above: every source, not just Deezer.
-              if (!image) {
-                image =
-                  (await findArtistArtwork({ name: s.name, mbid: s.mbid || undefined }))
-                    ?.url ?? null;
-              }
-
-              return {
-                id: libraryArtist?.id || s.name,
-                name: s.name,
-                mbid: s.mbid || null,
-                coverArt: image,
-                albumCount: 0,
-                ownedAlbumCount: libraryArtist?._count?.albums || 0,
-                weight: s.match,
-                inLibrary: !!libraryArtist,
-              };
-            })),
-          );
-
-          similarArtists = similarWithImages;
+          similarArtists = await resolveSimilarArtists(similar);
 
           await redisClient.setex(
             similarCacheKey,

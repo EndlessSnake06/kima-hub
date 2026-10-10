@@ -28,10 +28,6 @@ const loginSchema = z.object({
     password: z.string().min(1),
 });
 
-// Use shared encryption module for 2FA secrets
-const encrypt2FASecret = encrypt;
-const decrypt2FASecret = decrypt;
-
 // POST /auth/login
 router.post("/login", async (req, res) => {
     try {
@@ -64,7 +60,7 @@ router.post("/login", async (req, res) => {
 
             if (isRecoveryCode && user.twoFactorRecoveryCodes) {
                 const encryptedCodes = user.twoFactorRecoveryCodes;
-                const decryptedCodes = decrypt2FASecret(encryptedCodes);
+                const decryptedCodes = decrypt(encryptedCodes);
                 const hashedCodes = decryptedCodes.split(",");
 
                 const providedHash = crypto
@@ -83,14 +79,14 @@ router.post("/login", async (req, res) => {
                 await prisma.user.update({
                     where: { id: user.id },
                     data: {
-                        twoFactorRecoveryCodes: encrypt2FASecret(
+                        twoFactorRecoveryCodes: encrypt(
                             hashedCodes.join(",")
                         ),
                     },
                 });
             } else {
                 // Verify TOTP token
-                const secret = decrypt2FASecret(user.twoFactorSecret);
+                const secret = decrypt(user.twoFactorSecret);
                 const verified = speakeasy.totp.verify({
                     secret,
                     encoding: "base32",
@@ -461,12 +457,12 @@ router.post("/2fa/enable", requireAuth, authLimiter, async (req, res) => {
         }
 
         // Encrypt the hashed codes for storage
-        const encryptedRecoveryCodes = encrypt2FASecret(
+        const encryptedRecoveryCodes = encrypt(
             hashedRecoveryCodes.join(",")
         );
 
         // Encrypt and save the secret
-        const encryptedSecret = encrypt2FASecret(secret);
+        const encryptedSecret = encrypt(secret);
         await prisma.user.update({
             where: { id: req.user!.id },
             data: {
@@ -515,7 +511,7 @@ router.post("/2fa/disable", requireAuth, authLimiter, async (req, res) => {
 
         // Verify 2FA token
         if (user.twoFactorSecret) {
-            const secret = decrypt2FASecret(user.twoFactorSecret);
+            const secret = decrypt(user.twoFactorSecret);
             const verified = speakeasy.totp.verify({
                 secret,
                 encoding: "base32",
