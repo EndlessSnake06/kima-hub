@@ -8,7 +8,6 @@ test.describe("Library", () => {
 
     test("home page loads with library stats", async ({ page }) => {
         await page.goto("/");
-        // Should show some indication of library content
         await expect(page.locator("body")).toContainText(/artist|album|track|library/i);
     });
 
@@ -54,7 +53,6 @@ test.describe("Library", () => {
     test("search page accessible", async ({ page }) => {
         await page.goto("/search");
 
-        // Search page should load
         await expect(page.locator("body")).toBeVisible();
         await expect(page).toHaveURL(/search/);
     });

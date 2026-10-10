@@ -20,8 +20,8 @@
     "test:predeploy:headed": "playwright test tests/e2e/predeploy --headed",
     "analyze": "ANALYZE=true next build --webpack",
     "test:unit": "vitest run",
-    "test:dogfood": "playwright test tests/e2e/dogfood --reporter=list",
-    "test:dogfood:headed": "playwright test tests/e2e/dogfood --headed --reporter=list"
+    "test:dogfood": "playwright test tests/e2e/dogfood/walkthrough.spec.ts --reporter=list",
+    "test:dogfood:headed": "playwright test tests/e2e/dogfood/walkthrough.spec.ts --headed --reporter=list"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",

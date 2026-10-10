@@ -1,7 +1,6 @@
 #!/bin/sh
 # Download Essentia's MusiCNN model and its ten heads into $1 and check each
-# against models.sha256. essentia.upf.edu is intermittently unreachable (an HTTP
-# 200, a connection failure and an SSL handshake error minutes apart), so every
+# against models.sha256. essentia.upf.edu is intermittently unreachable, so every
 # file gets five tries; -f keeps an error page from being saved as a model.
 set -e
 here="$(cd "$(dirname "$0")" && pwd)"

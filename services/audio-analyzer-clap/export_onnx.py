@@ -9,7 +9,6 @@ import argparse
 import os
 import hashlib
 import torch
-import transformers
 from transformers import ClapAudioModelWithProjection
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -64,7 +63,8 @@ def main():
     )
 
     size = os.path.getsize(OUT)
-    digest = hashlib.sha256(open(OUT, "rb").read()).hexdigest()
+    with open(OUT, "rb") as f:
+        digest = hashlib.sha256(f.read()).hexdigest()
     assert digest == EXPECTED_SHA256, (
         f"export sha256 mismatch: {digest} != {EXPECTED_SHA256} ({OUT})"
     )

@@ -1,12 +1,12 @@
 # Contributing to Kima
 
-First off, thanks for taking the time to contribute! 🎉
+First off, thanks for taking the time to contribute!
 
 ## Getting Started
 
 1. Fork the repository
 2. Clone your fork locally
-3. Set up the development environment (see README.md)
+3. Set up the development environment (see docs/development.md)
 4. Create a new branch from `main` for your changes
 
 ## Branch Strategy

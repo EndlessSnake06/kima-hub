@@ -30,9 +30,9 @@ PATCH_SECONDS = ((PATCH_FRAMES - 1) * HOP_SIZE + FRAME_SIZE) / 16000.0
 EMBEDDING_SIZE = 200
 
 # Patches per model call. One call over a whole 90 s track (59 patches) held 2.4-3.9 GB per worker
-# process in ONNX Runtime's memory pool and was slower. On four library tracks: CPU 1 patch 1.71 s a
-# track and 129 MB, GPU 4 patches 108 ms. Every call
-# has the same shape (the last group is padded), so the pool stays at one size.
+# process in ONNX Runtime's memory pool and was slower. On four library tracks: CPU at 1 patch takes
+# 1.71 s a track and 129 MB, GPU at 4 patches 108 ms. Every call has the same shape (the last group
+# is padded), so the pool stays at one size.
 CPU_GROUP = 1
 GPU_GROUP = 4
 
@@ -128,11 +128,11 @@ class MusicnnBody:
 
 
 class MusicnnServer:
-    """One GPU session for every analysis worker process. Each worker opening its own held about
-    406 MB of GPU memory and 1.1 GB of RAM in GPU libraries, so 16 workers
-    would fill an 8 GB card. Workers connect over a socket only this user can open and send a
-    track's patches. One thread makes every GPU call: ONNX Runtime gives each calling thread its
-    own GPU workspace, and 16 calling threads held 2.4 GB."""
+    """One GPU session for every analysis worker process: a session per worker held about 406 MB
+    of GPU memory and 1.1 GB of RAM in GPU libraries, so 16 workers would fill an 8 GB card.
+    Workers connect over a socket only this user can open and send a track's patches. One thread
+    makes every GPU call: ONNX Runtime gives each calling thread its own GPU workspace, and 16
+    calling threads held 2.4 GB."""
 
     def __init__(self, body: MusicnnBody):
         self.body = body

@@ -6,7 +6,7 @@ import { loginAsTestUser, getAuthToken } from "./fixtures/test-helpers";
 // memory monitoring.
 
 const POLL_INTERVAL_MS = 10_000;
-const ENRICHMENT_TIMEOUT_MS = 45 * 60 * 1000; // 45 minutes
+const ENRICHMENT_TIMEOUT_MS = 45 * 60 * 1000;
 
 type EnrichmentStatus = {
     status: string;
@@ -66,15 +66,13 @@ async function waitForEnrichment(
     );
 }
 
-// ---------------------------------------------------------------------------
-
 test.describe("Enrichment Cycle", () => {
     test.beforeEach(async ({ page }) => {
         await loginAsTestUser(page);
     });
 
     test("wipe and re-enrich: system is functional after full enrichment cycle", async ({ page }) => {
-        test.setTimeout(55 * 60 * 1000); // 55-minute per-test timeout
+        test.setTimeout(55 * 60 * 1000);
 
         const token = await getAuthToken(page);
 
@@ -84,7 +82,6 @@ test.describe("Enrichment Cycle", () => {
         });
         await page.waitForTimeout(2_000);
 
-        // Wipe all enrichment data
         const resetRes = await page.request.post("/api/enrichment/reset-all", {
             headers: { Authorization: `Bearer ${token}` },
         });
@@ -110,14 +107,12 @@ test.describe("Enrichment Cycle", () => {
         const resetStatus = (await statusAfterReset.json()) as EnrichmentStatus;
         expect(resetStatus.completionNotificationSent).toBeFalsy();
 
-        // Start full enrichment
         const startRes = await page.request.post("/api/enrichment/full", {
             headers: { Authorization: `Bearer ${token}` },
         });
         expect(startRes.ok()).toBe(true);
         console.log("Full enrichment started");
 
-        // Poll until enrichment completes
         const finalStatus = await waitForEnrichment(page, token, ENRICHMENT_TIMEOUT_MS);
 
         console.log(
@@ -144,9 +139,8 @@ test.describe("Enrichment Cycle", () => {
         expect(Array.isArray(vibeData.tracks)).toBe(true);
         expect(vibeData.tracks.length).toBeGreaterThan(0);
 
-        // 3. Vibe search should return results for at least one music descriptor.
-        //    "music" is too generic (below the 0.4 similarity threshold), so probe
-        //    several descriptors and require at least one to return results.
+        // 3. Vibe search returns the nearest tracks with no cut-off; probe several
+        //    descriptors and require at least one to return results.
         const searchCandidates = ["rock", "pop", "electronic", "loud", "bright", "guitar", "fast", "sad", "piano"];
         let searchHit = false;
         for (const q of searchCandidates) {

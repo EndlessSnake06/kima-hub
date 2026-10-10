@@ -11,11 +11,19 @@ import type {
 } from "./audio-engine-policy";
 import { initialSnapshot, transition } from "./audio-engine-policy";
 
+type ListenerStore = Array<{ event: string; handler: EventListener }>;
 
 type ExternalEvent = "ended" | "timeupdate" | "canplay" | "seeked" | "error" | "gapless-advance";
 type ExternalCallback = (data?: unknown) => void;
 
 const TICKER_INTERVAL_MS = 1000;
+
+function listenerAdder(el: HTMLAudioElement, store: ListenerStore) {
+    return (event: string, handler: EventListener) => {
+        el.addEventListener(event, handler);
+        store.push({ event, handler });
+    };
+}
 
 export class AudioController {
     // ACTIVE element -- drives the reducer, emits external events.
@@ -34,8 +42,8 @@ export class AudioController {
     private externalListeners: Map<ExternalEvent, Set<ExternalCallback>> = new Map();
 
     // Native element listeners for cleanup -- one store per owned element.
-    private nativeListeners: Array<{ event: string; handler: EventListener }> = [];
-    private nativeListenersNext: Array<{ event: string; handler: EventListener }> = [];
+    private nativeListeners: ListenerStore = [];
+    private nativeListenersNext: ListenerStore = [];
 
     // Gapless preload bookkeeping. `expectedNext*` is set by the
     // React layer once it knows what's next; `preloadedTrackId`/`idleReady`
@@ -46,7 +54,6 @@ export class AudioController {
     private preloadedTrackId: string | null = null;
     private idleReady = false;
 
-    // Timers keyed by TimerId
     private timers: Map<TimerId, ReturnType<typeof setTimeout>> = new Map();
 
     // 1s ticker
@@ -528,23 +535,8 @@ export class AudioController {
         // tearing down the old elements dispatch into the live engine mid-rebuild.
         this.detachNativeListeners(this.audio, this.nativeListeners);
         this.detachNativeListeners(this.audioNext, this.nativeListenersNext);
-        this.audio.pause();
-        this.audio.removeAttribute("src");
-        this.audio.load();
-        try {
-            this.audio.remove();
-        } catch {
-            // Element already detached
-        }
-
-        this.audioNext.pause();
-        this.audioNext.removeAttribute("src");
-        this.audioNext.load();
-        try {
-            this.audioNext.remove();
-        } catch {
-            // Element already detached
-        }
+        this.discardElement(this.audio);
+        this.discardElement(this.audioNext);
 
         if (this.audioContextStateHandler) {
             this.audioContext?.removeEventListener("statechange", this.audioContextStateHandler);
@@ -594,12 +586,9 @@ export class AudioController {
     // after a later gapless swap repoints `this.audio` elsewhere.
     private attachNativeListeners(
         el: HTMLAudioElement,
-        store: Array<{ event: string; handler: EventListener }>,
+        store: ListenerStore,
     ): void {
-        const add = (event: string, handler: EventListener) => {
-            el.addEventListener(event, handler);
-            store.push({ event, handler });
-        };
+        const add = listenerAdder(el, store);
 
         add("playing", () => {
             iosAudioLog("playing", "audio-controller:listeners", el);
@@ -663,9 +652,8 @@ export class AudioController {
             });
         });
 
-        // NOTE: "stalled" is intentionally NOT forwarded to the policy.
-        // Production calibration: 1094 stalled events in the 2.5-day iOS trace,
-        // all during healthy playback with readyState=4. Pure noise on iOS.
+        // "stalled" is not forwarded to the policy: on iOS it fires during
+        // healthy playback (readyState 4), so it carries no signal.
     }
 
     // IDLE element gets a minimal listener set -- it never drives the
@@ -673,12 +661,9 @@ export class AudioController {
     // clears the preload so a stale/broken buffer can never be swapped in.
     private attachIdleListeners(
         el: HTMLAudioElement,
-        store: Array<{ event: string; handler: EventListener }>,
+        store: ListenerStore,
     ): void {
-        const add = (event: string, handler: EventListener) => {
-            el.addEventListener(event, handler);
-            store.push({ event, handler });
-        };
+        const add = listenerAdder(el, store);
 
         add("canplay", () => {
             this.idleReady = true;
@@ -690,9 +675,20 @@ export class AudioController {
         });
     }
 
+    private discardElement(el: HTMLAudioElement): void {
+        el.pause();
+        el.removeAttribute("src");
+        el.load();
+        try {
+            el.remove();
+        } catch {
+            // Element already detached
+        }
+    }
+
     private detachNativeListeners(
         el: HTMLAudioElement,
-        store: Array<{ event: string; handler: EventListener }>,
+        store: ListenerStore,
     ): void {
         for (const { event, handler } of store) {
             el.removeEventListener(event, handler);
@@ -777,7 +773,7 @@ export class AudioController {
         this.audioNext.pause();
         this.audioNext.removeAttribute("src");
         this.audioNext.load();
-        // Sync volume/mute onto the reused idle element (FIX B) so the NEXT
+        // Sync volume/mute onto the reused idle element so the NEXT
         // swap carries no jump even if setVolume/setMuted fired in between.
         this.audioNext.volume = this.isMuted ? 0 : this.volume;
         this.audioNext.muted = this.isMuted;
@@ -932,13 +928,11 @@ export class AudioController {
     cleanup(): void {
         this.dispatch({ type: "cleanup", now: Date.now() });
 
-        // Cancel all pending timers
         for (const [, handle] of this.timers) {
             clearTimeout(handle);
         }
         this.timers.clear();
 
-        // Element teardown
         this.audio.pause();
         this.audio.removeAttribute("src");
         this.audio.load();
@@ -960,7 +954,6 @@ export class AudioController {
             this.tickerInterval = null;
         }
 
-        // Bridge teardown
         if (this.audioContext) {
             if (this.audioContextStateHandler) {
                 this.audioContext.removeEventListener("statechange", this.audioContextStateHandler);
@@ -974,23 +967,8 @@ export class AudioController {
 
         // Owned-element teardown -- the controller appended these itself, so
         // it must remove them here too.
-        this.audio.pause();
-        this.audio.removeAttribute("src");
-        this.audio.load();
-        try {
-            this.audio.remove();
-        } catch {
-            // Element already detached
-        }
-
-        this.audioNext.pause();
-        this.audioNext.removeAttribute("src");
-        this.audioNext.load();
-        try {
-            this.audioNext.remove();
-        } catch {
-            // Element already detached
-        }
+        this.discardElement(this.audio);
+        this.discardElement(this.audioNext);
 
         this.subscribers.clear();
     }

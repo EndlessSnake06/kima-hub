@@ -34,7 +34,6 @@ function effectsOf(effects: Effect[], kind: Effect["kind"]): Effect[] {
     return effects.filter((e) => e.kind === kind);
 }
 
-
 // Build a minimal "playing" snapshot.
 function playingSnap(overrides: Partial<EngineSnapshot> = {}): EngineSnapshot {
     return snap({
@@ -121,10 +120,10 @@ describe("table test: every (status x event) pair produces a defined status", ()
 });
 
 // ---------------------------------------------------------------------------
-// R1 invariant: paused element is never a stall
+// A paused element is never a stall
 // ---------------------------------------------------------------------------
 
-describe("R1 invariant: entering paused always idles the ladder", () => {
+describe("entering paused always idles the ladder", () => {
     const PAUSE_EVENTS: EngineEvent[] = [
         { type: "pause-requested", cls: "user", now: NOW },
         { type: "pause-requested", cls: "system", now: NOW },
@@ -545,7 +544,7 @@ describe("native-ended: truncated vs honest", () => {
 });
 
 // ---------------------------------------------------------------------------
-// native-ended: server-reported duration as a second "honest end" signal (R1.1)
+// native-ended: server-reported duration as a second "honest end" signal
 // ---------------------------------------------------------------------------
 
 describe("native-ended: expectedDurationS honesty (VBR-MP3 unreliable element duration)", () => {
@@ -1263,7 +1262,7 @@ describe("foreground: resumeOnForeground=false -> claim-session only, no blocked
 });
 
 // ---------------------------------------------------------------------------
-// silent-playback-detected: running-but-silent safety net (C3)
+// silent-playback-detected: running-but-silent safety net
 // ---------------------------------------------------------------------------
 
 describe("silent-playback-detected", () => {
@@ -1368,7 +1367,7 @@ describe("gapless-swapped", () => {
         expect(base).toEqual(frozen);
     });
 
-    it("resets a stale resumeOnForeground/pauseClass left by the native-pause that always precedes ended (FIX 2)", () => {
+    it("resets a stale resumeOnForeground/pauseClass left by the native-pause that always precedes ended", () => {
         // A native `pause` fires immediately before every `ended` and sets
         // these via the native-pause transition -- gapless-swapped must clear
         // them or a later `foreground` would force a spurious "blocked" onto

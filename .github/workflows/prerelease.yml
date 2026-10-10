@@ -1,21 +1,10 @@
 name: Pre-release Image
 
-# A pre-release image you push on purpose, not on a timer.
-#
-# This replaces the old nightly build, which pushed a two-architecture image to
-# Docker Hub every single night whether anything had changed or not -- and which
-# then failed eleven nights running without anyone noticing, because nothing
-# watched it and it opened no issue.
-#
-# Two ways in: push the branch named `prerelease`, or press Run workflow on the
-# Actions tab. Either way the image goes ONLY to this repository's GitHub
-# Container Registry. Docker Hub is the public release channel and stays
-# reserved for version tags -- see docker-publish.yml.
-#
-# It builds BOTH architectures deliberately. The ARM leg is the fragile one: it
-# compiles PyTorch from source whenever a prebuilt wheel is missing, and that is
-# exactly what breaks a release build while the Intel leg looks fine. Proving
-# ARM here, before you tag, is the whole reason this workflow exists.
+# A pre-release image, pushed on purpose: push the `prerelease` branch or press
+# Run workflow on the Actions tab. The image goes only to this repository's
+# GitHub Container Registry; Docker Hub is reserved for version tags
+# (docker-publish.yml). Both architectures are built so a release tag cut from
+# the same commit is known to build on ARM as well.
 
 on:
     push:
@@ -49,8 +38,8 @@ jobs:
                   OWNER="${{ github.repository_owner }}"
                   echo "GHCR_IMAGE=ghcr.io/${OWNER,,}/kima" >> $GITHUB_ENV
 
-            # The image carries PyTorch, twelve ML models and a full Postgres,
-            # so a default runner runs out of disk partway through the build.
+            # The image carries the ML models and a full Postgres, so a default
+            # runner runs out of disk partway through the build.
             - name: Free up disk space
               run: |
                   sudo rm -rf /usr/share/dotnet
@@ -95,8 +84,8 @@ jobs:
                   file: ./Dockerfile
                   push: true
                   tags: ${{ steps.tags.outputs.list }}
-                  # Makes the running app show "1.10.0-prerelease" rather than a
-                  # bare version, so nobody mistakes one for a release.
+                  # The running app shows "<version>-prerelease" so it is never
+                  # mistaken for a release.
                   build-args: |
                       NEXT_PUBLIC_BUILD_TYPE=prerelease
                   labels: |

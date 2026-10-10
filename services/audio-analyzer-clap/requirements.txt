@@ -3,9 +3,8 @@
 librosa==0.11.0
 soundfile==0.14.0
 
-# ONNX runtime powering both CLAP encoders (audio + text) under
-# CLAP_BACKEND=onnx. NOT optional: analyzer.py imports onnx_backend at module
-# load, and an image without this silently fell back to torch (the Sep-2026
+# ONNX Runtime runs both CLAP encoders (audio and text). Not optional: analyzer.py imports
+# onnx_backend at module load.
 onnxruntime==1.30.0
 
 # transformers supplies what the ONNX backends need and nothing more: the

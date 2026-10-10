@@ -15,7 +15,6 @@ import {
     Volume2,
     VolumeX,
     Maximize2,
-    Music as MusicIcon,
     Shuffle,
     Repeat,
     Repeat1,
@@ -36,8 +35,7 @@ import { SeekSlider } from "./SeekSlider";
 import { SleepTimer } from "./SleepTimer";
 import { useLyricsToggle } from "@/hooks/useLyricsToggle";
 import { VibeToggleButton } from "./VibeToggleButton";
-import { CachedImage } from "@/components/ui/CachedImage";
-
+import { PlayerCover } from "@/components/player/PlayerCover";
 
 export function FullPlayer() {
     // Use split contexts to avoid re-rendering on every currentTime update
@@ -87,7 +85,6 @@ export function FullPlayer() {
         return computeVibeMatchScore(activeOperation.sourceFeatures, currentTrackFeatures);
     }, [activeOperation, currentTrackFeatures]);
 
-
     const { title, subtitle, coverUrl, artistLink, mediaLink, hasMedia } = useMediaInfo(100);
     const shuffle = shuffleState(hasMedia, playbackType, activeOperation.type);
 
@@ -103,34 +100,13 @@ export function FullPlayer() {
                 <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-brand/40 to-transparent" />
                 <div className="flex items-center h-full px-6 gap-6">
                     <div className="flex items-center gap-4 w-80">
-                        {mediaLink ? (
-                            <Link
-                                href={mediaLink}
-                                className="relative w-14 h-14 flex-shrink-0"
-                            >
-                                <div className={cn("relative w-full h-full bg-gradient-to-br from-[#2a2a2a] to-[#1a1a1a] rounded-lg overflow-hidden flex items-center justify-center", "transition-transform duration-300", isPlaying && "scale-[1.03]")}>
-                                    {coverUrl ? (
-                                        <CachedImage
-                                            key={coverUrl}
-                                            src={coverUrl}
-                                            alt={title}
-                                            fill
-                                            sizes="56px"
-                                            className="object-cover"
-                                            priority
-                                        />
-                                    ) : (
-                                        <MusicIcon className="w-6 h-6 text-[var(--text-muted)]" />
-                                    )}
-                                </div>
-                            </Link>
-                        ) : (
-                            <div className="relative w-14 h-14 flex-shrink-0">
-                                <div className={cn("relative w-full h-full bg-gradient-to-br from-[#2a2a2a] to-[#1a1a1a] rounded-lg overflow-hidden flex items-center justify-center", "transition-transform duration-300", isPlaying && "scale-[1.03]")}>
-                                    <MusicIcon className="w-6 h-6 text-[var(--text-muted)]" />
-                                </div>
-                            </div>
-                        )}
+                        <PlayerCover
+                            href={mediaLink}
+                            coverUrl={coverUrl}
+                            title={title}
+                            isPlaying={isPlaying}
+                            className="w-14 h-14"
+                        />
                         <div className="flex-1 min-w-0">
                             {mediaLink ? (
                                 <Link

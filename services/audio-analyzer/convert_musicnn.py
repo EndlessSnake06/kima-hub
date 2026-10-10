@@ -66,7 +66,7 @@ def gate(onnx_dir: str, answers: str) -> None:
     try:
         cosine = embedding_cosine(onnx_models.body.run, answers)
     except ValueError as e:
-        raise SystemExit(f'MusiCNN gate: {e}')
+        raise SystemExit(f'MusiCNN gate: {e}') from e
     if cosine < MIN_COSINE:
         raise SystemExit(f'MusiCNN gate: embedding cosine {cosine:.7f} < {MIN_COSINE}')
     for head in onnx_models.heads():

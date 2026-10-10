@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, Page } from "@playwright/test";
 import {
     loginAsTestUser,
     startPlayingFirstAlbum,
@@ -6,26 +6,26 @@ import {
     waitForSrcChange,
 } from "./fixtures/test-helpers";
 
+/** Opens the queue through the sidebar link: page.goto reloads the page and wipes the in-memory queue. */
+async function openQueueByClick(page: Page): Promise<void> {
+    await page.getByRole("link", { name: "Queue" }).click();
+    await page.waitForURL(/\/queue/);
+}
+
 test.describe("Queue", () => {
     test.beforeEach(async ({ page }) => {
         await loginAsTestUser(page);
     });
 
     test("Add to queue button appends track to up-next list", async ({ page }) => {
-        // Start an album so the queue is populated. We land on the album page.
         await startPlayingFirstAlbum(page);
 
-        // Hover the first track row to reveal the Add to queue button, then click it.
-        // We are already on the album page -- no need to re-navigate.
         const firstTrackRow = page.locator("[data-track-row]").first();
         await firstTrackRow.waitFor({ timeout: 10_000 });
         await firstTrackRow.hover();
         await firstTrackRow.getByLabel("Add to queue").click();
 
-        // Navigate to the queue page via the sidebar Queue link (client-side
-        // navigation) so React state -- including the queue -- is preserved.
-        await page.getByRole("link", { name: "Queue" }).click();
-        await page.waitForURL(/\/queue/);
+        await openQueueByClick(page);
 
         // "Next Up" section must appear since the album has multiple tracks ahead
         await expect(page.getByText(/Next Up/)).toBeVisible({ timeout: 5_000 });
@@ -34,12 +34,8 @@ test.describe("Queue", () => {
     test("queue page loads with Now Playing section when track is active", async ({ page }) => {
         await startPlayingFirstAlbum(page);
 
-        // Client-side nav via the sidebar Queue link to preserve React queue state
-        // (page.goto reloads the page and wipes in-memory queue context)
-        await page.getByRole("link", { name: "Queue" }).click();
-        await page.waitForURL(/\/queue/);
+        await openQueueByClick(page);
 
-        // Should show "Now Playing" heading since a track is active
         await expect(page.getByRole("heading", { name: "Now Playing" })).toBeVisible({ timeout: 5_000 });
     });
 
@@ -54,20 +50,16 @@ test.describe("Queue", () => {
     });
 
     test("Play now jumps to selected queue item", async ({ page }) => {
-        // Start album (populates queue with multiple tracks)
         await startPlayingFirstAlbum(page);
 
         const srcBefore = await getAudioSrc(page);
 
-        // Client-side nav to preserve queue state in React context
-        await page.getByRole("link", { name: "Queue" }).click();
-        await page.waitForURL(/\/queue/);
+        await openQueueByClick(page);
         // Each queued row has "Play <title>"; the player's own button is plain "Play"/"Pause".
         const playNowButtons = page.getByRole("button", { name: /^Play .+/ });
         await expect(playNowButtons.first(), "a started album leaves tracks up next").toBeAttached({ timeout: 5_000 });
         await playNowButtons.first().click();
 
-        // Audio source should change since we skipped to a different track
         const srcAfter = await waitForSrcChange(page, srcBefore, 8_000);
         expect(srcAfter).not.toBe(srcBefore);
     });
@@ -75,8 +67,7 @@ test.describe("Queue", () => {
     test("Remove removes item from queue", async ({ page }) => {
         await startPlayingFirstAlbum(page);
 
-        await page.getByRole("link", { name: "Queue" }).click();
-        await page.waitForURL(/\/queue/);
+        await openQueueByClick(page);
 
         const removeButtons = page.getByRole("button", { name: /^Remove .+ from queue$/ });
         await expect(removeButtons.first(), "a started album leaves tracks up next").toBeAttached({ timeout: 5_000 });
@@ -90,8 +81,7 @@ test.describe("Queue", () => {
     test("Move up reorders queue item", async ({ page }) => {
         await startPlayingFirstAlbum(page);
 
-        await page.getByRole("link", { name: "Queue" }).click();
-        await page.waitForURL(/\/queue/);
+        await openQueueByClick(page);
 
         const moveUpButtons = page.getByRole("button", { name: /^Move .+ up$/, disabled: false });
         await expect(moveUpButtons.first(), "the second track up next can move up").toBeAttached({ timeout: 5_000 });
@@ -114,9 +104,7 @@ test.describe("Queue", () => {
     test("Clear queue empties the up-next list", async ({ page }) => {
         await startPlayingFirstAlbum(page);
 
-        // Navigate via sidebar Queue link (client-side nav) to keep React state
-        await page.getByRole("link", { name: "Queue" }).click();
-        await page.waitForURL(/\/queue/);
+        await openQueueByClick(page);
 
         // Clear queue only appears when queue.length > 0, and asks before clearing
         const clearBtn = page.getByRole("button", { name: "Clear queue" });
@@ -124,7 +112,6 @@ test.describe("Queue", () => {
         await clearBtn.click();
         await page.getByRole("dialog", { name: "Clear the queue?" }).getByRole("button", { name: "Clear queue" }).click();
 
-        // Up Next section should disappear (or show empty state)
         await expect(page.getByText("No tracks in queue")).toBeVisible({ timeout: 5_000 });
     });
 });

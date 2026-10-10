@@ -38,7 +38,6 @@ export function InlineStatus({
         setVisible(status !== "idle");
     }
 
-    // Auto-clear success/error after delay
     useEffect(() => {
         if ((status === "success" || status === "error") && autoClear) {
             const timer = setTimeout(() => {

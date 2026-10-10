@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { api, NetworkError } from "../api";
 
-// 401 → refresh: network error, refresh rejected, or refreshed. Runs under the
-// node environment, so window and localStorage are stubbed; `api` is built at
-// import, so its in-memory token is set directly.
+// 401 → refresh: network error, refresh rejected, or refreshed. window and
+// localStorage are stubbed; `api` is built at import, so its in-memory token
+// is set directly.
 
 type ApiClientInternals = { token: string | null };
 
@@ -44,7 +44,7 @@ afterEach(() => {
     (api as unknown as ApiClientInternals).token = null;
 });
 
-describe("ApiClient.request -- 401 refresh three-way (C6)", () => {
+describe("ApiClient.request -- 401 refresh three-way", () => {
     it("refresh network-error -> throws a distinguishable NetworkError, tokens left intact, no retry-as-auth", async () => {
         const fetchMock = vi
             .fn()

@@ -29,7 +29,7 @@ container_mem_mb() {
 
 if ! docker ps --format "{{.Names}}" | grep -q "^${CONTAINER}$"; then
     echo "[error] Container '${CONTAINER}' is not running."
-    echo "        Start it first: see MEMORY.md for the build+run command."
+    echo "        Start a Kima container with that name first."
     exit 1
 fi
 

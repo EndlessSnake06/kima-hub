@@ -71,7 +71,6 @@ export function SeekSlider({
         (e: React.TouchEvent<HTMLDivElement>) => {
             if (!isDragging || !canSeek) return;
 
-            // Find the touch that we're tracking
             const touch = Array.from(e.touches).find(
                 (t) => t.identifier === touchIdentifierRef.current
             );
@@ -92,7 +91,6 @@ export function SeekSlider({
         (e: React.TouchEvent<HTMLDivElement>) => {
             if (!isDragging || !canSeek) return;
 
-            // Check if the touch we're tracking ended
             const touchEnded = !Array.from(e.touches).some(
                 (t) => t.identifier === touchIdentifierRef.current
             );
@@ -160,7 +158,6 @@ export function SeekSlider({
         [isDragging, canSeek, calculateProgress, duration, onSeek]
     );
 
-    // Add global mouse event listeners when dragging
     useEffect(() => {
         if (isDragging) {
             window.addEventListener("mousemove", handleMouseMove);
@@ -177,7 +174,6 @@ export function SeekSlider({
         previewProgress !== null ? previewProgress : progress;
     const isActive = canSeek && hasMedia;
 
-    // Determine tooltip text
     const getTooltipText = () => {
         if (!hasMedia) return undefined;
         if (!canSeek) {
@@ -188,7 +184,6 @@ export function SeekSlider({
         return isDragging ? "release to seek" : "click or drag to seek";
     };
 
-    // Variant-specific styles
     const getVariantStyles = () => {
         switch (variant) {
             case "minimal":

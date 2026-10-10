@@ -1,9 +1,7 @@
 /**
- * The 1.11 release window's mood-mix question: save as playlist, rebuild, keep.
- *
- * Renders the real component with the API stubbed, and checks what the user
- * sees after each answer — including save-then-rebuild, the combination the
- * item exists to allow, and that a failed call never looks like it worked.
+ * The release window's mood-mix question (save as playlist, rebuild, keep):
+ * what the user sees after each answer, including save-then-rebuild and that
+ * a failed call never looks like it worked.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createRoot, type Root } from "react-dom/client";

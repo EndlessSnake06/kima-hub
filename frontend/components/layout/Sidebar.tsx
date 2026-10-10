@@ -88,12 +88,10 @@ export function Sidebar() {
         };
     }, []);
 
-    // Close mobile menu when route changes
     useEffect(() => {
         setIsMobileMenuOpen(false);
     }, [pathname]);
 
-    // Close mobile menu on escape key
     useEffect(() => {
         const handleEscape = (e: KeyboardEvent) => {
             if (e.key === "Escape") setIsMobileMenuOpen(false);
@@ -110,7 +108,6 @@ export function Sidebar() {
         };
     }, [isMobileMenuOpen]);
 
-    // Listen for toggle event from TopBar
     useEffect(() => {
         const handleToggle = () => setIsMobileMenuOpen(true);
         window.addEventListener("toggle-mobile-menu", handleToggle);
@@ -118,7 +115,6 @@ export function Sidebar() {
             window.removeEventListener("toggle-mobile-menu", handleToggle);
     }, []);
 
-    // Close create popover on click outside
     useEffect(() => {
         if (!showCreatePlaylist) return;
         const handleClickOutside = (e: MouseEvent) => {

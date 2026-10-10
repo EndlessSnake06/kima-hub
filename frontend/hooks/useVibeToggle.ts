@@ -22,8 +22,7 @@ export function useVibeToggle() {
         try {
             const result = await startVibeMode();
 
-            if (result.success && result.trackCount > 0) {
-            } else {
+            if (!result.success || result.trackCount <= 0) {
                 notify.error("Couldn't find matching tracks in your library");
             }
         } catch (error) {

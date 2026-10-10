@@ -71,7 +71,6 @@ export function formatListeners(count: number | undefined): string {
 
     return `${count.toLocaleString()} listeners`;
 }
-/** Recompose decomposed accents (e + U+0301) so they render as one glyph. */
 export function normalizeNFC(str: string): string {
     return str.normalize("NFC");
 }

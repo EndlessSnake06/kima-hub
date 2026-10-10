@@ -1,20 +1,19 @@
 /**
- * The newer features as one watched session: the notification tray, ListenBrainz,
- * the public library export and live feed, the GPU runtime and the release
- * window. Needs KIMA_PUBLIC_VIBE_TOKEN (the server's public vibe token, with the
- * test user as KIMA_PUBLIC_VIBE_USER), both GPU switches on, and the analyzers restarted
- * since the GPU runtime was last installed, which the gate loop does before every run.
+ * The notification tray, ListenBrainz, the public library export and live feed, the
+ * GPU runtime and the release window as one watched session. Needs
+ * KIMA_PUBLIC_VIBE_TOKEN, both GPU switches on, and the analyzers restarted since
+ * the GPU runtime was last installed.
  */
 
 import { test, expect, Browser, Page, BrowserContext, APIRequestContext, request } from "@playwright/test";
-import { DogfoodSession, navigateByClick, openAlbumsTab, firstAlbumCard, settle } from "./session";
+import { DogfoodSession, navigateByClick, openAlbumsTab, firstAlbumCard } from "./session";
+import { readPlayer, settle } from "../fixtures/shared";
 
 const baseUrl = process.env.KIMA_UI_BASE_URL || "http://127.0.0.1:3030";
 const username = process.env.KIMA_TEST_USERNAME || "";
 const password = process.env.KIMA_TEST_PASSWORD || "";
 const vibeToken = process.env.KIMA_PUBLIC_VIBE_TOKEN || "";
 
-const PLAYER = '[data-kima-player="main"]';
 const GPU_INSTALL_MS = 25 * 60_000;
 
 test.describe.configure({ mode: "serial" });
@@ -40,11 +39,8 @@ test.describe("Dogfood: tray, scrobbling, public feed, GPU, release window", () 
         expect(res.status(), "GET /api/public/vibe/live").toBe(200);
         return (await res.json()) as { status: string; trackId: string | null; position: number };
     };
-    const playingTrackId = () =>
-        page.evaluate((sel) => {
-            const src = (document.querySelector(sel) as HTMLAudioElement | null)?.src ?? "";
-            return src.match(/\/tracks\/([^/]+)\//)?.[1] ?? null;
-        }, PLAYER);
+    const playingTrackId = async () =>
+        (await readPlayer(page)).src.match(/\/tracks\/([^/]+)\//)?.[1] ?? null;
     // A settings switch hides its checkbox under the drawn switch, so clicks go to the label.
     const settingsSwitch = (id: string) => page.locator(`label:has(> #${id})`);
 
@@ -424,7 +420,7 @@ test.describe("Dogfood: tray, scrobbling, public feed, GPU, release window", () 
                 await expect(fp.getByTestId("moodmix-rebuilt")).toBeVisible({ timeout: 15_000 });
                 const state = await freshGet<{ mix: unknown }>("/whats-new/mood-mixes");
                 expect(state.mix, "the rebuilt mix should be gone").toBeNull();
-                // With the mix cleared, the status no longer links to the playlist; check it directly.
+                // The rebuild clears the mix status, so read the playlist directly.
                 const playlist = await freshGet<{ id: string; items: unknown[] }>(`/playlists/${saved.id}`);
                 expect(playlist.items, "the saved playlist should keep its tracks").toHaveLength(saved.trackCount);
                 await dialog.locator("[data-back]").click();

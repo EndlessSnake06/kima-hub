@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { AudioController } from "../audio-controller";
 
-// Runs under the node environment. AudioController uses document, window,
-// navigator and localStorage as bare globals, so each is stubbed per test.
+// AudioController uses document, window, navigator and localStorage as bare
+// globals, so each is stubbed per test.
 
 class MockAudioContext {
     static throwOnStart = false;
@@ -139,9 +139,8 @@ function installEnv(opts: {
     return { docListeners, navigator: fakeNavigator };
 }
 
-// The controller now creates + owns its <audio> element via
-// document.createElement("audio") rather than receiving one -- construct it
-// and pull the created element back out via its private field for assertions.
+// The controller creates and owns its <audio> element via
+// document.createElement("audio"); pull it back out through its private field.
 function newController(): { controller: AudioController; audio: FakeAudioElement } {
     const controller = new AudioController();
     const audio = (controller as unknown as { audio: FakeAudioElement }).audio;
@@ -191,7 +190,7 @@ afterEach(() => {
 });
 
 // ---------------------------------------------------------------------------
-// 1. unlockOnce retry-on-throw (F1 regression guard)
+// 1. unlockOnce retry-on-throw
 // ---------------------------------------------------------------------------
 
 describe("AudioController.prime() -- unlockOnce retry-on-throw", () => {
@@ -286,7 +285,7 @@ describe("AudioController.prime() -- iPad detection", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 4. ensureContextRunning: non-blocking resume-confirmation retry (C2)
+// 4. ensureContextRunning: non-blocking resume-confirmation retry
 // ---------------------------------------------------------------------------
 
 class FlippingAudioContext extends MockAudioContext {
@@ -313,7 +312,7 @@ type ControllerInternals = {
     ensureContextRunning: (attempt?: number) => void;
 };
 
-describe("AudioController -- ensureContextRunning (C2)", () => {
+describe("AudioController -- ensureContextRunning", () => {
     it("stops retrying once the context reaches running", () => {
         vi.useFakeTimers();
         installEnv(IPHONE_STANDALONE);
@@ -362,7 +361,7 @@ describe("AudioController -- ensureContextRunning (C2)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 5. Analyser wiring and bridge-latch ordering (F-A)
+// 5. Analyser wiring and bridge-latch ordering
 // ---------------------------------------------------------------------------
 
 type AnalyserInternals = {
@@ -370,7 +369,7 @@ type AnalyserInternals = {
     audioContextBridgeAttempted: boolean;
 };
 
-describe("AudioController -- analyser wiring and bridge latch ordering (F-A)", () => {
+describe("AudioController -- analyser wiring and bridge latch ordering", () => {
     it("wires a non-null analyser after prime() on iPhone-standalone", () => {
         installEnv(IPHONE_STANDALONE);
 
@@ -501,7 +500,7 @@ function fillNoisy(buf: Uint8Array) {
     }
 }
 
-describe("AudioController -- checkSilentPlayback (C3 / F-B)", () => {
+describe("AudioController -- checkSilentPlayback", () => {
     it("5 consecutive silent ticks with an advancing clock -> silent-playback-detected -> status blocked", () => {
         vi.useFakeTimers();
         vi.setSystemTime(0);
@@ -577,7 +576,7 @@ describe("AudioController -- checkSilentPlayback (C3 / F-B)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 7. rebuildAudioContextBridge -- in-page recovery for a wedged context (R2.2)
+// 7. rebuildAudioContextBridge -- in-page recovery for a wedged context
 // ---------------------------------------------------------------------------
 
 type RebuildInternals = {
@@ -596,7 +595,7 @@ function forcePlaying(internals: RebuildInternals): void {
     internals.snapshot = { ...internals.snapshot, status: "playing" };
 }
 
-describe("AudioController -- rebuildAudioContextBridge (R2.2)", () => {
+describe("AudioController -- rebuildAudioContextBridge", () => {
     it("a genuine silence episode rebuilds a fresh element + AudioContext, closes the old one, and never calls play", () => {
         vi.useFakeTimers();
         vi.setSystemTime(0);

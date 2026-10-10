@@ -27,7 +27,6 @@ export function useLyricsSync(): LyricsSyncState {
     const { currentTime } = useAudioPlayback();
     const { currentTrack } = useAudioState();
 
-    // Derive the active trackId once per render.
     const trackId = currentTrack?.id ?? null;
 
     // Loading starts true when there is a track, so the first render shows a
@@ -46,7 +45,6 @@ export function useLyricsSync(): LyricsSyncState {
         }
     }, [trackId]);
 
-    // Fetch lyrics when track changes
     useEffect(() => {
         if (!trackId) return;
 

@@ -1,17 +1,13 @@
-# Legacy PyTorch CLAP backend -- NOT installed in the shipped images.
+# The optional PyTorch CLAP backend. The shipped images do not install it: they run the ONNX
+# backend and stay torch-free (see requirements.txt). To use it, install this file on top of
+# requirements.txt and set CLAP_BACKEND=torch.
 #
-# Since v1.11.0 the analyzer runs the ONNX backend by default and the images are
-# torch-free (see requirements.txt). This file restores the old backend for
-# anyone who wants it: install it ON TOP of requirements.txt and set
-# CLAP_BACKEND=torch.
+# It stays out of the image because the stack is several GB, torchaudio has no aarch64 wheel
+# on the pinned train, and torch, torchaudio, torchvision and transformers must match each
+# other's ABI.
 #
-# Why it is not in the default image: the stack is several GB, torchaudio has
-# no aarch64 wheel on the pinned train (which broke the arm64 builds), and the
-# ABI coupling between torch/torchaudio/torchvision/transformers caused the
-# eleven silent nightly build failures.
-#
-# Pin torch and torchaudio together -- an unpinned torchaudio drifts to versions
-# built against a different torch ABI (the cause of issue #165 in v1.7.9).
+# Pin torch and torchaudio together: an unpinned torchaudio drifts to a build for a
+# different torch ABI.
 laion-clap>=1.1.4
 torch>=2.0.0
 torchaudio>=2.0.0

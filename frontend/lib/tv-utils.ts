@@ -5,11 +5,9 @@
 
 import { useState } from "react";
 
-// Check if running on Android TV
 function isAndroidTV(): boolean {
     if (typeof window === "undefined") return false;
     
-    // Check for leanback/TV user agent hints
     const ua = navigator.userAgent.toLowerCase();
     const isTV = ua.includes("android tv") || 
                  ua.includes("googletv") || 

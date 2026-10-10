@@ -235,7 +235,6 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
         state.queue.length,
     ]);
 
-    // Generate shuffled indices
     const generateShuffleIndices = useCallback(
         (length: number, currentIdx: number) => {
             const indices = Array.from({ length }, (_, i) => i).filter(
@@ -1589,7 +1588,6 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
         };
     }, []);
 
-    // Memoize the entire context value
     const value = useMemo(
         () => ({
             playTrack,

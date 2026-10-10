@@ -28,7 +28,6 @@ export function DiscoverSettingsTab({
         };
     }, []);
 
-    // Generic handler for config changes with debounce
     function handleConfigChange<K extends keyof DiscoverConfig>(
         key: K,
         value: DiscoverConfig[K]
@@ -38,7 +37,6 @@ export function DiscoverSettingsTab({
             onUpdateConfig({ ...config, [key]: value });
         }
 
-        // Debounce the API call
         if (debounceRef.current) {
             clearTimeout(debounceRef.current);
         }

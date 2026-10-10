@@ -26,9 +26,6 @@ jobs:
               working-directory: frontend
               run: npm run lint
 
-            # These 303 tests existed for months without ever running in CI --
-            # nothing in any workflow referenced vitest. They take under a
-            # second and this job has already paid for `npm ci`.
             - name: Run frontend unit tests
               working-directory: frontend
               run: npm run test:unit
@@ -67,13 +64,9 @@ jobs:
         name: Backend Unit Tests
         runs-on: ubuntu-latest
         # The tests need Postgres with pgvector, not stock postgres:
-        # track_embeddings.embedding is a vector column. DATABASE_URL below is the same
-        # test/test@localhost:5433/kima_v1_test that
-        # backend/src/__mocks__/test-env.cjs falls back to for local dev (see
-        # test-db-defaults.cjs), so this job doesn't need its own separate
-        # credentials to keep in sync. The database is named for this checkout
-        # because the plain `test` name is shared with the social branches
-        # locally, and a schema sync from either one drops the other's tables.
+        # track_embeddings.embedding is a vector column. DATABASE_URL below is the
+        # same test/test@localhost:5433/kima_v1_test that
+        # backend/src/__mocks__/test-env.cjs falls back to for local dev.
         services:
             postgres:
                 image: pgvector/pgvector:0.8.6-pg16
@@ -164,9 +157,8 @@ jobs:
 
             - name: Run sound-vector analyzer tests that need no model weights
               working-directory: services/audio-analyzer-clap
-              # The parity tests and the eager-load test need the weights (the parity
-              # tests PyTorch too); the image build runs verify_runtime.py against the
-              # real model instead.
+              # The parity tests and the eager-load test need the model weights;
+              # the image build runs verify_runtime.py against the real model.
               run: >-
                   python -m pytest test_gpu_nobody_pays.py test_gpu_switch.py test_reports.py test_one_thread.py test_ship_blocker.py
                   test_window_offsets.py test_window_sweep.py -v

@@ -11,7 +11,7 @@ test("core smoke: login → play album → play/pause/next/prev", async ({ page 
     await page.locator("#password").fill(password);
     await page.getByRole("button", { name: "Sign In" }).click();
 
-    // Login redirects to / (assuming onboarding was already completed by the API smoke test)
+    // The e2e user has completed onboarding, so login lands on /.
     await page.waitForURL(/\/($|\?)/);
 
     await skipIfEmptyLibrary(page);
@@ -28,9 +28,8 @@ test("core smoke: login → play album → play/pause/next/prev", async ({ page 
     // Start playback
     await page.getByLabel("Play all").click();
 
-    // Wait for playback to actually start before asserting transport state -- a
-    // freshly-booted container can lag the first audio load past the locator's
-    // default wait, which left the player "Not Playing" and flaked this test.
+    // Wait for playback to start before asserting transport state: a freshly-booted
+    // container can lag the first audio load past the locator's default wait.
     await expect.poll(() => getAudioCurrentTime(page), { timeout: 15_000 }).toBeGreaterThan(0);
 
     // Player should reflect playing state
@@ -43,7 +42,6 @@ test("core smoke: login → play album → play/pause/next/prev", async ({ page 
     await playPause.click();
     await expect(playPause).toHaveAttribute("title", "pause");
 
-    // Verify the audio element is actually advancing -- not stalled at 0
     const t0 = await getAudioCurrentTime(page);
     await page.waitForTimeout(2_000);
     const t1 = await getAudioCurrentTime(page);
@@ -58,11 +56,4 @@ test("core smoke: login → play album → play/pause/next/prev", async ({ page 
     await nextBtn.click();
     await prevBtn.click();
 });
-
-
-
-
-
-
-
 

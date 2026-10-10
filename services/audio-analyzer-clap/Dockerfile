@@ -43,12 +43,10 @@ RUN python3 export_onnx.py --src ckpt --out hf_audio.onnx \
 # RUNTIME
 FROM python:3.11-slim
 
-# Avoid interactive prompts
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=UTC
 
-# CPU thread limiting for numerical libraries
-# Prevents workers from using all CPU cores
+# One thread per numerical library, so workers do not each take every core.
 ENV OMP_NUM_THREADS=1 \
     OPENBLAS_NUM_THREADS=1 \
     MKL_NUM_THREADS=1 \
@@ -58,7 +56,6 @@ ENV OMP_NUM_THREADS=1 \
 # the non-root runtime user reads the same cache the build wrote.
 ENV HF_HOME=/app/hf-cache
 
-# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libsndfile1 \

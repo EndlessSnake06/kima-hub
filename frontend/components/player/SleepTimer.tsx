@@ -23,7 +23,6 @@ export function SleepTimer({ size = "md" }: SleepTimerProps) {
     const popoverRef = useRef<HTMLDivElement>(null);
     const buttonRef = useRef<HTMLButtonElement>(null);
 
-    // Close on outside click or Escape
     useEffect(() => {
         if (!isOpen) return;
 

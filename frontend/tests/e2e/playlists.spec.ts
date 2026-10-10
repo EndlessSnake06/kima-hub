@@ -12,7 +12,6 @@ test.describe("Playlists", () => {
         await page.goto("/playlists");
         await page.waitForLoadState("domcontentloaded");
 
-        // Page should render without crashing
         await expect(page.locator("body")).toBeVisible();
         await expect(page).toHaveURL(/playlists/);
     });
@@ -38,7 +37,6 @@ test.describe("Playlists", () => {
         // (sidebar has a disabled "Create" button that appears first in DOM order)
         await nameInput.press("Enter");
 
-        // Should navigate to the new playlist page
         await page.waitForURL(/\/playlist\//, { timeout: 15_000 });
         await expect(page).toHaveURL(/\/playlist\//);
     });
@@ -78,7 +76,6 @@ test.describe("Playlists", () => {
 
         await skipIfEmptyLibrary(page);
 
-        // Navigate to the albums collection
         await page.goto("/collection?tab=albums");
         const firstAlbum = page.locator('a[href^="/album/"]').first();
         await firstAlbum.waitFor({ timeout: 10_000 });
@@ -101,14 +98,12 @@ test.describe("Playlists", () => {
         await expect(playlistOption).toBeVisible({ timeout: 5_000 });
         await playlistOption.click();
 
-        // Navigate to the playlist to verify the track was added
         await page.goto(`/playlist/${playlistId}`);
         await page.waitForLoadState("domcontentloaded");
 
         // Playlist should have at least 1 track (rows use data-track-index on playlist page)
         await expect(page.locator("[data-track-index]").first()).toBeVisible({ timeout: 10_000 });
 
-        // Cleanup
         await page.request.delete(`/api/playlists/${playlistId}`, {
             headers: { Authorization: `Bearer ${token}` },
         });
@@ -155,7 +150,6 @@ test.describe("Playlists", () => {
             headers: { Authorization: `Bearer ${token}` },
         });
 
-        // Open the playlist page
         await page.goto(`/playlist/${playlistId}`);
         await page.waitForLoadState("domcontentloaded");
 
@@ -168,10 +162,8 @@ test.describe("Playlists", () => {
         await expect(removeBtn).toBeVisible({ timeout: 5_000 });
         await removeBtn.click();
 
-        // Track list should now be empty (or have a count of 0)
         await expect(page.getByText(/no tracks|empty|0 song/i).first()).toBeVisible({ timeout: 10_000 });
 
-        // Cleanup
         await page.request.delete(`/api/playlists/${playlistId}`, {
             headers: { Authorization: `Bearer ${token}` },
         });
@@ -195,17 +187,14 @@ test.describe("Playlists", () => {
         await page.goto(`/playlist/${playlistId}`);
         await page.waitForLoadState("domcontentloaded");
 
-        // Click the delete button (trash icon with title="delete playlist")
         const deleteBtn = page.getByTitle("Delete Playlist");
         await expect(deleteBtn).toBeVisible({ timeout: 5_000 });
         await deleteBtn.click();
 
-        // A confirmation dialog should appear with a "Delete" confirm button
         const confirmBtn = page.getByRole("button", { name: "Delete", exact: true });
         await expect(confirmBtn).toBeVisible({ timeout: 3_000 });
         await confirmBtn.click();
 
-        // Should redirect away from the (now-deleted) playlist
         await page.waitForURL(/\/(playlists|$)/, { timeout: 10_000 });
         await expect(page).not.toHaveURL(new RegExp(`/playlist/${playlistId}`));
     });
@@ -256,7 +245,6 @@ test.describe("Playlists", () => {
         await page.goto(`/playlist/${playlistId}`);
         await page.waitForLoadState("domcontentloaded");
 
-        // Click "Play all" (or the play button on the playlist action bar)
         const playAllBtn = page.getByLabel("Play all").or(page.getByTitle("Play all")).first();
         await expect(playAllBtn).toBeVisible({ timeout: 5_000 });
         await playAllBtn.click();
@@ -264,7 +252,6 @@ test.describe("Playlists", () => {
         // Pause button should appear -- playback started (target FullPlayer title to avoid ambiguity)
         await expect(page.getByTitle("pause", { exact: true })).toBeVisible({ timeout: 8_000 });
 
-        // Cleanup
         await page.request.delete(`/api/playlists/${playlistId}`, {
             headers: { Authorization: `Bearer ${token}` },
         });

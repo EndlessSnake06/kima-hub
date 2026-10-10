@@ -72,7 +72,6 @@ const MOOD_CONFIG: Record<
     },
 };
 
-// Display order
 const MOOD_ORDER: BucketMood[] = ["happy", "party", "chill", "sad", "aggressive"];
 
 export function MoodMixer({ isOpen, onClose }: MoodMixerProps) {
@@ -109,7 +108,6 @@ export function MoodMixer({ isOpen, onClose }: MoodMixerProps) {
         setGenerating(mood);
 
         try {
-            // Get the mix from pre-computed bucket (instant!)
             const mix = await api.getMoodBucketMix(mood);
 
             if (mix.tracks && mix.tracks.length > 0) {
@@ -128,17 +126,14 @@ export function MoodMixer({ isOpen, onClose }: MoodMixerProps) {
                     duration: t.duration,
                 }));
 
-                // Start playback
                 playTracks(tracks, 0);
 
-                // Save as user's active mood mix
                 await api.saveMoodBucketMix(mood, tracks.map((t) => t.id));
 
                 // Force immediate refetch of mixes on home page
                 // Using refetchQueries instead of invalidateQueries for immediate update
                 await queryClient.refetchQueries({ queryKey: ["mixes"] });
 
-                // Also dispatch events for any other listeners
                 window.dispatchEvent(new CustomEvent("mix-generated"));
                 window.dispatchEvent(new CustomEvent("mixes-updated"));
 
@@ -156,7 +151,6 @@ export function MoodMixer({ isOpen, onClose }: MoodMixerProps) {
         }
     };
 
-    // Get track count for a mood
     const getTrackCount = (mood: BucketMood): number => {
         // MoodBucketPreset uses 'id' as the mood identifier
         const preset = presets.find((p) => p.id === mood);
@@ -228,7 +222,7 @@ export function MoodMixer({ isOpen, onClose }: MoodMixerProps) {
                                             transition-all duration-200 hover:scale-[1.03] active:scale-[0.97]
                                             disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100
                                             flex flex-col items-center justify-center gap-2 p-3
-                                            ${i < 8 ? `animate-rise [animation-delay:calc(var(--i)*45ms)]` : ""}
+                                            animate-rise [animation-delay:calc(var(--i)*45ms)]
                                         `}
                                         title={
                                             isDisabled

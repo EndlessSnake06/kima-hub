@@ -1,6 +1,6 @@
 # Kima All-in-One Docker Image (Hardened)
 # Contains: Backend, Frontend, PostgreSQL, Redis, Audio Analyzer (Essentia AI)
-# Usage: docker run -d -p 3030:3030 -v /path/to/music:/music kima/kima
+# Usage: docker run -d -p 3030:3030 -v /path/to/music:/music chevron7locked/kima
 
 # ============================================================
 # CLAP ONNX BUILDER STAGE
@@ -391,7 +391,7 @@ RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 WORKDIR /app
 
 # Copy healthcheck script
-COPY healthcheck-prod.js /app/healthcheck.js
+COPY frontend/healthcheck.js /app/healthcheck.js
 
 # Create supervisord config - logs to stdout/stderr for Docker visibility
 RUN cat > /etc/supervisor/conf.d/kima.conf << 'EOF'

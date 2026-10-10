@@ -64,16 +64,10 @@ jobs:
                     echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
                   fi
 
-            # ---- Image scan (reports, does not block) --------------------
-            # Build the Intel image on its own first and scan it before anything
-            # is published. This costs almost nothing on top of the real build:
-            # the multi-architecture step below reuses the identical cached
-            # layers for its Intel leg.
-            #
-            # It reports rather than blocks: most findings are Debian base-image
-            # packages with no fixed release yet, which a release cannot act on.
-            # The dependency scan in security.yml blocks. Debian's placeholder
-            # ssl-cert-snakeoil.key is skipped below; it is not a secret.
+            # Scan the Intel image before publishing; the multi-architecture build
+            # below reuses its cached layers. Reports only: most findings are
+            # base-image packages with no fix yet, and security.yml blocks on the
+            # fixable ones.
             - name: Build image for scanning (amd64)
               uses: docker/build-push-action@v5
               with:
@@ -95,6 +89,7 @@ jobs:
             - name: Scan the image (report only)
               if: always()
               run: |
+                  # ssl-cert-snakeoil.key is Debian's placeholder key, not a secret.
                   {
                     echo '### Image scan — HIGH/CRITICAL with a fix available'
                     echo ''

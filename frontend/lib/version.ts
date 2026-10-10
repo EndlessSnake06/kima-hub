@@ -1,6 +1,5 @@
 import packageJson from "../package.json";
 
-// Base version from package.json
 const BASE_VERSION = packageJson.version;
 
 // NEXT_PUBLIC_BUILD_TYPE marks non-release builds in the UI: "prerelease" (the

@@ -35,11 +35,8 @@ async function getJson<T>(
 }
 
 /**
- * Read what is actually in this instance.
- *
- * Everything is best-effort except the three counts the walkthrough cannot proceed without.
- * A missing podcast feed means the podcast journey is skipped with a reason recorded; a
- * missing library means the run stops.
+ * Reads what is actually in this instance. Everything is best-effort except the
+ * three counts the walkthrough cannot proceed without, which `assertReady` enforces.
  */
 export async function readLibraryFacts(
     api: APIRequestContext,
@@ -96,11 +93,7 @@ export async function readLibraryFacts(
     };
 }
 
-/**
- * Stop the run if this instance cannot support a meaningful walkthrough.
- *
- * Deliberately hard. The point of a pre-deployment gate is to be the thing that says no.
- */
+/** Stops the run if this instance cannot support a meaningful walkthrough. */
 export function assertReady(facts: LibraryFacts, baseUrl: string): void {
     const missing: string[] = [];
     if (facts.albums < MINIMUMS.albums) {
@@ -124,45 +117,21 @@ export function assertReady(facts: LibraryFacts, baseUrl: string): void {
 }
 
 /**
- * Which optional journeys this instance can support.
- *
- * These are recorded rather than asserted. A test stack with no podcast feeds is a normal
- * state, and the report says so out loud so nobody mistakes an unexercised journey for a
- * passing one.
+ * What this instance cannot exercise. These are recorded, not asserted: a test
+ * stack with no audiobooks is a normal state, and the report names it so an
+ * unexercised journey is never mistaken for a passing one.
  */
-export function availableJourneys(facts: LibraryFacts): {
-    /** Whether the data-collection journey has enough material to be meaningful. */
-    vibe: boolean;
-    /** Whether the audiobook journey can run (needs audiobooks on this instance). */
-    audiobooks: boolean;
-    reasons: string[];
-} {
-    const reasons: string[] = [];
+export function coverageGaps(facts: LibraryFacts): string[] {
+    const gaps: string[] = [];
 
-    // The collect journey rebuilds embeddings itself, so it does not need any to exist
-    // beforehand -- it needs a library big enough for the timing to mean something. A
-    // handful of tracks would make throughput noise rather than signal.
-    const vibe = facts.tracks >= 10;
-    if (!vibe) {
-        reasons.push(
-            `data-collection journey not run: ${facts.tracks} tracks is too few to say ` +
-                `anything about pipeline throughput (needs 10+)`,
-        );
-    }
-
-    // Podcasts are created by journey 5b (subscribe), so the preflight count
-    // is always zero. The journey runs regardless and the deeper management
-    // journey (5c) exercises the subscription lifecycle.
-
-    const audiobooks = facts.audiobooks > 0;
-    if (!audiobooks) reasons.push("audiobook journey not run: no audiobooks on this instance");
+    if (facts.audiobooks === 0) gaps.push("audiobook journey not run: no audiobooks on this instance");
 
     if (facts.tracksWithAudioFeatures === 0) {
-        reasons.push(
+        gaps.push(
             "no analyzer output found in a 50-track sample: bpm/key/energy are absent, so " +
                 "anything downstream of audio analysis is untested",
         );
     }
 
-    return { vibe, audiobooks, reasons };
+    return gaps;
 }

@@ -2,12 +2,12 @@
 90 s, tolerates bad frames, downmixes to stereo and reads any codec. Fixtures
 (6-channel eac3 and aac, opus, corrupt mp3, 120 s) are generated with ffmpeg."""
 
+import os
 import shutil
 import subprocess
 
 import numpy as np
 import pytest
-
 
 import analyzer
 
@@ -40,8 +40,7 @@ def _ffmpeg_generate(args, out_path):
 
 @pytest.fixture(scope="module")
 def eac3_6ch(tmp_path_factory):
-    """6-channel E-AC3 — the class of file MonoLoader refused with
-    'more than 2 channels' and the header gate condemned."""
+    """6-channel E-AC3: more than two channels, which must downmix to stereo."""
     path = tmp_path_factory.mktemp("fixtures") / "surround.mkv"
     return _ffmpeg_generate(
         [
@@ -60,9 +59,8 @@ def eac3_6ch(tmp_path_factory):
 
 @pytest.fixture(scope="module")
 def aac_6ch_m4a(tmp_path_factory):
-    """6-channel AAC in an m4a container — the real prod shape is a
-    6-channel eac3 m4a; ffmpeg cannot mux eac3 into m4a, so this is the
-    closest synthesizable stand-in for the container + channel count."""
+    """6-channel AAC in an m4a container. ffmpeg cannot mux eac3 into m4a, so AAC carries the
+    container and the channel count."""
     path = tmp_path_factory.mktemp("fixtures") / "six.m4a"
     return _ffmpeg_generate(
         [
@@ -81,8 +79,7 @@ def aac_6ch_m4a(tmp_path_factory):
 
 @pytest.fixture(scope="module")
 def opus_file(tmp_path_factory):
-    """Opus — the other file the header gate passed but MonoLoader's
-    decoder path mishandled; must analyse through the single path."""
+    """Opus: must decode through the same single path."""
     path = tmp_path_factory.mktemp("fixtures") / "opus.ogg"
     return _ffmpeg_generate(
         [
@@ -142,10 +139,8 @@ def _peak_hz(channel, sr):
 
 @pytest.fixture
 def corrupt_file(tmp_path_factory):
-    """A valid mp3 with its middle overwritten by random bytes — the
-    single decode path must still return samples (tolerant of a bad
-    frame), not reject the track."""
-    import os
+    """A valid mp3 with its middle overwritten by garbage bytes: the decode must still return
+    samples, not reject the track."""
     path = tmp_path_factory.mktemp("fixtures") / "corrupt.mp3"
     _ffmpeg_generate(
         [
@@ -186,8 +181,7 @@ class TestSingleDecodePath:
         assert np.isfinite(samples).all()
 
     def test_tolerates_bad_frame(self, corrupt_file):
-        # The whole point of the redesign: a corrupt frame must not stop
-        # the analysis. The decode still yields samples covering the file.
+        # A corrupt frame must not stop the analysis: the decode still yields samples covering the file.
         samples, sr, channels, duration, command, rc, stderr, cls = _decode(
             corrupt_file
         )
@@ -243,7 +237,7 @@ class TestSingleDecodePath:
         second_rms = np.sqrt((samples[0][: int(duration) * sr].reshape(-1, sr) ** 2).mean(axis=1))
         assert second_rms.min() > 0.1, "the window reached into the opening silence"
 
-    def test_a_song_shorter_than_the_window_is_read_whole(self, corrupt_file, opus_file):
+    def test_a_song_shorter_than_the_window_is_read_whole(self, opus_file):
         samples, sr, channels, duration, command, rc, stderr, cls = _decode(opus_file)
         assert duration > 2.0
         assert "-ss" not in command
@@ -264,9 +258,6 @@ class TestSingleDecodePath:
             "of tolerant"
         )
 
-
-if __name__ == "__main__":
-    raise SystemExit(pytest.main([__file__, "-v"]))
 
 class TestWhenTheLengthLies:
     def _tone_only(self, samples, sr):
@@ -294,3 +285,7 @@ class TestWhenTheLengthLies:
             samples, sr, channels, duration, command, rc, stderr, cls = _decode(long_file)
             assert 89.0 <= duration <= 90.5, f"header {header}: expected a 90s window, got {duration}s"
             assert self._tone_only(samples, sr), f"header {header}: the window reached into the opening silence"
+
+
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([__file__, "-v"]))

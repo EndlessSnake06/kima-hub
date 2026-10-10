@@ -41,9 +41,8 @@ _DAMAGED_PATTERNS = [
 ]
 
 # Signals a codec the engine lacks or cannot decode: a format difference, not a
-# damaged file. Retrying cannot supply the missing decoder. Kept to the specific
-# phrases the design note lists so an ordinary failure is never branded a codec
-# it happens to mention in passing.
+# damaged file. Retrying cannot supply the missing decoder. Kept to specific
+# phrases so an ordinary failure is never branded a codec it mentions in passing.
 _UNSUPPORTED_PATTERNS = [
     r"unsupported\s+codec",
     r"not\s+capable\s+of\s+decoding",
@@ -59,7 +58,7 @@ _MULTICANNEL_PATTERNS = [
 ]
 
 # Codec names recognised by the extraction below, used so an UNSUPPORTED failure
-# reports what the library actually contains instead of a opaque token.
+# reports what the library actually contains instead of an opaque token.
 _CODECS = (
     "aac", "ac-3", "ac3", "alac", "amr", "dts", "flac", "m4a", "mp3", "mp4",
     "mpga", "mp2", "ogg", "oga", "vorbis", "opus", "wav", "wma", "aiff", "aif",
@@ -77,12 +76,8 @@ def _find(msg: str, patterns):
     return None
 
 
-def classify_failure(message: str, ext_hint: str = "") -> str:
-    """Return the disposition for a raw ESSENTIA/decoder error message.
-
-    ``ext_hint`` is an optional file-extension hint used only to improve the
-    codec attribution of an ``UNSUPPORTED`` result; it never changes the class.
-    """
+def classify_failure(message: str) -> str:
+    """Return the disposition for a raw ESSENTIA/decoder error message."""
 
     if not message:
         return Disposition.INCONCLUSIVE
@@ -91,7 +86,7 @@ def classify_failure(message: str, ext_hint: str = "") -> str:
     if _find(message, _MULTICANNEL_PATTERNS):
         return Disposition.MULTICANNEL
 
-    # 2) Unsupported codec: a format the engine lacks. Name the codec when we can.
+    # 2) Unsupported codec: a format the engine lacks.
     if _find(message, _UNSUPPORTED_PATTERNS):
         return Disposition.UNSUPPORTED
 
@@ -113,24 +108,15 @@ def classify_with_codec(message: str) -> tuple:
 
     disp = classify_failure(message)
     if disp == Disposition.UNSUPPORTED:
-        codec = _extract_codec(message, "")
-        return disp, codec
+        return disp, _extract_codec(message)
     return disp, "unknown"
 
 
-def _extract_codec(message: str, ext_hint: str = "") -> str:
-    """Codec named in the message, else the file extension, else "unknown"."""
+def _extract_codec(message: str) -> str:
+    """Codec named in the message, else "unknown"."""
 
     m = _CODEC_RE.search(message)
-    if m:
-        return m.group(0).lower()
-
-    # Fall back to the file extension hint (e.g. "dts") when no codec name was
-    # in the message.
-    if ext_hint:
-        return ext_hint.strip(".").lower()
-
-    return "unknown"
+    return m.group(0).lower() if m else "unknown"
 
 
 def disposition_label(disp: str, codec: str = "unknown") -> str:

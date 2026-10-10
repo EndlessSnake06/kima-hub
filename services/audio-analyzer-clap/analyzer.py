@@ -16,7 +16,6 @@ import asyncio
 import secrets
 import threading
 from typing import Optional, Tuple
-import traceback
 import numpy as np
 import librosa
 import requests
@@ -89,8 +88,8 @@ MODEL_VERSION = 'laion-clap-htsat-unfused-v1'
 CLAIM_IN_JOB_ID = re.compile(r'-(\d+)-r(\d+)$')
 
 # Zero-shot valence/arousal: score = sigmoid(a * margin + b), fitted on Memo2496 and chosen by
-# leave-one-out transfer to the other labelled sets. Refit with eval/calibrate_platt.py (report in
-# eval/calibration/).
+# leave-one-out transfer to the other labelled sets. Refit with eval/calibrate_platt.py; the fit is
+# recorded in eval/calibration/platt-memo2496.json.
 VA_CALIB = {'valence': (12.738, -0.172), 'arousal': (12.449, -2.309)}
 
 # The zero-shot prompt groups. A changed prompt changes every stored score that reads it.
@@ -183,14 +182,9 @@ class CLAPAnalyzer:
         self._prompt_embs: dict = {}
 
     def _ensure_onnx_backend(self):
-        """Lazily construct + load the ONNX backend (only when CLAP_BACKEND=onnx) and
-        return it; the caller keeps that reference, so an idle unload cannot pull the
-        model out from under a track being embedded.
-
-        Loads the model eagerly (not just constructs the wrapper) so the log
-        line that follows is a real "the ONNX path works" assertion, and a
-        broken model fails LOUDLY here instead of at the first embed call.
-        """
+        """Load the ONNX backend on first use (only when CLAP_BACKEND=onnx) and return it. The caller
+        keeps that reference, so an idle unload cannot pull the model out from under a track being
+        embedded; a broken model fails here, not at the first embed."""
         with self._lock:
             if self.onnx_backend is not None or CLAP_BACKEND != 'onnx':
                 return self.onnx_backend
@@ -203,12 +197,8 @@ class CLAPAnalyzer:
             return backend
 
     def _ensure_onnx_text_backend(self):
-        """Lazily construct + load the ONNX TEXT backend (CLAP_BACKEND=onnx).
-
-        Eager-loads so a broken text model fails at startup, not at the first
-        prompt. Kept separate from _ensure_onnx_backend: the text model is a
-        different 500MB file and must not load unless a text path is used.
-        """
+        """Load the ONNX text backend on first use (CLAP_BACKEND=onnx). It is apart from the audio
+        backend: the text model is a different 500MB file and loads only when a text path is used."""
         if self.onnx_text_backend is None and CLAP_BACKEND == 'onnx':
             from onnx_backend import OnnxTextCLAPBackend, ONNX_TEXT_MODEL_PATH
             backend = OnnxTextCLAPBackend(ONNX_TEXT_MODEL_PATH)
@@ -232,11 +222,11 @@ class CLAPAnalyzer:
                 logger.critical(
                     f"ONNX text backend FAILED with CLAP_BACKEND=onnx pinned; "
                     f"NOT falling back to torch. Text embeddings for "
-                    f"{len(prompts)} prompts failed: {e}"
+                    f"{len(prompts)} prompts failed: {e}",
+                    exc_info=True,
                 )
-                traceback.print_exc()
                 raise
-        # torch path (default)
+        # torch path
         self.ensure_model()
         return self.model.get_text_embedding(prompts, use_tensor=False)
 
@@ -262,15 +252,13 @@ class CLAPAnalyzer:
                 )
                 self.model.load_ckpt('/app/models/music_audioset_epoch_15_esc_90.14.pt')
 
-                # Move to detected device (GPU if available, else CPU)
                 self.model = self.model.to(DEVICE).eval()
                 self._model_loaded = True
                 self.last_work_time = time.time()
 
                 logger.info("CLAP model loaded successfully on CPU")
             except Exception as e:
-                logger.error(f"Failed to load CLAP model: {e}")
-                traceback.print_exc()
+                logger.exception(f"Failed to load CLAP model: {e}")
                 raise
 
     def unload_model(self):
@@ -289,7 +277,7 @@ class CLAPAnalyzer:
             try:
                 import ctypes
                 ctypes.CDLL("libc.so.6").malloc_trim(0)
-            except Exception:
+            except (OSError, AttributeError):  # not glibc: nothing to trim
                 pass
             logger.info("CLAP model unloaded")
 
@@ -320,8 +308,7 @@ class CLAPAnalyzer:
             return audio, sr
 
         except Exception as e:
-            logger.error(f"Failed to load window at {start:.1f}s from {audio_path}: {e}")
-            traceback.print_exc()
+            logger.exception(f"Failed to load window at {start:.1f}s from {audio_path}: {e}")
             return None, 0
 
     def get_audio_embedding(self, audio_path: str) -> Optional[np.ndarray]:
@@ -343,16 +330,15 @@ class CLAPAnalyzer:
         try:
             duration = librosa.get_duration(path=audio_path)
         except Exception as e:
-            logger.error(f"Failed to determine duration of {audio_path}: {e}")
-            traceback.print_exc()
+            logger.exception(f"Failed to determine duration of {audio_path}: {e}")
             return None
 
         offsets = compute_window_offsets(duration)
         logger.debug(f"Embedding {audio_path} with {len(offsets)} windows at "
                      f"offsets={[round(o, 1) for o in offsets]}")
 
-        # A track with a window that failed has no vector; the rest
-        # are never averaged as if they were the whole track.
+        # A track with a window that failed has no vector: the other windows are never
+        # averaged as if they were the whole track.
         if CLAP_BACKEND == 'onnx':
             clips = []
             for start in offsets:
@@ -365,8 +351,7 @@ class CLAPAnalyzer:
                 vectors = list(onnx_backend.embed_clips(clips))
             except Exception as e:
                 # Never fall back to torch: a re-embed must stay in one vector space.
-                logger.critical(f"ONNX backend failed on {audio_path}: {e}")
-                traceback.print_exc()
+                logger.critical(f"ONNX backend failed on {audio_path}: {e}", exc_info=True)
                 return None
         else:
             vectors = []
@@ -400,8 +385,7 @@ class CLAPAnalyzer:
             n = np.linalg.norm(vec)
             return vec / n if n > 0 else vec
         except Exception as e:
-            logger.error(f"Failed to embed window at {start:.1f}s of {audio_path}: {e}")
-            traceback.print_exc()
+            logger.exception(f"Failed to embed window at {start:.1f}s of {audio_path}: {e}")
             return None
 
     def get_text_embedding(self, text: str) -> Optional[np.ndarray]:
@@ -427,8 +411,7 @@ class CLAPAnalyzer:
                 return embedding.astype(np.float32)
 
         except Exception as e:
-            logger.error(f"Failed to generate text embedding: {e}")
-            traceback.print_exc()
+            logger.exception(f"Failed to generate text embedding: {e}")
             return None
 
     def _prompt_similarity(self, audio_embedding: np.ndarray, group: str) -> float:
@@ -640,7 +623,7 @@ class BullMQVibeWorker:
                     self._redis_client.set("clap:worker:concurrency", str(active)),
                 ),
             )
-        except Exception:
+        except Exception:  # a missed beat is made up by the next one
             pass
 
     async def _process_job(self, job, _token: str) -> dict:
@@ -717,11 +700,10 @@ class BullMQVibeWorker:
                 f"valence={clap_valence}, arousal={clap_arousal})"
             )
             return {"trackId": track_id, "status": "complete"}
-        else:
-            await loop.run_in_executor(
-                None, self._report_failure, job_id, track_id, "Failed to store embedding"
-            )
-            raise RuntimeError("Failed to store embedding")
+        await loop.run_in_executor(
+            None, self._report_failure, job_id, track_id, "Failed to store embedding"
+        )
+        raise RuntimeError("Failed to store embedding")
 
     def _internal_secret(self) -> str:
         """The backend's secret for these reports: made at random once per server and kept in the Redis both
@@ -807,7 +789,7 @@ class BullMQVibeWorker:
                       clap_valence: float, clap_arousal: float,
                       job_id: Optional[str] = None) -> str:
         """Store the vector and CLAP's own raw features in one transaction (runs in executor thread):
-        "stored", "stale" when the job's claim is no longer the record's open one (a wipe or a re-offer
+        "stored", "stale" when the job's claim is not the record's open one (a wipe or a re-offer
         while it ran; nothing is written), or "failed". The shared valence/arousal pair is the
         backend's to derive from both analyzers' raws."""
         conn = self._db_pool.getconn()
@@ -861,38 +843,33 @@ class BullMQVibeWorker:
             conn.commit()
             return "stored"
         except Exception as e:
-            logger.error(f"Failed to store embedding for {track_id}: {e}")
-            traceback.print_exc()
+            logger.exception(f"Failed to store embedding for {track_id}: {e}")
             conn.rollback()
             return "failed"
         finally:
             self._db_pool.putconn(conn)
 
 
-class TextEmbedHandler:
-    """
-    Real-time text embedding handler via Redis pub/sub.
+class PubSubHandler:
+    """Reads one Redis pub/sub channel until `stop_event` is set and passes each message to
+    `_handle_message`."""
 
-    Subscribes to text embedding requests and responds with embeddings
-    for natural language vibe queries.
-    """
+    channel: str
 
-    def __init__(self, analyzer: CLAPAnalyzer, stop_event: threading.Event):
-        self.analyzer = analyzer
+    def __init__(self, stop_event: threading.Event):
         self.stop_event = stop_event
         self.redis_client = None
         self.pubsub = None
 
     def start(self):
-        """Start the text embed handler"""
-        logger.info("TextEmbedHandler starting...")
+        name = type(self).__name__
+        logger.info(f"{name} starting...")
 
         try:
             self.redis_client = redis.from_url(REDIS_URL)
             self.pubsub = self.redis_client.pubsub()
-            self.pubsub.subscribe(TEXT_EMBED_CHANNEL)
-
-            logger.info(f"Subscribed to channel: {TEXT_EMBED_CHANNEL}")
+            self.pubsub.subscribe(self.channel)
+            logger.info(f"Subscribed to channel: {self.channel}")
 
             while not self.stop_event.is_set():
                 try:
@@ -905,14 +882,27 @@ class TextEmbedHandler:
                         self._handle_message(message)
 
                 except Exception as e:
-                    logger.error(f"TextEmbedHandler error: {e}")
-                    traceback.print_exc()
+                    logger.exception(f"{name} error: {e}")
                     time.sleep(1)
 
         finally:
             if self.pubsub:
                 self.pubsub.close()
-            logger.info("TextEmbedHandler stopped")
+            logger.info(f"{name} stopped")
+
+    def _handle_message(self, message):
+        raise NotImplementedError
+
+
+class TextEmbedHandler(PubSubHandler):
+    """Answers natural-language vibe queries: each request on the text channel gets its embedding
+    published back on a channel of its own."""
+
+    channel = TEXT_EMBED_CHANNEL
+
+    def __init__(self, analyzer: CLAPAnalyzer, stop_event: threading.Event):
+        super().__init__(stop_event)
+        self.analyzer = analyzer
 
     def _handle_message(self, message):
         """Handle a text embedding request"""
@@ -950,8 +940,7 @@ class TextEmbedHandler:
             logger.info(f"Text embed response sent: {request_id}")
 
         except Exception as e:
-            logger.error(f"Failed to handle text embed request: {e}")
-            traceback.print_exc()
+            logger.exception(f"Failed to handle text embed request: {e}")
             # Publish a failure response so the caller fails fast instead of
             # waiting out its full timeout on an internal analyzer error.
             if request_id:
@@ -964,45 +953,15 @@ class TextEmbedHandler:
                     logger.error(f"Failed to publish text embed failure response: {pub_err}")
 
 
-class ControlHandler:
+class ControlHandler(PubSubHandler):
     """Applies control messages from Redis pub/sub, such as a worker count
     change, to the running BullMQ worker within a couple of seconds."""
 
+    channel = CONTROL_CHANNEL
+
     def __init__(self, stop_event: threading.Event, worker: "BullMQVibeWorker" = None):
-        self.stop_event = stop_event
+        super().__init__(stop_event)
         self.worker = worker
-        self.redis_client = None
-        self.pubsub = None
-
-    def start(self):
-        """Start listening for control messages"""
-        logger.info("ControlHandler starting...")
-
-        try:
-            self.redis_client = redis.from_url(REDIS_URL)
-            self.pubsub = self.redis_client.pubsub()
-            self.pubsub.subscribe(CONTROL_CHANNEL)
-            logger.info(f"Subscribed to control channel: {CONTROL_CHANNEL}")
-
-            while not self.stop_event.is_set():
-                try:
-                    message = self.pubsub.get_message(
-                        ignore_subscribe_messages=True,
-                        timeout=1.0
-                    )
-
-                    if message and message['type'] == 'message':
-                        self._handle_message(message)
-
-                except Exception as e:
-                    logger.error(f"ControlHandler error: {e}")
-                    traceback.print_exc()
-                    time.sleep(1)
-
-        finally:
-            if self.pubsub:
-                self.pubsub.close()
-            logger.info("ControlHandler stopped")
 
     def _handle_message(self, message):
         """Handle a control message"""
@@ -1024,7 +983,7 @@ class ControlHandler:
                     previous = self.worker.desired_concurrency
                     applied = self.worker.set_concurrency(requested)
                     logger.info(f"Worker concurrency {previous} -> {applied} (applied live)")
-            elif command == 'install_gpu' or command == 'remove_gpu':
+            elif command in ('install_gpu', 'remove_gpu'):
                 import gpu_runtime
                 action = 'install' if command == 'install_gpu' else 'remove'
                 result = gpu_runtime.dispatch(action)
@@ -1036,8 +995,7 @@ class ControlHandler:
                 logger.warning(f"Unknown control command: {command}")
 
         except Exception as e:
-            logger.error(f"Failed to handle control message: {e}")
-            traceback.print_exc()
+            logger.exception(f"Failed to handle control message: {e}")
 
 
 def probe_gpu_session():
@@ -1061,7 +1019,6 @@ def gpu_switch_changed() -> bool:
 
 
 def main():
-    """Main entry point"""
     logger.info("=" * 60)
     logger.info("CLAP Audio Analyzer Service")
     logger.info("=" * 60)
@@ -1094,7 +1051,6 @@ def main():
 
     threads = []
 
-    # Start BullMQ vibe worker (runs asyncio event loop in its own thread)
     bullmq_worker = BullMQVibeWorker(analyzer, jobs_stop, concurrency=configured_workers)
     bullmq_thread = threading.Thread(target=bullmq_worker.start, name="BullMQVibeWorker")
     bullmq_thread.daemon = True
@@ -1102,7 +1058,6 @@ def main():
     threads.append(bullmq_thread)
     logger.info("Started BullMQ vibe worker thread")
 
-    # Start text embed handler thread
     text_handler = TextEmbedHandler(analyzer, stop_event)
     text_thread = threading.Thread(target=text_handler.start, name="TextEmbedHandler")
     text_thread.daemon = True
@@ -1110,7 +1065,6 @@ def main():
     threads.append(text_thread)
     logger.info("Started text embed handler thread")
 
-    # Start control handler thread (listens for worker count changes)
     control_handler = ControlHandler(jobs_stop, worker=bullmq_worker)
     control_thread = threading.Thread(target=control_handler.start, name="ControlHandler")
     control_thread.daemon = True
@@ -1153,7 +1107,6 @@ def main():
     except KeyboardInterrupt:
         logger.info("Keyboard interrupt received")
         stop_event.set()
-
 
     # A restart gives the running jobs up to their lock to finish (past it BullMQ hands a job out again
     # anyway) while searches are still answered. A control message that arrives meanwhile is carried out

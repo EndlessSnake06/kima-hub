@@ -5,18 +5,16 @@
  */
 
 import { useMemo } from "react";
-import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import type { PlaylistPreview } from "@/features/home/types";
 
 export const queryKeys = {
-    // Artist queries
     artist: (id: string) => ["artist", id] as const,
 
-    // Album queries
     album: (id: string) => ["album", id] as const,
     albums: (filters?: Record<string, unknown>) => ["albums", filters] as const,
 
-    // Library queries
     library: () => ["library"] as const,
     libraryArtists: (params: {
         filter?: string;
@@ -40,14 +38,12 @@ export const queryKeys = {
     recentlyAdded: (limit?: number) =>
         ["library", "recently-added", limit] as const,
 
-    // Recommendations
     recommendations: (limit?: number) => ["recommendations", limit] as const,
     similarArtists: (seedArtistId: string, limit?: number) =>
         ["recommendations", "artists", seedArtistId, limit] as const,
     similarAlbums: (seedAlbumId: string, limit?: number) =>
         ["recommendations", "albums", seedAlbumId, limit] as const,
 
-    // Search
     search: (query: string, type?: string, limit?: number) =>
         ["search", query, type, limit] as const,
     discoverSearch: (query: string, type?: string, limit?: number) =>
@@ -55,22 +51,17 @@ export const queryKeys = {
     discoverSimilar: (artist: string, mbid: string) =>
         ["search", "discover", "similar", artist, mbid] as const,
 
-    // Playlists
     playlists: () => ["playlists"] as const,
     playlist: (id: string) => ["playlist", id] as const,
 
-    // Mixes
     mixes: () => ["mixes"] as const,
     mix: (id: string) => ["mix", id] as const,
 
-    // Popular artists
     popularArtists: (limit?: number) => ["popular-artists", limit] as const,
 
-    // Audiobooks
     audiobooks: () => ["audiobooks"] as const,
     audiobook: (id: string) => ["audiobook", id] as const,
 
-    // Podcasts
     podcasts: () => ["podcasts"] as const,
     podcast: (id: string) => ["podcast", id] as const,
     topPodcasts: (limit?: number, genreId?: number) =>
@@ -83,9 +74,6 @@ export const queryKeys = {
     libraryGenres: () => ["library", "genres"] as const,
     libraryDecades: () => ["library", "decades"] as const,
 };
-
-
-
 
 export function useRecentlyListenedQuery(limit: number = 10) {
     return useQuery({
@@ -148,9 +136,7 @@ export function useLibraryArtistsQuery({
         }),
         staleTime: 2 * 60 * 1000,
         enabled,
-        // Add structural sharing to prevent unnecessary re-renders
         structuralSharing: true,
-        // Use placeholder data for better perceived performance
         placeholderData: (previousData) => previousData,
     });
 }
@@ -209,8 +195,6 @@ export function useRecommendationsQuery(limit: number = 10) {
         staleTime: 5 * 60 * 1000, // 5 minutes
     });
 }
-
-
 
 export function useSearchQuery(
     query: string,
@@ -418,10 +402,33 @@ export function useRefreshMixesMutation() {
     return useMutation({
         mutationFn: () => api.refreshMixes(),
         onSuccess: () => {
-            // Invalidate mixes query to refetch
             queryClient.invalidateQueries({ queryKey: queryKeys.mixes() });
         },
     });
+}
+
+type PlaylistCache = Record<string, unknown> | undefined;
+
+function invalidatePlaylist(queryClient: QueryClient, playlistId: string) {
+    queryClient.invalidateQueries({ queryKey: queryKeys.playlist(playlistId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.playlists() });
+}
+
+async function applyOptimisticPlaylistEdit(
+    queryClient: QueryClient,
+    playlistId: string,
+    edit: (old: PlaylistCache) => PlaylistCache,
+) {
+    await queryClient.cancelQueries({ queryKey: queryKeys.playlist(playlistId) });
+    const previous = queryClient.getQueryData(queryKeys.playlist(playlistId));
+    queryClient.setQueryData(queryKeys.playlist(playlistId), edit);
+    return { previous };
+}
+
+function rollbackPlaylistEdit(queryClient: QueryClient, playlistId: string, context: { previous: unknown } | undefined) {
+    if (context?.previous) {
+        queryClient.setQueryData(queryKeys.playlist(playlistId), context.previous);
+    }
 }
 
 export function useAddToPlaylistMutation() {
@@ -442,17 +449,9 @@ export function useAddToPlaylistMutation() {
             trackIds?.length
                 ? api.addTracksToPlaylist(playlistId, trackIds)
                 : api.addTrackToPlaylist(playlistId, trackId!),
-        onSettled: (_, __, variables) => {
-            queryClient.invalidateQueries({
-                queryKey: queryKeys.playlist(variables.playlistId),
-            });
-            queryClient.invalidateQueries({
-                queryKey: queryKeys.playlists(),
-            });
-        },
+        onSettled: (_, __, variables) => invalidatePlaylist(queryClient, variables.playlistId),
     });
 }
-
 
 export function useRemoveFromPlaylistMutation() {
     const queryClient = useQueryClient();
@@ -465,10 +464,8 @@ export function useRemoveFromPlaylistMutation() {
             playlistId: string;
             trackId: string;
         }) => api.removeTrackFromPlaylist(playlistId, trackId),
-        onMutate: async (variables) => {
-            await queryClient.cancelQueries({ queryKey: queryKeys.playlist(variables.playlistId) });
-            const previous = queryClient.getQueryData(queryKeys.playlist(variables.playlistId));
-            queryClient.setQueryData(queryKeys.playlist(variables.playlistId), (old: Record<string, unknown> | undefined) => {
+        onMutate: (variables) =>
+            applyOptimisticPlaylistEdit(queryClient, variables.playlistId, (old) => {
                 if (!old || !Array.isArray(old.items)) return old;
                 return {
                     ...old,
@@ -476,22 +473,9 @@ export function useRemoveFromPlaylistMutation() {
                         (item) => item.track?.id !== variables.trackId
                     ),
                 };
-            });
-            return { previous };
-        },
-        onError: (_err, variables, context) => {
-            if (context?.previous) {
-                queryClient.setQueryData(queryKeys.playlist(variables.playlistId), context.previous);
-            }
-        },
-        onSettled: (_, __, variables) => {
-            queryClient.invalidateQueries({
-                queryKey: queryKeys.playlist(variables.playlistId),
-            });
-            queryClient.invalidateQueries({
-                queryKey: queryKeys.playlists(),
-            });
-        },
+            }),
+        onError: (_err, variables, context) => rollbackPlaylistEdit(queryClient, variables.playlistId, context),
+        onSettled: (_, __, variables) => invalidatePlaylist(queryClient, variables.playlistId),
     });
 }
 
@@ -506,14 +490,7 @@ export function useUpdatePlaylistMutation() {
             playlistId: string;
             data: { name?: string; isPublic?: boolean };
         }) => api.updatePlaylist(playlistId, data),
-        onSuccess: (_, variables) => {
-            queryClient.invalidateQueries({
-                queryKey: queryKeys.playlist(variables.playlistId),
-            });
-            queryClient.invalidateQueries({
-                queryKey: queryKeys.playlists(),
-            });
-        },
+        onSuccess: (_, variables) => invalidatePlaylist(queryClient, variables.playlistId),
     });
 }
 
@@ -523,7 +500,6 @@ export function useDeletePlaylistMutation() {
     return useMutation({
         mutationFn: (playlistId: string) => api.deletePlaylist(playlistId),
         onSuccess: () => {
-            // Invalidate playlists list
             queryClient.invalidateQueries({
                 queryKey: queryKeys.playlists(),
             });
@@ -544,10 +520,8 @@ export function useMoveTrackInPlaylistMutation() {
             itemId: string;
             afterItemId: string | null;
         }) => api.moveTrackInPlaylist(playlistId, itemId, afterItemId),
-        onMutate: async (variables) => {
-            await queryClient.cancelQueries({ queryKey: queryKeys.playlist(variables.playlistId) });
-            const previous = queryClient.getQueryData(queryKeys.playlist(variables.playlistId));
-            queryClient.setQueryData(queryKeys.playlist(variables.playlistId), (old: Record<string, unknown> | undefined) => {
+        onMutate: (variables) =>
+            applyOptimisticPlaylistEdit(queryClient, variables.playlistId, (old) => {
                 if (!old || !Array.isArray(old.items)) return old;
                 // A copy: the cached list is also `previous`, restored if the move fails.
                 const items = [...(old.items as Array<Record<string, unknown>>)];
@@ -565,35 +539,10 @@ export function useMoveTrackInPlaylistMutation() {
                     items.unshift(moved);
                 }
                 return { ...old, items };
-            });
-            return { previous };
-        },
-        onError: (_err, variables, context) => {
-            if (context?.previous) {
-                queryClient.setQueryData(queryKeys.playlist(variables.playlistId), context.previous);
-            }
-        },
-        onSettled: (_, __, variables) => {
-            queryClient.invalidateQueries({
-                queryKey: queryKeys.playlist(variables.playlistId),
-            });
-            queryClient.invalidateQueries({
-                queryKey: queryKeys.playlists(),
-            });
-        },
+            }),
+        onError: (_err, variables, context) => rollbackPlaylistEdit(queryClient, variables.playlistId, context),
+        onSettled: (_, __, variables) => invalidatePlaylist(queryClient, variables.playlistId),
     });
-}
-
-interface PlaylistPreview {
-    id: string;
-    source: string;
-    type: string;
-    title: string;
-    description: string | null;
-    creator: string;
-    imageUrl: string | null;
-    trackCount: number;
-    url: string;
 }
 
 interface Genre {

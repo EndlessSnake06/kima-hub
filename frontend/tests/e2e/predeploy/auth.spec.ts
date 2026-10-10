@@ -1,13 +1,9 @@
 import { test, expect } from "@playwright/test";
-import { loginAsTestUser, username, password } from "../fixtures/test-helpers";
+import { loginAsTestUser } from "../fixtures/test-helpers";
 
 test.describe("Authentication", () => {
     test("login with valid credentials redirects to home", async ({ page }) => {
-        await page.goto("/login");
-        await page.locator("#username").fill(username);
-        await page.locator("#password").fill(password);
-        await page.getByRole("button", { name: "Sign In" }).click();
-        await page.waitForURL(/\/($|\?|home)/);
+        await loginAsTestUser(page);
         await expect(page).not.toHaveURL(/login/);
     });
 
@@ -28,14 +24,7 @@ test.describe("Authentication", () => {
     test("logout clears session and redirects to login", async ({ page }) => {
         await loginAsTestUser(page);
 
-        // Click the power/logout button in the top right
-        const logoutBtn = page.locator('button[title*="out" i], button[aria-label*="out" i], svg[class*="log-out"]').first();
-        if (await logoutBtn.isVisible({ timeout: 2000 })) {
-            await logoutBtn.click();
-        } else {
-            // Try clicking by position - power icon is typically far right in header
-            await page.locator('header button').last().click();
-        }
+        await page.getByRole("button", { name: "Logout" }).click();
 
         await expect(page).toHaveURL(/login/, { timeout: 5000 });
     });

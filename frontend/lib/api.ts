@@ -1,3 +1,5 @@
+import type { MapTrack } from "@/features/vibe/types";
+
 const AUTH_TOKEN_KEY = "auth_token";
 const REFRESH_TOKEN_KEY = "refresh_token";
 
@@ -24,6 +26,17 @@ interface MoodBucketMix {
     trackCount: number;
     color: string;
     tracks?: ApiData[];
+}
+
+export interface VibePathTrack {
+    id: string;
+    title: string;
+    duration: number;
+    albumId: string;
+    albumTitle: string;
+    albumCoverUrl: string | null;
+    artistId: string;
+    artistName: string;
 }
 
 /**
@@ -73,7 +86,6 @@ function toSearchParams(params: Record<string, string | number | boolean | undef
 
 // Dynamically determine API URL based on configuration
 export const getApiBaseUrl = () => {
-    // Server-side rendering
     if (typeof window === "undefined") {
         return process.env.BACKEND_URL || "http://127.0.0.1:3006";
     }
@@ -163,7 +175,7 @@ interface ConcurrencyConfig {
     tracksPerMin: number;
 }
 
-interface AnalysisWorkersConfig {
+export interface AnalysisWorkersConfig {
     workers: number;
     cpuCores: number;
     recommended: number;
@@ -207,7 +219,6 @@ class ApiClient {
     private ensurePromise: Promise<"fresh" | RefreshResult> | null = null;
 
     constructor() {
-        // Try to load token synchronously
         if (typeof window !== "undefined") {
             this.token = localStorage.getItem(AUTH_TOKEN_KEY);
             if (this.token) {
@@ -249,7 +260,6 @@ class ApiClient {
         return this.token;
     }
 
-    // Store JWT token and optionally refresh token
     setToken(token: string, refreshToken?: string) {
         this.token = token;
         if (typeof window !== "undefined") {
@@ -260,7 +270,6 @@ class ApiClient {
         }
     }
 
-    // Get refresh token from storage
     getRefreshToken(): string | null {
         if (typeof window === "undefined") {
             return null;
@@ -268,7 +277,6 @@ class ApiClient {
         return localStorage.getItem(REFRESH_TOKEN_KEY);
     }
 
-    // Clear both JWT tokens
     clearToken() {
         this.token = null;
         if (typeof window !== "undefined") {
@@ -311,25 +319,8 @@ class ApiClient {
     }
 
     private async _doEnsureFreshToken(): Promise<"fresh" | RefreshResult> {
-        const tok = this.getCurrentToken();
-        if (tok) {
-            try {
-                const parts = tok.split(".");
-                if (parts.length === 3) {
-                    const payload = JSON.parse(
-                        atob(parts[1].replace(/-/g, "+").replace(/_/g, "/"))
-                    ) as { exp?: number };
-                    if (
-                        typeof payload.exp === "number" &&
-                        payload.exp - Date.now() / 1000 > 3600
-                    ) {
-                        return "fresh";
-                    }
-                }
-            } catch {
-                // Malformed JWT: fall through to refresh.
-            }
-        }
+        const secondsLeft = this.tokenSecondsLeft();
+        if (secondsLeft !== null && secondsLeft > 3600) return "fresh";
 
         if (this.refreshPromise) return (await this.refreshPromise);
         this.refreshPromise = this._doRefresh();
@@ -346,22 +337,25 @@ class ApiClient {
         return tok ? `Bearer ${tok}` : null;
     }
 
-    private tokenExpiresWithin60Min(): boolean {
+    /** Seconds until the access token expires; null when there is no token or it has no readable expiry. */
+    private tokenSecondsLeft(): number | null {
         const tok = this.getCurrentToken();
-        if (!tok) return false;
+        if (!tok) return null;
         try {
             const parts = tok.split(".");
-            if (parts.length !== 3) return false;
+            if (parts.length !== 3) return null;
             const payload = JSON.parse(
                 atob(parts[1].replace(/-/g, "+").replace(/_/g, "/"))
             ) as { exp?: number };
-            return (
-                typeof payload.exp === "number" &&
-                payload.exp - Date.now() / 1000 < 3600
-            );
+            return typeof payload.exp === "number" ? payload.exp - Date.now() / 1000 : null;
         } catch {
-            return false;
+            return null;
         }
+    }
+
+    private tokenExpiresWithin60Min(): boolean {
+        const secondsLeft = this.tokenSecondsLeft();
+        return secondsLeft !== null && secondsLeft < 3600;
     }
 
     private async _doRefresh(): Promise<"refreshed" | "rejected" | "network-error"> {
@@ -433,7 +427,6 @@ class ApiClient {
             ...fetchOptions.headers,
         };
 
-        // Add Authorization header if token exists
         if (this.token) {
             (headers as Record<string, string>)[
                 "Authorization"
@@ -486,7 +479,6 @@ class ApiClient {
                 const refreshResult = await this.refreshAccessToken();
 
                 if (refreshResult === "refreshed") {
-                    // Retry the request with new token
                     return this.request<T>(endpoint, {
                         ...options,
                         _retryCount: 1, // Prevent infinite loops
@@ -522,7 +514,6 @@ class ApiClient {
         return data;
     }
 
-    // Generic POST method for convenience
     async post<T = unknown>(endpoint: string, data?: unknown): Promise<T> {
         return this.request<T>(endpoint, {
             method: "POST",
@@ -530,14 +521,12 @@ class ApiClient {
         });
     }
 
-    // Generic GET method for convenience
     async get<T = unknown>(endpoint: string): Promise<T> {
         return this.request<T>(endpoint, {
             method: "GET",
         });
     }
 
-    // Generic DELETE method for convenience
     async delete<T = unknown>(endpoint: string): Promise<T> {
         return this.request<T>(endpoint, {
             method: "DELETE",
@@ -572,7 +561,6 @@ class ApiClient {
             body: JSON.stringify({ username, password, token }),
         });
 
-        // If login returned JWT tokens, store them
         if (data.token) {
             this.setToken(data.token, data.refreshToken);
         }
@@ -594,7 +582,6 @@ class ApiClient {
         await this.request<void>("/auth/logout", {
             method: "POST",
         });
-        // Clear the stored JWT token
         this.clearToken();
     }
 
@@ -745,7 +732,12 @@ class ApiClient {
 
     // Streaming
     getStreamUrl(trackId: string): string {
-        const baseUrl = `${this.getBaseUrl()}/api/library/tracks/${trackId}/stream`;
+        return this.tokenizedUrl(`/api/library/tracks/${trackId}/stream`);
+    }
+
+    /** `<audio>` cannot send headers, so the access token rides in the query; a token near expiry is refreshed in the background. */
+    private tokenizedUrl(path: string): string {
+        const baseUrl = `${this.getBaseUrl()}${path}`;
         const token = this.getCurrentToken();
         if (this.tokenExpiresWithin60Min()) void this.ensureFreshToken();
         if (token) {
@@ -1322,13 +1314,7 @@ class ApiClient {
     }
 
     getPodcastEpisodeStreamUrl(podcastId: string, episodeId: string): string {
-        const baseUrl = `${this.getBaseUrl()}/api/podcasts/${podcastId}/episodes/${episodeId}/stream`;
-        const token = this.getCurrentToken();
-        if (this.tokenExpiresWithin60Min()) void this.ensureFreshToken();
-        if (token) {
-            return `${baseUrl}?token=${encodeURIComponent(token)}`;
-        }
-        return baseUrl;
+        return this.tokenizedUrl(`/api/podcasts/${podcastId}/episodes/${episodeId}/stream`);
     }
 
     /**
@@ -1595,7 +1581,7 @@ class ApiClient {
         );
     }
 
-    // Release window: the 1.11 mood-mix question
+    // Release window: the mood-mix question
     async getMoodMixReleaseState() {
         return this.get<MoodMixReleaseState>("/whats-new/mood-mixes");
     }
@@ -1726,12 +1712,6 @@ class ApiClient {
         }>("/enrichment/re-decide-everything", { method: "POST" });
     }
 
-    async retryFailedAnalysis() {
-        return this.request<{ message: string; reset: number }>("/analysis/retry-failed", {
-            method: "POST",
-        });
-    }
-
     // Enrichment control and failure management
 
     async getEnrichmentState() {
@@ -1791,6 +1771,12 @@ class ApiClient {
         return this.request<ConcurrencyConfig>("/enrichment/concurrency", {
             method: "PUT",
             body: JSON.stringify({ concurrency }),
+        });
+    }
+
+    async retryFailedAnalysis() {
+        return this.request<{ message: string; reset: number }>("/analysis/retry-failed", {
+            method: "POST",
         });
     }
 
@@ -2048,33 +2034,14 @@ class ApiClient {
 
     async getVibeMap() {
         // 202 { computing: true } until the similarity step has laid the library out; the caller polls.
-        return this.request<{ computing: true } | {
-            tracks: Array<{
-                id: string;
-                x: number;
-                y: number;
-                z: number;
-                /** Place on the Kima logo's gradient, 0 azure to 1 amber. */
-                colour: number;
-                title: string;
-                artist: string;
-                artistId: string;
-                albumId: string;
-                coverUrl: string | null;
-                dominantMood: string;
-                moods: Record<string, number>;
-                energy: number | null;
-                valence: number | null;
-            }>;
-            trackCount: number;
-        }>("/vibe/map");
+        return this.request<{ computing: true } | { tracks: MapTrack[]; trackCount: number }>("/vibe/map");
     }
 
     async getVibePath(startTrackId: string, endTrackId: string, options?: { length?: number; mode?: "smooth" | "discovery" }) {
         return this.request<{
-            startTrack: { id: string; title: string; duration: number; albumId: string; albumTitle: string; albumCoverUrl: string | null; artistId: string; artistName: string };
-            endTrack: { id: string; title: string; duration: number; albumId: string; albumTitle: string; albumCoverUrl: string | null; artistId: string; artistName: string };
-            path: Array<{ id: string; title: string; duration: number; albumId: string; albumTitle: string; albumCoverUrl: string | null; artistId: string; artistName: string }>;
+            startTrack: VibePathTrack;
+            endTrack: VibePathTrack;
+            path: Array<VibePathTrack>;
             metadata: { totalTracks: number; embeddingDistance: number; averageStepSize: number; mode: string };
         }>("/vibe/path", {
             method: "POST",

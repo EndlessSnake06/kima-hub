@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { loginAsTestUser, getAuthToken } from "./fixtures/test-helpers";
+import { softwareWebGL } from "./fixtures/shared";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -56,7 +57,7 @@ async function getTwoVibeSearchQueries(page: Parameters<typeof loginAsTestUser>[
             const d = await r.json() as { tracks: unknown[] };
             if (d.tracks.length > 0) working.push(q);
         } catch {
-            // skip
+            // a failing probe moves on to the next descriptor
         }
     }
     return working.length >= 2 ? [working[0], working[1]] : null;
@@ -64,15 +65,7 @@ async function getTwoVibeSearchQueries(page: Parameters<typeof loginAsTestUser>[
 
 // ---------------------------------------------------------------------------
 
-// Headless Chromium launches without WebGL, which would leave the map an empty
-// sky. Software rendering (SwiftShader) draws it; picking runs on the CPU
-// against the map plane, so it does not depend on the GL backend.
-test.use({
-    launchOptions: {
-        args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"],
-    },
-});
-
+test.use(softwareWebGL);
 
 // The What's New modal (aria-modal) sits over the page on a fresh login and
 // intercepts every pointer event — each journey below must dismiss it before
@@ -200,17 +193,14 @@ test.describe("Vibe", () => {
         await Promise.race([canvas.waitFor({ timeout: 35_000 }), noData.waitFor({ timeout: 35_000 })]);
         if ((await noData.count()) > 0) { test.skip(); return; }
 
-        // Type a query that is likely to match something
         const searchInput = page.locator('[aria-label="Search tracks or artists"]');
         await searchInput.fill("the");
         await page.waitForTimeout(400); // debounce
 
-        // Clear search
         const clearBtn = page.locator('[aria-label="Clear search"]');
         if (await clearBtn.isVisible()) await clearBtn.click();
         await page.waitForTimeout(200);
 
-        // After clearing, no error -- map is still rendered
         await expect(canvas).toBeVisible();
     });
 
@@ -233,7 +223,6 @@ test.describe("Vibe", () => {
     });
 
     test("Drift song path form: search and select two tracks then generate queue", async ({ page }) => {
-        // Find queries that produce results in this library
         const queries = await getTwoVibeSearchQueries(page);
         if (!queries) { test.skip(); return; }
         const [startQuery, endQuery] = queries;
@@ -244,11 +233,9 @@ test.describe("Vibe", () => {
         const canvas = page.locator("canvas").first();
         await canvas.waitFor({ timeout: 35_000 });
 
-        // Open drift form
         await page.locator('[title^="song path"]').click();
         await expect(page.locator('#path-start')).toBeVisible({ timeout: 5_000 });
 
-        // Search and select start track
         const startInput = page.locator('#path-start');
         await startInput.click();
         await startInput.fill(startQuery);
@@ -258,7 +245,6 @@ test.describe("Vibe", () => {
         await firstResult.waitFor({ timeout: 8_000 });
         await firstResult.click();
 
-        // Should auto-focus end input
         const endInput = page.locator('#path-end');
         await endInput.click();
         await endInput.fill(endQuery);
@@ -268,12 +254,10 @@ test.describe("Vibe", () => {
         await endResult.waitFor({ timeout: 8_000 });
         await endResult.click();
 
-        // Generate Path button should now be enabled
         const generateBtn = page.locator('button:has-text("Generate Path")');
         await expect(generateBtn).toBeEnabled({ timeout: 3_000 });
         await generateBtn.click();
 
-        // The form closes and the path is visualized on the map (canvas still present)
         await expect(page.locator('#path-start')).not.toBeVisible({ timeout: 8_000 });
         await expect(canvas).toBeVisible();
     });
@@ -292,12 +276,10 @@ test.describe("Vibe", () => {
         await page.locator('[title^="blend"]').click();
         await page.waitForTimeout(500);
 
-        // Blend (alchemy) panel should appear -- close button has aria-label="Close alchemy"
         const closeEl = page.locator('[aria-label="Close alchemy"]').first();
         await expect(closeEl).toBeVisible({ timeout: 5_000 });
 
-        // Dismiss
-        if (await closeEl.isVisible()) await closeEl.click();
+        await closeEl.click();
     });
 
     // ---- Selected-track panel ------------------------------------------------
@@ -317,7 +299,7 @@ test.describe("Vibe", () => {
         const noData = page.locator("text=/No tracks with vibe/i").first();
         await Promise.race([field.waitFor({ timeout: 35_000 }), noData.waitFor({ timeout: 35_000 })]);
         if ((await noData.count()) > 0) {
-            test.skip(true, "no vibe tracks available on this testbed");
+            test.skip(true, "no vibe tracks available");
         }
 
         // Let the opening camera flight settle so hovered points stay put.
@@ -358,11 +340,9 @@ test.describe("Vibe", () => {
         await expect(panel.getByLabel("Find tracks similar to this one")).toBeVisible();
         await expect(panel.getByLabel("Start song path from this track")).toBeVisible();
 
-        // Esc closes it.
         await page.keyboard.press("Escape");
         await expect(panel).toBeHidden({ timeout: 5_000 });
 
-        // Re-open, then close with the panel's own button.
         expect(await openFromHover(), "the panel should re-open").toBe(true);
         await panel.getByLabel("Close track details").click();
         await expect(panel).toBeHidden({ timeout: 5_000 });
@@ -376,7 +356,7 @@ test.describe("Vibe", () => {
         const noData = page.locator("text=/No tracks with vibe/i").first();
         await Promise.race([gallery.waitFor({ timeout: 35_000 }), noData.waitFor({ timeout: 35_000 })]);
         if ((await noData.count()) > 0) {
-            test.skip(true, "no vibe tracks available on this testbed");
+            test.skip(true, "no vibe tracks available");
         }
 
         // Pick a real vibe track and set it as the server-side playback state —

@@ -11,7 +11,6 @@ export function usePlayerMode() {
         // Don't auto-switch if in overlay mode (user manually opened it)
         if (playerMode === "overlay") return;
 
-        // Don't auto-switch if no media is playing
         if (!currentTrack && !currentAudiobook && !currentPodcast) return;
 
         // Determine if we're on the EXACT page where the current media is playing

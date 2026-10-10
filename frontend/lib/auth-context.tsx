@@ -110,7 +110,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
             const userData = await api.login(username, password, token);
 
-            // Check if 2FA is required
             if (userData.requires2FA) {
                 // Don't set user or redirect, just throw an error to trigger 2FA UI
                 throw new Error("2FA token required");
@@ -138,7 +137,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         router.push("/login");
     }, [router]);
 
-    // Memoize context value to prevent unnecessary re-renders
     const contextValue = useMemo(() => ({
         isAuthenticated,
         isLoading,
