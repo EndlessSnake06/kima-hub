@@ -1,5 +1,6 @@
 import { Worker, Job } from "bullmq";
 import { createWorkerConnection, QUEUE_NAMES } from "./enrichmentQueues";
+import { isEntityGone } from "./entityGone";
 import {
     claimIsCurrent,
     enrichSingleTrack,
@@ -44,7 +45,7 @@ export async function startTrackEnrichmentWorker(): Promise<Worker> {
         if (!job) return;
         const { trackId } = job.data;
 
-        if ((err as any).entityNotFound) {
+        if (isEntityGone(err)) {
             logger.info(`[TrackWorker] Track ${trackId} no longer exists, resolving silently`);
             return;
         }

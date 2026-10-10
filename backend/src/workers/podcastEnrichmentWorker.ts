@@ -39,12 +39,6 @@ export function startPodcastEnrichmentWorker(): Worker {
         // jobId lets the next cycle re-queue it with real data.
         if (!podcastId) return;
 
-        const isEntityGone = (err as any).entityNotFound === true;
-        if (isEntityGone) {
-            logger.info(`[PodcastWorker] Podcast ${podcastId} no longer exists, skipping failure record`);
-            return;
-        }
-
         const isFinalAttempt = job.attemptsMade >= (job.opts.attempts ?? 3);
         if (isFinalAttempt) {
             await enrichmentFailureService
