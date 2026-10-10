@@ -88,19 +88,20 @@ describe("rankBetween — randomised insertion", () => {
     it("throws rather than silently emitting a duplicate when depth runs out", () => {
         let lo = "A";
         let hi = "B";
-        let threw = false;
         for (let n = 0; n < 500; n += 1) {
+            let mid: string;
             try {
-                hi = rankBetween(lo, hi);
+                mid = rankBetween(lo, hi);
             } catch (e: any) {
+                // Refusing loudly is the other allowed outcome.
                 expect(e.message).toMatch(/max depth/);
-                threw = true;
-                break;
+                return;
             }
+            // Every key handed back was strictly between its bounds.
+            expect(mid > lo).toBe(true);
+            expect(mid < hi).toBe(true);
+            hi = mid;
         }
-        // Either it stayed within depth for 500 splits, or it refused loudly.
-        // What it must never do is return a key that is not strictly between.
-        expect(typeof threw).toBe("boolean");
     });
 
     it("appending stays ordered over 500 appends", () => {
@@ -139,8 +140,7 @@ describe("rankBetween — randomised insertion", () => {
         // deep prepending must subdivide and the keys grow. Ordering and
         // uniqueness are the invariants; short keys are not.
         const list: string[] = [];
-        // rankBetween("", x) is how moveItem inserts before the first item;
-        // rankBefore was a second spelling of it with no callers.
+        // rankBetween("", x) is how moveItem inserts before the first item.
         let first = "";
         let inserted = 0;
         for (let n = 0; n < 500; n += 1) {
