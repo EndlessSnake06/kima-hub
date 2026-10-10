@@ -33,11 +33,7 @@ interface DownloadContextType {
         subject: string,
         mbid: string
     ) => string | null;
-    removePendingDownload: (id: string) => void;
-    removePendingByMbid: (mbid: string) => void;
-    isPending: (subject: string) => boolean;
     isPendingByMbid: (mbid: string) => boolean;
-    isAnyPending: () => boolean;
 }
 
 const DownloadContext = createContext<DownloadContextType | undefined>(
@@ -114,18 +110,6 @@ export function DownloadProvider({ children }: { children: ReactNode }) {
         return id;
     }, []);
 
-    const removePendingDownload = useCallback((id: string) => {
-        setPendingDownloads((prev) => prev.filter((d) => d.id !== id));
-    }, []);
-
-    const removePendingByMbid = useCallback((mbid: string) => {
-        setPendingDownloads((prev) => prev.filter((d) => d.mbid !== mbid));
-    }, []);
-
-    const isPending = useCallback((subject: string): boolean => {
-        return pendingDownloads.some((d) => d.subject === subject);
-    }, [pendingDownloads]);
-
     const isPendingByMbid = useCallback((mbid: string): boolean => {
         const isPendingLocal = pendingDownloads.some((d) => d.mbid === mbid);
         const hasActiveJob = downloadStatus.activeDownloads.some(
@@ -135,28 +119,16 @@ export function DownloadProvider({ children }: { children: ReactNode }) {
         return isPendingLocal || hasActiveJob;
     }, [pendingDownloads, downloadStatus.activeDownloads]);
 
-    const isAnyPending = useCallback((): boolean => {
-        return pendingDownloads.length > 0;
-    }, [pendingDownloads]);
-
     const contextValue = useMemo(() => ({
         pendingDownloads,
         downloadStatus,
         addPendingDownload,
-        removePendingDownload,
-        removePendingByMbid,
-        isPending,
         isPendingByMbid,
-        isAnyPending,
     }), [
         pendingDownloads,
         downloadStatus,
         addPendingDownload,
-        removePendingDownload,
-        removePendingByMbid,
-        isPending,
         isPendingByMbid,
-        isAnyPending,
     ]);
 
     return (
