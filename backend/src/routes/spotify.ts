@@ -64,7 +64,7 @@ router.post("/parse", async (req, res) => {
             });
         }
 
-        // For now, only support playlists
+        // Only playlists can be imported
         if (parsed.type !== "playlist") {
             return res.status(400).json({
                 error: `Only playlist imports are supported. Got: ${parsed.type}`,
@@ -203,7 +203,7 @@ router.post("/import", async (req, res) => {
             }
             preview = stored.preview;
         } else {
-            // Fallback: regenerate synchronously (backwards compatibility)
+            // No preview job: build the preview now
             const effectiveUrl =
                 url?.trim() ||
                 `https://open.spotify.com/playlist/${spotifyPlaylistId}`;

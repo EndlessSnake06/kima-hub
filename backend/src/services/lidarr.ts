@@ -649,11 +649,10 @@ class LidarrService {
     }
 
     /**
-     * Marks a download Lidarr grabbed for one album, and already imported, as
-     * failed, as Lidarr's own "mark as failed" does: Lidarr blocklists the release
-     * and, with its "redownload failed" setting on, searches the album again.
-     * False for a bundle (Lidarr would search every album it covers) or a
-     * download Lidarr has no grab for.
+     * Marks a download Lidarr grabbed for one album and already imported as failed,
+     * as Lidarr's own "mark as failed" does: the release is blocklisted and, with
+     * "redownload failed" on, Lidarr searches again. False for a bundle (it would
+     * search every album it covers) or a download Lidarr has no grab for.
      */
     async markDownloadFailed(downloadId: string): Promise<boolean> {
         await this.ensureInitialized();
@@ -701,11 +700,10 @@ class LidarrService {
     }
 
     /**
-     * Grab a multi-album bundle that covers the album, when Lidarr has no objection to it or refused it only
-     * because other albums in it are already owned, as Lidarr's "download anyway" does (POST /api/v1/release,
-     * valid 30 minutes after the search that listed it). An album search never finds a bundle, so it is looked
-     * for among the artist's releases. Any other rejection (quality, seeders, blocklist) leaves the release
-     * alone. True when the grab started.
+     * Grabs a multi-album bundle covering the album when Lidarr has no objection or refused it only because
+     * other albums in it are already owned, as its "download anyway" does (POST /api/v1/release, valid 30
+     * minutes after the search that listed it). An album search never finds a bundle, so it is looked for among
+     * the artist's releases. Any other rejection leaves the release alone. True when the grab started.
      */
     async tryBundleGrab(artistId: number, album: { title: string; releaseDate?: string; id: number }): Promise<boolean> {
         let releases: any[] = [];

@@ -20,11 +20,9 @@ export interface AddTracksResult {
 }
 
 /**
- * Serialise mutations for one playlist.
- *
- * Read-then-write on max(rank) is only safe if concurrent writers are ordered.
- * A Postgres advisory lock keyed on the playlist does that without a table lock,
- * and is released automatically at commit.
+ * Serialises mutations for one playlist: read-then-write on max(rank) is only safe if concurrent
+ * writers are ordered. A Postgres advisory lock keyed on the playlist does that without a table
+ * lock and is released at commit.
  */
 async function lockPlaylist(
     tx: Pick<typeof prisma, "$executeRaw">,
@@ -162,8 +160,7 @@ export async function addTracks(
 
         const ranks = await allocateAppendRanks(tx, playlistId, fresh.length);
 
-        // `sort` is legacy (rank is authoritative) but must stay monotonic while
-        // anything still reads it.
+        // rank orders the items; sort is kept monotonic for readers that still use it.
         const maxSort = await tx.playlistItem.aggregate({
             where: { playlistId },
             _max: { sort: true },
@@ -225,13 +222,7 @@ export async function removeTracks(
     return count;
 }
 
-/**
- * Move one item so it sits directly after `afterItemId` (or first when null).
- *
- * One row changes. The previous reorder endpoint rewrote every row in the
- * playlist and required the client to send the complete ordering, so a partial
- * list silently reshuffled the rest.
- */
+/** Moves one item so it sits directly after `afterItemId` (or first when null); only that row changes. */
 export async function moveItem(
     playlistId: string,
     itemId: string,

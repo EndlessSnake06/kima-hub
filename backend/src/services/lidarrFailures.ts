@@ -54,11 +54,10 @@ function isSingleTrackPost(title: string): boolean {
 export type QueueVerdict = { action: "reject" | "owned" | "junk" | "parked"; reason: string };
 
 /**
- * What a queue item needs: a single-track post is turned away (not counted as
- * an attempt); an album the library already holds closes its job; junk (not
- * the album at all) is removed so Lidarr tries the next release; anything else
- * Lidarr stopped on, missing tracks above all, is parked for a person. Null
- * while the download is still going or its archive is being extracted.
+ * What a queue item needs: a single-track post is turned away (not counted as an attempt); an album
+ * the library already holds closes its job; junk (not the album at all) is removed so Lidarr tries the
+ * next release; anything else Lidarr stopped on, missing tracks above all, is parked for a person.
+ * Null while the download is still going or its archive is being extracted.
  */
 export function judgeQueueItem(item: LidarrQueueItem, now = Date.now()): QueueVerdict | null {
     if (isSingleTrackPost(item.title ?? "")) return { action: "reject", reason: "Single-track post" };
@@ -97,11 +96,9 @@ async function claimDownload(downloadId: string, reason: string): Promise<boolea
 }
 
 /**
- * Tells Lidarr a download it grabbed for one album, and already imported,
- * failed, once per download, as its own "mark as failed" does: the release is
- * blocklisted and Lidarr searches again. False for a bundle, or a download
- * Lidarr has no grab for. Lidarr's error is passed on, so the caller's event
- * is tried again rather than searching with the release still allowed.
+ * Tells Lidarr a download it grabbed for one album and already imported failed, once per download, as
+ * its own "mark as failed" does: the release is blocklisted and Lidarr searches again. False for a bundle
+ * or a download Lidarr has no grab for. Lidarr's error is passed on so the caller's event is retried.
  */
 export async function failImportedDownload(downloadId: string, reason: string): Promise<boolean> {
     if (!(await claimDownload(downloadId, reason))) return false;

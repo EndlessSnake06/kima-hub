@@ -1,8 +1,6 @@
 /**
- * Unified Acquisition Service
- *
- * Consolidates album/track acquisition logic from Discovery Weekly and Playlist Import.
- * Handles download source selection, behavior matrix routing, and job tracking.
+ * Album and track acquisition for Discovery Weekly and playlist import: download source
+ * selection, behavior matrix routing and job tracking.
  */
 
 import { logger } from "../utils/logger";
@@ -879,13 +877,7 @@ class AcquisitionService {
         });
     }
 
-    /**
-     * Update download job status
-     *
-     * @param jobId - Job ID to update
-     * @param status - New status
-     * @param error - Optional error message
-     */
+    /** Updates a download job's status, recording the error message when given. */
     private async updateJobStatus(
         jobId: string,
         status: string,

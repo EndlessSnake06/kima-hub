@@ -150,7 +150,7 @@ router.post(
         try {
             const { query, artist, title } = req.body;
 
-            // Support both query formats for backward compatibility
+            // Either a free-text query or an artist and title
             let searchQuery: string;
 
             if (query) {

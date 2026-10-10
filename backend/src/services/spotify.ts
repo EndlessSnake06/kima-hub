@@ -4,11 +4,8 @@ import { deezerService } from "./deezer";
 import { rateLimiter } from "./rateLimiter";
 
 /**
- * Spotify Service
- *
- * Fetches public playlist data from Spotify using anonymous tokens.
- * No API credentials required - uses Spotify's web player token endpoint.
- * Falls back to Deezer API when Spotify scraping fails.
+ * Fetches public Spotify playlist data with anonymous web-player tokens, so no
+ * API credentials are needed. Falls back to Deezer when Spotify scraping fails.
  */
 
 export interface SpotifyTrack {
