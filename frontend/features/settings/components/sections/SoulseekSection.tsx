@@ -1,11 +1,9 @@
 "use client";
 
-import { SettingsSection, SettingsRow, SettingsInput, SettingsSelect } from "../ui";
+import { SettingsSection, SettingsRow, SettingsInput, SettingsSelect, ConnectionTestButton } from "../ui";
 import { ConnectionTestResult, SystemSettings, soulseekConfigured } from "../../types";
 import { useConnectionTest } from "../../hooks/useConnectionTest";
 import { ExternalLink } from "lucide-react";
-import { InlineStatus } from "@/components/ui/InlineStatus";
-import { Button } from "@/components/ui/Button";
 
 interface SoulseekSectionProps {
     settings: SystemSettings;
@@ -121,21 +119,7 @@ export function SoulseekSection({ settings, onUpdate, onTest, isTesting }: Souls
             )}
 
             <div className="pt-2 space-y-2">
-                <div className="inline-flex items-center gap-3">
-                    <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={connection.test}
-                        disabled={isTesting || !canTest}
-                    >
-                        {connection.status === "loading" ? "Connecting..." : "Test Connection"}
-                    </Button>
-                    <InlineStatus
-                        status={connection.status}
-                        message={connection.message}
-                        onClear={connection.clear}
-                    />
-                </div>
+                <ConnectionTestButton connection={connection} disabled={isTesting || !canTest} />
                 <p className="text-xs text-[var(--text-muted)]">
                     Downloads will be saved to your Singles folder automatically
                 </p>

@@ -1,10 +1,8 @@
 "use client";
 
-import { SettingsSection, SettingsRow, SettingsInput, SettingsToggle } from "../ui";
+import { SettingsSection, SettingsRow, SettingsInput, SettingsToggle, ConnectionTestButton } from "../ui";
 import { ConnectionTestResult, SystemSettings } from "../../types";
 import { useConnectionTest } from "../../hooks/useConnectionTest";
-import { InlineStatus } from "@/components/ui/InlineStatus";
-import { Button } from "@/components/ui/Button";
 
 interface AIServicesSectionProps {
     settings: SystemSettings;
@@ -48,21 +46,7 @@ export function AIServicesSection({ settings, onUpdate, onTest, isTesting }: AIS
                     </SettingsRow>
 
                     <div className="pt-2">
-                        <div className="inline-flex items-center gap-3">
-                            <Button
-                                variant="secondary"
-                                size="sm"
-                                onClick={fanartTest.test}
-                                disabled={isTesting || !settings.fanartApiKey}
-                            >
-                                {fanartTest.status === "loading" ? "Testing..." : "Test Connection"}
-                            </Button>
-                            <InlineStatus
-                                status={fanartTest.status}
-                                message={fanartTest.message}
-                                onClear={fanartTest.clear}
-                            />
-                        </div>
+                        <ConnectionTestButton connection={fanartTest} disabled={isTesting || !settings.fanartApiKey} />
                     </div>
                 </>
             )}

@@ -1,12 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { SettingsSection, SettingsRow, SettingsInput, SettingsToggle, SettingsSelect } from "../ui";
+import { SettingsSection, SettingsRow, SettingsInput, SettingsToggle, SettingsSelect, ConnectionTestButton } from "../ui";
 import { ConnectionTestResult, SystemSettings } from "../../types";
 import { useConnectionTest } from "../../hooks/useConnectionTest";
-import { InlineStatus } from "@/components/ui/InlineStatus";
 import { api } from "@/lib/api";
-import { Button } from "@/components/ui/Button";
 
 interface LidarrProfile {
     id: number;
@@ -84,21 +82,10 @@ export function LidarrSection({ settings, onUpdate, onTest, isTesting }: LidarrS
                     </SettingsRow>
 
                     <div className="pt-2">
-                        <div className="inline-flex items-center gap-3">
-                            <Button
-                                variant="secondary"
-                                size="sm"
-                                onClick={connection.test}
-                                disabled={isTesting || !settings.lidarrUrl || !settings.lidarrApiKey}
-                            >
-                                {connection.status === "loading" ? "Testing..." : "Test Connection"}
-                            </Button>
-                            <InlineStatus
-                                status={connection.status}
-                                message={connection.message}
-                                onClear={connection.clear}
-                            />
-                        </div>
+                        <ConnectionTestButton
+                            connection={connection}
+                            disabled={isTesting || !settings.lidarrUrl || !settings.lidarrApiKey}
+                        />
                     </div>
 
                     <SettingsRow

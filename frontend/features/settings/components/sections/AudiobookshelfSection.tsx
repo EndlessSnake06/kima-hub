@@ -1,10 +1,8 @@
 "use client";
 
-import { SettingsSection, SettingsRow, SettingsInput, SettingsToggle } from "../ui";
+import { SettingsSection, SettingsRow, SettingsInput, SettingsToggle, ConnectionTestButton } from "../ui";
 import { ConnectionTestResult, SystemSettings } from "../../types";
 import { useConnectionTest } from "../../hooks/useConnectionTest";
-import { InlineStatus } from "@/components/ui/InlineStatus";
-import { Button } from "@/components/ui/Button";
 
 interface AudiobookshelfSectionProps {
     settings: SystemSettings;
@@ -56,21 +54,10 @@ export function AudiobookshelfSection({ settings, onUpdate, onTest, isTesting }:
                     </SettingsRow>
 
                     <div className="pt-2">
-                        <div className="inline-flex items-center gap-3">
-                            <Button
-                                variant="secondary"
-                                size="sm"
-                                onClick={connection.test}
-                                disabled={isTesting || !settings.audiobookshelfUrl || !settings.audiobookshelfApiKey}
-                            >
-                                {connection.status === "loading" ? "Testing..." : "Test Connection"}
-                            </Button>
-                            <InlineStatus
-                                status={connection.status}
-                                message={connection.message}
-                                onClear={connection.clear}
-                            />
-                        </div>
+                        <ConnectionTestButton
+                            connection={connection}
+                            disabled={isTesting || !settings.audiobookshelfUrl || !settings.audiobookshelfApiKey}
+                        />
                     </div>
                 </>
             )}

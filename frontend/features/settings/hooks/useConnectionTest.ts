@@ -37,5 +37,5 @@ export function useConnectionTest(
         }
     };
 
-    return { status, message, test, clear: () => setStatus("idle") };
+    return { status, message, busy, test, clear: () => setStatus("idle") };
 }
