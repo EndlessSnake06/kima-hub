@@ -26,8 +26,6 @@ class AudiobookshelfService {
     private baseUrl: string | null = null;
     private apiKey: string | null = null;
     private initialized = false;
-    private podcastCache: { items: any[]; expiresAt: number } | null = null;
-    private readonly PODCAST_CACHE_TTL_MS = 5 * 60 * 1000;
     private trackCache = new Map<string, TrackCacheEntry>();
 
     private async ensureInitialized() {
@@ -99,20 +97,6 @@ class AudiobookshelfService {
     }
 
     /**
-     * Test connection to Audiobookshelf
-     */
-    async ping(): Promise<boolean> {
-        try {
-            await this.ensureInitialized();
-            const response = await this.client!.get("/api/libraries");
-            return response.status === 200;
-        } catch (error) {
-            logger.error("Audiobookshelf connection failed:", error);
-            return false;
-        }
-    }
-
-    /**
      * Get all libraries from Audiobookshelf
      */
     async getLibraries() {
@@ -149,49 +133,6 @@ class AudiobookshelfService {
         }
 
         return allBooks;
-    }
-
-    /**
-     * Get all podcasts from all libraries
-     */
-    async getAllPodcasts(forceRefresh = false) {
-        await this.ensureInitialized();
-
-        if (
-            !forceRefresh &&
-            this.podcastCache &&
-            this.podcastCache.expiresAt > Date.now()
-        ) {
-            return this.podcastCache.items;
-        }
-
-        const libraries = await this.getLibraries();
-        const podcastLibraries = libraries.filter(
-            (library: any) => library.mediaType === "podcast"
-        );
-
-        const libraryResults = await Promise.all(
-            podcastLibraries.map(async (library: any) => {
-                try {
-                    return await this.getLibraryItems(library.id);
-                } catch (error) {
-                    logger.error(
-                        `Audiobookshelf: failed to load podcast library ${library.id}`,
-                        error
-                    );
-                    return [];
-                }
-            })
-        );
-
-        const allPodcasts = libraryResults.flat();
-
-        this.podcastCache = {
-            items: allPodcasts,
-            expiresAt: Date.now() + this.PODCAST_CACHE_TTL_MS,
-        };
-
-        return allPodcasts;
     }
 
     /**

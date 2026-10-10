@@ -32,7 +32,7 @@ describe("buildSections", () => {
         });
     });
 
-    describe("broken coverage → track fallback (Katie Mack case)", () => {
+    describe("broken coverage → track fallback", () => {
         const DURATION = 29000;
         const chapters = [
             { title: "Intro", start: 0, end: 4000 },
