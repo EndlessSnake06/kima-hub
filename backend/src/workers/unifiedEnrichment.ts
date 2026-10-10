@@ -945,8 +945,8 @@ async function setupControlChannel() {
                     // Pause all BullMQ workers + halt vibe queuing
                     Promise.all(activeEnrichmentWorkers.map((w) => w.pause())).catch(() => {});
                     haltVibeQueuing();
-                    // The CLAP analyzer stays up: it unloads its model after MODEL_IDLE_TIMEOUT (300s)
-                    // once the vibe queue is empty, and the supervisor does not restart a clean exit.
+                    // The CLAP analyzer keeps running; with no work it frees its model after
+                    // MODEL_IDLE_TIMEOUT (300 s) and loads it again when work arrives.
                 }
             }
         });
