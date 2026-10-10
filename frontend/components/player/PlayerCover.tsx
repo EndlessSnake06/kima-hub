@@ -13,11 +13,11 @@ interface PlayerCoverProps {
     className: string;
 }
 
-/** The cover tile in the docked players; it links to the playing item and shows art only when there is a link. */
+/** The cover tile in the docked players: the playing item's art, linking to the item when it has a page. */
 export function PlayerCover({ href, coverUrl, title, isPlaying, className }: PlayerCoverProps) {
     const tile = (
         <div className={cn("relative w-full h-full bg-gradient-to-br from-[#2a2a2a] to-[#1a1a1a] rounded-lg overflow-hidden flex items-center justify-center", "transition-transform duration-300", isPlaying && "scale-[1.03]")}>
-            {href && coverUrl ? (
+            {coverUrl ? (
                 <CachedImage
                     key={coverUrl}
                     src={coverUrl}
