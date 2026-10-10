@@ -365,12 +365,6 @@ export default function DeezerPlaylistDetailPage() {
                 </div>
             </div>
 
-            {playingTrackId && (
-                <div className="fixed bottom-24 left-1/2 -translate-x-1/2 px-4 py-2 bg-brand rounded-lg text-black text-xs font-semibold flex items-center gap-2 z-(--z-toast-inline)">
-                    <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-                    Playing 30s preview
-                </div>
-            )}
         </div>
     );
 }

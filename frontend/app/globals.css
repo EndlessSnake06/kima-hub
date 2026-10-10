@@ -128,7 +128,6 @@
     --z-player: 45;            /* mini player, above the nav it overlaps */
     --z-header: 50;            /* fixed top bar */
     --z-dropdown: 55;          /* menus and popovers anchored to a control */
-    --z-toast-inline: 65;      /* transient confirmation over page content */
     --z-drawer-backdrop: 70;   /* mobile sidebar backdrop */
     --z-drawer: 75;            /* mobile sidebar */
     --z-modal: 80;             /* dialogs, above the activity panel */
