@@ -1,5 +1,4 @@
 import { Router } from "express";
-import axios from "axios";
 import { logger } from "../utils/logger";
 import { withTimeout } from "../utils/timeout";
 import { getSimilarArtists } from "../services/artistSimilarity";
@@ -14,7 +13,7 @@ import {
     findArtistArtwork,
 } from "../services/artwork";
 import { safeError } from "../utils/errors";
-import { upstreamHeader } from "../utils/upstreamHeaders";
+import { proxyPreviewStream } from "../utils/previewProxy";
 import { failureCause } from "../utils/outcome";
 
 const router = Router();
@@ -72,47 +71,11 @@ router.get("/preview/:artistName/:trackTitle/stream", async (req, res) => {
             return res.status(404).json({ error: "Preview not found" });
         }
 
-        const upstream = await axios.get(previewUrl, {
-            responseType: "stream",
-            timeout: 10000,
+        await proxyPreviewStream(res, previewUrl, {
+            notFoundMessage: "Preview not found",
+            logLabel: "Preview stream",
         });
-
-        const upstreamContentLength = upstreamHeader(upstream.headers["content-length"]);
-        const upstreamAcceptRanges = upstreamHeader(upstream.headers["accept-ranges"]);
-
-        res.setHeader(
-            "Content-Type",
-            upstreamHeader(upstream.headers["content-type"]) || "audio/mpeg"
-        );
-        if (upstreamContentLength) {
-            res.setHeader("Content-Length", upstreamContentLength);
-        }
-        if (upstreamAcceptRanges) {
-            res.setHeader("Accept-Ranges", upstreamAcceptRanges);
-        }
-        res.setHeader("Cache-Control", "no-store");
-
-        upstream.data.on("error", (streamErr: unknown) => {
-            logger.error("Preview stream pipe error:", streamErr);
-            if (!res.headersSent) {
-                res.status(502).end();
-            } else {
-                res.end();
-            }
-        });
-
-        // Clean up upstream stream when client disconnects (preview cancelled, tab closed, etc)
-        res.on("close", () => {
-            if (!upstream.data.destroyed) {
-                upstream.data.destroy();
-            }
-        });
-
-        upstream.data.pipe(res);
     } catch (error) {
-        if (axios.isAxiosError(error) && error.response?.status === 404) {
-            return res.status(404).json({ error: "Preview not found" });
-        }
         safeError(res, "Track preview stream", error);
     }
 });
