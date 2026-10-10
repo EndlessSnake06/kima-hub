@@ -1,8 +1,7 @@
 /**
  * Bundle detection, grab and completion against a real Lidarr's recorded answers
- * (run "bundle"): a discography release is recognised, grabbed within the size
- * ceiling and linked to both albums' jobs; the album it did not bring is searched
- * for on its own.
+ * (run "bundle"): a discography release is recognised, grabbed and linked to
+ * both albums' jobs; the album it did not bring is searched for on its own.
  */
 
 import { prisma } from "../../utils/db";
@@ -87,14 +86,6 @@ it("grabs the bundle when the album search found nothing", async () => {
     expect((await job()).status).toBe("processing");
 });
 
-it("stays under the size ceiling the admin set", async () => {
-    await useLidarr(lidarr.url, { lidarrBundleMaxSizeMB: 10 });
-    lidarr.replay(Math.max(...run.exchanges.map((e) => e.seq)));
-    const job = await request();
-
-    expect(lidarr.asked.some((a) => a.method === "POST" && a.path === "/api/v1/release")).toBe(false);
-    expect((await job()).status).toBe("failed");
-});
 
 async function bothRequested() {
     lidarr.replay(seqOf("POST", "/api/v1/release"));

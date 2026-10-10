@@ -712,7 +712,6 @@ class LidarrService {
         }
 
         const year = album.releaseDate ? Number(album.releaseDate.slice(0, 4)) : undefined;
-        const ceilingMB = (await getSystemSettings())?.lidarrBundleMaxSizeMB ?? 0;
         const candidates = releases.filter(
             (r) =>
                 looksLikeBundle(r) &&
@@ -721,18 +720,12 @@ class LidarrService {
         );
         if (candidates.length === 0) return false;
 
-        const ceiling = ceilingMB > 0 ? ceilingMB * 1024 * 1024 : Infinity;
-        const fitting = candidates.filter((r) => (r.size ?? 0) <= ceiling);
-        fitting.sort(
+        candidates.sort(
             (a, b) =>
                 (a.size ?? Infinity) - (b.size ?? Infinity) ||
                 (b.statistics?.seeders ?? 0) - (a.statistics?.seeders ?? 0)
         );
-        if (fitting.length === 0) {
-            logger.debug(`   ${candidates.length} bundle(s) cover "${album.title}" but exceed the size ceiling`);
-            return false;
-        }
-        const pick = fitting[0];
+        const pick = candidates[0];
 
         try {
             await this.client!.post("/api/v1/release", {

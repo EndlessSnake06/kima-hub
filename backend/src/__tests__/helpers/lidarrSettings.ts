@@ -15,7 +15,6 @@ export async function useLidarr(url: string, extra: Record<string, unknown> = {}
         lidarrQualityProfileId: 3,
         lidarrMetadataProfileId: 1,
         lidarrRemoveJunk: true,
-        lidarrBundleMaxSizeMB: 0,
         ...extra,
     };
     await prisma.systemSettings.upsert({ where: { id: "default" }, create: { id: "default", ...data }, update: data });

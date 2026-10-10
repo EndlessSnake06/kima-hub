@@ -652,9 +652,6 @@ model SystemSettings {
   lidarrEnabled               Boolean  @default(true)
   lidarrUrl                   String?  @default("http://localhost:8686")
   lidarrApiKey                String?
-  /// Cap on the size (MB) of a release Kima may grab as a bundle fallback when
-  /// an album is only available inside a multi-album torrent. 0 = no cap.
-  lidarrBundleMaxSizeMB       Int      @default(0)
   /// Kima removes junk downloads (no usable music, the wrong album) so Lidarr
   /// tries the next release; off leaves them to the user's own setup.
   lidarrRemoveJunk            Boolean  @default(true)
