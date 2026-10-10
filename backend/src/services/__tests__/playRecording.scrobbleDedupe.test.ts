@@ -31,11 +31,9 @@ async function cleanup() {
 }
 
 /**
- * A user, an artist/album/track chain, and nothing else.
- *
- * `duration` is 200 s by default, so the dedupe window is 200 s and a play
- * dated a day earlier sits far outside it — that distance is the point of the
- * late-sync case, and a window measured in minutes cannot swallow it.
+ * A user, an artist/album/track chain, and nothing else. `duration` is 200 s by
+ * default, so the dedupe window is 200 s and a play dated a day earlier sits far
+ * outside it: the late-sync case.
  */
 async function fixture(label: string, duration = 200) {
     const tag = `${label}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;

@@ -8,11 +8,9 @@
 import { Prisma } from "@prisma/client";
 
 /**
- * The window clause, or nothing at all for "all".
- *
- * The interval text is chosen from a closed map keyed by a validated `Period`,
- * never taken from the request, so `Prisma.raw` here cannot carry anything a
- * caller supplied.
+ * The window clause, or nothing at all for "all". The interval text comes from a
+ * closed map keyed by a validated `Period`, never from the request, so `Prisma.raw`
+ * cannot carry anything a caller supplied.
  */
 function window(period: Period): Prisma.Sql {
     if (period === "all") return Prisma.empty;
