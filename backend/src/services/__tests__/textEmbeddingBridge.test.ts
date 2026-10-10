@@ -107,7 +107,7 @@ describe("searchTracksByText", () => {
             enableOfflineQueue: true,
             maxRetriesPerRequest: null,
         });
-        // S1: the ranking query runs inside the ef_search-widened transaction
+        // The ranking query runs inside the ef_search-widened transaction
         // on the transaction's own client -- never on the pool, where the
         // raised width would not be in effect.
         expect(transactionMock).toHaveBeenCalledTimes(1);
