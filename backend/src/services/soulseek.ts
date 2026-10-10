@@ -1402,7 +1402,7 @@ class SoulseekService {
         const { stripAlbumEdition, canonicalizeVariousArtists, VARIOUS_ARTISTS_CANONICAL } = await import("../utils/artistNormalization");
         const fuzz = await import("fuzzball");
 
-        // --- Phase 1: Album-level search (1-2 network calls) ---
+        // Album-level search (1-2 network calls)
         const isVA = canonicalizeVariousArtists(artistName) === VARIOUS_ARTISTS_CANONICAL;
         const normalizedAlbum = stripAlbumEdition(albumName);
         const query = isVA
@@ -1458,7 +1458,7 @@ class SoulseekService {
             );
         }
 
-        // --- Phase 2: Group results by user + parent directory ---
+        // Group results by user and parent directory
         const flatResults = this.flattenSearchResults(responses);
 
         // Filter blocked users before grouping
@@ -1532,7 +1532,7 @@ class SoulseekService {
 
         sessionLog("SOULSEEK", `[Album Search] Found ${groups.size} directory groups from ${audioResults.length} audio files`);
 
-        // --- Phase 3: Match track titles to filenames in each group ---
+        // Match track titles to filenames in each group
         const stripTrackNumber = (name: string): string =>
             name.replace(/^\d{1,3}\s*[-._)\s]\s*/, "");
 
@@ -1661,7 +1661,7 @@ class SoulseekService {
             );
         }
 
-        // --- Phase 4: Download from best groups, trying next group on failure ---
+        // Download from the best groups, trying the next on failure
         const downloadedTrackIndices = new Set<number>();
 
         for (let gi = 0; gi < groupsToTry.length; gi++) {
@@ -1742,7 +1742,7 @@ class SoulseekService {
             }
         }
 
-        // --- Phase 5: Per-track fallback for remaining undownloaded tracks ---
+        // Per-track fallback for tracks still not downloaded
         const missingIndices = tracks
             .map((_, i) => i)
             .filter(i => !downloadedTrackIndices.has(i));

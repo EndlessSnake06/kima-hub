@@ -703,10 +703,8 @@ class SpotifyImportService {
       );
     }
 
-    // Phase 1: Parallel DB lookups (matchTrack is DB-only, safe to parallelise).
-    // Capped at 8 concurrent queries to avoid exhausting the Prisma connection pool
-    // on large playlists. Promise.all preserves insertion order so matchedTracks[i]
-    // corresponds to tracks[i].
+    // Parallel DB lookups, capped at 8 so a large playlist does not exhaust the Prisma pool.
+    // Promise.all keeps insertion order, so matchedTracks[i] is tracks[i].
     const matchLimit = pLimit(8);
     const matchedTracks: MatchedTrack[] = await Promise.all(
       tracks.map((track) => matchLimit(() => this.matchTrack(track))),
@@ -1295,7 +1293,6 @@ class SpotifyImportService {
       this.activeImportControllers.set(job.id, abortController);
 
       try {
-        // Phase 1: Download albums using AcquisitionService
         if (albumMbidsToDownload.length > 0) {
           job.status = "downloading";
           job.updatedAt = new Date();
@@ -1716,7 +1713,7 @@ class SpotifyImportService {
     jobLogger?.logPlaylistCreationStart();
     jobLogger?.logTrackMatchingStart();
 
-    // --- Batch pre-load: verify pre-matched track IDs ---
+    // Verify pre-matched track ids
     const preMatchedIds = job.pendingTracks
       .map((t) => t.preMatchedTrackId)
       .filter((id): id is string => !!id);
@@ -1729,7 +1726,7 @@ class SpotifyImportService {
         )
       : new Map<string, { id: string; title: string }>();
 
-    // --- Batch pre-load: all library tracks for relevant artists ---
+    // Library tracks of the relevant artists
     const allArtistFirstWords = [
       ...new Set(
         job.pendingTracks.map((t) => normalizeArtistName(t.artist).split(" ")[0]),
@@ -1761,7 +1758,7 @@ class SpotifyImportService {
       tracksByArtistWord.set(firstWord, existing);
     }
 
-    // --- Batch pre-load: all artists (for debug logging) ---
+    // All artists, for debug logging
     const allArtists = await prisma.artist.findMany({
       where: {
         normalizedName: {
@@ -1775,7 +1772,7 @@ class SpotifyImportService {
       allArtists.map((a) => (a.normalizedName || a.name).toLowerCase().split(" ")[0]),
     );
 
-    // --- Batch pre-load: ISRC-based matches ---
+    // Matches by ISRC
     const pendingIsrcs = job.pendingTracks
       .filter((t) => t.isrc)
       .map((t) => t.isrc!);
@@ -3046,7 +3043,6 @@ class SpotifyImportService {
     jobLoggers.set(importJobId, jobLogger);
 
     try {
-      // Phase 1: Fetch playlist
       job.status = "fetching";
       await saveImportJob(job);
 
@@ -3072,7 +3068,6 @@ class SpotifyImportService {
         return;
       }
 
-      // Phase 2: Update job with real data
       const resolvedName = playlistNameOverride || preview.playlist.name;
       job.playlistName = resolvedName;
       job.spotifyPlaylistId = preview.playlist.id;
@@ -3084,7 +3079,7 @@ class SpotifyImportService {
       jobLogger.info(`[Quick Import] Playlist: "${resolvedName}" (${preview.summary.total} tracks)`);
       jobLogger.info(`[Quick Import] Already in library: ${preview.summary.inLibrary}, downloadable: ${preview.summary.downloadable}`);
 
-      // Phase 3: Auto-select ALL downloadable albums
+      // Every downloadable album is selected
       const albumMbidsToDownload = preview.albumsToDownload.map(
         (a) => a.albumMbid || a.spotifyAlbumId,
       );
@@ -3117,7 +3112,6 @@ class SpotifyImportService {
         logger.warn(`[Quick Import] Failed to cache preview: ${e.message}`);
       }
 
-      // Phase 4: Hand off to existing import flow
       await this.processImport(job, albumMbidsToDownload, preview);
     } finally {
       jobLoggers.delete(importJobId);

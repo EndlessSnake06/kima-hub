@@ -29,7 +29,6 @@ const router = Router();
 
 router.use(requireAuthOrToken);
 
-// GET /discover/batch-status - Check if there's an active batch being processed
 router.get("/batch-status", async (req, res) => {
     try {
         const userId = req.user!.id;
@@ -99,7 +98,6 @@ router.get("/batch-status", async (req, res) => {
     }
 });
 
-// DELETE /discover/batch - Cancel/reset stuck batch
 router.delete("/batch", async (req, res) => {
     try {
         const userId = req.user!.id;
@@ -203,7 +201,6 @@ router.delete("/batch", async (req, res) => {
     }
 });
 
-// POST /discover/generate - Generate new Discover Weekly playlist
 router.post("/generate", async (req, res) => {
     try {
         const userId = req.user!.id;
@@ -297,7 +294,6 @@ router.post("/generate", async (req, res) => {
     }
 });
 
-// GET /discover/generate/status/:jobId - Check generation job status
 router.get("/generate/status/:jobId", async (req, res) => {
     try {
         const job = await discoverQueue.getJob(req.params.jobId);
@@ -321,7 +317,6 @@ router.get("/generate/status/:jobId", async (req, res) => {
     }
 });
 
-// GET /discover/current - Get current week's Discover Weekly playlist
 router.get("/current", async (req, res) => {
     try {
         const userId = req.user!.id;
@@ -566,7 +561,7 @@ router.get("/current", async (req, res) => {
     }
 });
 
-// POST /discover/like - Like a track (marks entire album for keeping)
+// Likes a track, which marks its whole album to keep.
 router.post("/like", async (req, res) => {
     try {
         const userId = req.user!.id;
@@ -734,7 +729,6 @@ router.post("/like", async (req, res) => {
     }
 });
 
-// DELETE /discover/unlike - Unlike a track
 router.delete("/unlike", async (req, res) => {
     try {
         const userId = req.user!.id;
@@ -801,7 +795,6 @@ router.delete("/unlike", async (req, res) => {
     }
 });
 
-// POST /discover/retry-unavailable - Retry all unavailable albums from this week
 router.post("/retry-unavailable", async (req, res) => {
     try {
         const userId = req.user!.id;
@@ -1042,7 +1035,6 @@ router.post("/retry-unavailable", async (req, res) => {
     }
 });
 
-// GET /discover/config - Get user's Discover Weekly configuration
 router.get("/config", async (req, res) => {
     try {
         const userId = req.user!.id;
@@ -1071,7 +1063,6 @@ router.get("/config", async (req, res) => {
     }
 });
 
-// PATCH /discover/config - Update user's Discover Weekly configuration
 router.patch("/config", async (req, res) => {
     try {
         const userId = req.user!.id;
@@ -1153,7 +1144,6 @@ router.patch("/config", async (req, res) => {
     }
 });
 
-// GET /discover/popular-artists - Get popular artists from ListenBrainz sitewide stats
 router.get("/popular-artists", async (req, res) => {
     try {
         const limit = parseInt(req.query.limit as string) || 20;
@@ -1177,7 +1167,7 @@ router.get("/popular-artists", async (req, res) => {
     }
 });
 
-// DELETE /discover/clear - Clear the discovery playlist (move liked to library, delete the rest)
+// Clears the discovery playlist: liked albums move to the library and the rest are deleted.
 router.delete("/clear", async (req, res) => {
     try {
         const userId = req.user!.id;
@@ -1679,7 +1669,6 @@ router.delete("/clear", async (req, res) => {
     }
 });
 
-// GET /discover/exclusions - Get all exclusions for current user
 router.get("/exclusions", async (req, res) => {
     try {
         const userId = req.user!.id;
@@ -1715,7 +1704,6 @@ router.get("/exclusions", async (req, res) => {
     }
 });
 
-// DELETE /discover/exclusions - Clear all exclusions for current user
 router.delete("/exclusions", async (req, res) => {
     try {
         const userId = req.user!.id;
@@ -1739,7 +1727,6 @@ router.delete("/exclusions", async (req, res) => {
     }
 });
 
-// DELETE /discover/exclusions/:id - Remove a specific exclusion
 router.delete("/exclusions/:id", async (req, res) => {
     try {
         const userId = req.user!.id;
@@ -1767,10 +1754,9 @@ router.delete("/exclusions/:id", async (req, res) => {
     }
 });
 
-// POST /discover/cleanup-lidarr - Remove artists discovery added to Lidarr that
-// nothing references any more. DESTRUCTIVE: removes their files too. Dry run
-// unless ?dryRun=false. Protection is global, because Lidarr is shared: an
-// artist survives if any user owns or liked their work.
+// Removes artists discovery added to Lidarr that nothing references any more. DESTRUCTIVE: removes
+// their files too. Dry run unless ?dryRun=false. Protection is global, because Lidarr is shared:
+// an artist survives if any user owns or liked their work.
 router.post("/cleanup-lidarr", requireAdmin, async (req, res) => {
     try {
         const dryRun = req.query.dryRun !== "false";
@@ -1845,9 +1831,8 @@ router.post("/cleanup-lidarr", requireAdmin, async (req, res) => {
     }
 });
 
-// POST /discover/fix-tagging - Re-tag albums wrongly marked LIBRARY as DISCOVER
-// and delete their OwnedAlbum rows; liked and native library albums are left
-// alone. DESTRUCTIVE. Dry run unless ?dryRun=false.
+// Re-tags albums wrongly marked LIBRARY as DISCOVER and deletes their OwnedAlbum rows; liked and
+// native library albums are left alone. DESTRUCTIVE. Dry run unless ?dryRun=false.
 router.post("/fix-tagging", requireAdmin, async (req, res) => {
     try {
         const dryRun = req.query.dryRun !== "false";
