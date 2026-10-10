@@ -1,4 +1,5 @@
 import { Page, TestInfo, test } from "@playwright/test";
+import { PLAYER } from "./shared";
 
 function requireEnv(name: string): string {
     const value = process.env[name];
@@ -10,7 +11,6 @@ function requireEnv(name: string): string {
 
 const username = requireEnv("KIMA_TEST_USERNAME");
 const password = requireEnv("KIMA_TEST_PASSWORD");
-const baseUrl = process.env.KIMA_UI_BASE_URL || "http://127.0.0.1:3030";
 
 export async function loginAsTestUser(page: Page): Promise<void> {
     await page.goto("/login");
@@ -57,33 +57,33 @@ async function waitForPlaying(page: Page, timeoutMs = 8_000): Promise<void> {
 
 /** Get the current <audio> src -- the stream URL. */
 export async function getAudioSrc(page: Page): Promise<string> {
-    return page.evaluate(() => {
-        const el = document.querySelector('[data-kima-player="main"]') as HTMLAudioElement | null;
+    return page.evaluate((sel) => {
+        const el = document.querySelector(sel) as HTMLAudioElement | null;
         return el?.src ?? "";
-    });
+    }, PLAYER);
 }
 
 /** Get the current playback position in seconds. */
 export async function getAudioCurrentTime(page: Page): Promise<number> {
-    return page.evaluate(() => (document.querySelector('[data-kima-player="main"]') as HTMLAudioElement | null)?.currentTime ?? -1);
+    return page.evaluate((sel) => (document.querySelector(sel) as HTMLAudioElement | null)?.currentTime ?? -1, PLAYER);
 }
 
 /** Force-set the audio element currentTime (bypasses player seek logic -- test only). */
 export async function setAudioCurrentTime(page: Page, seconds: number): Promise<void> {
-    await page.evaluate((t) => {
-        const el = document.querySelector('[data-kima-player="main"]') as HTMLAudioElement | null;
+    await page.evaluate(({ sel, t }) => {
+        const el = document.querySelector(sel) as HTMLAudioElement | null;
         if (el) el.currentTime = t;
-    }, seconds);
+    }, { sel: PLAYER, t: seconds });
 }
 
 /** Wait for audio.src to change from the given value. */
 export async function waitForSrcChange(page: Page, prevSrc: string, timeoutMs = 6_000): Promise<string> {
     await page.waitForFunction(
-        (prev) => {
-            const src = (document.querySelector('[data-kima-player="main"]') as HTMLAudioElement | null)?.src ?? "";
+        ({ sel, prev }) => {
+            const src = (document.querySelector(sel) as HTMLAudioElement | null)?.src ?? "";
             return src !== prev && src !== "";
         },
-        prevSrc,
+        { sel: PLAYER, prev: prevSrc },
         { timeout: timeoutMs },
     );
     return getAudioSrc(page);
@@ -125,4 +125,4 @@ export async function skipIfEmptyLibrary(page: Page): Promise<void> {
     }
 }
 
-export { username, password, baseUrl };
+export { username, password };

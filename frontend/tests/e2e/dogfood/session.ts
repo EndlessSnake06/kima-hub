@@ -446,11 +446,3 @@ export async function settle(page: Page, ms = 800): Promise<void> {
     await page.waitForLoadState("domcontentloaded");
     await page.waitForTimeout(ms);
 }
-
-/** CSS selector for the main audio element. */
-export const PLAYER = '[data-kima-player="main"]';
-
-/** Makes a literal string safe inside a RegExp used as an accessible-name filter. */
-export function escapeRegExp(s: string): string {
-    return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}

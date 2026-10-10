@@ -4,9 +4,9 @@
  * and audio position moves, and a bare instance fails instead of skipping.
  */
 import { test, expect, devices, Browser, Page, BrowserContext } from "@playwright/test";
-import { DogfoodSession, PLAYER, escapeRegExp, navigateByClick, settle, firstAlbumCard, openAlbumsTab } from "./session";
+import { DogfoodSession, navigateByClick, settle, firstAlbumCard, openAlbumsTab } from "./session";
 import { readLibraryFacts, assertReady, availableJourneys, LibraryFacts } from "./preflight";
-import { softwareWebGL } from "../fixtures/software-webgl";
+import { PLAYER, escapeRegExp, softwareWebGL } from "../fixtures/shared";
 
 const baseUrl = process.env.KIMA_UI_BASE_URL || "http://127.0.0.1:3030";
 const username = process.env.KIMA_TEST_USERNAME || "";

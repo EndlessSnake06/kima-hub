@@ -3,7 +3,7 @@
  * Unsubscribing a second time must not fail.
  */
 import { expect, test, type Page } from "@playwright/test";
-import { escapeRegExp } from "./session";
+import { escapeRegExp } from "../fixtures/shared";
 
 const baseUrl = process.env.KIMA_UI_BASE_URL || "http://127.0.0.1:3030";
 const USERNAME = process.env.KIMA_TEST_USERNAME || "";

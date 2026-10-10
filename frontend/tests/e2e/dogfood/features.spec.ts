@@ -7,7 +7,8 @@
  */
 
 import { test, expect, Browser, Page, BrowserContext, APIRequestContext, request } from "@playwright/test";
-import { DogfoodSession, PLAYER, navigateByClick, openAlbumsTab, firstAlbumCard, settle } from "./session";
+import { DogfoodSession, navigateByClick, openAlbumsTab, firstAlbumCard, settle } from "./session";
+import { PLAYER } from "../fixtures/shared";
 
 const baseUrl = process.env.KIMA_UI_BASE_URL || "http://127.0.0.1:3030";
 const username = process.env.KIMA_TEST_USERNAME || "";

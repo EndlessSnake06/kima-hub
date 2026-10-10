@@ -5,7 +5,8 @@
  */
 
 import { test, expect, Browser, Page, BrowserContext } from "@playwright/test";
-import { DogfoodSession, PLAYER, settle } from "./session";
+import { DogfoodSession, settle } from "./session";
+import { PLAYER } from "../fixtures/shared";
 
 const baseUrl = process.env.KIMA_UI_BASE_URL || "http://127.0.0.1:3030";
 const username = process.env.KIMA_TEST_USERNAME || "";

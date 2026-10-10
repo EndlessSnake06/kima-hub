@@ -8,6 +8,7 @@ import {
     waitForSrcChange,
     seekToPercent,
 } from "../fixtures/test-helpers";
+import { PLAYER } from "../fixtures/shared";
 
 test.describe("Playback", () => {
     test.beforeEach(async ({ page }) => {
@@ -130,13 +131,13 @@ test.describe("Playback", () => {
         const srcBefore = await getAudioSrc(page);
 
         // Jump to the last second and let the track end on its own: no Next press.
-        await page.evaluate(async () => {
-            const audio = document.querySelector('[data-kima-player="main"]') as HTMLAudioElement;
+        await page.evaluate(async (sel) => {
+            const audio = document.querySelector(sel) as HTMLAudioElement;
             if (!Number.isFinite(audio.duration)) {
                 await new Promise((resolve) => audio.addEventListener("loadedmetadata", resolve, { once: true }));
             }
             audio.currentTime = Math.max(0, audio.duration - 1);
-        });
+        }, PLAYER);
         const srcAfter = await waitForSrcChange(page, srcBefore, 15_000);
 
         expect(srcAfter).not.toBe(srcBefore);

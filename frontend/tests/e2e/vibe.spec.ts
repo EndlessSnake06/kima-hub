@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { loginAsTestUser, getAuthToken } from "./fixtures/test-helpers";
-import { softwareWebGL } from "./fixtures/software-webgl";
+import { softwareWebGL } from "./fixtures/shared";
 
 // ---------------------------------------------------------------------------
 // Helpers
