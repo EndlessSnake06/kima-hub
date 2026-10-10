@@ -13,6 +13,7 @@ import {
 import { api } from "@/lib/api";
 import { notify } from "@/lib/notify";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
+import { LoadingScreen } from "@/components/ui/LoadingScreen";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
@@ -110,16 +111,12 @@ export default function BrowsePlaylistsPage() {
 
         try {
             // Parse URL first to validate it
-            const response = await api.post<{
-                source: string;
-                id: string;
-                url: string;
-            }>("/browse/playlists/parse", { url: urlInput.trim() });
+            const response = await api.post<{ url: string }>(
+                "/browse/playlists/parse",
+                { url: urlInput.trim() },
+            );
 
-            // Fire background import
-            await api.post<{ jobId: string }>("/spotify/import/quick", {
-                url: response.url,
-            });
+            await api.post("/spotify/import/quick", { url: response.url });
 
             setShowUrlModal(false);
             setUrlInput("");
@@ -184,11 +181,7 @@ export default function BrowsePlaylistsPage() {
     );
 
     if (isLoading && !selectedGenre && !hasSearched) {
-        return (
-            <div className="flex items-center justify-center min-h-screen bg-[var(--bg-primary)]">
-                <GradientSpinner size="md" />
-            </div>
-        );
+        return <LoadingScreen />;
     }
 
     let sectionIndex = 0;
@@ -204,10 +197,7 @@ export default function BrowsePlaylistsPage() {
                 />
 
                 <div className="relative page-shell pb-24 animate-rise">
-                    <div
-                        className="mb-6"
-
-                    >
+                    <div className="mb-6">
                         <div className="flex items-start gap-3 px-4 py-3 rounded-lg bg-type-track/5 border border-type-track/20">
                             <Info className="w-4 h-4 text-brand shrink-0 mt-0.5" />
                             <p className="text-xs tabular-nums text-[var(--text-secondary)] leading-relaxed">
@@ -223,10 +213,7 @@ export default function BrowsePlaylistsPage() {
                     </div>
 
                     {/* Search Bar & Import URL */}
-                    <div
-                        className="flex items-center gap-3 mb-6"
-
-                    >
+                    <div className="flex items-center gap-3 mb-6">
                         <form
                             onSubmit={handleSearch}
                             className="relative flex-1 max-w-md"
@@ -252,40 +239,32 @@ export default function BrowsePlaylistsPage() {
                             )}
                         </form>
 
-                        <button
+                        <Button
+                            variant="secondary"
+                            size="sm"
                             onClick={() => setShowUrlModal(true)}
-                            className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 text-xs font-semibold text-[var(--text-secondary)] hover:text-white transition-all"
                         >
                             <Link2 className="w-3.5 h-3.5" />
                             <span className="hidden sm:inline">Import URL</span>
-                        </button>
+                        </Button>
                     </div>
 
                     {!selectedGenre && !hasSearched && (
-                        <div
-                            className="flex items-center gap-2 mb-8"
-
-                        >
-                            <button
+                        <div className="flex items-center gap-2 mb-8">
+                            <Button
+                                variant={activeTab === "playlists" ? "primary" : "secondary"}
+                                size="sm"
                                 onClick={() => setActiveTab("playlists")}
-                                className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
-                                    activeTab === "playlists" ?
-                                        "bg-brand text-black"
-                                    :   "bg-white/5 text-[var(--text-secondary)] hover:bg-white/10 hover:text-white border border-white/10 hover:border-white/20"
-                                }`}
                             >
                                 Playlists
-                            </button>
-                            <button
+                            </Button>
+                            <Button
+                                variant={activeTab === "genres" ? "primary" : "secondary"}
+                                size="sm"
                                 onClick={() => setActiveTab("genres")}
-                                className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
-                                    activeTab === "genres" ?
-                                        "bg-brand text-black"
-                                    :   "bg-white/5 text-[var(--text-secondary)] hover:bg-white/10 hover:text-white border border-white/10 hover:border-white/20"
-                                }`}
                             >
                                 Genres
-                            </button>
+                            </Button>
                         </div>
                     )}
 
@@ -321,9 +300,7 @@ export default function BrowsePlaylistsPage() {
                     )}
 
                     {!isLoading && !isSearching && hasSearched && (
-                        <div
-
-                        >
+                        <div>
                             <SectionHeader type="track"
                                 title={`Results for "${searchQuery}"`}
                                 count={playlists.length}
@@ -345,9 +322,7 @@ export default function BrowsePlaylistsPage() {
                     )}
 
                     {!isLoading && selectedGenre && (
-                        <div
-
-                        >
+                        <div>
                             <SectionHeader type="track"
                                 title={`${selectedGenre.name} Playlists`}
                                 count={genrePlaylists.length}
