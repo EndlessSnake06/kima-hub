@@ -2293,6 +2293,7 @@ class DiscoverWeeklyService {
             try {
                 return await this.isArtistInLibrary(artist.name, artist.mbid);
             } catch {
+                // A failed lookup counts as not owned, so the candidate stays in the pool.
                 return false;
             }
         };
