@@ -76,6 +76,17 @@ function getTierFromSimilarity(
     return "wildcard";
 }
 
+/** Lowercase, accents removed, punctuation turned into a space, so a name can be searched word by word. */
+function foldToSearchWords(s: string): string {
+    return s
+        .toLowerCase()
+        .normalize("NFKD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^\w\s]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
 class DiscoverWeeklyService {
     async generatePlaylist(userId: string, jobId?: number) {
         const logPath = discoveryLogger.start(userId, jobId);
@@ -855,16 +866,7 @@ class DiscoverWeeklyService {
 
             // By normalised name, for Unicode and special characters
             if (tracks.length === 0) {
-                const normalizeStr = (s: string) =>
-                    s
-                        .toLowerCase()
-                        .normalize("NFKD") // Decompose Unicode
-                        .replace(/[\u0300-\u036f]/g, "") // Remove diacritics
-                        .replace(/[^\w\s]/g, " ") // Replace punctuation with space
-                        .replace(/\s+/g, " ") // Normalize whitespace
-                        .trim();
-
-                const normalizedArtist = normalizeStr(criteria.artistName);
+                const normalizedArtist = foldToSearchWords(criteria.artistName);
 
                 // Albums by this artist, matched on the full normalised name when it
                 // has several words: a first word like "the" or "dj" matches too much.
@@ -2254,29 +2256,13 @@ class DiscoverWeeklyService {
         const wildcardCount = distribution.wildcard;
         const similarArtistTarget = targetCount - wildcardCount;
 
-        if (byTier.high.length > 0) {
-            logger.debug(
-                `   HIGH tier sample: ${byTier.high
-                    .slice(0, 3)
-                    .map((a) => `${a.name}(${(a.avgMatch * 100).toFixed(0)}%,${a.crossSeedCount}x)`)
-                    .join(", ")}`
-            );
-        }
-        if (byTier.medium.length > 0) {
-            logger.debug(
-                `   MEDIUM tier sample: ${byTier.medium
-                    .slice(0, 3)
-                    .map((a) => `${a.name}(${(a.avgMatch * 100).toFixed(0)}%,${a.crossSeedCount}x)`)
-                    .join(", ")}`
-            );
-        }
-        if (byTier.explore.length > 0) {
-            logger.debug(
-                `   EXPLORE tier sample: ${byTier.explore
-                    .slice(0, 3)
-                    .map((a) => `${a.name}(${(a.avgMatch * 100).toFixed(0)}%,${a.crossSeedCount}x)`)
-                    .join(", ")}`
-            );
+        for (const [tierName, artists] of Object.entries(byTier)) {
+            if (artists.length === 0) continue;
+            const sample = artists
+                .slice(0, 3)
+                .map((a) => `${a.name}(${(a.avgMatch * 100).toFixed(0)}%,${a.crossSeedCount}x)`)
+                .join(", ");
+            logger.debug(`   ${tierName.toUpperCase()} tier sample: ${sample}`);
         }
 
         // Shuffle each tier for variety week-to-week
