@@ -32,7 +32,6 @@ export async function reassignAlbumRgMbid(
     newRgMbid: string
 ): Promise<void> {
     await prisma.$transaction(async (tx) => {
-        // Step 1: read current rgMbid
         const album = await tx.album.findUnique({
             where: { id: albumId },
             select: { rgMbid: true, artistId: true },
@@ -44,15 +43,13 @@ export async function reassignAlbumRgMbid(
         }
 
         if (album.rgMbid === newRgMbid) {
-            // No change needed
             return;
         }
 
         const oldRgMbid = album.rgMbid;
         const artistId = album.artistId;
 
-        // Step 2: update Album.rgMbid. Album.rgMbid is @unique, so a duplicate
-        // collides HERE first — translate P2002 to DuplicateMbidError (same as Step 3).
+        // Album.rgMbid is @unique, so a duplicate collides here first.
         try {
             await tx.album.update({
                 where: { id: albumId },
@@ -65,9 +62,7 @@ export async function reassignAlbumRgMbid(
             throw err;
         }
 
-        // Step 3: migrate OwnedAlbum row
         try {
-            // Delete the old OwnedAlbum row
             await tx.ownedAlbum.delete({
                 where: {
                     artistId_rgMbid: {
@@ -83,7 +78,6 @@ export async function reassignAlbumRgMbid(
             }
         }
 
-        // Upsert the new OwnedAlbum row
         try {
             await tx.ownedAlbum.upsert({
                 where: {

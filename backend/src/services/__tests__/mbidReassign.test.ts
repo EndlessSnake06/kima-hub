@@ -10,7 +10,6 @@ import {
     reassignArtistMbid,
 } from "../mbidReassign";
 
-// Mock Prisma
 jest.mock("../../utils/db", () => ({
     prisma: {
         album: {
@@ -108,7 +107,6 @@ describe("reassignArtistMbid", () => {
 describe("reassignAlbumRgMbid", () => {
     beforeEach(() => {
         jest.clearAllMocks();
-        // Default: album exists with old rgMbid
         mockAlbumFindUnique.mockResolvedValue({
             id: ALBUM_ID,
             rgMbid: OLD_RGMUBID,
@@ -147,13 +145,11 @@ describe("reassignAlbumRgMbid", () => {
     it("should update Album.rgMbid and migrate OwnedAlbum", async () => {
         await reassignAlbumRgMbid(ALBUM_ID, NEW_RGMUBID);
 
-        // Album.rgMbid updated
         expect(mockAlbumUpdate).toHaveBeenCalledWith({
             where: { id: ALBUM_ID },
             data: { rgMbid: NEW_RGMUBID },
         });
 
-        // Old OwnedAlbum row deleted
         expect(mockOwnedAlbumDelete).toHaveBeenCalledWith({
             where: {
                 artistId_rgMbid: {
@@ -163,7 +159,6 @@ describe("reassignAlbumRgMbid", () => {
             },
         });
 
-        // New OwnedAlbum row created
         expect(mockOwnedAlbumUpsert).toHaveBeenCalledWith({
             where: {
                 artistId_rgMbid: {
@@ -210,7 +205,7 @@ describe("reassignAlbumRgMbid", () => {
     });
 
     it("should throw DuplicateMbidError if Album.update hits P2002 (the @unique collision — the FIRST collision point)", async () => {
-        // Album.rgMbid is @unique, so a duplicate rgMbid collides at Step 2's
+        // Album.rgMbid is @unique, so a duplicate rgMbid collides at the
         // album.update BEFORE the OwnedAlbum upsert. This must also map to 409.
         const p2002Error = new Error("Unique constraint failed") as any;
         p2002Error.code = "P2002";
@@ -229,47 +224,6 @@ describe("reassignAlbumRgMbid", () => {
         await expect(
             reassignAlbumRgMbid(ALBUM_ID, NEW_RGMUBID)
         ).rejects.toThrow("Some other error");
-    });
-});
-
-describe("Integration: no orphaned OwnedAlbum rows", () => {
-    beforeEach(() => {
-        jest.clearAllMocks();
-        mockAlbumFindUnique.mockResolvedValue({
-            id: ALBUM_ID,
-            rgMbid: OLD_RGMUBID,
-            artistId: ARTIST_ID,
-        });
-        mockAlbumUpdate.mockResolvedValue({ id: ALBUM_ID, rgMbid: NEW_RGMUBID });
-        mockOwnedAlbumDelete.mockResolvedValue({});
-        mockOwnedAlbumUpsert.mockResolvedValue({});
-        mockTransaction.mockImplementation(async (cb: any) => cb(prisma));
-    });
-
-    it("should delete old OwnedAlbum BEFORE creating new one (no orphan)", async () => {
-        let deleteCalled = false;
-        let upsertCalled = false;
-
-        mockOwnedAlbumDelete.mockImplementation(async () => {
-            deleteCalled = true;
-            return {};
-        });
-        mockOwnedAlbumUpsert.mockImplementation(async () => {
-            upsertCalled = true;
-            return {};
-        });
-
-        await reassignAlbumRgMbid(ALBUM_ID, NEW_RGMUBID);
-
-        // Old row deleted first, new row created after
-        expect(deleteCalled).toBe(true);
-        expect(upsertCalled).toBe(true);
-
-        const deleteCall = mockOwnedAlbumDelete.mock.calls[0][0];
-        expect(deleteCall.where.artistId_rgMbid.rgMbid).toBe(OLD_RGMUBID);
-
-        const upsertCall = mockOwnedAlbumUpsert.mock.calls[0][0];
-        expect(upsertCall.create.rgMbid).toBe(NEW_RGMUBID);
     });
 });
 
