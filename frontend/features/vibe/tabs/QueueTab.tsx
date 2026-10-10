@@ -16,6 +16,20 @@ const OPERATION_STYLES: Record<string, { label: string; borderColor: string }> =
     similar: { label: "Similar", borderColor: "#5c8dd6" },
 };
 
+function QueueCover({ coverArt }: { coverArt?: string | null }) {
+    return (
+        <div className="relative w-8 h-8 rounded overflow-hidden bg-[#181818] shrink-0">
+            {coverArt ? (
+                <CachedImage src={api.getCoverArtUrl(coverArt, 64)} alt="" fill sizes="32px" className="object-cover" />
+            ) : (
+                <div className="w-full h-full flex items-center justify-center">
+                    <div className="w-2 h-2 rounded-full bg-white/10" />
+                </div>
+            )}
+        </div>
+    );
+}
+
 export function QueueTab() {
     const { currentTrack, queue, currentIndex, activeOperation } = useAudioState();
     const { playTracks, pause, resume } = useAudioControls();
@@ -38,7 +52,6 @@ export function QueueTab() {
 
     return (
         <div className="flex-1 flex flex-col overflow-hidden">
-            {/* Operation header */}
             {opStyle && (
                 <div
                     className="bg-white/5 border-l-2 px-3 py-2 text-xs text-[var(--text-secondary)] shrink-0"
@@ -50,27 +63,12 @@ export function QueueTab() {
                 </div>
             )}
 
-            {/* Currently playing -- pinned */}
             {currentTrack && (
                 <button
                     onClick={handleTogglePlayback}
                     className="flex items-center gap-3 px-3 py-2.5 bg-white/5 border-b border-white/5 shrink-0 w-full text-left hover:bg-white/8 transition-colors"
                 >
-                    <div className="relative w-8 h-8 rounded overflow-hidden bg-[#181818] shrink-0">
-                        {currentTrack.album?.coverArt ? (
-                            <CachedImage
-                                src={api.getCoverArtUrl(currentTrack.album.coverArt, 64)}
-                                alt=""
-                                fill
-                                sizes="32px"
-                                className="object-cover"
-                            />
-                        ) : (
-                            <div className="w-full h-full flex items-center justify-center">
-                                <div className="w-2 h-2 rounded-full bg-white/10" />
-                            </div>
-                        )}
-                    </div>
+                    <QueueCover coverArt={currentTrack.album?.coverArt} />
                     <div className="flex-1 min-w-0">
                         <p className="text-sm text-white truncate">{currentTrack.title}</p>
                         <p className="text-xs text-[var(--text-muted)] truncate">
@@ -88,7 +86,6 @@ export function QueueTab() {
                 </button>
             )}
 
-            {/* Queue tracks */}
             <div className="flex-1 overflow-y-auto">
                 {queue.length === 0 && (
                     <div className="flex items-center justify-center py-12 text-center">
@@ -97,9 +94,6 @@ export function QueueTab() {
                 )}
                 {queue.map((track, index) => {
                     if (index === currentIndex) return null;
-                    const coverUrl = track.album?.coverArt
-                        ? api.getCoverArtUrl(track.album.coverArt, 64)
-                        : null;
 
                     return (
                         <button
@@ -110,21 +104,7 @@ export function QueueTab() {
                                 index < currentIndex && "opacity-50",
                             )}
                         >
-                            <div className="relative w-8 h-8 rounded overflow-hidden bg-[#181818] shrink-0">
-                                {coverUrl ? (
-                                    <CachedImage
-                                        src={coverUrl}
-                                        alt=""
-                                        fill
-                                        sizes="32px"
-                                        className="object-cover"
-                                    />
-                                ) : (
-                                    <div className="w-full h-full flex items-center justify-center">
-                                        <div className="w-2 h-2 rounded-full bg-white/10" />
-                                    </div>
-                                )}
-                            </div>
+                            <QueueCover coverArt={track.album?.coverArt} />
                             <div className="flex-1 min-w-0">
                                 <p className="text-sm text-[var(--text-primary)] truncate">{track.title}</p>
                                 <p className="text-xs text-[var(--text-muted)] truncate">

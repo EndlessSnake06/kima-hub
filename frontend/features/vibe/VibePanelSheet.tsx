@@ -12,12 +12,30 @@ import {
 } from "./panel-shared";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import Link from "next/link";
-import { Waypoints, Sparkles, AudioWaveform, Play } from "lucide-react";
+import { Waypoints, Sparkles, AudioWaveform, Play, type LucideIcon } from "lucide-react";
+import { cn } from "@/lib/cn";
 
 type SnapPoint = "peek" | "half" | "full";
 
 /** The closed sheet's handle. */
 const SHEET_PEEK = 28;
+
+function SheetAction({ icon: Icon, label, primary = false, ...props }: { icon: LucideIcon; label: string; primary?: boolean } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
+    return (
+        <button
+            className={cn(
+                "flex-1 flex flex-col items-center gap-1 min-h-[52px] py-2 px-1 rounded-lg landscape-short:flex-row landscape-short:justify-center landscape-short:gap-1.5 landscape-short:min-h-11 landscape-short:py-1 border text-[var(--text-primary)] transition-colors focus-visible:outline-none focus-visible:ring-2",
+                primary
+                    ? "bg-[var(--color-brand)]/15 border-[var(--color-brand)]/40 focus-visible:ring-[var(--color-brand)]/60"
+                    : "bg-white/[0.06] hover:bg-white/[0.12] border-white/10 focus-visible:ring-white/40",
+            )}
+            {...props}
+        >
+            <Icon className={cn("w-4 h-4 shrink-0", primary && "fill-current")} />
+            <span className="text-micro font-medium leading-tight text-center">{label}</span>
+        </button>
+    );
+}
 
 export interface VibePanelSheetProps {
     selectedTrackId?: string | null;
@@ -129,7 +147,6 @@ export function VibePanelSheet({
             dragElastic={0.2}
             onDragEnd={handleDragEnd}
         >
-            {/* Drag handle */}
             <div
                 className="flex justify-center py-3 cursor-grab active:cursor-grabbing touch-none shrink-0"
                 onPointerDown={(e) => dragControls.start(e)}
@@ -141,7 +158,6 @@ export function VibePanelSheet({
                 <div ref={peekContentRef} className="shrink-0 px-4 pb-3 border-b border-white/5">{intro}</div>
             )}
 
-            {/* Vibe track actions -- shown when a map dot is selected */}
             {hasActions && onTrackOperation && onStartSongPath && (
                 <div ref={peekContentRef} className="shrink-0 px-3 pb-2 border-b border-white/5 landscape-short:flex landscape-short:items-center landscape-short:gap-3">
                     {(selectedTrackTitle || selectedTrackArtist) && (
@@ -155,40 +171,25 @@ export function VibePanelSheet({
                         </p>
                     )}
                     <div className="flex gap-2 landscape-short:min-w-0 landscape-short:flex-1">
-                        {onPlay && (
-                            <button
-                                onClick={onPlay}
-                                aria-label="Play this track"
-                                className="flex-1 flex flex-col items-center gap-1 min-h-[52px] py-2 px-1 rounded-lg landscape-short:flex-row landscape-short:justify-center landscape-short:gap-1.5 landscape-short:min-h-11 landscape-short:py-1 bg-[var(--color-brand)]/15 border border-[var(--color-brand)]/40 text-[var(--text-primary)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/60"
-                            >
-                                <Play className="w-4 h-4 shrink-0 fill-current" />
-                                <span className="text-micro font-medium leading-tight text-center">Play</span>
-                            </button>
-                        )}
-                        <button
+                        {onPlay && <SheetAction primary icon={Play} label="Play" onClick={onPlay} aria-label="Play this track" />}
+                        <SheetAction
+                            icon={Sparkles}
+                            label="Match Vibe"
                             onClick={() => onTrackOperation("vibe")}
                             aria-label="Match Vibe -- build a queue of similar-sounding tracks"
-                            className="flex-1 flex flex-col items-center gap-1 min-h-[52px] py-2 px-1 rounded-lg landscape-short:flex-row landscape-short:justify-center landscape-short:gap-1.5 landscape-short:min-h-11 landscape-short:py-1 bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 text-[var(--text-primary)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
-                        >
-                            <Sparkles className="w-4 h-4 shrink-0" />
-                            <span className="text-micro font-medium leading-tight text-center">Match Vibe</span>
-                        </button>
-                        <button
+                        />
+                        <SheetAction
+                            icon={AudioWaveform}
+                            label="Similar"
                             onClick={() => onTrackOperation("similar")}
                             aria-label="Similar -- highlight similar tracks on the map"
-                            className="flex-1 flex flex-col items-center gap-1 min-h-[52px] py-2 px-1 rounded-lg landscape-short:flex-row landscape-short:justify-center landscape-short:gap-1.5 landscape-short:min-h-11 landscape-short:py-1 bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 text-[var(--text-primary)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
-                        >
-                            <AudioWaveform className="w-4 h-4 shrink-0" />
-                            <span className="text-micro font-medium leading-tight text-center">Similar</span>
-                        </button>
-                        <button
+                        />
+                        <SheetAction
+                            icon={Waypoints}
+                            label="Song Path"
                             onClick={onStartSongPath}
                             aria-label="Song Path -- set this track as the start of a song path, then tap the destination"
-                            className="flex-1 flex flex-col items-center gap-1 min-h-[52px] py-2 px-1 rounded-lg landscape-short:flex-row landscape-short:justify-center landscape-short:gap-1.5 landscape-short:min-h-11 landscape-short:py-1 bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 text-[var(--text-primary)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
-                        >
-                            <Waypoints className="w-4 h-4 shrink-0" />
-                            <span className="text-micro font-medium leading-tight text-center">Song Path</span>
-                        </button>
+                        />
                     </div>
                     {songPathActive && (
                         <p className="text-micro text-[var(--text-secondary)] text-center mt-2 animate-pulse">
@@ -198,7 +199,6 @@ export function VibePanelSheet({
                 </div>
             )}
 
-            {/* Activity icon bar */}
             <div className="shrink-0">
                 <ActivityIconBar
                     expandedActivity={expandedActivity}
