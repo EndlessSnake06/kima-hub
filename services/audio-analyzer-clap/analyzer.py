@@ -89,8 +89,8 @@ MODEL_VERSION = 'laion-clap-htsat-unfused-v1'
 CLAIM_IN_JOB_ID = re.compile(r'-(\d+)-r(\d+)$')
 
 # Zero-shot valence/arousal: score = sigmoid(a * margin + b), fitted on Memo2496 and chosen by
-# leave-one-out transfer to the other labelled sets. Refit with eval/calibrate_platt.py (report in
-# eval/calibration/).
+# leave-one-out transfer to the other labelled sets. Refit with eval/calibrate_platt.py; the fit is
+# recorded in eval/calibration/platt-memo2496.json.
 VA_CALIB = {'valence': (12.738, -0.172), 'arousal': (12.449, -2.309)}
 
 # The zero-shot prompt groups. A changed prompt changes every stored score that reads it.

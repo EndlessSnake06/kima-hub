@@ -1,10 +1,11 @@
 """
-Platt calibration of CLAP zero-shot valence/arousal (card C7, PLAN 2026-10-02).
+Platt calibration of CLAP zero-shot valence/arousal.
 
-The shipped mapping is a fixed softmax at T=15 on the margin between the
-positive and negative prompt groups: score = sigmoid(15 * (avg_pos - avg_neg)).
-On the full test library that saturates -- the median CLAP arousal sits at
-0.990, so the mood ladder cannot rank on it.
+The baseline the fit is compared with is a fixed softmax at T=15 on the margin
+between the positive and negative prompt groups:
+score = sigmoid(15 * (avg_pos - avg_neg)). On the full test library that
+saturates -- the median CLAP arousal sits at 0.990, so the mood ladder cannot
+rank on it.
 
 This script refits the two parameters of score = sigmoid(a * x + b), where x is
 the raw margin. The supervision is the labelled sets: DEAM, Memo2496 and the
@@ -15,10 +16,10 @@ set the parameters saw.
 
 The MTT similarity triplets (446 with a strict majority) are measured, not
 fitted on: they are similarity judgements, not valence/arousal judgements, and
-fitting an arousal latent to them flips its sign (measured 2026-10-03: the
-triplet-fit arousal is Spearman -0.64 to -0.84 against every labelled set's
-ground truth, and its ECE is 0.49-0.67). The triplet pair agreement is kept as
-a secondary "monotone in the judgements" check for the shipped mapping.
+fitting an arousal latent to them flips its sign (the triplet-fit arousal is
+Spearman -0.64 to -0.84 against every labelled set's ground truth, and its ECE
+is 0.49-0.67). The triplet pair agreement is kept as a secondary "monotone in
+the judgements" check.
 
 Run (from eval/):
   uv run --no-project --python 3.12 --with-requirements ../requirements.txt \
@@ -188,8 +189,9 @@ def main():
     ap.add_argument('--deam-ann', default=os.path.expanduser(
         '~/kima-vibe-testbed/deam/annotations/annotations averaged per song/song_level'))
     ap.add_argument('--fit-on', default='deam', choices=LABEL_SETS)
-    ap.add_argument('--out', default=os.path.join(HERE, 'calibration', 'platt.json'))
+    ap.add_argument('--out', help='default: calibration/platt-<fit-on>.json')
     args = ap.parse_args()
+    out_path = args.out or os.path.join(HERE, 'calibration', f'platt-{args.fit_on}.json')
 
     text = OnnxTextCLAPBackend()
     labels = {
@@ -259,10 +261,10 @@ def main():
                   f" sat>=0.99 {entry['saturation']['shipped_t15']['frac_ge_0.99']}"
                   f" -> {entry['saturation']['fitted']['frac_ge_0.99']}")
 
-    os.makedirs(os.path.dirname(args.out), exist_ok=True)
-    with open(args.out, 'w') as f:
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    with open(out_path, 'w') as f:
         json.dump(out, f, indent=2)
-    print(f'[out] {args.out}')
+    print(f'[out] {out_path}')
 
 
 if __name__ == '__main__':
