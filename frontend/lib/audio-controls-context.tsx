@@ -360,14 +360,14 @@ export function AudioControlsProvider({ children }: { children: ReactNode }) {
     const playAudiobook = useCallback(
         (audiobook: Audiobook) => {
             const resumeAt = audiobook.progress?.currentTime ?? 0;
-            startAudiobookSession(audiobook, resumeAt).catch(() => {});
+            startAudiobookSession(audiobook, resumeAt).catch(() => notify.error("Couldn't start the audiobook"));
         },
         [startAudiobookSession]
     );
 
     const playAudiobookAt = useCallback(
         (audiobook: Audiobook, bookTime: number) => {
-            startAudiobookSession(audiobook, bookTime).catch(() => {});
+            startAudiobookSession(audiobook, bookTime).catch(() => notify.error("Couldn't start the audiobook"));
         },
         [startAudiobookSession]
     );
