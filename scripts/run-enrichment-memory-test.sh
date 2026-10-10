@@ -64,10 +64,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRONTEND_DIR="${SCRIPT_DIR}/../frontend"
 
 echo "[memory-test] Running enrichment-cycle spec..."
+TEST_EXIT=0
 npx --prefix "${FRONTEND_DIR}" playwright test \
     tests/e2e/enrichment-cycle.spec.ts \
-    --reporter=list
-TEST_EXIT=$?
+    --reporter=list || TEST_EXIT=$?
 
 # ---------------------------------------------------------------------------
 # Post-test memory snapshot
