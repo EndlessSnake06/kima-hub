@@ -1,9 +1,31 @@
 import * as THREE from "three";
 
+/** World-to-pixel size factor, smallest and largest point in device pixels, and the crisp disc's edge as a share of the point's radius. */
+export const STAR_SIZE_SCALE = 118;
+export const STAR_MIN_PX = 2.2;
+export const STAR_MAX_PX = 40;
+export const DISC_EDGE = 0.36;
+
+/** How much a star's emphasis (aEmph) scales its size: receding stars shrink a little, emphasised ones grow. */
+export function emphasisScale(emphasis: number) {
+    return THREE.MathUtils.lerp(0.8, 1, THREE.MathUtils.clamp(emphasis, 0, 1)) * Math.max(1, emphasis);
+}
+
+/** How much the legend's mood preview grows a star of that mood (aMood; -1 has none). */
+export function focusScale(mood: number, u: StarUniforms) {
+    return mood >= 0 && Math.abs(mood - u.uFocusMood.value) < 0.5 ? 1 + u.uFocusMix.value * 0.25 : 1;
+}
+
+/** CSS-pixel radius of a star's crisp disc at this view depth, given its whole size scale, as the shaders below draw it. */
+export function starDiscRadius(size: number, scale: number, depth: number, pixelRatio: number) {
+    const ps = (size * STAR_SIZE_SCALE * pixelRatio * scale) / Math.max(depth, 0.001);
+    return (THREE.MathUtils.clamp(ps, STAR_MIN_PX, STAR_MAX_PX) / pixelRatio / 2) * DISC_EDGE;
+}
+
 /**
- * One point shader for every star: tracks and sky. A sharp core in a soft
- * halo, sized by distance, twinkling. Each star ignites at its aReveal second of
- * the load-in as a white flash; while uFocusMix > 0, stars of uFocusMood take uFocusColor.
+ * One point shader for every star, tracks and sky: a crisp disc in a faint halo,
+ * sized by distance, twinkling. Each star ignites at its aReveal second of the
+ * load-in as a white flash; while uFocusMix > 0, stars of uFocusMood take uFocusColor.
  */
 const VERT = /* glsl */ `
 uniform float uSizeScale;
@@ -27,6 +49,7 @@ varying vec3 vColor;
 varying float vTw;
 varying float vEmph;
 varying float vShow;
+varying float vPx;
 void main() {
   float focus = uFocusMix * step(abs(aMood - uFocusMood), 0.5) * step(-0.5, aMood);
   float lum = max(max(aColor.r, aColor.g), aColor.b);
@@ -44,7 +67,8 @@ void main() {
   float depth = max(-mv.z, 0.001);
   float ps = aSize * uSizeScale * uPixelRatio / depth;
   ps *= mix(0.8, 1.0, clamp(aEmph, 0.0, 1.0)) * max(1.0, aEmph) * (1.0 + focus * 0.25);
-  gl_PointSize = clamp(ps, uMinPx, 40.0);
+  gl_PointSize = clamp(ps, uMinPx, ${STAR_MAX_PX.toFixed(1)});
+  vPx = gl_PointSize;
 }`;
 
 const FRAG = /* glsl */ `
@@ -53,14 +77,16 @@ varying vec3 vColor;
 varying float vTw;
 varying float vEmph;
 varying float vShow;
+varying float vPx;
 void main() {
   if (vShow <= 0.0) discard;
   vec2 d = gl_PointCoord - 0.5;
   float r = length(d) * 2.0;
   if (r > 1.0) discard;
-  float core = 1.0 - smoothstep(0.0, 0.3, r);
-  float halo = pow(max(0.0, 1.0 - r / 0.96), 2.0) * 0.6;
-  float a = min(1.0, core * 0.92 + halo);
+  float edge = 2.0 / vPx;
+  float core = 1.0 - smoothstep(${DISC_EDGE} - edge, ${DISC_EDGE} + edge, r);
+  float halo = pow(max(0.0, 1.0 - r), 3.0) * 0.22;
+  float a = min(1.0, core * 0.95 + halo);
   gl_FragColor = vec4(vColor * max(1.0, vEmph), a * uOpacity * clamp(vTw, 0.0, 3.0) * min(1.0, vEmph) * vShow);
 }`;
 

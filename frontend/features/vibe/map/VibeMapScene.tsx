@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentRef, type MutableRefObject } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Billboard, Html, Line, OrbitControls } from "@react-three/drei";
+import { Billboard, Html, OrbitControls } from "@react-three/drei";
 import { EffectComposer, Bloom, Noise, Vignette } from "@react-three/postprocessing";
 import { BlendFunction } from "postprocessing";
 import * as THREE from "three";
@@ -13,11 +13,13 @@ import { useReducedMotion } from "@/hooks/useMediaQuery";
 import { normalizeNFC } from "@/lib/format";
 import { MOOD_COLORS, moodIndex } from "../mapUtils";
 import type { MapTrack } from "../types";
-import { createGlowTexture, createStarMaterial, setStarFocus, tickStars, type StarUniforms } from "./starShader";
-import { buildTrackField, easeEmphasis, toWorld, type TrackField } from "./trackField";
+import { createGlowTexture, createStarMaterial, emphasisScale, setStarFocus, STAR_MIN_PX, STAR_SIZE_SCALE, tickStars, type StarUniforms } from "./starShader";
+import { buildTrackField, easeEmphasis, FIELD_RADIUS, toWorld, type TrackField } from "./trackField";
+import { buildQueueChart, CHART_RINGED, createChartMaterial, tickChart, type ChartUniforms } from "./queueChart";
 import { buildSkyField } from "./skyField";
 import { computeMoodAnchors } from "./moodAnchors";
 import { ScreenPicker } from "./screenPick";
+import { createRingMaterial, fitRing, ringRadius, screenOf, type RingStar } from "./ringMark";
 
 export interface VibeMapSceneProps {
     tracks: MapTrack[];
@@ -164,21 +166,82 @@ function MoodLabels({ anchors }: { anchors: Array<{ mood: string; label: string;
     );
 }
 
-function Ring({ at, radius, color, opacity = 0.75, pulse = false }: { at: [number, number, number]; radius: number; color: string; opacity?: number; pulse?: boolean }) {
-    const ref = useRef<THREE.Mesh>(null);
+/** Gaps in CSS pixels between a star's disc and its rings. */
+const GAP = { queued: 4.5, hover: 4, selectedInner: 3, selectedOuter: 6.5, playing: 6.5, operation: 10 } as const;
+// Emphasis the playing and selected stars ease toward.
+const PLAYING_EMPHASIS = 1.5;
+const SELECTED_EMPHASIS = 1.7;
+
+/** A star as the field draws it, for its rings and the queue's stipple. */
+function fieldStar(field: TrackField, stars: StarUniforms, id: string | null | undefined): RingStar | null {
+    const i = id ? field.indexById.get(id) : undefined;
+    if (i === undefined) return null;
+    const p = field.positions;
+    const g = field.geometry;
+    return {
+        at: [p[i * 3], p[i * 3 + 1], p[i * 3 + 2]],
+        size: g.getAttribute("aSize").getX(i),
+        mood: g.getAttribute("aMood").getX(i),
+        emphasis: field.emphasis,
+        index: i,
+        stars,
+    };
+}
+
+function Ring({ star, gap, color, opacity = 0.75, width = 1, pulse = false }: { star: RingStar; gap: number; color: string; opacity?: number; width?: number; pulse?: boolean }) {
+    const mesh = useRef<THREE.Mesh>(null);
     const reduced = useReducedMotion();
-    useFrame(({ clock }) => {
-        if (!pulse || reduced || !ref.current) return;
-        const s = 1 + Math.sin(clock.elapsedTime * 2.4) * 0.08;
-        ref.current.scale.set(s, s, s);
+    const material = useMemo(() => createRingMaterial(color, opacity), [color, opacity]);
+    useEffect(() => () => material.dispose(), [material]);
+    useFrame(({ camera, size, gl, clock }) => {
+        if (!mesh.current) return;
+        const swell = pulse && !reduced ? 1 + Math.sin(clock.elapsedTime * 2.4) * 0.08 : 1;
+        fitRing(mesh.current, star, camera as THREE.PerspectiveCamera, size.height, gl.getPixelRatio(), gap, width, swell);
     });
     return (
-        <Billboard position={at}>
-            <mesh ref={ref} renderOrder={6}>
-                <ringGeometry args={[radius - Math.max(0.06, radius * 0.05), radius, 72]} />
-                <meshBasicMaterial color={color} transparent opacity={opacity} depthWrite={false} depthTest={false} />
+        <Billboard position={star.at}>
+            <mesh ref={mesh} renderOrder={6} material={material}>
+                <planeGeometry args={[2, 2]} />
             </mesh>
         </Billboard>
+    );
+}
+
+/**
+ * Rings on the next few songs. Each frame a ring is left off where it would cross a
+ * ring already drawn: the playing, selected and song-path start stars' first, then nearer songs'.
+ */
+function QueueRings({ stars, avoid }: { stars: Array<{ order: number; star: RingStar }>; avoid: Array<{ star: RingStar; gap: number }> }) {
+    const meshes = useRef<Array<THREE.Mesh | null>>([]);
+    const materials = useMemo(() => stars.map((s) => createRingMaterial(QUEUE_COLOR, 0.5 - s.order * 0.03)), [stars]);
+    useEffect(() => () => { for (const m of materials) m.dispose(); }, [materials]);
+    useFrame(({ camera, size, gl }) => {
+        const cam = camera as THREE.PerspectiveCamera;
+        const pixelRatio = gl.getPixelRatio();
+        const taken: Array<[number, number, number]> = [];
+        for (const a of avoid) {
+            const p = screenOf(a.star.at, cam, size.width, size.height);
+            if (p) taken.push([p[0], p[1], ringRadius(a.star, cam, pixelRatio, a.gap) * 1.08]);
+        }
+        stars.forEach((s, k) => {
+            const m = meshes.current[k];
+            if (!m) return;
+            const r = fitRing(m, s.star, cam, size.height, pixelRatio, GAP.queued, 0.75);
+            const p = screenOf(s.star.at, cam, size.width, size.height);
+            m.visible = p !== null && taken.every(([x, y, tr]) => Math.hypot(p[0] - x, p[1] - y) > r + tr + 2);
+            if (m.visible && p) taken.push([p[0], p[1], r]);
+        });
+    });
+    return (
+        <>
+            {stars.map((s, k) => (
+                <Billboard key={s.order} position={s.star.at}>
+                    <mesh ref={(el) => { meshes.current[k] = el; }} renderOrder={6} material={materials[k]}>
+                        <planeGeometry args={[2, 2]} />
+                    </mesh>
+                </Billboard>
+            ))}
+        </>
     );
 }
 
@@ -199,8 +262,9 @@ function Scene(props: VibeMapSceneProps & { apiRef: MutableRefObject<SceneApi | 
     const picker = useMemo(() => new ScreenPicker(field.positions), [field]);
     const sky = useMemo(() => buildSkyField(), []);
     const glow = useMemo(() => createGlowTexture(), []);
-    const trackStars = useMemo(() => createStarMaterial({ sizeScale: 118, opacity: 0.9, minPx: 2.2 }), []);
-    const skyStars = useMemo(() => createStarMaterial({ sizeScale: 118, opacity: 0.9, minPx: 2.2, revealFade: 0.9 }), []);
+    const trackStars = useMemo(() => createStarMaterial({ sizeScale: STAR_SIZE_SCALE, opacity: 0.9, minPx: STAR_MIN_PX }), []);
+    const skyStars = useMemo(() => createStarMaterial({ sizeScale: STAR_SIZE_SCALE, opacity: 0.9, minPx: STAR_MIN_PX, revealFade: 0.9 }), []);
+    const chartInk = useMemo(() => createChartMaterial(QUEUE_COLOR, trackStars.uniforms), [trackStars]);
 
     useEffect(() => () => { field.geometry.dispose(); }, [field]);
     useEffect(() => () => {
@@ -208,7 +272,8 @@ function Scene(props: VibeMapSceneProps & { apiRef: MutableRefObject<SceneApi | 
         glow.dispose();
         trackStars.material.dispose();
         skyStars.material.dispose();
-    }, [sky, glow, trackStars, skyStars]);
+        chartInk.material.dispose();
+    }, [sky, glow, trackStars, skyStars, chartInk]);
 
     // ── emphasis: search/similar/path/mood highlights, selection, now playing ──
     const emphasisGoal = useMemo(() => {
@@ -222,9 +287,9 @@ function Scene(props: VibeMapSceneProps & { apiRef: MutableRefObject<SceneApi | 
             }
         }
         const playing = playingTrackId ? field.indexById.get(playingTrackId) : undefined;
-        if (playing !== undefined) goal[playing] = Math.max(goal[playing], 1.5);
+        if (playing !== undefined) goal[playing] = Math.max(goal[playing], PLAYING_EMPHASIS);
         const selected = selectedTrackId ? field.indexById.get(selectedTrackId) : undefined;
-        if (selected !== undefined) goal[selected] = 1.7;
+        if (selected !== undefined) goal[selected] = SELECTED_EMPHASIS;
         return goal;
     }, [tracks.length, highlightedIds, selectedTrackId, playingTrackId, field]);
     const emphasisSettled = useRef(false);
@@ -238,14 +303,16 @@ function Scene(props: VibeMapSceneProps & { apiRef: MutableRefObject<SceneApi | 
 
     // The frame loop mutates GPU-side objects every frame; it reads them through
     // this ref rather than closing over render values.
-    const rig = useRef<{ field: TrackField; emphasisGoal: Float32Array; materials: StarUniforms[]; reduced: boolean; focusOn: boolean } | null>(null);
+    const rig = useRef<{ field: TrackField; emphasisGoal: Float32Array; materials: StarUniforms[]; chart: ChartUniforms; chartStep: number; reduced: boolean; focusOn: boolean } | null>(null);
     useLayoutEffect(() => {
         rig.current = {
             field, emphasisGoal, reduced,
             materials: [trackStars.uniforms, skyStars.uniforms],
+            chart: chartInk.uniforms,
+            chartStep: rig.current?.chartStep ?? 1,
             focusOn: !!focusMood && moodIndex(focusMood) >= 0,
         };
-    }, [field, emphasisGoal, trackStars, skyStars, reduced, focusMood]);
+    }, [field, emphasisGoal, trackStars, skyStars, chartInk, reduced, focusMood]);
 
     // ── camera ──
     const fov = (camera as THREE.PerspectiveCamera).fov;
@@ -341,7 +408,7 @@ function Scene(props: VibeMapSceneProps & { apiRef: MutableRefObject<SceneApi | 
         const c = controls.current;
         if (!c || !rig.current) return;
         const { camera: cam, clock } = state;
-        const { field: f, emphasisGoal: goal, materials, reduced: still, focusOn } = rig.current;
+        const { field: f, emphasisGoal: goal, materials, chart, chartStep, reduced: still, focusOn } = rig.current;
 
         if (flight.current) {
             const fl = flight.current;
@@ -373,6 +440,7 @@ function Scene(props: VibeMapSceneProps & { apiRef: MutableRefObject<SceneApi | 
         // Star sizes are in device pixels, so they follow the canvas pixel ratio.
         const pixelRatio = state.gl.getPixelRatio();
         for (const u of materials) tickStars(u, still ? null : clock.elapsedTime, reveal, focusMix.current, pixelRatio);
+        tickChart(chart, still ? null : clock.elapsedTime, pixelRatio, state.size.width, state.size.height, chartStep);
         if (!emphasisSettled.current) {
             emphasisSettled.current = easeEmphasis(f, goal, still ? 1 : Math.min(1, delta * 7));
         }
@@ -409,14 +477,10 @@ function Scene(props: VibeMapSceneProps & { apiRef: MutableRefObject<SceneApi | 
     }, [apiRef, picker, camera, size.width, size.height, tracks, clock]);
 
     // ── overlays ──
-    const at = (id: string | null | undefined): [number, number, number] | null => {
-        if (!id) return null;
-        const t = trackMap.get(id);
-        return t ? toWorld(t) : null;
-    };
-    const ringScale = field.baseSize * 0.6;
-    const selectedAt = at(selectedTrackId);
-    const playingAt = at(playingTrackId);
+    const starU = trackStars.uniforms;
+    const selectedStar = fieldStar(field, starU, selectedTrackId);
+    const playingStar = fieldStar(field, starU, playingTrackId);
+    const hoverStar = fieldStar(field, starU, hoverId);
     const hoverTrack = hoverId ? trackMap.get(hoverId) ?? null : null;
     const selectedTrack = selectedTrackId ? trackMap.get(selectedTrackId) ?? null : null;
 
@@ -426,21 +490,47 @@ function Scene(props: VibeMapSceneProps & { apiRef: MutableRefObject<SceneApi | 
             : activeOperation.type === "vibe" || activeOperation.type === "similar" ? activeOperation.sourceTrackId
             : null;
         const color = OPERATION_RING[activeOperation.type];
-        const t = id ? trackMap.get(id) : undefined;
-        return t && color ? { at: toWorld(t), color } : null;
-    }, [activeOperation, trackMap]);
+        const star = fieldStar(field, trackStars.uniforms, id);
+        return star && color && id ? { id, star, color } : null;
+    }, [activeOperation, field, trackStars]);
 
-    const queueThread = useMemo(() => {
-        const points = queueTrackIds
-            .map((id) => ({ id, t: trackMap.get(id) }))
-            .filter((q): q is { id: string; t: MapTrack } => !!q.t);
-        if (points.length < 2) return null;
-        const playingIdx = playingTrackId ? points.findIndex((q) => q.id === playingTrackId) : -1;
-        const toVec = (q: { t: MapTrack }) => new THREE.Vector3(...toWorld(q.t));
-        const played = playingIdx > 0 ? points.slice(0, playingIdx + 1).map(toVec) : [];
-        const ahead = points.slice(Math.max(0, playingIdx)).map(toVec);
-        return { played: played.length >= 2 ? played : null, ahead: ahead.length >= 2 ? ahead : null };
-    }, [queueTrackIds, trackMap, playingTrackId]);
+    const queueChart = useMemo(() => {
+        const stars = queueTrackIds.flatMap((id) => {
+            const star = fieldStar(field, trackStars.uniforms, id);
+            return star ? [{ ...star, id }] : [];
+        });
+        if (stars.length < 2) return null;
+        const playing = playingTrackId ? stars.findIndex((s) => s.id === playingTrackId) : -1;
+        return buildQueueChart(stars, playing, {
+            step: field.baseSize * 0.15,
+            reach: FIELD_RADIUS * 0.06,
+            // Dots stop a little outside the star's outermost ring, at the size the star eases to.
+            end: (i) => {
+                const s = stars[i];
+                const scale = emphasisScale(emphasisGoal[s.index]);
+                if (s.id === operationSource?.id) return { scale, clear: GAP.operation + 3 };
+                if (s.id === selectedTrackId) return { scale, clear: GAP.selectedOuter + 4 };
+                if (s.id === playingTrackId) return { scale, clear: GAP.playing * 1.08 + 4 };
+                return { scale, clear: GAP.queued + 3 };
+            },
+        });
+    }, [queueTrackIds, playingTrackId, selectedTrackId, operationSource, emphasisGoal, field, trackStars]);
+    useEffect(() => () => { queueChart?.geometry.dispose(); }, [queueChart]);
+    useLayoutEffect(() => {
+        if (rig.current) rig.current.chartStep = queueChart?.step ?? 1;
+    }, [queueChart]);
+    const ringed = useMemo(
+        () => (queueChart?.ahead ?? []).slice(0, CHART_RINGED).flatMap((s) => {
+            const star = s.id === playingTrackId || s.id === selectedTrackId ? null : fieldStar(field, trackStars.uniforms, s.id);
+            return star ? [{ order: s.order, star }] : [];
+        }),
+        [queueChart, playingTrackId, selectedTrackId, field, trackStars],
+    );
+    const ringAvoid = [
+        ...(playingStar && playingTrackId !== selectedTrackId ? [{ star: playingStar, gap: GAP.playing }] : []),
+        ...(selectedStar ? [{ star: selectedStar, gap: GAP.selectedOuter }] : []),
+        ...(operationSource ? [{ star: operationSource.star, gap: GAP.operation }] : []),
+    ];
 
     const showAnchors = showLabels && overview && !selectedTrackId && highlightedIds.size === 0;
 
@@ -453,22 +543,21 @@ function Scene(props: VibeMapSceneProps & { apiRef: MutableRefObject<SceneApi | 
                 </sprite>
             ))}
 
-            {queueThread?.played && <Line points={queueThread.played} color={QUEUE_COLOR} lineWidth={1} transparent opacity={0.14} />}
-            {queueThread?.ahead && <Line points={queueThread.ahead} color={QUEUE_COLOR} lineWidth={1} transparent opacity={0.34} />}
+            {queueChart && <points geometry={queueChart.geometry} material={chartInk.material} renderOrder={2} />}
 
             <points geometry={field.geometry} material={trackStars.material} renderOrder={3} />
 
-            {operationSource && <Ring at={operationSource.at} radius={3.2 * ringScale} color={operationSource.color} opacity={0.5} />}
-            {playingAt && <Ring at={playingAt} radius={2.3 * ringScale} color={AMBER} pulse />}
-            {selectedAt && (
+            {operationSource && <Ring star={operationSource.star} gap={GAP.operation} color={operationSource.color} opacity={0.5} />}
+            {playingStar && playingTrackId !== selectedTrackId && <Ring star={playingStar} gap={GAP.playing} color={AMBER} width={1.25} pulse />}
+            {selectedStar && (
                 <>
-                    <Ring at={selectedAt} radius={1.6 * ringScale} color="#ffffff" opacity={0.8} />
-                    <Ring at={selectedAt} radius={2.3 * ringScale} color={AMBER} opacity={0.7} />
+                    <Ring star={selectedStar} gap={GAP.selectedInner} color="#ffffff" opacity={0.8} />
+                    <Ring star={selectedStar} gap={GAP.selectedOuter} color={AMBER} opacity={0.7} width={1.25} />
                 </>
             )}
-            {hoverTrack && hoverTrack.id !== selectedTrackId && (
-                <Ring at={toWorld(hoverTrack)} radius={1.4 * ringScale} color="#e8d6ad" opacity={0.55} />
-            )}
+            {hoverStar && hoverId !== selectedTrackId && <Ring star={hoverStar} gap={GAP.hover} color="#e8d6ad" opacity={0.55} />}
+
+            {ringed.length > 0 && <QueueRings stars={ringed} avoid={ringAvoid} />}
 
             {showAnchors && <MoodLabels anchors={anchorPositions} />}
             {selectedTrack && selectedTrack.id !== hoverTrack?.id && (
@@ -495,7 +584,7 @@ function Scene(props: VibeMapSceneProps & { apiRef: MutableRefObject<SceneApi | 
             />
 
             <EffectComposer>
-                <Bloom mipmapBlur luminanceThreshold={0.62} luminanceSmoothing={0.35} intensity={0.32} />
+                <Bloom mipmapBlur luminanceThreshold={0.62} luminanceSmoothing={0.35} intensity={0.2} />
                 {reduced ? <></> : <Noise blendFunction={BlendFunction.OVERLAY} opacity={0.08} />}
                 <Vignette eskil={false} offset={0.22} darkness={0.82} />
             </EffectComposer>
