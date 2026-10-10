@@ -4,7 +4,7 @@
  * tracks is searched whole, and a short title never matches another artist.
  */
 jest.mock("../notificationService", () => ({
-    notificationService: { notifySystem: jest.fn(), create: jest.fn() },
+    notificationService: { create: jest.fn() },
 }));
 
 import { prisma } from "../../utils/db";
