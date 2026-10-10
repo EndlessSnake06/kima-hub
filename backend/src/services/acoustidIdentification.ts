@@ -70,9 +70,8 @@ function toIdentification(
 
 /**
  * Read the file's identity tags, the first identification step and the only
- * one that needs no network. Returns null when the
- * stored path is unusable or the file cannot be parsed; the caller then
- * proceeds as if the file had no tags.
+ * one that needs no network. Returns null when the stored path is unusable or
+ * the file cannot be parsed; the caller then proceeds as if it had no tags.
  */
 export async function readIdentityTags(
     track: IdentifiableTrack
@@ -177,8 +176,10 @@ function noFingerprint(): Outcome<TrackIdentification> {
     };
 }
 
-/** One lookup with a fingerprint in hand; `path` names where the fingerprint came from, in the metric and
- * in the answer's `fingerprintFrom`. */
+/**
+ * One lookup with a fingerprint in hand; `path` names where the fingerprint
+ * came from, in the metric and in the answer's `fingerprintFrom`.
+ */
 async function askAcoustid(
     track: IdentifiableTrack,
     fingerprint: string,
