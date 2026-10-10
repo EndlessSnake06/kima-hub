@@ -79,7 +79,7 @@ class ClapMelExtractor:
                 f"clap_mel: waveform longer than max_length ({waveform.shape[0]} "
                 f"> {max_length}); slice first — HF's rand_trunc would random-crop"
             )
-        if self.truncation not in ("rand_trunc",):
+        if self.truncation != "rand_trunc":
             raise NotImplementedError(
                 f"clap_mel: truncation={self.truncation!r} not vendored "
                 "(only rand_trunc, the shipped checkpoint's mode)"

@@ -67,7 +67,7 @@ PIN_SHA256 = {
     'sympy': 'e091cc3e99d2141a0ba2847328f5479b05d94a6635cb96148ccb3f34671bd8f5',
 }
 
-PINNED_DISPLAY = ['%s==%s' % (n, v) for n, v in PINS]
+PIN_SPECS = ['%s==%s' % (n, v) for n, v in PINS]
 
 _lock = threading.Lock()
 _install_thread = None
@@ -216,25 +216,27 @@ def _pip(args, env=None, timeout=PIP_TIMEOUT_S):
     return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
 
 
+def _pip_output(proc):
+    return (proc.stdout or '') + (proc.stderr or '')
+
+
 def _pip_tail(proc):
-    text = (proc.stdout or '') + (proc.stderr or '')
-    return '\n'.join(text.strip().splitlines()[-20:])
+    return '\n'.join(_pip_output(proc).strip().splitlines()[-20:])
 
 
 def _download(wheels_dir):
-    specs = ['%s==%s' % (n, v) for n, v in PINS]
     last = None
     for _ in range(PIP_ATTEMPTS):
         proc = _pip(['download', '--no-deps', '--only-binary=:all:',
                      '--timeout', '30', '--retries', '2',
-                     '-d', wheels_dir] + specs)
+                     '-d', wheels_dir] + PIN_SPECS)
         if proc.returncode == 0:
             return None
         last = proc
-        text = (proc.stdout or '') + (proc.stderr or '')
+        text = _pip_output(proc)
         if 'Could not find a version' in text or 'No matching distribution' in text:
             return ('install_failed', 'index rejected the pinned set\n' + _pip_tail(proc))
-    text = (last.stdout or '') + (last.stderr or '')
+    text = _pip_output(last)
     if 'Connection' in text or 'NewConnectionError' in text or \
             'Max retries' in text or 'Temporary failure' in text or \
             'timed out' in text.lower():
@@ -252,7 +254,6 @@ def _verify_checksums(wheels_dir):
     missing = [n for n, _ in PINS if n not in by_name]
     if missing:
         return 'checksum_mismatch', 'wheel missing after download: %s' % ', '.join(missing)
-    total = 0
     for name, _ in PINS:
         path = by_name[name]
         digest = hashlib.sha256()
@@ -267,8 +268,7 @@ def _verify_checksums(wheels_dir):
             return 'checksum_mismatch', 'no pinned sha256 for %s' % name
         if digest.hexdigest() != expected:
             return 'checksum_mismatch', '%s: got %s want %s' % (name, digest.hexdigest(), expected)
-        total += os.path.getsize(path)
-    return None, total
+    return None
 
 
 def _smoke_test(site_dir):
@@ -291,7 +291,7 @@ def _smoke_test(site_dir):
         return 'install_failed', 'post-install import test printed nothing usable'
     if 'CUDAExecutionProvider' not in providers:
         return 'install_failed', 'runtime installed but CUDA EP absent: %s' % providers
-    return None, None
+    return None
 
 
 def _swap_site(tmp_site):
@@ -335,37 +335,36 @@ def _install():
         os.makedirs(wheels_dir)
         update_state(status='installing', startedEpoch=time.time(),
                      startedAt=_now(), reason=None, detail=None)
-        bad = _platform_ok() or _gpu_visible()
-        if bad:
-            return _failed(bad[0], bad[1])
+        failure = _platform_ok() or _gpu_visible()
+        if failure:
+            return _failed(*failure)
         if _cancel.is_set():
             update_state(status='idle', reason=None, detail='cancelled before download')
             return 'cancelled'
         failure = _download(wheels_dir)
         if failure:
-            return _failed(failure[0], failure[1])
+            return _failed(*failure)
         if _cancel.is_set():
             update_state(status='idle', reason=None, detail='cancelled after download')
             return 'cancelled'
-        bad, nbytes = _verify_checksums(wheels_dir)
-        if bad:
-            return _failed(bad, str(nbytes))
+        failure = _verify_checksums(wheels_dir)
+        if failure:
+            return _failed(*failure)
         args = ['install', '--no-deps', '--no-index', '--no-cache-dir',
                 '--find-links', wheels_dir, '--target', tmp_site]
         if _externally_managed():
             args.append('--break-system-packages')
-        specs = ['%s==%s' % (n, v) for n, v in PINS]
-        proc = _pip(args + specs, timeout=600)
+        proc = _pip(args + PIN_SPECS, timeout=600)
         if proc.returncode != 0:
             return _failed('install_failed', 'pip --target failed\n' + _pip_tail(proc))
-        bad, tail = _smoke_test(tmp_site)
-        if bad:
-            return _failed(bad, tail)
+        failure = _smoke_test(tmp_site)
+        if failure:
+            return _failed(*failure)
         _swap_site(tmp_site)
         if not os.path.isdir(os.path.join(SITE, 'onnxruntime')):
             return _failed('install_failed', 'the runtime is missing after the swap')
         update_state(status='installed', installedAt=_now(), reason=None, detail=None,
-                     pinned=PINNED_DISPLAY, bytes=_dir_bytes(SITE))
+                     pinned=PIN_SPECS, bytes=_dir_bytes(SITE))
         return 'installed'
     except Exception as exc:
         return _failed('install_failed', 'unhandled installer error: %r' % exc)
