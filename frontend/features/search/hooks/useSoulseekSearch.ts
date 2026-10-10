@@ -52,6 +52,7 @@ export function useSoulseekSearch({
         if (!query.trim() || !soulseekEnabled) return;
 
         let cancelled = false;
+        const cleanupRef = { current: () => {} };
 
         const timer = setTimeout(async () => {
             if (cancelled) return;
@@ -102,8 +103,6 @@ export function useSoulseekSearch({
                 setIsSoulseekSearching(false);
             }
         }, 800);
-
-        const cleanupRef = { current: () => {} };
 
         return () => {
             cancelled = true;
