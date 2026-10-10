@@ -130,8 +130,7 @@ test.describe("Dogfood: stats, filters, audit, queue", () => {
         });
 
         await session.step("every chart drew something", async () => {
-            // A section that renders its frame and no data reads as a broken
-            // page, and has done twice in this page's life.
+            // A section that renders its frame and no data reads as a broken page.
             const svgShapes = await page.locator("main svg circle, main svg path, main svg rect").count();
             expect(svgShapes, "the charts should have drawn marks, not empty frames").toBeGreaterThan(50);
             const cells = await page.locator("button[data-cell]").count();
@@ -181,8 +180,8 @@ test.describe("Dogfood: stats, filters, audit, queue", () => {
         });
 
         await session.step("the shelf sections declare that they did not move", async () => {
-            // They are not made of listening events, so the control cannot reach
-            // them. Saying so is the difference between an exception and a lie.
+            // They are not made of listening events, so the period control cannot
+            // reach them; the page has to say so.
             const body = await page.locator("main").innerText();
             expect(body.toLowerCase()).toContain("all time");
         });
@@ -404,9 +403,7 @@ test.describe("Dogfood: stats, filters, audit, queue", () => {
         });
 
         await session.step("the queue is not being written to localStorage any more", async () => {
-            // It was written on every change and read by nothing, which cost a
-            // multi-megabyte stringify per skip and shared a try/catch with the
-            // current track.
+            // Nothing reads it, and serialising the whole queue on every skip is costly.
             const stored = await page.evaluate(() => localStorage.getItem("kima_queue"));
             expect(stored, "kima_queue should no longer be written").toBeNull();
         });
@@ -460,10 +457,8 @@ test.describe("Dogfood: stats, filters, audit, queue", () => {
             ).toBe(0);
         });
 
-        // The merge itself is exercised through its button in journey 7b, not
-        // here. Doing it twice meant whichever ran first consumed the duplicates
-        // and the other skipped — and the one that skipped was the one driving
-        // the real interface.
+        // The merge itself is exercised through its button in journey 7b: a second
+        // run here would find the duplicates already consumed.
 
         await session.step("the stats page still agrees after the merge", async () => {
             const res = await page.request.get(`/api/stats?tz=Europe/London&period=all`, {
@@ -724,9 +719,8 @@ test.describe("Dogfood: stats, filters, audit, queue", () => {
             const rowsAfter = await rowCount();
 
             // The confirmation counts LISTENS; the table stores ROWS, and after a
-            // merge a listen is still one or two rows. Comparing the promise to
-            // the row delta compares different units — measured: it named 898
-            // listens and removed 954 rows, and both figures were correct.
+            // merge a listen is still one or two rows, so the promise is compared
+            // to the listens that went, not to the row delta.
             expect(
                 start.totalListens - end.totalListens,
                 "the listens that went must be the listens it named",
