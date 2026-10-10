@@ -1,4 +1,4 @@
-import { test, expect, Page } from "@playwright/test";
+import { test, expect, Page, Response, ConsoleMessage } from "@playwright/test";
 import { skipIfEmptyLibrary } from "./fixtures/test-helpers";
 
 /** The app shell scrolls inside #main-content, so the document alone never overflows. */
@@ -25,26 +25,30 @@ async function login(page: Page): Promise<void> {
     await page.waitForURL(/\/($|\?|home)/, { timeout: 15000 });
 }
 
+function isBrowserNoise(text: string): boolean {
+    return text.includes("favicon") || text.includes("serviceWorker");
+}
+
 function collectConsoleErrors(page: Page): string[] {
     const errors: string[] = [];
     page.on("console", (msg) => {
-        if (msg.type() === "error") {
-            const text = msg.text();
-            if (text.includes("favicon") || text.includes("serviceWorker")) return;
-            errors.push(text);
-        }
+        if (msg.type() === "error" && !isBrowserNoise(msg.text())) errors.push(msg.text());
     });
     return errors;
+}
+
+/** "status METHOD path" for a failed API response, or null for anything else. */
+function apiFailure(resp: Response): string | null {
+    const url = resp.url();
+    if (!url.includes("/api/") || resp.status() < 400) return null;
+    return `${resp.status()} ${resp.request().method()} ${url.replace("http://127.0.0.1:3006", "").replace(baseUrl, "")}`;
 }
 
 function collectNetworkErrors(page: Page): string[] {
     const errors: string[] = [];
     page.on("response", (resp) => {
-        const url = resp.url();
-        const status = resp.status();
-        if (!url.includes("/api/")) return;
-        if (status < 400) return;
-        errors.push(`${status} ${resp.request().method()} ${url.replace("http://127.0.0.1:3006", "").replace(baseUrl, "")}`);
+        const failure = apiFailure(resp);
+        if (failure) errors.push(failure);
     });
     return errors;
 }
@@ -119,11 +123,9 @@ test.describe("Route Health", () => {
 
         for (const route of routes) {
             const networkErrors: string[] = [];
-            const handler = (resp: import("@playwright/test").Response) => {
-                const url = resp.url();
-                if (url.includes("/api/") && resp.status() >= 400) {
-                    networkErrors.push(`${resp.status()} ${resp.request().method()} ${url.replace("http://127.0.0.1:3006", "").replace(baseUrl, "")}`);
-                }
+            const handler = (resp: Response) => {
+                const failure = apiFailure(resp);
+                if (failure) networkErrors.push(failure);
             };
             page.on("response", handler);
 
@@ -722,12 +724,10 @@ test.describe("Full Audit", () => {
 
         for (const route of routes) {
             const errors: string[] = [];
-            const handler = (msg: import("@playwright/test").ConsoleMessage) => {
-                if (msg.type() === "error") {
-                    const text = msg.text();
-                    if (!text.includes("favicon") && !text.includes("serviceWorker") && !text.includes("net::ERR")) {
-                        errors.push(text.slice(0, 200));
-                    }
+            const handler = (msg: ConsoleMessage) => {
+                const text = msg.text();
+                if (msg.type() === "error" && !isBrowserNoise(text) && !text.includes("net::ERR")) {
+                    errors.push(text.slice(0, 200));
                 }
             };
             page.on("console", handler);
@@ -763,11 +763,9 @@ test.describe("Full Audit", () => {
 
         for (const route of routes) {
             const errors: string[] = [];
-            const handler = (resp: import("@playwright/test").Response) => {
-                const url = resp.url();
-                if (url.includes("/api/") && resp.status() >= 400) {
-                    errors.push(`${resp.status()} ${resp.request().method()} ${url.replace("http://127.0.0.1:3006", "").replace(baseUrl, "")}`);
-                }
+            const handler = (resp: Response) => {
+                const failure = apiFailure(resp);
+                if (failure) errors.push(failure);
             };
             page.on("response", handler);
 

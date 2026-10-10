@@ -6,6 +6,7 @@
 import { test, expect, devices, Browser, Page, BrowserContext } from "@playwright/test";
 import { DogfoodSession, PLAYER, escapeRegExp, navigateByClick, settle, firstAlbumCard, openAlbumsTab } from "./session";
 import { readLibraryFacts, assertReady, availableJourneys, LibraryFacts } from "./preflight";
+import { softwareWebGL } from "../fixtures/software-webgl";
 
 const baseUrl = process.env.KIMA_UI_BASE_URL || "http://127.0.0.1:3030";
 const username = process.env.KIMA_TEST_USERNAME || "";
@@ -18,13 +19,7 @@ const RUN_TAG = `dogfood-${Date.now()}`;
 // instead of reporting eight confusing consequences of one cause.
 test.describe.configure({ mode: "serial" });
 
-// Headless Chromium has no WebGL, and the vibe map needs it; these flags turn
-// on software rendering.
-test.use({
-    launchOptions: {
-        args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"],
-    },
-});
+test.use(softwareWebGL);
 
 test.describe("Dogfood walkthrough", () => {
     let browser: Browser;

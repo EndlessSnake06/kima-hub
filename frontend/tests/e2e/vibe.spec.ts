@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { loginAsTestUser, getAuthToken } from "./fixtures/test-helpers";
+import { softwareWebGL } from "./fixtures/software-webgl";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -64,15 +65,7 @@ async function getTwoVibeSearchQueries(page: Parameters<typeof loginAsTestUser>[
 
 // ---------------------------------------------------------------------------
 
-// Headless Chromium launches without WebGL, which would leave the map an empty
-// sky. Software rendering (SwiftShader) draws it; picking runs on the CPU
-// against the map plane, so it does not depend on the GL backend.
-test.use({
-    launchOptions: {
-        args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"],
-    },
-});
-
+test.use(softwareWebGL);
 
 // The What's New modal (aria-modal) sits over the page on a fresh login and
 // intercepts every pointer event — each journey below must dismiss it before
