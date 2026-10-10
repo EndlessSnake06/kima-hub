@@ -637,7 +637,7 @@ Closes #121, #125, #136, #138. Partially addresses #139, #25, #108, #30.
 - **Previous track restart**: Restart current track if position > 3s on previous button press.
 - **Podcast detection**: Split podcast composite ID before URL comparison.
 
-## [1.6.0] - 2026-02-28
+## [1.6.0-pre.1] - 2026-02-28
 
 ### Added
 
@@ -1209,18 +1209,17 @@ Thanks to everyone who contributed to this release:
 
 ---
 
-## [1.3.2] - 2025-01-07
+## [1.3.2] - 2026-01-07
 
 ### Fixed
 - Mobile scrolling blocked by pull-to-refresh component
-- Pull-to-refresh component temporarily disabled (will be properly fixed in v1.4)
+- Pull-to-refresh component disabled
 
 ### Technical Details
 - Root cause: CSS flex chain break (`h-full`) and touch event interference
 - Implemented early return to bypass problematic wrapper while preserving child rendering
-- TODO: Re-enable in v1.4 with proper CSS fix (`flex-1 flex flex-col min-h-0`)
 
-## [1.3.1] - 2025-01-07
+## [1.3.1] - 2026-01-07
 
 ### Fixed
 - Production database schema mismatch causing SystemSettings endpoints to fail
