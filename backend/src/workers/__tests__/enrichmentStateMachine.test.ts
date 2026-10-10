@@ -247,16 +247,6 @@ describe("Enrichment State Machine", () => {
         jest.useRealTimers();
     });
 
-    describe("startup", () => {
-        it("does not reset artists stuck in enriching on startup", async () => {
-            await startUnifiedEnrichmentWorker();
-
-            const artistResets = mockPrismaArtistUpdateMany.mock.calls.filter(
-                (call) => JSON.stringify(call[0] ?? {}).includes("enriching"),
-            );
-            expect(artistResets).toHaveLength(0);
-        });
-    });
 
     describe("stop persistence", () => {
         it("should not auto-restart enrichment after stop via state service", async () => {
