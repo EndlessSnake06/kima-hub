@@ -1,4 +1,5 @@
 import type { MapTrack } from "@/features/vibe/types";
+import { backendUrl } from "@/lib/backend-url";
 
 const AUTH_TOKEN_KEY = "auth_token";
 const REFRESH_TOKEN_KEY = "refresh_token";
@@ -99,7 +100,7 @@ function toSearchParams(params: Record<string, string | number | boolean | undef
 // Dynamically determine API URL based on configuration
 export const getApiBaseUrl = () => {
     if (typeof window === "undefined") {
-        return process.env.BACKEND_URL || "http://127.0.0.1:3006";
+        return backendUrl;
     }
 
     // Explicit env var: used for reverse proxies where the API is on a different origin
