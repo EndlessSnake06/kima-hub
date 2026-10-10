@@ -1,3 +1,5 @@
+import type { MapTrack } from "@/features/vibe/types";
+
 const AUTH_TOKEN_KEY = "auth_token";
 const REFRESH_TOKEN_KEY = "refresh_token";
 
@@ -173,7 +175,7 @@ interface ConcurrencyConfig {
     tracksPerMin: number;
 }
 
-interface AnalysisWorkersConfig {
+export interface AnalysisWorkersConfig {
     workers: number;
     cpuCores: number;
     recommended: number;
@@ -2032,26 +2034,7 @@ class ApiClient {
 
     async getVibeMap() {
         // 202 { computing: true } until the similarity step has laid the library out; the caller polls.
-        return this.request<{ computing: true } | {
-            tracks: Array<{
-                id: string;
-                x: number;
-                y: number;
-                z: number;
-                /** Place on the Kima logo's gradient, 0 azure to 1 amber. */
-                colour: number;
-                title: string;
-                artist: string;
-                artistId: string;
-                albumId: string;
-                coverUrl: string | null;
-                dominantMood: string;
-                moods: Record<string, number>;
-                energy: number | null;
-                valence: number | null;
-            }>;
-            trackCount: number;
-        }>("/vibe/map");
+        return this.request<{ computing: true } | { tracks: MapTrack[]; trackCount: number }>("/vibe/map");
     }
 
     async getVibePath(startTrackId: string, endTrackId: string, options?: { length?: number; mode?: "smooth" | "discovery" }) {

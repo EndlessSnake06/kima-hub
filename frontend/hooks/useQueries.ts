@@ -7,6 +7,7 @@
 import { useMemo } from "react";
 import { useInfiniteQuery, useQuery, useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import type { PlaylistPreview } from "@/features/home/types";
 
 export const queryKeys = {
     artist: (id: string) => ["artist", id] as const,
@@ -542,18 +543,6 @@ export function useMoveTrackInPlaylistMutation() {
         onError: (_err, variables, context) => rollbackPlaylistEdit(queryClient, variables.playlistId, context),
         onSettled: (_, __, variables) => invalidatePlaylist(queryClient, variables.playlistId),
     });
-}
-
-interface PlaylistPreview {
-    id: string;
-    source: string;
-    type: string;
-    title: string;
-    description: string | null;
-    creator: string;
-    imageUrl: string | null;
-    trackCount: number;
-    url: string;
 }
 
 interface Genre {
