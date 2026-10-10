@@ -52,6 +52,29 @@ function BookCard({ book, index }: { book: Audiobook; index: number }) {
     );
 }
 
+function BookSection({
+    title,
+    books,
+    count = books.length,
+    section,
+}: {
+    title: string;
+    books: Audiobook[];
+    count?: number;
+    section: string;
+}) {
+    return (
+        <div>
+            <SectionHeader type="audiobook" title={title} count={count} />
+            <div className="grid-media" data-tv-section={section}>
+                {books.map((book, index) => (
+                    <BookCard key={book.id} book={book} index={index} />
+                ))}
+            </div>
+        </div>
+    );
+}
+
 export default function AudiobooksPage() {
     const router = useRouter();
     const { currentAudiobook } = useAudioState();
@@ -480,17 +503,7 @@ export default function AudiobooksPage() {
 
                 <div className="section-stack">
                     {continueListening.length > 0 && filter === "all" && !groupBySeries && (
-                        <div>
-                            <SectionHeader type="audiobook" title="Continue Listening" count={continueListening.length} />
-                            <div
-                                className="grid-media"
-                                data-tv-section="continue-listening"
-                            >
-                                {continueListening.map((book, index) => (
-                                    <BookCard key={book.id} book={book} index={index} />
-                                ))}
-                            </div>
-                        </div>
+                        <BookSection title="Continue Listening" books={continueListening} section="continue-listening" />
                     )}
 
                     {filteredBooks.length > 0 ? (
@@ -526,31 +539,21 @@ export default function AudiobooksPage() {
                                 )}
 
                                 {pageStandalone.length > 0 && (
-                                    <div>
-                                        <SectionHeader type="audiobook" title="Standalone" count={standalone.length} />
-                                        <div
-                                            className="grid-media"
-                                            data-tv-section="standalone"
-                                        >
-                                            {pageStandalone.map((book, index) => (
-                                                <BookCard key={book.id} book={book} index={index} />
-                                            ))}
-                                        </div>
-                                    </div>
+                                    <BookSection
+                                        title="Standalone"
+                                        books={pageStandalone}
+                                        count={standalone.length}
+                                        section="standalone"
+                                    />
                                 )}
                             </>
                         ) : (
-                            <div>
-                                <SectionHeader type="audiobook" title="All Books" count={filteredBooks.length} />
-                                <div
-                                    className="grid-media"
-                                    data-tv-section="audiobooks"
-                                >
-                                    {paginatedBooks.map((book, index) => (
-                                        <BookCard key={book.id} book={book} index={index} />
-                                    ))}
-                                </div>
-                            </div>
+                            <BookSection
+                                title="All Books"
+                                books={paginatedBooks}
+                                count={filteredBooks.length}
+                                section="audiobooks"
+                            />
                         )
                     ) : (
                         <EmptyState
