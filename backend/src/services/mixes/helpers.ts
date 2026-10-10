@@ -113,6 +113,15 @@ export function randomSample<T>(array: T[], count: number): T[] {
     return shuffleArray(array).slice(0, count);
 }
 
+/** Tracks in a finished generated mix. */
+export const TRACK_LIMIT = 20;
+
+/** `current` plus those of `more` whose ids it lacks. */
+export function mergeNewById<T extends { id: string }>(current: T[], more: T[]): T[] {
+    const ids = new Set(current.map((t) => t.id));
+    return [...current, ...more.filter((t) => !ids.has(t.id))];
+}
+
 /** Up to four album covers, in track order, for a mix's cover mosaic. */
 export function albumCoverUrls(
     tracks: { album: { coverUrl: string | null } }[]
@@ -296,11 +305,7 @@ export async function findTracksByGenrePatterns(
         );
     });
 
-    const existingIds = new Set(tracks.map((t) => t.id));
-    const merged = [
-        ...tracks,
-        ...genreMatched.filter((t) => !existingIds.has(t.id)),
-    ];
+    const merged = mergeNewById(tracks, genreMatched);
 
     return merged.slice(0, limit) as TrackWithAlbumCover[];
 }

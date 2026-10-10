@@ -14,9 +14,9 @@ import {
     getSeededRandom,
     seededShuffle,
     findTracksByGenrePatterns,
+    mergeNewById,
+    TRACK_LIMIT,
 } from "./helpers";
-
-const TRACK_LIMIT = 20;
 
 export async function generateEraMix(
     _userId: string,
@@ -43,7 +43,7 @@ export async function generateEraMix(
     const selectedDecade = decadeArray[decadeSeed % decadeArray.length];
 
     const tracks = await prisma.track.findMany({
-            where: {
+        where: {
             ...NOT_MISSING,
             album: getDecadeWhereClause(selectedDecade),
         },
@@ -169,11 +169,7 @@ export async function generatePartyMix(
             partyGenres,
             100
         );
-        const existingIds = new Set(tracks.map((t) => t.id));
-        tracks = [
-            ...tracks,
-            ...albumGenreTracks.filter((t) => !existingIds.has(t.id)),
-        ];
+        tracks = mergeNewById(tracks, albumGenreTracks);
         logger.debug(
             `[PARTY MIX] After album genre fallback: ${tracks.length} tracks`
         );
@@ -197,11 +193,7 @@ export async function generatePartyMix(
             include: { album: { select: { coverUrl: true } } },
             take: 50,
         });
-        const existingIds = new Set(tracks.map((t) => t.id));
-        tracks = [
-            ...tracks,
-            ...audioTracks.filter((t) => !existingIds.has(t.id)),
-        ];
+        tracks = mergeNewById(tracks, audioTracks);
         logger.debug(
             `[PARTY MIX] After audio analysis fallback: ${tracks.length} tracks`
         );
@@ -261,7 +253,7 @@ export async function generateWorkoutMix(
     let tracks: any[] = [];
 
     const enhancedTracks = await prisma.track.findMany({
-            where: {
+        where: {
             ...NOT_MISSING,
             analysisStatus: "completed",
             analysisMode: "enhanced",
@@ -307,11 +299,7 @@ export async function generateWorkoutMix(
             include: { album: { select: { coverUrl: true } } },
             take: 100,
         });
-        const existingIds = new Set(tracks.map((t) => t.id));
-        tracks = [
-            ...tracks,
-            ...audioTracks.filter((t) => !existingIds.has(t.id)),
-        ];
+        tracks = mergeNewById(tracks, audioTracks);
         logger.debug(
             `[WORKOUT MIX] Standard mode: Total ${tracks.length} tracks`
         );
@@ -336,11 +324,7 @@ export async function generateWorkoutMix(
         const genreTracks = genres.flatMap((g) =>
             g.trackGenres.map((tg) => tg.track)
         );
-        const existingIds = new Set(tracks.map((t) => t.id));
-        tracks = [
-            ...tracks,
-            ...genreTracks.filter((t) => !existingIds.has(t.id)),
-        ];
+        tracks = mergeNewById(tracks, genreTracks);
         logger.debug(
             `[WORKOUT MIX] After Genre table: ${tracks.length} tracks`
         );
@@ -351,11 +335,7 @@ export async function generateWorkoutMix(
             workoutGenres,
             100
         );
-        const existingIds = new Set(tracks.map((t) => t.id));
-        tracks = [
-            ...tracks,
-            ...albumGenreTracks.filter((t) => !existingIds.has(t.id)),
-        ];
+        tracks = mergeNewById(tracks, albumGenreTracks);
         logger.debug(
             `[WORKOUT MIX] After album genre fallback: ${tracks.length} tracks`
         );
@@ -431,11 +411,7 @@ export async function generateFocusMix(
             focusGenres,
             100
         );
-        const existingIds = new Set(tracks.map((t) => t.id));
-        tracks = [
-            ...tracks,
-            ...albumGenreTracks.filter((t) => !existingIds.has(t.id)),
-        ];
+        tracks = mergeNewById(tracks, albumGenreTracks);
         logger.debug(
             `[FOCUS MIX] After album genre fallback: ${tracks.length} tracks`
         );
@@ -452,11 +428,7 @@ export async function generateFocusMix(
             include: { album: { select: { coverUrl: true } } },
             take: 50,
         });
-        const existingIds = new Set(tracks.map((t) => t.id));
-        tracks = [
-            ...tracks,
-            ...audioTracks.filter((t) => !existingIds.has(t.id)),
-        ];
+        tracks = mergeNewById(tracks, audioTracks);
         logger.debug(
             `[FOCUS MIX] After audio analysis fallback: ${tracks.length} tracks`
         );
