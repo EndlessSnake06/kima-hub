@@ -3,7 +3,7 @@
 import { Music } from "lucide-react";
 import { Artist, ArtistSource, Album } from "../types";
 import { ReactNode, lazy, Suspense } from "react";
-import { useArtistDisplayData } from "@/hooks/useMetadataDisplay";
+import { getArtistDisplayData } from "@/hooks/useMetadataDisplay";
 import type { ColorPalette } from "@/hooks/useImageColor";
 import { HeroBackdrop } from "@/components/ui/HeroBackdrop";
 import { CachedImage } from "@/components/ui/CachedImage";
@@ -33,7 +33,7 @@ export function ArtistHero({
     onReload,
     children,
 }: ArtistHeroProps) {
-    const displayData = useArtistDisplayData(artist);
+    const displayData = getArtistDisplayData(artist);
     const ownedAlbums = albums.filter((a) => a.owned);
 
     // Use background image if provided, otherwise fall back to hero image
