@@ -32,9 +32,7 @@ jest.mock('../../services/lidarr', () => ({
     },
 }));
 
-// The sources the library already uses. This is what the route was not
-// calling; every assertion below is about whether it calls them now. Mocked at
-// the source rather than at the door, so the real artwork.ts runs.
+// The artwork sources, mocked at the source so the real artwork.ts runs.
 const mockGetAlbumCover = jest.fn();
 jest.mock('../../services/deezer', () => ({
     deezerService: {
@@ -100,7 +98,7 @@ describe('the Release Radar and the artwork it promises', () => {
         jest.clearAllMocks();
         mockGetMonitoredArtists.mockResolvedValue([]);
         mockGetAlbumCover.mockResolvedValue(null);
-        // The archive does not have the guessed address. It rarely does.
+        // The archive does not have the address Lidarr guessed.
         fetchSpy = jest
             .spyOn(globalThis, 'fetch')
             .mockImplementation((async () =>
@@ -132,8 +130,7 @@ describe('the Release Radar and the artwork it promises', () => {
         });
 
         it('sends what the providers found rather than what Lidarr guessed', async () => {
-            // The case that motivated all of this: the archive has nothing,
-            // Deezer has the record, and the old code showed neither.
+            // The archive has nothing; Deezer has the record.
             mockGetAlbumCover.mockResolvedValue(FROM_DEEZER);
             mockGetCalendar.mockResolvedValue([calendarEntry()]);
 
@@ -194,9 +191,8 @@ describe('the Release Radar and the artwork it promises', () => {
     });
 
     it('no response from any release endpoint carries a hand-built archive address', async () => {
-        // The regression this whole change exists to prevent. Whatever else
-        // moves, a guessed coverartarchive.org/.../front-500 must never leave
-        // this server again.
+        // A guessed coverartarchive.org/.../front-500 address must never leave
+        // this server.
         mockGetCalendar.mockResolvedValue([
             calendarEntry({ id: 1 }),
             calendarEntry({ id: 2, releaseDate: new Date(Date.now() - 864e5).toISOString() }),

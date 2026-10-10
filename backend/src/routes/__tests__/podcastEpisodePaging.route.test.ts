@@ -72,7 +72,7 @@ describe('podcast episode paging', () => {
 
         await request(app).get('/podcasts/p1');
 
-        // The defect was an orderBy with no take. `take` is the whole fix.
+        // The query orders by date and takes a page.
         const args = (prisma.podcast.findUnique as jest.Mock).mock.calls[0][0];
         expect(args.include.episodes.take).toBe(50);
         expect(args.include.episodes.skip).toBe(0);

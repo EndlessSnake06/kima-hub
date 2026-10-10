@@ -53,9 +53,7 @@ describe('subsonic getArtists / getIndexes ordering', () => {
 
         await request(makeApp()).get('/getArtists.view').expect(200);
 
-        // The ordering and the bucketing must come from the same value. Asking
-        // Postgres for `name` order and then bucketing on a stripped key is
-        // exactly the defect this pins.
+        // Ordering and bucketing must come from the same value, `sortName`.
         expect(prisma.artist.findMany).toHaveBeenCalledWith(
             expect.objectContaining({ orderBy: { sortName: 'asc' } }),
         );
@@ -90,8 +88,7 @@ describe('subsonic getArtists / getIndexes ordering', () => {
             {
                 id: 'a4', name: 'Prince', displayName: 'The Artist Formerly Known As Prince',
                 heroUrl: null, libraryAlbumCount: 3,
-                // What the write-time fix computes for this override:
-                // artistSortName('The Artist Formerly Known As Prince').
+                // artistSortName('The Artist Formerly Known As Prince')
                 sortName: 'artist formerly known as prince',
             },
         ]);

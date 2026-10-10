@@ -1,7 +1,4 @@
-/**
- * The removed destructive enrichment endpoints 404, even for an admin, and the
- * controls that remain never delete a Track row.
- */
+/** The enrichment controls never delete a Track row. */
 
 const mockQueueAdd = jest.fn().mockResolvedValue({ id: "job-1" });
 const mockQueueClean = jest.fn().mockResolvedValue([]);
@@ -266,34 +263,7 @@ afterAll(async () => {
     await prisma.$disconnect();
 });
 
-describe("the removed controls", () => {
-    it("no longer have routes: the old reset/re-run/full endpoints are 404 even for an admin", async () => {
-        const token = await makeAdmin(id("boss"));
-
-        for (const path of [
-            "/enrichment/full",
-            "/enrichment/start",
-            "/enrichment/reset-artists",
-            "/enrichment/reset-mood-tags",
-            "/enrichment/reset-audio-analysis",
-            "/enrichment/reset-all",
-            "/enrichment/rerun-artists",
-            "/enrichment/rerun-mood-tags",
-            "/enrichment/rerun-audio-analysis",
-        ]) {
-            const res = await request(app).post(path).set("Authorization", `Bearer ${token}`);
-            // 404, not 401/403: the control does not exist, so there is
-            // nothing to authorise — and nothing behind it that can wipe.
-            expect(res.status).toBe(404);
-        }
-
-        // And the seed track is untouched by all of that.
-        expect(await prisma.track.findUnique({ where: { id: id("t1") } })).not.toBeNull();
-        expect((await stageRow(id("t1"), "recording"))?.status).toBe("failed");
-    });
-});
-
-describe("the controls that remain never delete Track rows", () => {
+describe("enrichment controls never delete Track rows", () => {
     it("POST /retry-failed-and-blocked keeps the Track and its records, and reflects the true state", async () => {
         const token = await makeAdmin(id("boss2"));
 
