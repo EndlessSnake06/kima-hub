@@ -8,7 +8,7 @@ import { safeError } from "../utils/errors";
 
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth";
-import { soulseekService, SearchResult } from "../services/soulseek";
+import { soulseekService } from "../services/soulseek";
 import { getSystemSettings } from "../utils/systemSettings";
 import { randomUUID } from "crypto";
 import { eventBus } from "../services/eventBus";
@@ -23,7 +23,7 @@ const router = Router();
 // In-memory store for search results (with TTL cleanup)
 interface SearchSession {
     query: string;
-    results: SearchResult[];
+    results: FormattedSearchResult[];
     createdAt: Date;
     userId: string;
 }
@@ -56,6 +56,8 @@ function formatSearchResult(response: FileSearchResponse) {
         };
     });
 }
+
+type FormattedSearchResult = ReturnType<typeof formatSearchResult>[number];
 
 // Cleanup old search sessions every minute
 setInterval(() => {
@@ -230,14 +232,7 @@ router.post(
                     // Also accumulate in session for GET fallback (all results, not filtered)
                     const session = searchSessions.get(searchId);
                     if (session) {
-                        session.results.push(...formatted.map((r) => ({
-                            user: r.username,
-                            file: r.path,
-                            size: r.size,
-                            slots: true,
-                            bitrate: r.bitrate,
-                            speed: 0,
-                        })));
+                        session.results.push(...formatted);
                     }
                 })
                 .then((result) => {
@@ -302,32 +297,9 @@ router.get("/search/:searchId", requireAuth, async (req, res) => {
             });
         }
 
-        // Format results for frontend (reuse accumulated results from SSE callbacks)
-        const formattedResults = session.results.map((r) => {
-            const filename = r.file.split(/[/\\]/).pop() || r.file;
-            const format = filename.toLowerCase().endsWith(".flac") ? "flac" : "mp3";
-            const pathParts = r.file.split(/[/\\]/);
-            const parsedArtist = pathParts.length > 2 ? pathParts[pathParts.length - 3] : undefined;
-            const parsedAlbum = pathParts.length > 1 ? pathParts[pathParts.length - 2] : undefined;
-            const nameWithoutExt = filename.replace(/\.[^.]+$/, "");
-            const parsedTitle = nameWithoutExt.replace(/^\d+[\s.\-_]*/, "").replace(/^\s*-\s*/, "").trim() || undefined;
-
-            return {
-                username: r.user,
-                path: r.file,
-                filename,
-                size: r.size,
-                bitrate: r.bitrate || 0,
-                format,
-                parsedArtist,
-                parsedAlbum,
-                parsedTitle,
-            };
-        });
-
         res.json({
-            results: formattedResults,
-            count: formattedResults.length,
+            results: session.results,
+            count: session.results.length,
         });
     } catch (error) {
         safeError(res, "Get search results", error);

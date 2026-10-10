@@ -505,7 +505,7 @@ export class SlskClient extends (EventEmitter as new () => TypedEventEmitter<Sls
       events: (() => {
         const e = new EventEmitter() as SlskDownloadEventEmitter;
         // Default error listener prevents an uncaughtException if the service-layer
-        // listener has not attached yet when an asynchronous error fires (see #192).
+        // listener has not attached yet when an asynchronous error fires.
         e.on('error', (err: any) => {
           logger.warn('[SOULSEEK] Download error (default listener):', err?.message ?? err);
         });

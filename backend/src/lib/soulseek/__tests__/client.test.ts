@@ -32,7 +32,7 @@ describe("Soulseek download events", () => {
 
     it("service-layer error listener resolves promise with failure shape", async () => {
         const events = new EventEmitter();
-        // Default listener (mirrors client.ts fix from commit 7704bae)
+        // Default listener, as in client.ts
         events.on("error", () => {});
 
         let resolved = false;
