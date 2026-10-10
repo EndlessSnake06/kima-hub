@@ -1,17 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
-import { formatDuration } from "@/lib/format";
+import { formatDuration, plural } from "@/lib/format";
 import { useAuth } from "@/lib/auth-context";
 import { useAudioState, useAudioPlayback, useAudioControls } from "@/lib/audio-context";
 import { notify } from "@/lib/notify";
-import { GradientSpinner } from "@/components/ui/GradientSpinner";
+import { LoadingScreen } from "@/components/ui/LoadingScreen";
 import { SectionHeader } from "@/components/ui/SectionHeader";
+import { SpokenHero } from "@/features/spoken/SpokenHero";
 import {
-    ArrowLeft,
     Book,
     Play,
     Pause,
@@ -21,10 +21,8 @@ import { CachedImage } from "@/components/ui/CachedImage";
 import type { Audiobook } from "@/features/audiobook/types";
 import { coverArtUrl } from "@/lib/cover-art";
 
-
 export default function SeriesDetailPage() {
     const params = useParams();
-    const router = useRouter();
     const { isAuthenticated } = useAuth();
     const { currentAudiobook, playbackType } = useAudioState();
     const { isPlaying } = useAudioPlayback();
@@ -59,11 +57,7 @@ export default function SeriesDetailPage() {
     }, [seriesName, isAuthenticated]);
 
     if (isLoading) {
-        return (
-            <div className="flex items-center justify-center min-h-screen bg-[var(--bg-primary)]">
-                <GradientSpinner size="md" />
-            </div>
-        );
+        return <LoadingScreen />;
     }
 
     if (books.length === 0) {
@@ -84,92 +78,18 @@ export default function SeriesDetailPage() {
 
     return (
         <div className="min-h-screen bg-gradient-to-b from-[#0a0a0a] to-black section-stack">
-            <div className="relative">
-                {heroImage && (
-                    <div className="absolute inset-0 overflow-hidden">
-                        <div className="absolute inset-0 scale-110 blur-md opacity-30">
-                            <CachedImage
-                                src={heroImage}
-                                alt={seriesName}
-                                fill
-                                sizes="100vw"
-                                className="object-cover"
-                                priority
-                            />
-                        </div>
-                        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#0a0a0a]/80 to-[#0a0a0a]" />
-                    </div>
-                )}
-
-                <div className="relative page-shell pt-8 pb-6">
-                    <div>
-                        <button
-                            onClick={() => router.push("/audiobooks")}
-                            className="flex items-center gap-2 text-xs tabular-nums text-[var(--text-muted)] hover:text-white transition-colors mb-6"
-                        >
-                            <ArrowLeft className="w-3.5 h-3.5" />
-                            Audiobooks
-                        </button>
-
-                        <div className="flex items-center gap-2 mb-4">
-                            <div className="w-1.5 h-1.5 bg-type-audiobook rounded-full" />
-                            <span className="t-eyebrow">
-                                Series
-                            </span>
-                        </div>
-
-                        <div className="flex items-end gap-6">
-                            <div className="w-[140px] h-[140px] md:w-[192px] md:h-[192px] bg-[var(--bg-primary)] rounded-lg shrink-0 overflow-hidden relative border-2 border-white/10">
-                                {heroImage ? (
-                                    <CachedImage
-                                        src={heroImage}
-                                        alt={seriesName}
-                                        fill
-                                        sizes="(max-width: 768px) 140px, 192px"
-                                        className="object-cover"
-                                        priority
-                                    />
-                                ) : (
-                                    <div className="w-full h-full flex items-center justify-center">
-                                        <Book className="w-16 h-16 text-white/10" />
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="flex-1 min-w-0 pb-1">
-                                <h1 className="text-2xl md:text-4xl lg:text-5xl font-bold text-white leading-tight line-clamp-2 mb-2 tracking-tight">
-                                    {seriesName}
-                                </h1>
-
-                                <div className="flex flex-wrap items-center gap-3 text-xs tabular-nums text-[var(--text-secondary)]">
-                                    <span className="font-bold text-white tracking-tight text-sm">
-                                        {author}
-                                    </span>
-                                    <span className="text-[var(--text-muted)]">|</span>
-                                    <span>
-                                        {books.length} {books.length === 1 ? "book" : "books"}
-                                    </span>
-                                    <span className="text-[var(--text-muted)]">|</span>
-                                    <span>{formatDuration(totalDuration)}</span>
-                                </div>
-
-                                {genres.length > 0 && (
-                                    <div className="hidden md:flex flex-wrap gap-1.5 mt-3">
-                                        {genres.slice(0, 5).map((genre) => (
-                                            <span
-                                                key={genre}
-                                                className="px-2.5 py-0.5 bg-white/5 border border-white/10 rounded text-xs tabular-nums text-[var(--text-secondary)]"
-                                            >
-                                                {genre}
-                                            </span>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            <SpokenHero
+                kind="series"
+                title={seriesName}
+                author={author}
+                details={[
+                    { text: plural(books.length, "book") },
+                    { text: formatDuration(totalDuration) },
+                ]}
+                tags={genres.slice(0, 5).map((label) => ({ label }))}
+                heroImage={heroImage}
+                colors={null}
+            />
 
             <div className="relative page-shell pb-24 animate-rise">
                 <div>

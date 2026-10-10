@@ -17,6 +17,14 @@ const KINDS = {
         Icon: Book,
         fallback: ["#2a1e0a", "#1a140a"] as [string, string],
     },
+    series: {
+        backHref: "/audiobooks",
+        backLabel: "Audiobooks",
+        label: "Series",
+        dot: "bg-type-audiobook",
+        Icon: Book,
+        fallback: ["#2a1e0a", "#1a140a"] as [string, string],
+    },
     podcast: {
         backHref: "/podcasts",
         backLabel: "Podcasts",
