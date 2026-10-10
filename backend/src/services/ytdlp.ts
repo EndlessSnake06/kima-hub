@@ -1,5 +1,6 @@
 import { execFile } from "child_process";
 import { logger } from "../utils/logger";
+import { songLinkService } from "./songlink";
 
 interface YtDlpTrack {
   id: string;
@@ -37,18 +38,17 @@ function parseArtistTitle(
   return { artist, title: rawTitle.trim() };
 }
 
+const PLATFORM_LABELS: Record<string, string> = {
+  youtubeMusic: "YouTube Music",
+  youtube: "YouTube",
+  soundcloud: "SoundCloud",
+  bandcamp: "Bandcamp",
+  mixcloud: "Mixcloud",
+};
+
 function detectPlatformFromUrl(url: string): string {
-  try {
-    const hostname = new URL(url).hostname.toLowerCase();
-    if (hostname.includes("music.youtube.com")) return "YouTube Music";
-    if (hostname.includes("youtube.com") || hostname.includes("youtu.be")) return "YouTube";
-    if (hostname.includes("soundcloud.com")) return "SoundCloud";
-    if (hostname.includes("bandcamp.com")) return "Bandcamp";
-    if (hostname.includes("mixcloud.com")) return "Mixcloud";
-    return "External";
-  } catch {
-    return "External";
-  }
+  const platform = songLinkService.detectPlatform(url);
+  return (platform && PLATFORM_LABELS[platform]) || "External";
 }
 
 function runYtDlp(args: string[], timeoutMs = 300_000): Promise<string> {
