@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { MediaCard } from "@/components/cards/MediaCard";
 import { PageMessage } from "@/components/ui/PageMessage";
+import { PODCAST_GENRES } from "@/features/podcast/genres";
 
 interface Podcast {
     id: string;
@@ -17,21 +18,11 @@ interface Podcast {
     itunesId?: number;
 }
 
-const GENRE_MAP: { [key: string]: { name: string; searchTerm: string } } = {
-    "1303": { name: "Comedy", searchTerm: "comedy podcast" },
-    "1324": { name: "Society & Culture", searchTerm: "society culture podcast" },
-    "1489": { name: "News", searchTerm: "news podcast" },
-    "1488": { name: "True Crime", searchTerm: "true crime podcast" },
-    "1321": { name: "Business", searchTerm: "business podcast" },
-    "1545": { name: "Sports", searchTerm: "sports podcast" },
-    "1502": { name: "Leisure", searchTerm: "gaming hobbies podcast" },
-};
-
 export default function GenrePage() {
     const params = useParams();
     const router = useRouter();
     const genreId = params.genreId as string;
-    const genre = GENRE_MAP[genreId];
+    const genre = PODCAST_GENRES.find((g) => g.id === genreId);
 
     const [podcasts, setPodcasts] = useState<Podcast[]>([]);
     const [loading, setLoading] = useState(false);

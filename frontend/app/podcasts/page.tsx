@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/Button";
 import { CachedImage } from "@/components/ui/CachedImage";
 import { MediaCard } from "@/components/cards/MediaCard";
 import { scrollMainToTop } from "@/lib/scroll";
+import { PODCAST_GENRES } from "@/features/podcast/genres";
 
 const getProxiedImageUrl = (imageUrl: string | undefined): string | null => {
     if (!imageUrl) return null;
@@ -34,6 +35,22 @@ function PodcastCard({ podcast, index }: { podcast: { id: string; title: string;
             type="podcast"
             index={index}
         />
+    );
+}
+
+function PodcastGrid({
+    podcasts,
+    section,
+}: {
+    podcasts: { id: string; title: string; author: string; coverUrl?: string }[];
+    section: string;
+}) {
+    return (
+        <div className="grid-media" data-tv-section={section}>
+            {podcasts.map((podcast, index) => (
+                <PodcastCard key={podcast.id} podcast={podcast} index={index} />
+            ))}
+        </div>
     );
 }
 
@@ -74,8 +91,7 @@ export default function PodcastsPage() {
     const { data: relatedPodcasts = {} } = useQuery({
         queryKey: ["podcasts", "discovery", "genres"],
         queryFn: async () => {
-            const genreIds = [1303, 1324, 1489, 1488, 1321, 1545, 1502];
-            return api.getPodcastsByGenre(genreIds);
+            return api.getPodcastsByGenre(PODCAST_GENRES.map((genre) => Number(genre.id)));
         },
         staleTime: 10 * 60 * 1000,
         enabled: isAuthenticated,
@@ -411,14 +427,7 @@ export default function PodcastsPage() {
                                     </div>
                                 }
                             />
-                            <div
-                                className="grid-media"
-                                data-tv-section="my-podcasts"
-                            >
-                                {paginatedPodcasts.map((podcast, index) => (
-                                    <PodcastCard key={podcast.id} podcast={podcast} index={index} />
-                                ))}
-                            </div>
+                            <PodcastGrid podcasts={paginatedPodcasts} section="my-podcasts" />
 
                             <Pagination
                                 currentPage={currentPage}
@@ -433,26 +442,11 @@ export default function PodcastsPage() {
                     {topPodcasts.length > 0 && (
                         <section>
                             <SectionHeader type="podcast" title="Top Podcasts" />
-                            <div
-                                className="grid-media"
-                                data-tv-section="top-podcasts"
-                            >
-                                {topPodcasts.map((podcast, index) => (
-                                    <PodcastCard key={podcast.id} podcast={podcast} index={index} />
-                                ))}
-                            </div>
+                            <PodcastGrid podcasts={topPodcasts} section="top-podcasts" />
                         </section>
                     )}
 
-                    {[
-                        { id: "1303", name: "Comedy" },
-                        { id: "1324", name: "Society & Culture" },
-                        { id: "1489", name: "News" },
-                        { id: "1488", name: "True Crime" },
-                        { id: "1321", name: "Business" },
-                        { id: "1545", name: "Sports" },
-                        { id: "1502", name: "Leisure" },
-                    ].map(({ id: genreId, name: genreName }) => {
+                    {PODCAST_GENRES.map(({ id: genreId, name: genreName }) => {
                         const genrePodcasts = relatedPodcasts[genreId] || [];
                         return genrePodcasts.length > 0 ? (
                             <section
@@ -470,14 +464,7 @@ export default function PodcastsPage() {
                                         </button>
                                     }
                                 />
-                                <div
-                                    className="grid-media"
-                                    data-tv-section={`genre-${genreId}`}
-                                >
-                                    {genrePodcasts.map((podcast: { id: string; title: string; author: string; coverUrl?: string; episodeCount?: number }, index: number) => (
-                                        <PodcastCard key={podcast.id} podcast={podcast} index={index} />
-                                    ))}
-                                </div>
+                                <PodcastGrid podcasts={genrePodcasts} section={`genre-${genreId}`} />
                             </section>
                         ) : null;
                     })}
