@@ -652,38 +652,34 @@ class DiscoverWeeklyService {
         logger.debug(`[BATCH ${batchId}] Transitioning to scan phase...`);
 
         await prisma.$transaction(async (tx) => {
-            for (const job of failedJobs) {
+            for (const job of failedJobs.filter((j) => j.targetMbid)) {
                 const metadata = job.metadata as any;
-                try {
-                    await tx.unavailableAlbum.upsert({
-                        where: {
-                            userId_weekStartDate_albumMbid: {
-                                userId: batch.userId,
-                                weekStartDate: batch.weekStart,
-                                albumMbid: job.targetMbid!,
-                            },
-                        },
-                        create: {
+                await tx.unavailableAlbum.upsert({
+                    where: {
+                        userId_weekStartDate_albumMbid: {
                             userId: batch.userId,
-                            albumMbid: job.targetMbid!,
-                            artistName: metadata?.artistName || "Unknown",
-                            albumTitle: metadata?.albumTitle || "Unknown",
-                            similarity: metadata?.similarity || 0.5,
-                            tier:
-                                metadata?.tier ||
-                                getTierFromSimilarity(
-                                    metadata?.similarity || 0.5
-                                ),
-                            attemptNumber: 1,
                             weekStartDate: batch.weekStart,
+                            albumMbid: job.targetMbid!,
                         },
-                        update: {
-                            attemptNumber: { increment: 1 },
-                        },
-                    });
-                } catch {
-                    // Ignore duplicate errors
-                }
+                    },
+                    create: {
+                        userId: batch.userId,
+                        albumMbid: job.targetMbid!,
+                        artistName: metadata?.artistName || "Unknown",
+                        albumTitle: metadata?.albumTitle || "Unknown",
+                        similarity: metadata?.similarity || 0.5,
+                        tier:
+                            metadata?.tier ||
+                            getTierFromSimilarity(
+                                metadata?.similarity || 0.5
+                            ),
+                        attemptNumber: 1,
+                        weekStartDate: batch.weekStart,
+                    },
+                    update: {
+                        attemptNumber: { increment: 1 },
+                    },
+                });
             }
 
             if (completed === 0) {
@@ -2200,7 +2196,9 @@ class DiscoverWeeklyService {
         });
 
         logger.debug(`[DISCOVERY] Cross-seed scored ${scored.length} unique artists`);
-        logger.debug(`   Top artist: ${scored[0]?.name} (${scored[0]?.crossSeedCount} seeds, ${(scored[0]?.avgMatch * 100).toFixed(0)}% avg match)`);
+        if (scored.length > 0) {
+            logger.debug(`   Top artist: ${scored[0].name} (${scored[0].crossSeedCount} seeds, ${(scored[0].avgMatch * 100).toFixed(0)}% avg match)`);
+        }
 
         return scored;
     }
