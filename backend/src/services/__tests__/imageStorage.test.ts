@@ -4,7 +4,7 @@ import path from "path";
 jest.mock("../../config", () => ({
     config: {
         music: {
-            transcodeCachePath: "/tmp/kima-test-cache/transcode",
+            transcodeCachePath: `/tmp/kima-test-cache-${process.pid}/transcode`,
         },
     },
     USER_AGENT: "Kima/test",
@@ -13,7 +13,8 @@ jest.mock("../../config", () => ({
 import { nativeFileExists } from "../imageStorage";
 
 describe("nativeFileExists", () => {
-    const coversBase = "/tmp/kima-test-cache/covers";
+    const cacheRoot = `/tmp/kima-test-cache-${process.pid}`;
+    const coversBase = path.join(cacheRoot, "covers");
 
     beforeAll(() => {
         fs.mkdirSync(path.join(coversBase, "artists"), { recursive: true });
@@ -21,7 +22,7 @@ describe("nativeFileExists", () => {
     });
 
     afterAll(() => {
-        fs.rmSync("/tmp/kima-test-cache", { recursive: true, force: true });
+        fs.rmSync(cacheRoot, { recursive: true, force: true });
     });
 
     it("returns true for existing native file", () => {

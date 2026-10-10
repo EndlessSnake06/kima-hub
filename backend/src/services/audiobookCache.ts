@@ -98,17 +98,12 @@ class AudiobookCacheService {
                 }
             }
 
-            logger.debug("\nSync Summary:");
-            logger.debug(`  Synced: ${result.synced}`);
-            logger.debug(`   Failed: ${result.failed}`);
-            logger.debug(`    Skipped: ${result.skipped}`);
+            logger.debug(
+                `[AUDIOBOOK] Sync finished: ${result.synced} synced, ${result.failed} failed, ${result.skipped} skipped`
+            );
+            result.errors.forEach((err) => logger.debug(`[AUDIOBOOK] ${err}`));
 
-            if (result.errors.length > 0) {
-                logger.debug("\n[ERRORS]:");
-                result.errors.forEach((err) => logger.debug(`  - ${err}`));
-            }
-
-            // Remove books ABS no longer returns, but never on an empty list: that means
+            // Prune books missing from the ABS list, but never on an empty list: that means
             // the fetch failed, and pruning would wipe the library.
             if (audiobooks.length === 0) {
                 logger.warn(

@@ -22,41 +22,6 @@ import { LIBRARY_LOCATION } from "./libraryFilters";
 import { closeStagesForMissingTracks } from "./missingFileStages";
 
 /**
- * Album identity for a scanned file comes only from its own tags: a release
- * group id tag, or resolveAlbum's `temp-` placeholder. fpcalc belongs to the
- * fingerprint stage, so identification of untagged files waits for the stages.
- * Every outcome is counted for the sweep report.
- */
-type IdentificationPath = "mbid-tag" | "placeholder";
-
-const identificationCounters: Record<IdentificationPath, number> = {
-    "mbid-tag": 0,
-    placeholder: 0,
-};
-
-
-/**
- * Resolve the album identity for one scanned file from its tags only.
- * Returns the rgMbid to hand to resolveAlbum plus which path resolved it.
- */
-async function resolveAlbumIdentity(
-    tagRgMbid: string | null | undefined
-): Promise<{ rgMbid: string | null; via: IdentificationPath }> {
-    // The file's own MusicBrainz tag — authoritative, no network, no
-    // fingerprinting. A value that is not a MusicBrainz id is no tag at all.
-    const tagged = tagRgMbid?.trim();
-    if (isMbid(tagged)) {
-        identificationCounters["mbid-tag"]++;
-        return { rgMbid: tagged, via: "mbid-tag" };
-    }
-
-    // No usable tag: the placeholder stands and the recording stage's
-    // ladder (tags → title-checked name search → AcoustID) asks later.
-    identificationCounters.placeholder++;
-    return { rgMbid: null, via: "placeholder" };
-}
-
-/**
  * The MusicBrainz id of a credit's primary artist, from the same tag the name came
  * from. A tag's ids follow the credit's order, so the first is the primary's only
  * when there is one id per credited name; a joint name with several ids gets none.
@@ -850,16 +815,14 @@ export class MusicScannerService {
         // violation.
         let isDiscoveryAlbum = false;
 
-        // Album identity from the file's own MB tag only; anything else
-        // waits for the recording stage's ladder.
-        const identity = await resolveAlbumIdentity(
-            metadata.common.musicbrainz_releasegroupid,
-        );
+        // Album identity comes from the file's own release-group tag only; an
+        // untagged file keeps the placeholder until the recording stage asks.
+        const taggedRgMbid = metadata.common.musicbrainz_releasegroupid?.trim();
 
         const album = await resolveAlbum(prisma, {
             artistId: artist.id,
             title: albumTitle,
-            rgMbid: identity.rgMbid,
+            rgMbid: isMbid(taggedRgMbid) ? taggedRgMbid : null,
             year,
             isCompilation: Boolean(metadata.common.compilation),
             // Runs only when a row is actually created: these checks cost several
@@ -923,9 +886,6 @@ export class MusicScannerService {
             });
         }
 
-        // Cover art. Buried inline until the artwork sources were unified;
-        // it is its own method now so it can be exercised without standing up
-        // a whole scan.
         await this.ensureAlbumCover(album, absolutePath, artistName, albumTitle);
 
         // Upsert track

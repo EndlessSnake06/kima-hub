@@ -90,16 +90,16 @@ describe("executePodcastRefreshPhase -- dedup wedge regression", () => {
         expect(mockPodcastUpdateMany).not.toHaveBeenCalled();
     });
 
-    it("THE FIX: cleans the failed set, not only completed", async () => {
+    it("cleans the failed set, not only completed", async () => {
         mockPodcastCount.mockResolvedValue(1);
         mockPodcastFindMany.mockResolvedValue([{ id: "p1", title: "Pod One" }]);
         await executePodcastRefreshPhase();
         const cleanedStates = mockQueueClean.mock.calls.map((c) => c[2]);
         expect(cleanedStates).toContain("completed");
-        expect(cleanedStates).toContain("failed"); // the regression discriminator
+        expect(cleanedStates).toContain("failed");
     });
 
-    it("claims podcasts by bumping lastRefreshed BEFORE queuing (backoff)", async () => {
+    it("claims podcasts by bumping lastRefreshed before queuing (backoff)", async () => {
         mockPodcastCount.mockResolvedValue(2);
         mockPodcastFindMany.mockResolvedValue([
             { id: "p1", title: "Pod One" },

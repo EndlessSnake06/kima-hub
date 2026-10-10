@@ -6,6 +6,8 @@ import { LIBRARY_LOCATION } from "../libraryFilters";
 import { NOT_MISSING } from "../../utils/libraryEligibility";
 import {
     ProgrammaticMix,
+    albumCoverUrls,
+    sampleMix,
     getMixColor,
     randomSample,
     getSeededRandom,
@@ -47,10 +49,7 @@ export async function generateTopTracksMix(
         .map((id) => tracks.find((t) => t.id === id))
         .filter((t) => t !== undefined);
 
-    const coverUrls = orderedTracks
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
+    const coverUrls = albumCoverUrls(orderedTracks);
 
     return {
         id: "top-tracks",
@@ -92,10 +91,7 @@ export async function generateRediscoverMix(
     const shuffled = seededShuffle(underplayedTracks, seed);
 
     const selectedTracks = shuffled.slice(0, TRACK_LIMIT);
-    const coverUrls = selectedTracks
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
+    const coverUrls = albumCoverUrls(selectedTracks);
 
     return {
         id: `rediscover-${today}`,
@@ -211,22 +207,17 @@ export async function generateArtistSimilarMix(
             return null;
         }
 
-        const selectedTracks = randomSample(tracks, TRACK_LIMIT);
-        const coverUrls = selectedTracks
-            .filter((t) => t.album.coverUrl)
-            .slice(0, 4)
-            .map((t) => t.album.coverUrl!);
-
-        return {
-            id: `artist-similar-${topArtistId}`,
-            type: "artist-similar",
-            name: `More Like ${topArtist.name}`,
-            description: `Similar artists you might enjoy`,
-            trackIds: selectedTracks.map((t) => t.id),
-            coverUrls,
-            trackCount: selectedTracks.length,
-            color: getMixColor("artist-similar"),
-        };
+        return sampleMix(
+            {
+                id: `artist-similar-${topArtistId}`,
+                type: "artist-similar",
+                name: `More Like ${topArtist.name}`,
+                description: `Similar artists you might enjoy`,
+                colorType: "artist-similar",
+            },
+            tracks,
+            TRACK_LIMIT
+        );
     } catch (error) {
         logger.error("Failed to generate artist similar mix:", error);
         return null;

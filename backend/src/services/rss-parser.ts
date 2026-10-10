@@ -80,7 +80,7 @@ class RSSParserService {
      */
     async parseFeed(feedUrl: string, options?: FeedFetchOptions): Promise<ParseFeedResult> {
         try {
-            logger.debug(`\n [RSS PARSER] Fetching feed: ${feedUrl}`);
+            logger.debug(`[RSS PARSER] Fetching feed: ${feedUrl}`);
 
             const headers: Record<string, string> = {
                 "User-Agent": `Kima/${APP_VERSION} (+https://github.com/Chevron7Locked/kima-hub; podcast aggregator)`,

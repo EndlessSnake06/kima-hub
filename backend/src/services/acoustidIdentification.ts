@@ -132,18 +132,7 @@ export async function identifyTrackByAcoustid(
         if (stored?.fingerprint) {
             return askAcoustid(track, stored.fingerprint, track.duration, "stored_fingerprint");
         }
-        acoustidTrackIdentityTotal.inc({ path: "no_fingerprint", outcome: "refused" });
-        // No stored fingerprint and no readable tags: nothing to ask with.
-        // A refusal, not an answer — fpcalc is never run here; the
-        // fingerprint stage owns that question.
-        return {
-            kind: "permanent",
-            error: {
-                code: "NO_FINGERPRINT",
-                message:
-                    "No fingerprint in the tags and none stored — cannot ask AcoustID",
-            },
-        };
+        return noFingerprint();
     }
 
     // Path 1: what the file itself already knows -- the recording id tag
@@ -163,8 +152,7 @@ export async function identifyTrackByAcoustid(
         );
     }
 
-    // Path 2: the tag's fingerprint, else the fingerprint stage's stored answer. fpcalc is never run
-    // here: the stage owns that question, and one decode path keeps damaged files answered one way.
+    // Path 2: the tag's fingerprint, else the fingerprint stage's stored answer.
     if (known.fingerprint) {
         return askAcoustid(track, known.fingerprint, known.duration, "tag_fingerprint");
     }
@@ -172,17 +160,19 @@ export async function identifyTrackByAcoustid(
         return askAcoustid(track, stored.fingerprint, known.duration, "stored_fingerprint");
     }
 
-    // No fingerprint anywhere: refuse the question rather than fake an
-    // answer. The recording stage is gated on the fingerprint question
-    // being settled, so this is unreachable from the engine — a guard,
-    // not a wait: waiting is the gate's job, and fpcalc is never run here.
+    // The recording stage is gated on the fingerprint question being settled,
+    // so the engine never reaches this: a guard, not a wait.
+    return noFingerprint();
+}
+
+/** A refusal, not an answer: nothing to ask AcoustID with. */
+function noFingerprint(): Outcome<TrackIdentification> {
     acoustidTrackIdentityTotal.inc({ path: "no_fingerprint", outcome: "refused" });
     return {
         kind: "permanent",
         error: {
             code: "NO_FINGERPRINT",
-            message:
-                "No fingerprint in the tags and none stored — cannot ask AcoustID",
+            message: "No fingerprint in the tags and none stored — cannot ask AcoustID",
         },
     };
 }

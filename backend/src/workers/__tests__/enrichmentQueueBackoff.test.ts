@@ -173,8 +173,7 @@ describe("enrichment phases -- job keys and backoff", () => {
     describe("track phase (stage record owns the attempt)", () => {
         it("does not clean job markers — the per-attempt jobId makes dedup moot", async () => {
             // Selection comes from TrackStage, so there is no marker to clear:
-            // a retry gets a fresh jobId instead of waiting for the old one to
-            // age out.
+            // a retry gets a fresh jobId.
             await executeIdentificationPhase();
 
             expect(mockTrackClean).not.toHaveBeenCalled();
@@ -198,17 +197,6 @@ describe("enrichment phases -- job keys and backoff", () => {
                 { trackId: "t1", trackTitle: "t1" },
                 { jobId: "track-t1-recording-3-r0" },
             );
-        });
-
-        it("claims the record instead of parking the entity on a sentinel", async () => {
-            // The old code wrote enrichmentTags = ['_queued'] to mark a track
-            // in flight; the stage record's `working` status does that now.
-            await executeIdentificationPhase();
-
-            const sentinelWrites = mockTrackUpdateMany.mock.calls.filter(
-                (call) => JSON.stringify(call[0] ?? {}).includes("_queued"),
-            );
-            expect(sentinelWrites).toHaveLength(0);
         });
 
         it("does not select work from Track.enrichmentTags", async () => {

@@ -55,11 +55,9 @@ export function editionlessKey(title: string | null | undefined): string {
 }
 
 /**
- * Is this title too generic to be matched across artists?
- *
- * Compared on the casefolded form so "The Best Of" is caught alongside
- * "best of". Edition markers are kept so "Best Of (Deluxe)" and "Best Of"
- * are treated as distinct titles.
+ * Is this title too generic to be matched across artists? Compared casefolded, so
+ * "The Best Of" is caught alongside "best of"; edition markers are kept, so
+ * "Best Of (Deluxe)" and "Best Of" are distinct titles.
  */
 export function isGenericAlbumTitle(title: string | null | undefined): boolean {
     if (title == null) return true;
@@ -113,16 +111,13 @@ export async function resolveAlbum(
     input: ResolveAlbumInput
 ) {
     const title = String(input.title ?? "").trim() || "Unknown Album";
-    // Sentinel retained until OwnedAlbum/DiscoveryAlbum stop keying on this
-    // string value -- see the scope note at the top of this file.
+    // rgMbid is required and unique, so an album with no release-group id gets a throwaway one.
     const rgMbid =
         input.rgMbid?.trim() || `temp-${Date.now()}-${Math.random()}`;
     const identityKey = albumIdentityKey(title) || `untitled-${input.artistId}`;
 
-    if (rgMbid) {
-        const byMbid = await db.album.findUnique({ where: { rgMbid } });
-        if (byMbid) return byMbid;
-    }
+    const byMbid = await db.album.findUnique({ where: { rgMbid } });
+    if (byMbid) return byMbid;
 
     const existing = await db.album.findUnique({
         where: {

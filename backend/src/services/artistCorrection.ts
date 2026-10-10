@@ -111,8 +111,7 @@ export async function getArtistCorrection(
         logger.warn(
             `MB correction error for ${artistName}: ${error?.message || error}`
         );
-        // Do NOT cache failures — a timeout must not freeze a correction
-        // (or its absence) for 30 days.
+        // Failures are not cached, as above.
         return null;
     }
 }

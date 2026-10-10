@@ -4,7 +4,7 @@
  */
 
 import { ChoiceDecidedBy } from "@prisma/client";
-import { UnknownChoiceError, dismissRelease, hasOptedIn, pendingReleases, setChoice } from "../releases";
+import { UnknownChoiceError, dismissRelease, pendingReleases, setChoice } from "../releases";
 import { GPU_CHOICE_KEY } from "../releases/catalog";
 import * as catalog from "../releases/catalog";
 
@@ -153,23 +153,6 @@ describe("setChoice", () => {
     it("accepts a choice the release actually asks", async () => {
         await setChoice({ userId: "u1", version: "9.9.9", key: "commons.contribute", enabled: true });
         expect(prisma.releaseChoice.upsert).toHaveBeenCalledTimes(1);
-    });
-});
-
-describe("hasOptedIn", () => {
-    it("is false when never asked", async () => {
-        prisma.releaseChoice.findUnique.mockResolvedValue(null);
-        expect(await hasOptedIn("u1", "commons.contribute")).toBe(false);
-    });
-
-    it("is false when the row says off, however it got there", async () => {
-        prisma.releaseChoice.findUnique.mockResolvedValue({ enabled: false });
-        expect(await hasOptedIn("u1", "commons.contribute")).toBe(false);
-    });
-
-    it("is true only for a stored yes", async () => {
-        prisma.releaseChoice.findUnique.mockResolvedValue({ enabled: true });
-        expect(await hasOptedIn("u1", "commons.contribute")).toBe(true);
     });
 });
 

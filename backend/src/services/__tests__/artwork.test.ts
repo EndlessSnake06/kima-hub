@@ -135,8 +135,7 @@ describe("the one door for artwork", () => {
         });
 
         it("refuses a handed-out address that 404s, rather than sending it anyway", async () => {
-            // The old code sent it under a comment reading "might 404, but
-            // better than nothing".
+            // An address that 404s is never sent on as a last resort.
             expect(await findAlbumArtwork({ ...ALBUM, candidateUrl: GUESS })).toBeNull();
         });
 
@@ -238,10 +237,9 @@ describe("the one door for artwork", () => {
 
     describe("what counts as evidence of absence", () => {
         it("does not write down 'nobody has it' when a source never answered", async () => {
-            // The rule this file already states for a handed-out address, now
-            // applied where it matters more. If the providers are down, every
-            // album looked up during the outage would otherwise be recorded as
-            // having no artwork -- for a whole day, on the strength of nothing.
+            // If the providers are down, every album looked up during the
+            // outage would otherwise be recorded as having no artwork for a
+            // whole day, on the strength of nothing.
             deezerAlbum.mockRejectedValue(new Error("Deezer is unreachable"));
             archiveCover.mockRejectedValue(new Error("archive timed out"));
             fanartAlbum.mockRejectedValue(new Error("fanart 503"));

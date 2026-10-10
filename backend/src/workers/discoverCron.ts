@@ -1,8 +1,8 @@
 /**
  * Discover Weekly Cron Scheduler
  *
- * Automatically generates Discover Weekly playlists on Sunday evenings
- * so users have fresh music waiting Monday morning.
+ * Generates Discover Weekly playlists on Monday at 05:00, the start of the
+ * user's week, so fresh music is waiting in the morning.
  */
 
 import { logger } from "../utils/logger";
@@ -15,9 +15,6 @@ import { distributedLock } from "../utils/distributedLock";
 let cronTask: ScheduledTask | null = null;
 
 export function startDiscoverWeeklyCron() {
-    // Monday 05:00 -- generate at the start of the user's week (was Sunday
-    // 20:00, which tagged records with the ending week and hid them).
-    // Cron format: minute hour day-of-month month day-of-week
     const schedule = "0 5 * * 1";
 
     logger.debug(
@@ -25,8 +22,7 @@ export function startDiscoverWeeklyCron() {
     );
 
     cronTask = cron.schedule(schedule, async () => {
-        logger.debug(`\n === Discover Weekly Cron Triggered ===`);
-        logger.debug(`   Time: ${new Date().toLocaleString()}`);
+        logger.debug("[DiscoverCron] Triggered");
 
         try {
             // Get all users with Discover Weekly enabled

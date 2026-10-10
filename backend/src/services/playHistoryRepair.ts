@@ -8,8 +8,6 @@
 import { prisma } from "../utils/db";
 import { logger } from "../utils/logger";
 import { requiredListenSeconds } from "./playRecording";
-// Imported, not redeclared. Two copies of this number is two definitions of
-// what a listen is, and this file deletes rows based on its answer.
 import { MIN_LISTEN_WINDOW_SECONDS } from "./stats/listens";
 
 /*

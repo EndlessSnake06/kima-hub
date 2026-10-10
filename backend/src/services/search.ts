@@ -528,7 +528,7 @@ export class SearchService {
 
     /**
      * Search audiobooks using PostgreSQL full-text search
-     * Falls back to external API if local cache is empty
+     * Falls back to a LIKE query on the local table when the search finds nothing
      */
     async searchAudiobooksFTS({
         query,
@@ -636,7 +636,7 @@ export class SearchService {
     }
 
     /**
-     * Legacy LIKE-based podcast search (kept as fallback)
+     * LIKE-based podcast search, the fallback when full-text search finds nothing
      */
     async searchPodcasts({
         query,
@@ -647,7 +647,6 @@ export class SearchService {
             return [];
         }
 
-        // Simple LIKE search for podcasts (fallback)
         try {
             const results = await prisma.podcast.findMany({
                 where: {

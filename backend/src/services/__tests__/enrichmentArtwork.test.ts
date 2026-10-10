@@ -87,11 +87,7 @@ const COVER = "https://e-cdns-images.dzcdn.net/images/cover/abc/500x500.jpg";
 
 const ON = {
     enabled: true,
-    autoEnrichOnScan: true,
-    sources: { musicbrainz: true, coverArtArchive: true },
-    rateLimit: { maxRequestsPerMinute: 60, respectApiLimits: true },
-    overwriteExisting: false,
-    matchingConfidence: "moderate",
+    sources: { musicbrainz: true },
 } as any;
 
 const OFF = { ...ON, enabled: false } as any;
@@ -213,10 +209,9 @@ describe("enrichment keeps asking every source", () => {
         });
 
         it("searches by name when the artist itself was never identified", async () => {
-            // The case that matters for a library nobody has run through
-            // Picard: every artist starts with a placeholder id, the
-            // discography branch cannot run, and before this there was no
-            // else -- the album was never looked up at all.
+            // A library nobody has run through Picard: every artist starts
+            // with a placeholder id, so the discography branch cannot run and
+            // the album must still be looked up by name.
             mockAlbumFindUnique.mockResolvedValue({
                 id: "alb-1",
                 title: "Delta Machine",

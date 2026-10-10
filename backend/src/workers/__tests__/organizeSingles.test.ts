@@ -84,7 +84,7 @@ it("fails closed when the settings row has no music path", async () => {
 });
 
 it("ignores MUSIC_PATH in the environment (one source, no fallback)", async () => {
-    process.env.MUSIC_PATH = root; // the old fallback source — must not be read
+    process.env.MUSIC_PATH = root; // must not be read
     mockGetSystemSettings.mockResolvedValue(null); // no settings row
 
     await expect(organizeSingles()).rejects.toThrow(/not configured/);

@@ -84,7 +84,6 @@ jest.mock("../../services/enrichmentFailureService", () => ({
         getFailures: jest.fn().mockResolvedValue({ failures: [], total: 0 }),
         getFailure: jest.fn().mockResolvedValue(null),
         getFailureCounts: jest.fn().mockResolvedValue({}),
-        skipFailures: jest.fn().mockResolvedValue(0),
         resetRetryCount: jest.fn().mockResolvedValue(0),
     },
 }));
@@ -307,8 +306,8 @@ describe("an honest no-match", () => {
             "no source has a recording that is this track",
         );
         // The no-match leaves the track exactly as seeded — the record
-        // owns the answered question, and moods come from analysis only
-        // so nothing is stamped on the track row.
+        // owns the answered question, and moods come from analysis only, so
+        // nothing is stamped on the track row.
         const track = await prisma.track.findUnique({
             where: { id: trackId },
             select: { enrichmentTags: true },

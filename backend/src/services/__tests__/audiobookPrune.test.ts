@@ -1,5 +1,5 @@
 /**
- * syncAll removes books Audiobookshelf no longer has, refuses to prune on an
+ * syncAll removes books absent from Audiobookshelf's list, refuses to prune on an
  * empty list, deletes isMissing books, and parses "(2008)" as 2008.
  */
 

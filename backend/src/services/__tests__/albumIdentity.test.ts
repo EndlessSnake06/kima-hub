@@ -167,8 +167,8 @@ describe("isGenericAlbumTitle — gates cross-artist matching", () => {
     });
 
     it("does not treat generic titles with edition suffixes as generic", () => {
-        // With the new policy, edition markers make a title specific.
-        // "Greatest Hits" is generic; "Greatest Hits (Deluxe Edition)" is not.
+        // Edition markers make a title specific: "Greatest Hits" is generic,
+        // "Greatest Hits (Deluxe Edition)" is not.
         expect(isGenericAlbumTitle("Greatest Hits (Deluxe Edition)")).toBe(false);
         expect(isGenericAlbumTitle("The Best Of [Remastered]")).toBe(false);
     });

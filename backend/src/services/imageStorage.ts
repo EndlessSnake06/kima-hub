@@ -86,7 +86,8 @@ export async function downloadAndStoreImage(
 }
 
 /**
- * Get the full filesystem path for a native image path
+ * Get the full filesystem path for a native image path, or null when it is not
+ * a native path, escapes the covers directory, or points at no file.
  */
 export function getLocalImagePath(nativePath: string): string | null {
     if (!nativePath.startsWith("native:")) return null;
@@ -104,23 +105,9 @@ export function getLocalImagePath(nativePath: string): string | null {
     return fullPath;
 }
 
-/**
- * Check if a native image path points to an existing file on disk.
- * Returns false for non-native paths, null, or missing files.
- */
+/** Whether a native image path points to an existing file on disk. */
 export function nativeFileExists(nativePath: string | null | undefined): boolean {
-    if (!nativePath || !nativePath.startsWith("native:")) return false;
-
-    const relativePath = nativePath.replace("native:", "");
-    const basePath = getCoversBasePath();
-    const resolvedBase = path.resolve(basePath);
-    const fullPath = path.resolve(basePath, relativePath);
-
-    if (!fullPath.startsWith(resolvedBase + path.sep) && fullPath !== resolvedBase) {
-        return false;
-    }
-
-    return fs.existsSync(fullPath);
+    return nativePath ? getLocalImagePath(nativePath) !== null : false;
 }
 
 
@@ -160,7 +147,9 @@ async function checkLocalArtistImage(
                 logger.debug(`[ImageStorage] Local artist image found: ${filePath}`);
                 return `native:${ARTIST_IMAGES_DIR}/${artistId}${ext}`;
             }
-        } catch {}
+        } catch {
+            // Most candidate names do not exist; try the next.
+        }
     }
     return null;
 }

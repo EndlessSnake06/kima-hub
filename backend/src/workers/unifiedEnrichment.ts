@@ -81,7 +81,7 @@ export const STAGE_ORDER: readonly StageName[] = [
 ] as const;
 
 /** The source each stage asks; its records carry it, and a pause on it holds the stage. */
-export const STAGE_SOURCE: Record<StageName, string> = {
+const STAGE_SOURCE: Record<StageName, string> = {
     recording: "musicbrainz",
     analysis: "analyzer",
     embedding: "clap",
@@ -529,17 +529,10 @@ async function syncSharedValenceArousal(trackId: string): Promise<void> {
 }
 
 /**
- * Record a failed attempt. A rate limit pauses only that source and parks the
- * record `pending` without consuming an attempt. Any other error writes `failed`
- * with its class and a retry time, and closes the record at STAGE_RETRY_CAP.
- * A closed record is never reopened here.
- */
-/**
- * Whether a failure report may settle this record. An answered or closed record
- * is never reopened by a report, and a report for an attempt other than the open
- * claim is stale: the claim that is open reports for itself. Returns the record
- * and the SQL condition that holds the same rule at write time, or null to drop
- * the report.
+ * Whether a failure report may settle this record. An answered or closed record is
+ * never reopened by a report, and a report for any attempt other than the open claim
+ * is stale. Returns the record and the SQL condition holding the same rule at write
+ * time, or null to drop the report.
  */
 async function failureMaySettle(
     trackId: string,
@@ -572,6 +565,12 @@ async function failureMaySettle(
     return { current, writeGuard };
 }
 
+/**
+ * Record a failed attempt. A rate limit pauses only that source and parks the
+ * record `pending` without consuming an attempt. Any other error writes `failed`
+ * with its class and a retry time, and closes the record at STAGE_RETRY_CAP.
+ * A closed record is never reopened here.
+ */
 export async function recordStageFailure(
     trackId: string,
     stage: StageName,
@@ -945,9 +944,8 @@ async function setupControlChannel() {
                     // Pause all BullMQ workers + halt vibe queuing
                     Promise.all(activeEnrichmentWorkers.map((w) => w.pause())).catch(() => {});
                     haltVibeQueuing();
-                    // DO NOT kill the CLAP analyzer — it has its own idle timeout (MODEL_IDLE_TIMEOUT=300s)
-                    // and will unload the model when the vibe queue is empty. Killing it caused
-                    // permanent death because supervisor's autorestart didn't revive clean exits.
+                    // The CLAP analyzer stays up: it unloads its model after MODEL_IDLE_TIMEOUT (300s)
+                    // once the vibe queue is empty, and the supervisor does not restart a clean exit.
                 }
             }
         });
@@ -963,11 +961,9 @@ export async function startUnifiedEnrichmentWorker() {
     // Clear the stop latch, or a restart within the same process arms one cycle and then
     // never reschedules.
     enrichmentStopped = false;
-    logger.debug("\n=== Starting Unified Enrichment Worker ===");
-    logger.debug(`   Artist batch: ${ARTIST_BATCH_SIZE}`);
-    logger.debug(`   Track batch: ${TRACK_BATCH_SIZE}`);
-    logger.debug(`   Interval: ${ENRICHMENT_INTERVAL_MS / 1000}s`);
-    logger.debug("");
+    logger.debug(
+        `[Enrichment] Starting worker: artist batch ${ARTIST_BATCH_SIZE}, track batch ${TRACK_BATCH_SIZE}, interval ${ENRICHMENT_INTERVAL_MS / 1000}s`
+    );
 
      // No startup sweep is needed: a job that died mid-flight is a `working` record
      // whose lease comes due on its own.
@@ -1351,9 +1347,9 @@ export async function executeFingerprintPhase(): Promise<number> {
 
 /**
  * Reopen recording records that answered no-match without asking AcoustID
- * (their evidence carries the skip marker). Once a new fingerprint can land,
- * that no-match is no longer honest. A no-match that did ask AcoustID stays
- * closed, and the attempt count is left as is: one more ask, then it closes again.
+ * (their evidence carries the skip marker), so a new fingerprint can be asked.
+ * A no-match that did ask AcoustID stays closed, and the attempt count is left
+ * as is: one more ask, then it closes again.
  */
 async function reopenRecordingsThatNeverAskedAcoustid(): Promise<number> {
     const reopened = await prisma.$executeRawUnsafe(
@@ -1690,27 +1686,25 @@ async function runEnrichmentCycle(fullMode: boolean): Promise<{
 
          // Log progress (only if work was done)
          if (didWork) {
-            logger.debug(`\n[Enrichment Progress]`);
             logger.debug(
-                `   Artists: ${progress.artists.completed}/${progress.artists.total} (${progress.artists.progress}%)`,
+                `[Enrichment] Progress: artists ${progress.artists.completed}/${progress.artists.total} (${progress.artists.progress}%)`,
             );
             logger.debug(
-                `   Track Tags: ${progress.trackTags.enriched}/${progress.trackTags.total} (${progress.trackTags.progress}%)`,
+                `[Enrichment] Progress: track tags ${progress.trackTags.enriched}/${progress.trackTags.total} (${progress.trackTags.progress}%)`,
             );
             logger.debug(
-                `   Audio Analysis: ${progress.audioAnalysis.completed}/${progress.audioAnalysis.total} (${progress.audioAnalysis.progress}%) [background]`,
+                `[Enrichment] Progress: audio analysis ${progress.audioAnalysis.completed}/${progress.audioAnalysis.total} (${progress.audioAnalysis.progress}%)`,
             );
             if (features.fpcalc) {
                 logger.debug(
-                    `   Fingerprints: ${progress.fingerprints.completed}/${progress.fingerprints.total} (${progress.fingerprints.progress}%)`,
+                    `[Enrichment] Progress: fingerprints ${progress.fingerprints.completed}/${progress.fingerprints.total} (${progress.fingerprints.progress}%)`,
                 );
             }
             if (features.vibeEmbeddings) {
                 logger.debug(
-                    `   Vibe Embeddings: ${progress.clapEmbeddings.completed}/${progress.clapEmbeddings.total} (${progress.clapEmbeddings.progress}%) [background]`,
+                    `[Enrichment] Progress: vibe embeddings ${progress.clapEmbeddings.completed}/${progress.clapEmbeddings.total} (${progress.clapEmbeddings.progress}%)`,
                 );
             }
-            logger.debug("");
 
             // Update state with progress
             await enrichmentStateService.updateState({
@@ -1735,8 +1729,7 @@ async function runEnrichmentCycle(fullMode: boolean): Promise<{
 
         }
 
-        // If everything is complete, mark as idle and send notification (only once)
-        // Clear mixes cache when core enrichment completes (artist images now available)
+        // Core enrichment gives artists their images: drop the cached mixes once.
         if (progress.coreComplete) {
             const state = await enrichmentStateService.getState();
             if (!state?.coreCacheCleared) await clearMixCache("core", { coreCacheCleared: true });
@@ -1916,13 +1909,11 @@ export async function enrichSingleTrack(
         throw err;
     }
 
-    // Identification order, tags first, then per album: the file's own
-    // recording id; the album's tracklist, one cached fetch answering every track on
-    // the album with its ISRCs and genres, the file's ISRC matched within it; the
-    // file's ISRC on its own; the name search; then AcoustID. Every source's candidate
-    // must be this track (`recordingAgrees`: title, version, artist, length) before
-    // it is accepted, so no step takes a first hit on trust. A source that fails to
-    // answer stops the ladder: the record defers with the real cause.
+    // Identification ladder: the file's own recording id; the album's tracklist (one
+    // cached fetch answers every track on the album, the file's ISRC matched within it);
+    // the file's ISRC alone; the name search; then AcoustID. Every candidate must be this
+    // track (`recordingAgrees`) before it is accepted. A source that fails to answer
+    // stops the ladder: the record defers with the real cause.
     const timeoutMs = getStageTimeoutMs("recording");
     const trackRef = {
         id: track.id,
@@ -2664,7 +2655,7 @@ export async function executePodcastRefreshPhase(): Promise<number> {
             await podcastQueue.add(
                 "refresh",
                 { podcastId: podcast.id, podcastTitle: podcast.title },
-                { jobId: `podcast-${podcast.id}` }, // dedup -- safe now that completed jobs are cleaned above
+                { jobId: `podcast-${podcast.id}` }, // dedup: completed jobs are cleaned above
             );
             queued++;
         } catch (err) {

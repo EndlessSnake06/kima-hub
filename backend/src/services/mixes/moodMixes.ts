@@ -2,8 +2,11 @@ import { prisma } from "../../utils/db";
 import { logger } from "../../utils/logger";
 import {
     ProgrammaticMix,
+    albumCoverUrls,
     getMixColor,
     randomSample,
+    sampledMix,
+    sampleMix,
     getSeededRandom,
     seededShuffle,
     findTracksByGenrePatterns,
@@ -11,14 +14,16 @@ import {
 import { NOT_MISSING } from "../../utils/libraryEligibility";
 import type { MoodType } from "../moodBucketService";
 
-const TRACK_LIMIT = 20;
 const MIN_TRACKS_DAILY = 8;
+const MIN_TRACKS_WEEKLY = 15;
+const DAILY_TRACK_LIMIT = 10;
+const WEEKLY_TRACK_LIMIT = 20;
 
 /**
- * The mood path of a mix: the bucket pool, the same rule the mood page
- * uses — the head's verdict plus the library-rank share, no fixed
- * score cutoffs. `extraWhere` carries the non-mood flavour a generator
- * adds (tempo, energy); it never re-introduces a mood threshold.
+ * The mood path of a mix: the bucket pool, the same rule the mood page uses
+ * (the head's verdict plus the library-rank share, no fixed score cutoffs).
+ * `extraWhere` carries the non-mood flavour a generator adds (tempo, energy);
+ * it never re-introduces a mood threshold.
  */
 async function poolTracksForMood(
     mood: MoodType,
@@ -41,9 +46,6 @@ async function poolTracksForMood(
         take,
     });
 }
-const MIN_TRACKS_WEEKLY = 15;
-const DAILY_TRACK_LIMIT = 10;
-const WEEKLY_TRACK_LIMIT = 20;
 
 export async function generateChillMix(
     _userId: string,
@@ -98,10 +100,7 @@ export async function generateChillMix(
     const trackLimit = isWeekly ? WEEKLY_TRACK_LIMIT : DAILY_TRACK_LIMIT;
     const selectedTracks = shuffled.slice(0, trackLimit);
 
-    const coverUrls = selectedTracks
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
+    const coverUrls = albumCoverUrls(selectedTracks);
 
     return {
         id: `chill-${today}`,
@@ -119,9 +118,7 @@ export async function generateHighEnergyMix(
     _userId: string,
     today: string
 ): Promise<ProgrammaticMix | null> {
-    let tracks: any[] = [];
-
-    const audioTracks = await prisma.track.findMany({
+    let tracks: any[] = await prisma.track.findMany({
             where: {
             ...NOT_MISSING,
             analysisStatus: "completed",
@@ -131,7 +128,6 @@ export async function generateHighEnergyMix(
         include: { album: { select: { coverUrl: true } } },
         take: 100,
     });
-    tracks = audioTracks;
     logger.debug(
         `[HIGH ENERGY MIX] Found ${tracks.length} tracks from audio analysis`
     );
@@ -171,11 +167,8 @@ export async function generateHighEnergyMix(
     const seed = getSeededRandom(`high-energy-${today}`);
     const shuffled = seededShuffle(tracks, seed);
 
-    const selectedTracks = shuffled.slice(0, TRACK_LIMIT);
-    const coverUrls = selectedTracks
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
+    const selectedTracks = shuffled.slice(0, WEEKLY_TRACK_LIMIT);
+    const coverUrls = albumCoverUrls(selectedTracks);
 
     return {
         id: `high-energy-${today}`,
@@ -248,10 +241,7 @@ export async function generateLateNightMix(
     const trackLimit = isWeekly ? WEEKLY_TRACK_LIMIT : DAILY_TRACK_LIMIT;
     const selectedTracks = shuffled.slice(0, trackLimit);
 
-    const coverUrls = selectedTracks
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
+    const coverUrls = albumCoverUrls(selectedTracks);
 
     return {
         id: `late-night-${today}`,
@@ -269,12 +259,9 @@ export async function generateHappyMix(
     _userId: string,
     today: string
 ): Promise<ProgrammaticMix | null> {
-    let tracks: any[] = [];
-
     // Mood path: the bucket pool — head verdict and library rank,
     // no fixed cutoffs.
-    const bucketTracks = await poolTracksForMood("happy", {}, 100);
-    tracks = bucketTracks;
+    let tracks: any[] = await poolTracksForMood("happy", {}, 100);
     logger.debug(`[HAPPY MIX] Bucket mode: Found ${tracks.length} tracks`);
 
     if (tracks.length < 15) {
@@ -332,11 +319,8 @@ export async function generateHappyMix(
     const seed = getSeededRandom(`happy-${today}`);
     const shuffled = seededShuffle(tracks, seed);
 
-    const selectedTracks = shuffled.slice(0, TRACK_LIMIT);
-    const coverUrls = selectedTracks
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
+    const selectedTracks = shuffled.slice(0, WEEKLY_TRACK_LIMIT);
+    const coverUrls = albumCoverUrls(selectedTracks);
 
     return {
         id: `happy-${today}`,
@@ -443,11 +427,8 @@ export async function generateMelancholyMix(
     const seed = getSeededRandom(`melancholy-${today}`);
     const shuffled = seededShuffle(sortedTracks.slice(0, 50), seed);
 
-    const selectedTracks = shuffled.slice(0, TRACK_LIMIT);
-    const coverUrls = selectedTracks
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
+    const selectedTracks = shuffled.slice(0, WEEKLY_TRACK_LIMIT);
+    const coverUrls = albumCoverUrls(selectedTracks);
 
     return {
         id: `melancholy-${today}`,
@@ -465,9 +446,7 @@ export async function generateDanceFloorMix(
     _userId: string,
     today: string
 ): Promise<ProgrammaticMix | null> {
-    let tracks: any[] = [];
-
-    const audioTracks = await prisma.track.findMany({
+    let tracks: any[] = await prisma.track.findMany({
             where: {
             ...NOT_MISSING,
             analysisStatus: "completed",
@@ -477,7 +456,6 @@ export async function generateDanceFloorMix(
         include: { album: { select: { coverUrl: true } } },
         take: 100,
     });
-    tracks = audioTracks;
     logger.debug(
         `[DANCE FLOOR MIX] Found ${tracks.length} tracks from audio analysis`
     );
@@ -516,11 +494,8 @@ export async function generateDanceFloorMix(
     const seed = getSeededRandom(`dance-floor-${today}`);
     const shuffled = seededShuffle(tracks, seed);
 
-    const selectedTracks = shuffled.slice(0, TRACK_LIMIT);
-    const coverUrls = selectedTracks
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
+    const selectedTracks = shuffled.slice(0, WEEKLY_TRACK_LIMIT);
+    const coverUrls = albumCoverUrls(selectedTracks);
 
     return {
         id: `dance-floor-${today}`,
@@ -538,9 +513,7 @@ export async function generateAcousticMix(
     _userId: string,
     today: string
 ): Promise<ProgrammaticMix | null> {
-    let tracks: any[] = [];
-
-    const audioTracks = await prisma.track.findMany({
+    let tracks: any[] = await prisma.track.findMany({
             where: {
             ...NOT_MISSING,
             analysisStatus: "completed",
@@ -550,7 +523,6 @@ export async function generateAcousticMix(
         include: { album: { select: { coverUrl: true } } },
         take: 100,
     });
-    tracks = audioTracks;
     logger.debug(
         `[ACOUSTIC MIX] Found ${tracks.length} tracks from audio analysis`
     );
@@ -587,11 +559,8 @@ export async function generateAcousticMix(
     const seed = getSeededRandom(`acoustic-${today}`);
     const shuffled = seededShuffle(tracks, seed);
 
-    const selectedTracks = shuffled.slice(0, TRACK_LIMIT);
-    const coverUrls = selectedTracks
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
+    const selectedTracks = shuffled.slice(0, WEEKLY_TRACK_LIMIT);
+    const coverUrls = albumCoverUrls(selectedTracks);
 
     return {
         id: `acoustic-${today}`,
@@ -609,9 +578,7 @@ export async function generateInstrumentalMix(
     _userId: string,
     today: string
 ): Promise<ProgrammaticMix | null> {
-    let tracks: any[] = [];
-
-    const audioTracks = await prisma.track.findMany({
+    let tracks: any[] = await prisma.track.findMany({
             where: {
             ...NOT_MISSING,
             analysisStatus: "completed",
@@ -621,7 +588,6 @@ export async function generateInstrumentalMix(
         include: { album: { select: { coverUrl: true } } },
         take: 100,
     });
-    tracks = audioTracks;
     logger.debug(
         `[INSTRUMENTAL MIX] Found ${tracks.length} tracks from audio analysis`
     );
@@ -659,11 +625,8 @@ export async function generateInstrumentalMix(
     const seed = getSeededRandom(`instrumental-${today}`);
     const shuffled = seededShuffle(tracks, seed);
 
-    const selectedTracks = shuffled.slice(0, TRACK_LIMIT);
-    const coverUrls = selectedTracks
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
+    const selectedTracks = shuffled.slice(0, WEEKLY_TRACK_LIMIT);
+    const coverUrls = albumCoverUrls(selectedTracks);
 
     return {
         id: `instrumental-${today}`,
@@ -681,9 +644,7 @@ export async function generateRoadTripMix(
     _userId: string,
     today: string
 ): Promise<ProgrammaticMix | null> {
-    let tracks: any[] = [];
-
-    const taggedTracks = await prisma.track.findMany({
+    let tracks: any[] = await prisma.track.findMany({
             where: {
             ...NOT_MISSING,
             // Moods come from audio analysis only. With nothing in the energetic or
@@ -695,7 +656,6 @@ export async function generateRoadTripMix(
         include: { album: { select: { coverUrl: true } } },
         take: 100,
     });
-    tracks = taggedTracks;
     logger.debug(`[ROAD TRIP MIX] Found ${tracks.length} tracks from tags`);
 
     if (tracks.length < 15) {
@@ -751,11 +711,8 @@ export async function generateRoadTripMix(
     const seed = getSeededRandom(`road-trip-${today}`);
     const shuffled = seededShuffle(tracks, seed);
 
-    const selectedTracks = shuffled.slice(0, TRACK_LIMIT);
-    const coverUrls = selectedTracks
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
+    const selectedTracks = shuffled.slice(0, WEEKLY_TRACK_LIMIT);
+    const coverUrls = albumCoverUrls(selectedTracks);
 
     return {
         id: `road-trip-${today}`,
@@ -778,8 +735,16 @@ export async function generateSadGirlSundays(
     const dayOfWeek = new Date().getDay();
     if (dayOfWeek !== 0) return null;
 
-    const tracks = await prisma.track.findMany({
-            where: {
+    return sampledMix({
+        id: `sad-girl-sundays-${today}`,
+        type: "sad-girl-sundays",
+        name: "Sad Girl Sundays",
+        description: "Melancholic introspection and feelings",
+        colorType: "sad-girl-sundays",
+        take: 50,
+        minTracks: 8,
+        limit: DAILY_TRACK_LIMIT,
+        where: {
             ...NOT_MISSING,
             analysisStatus: "completed",
             OR: [
@@ -797,36 +762,23 @@ export async function generateSadGirlSundays(
                 },
             ],
         },
-        include: { album: { select: { coverUrl: true } } },
-        take: 50,
     });
-
-    if (tracks.length < 8) return null;
-
-    const shuffled = randomSample(tracks, DAILY_TRACK_LIMIT);
-    const coverUrls = shuffled
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
-
-    return {
-        id: `sad-girl-sundays-${today}`,
-        type: "sad-girl-sundays",
-        name: "Sad Girl Sundays",
-        description: "Melancholic introspection and feelings",
-        trackIds: shuffled.map((t) => t.id),
-        coverUrls,
-        trackCount: shuffled.length,
-        color: getMixColor("sad-girl-sundays"),
-    };
 }
 
 export async function generateMainCharacterEnergy(
     _userId: string,
     today: string
 ): Promise<ProgrammaticMix | null> {
-    const tracks = await prisma.track.findMany({
-            where: {
+    return sampledMix({
+        id: `main-character-${today}`,
+        type: "main-character",
+        name: "Main Character Energy",
+        description: "You're the protagonist today",
+        colorType: "main-character",
+        take: 50,
+        minTracks: 8,
+        limit: DAILY_TRACK_LIMIT,
+        where: {
             ...NOT_MISSING,
             analysisStatus: "completed",
             OR: [
@@ -839,36 +791,23 @@ export async function generateMainCharacterEnergy(
                 },
             ],
         },
-        include: { album: { select: { coverUrl: true } } },
-        take: 50,
     });
-
-    if (tracks.length < 8) return null;
-
-    const shuffled = randomSample(tracks, DAILY_TRACK_LIMIT);
-    const coverUrls = shuffled
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
-
-    return {
-        id: `main-character-${today}`,
-        type: "main-character",
-        name: "Main Character Energy",
-        description: "You're the protagonist today",
-        trackIds: shuffled.map((t) => t.id),
-        coverUrls,
-        trackCount: shuffled.length,
-        color: getMixColor("main-character"),
-    };
 }
 
 export async function generateVillainEra(
     _userId: string,
     today: string
 ): Promise<ProgrammaticMix | null> {
-    const tracks = await prisma.track.findMany({
-            where: {
+    return sampledMix({
+        id: `villain-era-${today}`,
+        type: "villain-era",
+        name: "Villain Era",
+        description: "Embrace your dark side",
+        colorType: "villain-era",
+        take: 50,
+        minTracks: 8,
+        limit: DAILY_TRACK_LIMIT,
+        where: {
             ...NOT_MISSING,
             analysisStatus: "completed",
             OR: [
@@ -882,36 +821,23 @@ export async function generateVillainEra(
                 },
             ],
         },
-        include: { album: { select: { coverUrl: true } } },
-        take: 50,
     });
-
-    if (tracks.length < 8) return null;
-
-    const shuffled = randomSample(tracks, DAILY_TRACK_LIMIT);
-    const coverUrls = shuffled
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
-
-    return {
-        id: `villain-era-${today}`,
-        type: "villain-era",
-        name: "Villain Era",
-        description: "Embrace your dark side",
-        trackIds: shuffled.map((t) => t.id),
-        coverUrls,
-        trackCount: shuffled.length,
-        color: getMixColor("villain-era"),
-    };
 }
 
 export async function generate3AMThoughts(
     _userId: string,
     today: string
 ): Promise<ProgrammaticMix | null> {
-    const tracks = await prisma.track.findMany({
-            where: {
+    return sampledMix({
+        id: `3am-thoughts-${today}`,
+        type: "3am-thoughts",
+        name: "3AM Thoughts",
+        description: "Late night overthinking companion",
+        colorType: "3am-thoughts",
+        take: 50,
+        minTracks: MIN_TRACKS_DAILY,
+        limit: DAILY_TRACK_LIMIT,
+        where: {
             ...NOT_MISSING,
             analysisStatus: "completed",
             AND: [
@@ -926,36 +852,23 @@ export async function generate3AMThoughts(
                 },
             ],
         },
-        include: { album: { select: { coverUrl: true } } },
-        take: 50,
     });
-
-    if (tracks.length < MIN_TRACKS_DAILY) return null;
-
-    const shuffled = randomSample(tracks, DAILY_TRACK_LIMIT);
-    const coverUrls = shuffled
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
-
-    return {
-        id: `3am-thoughts-${today}`,
-        type: "3am-thoughts",
-        name: "3AM Thoughts",
-        description: "Late night overthinking companion",
-        trackIds: shuffled.map((t) => t.id),
-        coverUrls,
-        trackCount: shuffled.length,
-        color: getMixColor("3am-thoughts"),
-    };
 }
 
 export async function generateHotGirlWalk(
     _userId: string,
     today: string
 ): Promise<ProgrammaticMix | null> {
-    const tracks = await prisma.track.findMany({
-            where: {
+    return sampledMix({
+        id: `hot-girl-walk-${today}`,
+        type: "hot-girl-walk",
+        name: "Hot Girl Walk",
+        description: "Confidence boost for your walk",
+        colorType: "confidence-boost",
+        take: 50,
+        minTracks: 8,
+        limit: DAILY_TRACK_LIMIT,
+        where: {
             ...NOT_MISSING,
             analysisStatus: "completed",
             OR: [
@@ -974,36 +887,23 @@ export async function generateHotGirlWalk(
                 },
             ],
         },
-        include: { album: { select: { coverUrl: true } } },
-        take: 50,
     });
-
-    if (tracks.length < 8) return null;
-
-    const shuffled = randomSample(tracks, DAILY_TRACK_LIMIT);
-    const coverUrls = shuffled
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
-
-    return {
-        id: `hot-girl-walk-${today}`,
-        type: "hot-girl-walk",
-        name: "Hot Girl Walk",
-        description: "Confidence boost for your walk",
-        trackIds: shuffled.map((t) => t.id),
-        coverUrls,
-        trackCount: shuffled.length,
-        color: getMixColor("confidence-boost"),
-    };
 }
 
 export async function generateRageCleaning(
     _userId: string,
     today: string
 ): Promise<ProgrammaticMix | null> {
-    const tracks = await prisma.track.findMany({
-            where: {
+    return sampledMix({
+        id: `rage-cleaning-${today}`,
+        type: "rage-cleaning",
+        name: "Rage Cleaning",
+        description: "Aggressive productivity fuel",
+        colorType: "workout",
+        take: 50,
+        minTracks: 8,
+        limit: DAILY_TRACK_LIMIT,
+        where: {
             ...NOT_MISSING,
             analysisStatus: "completed",
             OR: [
@@ -1025,36 +925,23 @@ export async function generateRageCleaning(
                 },
             ],
         },
-        include: { album: { select: { coverUrl: true } } },
-        take: 50,
     });
-
-    if (tracks.length < 8) return null;
-
-    const shuffled = randomSample(tracks, DAILY_TRACK_LIMIT);
-    const coverUrls = shuffled
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
-
-    return {
-        id: `rage-cleaning-${today}`,
-        type: "rage-cleaning",
-        name: "Rage Cleaning",
-        description: "Aggressive productivity fuel",
-        trackIds: shuffled.map((t) => t.id),
-        coverUrls,
-        trackCount: shuffled.length,
-        color: getMixColor("workout"),
-    };
 }
 
 export async function generateGoldenHour(
     _userId: string,
     today: string
 ): Promise<ProgrammaticMix | null> {
-    const tracks = await prisma.track.findMany({
-            where: {
+    return sampledMix({
+        id: `golden-hour-${today}`,
+        type: "golden-hour",
+        name: "Golden Hour",
+        description: "Warm sunset vibes",
+        colorType: "golden-hour",
+        take: 50,
+        minTracks: 8,
+        limit: DAILY_TRACK_LIMIT,
+        where: {
             ...NOT_MISSING,
             analysisStatus: "completed",
             OR: [
@@ -1067,36 +954,23 @@ export async function generateGoldenHour(
                 },
             ],
         },
-        include: { album: { select: { coverUrl: true } } },
-        take: 50,
     });
-
-    if (tracks.length < 8) return null;
-
-    const shuffled = randomSample(tracks, DAILY_TRACK_LIMIT);
-    const coverUrls = shuffled
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
-
-    return {
-        id: `golden-hour-${today}`,
-        type: "golden-hour",
-        name: "Golden Hour",
-        description: "Warm sunset vibes",
-        trackIds: shuffled.map((t) => t.id),
-        coverUrls,
-        trackCount: shuffled.length,
-        color: getMixColor("golden-hour"),
-    };
 }
 
 export async function generateShowerKaraoke(
     _userId: string,
     today: string
 ): Promise<ProgrammaticMix | null> {
-    const tracks = await prisma.track.findMany({
-            where: {
+    return sampledMix({
+        id: `shower-karaoke-${today}`,
+        type: "shower-karaoke",
+        name: "Shower Karaoke",
+        description: "Belters you can't help but sing",
+        colorType: "happy",
+        take: 50,
+        minTracks: 8,
+        limit: DAILY_TRACK_LIMIT,
+        where: {
             ...NOT_MISSING,
             analysisStatus: "completed",
             AND: [
@@ -1105,36 +979,23 @@ export async function generateShowerKaraoke(
                 { valence: { gte: 0.45 } },
             ],
         },
-        include: { album: { select: { coverUrl: true } } },
-        take: 50,
     });
-
-    if (tracks.length < 8) return null;
-
-    const shuffled = randomSample(tracks, DAILY_TRACK_LIMIT);
-    const coverUrls = shuffled
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
-
-    return {
-        id: `shower-karaoke-${today}`,
-        type: "shower-karaoke",
-        name: "Shower Karaoke",
-        description: "Belters you can't help but sing",
-        trackIds: shuffled.map((t) => t.id),
-        coverUrls,
-        trackCount: shuffled.length,
-        color: getMixColor("happy"),
-    };
 }
 
 export async function generateInMyFeelings(
     _userId: string,
     today: string
 ): Promise<ProgrammaticMix | null> {
-    const tracks = await prisma.track.findMany({
-            where: {
+    return sampledMix({
+        id: `in-my-feelings-${today}`,
+        type: "in-my-feelings",
+        name: "In My Feelings",
+        description: "Let it all out",
+        colorType: "heartbreak-hotel",
+        take: 50,
+        minTracks: 8,
+        limit: DAILY_TRACK_LIMIT,
+        where: {
             ...NOT_MISSING,
             analysisStatus: "completed",
             OR: [
@@ -1147,36 +1008,23 @@ export async function generateInMyFeelings(
                 },
             ],
         },
-        include: { album: { select: { coverUrl: true } } },
-        take: 50,
     });
-
-    if (tracks.length < 8) return null;
-
-    const shuffled = randomSample(tracks, DAILY_TRACK_LIMIT);
-    const coverUrls = shuffled
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
-
-    return {
-        id: `in-my-feelings-${today}`,
-        type: "in-my-feelings",
-        name: "In My Feelings",
-        description: "Let it all out",
-        trackIds: shuffled.map((t) => t.id),
-        coverUrls,
-        trackCount: shuffled.length,
-        color: getMixColor("heartbreak-hotel"),
-    };
 }
 
 export async function generateMidnightDrive(
     _userId: string,
     today: string
 ): Promise<ProgrammaticMix | null> {
-    const tracks = await prisma.track.findMany({
-            where: {
+    return sampledMix({
+        id: `midnight-drive-${today}`,
+        type: "midnight-drive",
+        name: "Midnight Drive",
+        description: "Perfect for late night cruising",
+        colorType: "night-drive",
+        take: 50,
+        minTracks: MIN_TRACKS_DAILY,
+        limit: DAILY_TRACK_LIMIT,
+        where: {
             ...NOT_MISSING,
             analysisStatus: "completed",
             AND: [
@@ -1190,36 +1038,23 @@ export async function generateMidnightDrive(
                 },
             ],
         },
-        include: { album: { select: { coverUrl: true } } },
-        take: 50,
     });
-
-    if (tracks.length < MIN_TRACKS_DAILY) return null;
-
-    const shuffled = randomSample(tracks, DAILY_TRACK_LIMIT);
-    const coverUrls = shuffled
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
-
-    return {
-        id: `midnight-drive-${today}`,
-        type: "midnight-drive",
-        name: "Midnight Drive",
-        description: "Perfect for late night cruising",
-        trackIds: shuffled.map((t) => t.id),
-        coverUrls,
-        trackCount: shuffled.length,
-        color: getMixColor("night-drive"),
-    };
 }
 
 export async function generateCoffeeShopVibes(
     _userId: string,
     today: string
 ): Promise<ProgrammaticMix | null> {
-    const tracks = await prisma.track.findMany({
-            where: {
+    return sampledMix({
+        id: `coffee-shop-${today}`,
+        type: "coffee-shop",
+        name: "Coffee Shop Vibes",
+        description: "Cozy background music",
+        colorType: "coffee-shop",
+        take: 50,
+        minTracks: MIN_TRACKS_DAILY,
+        limit: DAILY_TRACK_LIMIT,
+        where: {
             ...NOT_MISSING,
             analysisStatus: "completed",
             AND: [
@@ -1233,36 +1068,23 @@ export async function generateCoffeeShopVibes(
                 },
             ],
         },
-        include: { album: { select: { coverUrl: true } } },
-        take: 50,
     });
-
-    if (tracks.length < MIN_TRACKS_DAILY) return null;
-
-    const shuffled = randomSample(tracks, DAILY_TRACK_LIMIT);
-    const coverUrls = shuffled
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
-
-    return {
-        id: `coffee-shop-${today}`,
-        type: "coffee-shop",
-        name: "Coffee Shop Vibes",
-        description: "Cozy background music",
-        trackIds: shuffled.map((t) => t.id),
-        coverUrls,
-        trackCount: shuffled.length,
-        color: getMixColor("coffee-shop"),
-    };
 }
 
 export async function generateRomanticizeYourLife(
     _userId: string,
     today: string
 ): Promise<ProgrammaticMix | null> {
-    const tracks = await prisma.track.findMany({
-            where: {
+    return sampledMix({
+        id: `romanticize-${today}`,
+        type: "romanticize",
+        name: "Romanticize Your Life",
+        description: "Make every moment aesthetic",
+        colorType: "golden-hour",
+        take: 50,
+        minTracks: 8,
+        limit: DAILY_TRACK_LIMIT,
+        where: {
             ...NOT_MISSING,
             analysisStatus: "completed",
             OR: [
@@ -1275,36 +1097,23 @@ export async function generateRomanticizeYourLife(
                 },
             ],
         },
-        include: { album: { select: { coverUrl: true } } },
-        take: 50,
     });
-
-    if (tracks.length < 8) return null;
-
-    const shuffled = randomSample(tracks, DAILY_TRACK_LIMIT);
-    const coverUrls = shuffled
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
-
-    return {
-        id: `romanticize-${today}`,
-        type: "romanticize",
-        name: "Romanticize Your Life",
-        description: "Make every moment aesthetic",
-        trackIds: shuffled.map((t) => t.id),
-        coverUrls,
-        trackCount: shuffled.length,
-        color: getMixColor("golden-hour"),
-    };
 }
 
 export async function generateThatGirlEra(
     _userId: string,
     today: string
 ): Promise<ProgrammaticMix | null> {
-    const tracks = await prisma.track.findMany({
-            where: {
+    return sampledMix({
+        id: `that-girl-era-${today}`,
+        type: "that-girl-era",
+        name: "That Girl Era",
+        description: "Self-improvement mode activated",
+        colorType: "confidence-boost",
+        take: 50,
+        minTracks: 8,
+        limit: DAILY_TRACK_LIMIT,
+        where: {
             ...NOT_MISSING,
             analysisStatus: "completed",
             AND: [
@@ -1313,36 +1122,23 @@ export async function generateThatGirlEra(
                 { danceability: { gte: 0.45 } },
             ],
         },
-        include: { album: { select: { coverUrl: true } } },
-        take: 50,
     });
-
-    if (tracks.length < 8) return null;
-
-    const shuffled = randomSample(tracks, DAILY_TRACK_LIMIT);
-    const coverUrls = shuffled
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
-
-    return {
-        id: `that-girl-era-${today}`,
-        type: "that-girl-era",
-        name: "That Girl Era",
-        description: "Self-improvement mode activated",
-        trackIds: shuffled.map((t) => t.id),
-        coverUrls,
-        trackCount: shuffled.length,
-        color: getMixColor("confidence-boost"),
-    };
 }
 
 export async function generateUnhinged(
     _userId: string,
     today: string
 ): Promise<ProgrammaticMix | null> {
-    const tracks = await prisma.track.findMany({
-            where: {
+    return sampledMix({
+        id: `unhinged-${today}`,
+        type: "unhinged",
+        name: "Unhinged",
+        description: "Embrace the chaos",
+        colorType: "dance-floor",
+        take: 100,
+        minTracks: 8,
+        limit: DAILY_TRACK_LIMIT,
+        where: {
             ...NOT_MISSING,
             analysisStatus: "completed",
             OR: [
@@ -1355,28 +1151,7 @@ export async function generateUnhinged(
                 { danceability: { gte: 0.9 } },
             ],
         },
-        include: { album: { select: { coverUrl: true } } },
-        take: 100,
     });
-
-    if (tracks.length < 8) return null;
-
-    const shuffled = randomSample(tracks, DAILY_TRACK_LIMIT);
-    const coverUrls = shuffled
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
-
-    return {
-        id: `unhinged-${today}`,
-        type: "unhinged",
-        name: "Unhinged",
-        description: "Embrace the chaos",
-        trackIds: shuffled.map((t) => t.id),
-        coverUrls,
-        trackCount: shuffled.length,
-        color: getMixColor("dance-floor"),
-    };
 }
 
 // WEEKLY CURATED MIXES (20 tracks)
@@ -1419,40 +1194,30 @@ export async function generateDeepCuts(
 
         if (filtered.length < 15) return null;
 
-        const shuffled = randomSample(filtered, WEEKLY_TRACK_LIMIT);
-        const coverUrls = shuffled
-            .filter((t) => t.album.coverUrl)
-            .slice(0, 4)
-            .map((t) => t.album.coverUrl!);
+        return sampleMix(
+            {
+                id: `deep-cuts-${today}`,
+                type: "deep-cuts",
+                name: "Deep Cuts",
+                description: "Hidden gems waiting to be discovered",
+                colorType: "rediscover",
+            },
+            filtered,
+            WEEKLY_TRACK_LIMIT
+        );
+    }
 
-        return {
+    return sampleMix(
+        {
             id: `deep-cuts-${today}`,
             type: "deep-cuts",
             name: "Deep Cuts",
             description: "Hidden gems waiting to be discovered",
-            trackIds: shuffled.map((t) => t.id),
-            coverUrls,
-            trackCount: shuffled.length,
-            color: getMixColor("rediscover"),
-        };
-    }
-
-    const shuffled = randomSample(tracks, WEEKLY_TRACK_LIMIT);
-    const coverUrls = shuffled
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
-
-    return {
-        id: `deep-cuts-${today}`,
-        type: "deep-cuts",
-        name: "Deep Cuts",
-        description: "Hidden gems waiting to be discovered",
-        trackIds: shuffled.map((t) => t.id),
-        coverUrls,
-        trackCount: shuffled.length,
-        color: getMixColor("rediscover"),
-    };
+            colorType: "rediscover",
+        },
+        tracks,
+        WEEKLY_TRACK_LIMIT
+    );
 }
 
 export async function generateKeyJourney(
@@ -1511,10 +1276,7 @@ export async function generateKeyJourney(
 
     if (journey.length < 15) return null;
 
-    const coverUrls = journey
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
+    const coverUrls = albumCoverUrls(journey);
 
     return {
         id: `key-journey-${today}`,
@@ -1572,10 +1334,7 @@ export async function generateTempoFlow(
 
     if (flow.length < 15) return null;
 
-    const coverUrls = flow
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
+    const coverUrls = albumCoverUrls(flow);
 
     return {
         id: `tempo-flow-${today}`,
@@ -1593,34 +1352,21 @@ export async function generateVocalDetox(
     _userId: string,
     today: string
 ): Promise<ProgrammaticMix | null> {
-    const tracks = await prisma.track.findMany({
-            where: {
-            ...NOT_MISSING,
-            analysisStatus: "completed",
-            instrumentalness: { gte: 0.75 },
-        },
-        include: { album: { select: { coverUrl: true } } },
-        take: 100,
-    });
-
-    if (tracks.length < 15) return null;
-
-    const shuffled = randomSample(tracks, WEEKLY_TRACK_LIMIT);
-    const coverUrls = shuffled
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
-
-    return {
+    return sampledMix({
         id: `vocal-detox-${today}`,
         type: "vocal-detox",
         name: "Vocal Detox",
         description: "Pure instrumental escape",
-        trackIds: shuffled.map((t) => t.id),
-        coverUrls,
-        trackCount: shuffled.length,
-        color: getMixColor("instrumental"),
-    };
+        colorType: "instrumental",
+        take: 100,
+        minTracks: 15,
+        limit: WEEKLY_TRACK_LIMIT,
+        where: {
+            ...NOT_MISSING,
+            analysisStatus: "completed",
+            instrumentalness: { gte: 0.75 },
+        },
+    });
 }
 
 export async function generateMinorKeyMix(
@@ -1630,35 +1376,22 @@ export async function generateMinorKeyMix(
     const dayOfWeek = new Date().getDay();
     if (dayOfWeek !== 1) return null;
 
-    const tracks = await prisma.track.findMany({
-            where: {
+    return sampledMix({
+        id: `minor-key-${today}`,
+        type: "melancholy",
+        name: "Minor Key Mondays",
+        description: "All minor key bangers",
+        colorType: "melancholy",
+        take: 100,
+        minTracks: 15,
+        limit: WEEKLY_TRACK_LIMIT,
+        where: {
             ...NOT_MISSING,
             analysisStatus: "completed",
             keyScale: "minor",
             energy: { gte: 0.45 },
         },
-        include: { album: { select: { coverUrl: true } } },
-        take: 100,
     });
-
-    if (tracks.length < 15) return null;
-
-    const shuffled = randomSample(tracks, WEEKLY_TRACK_LIMIT);
-    const coverUrls = shuffled
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
-
-    return {
-        id: `minor-key-${today}`,
-        type: "melancholy",
-        name: "Minor Key Mondays",
-        description: "All minor key bangers",
-        trackIds: shuffled.map((t) => t.id),
-        coverUrls,
-        trackCount: shuffled.length,
-        color: getMixColor("melancholy"),
-    };
 }
 
 export type MoodOnDemandParams = {
@@ -1797,10 +1530,7 @@ export async function generateMoodOnDemand(
     if (tracks.length < Math.min(limit, 8)) return null;
 
     const shuffled = randomSample(tracks, limit);
-    const coverUrls = shuffled
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
+    const coverUrls = albumCoverUrls(shuffled);
 
     const timestamp = Date.now();
     return {

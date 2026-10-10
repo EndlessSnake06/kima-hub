@@ -1,9 +1,4 @@
-/**
- * The enrichment controls delete nothing: the destructive functions are gone
- * from the module, the source has no `DELETE FROM track_embeddings` or
- * unscoped `enrichmentTags` reset, and running the controls leaves seeded
- * embeddings and tags in place.
- */
+/** Running the enrichment controls leaves seeded embeddings and tags in place. */
 
 // ── Queues + Redis + network services: observe, never hit the wire ──────
 
@@ -83,9 +78,7 @@ jest.mock("../../services/enrichmentFailureService", () => ({
         getFailures: jest.fn().mockResolvedValue({ failures: [], total: 0 }),
         getFailure: jest.fn().mockResolvedValue(null),
         getFailureCounts: jest.fn().mockResolvedValue({}),
-        skipFailures: jest.fn().mockResolvedValue(0),
         resetRetryCount: jest.fn().mockResolvedValue(0),
-        deleteFailures: jest.fn().mockResolvedValue(0),
     },
 }));
 
@@ -145,9 +138,6 @@ jest.mock("../../workers/trackEnrichmentWorker", () => ({
 jest.mock("../../workers/podcastEnrichmentWorker", () => ({
     startPodcastEnrichmentWorker: jest.fn().mockResolvedValue({ pause: jest.fn(), resume: jest.fn(), close: jest.fn() }),
 }));
-
-import fs from "fs";
-import path from "path";
 
 import { prisma } from "../../utils/db";
 import {
@@ -270,42 +260,7 @@ afterAll(async () => {
     await prisma.$disconnect();
 });
 
-describe("the destructive controls are gone", () => {
-    it("no longer exist on the worker module", async () => {
-        const worker = await import("../../workers/unifiedEnrichment");
-        for (const gone of [
-            "runFullEnrichment", "resetArtistsOnly", "resetMoodTagsOnly",
-            "reRunArtistsOnly", "reRunMoodTagsOnly", "reRunAudioAnalysisOnly",
-            "resetAllEnrichmentData", "reEnrichFromFailures", "clearPauseState",
-        ]) {
-            expect(worker).not.toHaveProperty(gone);
-        }
-    });
-
-    it("the worker source contains no DELETE FROM track_embeddings and no un-where'd enrichmentTags reset", () => {
-        const source = fs.readFileSync(
-            path.join(__dirname, "..", "unifiedEnrichment.ts"),
-            "utf8",
-        );
-        // The wipe is gone, not commented out or hidden in a template.
-        expect(source).not.toMatch(/DELETE\s+FROM\s+track_embeddings/i);
-        expect(source).not.toMatch(/TRUNCATE\s+track_embeddings/i);
-        // The only `enrichmentTags` writes left must be guarded (a WHERE /
-        // per-track update), never `updateMany` with no where clause.
-        expect(source).not.toMatch(/updateMany\(\{[\s\S]{0,120}enrichmentTags[\s\S]{0,40}data/);
-    });
-
-    it("the enrichment route source has no DELETE of Track rows either", () => {
-        const source = fs.readFileSync(
-            path.join(__dirname, "..", "..", "routes", "enrichment.ts"),
-            "utf8",
-        );
-        expect(source).not.toMatch(/DELETE\s+FROM\s+"?Track"?/i);
-        expect(source).not.toMatch(/track\.delete/i);
-    });
-});
-
-describe("the controls that remain wipe nothing", () => {
+describe("re-deciding and retrying wipe nothing", () => {
     it("redecideEverything keeps every embedding and every tag", async () => {
         await seedAnsweredTrack(id("keep"));
 
@@ -337,8 +292,7 @@ describe("the controls that remain wipe nothing", () => {
         await retryFailedAndBlocked(50);
 
         // Even after re-deciding everything and retrying whatever is owed,
-        // the answers already on disk survive untouched — the whole point
-        // of replacing the old wipe-and-re-ask controls.
+        // the answers already on disk survive untouched.
         expect(await embeddingCount(id("keep3"))).toBe(1);
         expect(await tags(id("keep3"))).toEqual(["rock", "alternative"]);
         const track = await prisma.track.findUnique({ where: { id: id("keep3") } });

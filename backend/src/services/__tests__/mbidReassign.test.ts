@@ -265,11 +265,9 @@ describe("Integration: no orphaned OwnedAlbum rows", () => {
         expect(deleteCalled).toBe(true);
         expect(upsertCalled).toBe(true);
 
-        // Verify the old row was deleted with the OLD rgMbid
         const deleteCall = mockOwnedAlbumDelete.mock.calls[0][0];
         expect(deleteCall.where.artistId_rgMbid.rgMbid).toBe(OLD_RGMUBID);
 
-        // Verify the new row was created with the NEW rgMbid
         const upsertCall = mockOwnedAlbumUpsert.mock.calls[0][0];
         expect(upsertCall.create.rgMbid).toBe(NEW_RGMUBID);
     });

@@ -192,11 +192,10 @@ class AcoustIDService {
     }
 
     /**
-     * The first result above the confidence floor that has a recording of this
-     * track's length (`lengthsAgree`; the length is the recording's, AcoustID
-     * gives none for the result). Among those, a recording whose title is the
-     * track's wins, then the closest length. Bare results (a fingerprint with no
-     * recording) cannot identify anything and are skipped.
+     * The first result above the confidence floor with a recording of this track's
+     * length (`lengthsAgree`; AcoustID gives no length for the result, so it is the
+     * recording's). Among those, a recording whose title is the track's wins, then
+     * the closest length. Results with no recording are skipped.
      */
     private pickFingerprintMatch(
         data: AcoustIDLookupResponse,

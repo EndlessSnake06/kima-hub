@@ -18,9 +18,7 @@ let lastBuiltSignature: string | null = null;
  * Start the mood bucket worker
  */
 export async function startMoodBucketWorker() {
-    logger.debug("\n=== Starting Mood Bucket Worker ===");
-    logger.debug(`   Interval: ${WORKER_INTERVAL_MS / 1000}s`);
-    logger.debug("");
+    logger.debug(`[MoodBucket] Starting worker, interval ${WORKER_INTERVAL_MS / 1000}s`);
 
     // Run immediately
     await syncMoodBuckets();

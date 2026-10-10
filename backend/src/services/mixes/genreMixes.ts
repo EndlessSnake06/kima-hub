@@ -8,8 +8,9 @@ import {
 import { NOT_MISSING } from "../../utils/libraryEligibility";
 import {
     ProgrammaticMix,
+    albumCoverUrls,
+    sampleMix,
     getMixColor,
-    randomSample,
     getSeededRandom,
     seededShuffle,
     findTracksByGenrePatterns,
@@ -53,22 +54,17 @@ export async function generateEraMix(
 
     if (tracks.length < 15) return null;
 
-    const selectedTracks = randomSample(tracks, TRACK_LIMIT);
-    const coverUrls = selectedTracks
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
-
-    return {
-        id: `era-${selectedDecade}-${today}`,
-        type: "era",
-        name: `Your ${selectedDecade}s Mix`,
-        description: `Random picks from the ${selectedDecade}s`,
-        trackIds: selectedTracks.map((t) => t.id),
-        coverUrls,
-        trackCount: selectedTracks.length,
-        color: getMixColor("era"),
-    };
+    return sampleMix(
+        {
+            id: `era-${selectedDecade}-${today}`,
+            type: "era",
+            name: `Your ${selectedDecade}s Mix`,
+            description: `Random picks from the ${selectedDecade}s`,
+            colorType: "era",
+        },
+        tracks,
+        TRACK_LIMIT
+    );
 }
 
 export async function generateGenreMix(
@@ -112,22 +108,17 @@ export async function generateGenreMix(
     const tracks = trackGenres.map((tg) => tg.track);
     if (tracks.length < 5) return null;
 
-    const selectedTracks = randomSample(tracks, TRACK_LIMIT);
-    const coverUrls = selectedTracks
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
-
-    return {
-        id: `genre-${selectedGenre.id}-${today}`,
-        type: "genre",
-        name: `Your ${selectedGenre.name} Mix`,
-        description: `Random ${selectedGenre.name} picks`,
-        trackIds: selectedTracks.map((t) => t.id),
-        coverUrls,
-        trackCount: selectedTracks.length,
-        color: getMixColor("genre"),
-    };
+    return sampleMix(
+        {
+            id: `genre-${selectedGenre.id}-${today}`,
+            type: "genre",
+            name: `Your ${selectedGenre.name} Mix`,
+            description: `Random ${selectedGenre.name} picks`,
+            colorType: "genre",
+        },
+        tracks,
+        TRACK_LIMIT
+    );
 }
 
 export async function generatePartyMix(
@@ -227,10 +218,7 @@ export async function generatePartyMix(
     const shuffled = seededShuffle(tracks, seed);
 
     const selectedTracks = shuffled.slice(0, TRACK_LIMIT);
-    const coverUrls = selectedTracks
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
+    const coverUrls = albumCoverUrls(selectedTracks);
 
     return {
         id: `party-${today}`,
@@ -384,10 +372,7 @@ export async function generateWorkoutMix(
     const shuffled = seededShuffle(tracks, seed);
 
     const selectedTracks = shuffled.slice(0, TRACK_LIMIT);
-    const coverUrls = selectedTracks
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
+    const coverUrls = albumCoverUrls(selectedTracks);
 
     return {
         id: `workout-${today}`,
@@ -488,10 +473,7 @@ export async function generateFocusMix(
     const shuffled = seededShuffle(tracks, seed);
 
     const selectedTracks = shuffled.slice(0, TRACK_LIMIT);
-    const coverUrls = selectedTracks
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
+    const coverUrls = albumCoverUrls(selectedTracks);
 
     return {
         id: `focus-${today}`,

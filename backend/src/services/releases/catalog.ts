@@ -165,9 +165,8 @@ export const RELEASES: Release[] = [
                 title: "The new vibe map",
                 summary: "Your library laid out by the vibe engine. It's yours, and it doesn't shuffle around.",
                 body:
-                    "Every song sits where the vibe engine puts it, so songs that match sit together. The faint glow " +
-                    "behind each area comes from how its music feels, from calm blue through to bright amber, in the " +
-                    "colours of the new Kima logo.\n\n" +
+                    "Every song sits where the vibe engine puts it, so songs that match sit together. A very faint glow " +
+                    "sits behind the whole map, and a few far-off stars give it depth.\n\n" +
                     "Your map is laid out once, after your library has been through enrichment. New songs are placed " +
                     "among the others, and a song never moves once it has a place.",
                 links: [{ label: "Open the vibe map", href: "/vibe" }],

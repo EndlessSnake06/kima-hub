@@ -2,6 +2,7 @@ import { prisma } from "../utils/db";
 import { logger } from "../utils/logger";
 import { config, USER_AGENT } from "../config";
 import fs from "fs/promises";
+import { createWriteStream } from "fs";
 import path from "path";
 import axios from "axios";
 import { validateUrlForFetch } from "../utils/ssrf";
@@ -122,6 +123,7 @@ async function validateCachedFile(episodeId: string): Promise<string | null> {
         }
         return null;
     } catch {
+        // A missing or unreadable file is no cache; the caller downloads afresh.
         return null;
     }
 }
@@ -271,7 +273,7 @@ async function performDownload(
         });
         
         // Write to temp file first with progress tracking
-        const writeStream = (await import('fs')).createWriteStream(tempPath);
+        const writeStream = createWriteStream(tempPath);
         let bytesDownloaded = 0;
         let lastLogTime = Date.now();
         

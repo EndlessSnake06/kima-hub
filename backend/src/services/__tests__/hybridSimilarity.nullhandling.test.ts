@@ -167,7 +167,7 @@ describe("hybridSimilarity null handling (DB, shipped functions)", () => {
         expect(row!.similarity).toBeCloseTo(1.0, 6);
     });
 
-    it("features-only: distance is the real complement of similarity and rankings stay stable (F5)", async () => {
+    it("features-only: distance is the real complement of similarity and rankings stay stable", async () => {
         setMode("featuresOnly");
         const full = {
             energy: 0.5, valence: 0.5, arousal: 0.5, bpm: 120,
@@ -194,8 +194,8 @@ describe("hybridSimilarity null handling (DB, shipped functions)", () => {
         const idxFar = rows.indexOf(byFar!);
         expect(idxFull).toBeLessThan(idxFar);
 
-        // F5: distance is (1 - similarity) here -- a real, finite complement,
-        // not the old constant 0 for every row.
+        // distance is (1 - similarity): a real, finite complement, not a
+        // constant 0 for every row.
         for (const r of [byFull!, byFar!]) {
             expect(Number.isFinite(r.distance)).toBe(true);
             expect(r.distance).toBeCloseTo(1 - r.similarity, 6);
@@ -208,7 +208,7 @@ describe("hybridSimilarity null handling (DB, shipped functions)", () => {
             require("path").join(__dirname, "../../services/hybridSimilarity.ts"),
             "utf8",
         );
-        // The old neutral-0.5-at-full-weight pattern is gone; nulls now contribute 0.
+        // Nulls contribute 0, never a neutral 0.5 at full weight.
         expect(src).not.toContain("THEN 0.5 ELSE 1 - ABS");
         expect(src).not.toContain("THEN 0.5 ELSE bpm_similarity");
         expect(src).not.toContain("THEN 0.5 ELSE key_similarity");
@@ -216,7 +216,7 @@ describe("hybridSimilarity null handling (DB, shipped functions)", () => {
         expect(src).toContain("ELSE 1 END)");
         // No COALESCE-based neutralization.
         expect(src).not.toContain("COALESCE(t.energy, 0.5)");
-        // F5: no hardcoded constant-0 distance anywhere in the file.
+        // No hardcoded constant-0 distance anywhere in the file.
         expect(src).not.toContain("0 as distance");
 
         const featuresOnlySum = Object.values(FEATURES_ONLY_WEIGHTS).reduce((a, b) => a + b, 0);

@@ -5,13 +5,11 @@ import { redisClient } from "../utils/redis";
 import { logger } from "../utils/logger";
 import { invalidateSystemSettingsCache } from "../utils/systemSettings";
 
-// GPU toggles. Two switches share one
-// downloaded runtime: sound vectors (`gpuOnnxEnabled`) and audio analysis
-// (`gpuAnalysisEnabled`). The DB columns are the truth; enabled.json is a
-// projection for the analyzers (they must not read the DB to learn their own
-// start-up env). The CLAP analyzer owns state.json and installs the runtime
-// while either switch is on; the Essentia analyzer records whether its
-// sessions got the GPU in analysis-provider.json.
+// GPU toggles: sound vectors (`gpuOnnxEnabled`) and audio analysis
+// (`gpuAnalysisEnabled`) share one downloaded runtime. The DB columns are the truth;
+// enabled.json projects them for the analyzers, which must not read the DB at start-up.
+// The CLAP analyzer owns state.json and installs the runtime while either switch is on;
+// the Essentia analyzer records its provider in analysis-provider.json.
 
 const ROOT = path.join(process.env.DATA_DIR || "/data", "gpu-onnx");
 const STATE_PATH = path.join(ROOT, "state.json");

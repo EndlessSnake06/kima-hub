@@ -141,9 +141,8 @@ describe("getFailures reads track stages from TrackStage", () => {
 
         const entry = failures.find((f) => f.entityId === trackId);
         expect(entry).toBeDefined();
-        // Same wire shape as before — only the source table changed. Both
-        // counts are whole dispatches now: 2 so far, 4 allowed
-        // (initial + 3 ladder rungs), so the UI reads "2 of 4".
+        // Both counts are whole dispatches: 2 so far, 4 allowed (initial + 3
+        // ladder rungs), so the UI reads "2 of 4".
         expect(entry).toMatchObject({
             id: stageId,
             entityType: "track",
@@ -247,7 +246,7 @@ describe("one record per fact: success clears the failure with no second ledger"
         const list = await enrichmentFailureService.getFailures({ entityType: "track" });
         expect(list.failures.map((f) => f.entityId)).not.toContain(trackId);
 
-        // ...and NOTHING was ever written to the old ledger for this track.
+        // ...and nothing was written to the failure ledger for this track.
         const ledgerRows = await prisma.$queryRawUnsafe<Array<{ n: bigint }>>(
             `SELECT COUNT(*)::bigint AS n FROM "EnrichmentFailure"
               WHERE "entityId" = $1`,

@@ -49,17 +49,6 @@ export function requiredListenSeconds(durationSeconds: number | null | undefined
     return Math.min(durationSeconds / 2, MAX_REQUIRED_SECONDS);
 }
 
-/** Whether this much listening, of a track this long, is a play. */
-export function qualifiesAsPlay(
-    secondsListened: number,
-    durationSeconds: number | null | undefined,
-): boolean {
-    const required = requiredListenSeconds(durationSeconds);
-    if (required === null) return false;
-    if (!Number.isFinite(secondsListened) || secondsListened < 0) return false;
-    return secondsListened >= required;
-}
-
 /**
  * Mirror a committed play to ListenBrainz, fire-and-forget: never awaited,
  * rejections logged as warnings, and a no-op without a user token. A

@@ -212,13 +212,3 @@ export async function dismissRelease(userId: string, version: string): Promise<{
     }
     return { recordedDefaults };
 }
-
-/** Whether a user has opted into something. Absent means never asked, which is not consent: `false` either way;
- * reporting reads the table directly for the difference. */
-export async function hasOptedIn(userId: string, key: string): Promise<boolean> {
-    const row = await prisma.releaseChoice.findUnique({
-        where: { userId_key: { userId, key } },
-        select: { enabled: true },
-    });
-    return row?.enabled === true;
-}

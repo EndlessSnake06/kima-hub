@@ -69,9 +69,7 @@ jest.mock("../../services/enrichmentFailureService", () => ({
         getFailures: jest.fn().mockResolvedValue({ failures: [], total: 0 }),
         getFailure: jest.fn().mockResolvedValue(null),
         getFailureCounts: jest.fn().mockResolvedValue({}),
-        skipFailures: jest.fn().mockResolvedValue(0),
         resetRetryCount: jest.fn().mockResolvedValue(0),
-        deleteFailures: jest.fn().mockResolvedValue(0),
     },
 }));
 
@@ -285,7 +283,7 @@ describe("the fingerprint stage answers every track", () => {
 
         const queued = await executeFingerprintPhase();
         await waitForFingerprintWork();
-        // The dispatch returns immediately now; the answers land on the pool's schedule.
+        // The dispatch returns immediately; the answers land on the pool's schedule.
 
         expect(queued).toBe(1);
         // The fingerprint was computed locally and STORED on the track.
@@ -366,7 +364,7 @@ describe("the fingerprint stage answers every track", () => {
         // never-asked new track.
         const queued = await executeFingerprintPhase();
         await waitForFingerprintWork();
-        // The dispatch returns immediately now; the answers land on the pool's schedule.
+        // The dispatch returns immediately; the answers land on the pool's schedule.
         expect(queued).toBe(3);
         for (const trackId of [a, b, fresh]) {
             expect((await stageRow(trackId, "fingerprint"))?.status).toBe("done");
@@ -390,7 +388,7 @@ describe("a paused 'acoustid' source blocks only the network lookup", () => {
 
         const queued = await executeFingerprintPhase();
         await waitForFingerprintWork();
-        // The dispatch returns immediately now; the answers land on the pool's schedule.
+        // The dispatch returns immediately; the answers land on the pool's schedule.
 
         // fpcalc is local — the pause must not stop the sweep.
         expect(queued).toBe(1);
@@ -405,7 +403,7 @@ describe("a paused 'acoustid' source blocks only the network lookup", () => {
         });
         const stillQueued = await executeFingerprintPhase();
         await waitForFingerprintWork();
-        // The dispatch returns immediately now; the answers land on the pool's schedule.
+        // The dispatch returns immediately; the answers land on the pool's schedule.
         expect(stillQueued).toBe(0); // this track is already answered...
         // ...but a NEW pending question is still offered and answered.
         const other = id("paused2");

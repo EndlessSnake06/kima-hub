@@ -1,5 +1,4 @@
-import { prisma } from "../../utils/db";
-import { ProgrammaticMix, getMixColor, randomSample } from "./helpers";
+import { ProgrammaticMix, sampledMix } from "./helpers";
 import { NOT_MISSING } from "../../utils/libraryEligibility";
 
 const TRACK_LIMIT = 20;
@@ -26,109 +25,64 @@ async function generateSundayMix(
     _userId: string,
     today: string
 ): Promise<ProgrammaticMix | null> {
-    const tracks = await prisma.track.findMany({
-            where: {
+    return sampledMix({
+        id: `sunday-${today}`,
+        type: "sunday-morning",
+        name: "Sunday Morning",
+        description: "Peaceful tunes for a lazy Sunday",
+        colorType: "sunday-morning",
+        take: 100,
+        minTracks: 15,
+        limit: TRACK_LIMIT,
+        where: {
             ...NOT_MISSING,
             analysisStatus: "completed",
             energy: { lte: 0.5 },
             acousticness: { gte: 0.5 },
         },
-        include: {
-            album: { select: { coverUrl: true } },
-        },
-        take: 100,
     });
-
-    if (tracks.length < 15) return null;
-
-    const selectedTracks = randomSample(tracks, TRACK_LIMIT);
-    const coverUrls = selectedTracks
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
-
-    return {
-        id: `sunday-${today}`,
-        type: "sunday-morning",
-        name: "Sunday Morning",
-        description: "Peaceful tunes for a lazy Sunday",
-        trackIds: selectedTracks.map((t) => t.id),
-        coverUrls,
-        trackCount: selectedTracks.length,
-        color: getMixColor("sunday-morning"),
-    };
 }
 
 async function generateMondayMix(
     _userId: string,
     today: string
 ): Promise<ProgrammaticMix | null> {
-    const tracks = await prisma.track.findMany({
-            where: {
+    return sampledMix({
+        id: `monday-${today}`,
+        type: "confidence-boost",
+        name: "Monday Motivation",
+        description: "Start your week with energy",
+        colorType: "confidence-boost",
+        take: 100,
+        minTracks: 15,
+        limit: TRACK_LIMIT,
+        where: {
             ...NOT_MISSING,
             analysisStatus: "completed",
             energy: { gte: 0.6 },
             valence: { gte: 0.5 },
         },
-        include: {
-            album: { select: { coverUrl: true } },
-        },
-        take: 100,
     });
-
-    if (tracks.length < 15) return null;
-
-    const selectedTracks = randomSample(tracks, TRACK_LIMIT);
-    const coverUrls = selectedTracks
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
-
-    return {
-        id: `monday-${today}`,
-        type: "confidence-boost",
-        name: "Monday Motivation",
-        description: "Start your week with energy",
-        trackIds: selectedTracks.map((t) => t.id),
-        coverUrls,
-        trackCount: selectedTracks.length,
-        color: getMixColor("confidence-boost"),
-    };
 }
 
 async function generateFridayMix(
     _userId: string,
     today: string
 ): Promise<ProgrammaticMix | null> {
-    const tracks = await prisma.track.findMany({
-            where: {
+    return sampledMix({
+        id: `friday-${today}`,
+        type: "dance-floor",
+        name: "Friday Night",
+        description: "Weekend vibes to kick off the party",
+        colorType: "dance-floor",
+        take: 100,
+        minTracks: 15,
+        limit: TRACK_LIMIT,
+        where: {
             ...NOT_MISSING,
             analysisStatus: "completed",
             danceability: { gte: 0.7 },
             energy: { gte: 0.6 },
         },
-        include: {
-            album: { select: { coverUrl: true } },
-        },
-        take: 100,
     });
-
-    if (tracks.length < 15) return null;
-
-    const selectedTracks = randomSample(tracks, TRACK_LIMIT);
-    const coverUrls = selectedTracks
-        .filter((t) => t.album.coverUrl)
-        .slice(0, 4)
-        .map((t) => t.album.coverUrl!);
-
-    return {
-        id: `friday-${today}`,
-        type: "dance-floor",
-        name: "Friday Night",
-        description: "Weekend vibes to kick off the party",
-        trackIds: selectedTracks.map((t) => t.id),
-        coverUrls,
-        trackCount: selectedTracks.length,
-        color: getMixColor("dance-floor"),
-    };
 }

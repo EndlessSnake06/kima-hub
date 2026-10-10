@@ -23,17 +23,9 @@ import { wikidataService } from "./wikidata";
 
 interface EnrichmentSettings {
     enabled: boolean;
-    autoEnrichOnScan: boolean;
     sources: {
         musicbrainz: boolean;
-        coverArtArchive: boolean;
     };
-    rateLimit: {
-        maxRequestsPerMinute: number;
-        respectApiLimits: boolean;
-    };
-    overwriteExisting: boolean;
-    matchingConfidence: "strict" | "moderate" | "loose";
 }
 
 interface ArtistEnrichmentData {
@@ -62,17 +54,9 @@ interface AlbumEnrichmentData {
 class EnrichmentService {
     private defaultSettings: EnrichmentSettings = {
         enabled: false, // Opt-in by default
-        autoEnrichOnScan: false,
         sources: {
             musicbrainz: true,
-            coverArtArchive: true,
         },
-        rateLimit: {
-            maxRequestsPerMinute: 30,
-            respectApiLimits: true,
-        },
-        overwriteExisting: false,
-        matchingConfidence: "moderate",
     };
 
     /**
@@ -85,7 +69,6 @@ class EnrichmentService {
         });
 
         if (user?.enrichmentSettings) {
-            // enrichmentSettings is already a JSON object from Prisma
             let userSettings: any;
             if (typeof user.enrichmentSettings === "string") {
                 userSettings = JSON.parse(user.enrichmentSettings);
@@ -93,7 +76,6 @@ class EnrichmentService {
                 userSettings = user.enrichmentSettings;
             }
 
-            // IMPORTANT: Always merge with defaults to ensure all fields exist
             return {
                 ...this.defaultSettings,
                 ...userSettings,
@@ -101,34 +83,10 @@ class EnrichmentService {
                     ...this.defaultSettings.sources,
                     ...(userSettings.sources || {}),
                 },
-                rateLimit: {
-                    ...this.defaultSettings.rateLimit,
-                    ...(userSettings.rateLimit || {}),
-                },
             };
         }
 
         return this.defaultSettings;
-    }
-
-    /**
-     * Update enrichment settings for a user
-     */
-    async updateSettings(
-        userId: string,
-        settings: Partial<EnrichmentSettings>
-    ): Promise<EnrichmentSettings> {
-        const current = await this.getSettings(userId);
-        const updated = { ...current, ...settings };
-
-        await prisma.user.update({
-            where: { id: userId },
-            data: {
-                enrichmentSettings: JSON.stringify(updated) as any,
-            },
-        });
-
-        return updated;
     }
 
     /**
@@ -149,10 +107,7 @@ class EnrichmentService {
         });
 
         if (!artist) {
-            // Return null, don't throw. The method already returns null for "nothing to
-            // enrich" and the route has a 404 branch waiting for it -- but a throw sailed
-            // past that branch into the catch-all and answered 500, so asking to enrich a
-            // row deleted by a concurrent scan looked like a server fault.
+            // Null reaches the route's 404 branch; a throw would answer 500.
             logger.debug(`Artist ${artistId} not found; nothing to enrich`);
             return null;
         }
@@ -266,8 +221,6 @@ class EnrichmentService {
         });
 
         if (!album) {
-            // Same as enrichArtist above: null reaches the route's existing 404 branch,
-            // a throw did not.
             logger.debug(`Album ${albumId} not found; nothing to enrich`);
             return null;
         }
@@ -388,9 +341,6 @@ class EnrichmentService {
             }
         }
 
-        // Genres, label and original year arrived with the catalogue above; moods come
-        // from audio analysis only.
-
         // Step 3: Get cover art from multiple sources (Deezer → MusicBrainz → Fanart)
         try {
             const coverResult = await findAlbumArtwork({
@@ -451,9 +401,8 @@ class EnrichmentService {
                     where: { id: artistId },
                     select: { heroUrl: true },
                 });
-                if (current?.heroUrl && isNativePath(current.heroUrl)) {
-                    // Keep existing local image, skip external URL
-                } else {
+                // An existing local image wins over an external URL.
+                if (!current?.heroUrl || !isNativePath(current.heroUrl)) {
                     const localPath = await downloadAndStoreImage(
                         data.heroUrl,
                         artistId,
@@ -518,9 +467,7 @@ class EnrichmentService {
             }
         }
         if (data.releaseDate) {
-            // Store original release date in dedicated field
             updateData.originalYear = data.releaseDate.getUTCFullYear();
-            // Also update year for backward compatibility (but originalYear takes precedence)
             updateData.year = data.releaseDate.getUTCFullYear();
         }
         if (data.label) updateData.label = data.label;
