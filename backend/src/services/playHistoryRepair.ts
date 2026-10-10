@@ -277,13 +277,7 @@ export async function collapseDuplicateRows(userId: string): Promise<{ removed: 
     const doomed = collapseCandidates(listens);
     if (doomed.length === 0) return { removed: 0 };
 
-    let removed = 0;
-    for (let i = 0; i < doomed.length; i += 5000) {
-        const { count } = await prisma.play.deleteMany({
-            where: { id: { in: doomed.slice(i, i + 5000) }, userId },
-        });
-        removed += count;
-    }
+    const removed = await deletePlayIdsInChunks(userId, doomed);
     logger.info(`[PlayAudit] ${userId} collapsed ${removed} duplicate rows`);
     return { removed };
 }
@@ -295,6 +289,18 @@ export async function collapseDuplicateRows(userId: string): Promise<{ removed: 
  */
 export function collapseCandidates(listens: Listen[]): string[] {
     return listens.flatMap((l) => (l.playIds.length > 2 ? l.playIds.slice(1, -1) : []));
+}
+
+/** Delete the given play rows in chunks, keeping each query's id list small. */
+async function deletePlayIdsInChunks(userId: string, ids: string[]): Promise<number> {
+    let removed = 0;
+    for (let i = 0; i < ids.length; i += 5000) {
+        const { count } = await prisma.play.deleteMany({
+            where: { id: { in: ids.slice(i, i + 5000) }, userId },
+        });
+        removed += count;
+    }
+    return removed;
 }
 
 /**
@@ -324,13 +330,7 @@ export async function removeFalseStarts(
     const doomed = doomedListens.flatMap((l) => l.playIds);
     if (doomed.length === 0) return { removed: 0, tracks: 0 };
 
-    let removed = 0;
-    for (let i = 0; i < doomed.length; i += 5000) {
-        const { count } = await prisma.play.deleteMany({
-            where: { id: { in: doomed.slice(i, i + 5000) }, userId },
-        });
-        removed += count;
-    }
+    const removed = await deletePlayIdsInChunks(userId, doomed);
     const touched = new Set(doomedListens.map((l) => l.trackId));
     logger.info(`[PlayAudit] ${userId} removed ${removed} rows across ${touched.size} track(s)`);
     return { removed, tracks: touched.size };
