@@ -6,7 +6,7 @@
  */
 
 /** An in-app page an item points to. */
-export interface ReleaseLink {
+interface ReleaseLink {
     label: string;
     href: string;
 }
