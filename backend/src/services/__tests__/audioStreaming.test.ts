@@ -412,14 +412,11 @@ describe("getCachedTranscode freshness", () => {
         fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 
-    it("same mtime + same size -> cache hit (does not delete)", async () => {
+    function cachedRow(id: string, overrides: Record<string, unknown>) {
         const sourceStat = fs.statSync(sourcePath);
-        const cachedFilePath = path.join(tmpDir, "cached.mp3");
-        fs.writeFileSync(cachedFilePath, "mp3 data");
-
-        mockPrisma.findFirst.mockResolvedValue({
-            id: "row-1",
-            cachePath: "cached.mp3",
+        return {
+            id,
+            cachePath: `${id}.mp3`,
             sourceModified: sourceStat.mtime,
             sourceSize: BigInt(sourceStat.size),
             cacheSize: BigInt(8),
@@ -427,88 +424,43 @@ describe("getCachedTranscode freshness", () => {
             trackId: "t1",
             lastAccessed: new Date(),
             createdAt: new Date(),
-        } as any);
-        mockPrisma.update.mockResolvedValue({} as any);
+            ...overrides,
+        } as any;
+    }
 
-        const result = await (svc as any).getCachedTranscode(
-            "t1", "high", sourceStat.mtime, sourcePath
+    async function lookup(row: ReturnType<typeof cachedRow>) {
+        fs.writeFileSync(path.join(tmpDir, row.cachePath), "mp3 data");
+        mockPrisma.findFirst.mockResolvedValue(row);
+        mockPrisma.update.mockResolvedValue({} as any);
+        mockPrisma.delete.mockResolvedValue({} as any);
+        return (svc as any).getCachedTranscode(
+            "t1", "high", fs.statSync(sourcePath).mtime, sourcePath
         );
-        expect(result).toBe(cachedFilePath);
+    }
+
+    it("same mtime + same size -> cache hit (does not delete)", async () => {
+        const result = await lookup(cachedRow("row-1", {}));
+        expect(result).toBe(path.join(tmpDir, "row-1.mp3"));
         expect(mockPrisma.delete).not.toHaveBeenCalled();
     });
 
     it("same mtime but different size -> cache miss and row deleted", async () => {
-        const sourceStat = fs.statSync(sourcePath);
-        const cachedFilePath = path.join(tmpDir, "cached2.mp3");
-        fs.writeFileSync(cachedFilePath, "mp3 data");
-
-        mockPrisma.findFirst.mockResolvedValue({
-            id: "row-2",
-            cachePath: "cached2.mp3",
-            sourceModified: sourceStat.mtime,
-            sourceSize: BigInt(sourceStat.size + 999),
-            cacheSize: BigInt(8),
-            quality: "high",
-            trackId: "t1",
-            lastAccessed: new Date(),
-            createdAt: new Date(),
-        } as any);
-        mockPrisma.delete.mockResolvedValue({} as any);
-
-        const result = await (svc as any).getCachedTranscode(
-            "t1", "high", sourceStat.mtime, sourcePath
+        const result = await lookup(
+            cachedRow("row-2", { sourceSize: BigInt(fs.statSync(sourcePath).size + 999) })
         );
         expect(result).toBeNull();
         expect(mockPrisma.delete).toHaveBeenCalledWith({ where: { id: "row-2" } });
     });
 
     it("sourceSize 0 (legacy row) -> cache miss and row deleted", async () => {
-        const sourceStat = fs.statSync(sourcePath);
-        const cachedFilePath = path.join(tmpDir, "cached3.mp3");
-        fs.writeFileSync(cachedFilePath, "mp3 data");
-
-        mockPrisma.findFirst.mockResolvedValue({
-            id: "row-3",
-            cachePath: "cached3.mp3",
-            sourceModified: sourceStat.mtime,
-            sourceSize: 0n,
-            cacheSize: BigInt(8),
-            quality: "high",
-            trackId: "t1",
-            lastAccessed: new Date(),
-            createdAt: new Date(),
-        } as any);
-        mockPrisma.delete.mockResolvedValue({} as any);
-
-        const result = await (svc as any).getCachedTranscode(
-            "t1", "high", sourceStat.mtime, sourcePath
-        );
+        const result = await lookup(cachedRow("row-3", { sourceSize: 0n }));
         expect(result).toBeNull();
         expect(mockPrisma.delete).toHaveBeenCalledWith({ where: { id: "row-3" } });
     });
 
     it("different mtime -> cache miss and row deleted", async () => {
-        const sourceStat = fs.statSync(sourcePath);
-        const cachedFilePath = path.join(tmpDir, "cached4.mp3");
-        fs.writeFileSync(cachedFilePath, "mp3 data");
-
-        const olderMtime = new Date(sourceStat.mtime.getTime() - 10000);
-        mockPrisma.findFirst.mockResolvedValue({
-            id: "row-4",
-            cachePath: "cached4.mp3",
-            sourceModified: olderMtime,
-            sourceSize: BigInt(sourceStat.size),
-            cacheSize: BigInt(8),
-            quality: "high",
-            trackId: "t1",
-            lastAccessed: new Date(),
-            createdAt: new Date(),
-        } as any);
-        mockPrisma.delete.mockResolvedValue({} as any);
-
-        const result = await (svc as any).getCachedTranscode(
-            "t1", "high", sourceStat.mtime, sourcePath
-        );
+        const olderMtime = new Date(fs.statSync(sourcePath).mtime.getTime() - 10000);
+        const result = await lookup(cachedRow("row-4", { sourceModified: olderMtime }));
         expect(result).toBeNull();
         expect(mockPrisma.delete).toHaveBeenCalledWith({ where: { id: "row-4" } });
     });
