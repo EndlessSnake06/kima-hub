@@ -7,6 +7,7 @@ import { logger } from '../../utils/logger'
 import type { Address } from './common'
 import type { FromPeerMessage } from './messages/from/peer'
 import { fromPeerMessageParser } from './messages/from/peer'
+import type { MessageBuilder } from './messages/message-builder'
 import type { MessageParser } from './messages/message-parser'
 import { MessageStream } from './messages/message-stream'
 import { toPeerMessage } from './messages/to/peer'
@@ -69,10 +70,10 @@ export class SlskPeer extends (EventEmitter as new () => TypedEventEmitter<SlskP
     ...args: Parameters<(typeof toPeerMessage)[K]>
   ) {
     if (this.conn.destroyed || !this.conn.writable) return
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
-    const result = toPeerMessage[message](...args)
-    this.conn.write(result.getBuffer())
+    const build = toPeerMessage[message] as (
+      ...a: Parameters<(typeof toPeerMessage)[K]>
+    ) => MessageBuilder
+    this.conn.write(build(...args).getBuffer())
   }
 
   destroy() {
