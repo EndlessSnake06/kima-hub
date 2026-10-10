@@ -6,6 +6,14 @@ import { rateLimiter } from "./rateLimiter";
 class CoverArtService {
     private readonly baseUrl = "https://coverartarchive.org";
 
+    private async cacheResult(cacheKey: string, ttlSeconds: number, value: string): Promise<void> {
+        try {
+            await redisClient.setex(cacheKey, ttlSeconds, value);
+        } catch (err) {
+            logger.warn("Redis set error:", err);
+        }
+    }
+
     async getCoverArt(rgMbid: string): Promise<string | null> {
         const cacheKey = `caa:${rgMbid}`;
 
@@ -34,29 +42,14 @@ class CoverArtService {
                 const coverUrl =
                     frontImage.thumbnails?.large || frontImage.image;
 
-                try {
-                    await redisClient.setex(cacheKey, 2592000, coverUrl); // 30 days
-                } catch (err) {
-                    logger.warn("Redis set error:", err);
-                }
-
+                await this.cacheResult(cacheKey, 2592000, coverUrl); // 30 days
                 return coverUrl;
             }
-            
-            // No front image found - cache negative result
-            try {
-                await redisClient.setex(cacheKey, 604800, "NOT_FOUND"); // 7 days
-            } catch (err) {
-                // Ignore
-            }
+
+            await this.cacheResult(cacheKey, 604800, "NOT_FOUND"); // 7 days
         } catch (error: any) {
             if (error.response?.status === 404) {
-                // No cover art available - cache the negative result
-                try {
-                    await redisClient.setex(cacheKey, 604800, "NOT_FOUND"); // 7 days
-                } catch (err) {
-                    // Ignore
-                }
+                await this.cacheResult(cacheKey, 604800, "NOT_FOUND"); // 7 days
                 return null;
             }
             // Anything but a 404 is a failed request, not "no cover".
