@@ -1,10 +1,16 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, Page } from "@playwright/test";
 import {
     loginAsTestUser,
     startPlayingFirstAlbum,
     getAudioSrc,
     waitForSrcChange,
 } from "./fixtures/test-helpers";
+
+/** Opens the queue through the sidebar link: page.goto reloads the page and wipes the in-memory queue. */
+async function openQueueByClick(page: Page): Promise<void> {
+    await page.getByRole("link", { name: "Queue" }).click();
+    await page.waitForURL(/\/queue/);
+}
 
 test.describe("Queue", () => {
     test.beforeEach(async ({ page }) => {
@@ -22,10 +28,7 @@ test.describe("Queue", () => {
         await firstTrackRow.hover();
         await firstTrackRow.getByLabel("Add to queue").click();
 
-        // Navigate to the queue page via the sidebar Queue link (client-side
-        // navigation) so React state -- including the queue -- is preserved.
-        await page.getByRole("link", { name: "Queue" }).click();
-        await page.waitForURL(/\/queue/);
+        await openQueueByClick(page);
 
         // "Next Up" section must appear since the album has multiple tracks ahead
         await expect(page.getByText(/Next Up/)).toBeVisible({ timeout: 5_000 });
@@ -34,10 +37,7 @@ test.describe("Queue", () => {
     test("queue page loads with Now Playing section when track is active", async ({ page }) => {
         await startPlayingFirstAlbum(page);
 
-        // Client-side nav via the sidebar Queue link to preserve React queue state
-        // (page.goto reloads the page and wipes in-memory queue context)
-        await page.getByRole("link", { name: "Queue" }).click();
-        await page.waitForURL(/\/queue/);
+        await openQueueByClick(page);
 
         // Should show "Now Playing" heading since a track is active
         await expect(page.getByRole("heading", { name: "Now Playing" })).toBeVisible({ timeout: 5_000 });
@@ -59,9 +59,7 @@ test.describe("Queue", () => {
 
         const srcBefore = await getAudioSrc(page);
 
-        // Client-side nav to preserve queue state in React context
-        await page.getByRole("link", { name: "Queue" }).click();
-        await page.waitForURL(/\/queue/);
+        await openQueueByClick(page);
         // Each queued row has "Play <title>"; the player's own button is plain "Play"/"Pause".
         const playNowButtons = page.getByRole("button", { name: /^Play .+/ });
         await expect(playNowButtons.first(), "a started album leaves tracks up next").toBeAttached({ timeout: 5_000 });
@@ -75,8 +73,7 @@ test.describe("Queue", () => {
     test("Remove removes item from queue", async ({ page }) => {
         await startPlayingFirstAlbum(page);
 
-        await page.getByRole("link", { name: "Queue" }).click();
-        await page.waitForURL(/\/queue/);
+        await openQueueByClick(page);
 
         const removeButtons = page.getByRole("button", { name: /^Remove .+ from queue$/ });
         await expect(removeButtons.first(), "a started album leaves tracks up next").toBeAttached({ timeout: 5_000 });
@@ -90,8 +87,7 @@ test.describe("Queue", () => {
     test("Move up reorders queue item", async ({ page }) => {
         await startPlayingFirstAlbum(page);
 
-        await page.getByRole("link", { name: "Queue" }).click();
-        await page.waitForURL(/\/queue/);
+        await openQueueByClick(page);
 
         const moveUpButtons = page.getByRole("button", { name: /^Move .+ up$/, disabled: false });
         await expect(moveUpButtons.first(), "the second track up next can move up").toBeAttached({ timeout: 5_000 });
@@ -114,9 +110,7 @@ test.describe("Queue", () => {
     test("Clear queue empties the up-next list", async ({ page }) => {
         await startPlayingFirstAlbum(page);
 
-        // Navigate via sidebar Queue link (client-side nav) to keep React state
-        await page.getByRole("link", { name: "Queue" }).click();
-        await page.waitForURL(/\/queue/);
+        await openQueueByClick(page);
 
         // Clear queue only appears when queue.length > 0, and asks before clearing
         const clearBtn = page.getByRole("button", { name: "Clear queue" });
