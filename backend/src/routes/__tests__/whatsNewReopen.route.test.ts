@@ -1,9 +1,7 @@
 /**
  * Reading the current release again after closing it, through the real auth
  * middleware and database: it leaves the pending list but is still read in
- * full, with the items that apply to this user only (an admin's GPU and wipe
- * items too), and with what is already settled: each answered choice, the GPU
- * one as the setting stands now.
+ * full, with this user's items and each answered choice as it now stands.
  */
 
 import express from "express";
