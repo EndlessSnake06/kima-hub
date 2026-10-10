@@ -802,9 +802,8 @@ router.get("/radio", async (req, res) => {
 
       case "mood":
         const moodValue = ((value as string) || "").toLowerCase();
-        // The five named moods are the bucket verdicts, same as the
-        // mood page; the rest of the values here are audio-feature filters,
-        // not moods, and stay feature queries.
+        // The five named moods are the mood-bucket verdicts, as on the mood page;
+        // the other values are audio-feature filters.
         const BUCKET_MOODS: Record<string, "happy" | "sad" | "chill" | "aggressive" | "party"> = {
           happy: "happy",
           melancholy: "sad",
