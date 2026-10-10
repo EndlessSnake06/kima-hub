@@ -2,15 +2,13 @@
 
 import { Music } from "lucide-react";
 import { Artist, ArtistSource, Album } from "../types";
-import { ReactNode, lazy, Suspense } from "react";
+import { ReactNode } from "react";
+import { MetadataEditControls } from "@/components/MetadataEditControls";
 import { useArtistDisplayData } from "@/hooks/useMetadataDisplay";
 import type { ColorPalette } from "@/hooks/useImageColor";
 import { HeroBackdrop } from "@/components/ui/HeroBackdrop";
 import { CachedImage } from "@/components/ui/CachedImage";
 import { plural } from "@/lib/format";
-
-// Lazy load MetadataEditor - modal component opened on user action
-const MetadataEditor = lazy(() => import("@/components/MetadataEditor").then(mod => ({ default: mod.MetadataEditor })));
 
 interface ArtistHeroProps {
     artist: Artist;
@@ -77,39 +75,31 @@ export function ArtistHero({
                             <h1 className="text-2xl md:text-4xl lg:text-5xl font-bold tracking-tight text-white leading-tight line-clamp-2">
                                 {displayData.name}
                             </h1>
-                            {displayData.hasUserOverrides && (
-                                <span className="px-2 py-0.5 text-xs bg-white/10 text-[var(--text-secondary)] rounded-full border border-white/10 shrink-0">
-                                    Edited
-                                </span>
-                            )}
-                            {source === "library" && (
-                                <Suspense fallback={null}>
-                                    <MetadataEditor
-                                        type="artist"
-                                        id={artist.id}
-                                        currentData={{
-                                            name: displayData.name,
-                                            bio: displayData.summary ?? undefined,
-                                            genres: displayData.genres,
-                                            mbid: artist.mbid,
-                                            heroUrl: displayData.heroUrl ?? undefined,
-                                            // Pass originals for reset comparison
-                                            _originalName: artist.name,
-                                            _originalBio:
-                                                artist.summary ?? artist.bio,
-                                            _originalGenres:
-                                                artist.genres ?? artist.tags ?? [],
-                                            _originalHeroUrl:
-                                                artist.heroUrl ?? artist.image,
-                                            _hasUserOverrides:
-                                                displayData.hasUserOverrides,
-                                        }}
-                                        onSave={async () => {
-                                            await onReload();
-                                        }}
-                                    />
-                                </Suspense>
-                            )}
+                            <MetadataEditControls
+                                edited={displayData.hasUserOverrides}
+                                editable={source === "library"}
+                                type="artist"
+                                id={artist.id}
+                                currentData={{
+                                    name: displayData.name,
+                                    bio: displayData.summary ?? undefined,
+                                    genres: displayData.genres,
+                                    mbid: artist.mbid,
+                                    heroUrl: displayData.heroUrl ?? undefined,
+                                    _originalName: artist.name,
+                                    _originalBio:
+                                        artist.summary ?? artist.bio,
+                                    _originalGenres:
+                                        artist.genres ?? artist.tags ?? [],
+                                    _originalHeroUrl:
+                                        artist.heroUrl ?? artist.image,
+                                    _hasUserOverrides:
+                                        displayData.hasUserOverrides,
+                                }}
+                                onSave={async () => {
+                                    await onReload();
+                                }}
+                            />
                         </div>
                         <div className="flex flex-wrap items-center gap-1 text-sm text-[var(--text-secondary)]">
                             {artist.listeners && artist.listeners > 0 && (

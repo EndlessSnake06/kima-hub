@@ -3,15 +3,13 @@
 import { Disc3 } from "lucide-react";
 import Link from "next/link";
 import { Album, AlbumSource } from "../types";
-import { ReactNode, lazy, Suspense } from "react";
+import { ReactNode } from "react";
+import { MetadataEditControls } from "@/components/MetadataEditControls";
 import { useAlbumDisplayData } from "@/hooks/useMetadataDisplay";
 import type { ColorPalette } from "@/hooks/useImageColor";
 import { formatDuration, plural } from "@/lib/format";
 import { HeroBackdrop } from "@/components/ui/HeroBackdrop";
 import { CachedImage } from "@/components/ui/CachedImage";
-
-// Lazy load MetadataEditor - modal component opened on user action
-const MetadataEditor = lazy(() => import("@/components/MetadataEditor").then(mod => ({ default: mod.MetadataEditor })));
 
 interface AlbumHeroProps {
     album: Album;
@@ -72,35 +70,27 @@ export function AlbumHero({
                             <h1 className="text-2xl md:text-4xl lg:text-5xl font-bold tracking-tight text-white leading-tight line-clamp-2">
                                 {displayData.title}
                             </h1>
-                            {displayData.hasUserOverrides && (
-                                <span className="px-2 py-0.5 text-xs bg-brand/20 text-brand rounded-full border border-brand/30 shrink-0">
-                                    Edited
-                                </span>
-                            )}
-                            {source === "library" && (
-                                <Suspense fallback={null}>
-                                    <MetadataEditor
-                                        type="album"
-                                        id={album.id}
-                                        currentData={{
-                                            title: displayData.title,
-                                            year: displayData.year ?? undefined,
-                                            genres: displayData.genres,
-                                            mbid: album.mbid,
-                                            coverUrl: displayData.coverUrl ?? undefined,
-                                            // Pass originals for reset comparison
-                                            _originalTitle: album.title,
-                                            _originalYear: album.year,
-                                            _originalGenres: album.genre ? [album.genre] : [],
-                                            _originalCoverUrl: album.coverUrl,
-                                            _hasUserOverrides: displayData.hasUserOverrides,
-                                        }}
-                                        onSave={async () => {
-                                            await onReload();
-                                        }}
-                                    />
-                                </Suspense>
-                            )}
+                            <MetadataEditControls
+                                edited={displayData.hasUserOverrides}
+                                editable={source === "library"}
+                                type="album"
+                                id={album.id}
+                                currentData={{
+                                    title: displayData.title,
+                                    year: displayData.year ?? undefined,
+                                    genres: displayData.genres,
+                                    mbid: album.mbid,
+                                    coverUrl: displayData.coverUrl ?? undefined,
+                                    _originalTitle: album.title,
+                                    _originalYear: album.year,
+                                    _originalGenres: album.genre ? [album.genre] : [],
+                                    _originalCoverUrl: album.coverUrl,
+                                    _hasUserOverrides: displayData.hasUserOverrides,
+                                }}
+                                onSave={async () => {
+                                    await onReload();
+                                }}
+                            />
                         </div>
                         <div className="flex flex-wrap items-center gap-1 text-sm text-[var(--text-secondary)] mb-1">
                             {album.artist && (
