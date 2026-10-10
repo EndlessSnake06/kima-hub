@@ -310,7 +310,7 @@ class MoodBucketService {
         // Draw uniformly from the whole bucket; scores never enter the draw.
         const moodBuckets = await prisma.moodBucket.findMany({
             where: { mood },
-            select: { trackId: true, score: true },
+            select: { trackId: true },
         });
 
         // Skip what this user was already served, unless that leaves too
@@ -532,9 +532,7 @@ class MoodBucketService {
 
     /**
      * Forget the user's saved mood mix, so the next one is built from the
-     * current mood values. Only the 1.11 release window calls this, and only
-     * when the user asks for it: mixes saved before 1.11 were picked from the
-     * inverted mood heads. deleteMany, so a repeat is a no-op, not an error.
+     * current mood values. deleteMany, so a repeat is a no-op, not an error.
      */
     async clearUserMoodMix(userId: string): Promise<{ removed: number }> {
         const { count } = await prisma.userMoodMix.deleteMany({ where: { userId } });
