@@ -49,6 +49,7 @@ import { Button } from "@/components/ui/Button";
 import { CachedImage } from "@/components/ui/CachedImage";
 import { PageMessage } from "@/components/ui/PageMessage";
 import { copyText } from "@/lib/clipboard";
+import { openActivityPanel } from "@/hooks/useActivityPanel";
 
 interface Track {
     id: string;
@@ -167,12 +168,7 @@ export default function PlaylistDetailPage() {
         preview.toggle(pendingId, api.getPendingTrackPreviewStreamUrl(playlistId, pendingId));
 
     const showRetryProgress = (reloadAfterMs: number) => {
-        window.dispatchEvent(
-            new CustomEvent("set-activity-panel-tab", {
-                detail: { tab: "active" },
-            })
-        );
-        window.dispatchEvent(new CustomEvent("open-activity-panel"));
+        openActivityPanel("active");
         queryClient.invalidateQueries({ queryKey: ["notifications"] });
         setTimeout(() => {
             queryClient.invalidateQueries({

@@ -4,6 +4,7 @@ import { api } from "@/lib/api";
 import { notify } from "@/lib/notify";
 import { searchResultStore } from "@/lib/search-result-store";
 import type { SoulseekResult } from "../types";
+import { openActivityPanel } from "@/hooks/useActivityPanel";
 
 interface UseSoulseekSearchProps {
     query: string;
@@ -141,10 +142,7 @@ export function useSoulseekSearch({
             );
 
             if (typeof window !== "undefined") {
-                window.dispatchEvent(
-                    new CustomEvent("set-activity-panel-tab", { detail: { tab: "active" } }),
-                );
-                window.dispatchEvent(new CustomEvent("open-activity-panel"));
+                openActivityPanel("active");
                 queryClient.invalidateQueries({ queryKey: ["notifications"] });
             }
 

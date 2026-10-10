@@ -21,6 +21,7 @@ import { api } from "@/lib/api";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { Button } from "@/components/ui/Button";
 import { plural } from "@/lib/format";
+import { openActivityPanel, setActivityPanelTab } from "@/hooks/useActivityPanel";
 
 export default function DiscoverWeeklyPage() {
     // Use split hooks to avoid re-renders from currentTime updates
@@ -46,12 +47,7 @@ export default function DiscoverWeeklyPage() {
         try {
             const result = await api.retryUnavailableAlbums();
             if (result.success && result.queued > 0) {
-                window.dispatchEvent(
-                    new CustomEvent("set-activity-panel-tab", {
-                        detail: { tab: "active" },
-                    })
-                );
-                window.dispatchEvent(new CustomEvent("open-activity-panel"));
+                openActivityPanel("active");
                 refreshBatchStatus();
                 setTimeout(() => reloadData(), 15000);
             } else {
@@ -80,11 +76,7 @@ export default function DiscoverWeeklyPage() {
 
     useEffect(() => {
         const handleBackToActivity = () => {
-            window.dispatchEvent(
-                new CustomEvent("set-activity-panel-tab", {
-                    detail: { tab: "active" },
-                })
-            );
+            setActivityPanelTab("active");
         };
 
         const handlePlaylistCleared = async () => {
@@ -119,12 +111,7 @@ export default function DiscoverWeeklyPage() {
         if (discoverSettingsRef.current) {
             setSettingsContent(discoverSettingsRef.current, "discover");
         }
-        window.dispatchEvent(new CustomEvent("open-activity-panel"));
-        window.dispatchEvent(
-            new CustomEvent("set-activity-panel-tab", {
-                detail: { tab: "settings" },
-            })
-        );
+        openActivityPanel("settings");
     };
 
     // Handle cancel generation - cancels stuck backend batch and clears frontend state
