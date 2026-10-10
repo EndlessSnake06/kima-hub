@@ -111,7 +111,6 @@ router.get("/recently-listened", async (req, res) => {
       })
       .slice(0, Math.ceil(limitNum / 3));
 
-    const items: any[] = [];
     const artistsMap = new Map();
 
     for (const play of recentPlays) {
@@ -123,7 +122,6 @@ router.get("/recently-listened", async (req, res) => {
           lastPlayedAt: play.playedAt,
         });
       }
-      if (items.length >= limitNum) break;
     }
 
     const combined = [
