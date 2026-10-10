@@ -32,7 +32,7 @@ export interface SpokenHeroDetail {
     className?: string;
 }
 
-export interface SpokenHeroTag {
+interface SpokenHeroTag {
     label: string;
     accent?: boolean;
 }
