@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Search as SearchIcon } from "lucide-react";
 import { useIsTV } from "@/lib/tv-utils";
+import { cn } from "@/lib/cn";
 
 interface TVSearchInputProps {
     initialQuery?: string;
@@ -61,20 +62,12 @@ export function TVSearchInput({ initialQuery = "", onSearch }: TVSearchInputProp
                         data-tv-card
                         data-tv-card-index={0}
                         tabIndex={0}
-                        className={`
-                            w-full h-16 pl-14 pr-6
-                            bg-[var(--bg-hover)]
-                            rounded-lg
-                            text-xl text-white
-                            placeholder-gray-500
-                            transition-all
-                            outline-none
-                            border-2
-                            ${isFocused
+                        className={cn(
+                            "w-full h-16 pl-14 pr-6 bg-[var(--bg-hover)] rounded-lg text-xl text-white placeholder-gray-500 transition-all outline-none border-2",
+                            isFocused
                                 ? "border-[var(--color-brand)] bg-[#242424]"
-                                : "border-transparent hover:bg-[#242424]"
-                            }
-                        `}
+                                : "border-transparent hover:bg-[#242424]",
+                        )}
                     />
                     {query && (
                         <div className="absolute right-5 top-1/2 -translate-y-1/2 text-sm text-[var(--text-muted)]">
