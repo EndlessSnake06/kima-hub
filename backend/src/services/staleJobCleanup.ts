@@ -53,13 +53,12 @@ class StaleJobCleanupService {
     private async cleanupDiscoveryBatches() {
         const cutoff = new Date(Date.now() - STALE_THRESHOLDS.discoveryBatch);
 
-        // Find stale batches
         const staleBatches = await prisma.discoveryBatch.findMany({
             where: {
                 status: { in: ["downloading", "scanning"] },
                 createdAt: { lt: cutoff },
             },
-            select: { id: true, status: true, createdAt: true },
+            select: { id: true },
         });
 
         if (staleBatches.length === 0) {
@@ -73,7 +72,6 @@ class StaleJobCleanupService {
             } discovery batches: ${ids.join(", ")}`
         );
 
-        // Update batches to failed
         await prisma.discoveryBatch.updateMany({
             where: { id: { in: ids } },
             data: {
@@ -107,7 +105,7 @@ class StaleJobCleanupService {
                 status: { in: ["pending", "processing"] },
                 createdAt: { lt: cutoff },
             },
-            select: { id: true, subject: true, createdAt: true },
+            select: { id: true },
         });
 
         if (staleJobs.length === 0) {
@@ -144,7 +142,7 @@ class StaleJobCleanupService {
                 },
                 createdAt: { lt: cutoff },
             },
-            select: { id: true, playlistName: true, createdAt: true },
+            select: { id: true },
         });
 
         if (staleJobs.length === 0) {
@@ -174,7 +172,6 @@ class StaleJobCleanupService {
 
         for (const queue of queues) {
             try {
-                // Clean completed jobs older than retention period
                 const completedCleaned = await queue.clean(
                     retentionMs,
                     1000,

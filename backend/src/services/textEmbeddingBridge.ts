@@ -29,9 +29,6 @@ function softDuplicate(): RedisConn {
     return redisClient.duplicate({ enableOfflineQueue: true, maxRetriesPerRequest: null });
 }
 
-// Bound a Redis op so an unreachable server surfaces as an error instead of an
-// unbounded hang (the offline queue buffers commands indefinitely while down).
-
 let subscriber: RedisConn | null = null;
 let subscriberPromise: Promise<RedisConn> | null = null;
 let publisher: RedisConn | null = null;

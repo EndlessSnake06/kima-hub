@@ -4,23 +4,11 @@
  */
 
 import { prisma } from "../../utils/db";
-import { loadScenario, startLidarrReplay, type LidarrReplay } from "../../__tests__/helpers/lidarrReplay";
-import { useLidarr } from "../../__tests__/helpers/lidarrSettings";
+import { useLidarrCancelScenario } from "../../__tests__/helpers/lidarrCancelScenario";
 import { simpleDownloadManager } from "../simpleDownloadManager";
 import { closeEngineConnections } from "../../__tests__/helpers/engineConnections";
 
-// Lidarr's real answer to "stop monitoring this album", recorded when a cancel asked it.
-const recorded = loadScenario("stalled-then-cancelled");
-let lidarr: LidarrReplay;
-const unmonitored = () =>
-    lidarr.asked.filter((a) => a.method === "PUT" && a.path === "/api/v1/album/monitor").map((a) => (a.body as any).albumIds);
-
-beforeEach(async () => {
-    lidarr = await startLidarrReplay(recorded);
-    await useLidarr(lidarr.url);
-});
-
-afterEach(() => lidarr.close());
+const { unmonitored } = useLidarrCancelScenario();
 
 const USER = "sdm_fail_user";
 

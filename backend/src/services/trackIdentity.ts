@@ -25,26 +25,20 @@ class TrackIdentityService {
     async resolveUrl(url: string): Promise<ResolvedTrack | null> {
         const platform = songLinkService.detectPlatform(url);
 
-        let songLinkData: SongLinkResult | null = null;
-        let spotifyId: string | null = null;
-        let isrc: string | null = null;
-        let title: string | null = null;
-        let artist: string | null = null;
-        let album: string | null = null;
-        let coverUrl: string | null = null;
-
-        songLinkData = await songLinkService.resolve(url);
+        const songLinkData = await songLinkService.resolve(url);
         if (!songLinkData) return null;
 
-        spotifyId = songLinkData.spotifyId;
-        title = songLinkData.title;
-        artist = songLinkData.artist;
-        coverUrl = songLinkData.thumbnailUrl;
+        const spotifyId = songLinkData.spotifyId;
+        let title = songLinkData.title;
+        let artist = songLinkData.artist;
+        let album: string | null = null;
+        let isrc: string | null = null;
+        let coverUrl = songLinkData.thumbnailUrl;
 
         if (!title || !artist) return null;
 
         // If we have a Spotify ID, fetch full metadata including ISRC
-        if (spotifyId && !isrc) {
+        if (spotifyId) {
             try {
                 const { spotifyService } = await import("./spotify");
                 const trackData = await spotifyService.getTrackBySpotifyId(spotifyId);

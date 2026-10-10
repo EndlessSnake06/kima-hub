@@ -70,8 +70,7 @@ export function matchTrackToLibrary(
   const rawTitleLower = normalizeApostrophes(source.title).toLowerCase();
   const sameTitle = (c: MatchCandidate): boolean =>
     normalizeApostrophes(c.title).toLowerCase() === rawTitleLower ||
-    normalizeTrackTitle(c.title) === cleanedTitle ||
-    normalizeTrackTitle(c.title) === stripTrackSuffix(source.title).toLowerCase();
+    normalizeTrackTitle(c.title) === cleanedTitle;
 
   const albumUnknown = !source.album || source.album === "Unknown Album";
   const sourceAlbum = normalizeAlbumForMatching(source.album ?? "").toLowerCase();
@@ -155,7 +154,8 @@ export function matchTrackToLibrary(
     }
   }
 
-  // 5. Prefix containment: same first ≥10 words-of-title, ≥70 similarity.
+  // 5. Prefix containment: the candidate starts with the stripped title's
+  //    first ≤20 characters (titles longer than 10), ≥70 similarity.
   if (strippedTitle.length > 10) {
     const prefix = strippedTitle.substring(0, Math.min(20, strippedTitle.length)).toLowerCase();
     for (const c of strictPool) {

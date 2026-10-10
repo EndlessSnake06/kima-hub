@@ -6,6 +6,7 @@
 import { ListenSource } from "@prisma/client";
 import { prisma } from "../../utils/db";
 import { dedupWindowMs, recordPlay } from "../playRecording";
+import { createTrackChain, deleteFixtures } from "./helpers/trackChainFixture";
 
 jest.mock("../../utils/logger", () => ({
     logger: { error: jest.fn(), warn: jest.fn(), info: jest.fn(), debug: jest.fn() },
@@ -24,10 +25,8 @@ const { listenBrainzService } = require("../listenBrainz");
 /** Every row this file creates is keyed off this prefix so cleanup is exact. */
 const PREFIX = "s6-dedupe";
 
-async function cleanup() {
-    // Deleting users cascades their plays; deleting artists takes albums and tracks.
-    await prisma.user.deleteMany({ where: { username: { startsWith: PREFIX } } });
-    await prisma.artist.deleteMany({ where: { name: { startsWith: PREFIX } } });
+function cleanup() {
+    return deleteFixtures(PREFIX);
 }
 
 /**
@@ -36,32 +35,7 @@ async function cleanup() {
  * outside it: the late-sync case.
  */
 async function fixture(label: string, duration = 200) {
-    const tag = `${label}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    const user = await prisma.user.create({
-        data: { username: `${PREFIX}-${tag}`, passwordHash: "x", role: "user" },
-    });
-    const artist = await prisma.artist.create({
-        data: { name: `${PREFIX}-${tag}-artist`, identityKey: `${PREFIX}-${tag}` },
-    });
-    const album = await prisma.album.create({
-        data: {
-            artistId: artist.id,
-            rgMbid: `${PREFIX}-${tag}-mbid`,
-            title: `${PREFIX}-${tag}-album`,
-            primaryType: "Album",
-        },
-    });
-    const track = await prisma.track.create({
-        data: {
-            albumId: album.id,
-            title: `${PREFIX}-${tag}-track`,
-            trackNo: 1,
-            duration,
-            filePath: `/tmp/${PREFIX}-${tag}.flac`,
-            fileModified: new Date(),
-            fileSize: 1000,
-        },
-    });
+    const { track, user } = await createTrackChain(PREFIX, label, { duration });
     return { track, user };
 }
 

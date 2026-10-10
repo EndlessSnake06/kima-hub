@@ -291,7 +291,7 @@ afterAll(async () => {
     await prisma.$disconnect();
 });
 
-// ── (b) + (c) the function itself ───────────────────────────────────────
+// ── the function itself ──────────────────────────────────────────────────
 
 describe("redecideEverything", () => {
     it("re-opens `done` answers — that is the control's purpose — but never the AcoustID answer", async () => {
@@ -379,7 +379,7 @@ describe("redecideEverything", () => {
     });
 });
 
-// ── (a) the route is admin-only ─────────────────────────────────────────
+// ── the route is admin-only ────────────────────────────────────────────────
 
 describe("POST /enrichment/re-decide-everything and POST /enrichment/retry-failed-and-blocked", () => {
     let app: express.Express;

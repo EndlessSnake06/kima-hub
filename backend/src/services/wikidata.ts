@@ -61,7 +61,6 @@ class WikidataService {
         }
 
         try {
-            // Step 1: Query Wikidata for the MusicBrainz ID
             const wikidataId = await this.getWikidataIdFromMBID(mbid, priority);
 
             let result: WikidataResult = {};

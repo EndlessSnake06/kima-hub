@@ -76,7 +76,6 @@ export async function requestScan(req: ScanRequest): Promise<ScanRequestResult> 
         userId: req.userId,
         musicPath: config.music.musicPath,
         source: req.source,
-        downloadId: req.downloadId,
         albumMbid: req.albumMbid,
         artistMbid: req.artistMbid,
         spotifyImportJobId: req.spotifyImportJobId,

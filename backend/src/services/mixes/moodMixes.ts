@@ -10,6 +10,7 @@ import {
     getSeededRandom,
     seededShuffle,
     findTracksByGenrePatterns,
+    mergeNewById,
 } from "./helpers";
 import { NOT_MISSING } from "../../utils/libraryEligibility";
 import type { MoodType } from "../moodBucketService";
@@ -119,7 +120,7 @@ export async function generateHighEnergyMix(
     today: string
 ): Promise<ProgrammaticMix | null> {
     let tracks: any[] = await prisma.track.findMany({
-            where: {
+        where: {
             ...NOT_MISSING,
             analysisStatus: "completed",
             energy: { gte: 0.7 },
@@ -147,11 +148,7 @@ export async function generateHighEnergyMix(
             energyGenres,
             100
         );
-        const existingIds = new Set(tracks.map((t) => t.id));
-        tracks = [
-            ...tracks,
-            ...albumGenreTracks.filter((t) => !existingIds.has(t.id)),
-        ];
+        tracks = mergeNewById(tracks, albumGenreTracks);
         logger.debug(
             `[HIGH ENERGY MIX] After genre fallback: ${tracks.length} tracks`
         );
@@ -275,11 +272,7 @@ export async function generateHappyMix(
             include: { album: { select: { coverUrl: true } } },
             take: 100,
         });
-        const existingIds = new Set(tracks.map((t) => t.id));
-        tracks = [
-            ...tracks,
-            ...standardTracks.filter((t) => !existingIds.has(t.id)),
-        ];
+        tracks = mergeNewById(tracks, standardTracks);
         logger.debug(
             `[HAPPY MIX] After Standard fallback: ${tracks.length} tracks`
         );
@@ -299,11 +292,7 @@ export async function generateHappyMix(
             happyGenres,
             100
         );
-        const existingIds = new Set(tracks.map((t) => t.id));
-        tracks = [
-            ...tracks,
-            ...albumGenreTracks.filter((t) => !existingIds.has(t.id)),
-        ];
+        tracks = mergeNewById(tracks, albumGenreTracks);
         logger.debug(
             `[HAPPY MIX] After genre fallback: ${tracks.length} tracks`
         );
@@ -395,11 +384,7 @@ export async function generateMelancholyMix(
             sadGenres,
             100
         );
-        const existingIds = new Set(tracks.map((t) => t.id));
-        tracks = [
-            ...tracks,
-            ...albumGenreTracks.filter((t) => !existingIds.has(t.id)),
-        ];
+        tracks = mergeNewById(tracks, albumGenreTracks);
         logger.debug(
             `[MELANCHOLY MIX] After genre fallback: ${tracks.length} tracks`
         );
@@ -447,7 +432,7 @@ export async function generateDanceFloorMix(
     today: string
 ): Promise<ProgrammaticMix | null> {
     let tracks: any[] = await prisma.track.findMany({
-            where: {
+        where: {
             ...NOT_MISSING,
             analysisStatus: "completed",
             danceability: { gte: 0.7 },
@@ -474,11 +459,7 @@ export async function generateDanceFloorMix(
             danceGenres,
             100
         );
-        const existingIds = new Set(tracks.map((t) => t.id));
-        tracks = [
-            ...tracks,
-            ...albumGenreTracks.filter((t) => !existingIds.has(t.id)),
-        ];
+        tracks = mergeNewById(tracks, albumGenreTracks);
         logger.debug(
             `[DANCE FLOOR MIX] After genre fallback: ${tracks.length} tracks`
         );
@@ -514,7 +495,7 @@ export async function generateAcousticMix(
     today: string
 ): Promise<ProgrammaticMix | null> {
     let tracks: any[] = await prisma.track.findMany({
-            where: {
+        where: {
             ...NOT_MISSING,
             analysisStatus: "completed",
             acousticness: { gte: 0.6 },
@@ -539,11 +520,7 @@ export async function generateAcousticMix(
             acousticGenres,
             100
         );
-        const existingIds = new Set(tracks.map((t) => t.id));
-        tracks = [
-            ...tracks,
-            ...albumGenreTracks.filter((t) => !existingIds.has(t.id)),
-        ];
+        tracks = mergeNewById(tracks, albumGenreTracks);
         logger.debug(
             `[ACOUSTIC MIX] After genre fallback: ${tracks.length} tracks`
         );
@@ -579,7 +556,7 @@ export async function generateInstrumentalMix(
     today: string
 ): Promise<ProgrammaticMix | null> {
     let tracks: any[] = await prisma.track.findMany({
-            where: {
+        where: {
             ...NOT_MISSING,
             analysisStatus: "completed",
             instrumentalness: { gte: 0.7 },
@@ -605,11 +582,7 @@ export async function generateInstrumentalMix(
             instrumentalGenres,
             100
         );
-        const existingIds = new Set(tracks.map((t) => t.id));
-        tracks = [
-            ...tracks,
-            ...albumGenreTracks.filter((t) => !existingIds.has(t.id)),
-        ];
+        tracks = mergeNewById(tracks, albumGenreTracks);
         logger.debug(
             `[INSTRUMENTAL MIX] After genre fallback: ${tracks.length} tracks`
         );
@@ -645,13 +618,11 @@ export async function generateRoadTripMix(
     today: string
 ): Promise<ProgrammaticMix | null> {
     let tracks: any[] = await prisma.track.findMany({
-            where: {
+        where: {
             ...NOT_MISSING,
             // Moods come from audio analysis only. With nothing in the energetic or
             // upbeat moods, the genre and audio fallbacks below answer.
-            OR: [
-                { moodTags: { hasSome: ["energetic", "upbeat", "happy"] } },
-            ],
+            moodTags: { hasSome: ["energetic", "upbeat", "happy"] },
         },
         include: { album: { select: { coverUrl: true } } },
         take: 100,
@@ -669,11 +640,7 @@ export async function generateRoadTripMix(
             include: { album: { select: { coverUrl: true } } },
             take: 100,
         });
-        const existingIds = new Set(tracks.map((t) => t.id));
-        tracks = [
-            ...tracks,
-            ...audioTracks.filter((t) => !existingIds.has(t.id)),
-        ];
+        tracks = mergeNewById(tracks, audioTracks);
         logger.debug(
             `[ROAD TRIP MIX] After audio fallback: ${tracks.length} tracks`
         );
@@ -691,11 +658,7 @@ export async function generateRoadTripMix(
             roadTripGenres,
             100
         );
-        const existingIds = new Set(tracks.map((t) => t.id));
-        tracks = [
-            ...tracks,
-            ...albumGenreTracks.filter((t) => !existingIds.has(t.id)),
-        ];
+        tracks = mergeNewById(tracks, albumGenreTracks);
         logger.debug(
             `[ROAD TRIP MIX] After genre fallback: ${tracks.length} tracks`
         );
@@ -781,14 +744,10 @@ export async function generateMainCharacterEnergy(
         where: {
             ...NOT_MISSING,
             analysisStatus: "completed",
-            OR: [
-                {
-                    AND: [
-                        { valence: { gte: 0.55 } },
-                        { energy: { gte: 0.55 } },
-                        { danceability: { gte: 0.5 } },
-                    ],
-                },
+            AND: [
+                { valence: { gte: 0.55 } },
+                { energy: { gte: 0.55 } },
+                { danceability: { gte: 0.5 } },
             ],
         },
     });
@@ -1161,7 +1120,7 @@ export async function generateDeepCuts(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
-            where: {
+        where: {
             ...NOT_MISSING,
             plays: {
                 none: {},
@@ -1240,7 +1199,7 @@ export async function generateKeyJourney(
     ];
 
     const tracks = await prisma.track.findMany({
-            where: {
+        where: {
             ...NOT_MISSING,
             analysisStatus: "completed",
             key: { not: null },
@@ -1295,7 +1254,7 @@ export async function generateTempoFlow(
     today: string
 ): Promise<ProgrammaticMix | null> {
     const tracks = await prisma.track.findMany({
-            where: {
+        where: {
             ...NOT_MISSING,
             analysisStatus: "completed",
             bpm: { not: null },
@@ -1537,7 +1496,7 @@ export async function generateMoodOnDemand(
         id: `mood-on-demand-${timestamp}`,
         type: "mood-on-demand",
         name: "Custom Mood Mix",
-        description: `Generated just for you`,
+        description: "Generated just for you",
         trackIds: shuffled.map((t) => t.id),
         coverUrls,
         trackCount: shuffled.length,

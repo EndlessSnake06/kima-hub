@@ -16,6 +16,10 @@ import { upstreamHeaderNumber } from "../utils/upstreamHeaders";
 // Track in-progress downloads to avoid duplicates
 const downloadingEpisodes = new Set<string>();
 
+// Cache and completeness checks accept a 1% size difference: some servers and
+// filesystems are inconsistent at the byte level.
+const SIZE_TOLERANCE = 0.01;
+
 // Track download progress (episodeId -> { bytesDownloaded, totalBytes })
 interface DownloadProgress {
     bytesDownloaded: number;
@@ -71,7 +75,7 @@ async function validateCachedFile(episodeId: string): Promise<string | null> {
                     const expected = episode.fileSize;
                     const actual = stats.size;
                     const variance = Math.abs(actual - expected) / expected;
-                    if (variance > 0.01) {
+                    if (variance > SIZE_TOLERANCE) {
                         logger.debug(
                             `[PODCAST-DL] Episode size mismatch vs episode.fileSize for ${episodeId}: actual ${actual} vs expected ${expected} (variance ${Math.round(
                                 variance * 100
@@ -105,7 +109,7 @@ async function validateCachedFile(episodeId: string): Promise<string | null> {
             const actualSize = stats.size;
             const variance = Math.abs(actualSize - expectedSize) / expectedSize;
 
-            if (expectedSize > 0 && variance > 0.01) {
+            if (expectedSize > 0 && variance > SIZE_TOLERANCE) {
                 logger.debug(`[PODCAST-DL] Size mismatch for ${episodeId}: actual ${actualSize} vs expected ${Math.round(expectedSize)}, deleting`);
                 await fs.unlink(cachedPath).catch(() => {});
                 await prisma.podcastDownload.deleteMany({ where: { episodeId } });
@@ -322,14 +326,13 @@ async function performDownload(
         }
         
         // Check completeness when we know an expected size (prefer Content-Length).
-        // Allow a small variance because some servers are inconsistent at the byte level.
         if (expectedBytes > 0) {
             const variance = Math.abs(stats.size - expectedBytes) / expectedBytes;
-            if (variance > 0.01) {
-            const percentComplete = Math.round((stats.size / expectedBytes) * 100);
-            logger.error(`[PODCAST-DL] Incomplete download for ${episodeId}: ${stats.size}/${expectedBytes} bytes (${percentComplete}%)`);
-            await fs.unlink(tempPath).catch(() => {});
-            throw new Error(`Download incomplete: got ${stats.size} bytes, expected ${expectedBytes}`);
+            if (variance > SIZE_TOLERANCE) {
+                const percentComplete = Math.round((stats.size / expectedBytes) * 100);
+                logger.error(`[PODCAST-DL] Incomplete download for ${episodeId}: ${stats.size}/${expectedBytes} bytes (${percentComplete}%)`);
+                await fs.unlink(tempPath).catch(() => {});
+                throw new Error(`Download incomplete: got ${stats.size} bytes, expected ${expectedBytes}`);
             }
         }
         

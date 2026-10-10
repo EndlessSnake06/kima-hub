@@ -13,7 +13,7 @@ import { findAlbumArtwork, findArtistArtwork } from "../services/artwork";
 import { redisClient } from "../utils/redis";
 import { downloadAndStoreImage, findLocalArtistImage, isNativePath, nativeFileExists } from "../services/imageStorage";
 import { failureCause } from "../utils/outcome";
-import { resolveArtistMbid } from "../services/artistCorrection";
+import { resolveArtistMbidFromDiscography } from "../services/artistCorrection";
 import { enrichmentFailureService } from "../services/enrichmentFailureService";
 
 /**
@@ -99,13 +99,9 @@ export async function enrichSimilarArtist(artist: Artist): Promise<void> {
         }
 
         if (!isMbid(artist.mbid)) {
-            const albums = await prisma.album.findMany({
-                where: { artistId: artist.id },
-                select: { title: true },
-            });
-            const found = await resolveArtistMbid(
-                artist.name,
-                albums.map((album) => album.title)
+            const found = await resolveArtistMbidFromDiscography(
+                artist.id,
+                artist.name
             );
             if (found.kind === "answered") {
                 const realMbid = found.value.mbid;
@@ -399,7 +395,6 @@ async function enrichAlbumCovers(
     artistName: string,
 ): Promise<void> {
     try {
-        // Find albums for this artist that don't have cover art
         // Find albums with no cover, or with a native cover file missing from disk
         const allAlbums = await prisma.album.findMany({
             where: {

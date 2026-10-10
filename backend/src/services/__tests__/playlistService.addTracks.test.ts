@@ -5,43 +5,16 @@
 
 import { prisma } from "../../utils/db";
 import { addTracks } from "../playlistService";
+import { createTrackChain, deleteFixtures } from "./helpers/trackChainFixture";
 
 const PREFIX = "pl-addtracks-test";
 
-async function cleanup() {
-    // Cascade deletes cover playlist -> items; album cascade covers tracks.
-    await prisma.user.deleteMany({ where: { username: { startsWith: PREFIX } } });
-    await prisma.artist.deleteMany({ where: { name: { startsWith: PREFIX } } });
+function cleanup() {
+    return deleteFixtures(PREFIX);
 }
 
 async function fixture(location: "LIBRARY" | "DISCOVER") {
-    const tag = `${location}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    const user = await prisma.user.create({
-        data: { username: `${PREFIX}-${tag}`, passwordHash: "x", role: "user" },
-    });
-    const artist = await prisma.artist.create({
-        data: { name: `${PREFIX}-${tag}-artist`, identityKey: `${PREFIX}-${tag}` },
-    });
-    const album = await prisma.album.create({
-        data: {
-            artistId: artist.id,
-            rgMbid: `${PREFIX}-${tag}-mbid`,
-            title: `${PREFIX}-${tag}-album`,
-            primaryType: "Album",
-            location,
-        },
-    });
-    const track = await prisma.track.create({
-        data: {
-            albumId: album.id,
-            title: `${PREFIX}-${tag}-track`,
-            trackNo: 1,
-            duration: 100,
-            filePath: `/tmp/${PREFIX}-${tag}.flac`,
-            fileModified: new Date(),
-            fileSize: 1000,
-        },
-    });
+    const { tag, track, user } = await createTrackChain(PREFIX, location, { location });
     const playlist = await prisma.playlist.create({
         data: { userId: user.id, name: `${PREFIX}-${tag}-pl` },
     });

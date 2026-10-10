@@ -68,195 +68,157 @@ class ProgrammaticPlaylistService {
         const mixGenerators = [
             {
                 fn: () => generateEraMix(userId, today + seedSuffix),
-                weight: 2,
                 name: "Era Mix",
             },
             {
                 fn: () => generateGenreMix(userId, today + seedSuffix),
-                weight: 2,
                 name: "Genre Mix",
             },
             {
                 fn: () => generateTopTracksMix(userId),
-                weight: 1,
                 name: "Top Tracks Mix",
             },
             {
                 fn: () => generateRediscoverMix(userId, today + seedSuffix),
-                weight: 1,
                 name: "Rediscover Mix",
             },
             {
                 fn: () => generateArtistSimilarMix(userId),
-                weight: 1,
                 name: "Artist Similar Mix",
             },
             {
                 fn: () =>
                     generateRandomDiscoveryMix(userId, today + seedSuffix),
-                weight: 1,
                 name: "Random Discovery Mix",
             },
             {
                 fn: () => generatePartyMix(userId, today + seedSuffix),
-                weight: 2,
                 name: "Party Mix",
             },
             {
                 fn: () => generateChillMix(userId, today + seedSuffix),
-                weight: 2,
                 name: "Chill Mix",
             },
             {
                 fn: () => generateWorkoutMix(userId, today + seedSuffix),
-                weight: 2,
                 name: "Workout Mix",
             },
             {
                 fn: () => generateFocusMix(userId, today + seedSuffix),
-                weight: 2,
                 name: "Focus Mix",
             },
             {
                 fn: () => generateHighEnergyMix(userId, today + seedSuffix),
-                weight: 2,
                 name: "High Energy Mix",
             },
             {
                 fn: () => generateLateNightMix(userId, today + seedSuffix),
-                weight: 2,
                 name: "Late Night Mix",
             },
             {
                 fn: () => generateHappyMix(userId, today + seedSuffix),
-                weight: 2,
                 name: "Happy Vibes Mix",
             },
             {
                 fn: () => generateMelancholyMix(userId, today + seedSuffix),
-                weight: 2,
                 name: "Melancholy Mix",
             },
             {
                 fn: () => generateDanceFloorMix(userId, today + seedSuffix),
-                weight: 2,
                 name: "Dance Floor Mix",
             },
             {
                 fn: () => generateAcousticMix(userId, today + seedSuffix),
-                weight: 2,
                 name: "Acoustic Mix",
             },
             {
                 fn: () => generateInstrumentalMix(userId, today + seedSuffix),
-                weight: 2,
                 name: "Instrumental Mix",
             },
             {
                 fn: () => generateRoadTripMix(userId, today + seedSuffix),
-                weight: 2,
                 name: "Road Trip Mix",
             },
             {
                 fn: () => generateDayMix(userId),
-                weight: 1,
                 name: "Day Mix",
             },
             {
                 fn: () => generateSadGirlSundays(userId, today + seedSuffix),
-                weight: 2,
                 name: "Sad Girl Sundays",
             },
             {
                 fn: () =>
                     generateMainCharacterEnergy(userId, today + seedSuffix),
-                weight: 2,
                 name: "Main Character Energy",
             },
             {
                 fn: () => generateVillainEra(userId, today + seedSuffix),
-                weight: 2,
                 name: "Villain Era",
             },
             {
                 fn: () => generate3AMThoughts(userId, today + seedSuffix),
-                weight: 2,
                 name: "3AM Thoughts",
             },
             {
                 fn: () => generateHotGirlWalk(userId, today + seedSuffix),
-                weight: 2,
                 name: "Hot Girl Walk",
             },
             {
                 fn: () => generateRageCleaning(userId, today + seedSuffix),
-                weight: 2,
                 name: "Rage Cleaning",
             },
             {
                 fn: () => generateGoldenHour(userId, today + seedSuffix),
-                weight: 2,
                 name: "Golden Hour",
             },
             {
                 fn: () => generateShowerKaraoke(userId, today + seedSuffix),
-                weight: 2,
                 name: "Shower Karaoke",
             },
             {
                 fn: () => generateInMyFeelings(userId, today + seedSuffix),
-                weight: 2,
                 name: "In My Feelings",
             },
             {
                 fn: () => generateMidnightDrive(userId, today + seedSuffix),
-                weight: 2,
                 name: "Midnight Drive",
             },
             {
                 fn: () => generateCoffeeShopVibes(userId, today + seedSuffix),
-                weight: 2,
                 name: "Coffee Shop Vibes",
             },
             {
                 fn: () =>
                     generateRomanticizeYourLife(userId, today + seedSuffix),
-                weight: 2,
                 name: "Romanticize Your Life",
             },
             {
                 fn: () => generateThatGirlEra(userId, today + seedSuffix),
-                weight: 2,
                 name: "That Girl Era",
             },
             {
                 fn: () => generateUnhinged(userId, today + seedSuffix),
-                weight: 2,
                 name: "Unhinged",
             },
             {
                 fn: () => generateDeepCuts(userId, today + seedSuffix),
-                weight: 1,
                 name: "Deep Cuts",
             },
             {
                 fn: () => generateKeyJourney(userId, today + seedSuffix),
-                weight: 1,
                 name: "Key Journey",
             },
             {
                 fn: () => generateTempoFlow(userId, today + seedSuffix),
-                weight: 1,
                 name: "Tempo Flow",
             },
             {
                 fn: () => generateVocalDetox(userId, today + seedSuffix),
-                weight: 1,
                 name: "Vocal Detox",
             },
             {
                 fn: () => generateMinorKeyMix(userId, today + seedSuffix),
-                weight: 1,
                 name: "Minor Key Mondays",
             },
         ];

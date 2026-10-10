@@ -1,88 +1,76 @@
-import { ProgrammaticMix, sampledMix } from "./helpers";
+import { Prisma } from "@prisma/client";
+import { ProgrammaticMix, sampledMix, TRACK_LIMIT } from "./helpers";
 import { NOT_MISSING } from "../../utils/libraryEligibility";
 
-const TRACK_LIMIT = 20;
-
-export async function generateDayMix(
-    userId: string
-): Promise<ProgrammaticMix | null> {
-    const dayOfWeek = new Date().getDay();
-    const today = new Date().toISOString().split("T")[0];
-
-    switch (dayOfWeek) {
-        case 0:
-            return generateSundayMix(userId, today);
-        case 1:
-            return generateMondayMix(userId, today);
-        case 5:
-            return generateFridayMix(userId, today);
-        default:
-            return null;
+/** The days that have a mix, by day of week (0 = Sunday). */
+const DAY_MIXES: Record<
+    number,
+    {
+        id: string;
+        type: string;
+        name: string;
+        description: string;
+        colorType: string;
+        where: Prisma.TrackWhereInput;
     }
-}
-
-async function generateSundayMix(
-    _userId: string,
-    today: string
-): Promise<ProgrammaticMix | null> {
-    return sampledMix({
-        id: `sunday-${today}`,
+> = {
+    0: {
+        id: "sunday",
         type: "sunday-morning",
         name: "Sunday Morning",
         description: "Peaceful tunes for a lazy Sunday",
         colorType: "sunday-morning",
-        take: 100,
-        minTracks: 15,
-        limit: TRACK_LIMIT,
         where: {
             ...NOT_MISSING,
             analysisStatus: "completed",
             energy: { lte: 0.5 },
             acousticness: { gte: 0.5 },
         },
-    });
-}
-
-async function generateMondayMix(
-    _userId: string,
-    today: string
-): Promise<ProgrammaticMix | null> {
-    return sampledMix({
-        id: `monday-${today}`,
+    },
+    1: {
+        id: "monday",
         type: "confidence-boost",
         name: "Monday Motivation",
         description: "Start your week with energy",
         colorType: "confidence-boost",
-        take: 100,
-        minTracks: 15,
-        limit: TRACK_LIMIT,
         where: {
             ...NOT_MISSING,
             analysisStatus: "completed",
             energy: { gte: 0.6 },
             valence: { gte: 0.5 },
         },
-    });
-}
-
-async function generateFridayMix(
-    _userId: string,
-    today: string
-): Promise<ProgrammaticMix | null> {
-    return sampledMix({
-        id: `friday-${today}`,
+    },
+    5: {
+        id: "friday",
         type: "dance-floor",
         name: "Friday Night",
         description: "Weekend vibes to kick off the party",
         colorType: "dance-floor",
-        take: 100,
-        minTracks: 15,
-        limit: TRACK_LIMIT,
         where: {
             ...NOT_MISSING,
             analysisStatus: "completed",
             danceability: { gte: 0.7 },
             energy: { gte: 0.6 },
         },
+    },
+};
+
+export async function generateDayMix(
+    _userId: string
+): Promise<ProgrammaticMix | null> {
+    const today = new Date().toISOString().split("T")[0];
+    const day = DAY_MIXES[new Date().getDay()];
+    if (!day) return null;
+
+    return sampledMix({
+        id: `${day.id}-${today}`,
+        type: day.type,
+        name: day.name,
+        description: day.description,
+        colorType: day.colorType,
+        take: 100,
+        minTracks: 15,
+        limit: TRACK_LIMIT,
+        where: day.where,
     });
 }

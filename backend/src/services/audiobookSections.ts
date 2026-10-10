@@ -9,11 +9,12 @@ export interface BuildTrack {
     name?: string;
 }
 
-export interface AudioSection {
+// A type alias, not an interface, so Prisma accepts it as JSON input.
+export type AudioSection = {
     index: number;
     title: string;
     start: number;
-}
+};
 
 const COVERAGE_MIN = 0.85;
 

@@ -154,11 +154,7 @@ export async function updateShareLink(
     token: string,
     changes: { expiresAt?: Date | null }
 ) {
-    const link = await prisma.shareLink.findUnique({ where: { token } });
-    if (!link) throw new ShareError("Share not found", "NOT_FOUND");
-    if (link.createdBy !== userId) {
-        throw new ShareError("Not the link owner", "FORBIDDEN");
-    }
+    const link = await requireOwnedLink(userId, token);
     if (changes.expiresAt === undefined) return link;
 
     return prisma.shareLink.update({
@@ -169,11 +165,16 @@ export async function updateShareLink(
 
 /** Revoke a share. Only the owner may. */
 export async function deleteShareLink(userId: string, token: string) {
+    const link = await requireOwnedLink(userId, token);
+    await prisma.shareLink.delete({ where: { id: link.id } });
+}
+
+async function requireOwnedLink(userId: string, token: string) {
     const link = await prisma.shareLink.findUnique({ where: { token } });
     if (!link) throw new ShareError("Share not found", "NOT_FOUND");
     if (link.createdBy !== userId) {
         throw new ShareError("Not the link owner", "FORBIDDEN");
     }
-    await prisma.shareLink.delete({ where: { id: link.id } });
+    return link;
 }
 

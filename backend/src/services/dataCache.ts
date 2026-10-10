@@ -70,13 +70,12 @@ class DataCacheService {
 
     /**
      * Get album cover with unified caching
-     * Order: DB -> Redis -> Cover Art Archive -> save to both
+     * Order: DB -> Redis -> the artwork door (Deezer -> Cover Art Archive -> Fanart) -> save to both
      */
     async getAlbumCover(
         albumId: string,
         rgMbid: string
     ): Promise<string | null> {
-
         const cacheKey = `album-cover:${albumId}`;
 
         // 1. Database first. Title and artist come back too, for sources that search by name.

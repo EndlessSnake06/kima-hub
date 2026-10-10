@@ -12,9 +12,8 @@ import {
     randomSample,
     getSeededRandom,
     seededShuffle,
+    TRACK_LIMIT,
 } from "./helpers";
-
-const TRACK_LIMIT = 20;
 
 export async function generateTopTracksMix(
     userId: string

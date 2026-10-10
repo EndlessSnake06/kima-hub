@@ -130,6 +130,7 @@ export class MusicScannerService {
     private scanQueue = new PQueue({ concurrency: 10 });
     private progressCallback?: (progress: ScanProgress) => void;
     private coverArtExtractor?: CoverArtExtractor;
+    private coverCachePath?: string;
 
     constructor(
         progressCallback?: (progress: ScanProgress) => void,
@@ -137,6 +138,7 @@ export class MusicScannerService {
     ) {
         this.progressCallback = progressCallback;
         if (coverCachePath) {
+            this.coverCachePath = coverCachePath;
             this.coverArtExtractor = new CoverArtExtractor(coverCachePath);
         }
     }
@@ -623,10 +625,6 @@ export class MusicScannerService {
     }
 
     /**
-     * Process a single audio file and update database
-     */
-
-    /**
      * Ensure the album has a cover: art embedded in the file first, since it is
      * free and exact, then every artwork source. Re-extracts when the cached
      * native file has gone missing.
@@ -637,14 +635,14 @@ export class MusicScannerService {
         artistName: string,
         albumTitle: string
     ): Promise<void> {
-        if (!this.coverArtExtractor) return;
+        if (!this.coverArtExtractor || !this.coverCachePath) return;
 
         let needsExtraction = !album.coverUrl;
 
         if (album.coverUrl?.startsWith("native:")) {
             const nativePath = album.coverUrl.replace("native:", "");
             const extractorCachePath = path.join(
-                (this.coverArtExtractor as any).coverCachePath,
+                this.coverCachePath,
                 nativePath
             );
             if (!fs.existsSync(extractorCachePath)) {

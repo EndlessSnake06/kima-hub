@@ -21,6 +21,7 @@ import {
     closeEnrichmentQueues,
     QUEUE_NAMES,
 } from "./enrichmentQueues";
+import { entityGoneError } from "./entityGone";
 import { startArtistEnrichmentWorker } from "./artistEnrichmentWorker";
 import { startTrackEnrichmentWorker } from "./trackEnrichmentWorker";
 import { startPodcastEnrichmentWorker } from "./podcastEnrichmentWorker";
@@ -1904,9 +1905,7 @@ export async function enrichSingleTrack(
     });
 
     if (!track) {
-        const err = new Error(`ENTITY_NOT_FOUND: Track ${trackId} deleted`);
-        (err as any).entityNotFound = true;
-        throw err;
+        throw entityGoneError("Track", trackId);
     }
 
     // Identification ladder: the file's own recording id; the album's tracklist (one

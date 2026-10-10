@@ -42,7 +42,8 @@ describe("the scanner finding a cover for an album", () => {
         mockFindAlbumArtwork.mockResolvedValue(null);
         extractCoverArt = jest.fn().mockResolvedValue(null);
         scanner = new (MusicScannerService as any)();
-        scanner.coverArtExtractor = { extractCoverArt, coverCachePath: "/cache/covers" };
+        scanner.coverArtExtractor = { extractCoverArt };
+        scanner.coverCachePath = "/cache/covers";
         existsSpy = jest.spyOn(fs, "existsSync").mockReturnValue(true);
     });
 

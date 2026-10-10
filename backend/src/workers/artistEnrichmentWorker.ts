@@ -1,5 +1,6 @@
 import { Worker, Job } from "bullmq";
 import { createWorkerConnection, QUEUE_NAMES } from "./enrichmentQueues";
+import { entityGoneError, isEntityGone } from "./entityGone";
 import { enrichSimilarArtist, failedArtistStatus } from "./artistEnrichment";
 import { enrichmentFailureService } from "../services/enrichmentFailureService";
 import { prisma } from "../utils/db";
@@ -23,9 +24,7 @@ export async function startArtistEnrichmentWorker(): Promise<Worker> {
 
             const artist = await prisma.artist.findUnique({ where: { id: artistId } });
             if (!artist) {
-                const err = new Error(`ENTITY_NOT_FOUND: Artist ${artistId} deleted`);
-                (err as any).entityNotFound = true;
-                throw err;
+                throw entityGoneError("Artist", artistId);
             }
 
             // enrichSimilarArtist records the artist's status: completed, or failed and
@@ -44,9 +43,8 @@ export async function startArtistEnrichmentWorker(): Promise<Worker> {
     worker.on("failed", async (job, err) => {
         if (!job) return;
         const { artistId } = job.data;
-        const isEntityGone = (err as any).entityNotFound === true;
 
-        if (isEntityGone) {
+        if (isEntityGone(err)) {
             logger.info(`[ArtistWorker] Artist ${artistId} no longer exists, resolving silently`);
             return;
         }

@@ -150,7 +150,7 @@ function buildModule(data: {
     p();
     p("/**");
     p(` * Codepoint ranges Postgres \`[:alnum:]\` accepts (${data.alnumRanges.length} ranges). It is not`);
-    p(` * JavaScript's \\p{L}\\p${data.alnumRanges.length}: it accepts Hebrew and Arabic combining points and`);
+    p(` * JavaScript's \\p{L}\\p{N}: it accepts Hebrew and Arabic combining points and`);
     p(" * rejects superscripts and fractions.");
     p(" */");
     p(

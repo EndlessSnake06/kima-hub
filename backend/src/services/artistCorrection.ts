@@ -7,6 +7,7 @@
 import * as fuzz from "fuzzball";
 import { logger } from "../utils/logger";
 import { redisClient } from "../utils/redis";
+import { prisma } from "../utils/db";
 import { musicBrainzService } from "./musicbrainz";
 import { absent, answered, failureCause, Outcome } from "../utils/outcome";
 import { normalizeArtistName } from "./artistIdentity";
@@ -111,7 +112,6 @@ export async function getArtistCorrection(
         logger.warn(
             `MB correction error for ${artistName}: ${error?.message || error}`
         );
-        // Failures are not cached, as above.
         return null;
     }
 }
@@ -130,6 +130,18 @@ export interface ResolvedArtist {
 
 /** Same-named artists whose catalogues are checked before giving up. */
 const MAX_CATALOGUE_CHECKS = 3;
+
+/** Resolve an artist's MusicBrainz id from its own discography. */
+export async function resolveArtistMbidFromDiscography(
+    artistId: string,
+    artistName: string
+): Promise<Outcome<ResolvedArtist>> {
+    const albums = await prisma.album.findMany({
+        where: { artistId },
+        select: { title: true },
+    });
+    return resolveArtistMbid(artistName, albums.map((album) => album.title));
+}
 
 /**
  * The one way an artist name becomes a MusicBrainz id. A candidate must carry

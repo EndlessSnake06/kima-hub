@@ -4,7 +4,6 @@
 
 import { enrichmentFailureService } from "../enrichmentFailureService";
 
-// Mock Prisma
 jest.mock("../../utils/db", () => ({
     prisma: {
         enrichmentFailure: {
