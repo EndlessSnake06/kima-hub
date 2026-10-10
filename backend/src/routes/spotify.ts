@@ -8,7 +8,7 @@ import { requireAuthOrToken } from "../middleware/auth";
 import { safeError } from "../utils/errors";
 import { z } from "zod";
 import { spotifyService } from "../services/spotify";
-import { spotifyImportService } from "../services/spotifyImport";
+import { spotifyImportService, getImportJob } from "../services/spotifyImport";
 import { deezerService } from "../services/deezer";
 import { readSessionLog, getSessionLogPath } from "../utils/playlistLogger";
 import { parseM3U } from "../services/m3uParser";
@@ -48,6 +48,21 @@ const quickImportSchema = z.object({
     url: z.string().url(),
     playlistName: z.string().min(1).max(200).optional(),
 });
+
+// Every supported playlist source, with the URL shape the quick import accepts;
+// the preview check only needs the domain half of each pair.
+const PLAYLIST_URL_PREFIXES: Array<[string, string]> = [
+    ["spotify.com", "/playlist/"],
+    ["deezer.com", "/playlist/"],
+    ["deezer.com", "/playlist:"],
+    ["youtube.com", "/playlist"],
+    ["music.youtube.com", "/playlist"],
+    ["youtube.com", "/watch"],
+    ["youtu.be", "/"],
+    ["soundcloud.com", "/"],
+    ["bandcamp.com", "/"],
+    ["mixcloud.com", "/"],
+];
 
 /**
  * POST /api/spotify/parse
@@ -93,8 +108,7 @@ router.post("/preview/start", async (req, res) => {
     try {
         const { url } = parseUrlSchema.parse(req.body);
 
-        const supportedDomains = ["spotify.com", "deezer.com", "youtube.com", "youtu.be", "music.youtube.com", "soundcloud.com", "bandcamp.com", "mixcloud.com"];
-        if (!supportedDomains.some(domain => url.includes(domain))) {
+        if (!PLAYLIST_URL_PREFIXES.some(([domain]) => url.includes(domain))) {
             return res.status(400).json({
                 error: "Invalid URL. Supported: Spotify, Deezer, YouTube, SoundCloud, Bandcamp, Mixcloud.",
             });
@@ -140,17 +154,7 @@ router.post("/import/quick", async (req, res) => {
     try {
         const { url, playlistName } = quickImportSchema.parse(req.body);
 
-        const isValidUrl = url.includes("spotify.com/playlist/")
-            || url.includes("deezer.com/playlist/")
-            || url.includes("deezer.com/playlist:")
-            || url.includes("youtube.com/playlist")
-            || url.includes("music.youtube.com/playlist")
-            || url.includes("youtube.com/watch")
-            || url.includes("youtu.be/")
-            || url.includes("soundcloud.com/")
-            || url.includes("bandcamp.com/")
-            || url.includes("mixcloud.com/");
-        if (!isValidUrl) {
+        if (!PLAYLIST_URL_PREFIXES.some(([domain, path]) => url.includes(domain + path))) {
             return res.status(400).json({
                 error: "Invalid URL. Supported: Spotify, Deezer, YouTube, SoundCloud, Bandcamp, Mixcloud.",
             });
@@ -254,7 +258,7 @@ router.get("/import/:jobId/status", async (req, res) => {
         const { jobId } = req.params;
         const userId = req.user!.id;
 
-        const job = await spotifyImportService.getJob(jobId);
+        const job = await getImportJob(jobId);
         if (!job) {
             return res.status(404).json({ error: "Import job not found" });
         }
@@ -294,7 +298,7 @@ router.post("/import/:jobId/refresh", async (req, res) => {
         const { jobId } = req.params;
         const userId = req.user!.id;
 
-        const job = await spotifyImportService.getJob(jobId);
+        const job = await getImportJob(jobId);
         if (!job) {
             return res.status(404).json({ error: "Import job not found" });
         }
@@ -329,7 +333,7 @@ router.post("/import/:jobId/cancel", async (req, res) => {
         const { jobId } = req.params;
         const userId = req.user!.id;
 
-        const job = await spotifyImportService.getJob(jobId);
+        const job = await getImportJob(jobId);
         if (!job) {
             return res.status(404).json({ error: "Import job not found" });
         }
