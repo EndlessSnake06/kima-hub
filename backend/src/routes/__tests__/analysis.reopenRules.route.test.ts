@@ -22,10 +22,8 @@ jest.mock("../../workers/unifiedEnrichment", () => ({
     invalidateEnrichmentProgress: jest.fn(),
 }));
 
-const mockClearAllFailures = jest.fn().mockResolvedValue(0);
 jest.mock("../../services/enrichmentFailureService", () => ({
     enrichmentFailureService: {
-        clearAllFailures: (...a: unknown[]) => mockClearAllFailures(...a),
         getFailures: jest.fn().mockResolvedValue({ failures: [], total: 0 }),
         recordFailure: jest.fn().mockResolvedValue({}),
     },

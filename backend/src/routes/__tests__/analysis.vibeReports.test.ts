@@ -11,7 +11,6 @@ jest.mock("../../middleware/auth", () => ({
 }));
 jest.mock("../../services/enrichmentFailureService", () => ({
     enrichmentFailureService: {
-        clearAllFailures: jest.fn().mockResolvedValue(0),
         getFailures: jest.fn().mockResolvedValue({ failures: [], total: 0 }),
         recordFailure: jest.fn().mockResolvedValue({}),
     },

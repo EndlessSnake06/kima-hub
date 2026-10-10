@@ -87,7 +87,6 @@ jest.mock("../../../services/dataCache", () => ({
         getArtistImage: jest.fn().mockResolvedValue(null),
         getAlbumCover: jest.fn().mockResolvedValue(null),
         getArtistImagesBatch: jest.fn().mockResolvedValue(new Map()),
-        getAlbumCoversBatch: jest.fn().mockResolvedValue(new Map()),
     },
 }));
 

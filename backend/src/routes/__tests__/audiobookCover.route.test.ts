@@ -55,10 +55,6 @@ jest.mock("../../middleware/rateLimiter", () => ({
     apiLimiter: (_req: any, _res: any, next: any) => next(),
 }));
 
-jest.mock("../../services/notificationService", () => ({
-    notificationService: { notifySystem: jest.fn() },
-}));
-
 jest.mock("../../config", () => ({
     config: {
         music: {
