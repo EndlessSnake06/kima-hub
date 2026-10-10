@@ -46,7 +46,7 @@ beforeEach(async () => {
         await prisma.track.create({
             data: {
                 id: id(t), albumId: id("alb"), title: t, trackNo: 1, duration: 180, filePath: `/tmp/${t}.flac`,
-                fileModified: new Date(), fileSize: 1, enrichmentTags: [], analysisStatus: "processing",
+                fileModified: new Date(), fileSize: 1, analysisStatus: "processing",
                 vibeAnalysisStatus: "pending", ...(missing ? { missingSince: new Date() } : {}),
             },
         });

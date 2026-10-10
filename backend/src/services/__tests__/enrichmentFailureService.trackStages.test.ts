@@ -42,7 +42,6 @@ async function seedTrack(trackId: string): Promise<void> {
             fileModified: new Date(),
             fileSize: 1000,
             analysisStatus: "pending",
-            enrichmentTags: [],
         },
     });
 }

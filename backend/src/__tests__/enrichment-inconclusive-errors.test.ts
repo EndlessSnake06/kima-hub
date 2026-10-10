@@ -58,7 +58,7 @@ beforeEach(async () => {
             id: id("t1"), albumId: id("alb"), title: "Odd Track", trackNo: 1,
             duration: 180, filePath: `/tmp/${id("t1")}.flac`,
             fileModified: new Date(), fileSize: 1000,
-            analysisStatus: "pending", enrichmentTags: [],
+            analysisStatus: "pending",
         },
     });
     await putStage(id("t1"), "analysis", "working");

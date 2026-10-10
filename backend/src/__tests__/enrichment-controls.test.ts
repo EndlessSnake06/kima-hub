@@ -244,7 +244,6 @@ async function seedTrack(
     data: Partial<{
         recording: string; analysis: string; embedding: string;
         recordingMbid: string | null;
-        enrichmentTags: string[];
         analysisStatus: string;
     }> = {},
 ): Promise<void> {
@@ -259,7 +258,6 @@ async function seedTrack(
             fileModified: new Date(),
             fileSize: 1000,
             recordingMbid: data.recordingMbid ?? null,
-            enrichmentTags: (data.enrichmentTags ?? []) as unknown as string[],
             analysisStatus: (data.analysisStatus ?? "pending") as never,
             analysisRetryCount: 0,
         } as never,
@@ -406,11 +404,10 @@ describe("redecideEverything", () => {
         expect((await stageRow(id("unknown"), "embedding"))?.status).toBe("pending");
     });
 
-    it("does not delete embeddings, and does not clear enrichmentTags", async () => {
+    it("does not delete embeddings", async () => {
         await seedTrack(id("keep"), {
             recording: "done", analysis: "done", embedding: "done",
             recordingMbid: "mbid-already-known",
-            enrichmentTags: ["rock", "alternative"],
         });
         await prisma.$executeRawUnsafe(
             `INSERT INTO track_embeddings (track_id, embedding, model_version, analyzed_at)
@@ -427,11 +424,6 @@ describe("redecideEverything", () => {
             `SELECT count(*)::bigint AS n FROM track_embeddings WHERE track_id = $1`, id("keep"),
         );
         expect(Number(embeddings[0].n)).toBe(1);
-
-        const [track] = await prisma.$queryRawUnsafe<{ tags: string[] }[]>(
-            `SELECT "enrichmentTags" AS tags FROM "Track" WHERE id = $1`, id("keep"),
-        );
-        expect(track.tags).toEqual(expect.arrayContaining(["rock", "alternative"]));
     });
 
     it("does not reset every artist's enrichmentStatus", async () => {
@@ -505,7 +497,6 @@ describe("retryFailedAndBlocked", () => {
     it("offers only owed work and wipes nothing", async () => {
         await seedTrack(id("answered"), {
             recording: "done", analysis: "done", embedding: "done",
-            enrichmentTags: ["rock"],
         });
         // A fully answered track includes its fingerprint answer.
         await putStage(id("answered"), "fingerprint", "done", {});
@@ -519,15 +510,11 @@ describe("retryFailedAndBlocked", () => {
         const work = await retryFailedAndBlocked(50);
         expect(work.filter((w) => w.trackId === id("answered")).length).toBe(0);
 
-        // No `DELETE FROM track_embeddings`, no un-where'd enrichmentTags reset.
+        // No `DELETE FROM track_embeddings`.
         const embeddings = await prisma.$queryRawUnsafe<{ n: bigint }[]>(
             `SELECT count(*)::bigint AS n FROM track_embeddings WHERE track_id = $1`, id("answered"),
         );
         expect(Number(embeddings[0].n)).toBe(1);
-        const [track] = await prisma.$queryRawUnsafe<{ tags: string[] }[]>(
-            `SELECT "enrichmentTags" AS tags FROM "Track" WHERE id = $1`, id("answered"),
-        );
-        expect(track.tags).toEqual(["rock"]);
     });
 });
 
@@ -590,7 +577,6 @@ describe("getEnrichmentProgress", () => {
         await seedTrack(id("contradict"), {
             recording: "pending", analysis: "pending", embedding: "pending",
             analysisStatus: "completed",
-            enrichmentTags: ["rock"],
         });
 
         invalidateEnrichmentProgress();
@@ -598,8 +584,7 @@ describe("getEnrichmentProgress", () => {
 
         // One more track exists and none of its three questions is answered,
         // so each stage gains exactly one owed row and no stage gains a
-        // completed one — even though analysisStatus says 'completed' and
-        // enrichmentTags is non-empty.
+        // completed one — even though analysisStatus says 'completed'.
         expect(after.trackTags.total - before.trackTags.total).toBe(1);
         expect(after.trackTags.enriched).toBe(before.trackTags.enriched);
         expect(after.audioAnalysis.total - before.audioAnalysis.total).toBe(1);
@@ -617,7 +602,6 @@ describe("getEnrichmentProgress", () => {
         await seedTrack(id("answered-but-stale"), {
             recording: "done", analysis: "done", embedding: "done",
             analysisStatus: "pending",
-            enrichmentTags: [],
         });
 
         invalidateEnrichmentProgress();

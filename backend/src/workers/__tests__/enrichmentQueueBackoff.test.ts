@@ -199,15 +199,6 @@ describe("enrichment phases -- job keys and backoff", () => {
             );
         });
 
-        it("does not select work from Track.enrichmentTags", async () => {
-            await executeIdentificationPhase();
-
-            const recordDriven = mockTrackFindMany.mock.calls.filter(
-                (call) => JSON.stringify(call[0] ?? {}).includes("enrichmentTags"),
-            );
-            expect(recordDriven).toHaveLength(0);
-        });
-
         it("does not re-queue a track whose recording record is answered", async () => {
             // Nothing owes the recording stage this cycle.
             mockQueryRawUnsafe.mockResolvedValue([]);

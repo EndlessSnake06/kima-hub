@@ -110,7 +110,6 @@ async function seedFailedRecording(trackId: string): Promise<string> {
             fileModified: new Date(),
             fileSize: 1000,
             analysisStatus: "pending",
-            enrichmentTags: [],
         },
     });
     const stageId = `${trackId}__recording`;

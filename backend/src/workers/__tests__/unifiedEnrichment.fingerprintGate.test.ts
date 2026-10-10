@@ -255,7 +255,6 @@ async function seedTrack(
             fileSize: 1000,
             recordingMbid: data.recordingMbid ?? null,
             acoustidFingerprint: data.acoustidFingerprint ?? null,
-            enrichmentTags: [] as unknown as string[],
             analysisStatus: "pending" as never,
             analysisRetryCount: 0,
         } as never,

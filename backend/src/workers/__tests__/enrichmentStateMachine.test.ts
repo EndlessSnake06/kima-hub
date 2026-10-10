@@ -504,10 +504,10 @@ describe("Enrichment State Machine", () => {
             await executeIdentificationPhase();
 
             // Gating reads TrackStage; no phase may decide work from
-            // analysisStatus/enrichmentTags across the whole library.
+            // analysisStatus across the whole library.
             const statusScans = mockPrismaTrackFindMany.mock.calls.filter((call) => {
                 const where = JSON.stringify(call[0] ?? {});
-                return where.includes("analysisStatus") || where.includes("enrichmentTags");
+                return where.includes("analysisStatus");
             });
             expect(statusScans).toHaveLength(0);
         });
@@ -516,8 +516,8 @@ describe("Enrichment State Machine", () => {
     describe("progress readout reflects the stage records", () => {
         it("computes progress from the TrackStage records, not the columns", async () => {
             // The record owns the answer: each stage's counts come from
-            // TrackStage, and no stage checks track_embeddings or
-            // enrichmentTags to decide whether an answer exists.
+            // TrackStage, and no stage checks track_embeddings to decide
+            // whether an answer exists.
             mockQueryRaw.mockImplementation(async (...args: unknown[]) => {
                 const sql = String(args[0]); const stage = args[1];
                 if (sql.includes("FROM \"Track\"") && sql.includes("count(*) FILTER")) {

@@ -213,7 +213,6 @@ async function putTrack(data: {
             fileModified: new Date(),
             fileSize: 1000,
             analysisStatus: "pending",
-            enrichmentTags: [],
             isrc: data.isrc,
             recordingMbid: data.recordingMbid ?? null,
             acoustidFingerprint: data.acoustidFingerprint ?? null,
@@ -279,14 +278,12 @@ describe("AcoustID: the fingerprint is the fingerprint stage's stored answer", (
 
         const track = await prisma.track.findUnique({
             where: { id: id("t1") },
-            select: { acoustidFingerprint: true, recordingMbid: true, enrichmentTags: true },
+            select: { acoustidFingerprint: true, recordingMbid: true },
         });
         // The fingerprint is untouched — nothing recomputed it.
         expect(track?.acoustidFingerprint).toBe(FINGERPRINT);
-        // Nothing matched, so no recording is invented — and nothing is
-        // stamped on the track either (moods come from analysis only).
+        // Nothing matched, so no recording is invented.
         expect(track?.recordingMbid).toBeNull();
-        expect(track?.enrichmentTags).toEqual([]);
     });
 
     it("closes the question as answered when the lookup does not match", async () => {
@@ -329,11 +326,9 @@ describe("AcoustID: the fingerprint is the fingerprint stage's stored answer", (
 
         const track = await prisma.track.findUnique({
             where: { id: id("t1") },
-            select: { recordingMbid: true, enrichmentTags: true },
+            select: { recordingMbid: true },
         });
         expect(track?.recordingMbid).toBeNull();
-        // No `_not_found` tag: the step never asked, so there is no no-match to record.
-        expect(track?.enrichmentTags).toEqual([]);
     });
 });
 

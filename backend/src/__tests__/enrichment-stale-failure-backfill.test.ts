@@ -52,7 +52,6 @@ async function seedTrackAndStage(
             fileModified: new Date(),
             fileSize: 1000,
             analysisStatus: stage === "analysis" ? "completed" : "pending",
-            enrichmentTags: [],
         },
     });
     await prisma.$executeRawUnsafe(

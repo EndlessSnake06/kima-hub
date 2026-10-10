@@ -52,7 +52,7 @@ beforeEach(async () => {
     await prisma.track.create({
         data: {
             id: id("t"), albumId: id("alb"), title: "T", trackNo: 1, duration: 180,
-            filePath: "/tmp/t.flac", fileModified: new Date(), fileSize: 1, enrichmentTags: [],
+            filePath: "/tmp/t.flac", fileModified: new Date(), fileSize: 1,
         },
     });
 });

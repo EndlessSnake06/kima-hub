@@ -244,7 +244,6 @@ async function seedTrack(
             fileModified: new Date(),
             fileSize: 1000,
             recordingMbid: data.recordingMbid ?? null,
-            enrichmentTags: [] as unknown as string[],
             analysisStatus: "pending" as never,
             analysisRetryCount: 0,
         } as never,

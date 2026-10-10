@@ -265,14 +265,6 @@ describe("a rate-limited answer parks the question at its own deadline", () => {
         // The work reported deferral, so no queue-side settlement can
         // clobber the parked record into done/failed.
         expect(outcome).toBe("deferred");
-
-        // And the track was NOT tagged as a no-match: nobody answered that
-        // the recording does not exist.
-        const track = await prisma.track.findUnique({
-            where: { id: trackId },
-            select: { enrichmentTags: true },
-        });
-        expect(track?.enrichmentTags ?? []).not.toContain("_not_found");
     });
 });
 
@@ -305,13 +297,5 @@ describe("an honest no-match", () => {
         expect(stage.evidence.reason).toBe(
             "no source has a recording that is this track",
         );
-        // The no-match leaves the track exactly as seeded — the record
-        // owns the answered question, and moods come from analysis only, so
-        // nothing is stamped on the track row.
-        const track = await prisma.track.findUnique({
-            where: { id: trackId },
-            select: { enrichmentTags: true },
-        });
-        expect(track?.enrichmentTags).toEqual([]);
     });
 });

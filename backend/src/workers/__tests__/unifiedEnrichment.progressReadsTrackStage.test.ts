@@ -190,7 +190,7 @@ async function seedTrack(
     trackId: string,
     data: Partial<{
         recording: string; analysis: string; embedding: string;
-        analysisStatus: string; enrichmentTags: string[];
+        analysisStatus: string;
     }> = {},
     opts: { missing?: boolean } = {},
 ): Promise<void> {
@@ -204,7 +204,6 @@ async function seedTrack(
             filePath: `/tmp/${trackId}.flac`,
             fileModified: new Date(),
             fileSize: 1000,
-            enrichmentTags: (data.enrichmentTags ?? []) as unknown as string[],
             analysisStatus: (data.analysisStatus ?? "pending") as never,
             analysisRetryCount: 0,
             missingSince: opts.missing ? new Date() : null,
@@ -245,7 +244,6 @@ describe("getEnrichmentProgress", () => {
         await seedTrack(id("contradict"), {
             recording: "pending", analysis: "pending", embedding: "pending",
             analysisStatus: "completed",
-            enrichmentTags: ["rock"],
         });
 
         invalidateEnrichmentProgress();
@@ -254,7 +252,7 @@ describe("getEnrichmentProgress", () => {
         // One more track exists and none of its three questions is
         // answered, so each stage gains exactly one owed row and no stage
         // gains a completed one — even though analysisStatus says
-        // 'completed' and enrichmentTags is non-empty.
+        // 'completed'.
         expect(after.trackTags.total - before.trackTags.total).toBe(1);
         expect(after.trackTags.enriched).toBe(before.trackTags.enriched);
         expect(after.audioAnalysis.total - before.audioAnalysis.total).toBe(1);
@@ -272,7 +270,6 @@ describe("getEnrichmentProgress", () => {
         await seedTrack(id("stale"), {
             recording: "done", analysis: "done", embedding: "done",
             analysisStatus: "pending",
-            enrichmentTags: [],
         });
 
         invalidateEnrichmentProgress();

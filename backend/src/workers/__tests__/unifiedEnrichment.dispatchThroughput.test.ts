@@ -174,7 +174,6 @@ async function seedTracks(count: number, stages: Array<[string, string]>): Promi
             fileModified: new Date(),
             fileSize: 1000,
             analysisStatus: "pending",
-            enrichmentTags: [],
         })),
     });
     for (const [stage, status] of stages) {
@@ -193,7 +192,7 @@ async function seedRecentCloses(stage: string, count: number): Promise<void> {
         data: trackIds.map((trackId, n) => ({
             id: trackId, albumId: id("alb"), title: `Closed ${n}`, trackNo: 1, duration: 180,
             filePath: `/tmp/${trackId}.flac`, fileModified: new Date(), fileSize: 1000,
-            analysisStatus: "completed", enrichmentTags: [],
+            analysisStatus: "completed",
         })),
     });
     await prisma.$executeRawUnsafe(

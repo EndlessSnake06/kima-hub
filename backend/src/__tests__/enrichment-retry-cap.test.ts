@@ -56,7 +56,6 @@ async function seedTrack(
             fileModified: new Date(),
             fileSize: 1000,
             analysisStatus: "pending",
-            enrichmentTags: [],
         },
     });
     await putStage(trackId, "recording", opts.recording?.status ?? "pending", {

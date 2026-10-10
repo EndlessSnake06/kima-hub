@@ -202,7 +202,6 @@ async function seedAnsweredTrack(trackId: string): Promise<void> {
             fileModified: new Date(),
             fileSize: 1000,
             recordingMbid: "mbid-known",
-            enrichmentTags: ["rock", "alternative"] as unknown as string[],
             analysisStatus: "completed" as never,
             analysisRetryCount: 0,
         } as never,
@@ -230,13 +229,6 @@ async function embeddingCount(trackId: string): Promise<number> {
     return Number(rows[0].n);
 }
 
-async function tags(trackId: string): Promise<string[]> {
-    const [row] = await prisma.$queryRawUnsafe<{ tags: string[] }[]>(
-        `SELECT "enrichmentTags" AS tags FROM "Track" WHERE id = $1`, trackId,
-    );
-    return row?.tags ?? [];
-}
-
 async function wipe(): Promise<void> {
     // The fingerprint pool runs detached: never let an in-flight answer
     // land after the rows it belongs to are gone.
@@ -261,7 +253,7 @@ afterAll(async () => {
 });
 
 describe("re-deciding and retrying wipe nothing", () => {
-    it("redecideEverything keeps every embedding and every tag", async () => {
+    it("redecideEverything keeps every embedding", async () => {
         await seedAnsweredTrack(id("keep"));
 
         const { reopened } = await redecideEverything();
@@ -270,11 +262,9 @@ describe("re-deciding and retrying wipe nothing", () => {
         // The embedding is an ANSWER. Re-deciding re-asks the question; it
         // does not delete the answer that is already in the table.
         expect(await embeddingCount(id("keep"))).toBe(1);
-        expect(await tags(id("keep"))).toEqual(expect.arrayContaining(["rock", "alternative"]));
-        expect(await tags(id("keep"))).toEqual(["rock", "alternative"]);
     });
 
-    it("retryFailedAndBlocked keeps every embedding and every tag", async () => {
+    it("retryFailedAndBlocked keeps every embedding", async () => {
         await seedAnsweredTrack(id("keep2"));
 
         const work = await retryFailedAndBlocked(50);
@@ -282,10 +272,9 @@ describe("re-deciding and retrying wipe nothing", () => {
         expect(work.filter((w) => w.trackId.startsWith(id("keep2")))).toHaveLength(0);
 
         expect(await embeddingCount(id("keep2"))).toBe(1);
-        expect(await tags(id("keep2"))).toEqual(["rock", "alternative"]);
     });
 
-    it("running both controls back to back still deletes and clears nothing", async () => {
+    it("running both controls back to back still deletes nothing", async () => {
         await seedAnsweredTrack(id("keep3"));
 
         await redecideEverything();
@@ -294,7 +283,6 @@ describe("re-deciding and retrying wipe nothing", () => {
         // Even after re-deciding everything and retrying whatever is owed,
         // the answers already on disk survive untouched.
         expect(await embeddingCount(id("keep3"))).toBe(1);
-        expect(await tags(id("keep3"))).toEqual(["rock", "alternative"]);
         const track = await prisma.track.findUnique({ where: { id: id("keep3") } });
         expect(track).not.toBeNull();
     });

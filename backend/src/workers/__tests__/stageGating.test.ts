@@ -185,7 +185,6 @@ async function seedTrack(
             fileSize: 1000,
             analysisStatus: opts.analysisStatus ?? "pending",
             analysisRetryCount: opts.retryCount ?? 0,
-            enrichmentTags: [],
         },
     });
     await putStage(trackId, "recording", opts.recordingStatus ?? "done", { attempt: 1 });

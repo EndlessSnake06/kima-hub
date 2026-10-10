@@ -188,7 +188,6 @@ async function seedLibrary(): Promise<void> {
             filePath: `/tmp/${id("t1")}.flac`,
             fileModified: new Date(),
             fileSize: 1000,
-            enrichmentTags: [] as unknown as string[],
             analysisStatus: "pending" as never,
             analysisRetryCount: 0,
         } as never,
