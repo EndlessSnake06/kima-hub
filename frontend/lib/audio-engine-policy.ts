@@ -155,8 +155,7 @@ type TransitionResult = { snapshot: EngineSnapshot; effects: Effect[] };
  * Start the nudge rung. Increments attempts and arms the nudge-settle timer.
  * Does NOT mutate the input.
  */
-function startNudgeRung(snap: EngineSnapshot, now: number): TransitionResult {
-    void now;
+function startNudgeRung(snap: EngineSnapshot): TransitionResult {
     const newAttempts = snap.attempts + 1;
     return {
         snapshot: {
@@ -175,11 +174,7 @@ function startNudgeRung(snap: EngineSnapshot, now: number): TransitionResult {
 }
 
 /** Starts the reload rung without counting an attempt (the caller did). Parks instead of playing when hidden. */
-function startReloadRung(
-    snap: EngineSnapshot,
-    resumeAt: number,
-    _now: number,
-): TransitionResult {
+function startReloadRung(snap: EngineSnapshot, resumeAt: number): TransitionResult {
     if (!snap.src) {
         return {
             snapshot: {
@@ -256,11 +251,7 @@ function enterError(
  * Escalate: nudge, then reload, then error. Attempts increment once per
  * nudge/reload pair, including a native-error that skips straight to reload.
  */
-function escalate(
-    snap: EngineSnapshot,
-    now: number,
-    skipNudge: boolean,
-): TransitionResult {
+function escalate(snap: EngineSnapshot, skipNudge: boolean): TransitionResult {
     if (snap.attempts >= RECOVERY.maxAttempts) {
         return enterError(snap, "Playback stalled repeatedly", 99);
     }
@@ -270,10 +261,10 @@ function escalate(
         if (withAttempts.attempts >= RECOVERY.maxAttempts) {
             return enterError(withAttempts, "Playback stalled repeatedly", 99);
         }
-        return startReloadRung(withAttempts, snap.currentTime, now);
+        return startReloadRung(withAttempts, snap.currentTime);
     }
 
-    return startNudgeRung(snap, now);
+    return startNudgeRung(snap);
 }
 
 export function transition(
@@ -420,7 +411,7 @@ export function transition(
                     currentTime: currentTime,
                     duration: duration,
                 };
-                const result = escalate(updated, event.now, true);
+                const result = escalate(updated, true);
                 return result;
             }
 
@@ -513,7 +504,7 @@ export function transition(
                         effects: [...cancelBothTimers(), { kind: "emit-error" }],
                     };
                 }
-                const result = startReloadRung(updated, snap.currentTime, event.now);
+                const result = startReloadRung(updated, snap.currentTime);
                 return result;
             }
 
@@ -597,7 +588,7 @@ export function transition(
                 // Starved -- buffering deadline.
                 if (timeSinceProgress >= RECOVERY.bufferingDeadlineMs) {
                     nextSnap = { ...nextSnap, status: "buffering" };
-                    const result = escalate(nextSnap, event.now, false);
+                    const result = escalate(nextSnap, false);
                     return result;
                 }
                 // Not at deadline yet -- just classify.
@@ -609,7 +600,7 @@ export function transition(
 
             // readyState >= 3: stall deadline.
             if (timeSinceProgress >= RECOVERY.stallDeadlineMs) {
-                const result = escalate(nextSnap, event.now, false);
+                const result = escalate(nextSnap, false);
                 return result;
             }
 
@@ -626,7 +617,7 @@ export function transition(
                 if (snap.attempts >= RECOVERY.maxAttempts) {
                     return enterError(snap, "Playback stalled repeatedly", 99);
                 }
-                const result = startReloadRung(snap, snap.currentTime, event.now);
+                const result = startReloadRung(snap, snap.currentTime);
                 return result;
             }
 
@@ -640,7 +631,7 @@ export function transition(
                     return enterError(snap, "Playback stalled repeatedly", 99);
                 }
                 // Start nudge rung for next cycle.
-                const result = startNudgeRung(snap, event.now);
+                const result = startNudgeRung(snap);
                 return result;
             }
 
@@ -650,7 +641,7 @@ export function transition(
                     return { snapshot: snap, effects: [] };
                 }
                 const updated: EngineSnapshot = { ...snap, status: "buffering" };
-                return escalate(updated, event.now, false);
+                return escalate(updated, false);
             }
 
             return { snapshot: snap, effects: [] };
@@ -695,7 +686,7 @@ export function transition(
                             99,
                         );
                     }
-                    const result = startReloadRung(updated, snap.currentTime, event.now);
+                    const result = startReloadRung(updated, snap.currentTime);
                     return result;
                 }
                 return enterError(snap, "Playback stalled repeatedly", 99);
