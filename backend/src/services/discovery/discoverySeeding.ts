@@ -5,6 +5,7 @@ import { logger } from '../../utils/logger';
 import { lidarrService } from '../lidarr';
 import { subWeeks } from 'date-fns';
 import { normalizeForMatching, stringSimilarity } from '../../utils/normalization';
+import { LIBRARY_LOCATION } from '../libraryFilters';
 
 export interface SeedArtist {
     name: string;
@@ -69,7 +70,7 @@ export class DiscoverySeeding {
         const tracks = await prisma.track.findMany({
             where: {
                 id: { in: weightedPlays.map((p) => p.trackId) },
-                album: { location: 'LIBRARY' },
+                album: { location: LIBRARY_LOCATION },
             },
             include: { album: { include: { artist: true } } },
         });
@@ -99,12 +100,12 @@ export class DiscoverySeeding {
         const artistsWithCounts = await prisma.artist.findMany({
             where: {
                 albums: {
-                    some: { location: 'LIBRARY' },
+                    some: { location: LIBRARY_LOCATION },
                 },
             },
             include: {
                 albums: {
-                    where: { location: 'LIBRARY' },
+                    where: { location: LIBRARY_LOCATION },
                     include: {
                         _count: {
                             select: { tracks: true },
@@ -239,7 +240,7 @@ export class DiscoverySeeding {
                 const normTitle = normalizeForMatching(albumTitle);
                 const candidates = albums.filter(
                     (a) =>
-                        a.location === 'LIBRARY' &&
+                        a.location === LIBRARY_LOCATION &&
                         normalizeForMatching(a.artistName).startsWith(artistFirstWord)
                 );
 
