@@ -289,19 +289,8 @@ def load_pmemo(root: str) -> EvalSet:
                    scale='0-1')
 
 
-def load_pool(root: str) -> EvalSet:
-    """Distillation training pool: MTG-Jamendo (apache-2.0). No labels, no
-    triplets — ids are the track ids; artist splits come from the MTG
-    metadata at sampling time, not here."""
-    import glob
-    paths = sorted(glob.glob(os.path.join(root, 'pool', 'audio', '*.opus')))
-    ids = [os.path.splitext(os.path.basename(p))[0] for p in paths]
-    return EvalSet('pool', ids, paths)
-
-
 LOADERS = {
     'mtt_triplets': load_mtt,
-    'pool': load_pool,
     'soundtracks_set1': load_soundtracks_set1,
     'soundtracks_set2': load_soundtracks_set2,
     'isovat': load_isovat,
