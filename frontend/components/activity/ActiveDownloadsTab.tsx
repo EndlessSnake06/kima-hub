@@ -4,10 +4,11 @@ import { useState } from "react";
 import { Download, Loader2, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { useActiveDownloads } from "@/hooks/useNotifications";
+import { EmptyState } from "../ui/EmptyState";
+import { GradientSpinner } from "../ui/GradientSpinner";
 import { DownloadRow, RowAction } from "./DownloadRow";
 
 export function ActiveDownloadsTab() {
-    // Use shared React Query hook instead of duplicate polling
     const { downloads, isLoading: loading, refetch } = useActiveDownloads();
     const [cancelling, setCancelling] = useState<Set<string>>(new Set());
 
@@ -44,20 +45,18 @@ export function ActiveDownloadsTab() {
     if (loading) {
         return (
             <div className="flex items-center justify-center py-8">
-                <div className="w-5 h-5 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
+                <GradientSpinner size="sm" />
             </div>
         );
     }
 
     if (downloads.length === 0) {
         return (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-                <Download className="w-8 h-8 text-[var(--text-muted)] mb-3" />
-                <p className="text-sm text-[var(--text-muted)]">No active downloads</p>
-                <p className="text-xs text-[var(--text-muted)] mt-1">
-                    Downloads will appear here
-                </p>
-            </div>
+            <EmptyState
+                icon={<Download className="w-8 h-8" />}
+                title="No active downloads"
+                description="Downloads will appear here"
+            />
         );
     }
 

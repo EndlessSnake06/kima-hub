@@ -92,7 +92,6 @@ export function TopBar() {
             queryClient.removeQueries({ queryKey: ["scan-status", response.jobId] });
             setScanJobId(response.jobId);
         } catch (error) {
-            console.error("Failed to trigger library scan:", error);
             // A refused scan never starts, so nothing else reports it.
             const message =
                 error instanceof Error ? error.message : String(error);
@@ -108,8 +107,7 @@ export function TopBar() {
     const handleLogout = async () => {
         try {
             await logout();
-        } catch (error) {
-            console.error("Logout error:", error);
+        } catch {
             notify.error("Failed to logout");
         }
     };

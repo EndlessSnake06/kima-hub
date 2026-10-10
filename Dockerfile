@@ -334,7 +334,6 @@ RUN npm run build && \
     rm -rf src tests __tests__ tsconfig*.json
 
 COPY backend/docker-entrypoint.sh ./
-COPY backend/healthcheck.js ./healthcheck-backend.js
 
 # Create log directory (cache will be in /data volume)
 RUN mkdir -p /app/backend/logs

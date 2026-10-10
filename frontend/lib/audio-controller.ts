@@ -124,10 +124,6 @@ export class AudioController {
         return el;
     }
 
-    // -------------------------------------------------------------------------
-    // Battle-tested iOS code -- preserved verbatim
-    // -------------------------------------------------------------------------
-
     // Claims the iOS "playback" session category. An interruption can hand the
     // category to another app, so an explicit resume passes force to re-claim it;
     // without that the resume is silent. The latch only skips the automatic paths.
@@ -672,8 +668,7 @@ export class AudioController {
         const eligible =
             !!this.expectedNextTrackId &&
             this.preloadedTrackId === this.expectedNextTrackId &&
-            this.idleReady &&
-            !!this.audioNext;
+            this.idleReady;
 
         if (!eligible) {
             this.dispatch({
@@ -993,7 +988,7 @@ export class AudioController {
         this.volume = Math.max(0, Math.min(1, volume));
         if (!this.isMuted) {
             this.audio.volume = this.volume;
-            if (this.audioNext) this.audioNext.volume = this.volume;
+            this.audioNext.volume = this.volume;
         }
     }
 
@@ -1001,11 +996,11 @@ export class AudioController {
         this.isMuted = muted;
         // audio.muted, since audio.volume is read-only on iOS.
         this.audio.muted = muted;
-        if (this.audioNext) this.audioNext.muted = muted;
+        this.audioNext.muted = muted;
         // Also set volume for non-iOS devices
         if (!muted) {
             this.audio.volume = this.volume;
-            if (this.audioNext) this.audioNext.volume = this.volume;
+            this.audioNext.volume = this.volume;
         }
     }
 
@@ -1027,9 +1022,7 @@ export class AudioController {
             }
 
             this.audio.volume = this.isMuted ? 0 : this.volume;
-            if (this.audioNext) {
-                this.audioNext.volume = this.isMuted ? 0 : this.volume;
-            }
+            this.audioNext.volume = this.isMuted ? 0 : this.volume;
         } catch (error) {
             console.error("[AudioController] Failed to initialize from storage:", error);
         }

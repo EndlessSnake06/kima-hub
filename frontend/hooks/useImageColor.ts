@@ -317,9 +317,8 @@ export function useImageColor(imageUrl: string | null | undefined) {
                     localStorage.setItem(cacheKey, JSON.stringify(palette));
                 } catch { /* localStorage unavailable */ }
             })
-            .catch((error) => {
+            .catch(() => {
                 if (cancelled) return;
-                console.error("[useImageColor] Failed to extract colors:", error.message || error);
                 setColors(PLACEHOLDER_PALETTE);
                 setIsLoading(false);
                 try { localStorage.removeItem(cacheKey); } catch { /* localStorage unavailable */ }

@@ -104,7 +104,6 @@ export function MetadataEditor({
             onSave?.(response);
             setIsOpen(false);
         } catch (error: unknown) {
-            console.error("Failed to update metadata:", error);
             notify.error("Failed to update metadata", { message: error instanceof Error ? error.message : undefined });
         } finally {
             setIsSaving(false);
@@ -399,23 +398,23 @@ export function MetadataEditor({
 
                         <div className="flex items-center justify-end gap-3 p-6 border-t border-white/10">
                             {hasOverrides && (
-                                <button
+                                <Button
+                                    variant="danger"
                                     onClick={handleReset}
                                     disabled={isSaving || isResetting}
-                                    className="px-6 py-2 rounded-full bg-danger/20 hover:bg-danger/30 text-danger-light font-bold transition-all border border-danger/30 disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     {isResetting
                                         ? "Resetting..."
                                         : "Reset to Original"}
-                                </button>
+                                </Button>
                             )}
-                            <button
+                            <Button
+                                variant="secondary"
                                 onClick={handleClose}
-                                className="px-6 py-2 rounded-full bg-white/10 hover:bg-white/20 text-white font-bold transition-all"
                                 disabled={isSaving}
                             >
                                 Cancel
-                            </button>
+                            </Button>
                             <Button
                                 variant="primary"
                                 onClick={handleSave}

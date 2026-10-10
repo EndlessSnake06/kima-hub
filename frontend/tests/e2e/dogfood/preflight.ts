@@ -8,12 +8,10 @@ export interface LibraryFacts {
     albums: number;
     artists: number;
     tracks: number;
-    playlists: number;
     /** Tracks carrying analyzer output (bpm/key/energy) -- proves the pipeline ran. */
     tracksWithAudioFeatures: number;
     /** Tracks with a CLAP embedding, which is what the vibe map is built from. */
     embeddedTracks: number;
-    podcasts: number;
     audiobooks: number;
 }
 
@@ -42,12 +40,10 @@ export async function readLibraryFacts(
     api: APIRequestContext,
     token: string,
 ): Promise<LibraryFacts> {
-    const [albums, artists, tracks, playlists, podcasts, audiobooks] = await Promise.all([
+    const [albums, artists, tracks, audiobooks] = await Promise.all([
         getJson<{ total: number }>(api, "/api/library/albums?limit=1", token),
         getJson<{ total: number }>(api, "/api/library/artists?limit=1", token),
         getJson<{ total: number }>(api, "/api/library/tracks?limit=1", token),
-        getJson<unknown>(api, "/api/playlists", token),
-        getJson<unknown>(api, "/api/podcasts", token),
         getJson<unknown>(api, "/api/audiobooks", token),
     ]);
 
@@ -85,10 +81,8 @@ export async function readLibraryFacts(
         albums: albums?.total ?? 0,
         artists: artists?.total ?? 0,
         tracks: tracks?.total ?? 0,
-        playlists: countOf(playlists),
         tracksWithAudioFeatures: withFeatures,
         embeddedTracks: progress?.clapEmbeddings?.completed ?? 0,
-        podcasts: countOf(podcasts),
         audiobooks: countOf(audiobooks),
     };
 }

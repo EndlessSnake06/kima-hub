@@ -39,6 +39,18 @@ export interface VibePathTrack {
     artistName: string;
 }
 
+/** Similar-tracks answers share this shape; /vibe/similar and /vibe/alchemy send no trackNo. */
+export interface VibeTrack {
+    id: string;
+    title: string;
+    duration: number;
+    trackNo?: number;
+    distance: number;
+    similarity: number;
+    album: { id: string; title: string; coverUrl: string | null };
+    artist: { id: string; name: string };
+}
+
 /**
  * The 1.11 release window's mood-mix answer (backend services/releases/moodMixes.ts).
  * "remove" clears a retired mix and does the same as "rebuild".
@@ -285,10 +297,6 @@ class ApiClient {
         }
     }
 
-    private getBaseUrl(): string {
-        return getApiBaseUrl();
-    }
-
     /**
      * Refresh the access token using the refresh token.
      * Deduplicates concurrent refresh calls -- all concurrent 401s share one refresh attempt.
@@ -367,7 +375,7 @@ class ApiClient {
         let response: Response;
         try {
             response = await fetch(
-                `${this.getBaseUrl()}/api/auth/refresh`,
+                `${getApiBaseUrl()}/api/auth/refresh`,
                 {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -434,7 +442,7 @@ class ApiClient {
         }
 
         // All API endpoints are prefixed with /api
-        const url = `${this.getBaseUrl()}/api${endpoint}`;
+        const url = `${getApiBaseUrl()}/api${endpoint}`;
 
         const response = await fetch(url, {
             ...fetchOptions,
@@ -737,7 +745,7 @@ class ApiClient {
 
     /** `<audio>` cannot send headers, so the access token rides in the query; a token near expiry is refreshed in the background. */
     private tokenizedUrl(path: string): string {
-        const baseUrl = `${this.getBaseUrl()}${path}`;
+        const baseUrl = `${getApiBaseUrl()}${path}`;
         const token = this.getCurrentToken();
         if (this.tokenExpiresWithin60Min()) void this.ensureFreshToken();
         if (token) {
@@ -772,7 +780,7 @@ class ApiClient {
 
     /** Cover art URL for an id, URL or path; the token lets a canvas read its pixels for colour extraction. */
     getCoverArtUrl(coverId: string, size?: number, includeToken = true): string {
-        const baseUrl = this.getBaseUrl();
+        const baseUrl = getApiBaseUrl();
         const token = includeToken ? this.getCurrentToken() : null;
 
         // Check if this is an audiobook cover path (served by audiobooks endpoint, not proxied)
@@ -947,7 +955,7 @@ class ApiClient {
         playlistId: string,
         pendingTrackId: string
     ): string {
-        const baseUrl = `${this.getBaseUrl()}/api/playlists/${encodeURIComponent(
+        const baseUrl = `${getApiBaseUrl()}/api/playlists/${encodeURIComponent(
             playlistId
         )}/pending/${encodeURIComponent(pendingTrackId)}/preview/stream`;
         const token = this.getCurrentToken();
@@ -1222,7 +1230,7 @@ class ApiClient {
     }
 
     getTrackPreviewStreamUrl(artistName: string, trackTitle: string): string {
-        const baseUrl = `${this.getBaseUrl()}/api/artists/preview/${encodeURIComponent(
+        const baseUrl = `${getApiBaseUrl()}/api/artists/preview/${encodeURIComponent(
             artistName
         )}/${encodeURIComponent(trackTitle)}/stream`;
         const token = this.getCurrentToken();
@@ -1248,7 +1256,7 @@ class ApiClient {
     }
 
     getAudiobookStreamUrl(id: string, trackIndex = 0): string {
-        const baseUrl = `${this.getBaseUrl()}/api/audiobooks/${id}/stream`;
+        const baseUrl = `${getApiBaseUrl()}/api/audiobooks/${id}/stream`;
         const token = this.getCurrentToken();
         if (this.tokenExpiresWithin60Min()) void this.ensureFreshToken();
         const params = new URLSearchParams();
@@ -1985,49 +1993,14 @@ class ApiClient {
 
     // Vibe (CLAP Similarity) API
     async getVibeSimilarTracks(trackId: string, limit = 20, signal?: AbortSignal) {
-        return this.request<{
-            sourceTrackId: string;
-            tracks: Array<{
-                id: string;
-                title: string;
-                duration: number;
-                // /vibe/similar sends no trackNo.
-                distance: number;
-                similarity: number;
-                album: {
-                    id: string;
-                    title: string;
-                    coverUrl: string | null;
-                };
-                artist: {
-                    id: string;
-                    name: string;
-                };
-            }>;
-        }>(`/vibe/similar/${trackId}?limit=${limit}`, { signal });
+        return this.request<{ sourceTrackId: string; tracks: VibeTrack[] }>(
+            `/vibe/similar/${trackId}?limit=${limit}`,
+            { signal }
+        );
     }
 
     async vibeSearch(query: string, limit = 20) {
-        return this.request<{
-            query: string;
-            tracks: Array<{
-                id: string;
-                title: string;
-                duration: number;
-                trackNo: number;
-                distance: number;
-                similarity: number;
-                album: {
-                    id: string;
-                    title: string;
-                    coverUrl: string | null;
-                };
-                artist: {
-                    id: string;
-                    name: string;
-                };
-            }>;
-        }>("/vibe/search", {
+        return this.request<{ query: string; tracks: VibeTrack[] }>("/vibe/search", {
             method: "POST",
             body: JSON.stringify({ query, limit }),
         });
@@ -2051,17 +2024,7 @@ class ApiClient {
     }
 
     async getVibeAlchemy(add: string[], subtract: string[], limit = 20) {
-        return this.request<{
-            tracks: Array<{
-                id: string;
-                title: string;
-                duration: number;
-                distance: number;
-                similarity: number;
-                album: { id: string; title: string; coverUrl: string | null };
-                artist: { id: string; name: string };
-            }>;
-        }>("/vibe/alchemy", {
+        return this.request<{ tracks: VibeTrack[] }>("/vibe/alchemy", {
             method: "POST",
             body: JSON.stringify({ add, subtract, limit }),
         });
@@ -2134,7 +2097,7 @@ class ApiClient {
         formData.append("file", file);
         formData.append("playlistName", playlistName);
 
-        const response = await fetch(`${this.getBaseUrl()}/api/spotify/import/m3u`, {
+        const response = await fetch(`${getApiBaseUrl()}/api/spotify/import/m3u`, {
             method: "POST",
             headers: { Authorization: `Bearer ${this.getToken()}` },
             body: formData,
@@ -2171,5 +2134,4 @@ class ApiClient {
     }
 }
 
-// Create a singleton instance without passing baseUrl - it will be determined dynamically
 export const api = new ApiClient();

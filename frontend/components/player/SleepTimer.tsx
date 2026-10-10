@@ -92,10 +92,7 @@ export function SleepTimer({ size = "md" }: SleepTimerProps) {
                     ref={popoverRef}
                     role="dialog"
                     aria-label="Sleep timer options"
-                    className={cn(
-                        isOpen ? "animate-panel-up" : "animate-panel-down",
-                        "absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 bg-[var(--bg-hover)] border border-white/10 rounded-lg overflow-hidden z-(--z-dropdown)"
-                    )}>
+                    className="animate-panel-up absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 bg-[var(--bg-hover)] border border-white/10 rounded-lg overflow-hidden z-(--z-dropdown)">
                     <div className="px-3 py-2 border-b border-white/[0.06]">
                         <span className="text-xs text-[var(--text-secondary)] font-medium">Sleep Timer</span>
                     </div>

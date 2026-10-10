@@ -104,10 +104,6 @@ export class BookSession {
         return { file: best, fileTime };
     }
 
-    absolute(file: BookFile, fileTime: number): number {
-        return file.startOffset + fileTime;
-    }
-
     isLastFile(file: BookFile): boolean {
         const last = this.files[this.files.length - 1];
         return last.index === file.index;

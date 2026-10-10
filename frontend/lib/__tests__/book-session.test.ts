@@ -76,13 +76,6 @@ describe("BookSession.open", () => {
         ).rejects.toBeInstanceOf(BookSessionUnavailableError);
     });
 
-    it("throws when trackCount is null and no tracks anywhere", async () => {
-        mockGetAudiobook.mockResolvedValueOnce({ trackCount: null });
-        await expect(
-            BookSession.open({ id: "book6", duration: 3600, trackCount: undefined })
-        ).rejects.toBeInstanceOf(BookSessionUnavailableError);
-    });
-
     it("never synthesizes when trackCount is null/undefined (UNKNOWN)", async () => {
         mockGetAudiobook.mockResolvedValueOnce({ trackCount: null });
         await expect(
@@ -195,49 +188,6 @@ describe("BookSession.locate", () => {
         const { file, fileTime } = session.locate(1199);
         expect(file.index).toBe(1);
         expect(fileTime).toBe(1199);
-    });
-});
-
-describe("BookSession.absolute", () => {
-    let session: BookSession;
-
-    beforeEach(async () => {
-        session = await BookSession.open({
-            id: "abs-test",
-            duration: 2700,
-            tracks: [TRACK_A, TRACK_B, TRACK_C],
-        });
-    });
-
-    it("round-trips locate -> absolute for a mid-file time", () => {
-        const bookTime = 1500;
-        const { file, fileTime } = session.locate(bookTime);
-        expect(session.absolute(file, fileTime)).toBe(bookTime);
-    });
-
-    it("round-trips locate -> absolute for t=0", () => {
-        const { file, fileTime } = session.locate(0);
-        expect(session.absolute(file, fileTime)).toBe(0);
-    });
-
-    it("round-trips locate -> absolute for t=duration", () => {
-        const { file, fileTime } = session.locate(2700);
-        expect(session.absolute(file, fileTime)).toBe(2700);
-    });
-
-    it("round-trips locate -> absolute for each file boundary", () => {
-        for (const t of [0, 1200, 2100, 2700]) {
-            const { file, fileTime } = session.locate(t);
-            expect(session.absolute(file, fileTime)).toBe(t);
-        }
-    });
-
-    it("computes absolute for first file correctly", () => {
-        expect(session.absolute(TRACK_A, 300)).toBe(300);
-    });
-
-    it("computes absolute for middle file correctly", () => {
-        expect(session.absolute(TRACK_B, 450)).toBe(1650);
     });
 });
 

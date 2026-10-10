@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Album, AlbumSource } from "../types";
 import { ReactNode } from "react";
 import { MetadataEditControls } from "@/components/MetadataEditControls";
-import { useAlbumDisplayData } from "@/hooks/useMetadataDisplay";
+import { getAlbumDisplayData } from "@/hooks/useMetadataDisplay";
 import type { ColorPalette } from "@/hooks/useImageColor";
 import { formatDuration, plural } from "@/lib/format";
 import { HeroBackdrop } from "@/components/ui/HeroBackdrop";
@@ -28,7 +28,7 @@ export function AlbumHero({
     onReload,
     children,
 }: AlbumHeroProps) {
-    const displayData = useAlbumDisplayData(album);
+    const displayData = getAlbumDisplayData(album);
 
     const totalDuration = album.duration ? formatDuration(album.duration) : "";
 

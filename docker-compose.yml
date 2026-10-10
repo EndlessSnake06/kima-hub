@@ -193,9 +193,6 @@ services:
             - "8191:8191"
         restart: unless-stopped
 
-    # NOTE: Soulseek is now handled directly by the backend using slsk-client
-    # No Docker container needed - downloads go straight to Singles/Artist/Album/
-
     # qBittorrent - Torrent client
     qbittorrent:
         image: lscr.io/linuxserver/qbittorrent:latest

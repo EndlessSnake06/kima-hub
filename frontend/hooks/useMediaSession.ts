@@ -240,8 +240,8 @@ export function useMediaSession() {
                     position: Math.min(currentTime, duration),
                 });
                 lastPositionUpdateRef.current = now;
-            } catch (error) {
-                console.warn("[MediaSession] Failed to set position state:", error);
+            } catch {
+                // the lock screen keeps the last position it was given
             }
         }
     }, [currentTime, currentTrack, currentAudiobook, currentPodcast]);

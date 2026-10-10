@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { EmptyState } from "../ui/EmptyState";
 import { GradientSpinner } from "../ui/GradientSpinner";
 import { useAuth } from "@/lib/auth-context";
 import { timeAgo } from "@/lib/relative-time";
@@ -108,20 +109,18 @@ export function ImportsTab() {
     if (isLoading) {
         return (
             <div className="flex items-center justify-center py-8">
-                <div className="w-5 h-5 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
+                <GradientSpinner size="sm" />
             </div>
         );
     }
 
     if (imports.length === 0) {
         return (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-                <ListMusic className="w-8 h-8 text-[var(--text-muted)] mb-3" />
-                <p className="text-sm text-[var(--text-muted)]">No imports yet</p>
-                <p className="text-xs text-[var(--text-muted)] mt-1">
-                    Playlist imports will appear here
-                </p>
-            </div>
+            <EmptyState
+                icon={<ListMusic className="w-8 h-8" />}
+                title="No imports yet"
+                description="Playlist imports will appear here"
+            />
         );
     }
 
