@@ -11,6 +11,7 @@ import { getSystemSettings } from "../utils/systemSettings";
 import { soulseekService } from "./soulseek";
 import { simpleDownloadManager } from "./simpleDownloadManager";
 import { musicBrainzService } from "./musicbrainz";
+import { isLidarrConfigured } from "./lidarrClient";
 import { failureCause } from "../utils/outcome";
 import { getArtistCorrection } from "./artistCorrection";
 import { isMbid } from "./artistIdentity";
@@ -121,11 +122,7 @@ class AcquisitionService {
 
         // Determine actual availability
         const hasSoulseek = await soulseekService.isAvailable();
-        const hasLidarr = !!(
-            settings?.lidarrEnabled &&
-            settings?.lidarrUrl &&
-            settings?.lidarrApiKey
-        );
+        const hasLidarr = isLidarrConfigured(settings);
 
         // Case 1: No sources available
         if (!hasSoulseek && !hasLidarr) {
@@ -169,7 +166,7 @@ class AcquisitionService {
             primaryFailureFallback === alternative;
 
         // Only auto-enable fallback if the setting is truly undefined/null (first-time users)
-        // "none" = explicit "Skip Track" choice, respect it (Fixes #68)
+        // "none" is the explicit "skip track" choice and stays off
         if (!useFallback && (primaryFailureFallback === undefined || primaryFailureFallback === null)) {
             useFallback = true;
             logger.debug(
@@ -310,11 +307,7 @@ class AcquisitionService {
         // Check configuration
         const soulseekAvailable = await soulseekService.isAvailable();
         const settings = await getSystemSettings();
-        const lidarrAvailable = !!(
-            settings?.lidarrEnabled &&
-            settings?.lidarrUrl &&
-            settings?.lidarrApiKey
-        );
+        const lidarrAvailable = isLidarrConfigured(settings);
 
         if (!soulseekAvailable && !lidarrAvailable) {
             throw new ConfigurationError(
@@ -804,19 +797,6 @@ class AcquisitionService {
             });
             if (existingJob) return existingJob;
             return { id: context.existingJobId };
-        }
-
-        // Validate userId before creating download job to prevent foreign key constraint violations
-        if (!context.userId || typeof context.userId !== 'string' || context.userId === 'NaN' || context.userId === 'undefined' || context.userId === 'null') {
-            logger.error(
-                `[Acquisition] Invalid userId in context: ${JSON.stringify({
-                    userId: context.userId,
-                    typeofUserId: typeof context.userId,
-                    albumTitle: request.albumTitle,
-                    artistName: request.artistName
-                })}`
-            );
-            throw new Error(`Invalid userId in acquisition context: ${context.userId}`);
         }
 
         // Dedup key: use MBID if available, otherwise use artist+album as identifier

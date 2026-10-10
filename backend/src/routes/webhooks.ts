@@ -8,6 +8,7 @@ import { processStoredEvent } from "../services/webhookHandlers";
 import { WEBHOOK_SECRET_HEADER } from "../services/lidarrWebhookSetup";
 import { webhookLimiter } from "../middleware/rateLimiter";
 import { getSystemSettings } from "../utils/systemSettings";
+import { isLidarrConfigured } from "../services/lidarrClient";
 import { logger } from "../utils/logger";
 import crypto from "crypto";
 import { webhookEventStore } from "../services/webhookEventStore";
@@ -50,11 +51,7 @@ router.post("/lidarr", async (req, res) => {
     try {
         // Check if Lidarr is enabled before processing any webhooks
         const settings = await getSystemSettings();
-        if (
-            !settings?.lidarrEnabled ||
-            !settings?.lidarrUrl ||
-            !settings?.lidarrApiKey
-        ) {
+        if (!isLidarrConfigured(settings)) {
             logger.debug(
                 `[WEBHOOK] Lidarr webhook received but Lidarr is disabled. Ignoring.`
             );

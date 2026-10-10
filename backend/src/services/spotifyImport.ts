@@ -12,6 +12,7 @@ import {
 } from "../utils/playlistLogger";
 import { notificationService } from "./notificationService";
 import { getSystemSettings } from "../utils/systemSettings";
+import { isLidarrConfigured } from "./lidarrClient";
 import { prisma, Prisma } from "../utils/db";
 import { LIBRARY_ALBUM_WHERE, LIBRARY_LOCATION } from "./libraryFilters";
 import { redisClient } from "../utils/redis";
@@ -671,7 +672,7 @@ class SpotifyImportService {
 
     // Check if Lidarr is configured -- MusicBrainz resolution is only needed for Lidarr
     const previewSettings = await getSystemSettings();
-    const lidarrEnabled = !!(previewSettings?.lidarrEnabled && previewSettings?.lidarrUrl && previewSettings?.lidarrApiKey);
+    const lidarrEnabled = isLidarrConfigured(previewSettings);
 
     // PHASE 0: Early MusicBrainz resolution for "Unknown Album" tracks
     // This MUST happen BEFORE grouping so tracks get grouped by actual albums
@@ -1214,26 +1215,6 @@ class SpotifyImportService {
     albumMbidsToDownload: string[],
     preview: ImportPreview,
   ): Promise<ImportJob> {
-    // Validate userId to prevent NaN/invalid values from entering the system
-    if (
-      !userId ||
-      typeof userId !== "string" ||
-      userId === "NaN" ||
-      userId === "undefined" ||
-      userId === "null"
-    ) {
-      logger?.error(
-        `[Spotify Import] Invalid userId provided to startImport: ${JSON.stringify(
-          {
-            userId,
-            typeofUserId: typeof userId,
-            playlistName,
-          },
-        )}`,
-      );
-      throw new Error(`Invalid userId provided: ${userId}`);
-    }
-
     const jobId = `import_${Date.now()}_${Math.random()
       .toString(36)
       .substring(7)}`;
@@ -1398,24 +1379,6 @@ class SpotifyImportService {
                 logger?.debug(
                   `[Spotify Import] Requesting: ${album.artistName} - ${album.albumName}`,
                 );
-
-                // Validate userId before creating acquisition context
-                if (
-                  !job.userId ||
-                  typeof job.userId !== "string" ||
-                  job.userId === "NaN" ||
-                  job.userId === "undefined" ||
-                  job.userId === "null"
-                ) {
-                  logger?.error(
-                    `[Spotify Import] Invalid userId in job: ${JSON.stringify({
-                      jobId: job.id,
-                      userId: job.userId,
-                      typeofUserId: typeof job.userId,
-                    })}`,
-                  );
-                  throw new Error(`Invalid userId in import job: ${job.userId}`);
-                }
 
                 // Acquisition context for tracking
                 const context = {
