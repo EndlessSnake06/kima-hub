@@ -204,3 +204,5 @@ frontend/pnpm-workspace.yaml
 services/audio-analyzer-clap/cache/
 .mock/
 
+
+# Design-assistant context, kept locally
