@@ -1,9 +1,8 @@
 /**
- * What the public user (KIMA_PUBLIC_VIBE_USER) is playing right now, as a state
- * plus a stream of change events for chevron7.io's live trip. Players report
- * state changes; a track that runs out with nothing heard after it, or a pause
- * nobody returns to, ends as `stopped`. While the user has sharing turned off,
- * reports are dropped and the state reads `hidden`.
+ * What the public user (KIMA_PUBLIC_VIBE_USER) is playing right now, as a state plus
+ * a stream of change events. A track that runs out with nothing after it, or a pause
+ * nobody returns to, ends as `stopped`; while sharing is off, reports are dropped
+ * and the state reads `hidden`.
  */
 import { prisma } from "../utils/db";
 import { logger } from "../utils/logger";

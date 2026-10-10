@@ -136,9 +136,6 @@ interface CircuitState {
 class GlobalRateLimiter {
     private queues: Map<ServiceName, PQueue> = new Map();
     private circuitBreakers: Map<ServiceName, CircuitState> = new Map();
-    private globalPaused = false;
-    private globalPauseUntil = 0;
-    private concurrencyMultiplier = 1; // 1-5 multiplier for user-configurable speed
 
     constructor() {
         // Initialize queues for each service
@@ -180,13 +177,6 @@ class GlobalRateLimiter {
 
         if (!queue || !config) {
             throw new Error(`Unknown service: ${service}`);
-        }
-
-        // Check global pause
-        if (this.globalPaused && Date.now() < this.globalPauseUntil) {
-            const waitTime = this.globalPauseUntil - Date.now();
-            logger.debug(`Global rate limit pause - waiting ${waitTime}ms`);
-            await this.sleep(waitTime);
         }
 
         // Check circuit breaker
@@ -302,65 +292,12 @@ class GlobalRateLimiter {
     }
 
     /**
-     * Pause all requests globally (for severe rate limiting)
-     */
-    pauseAll(durationMs: number) {
-        this.globalPaused = true;
-        this.globalPauseUntil = Date.now() + durationMs;
-        logger.warn(`Global rate limiter paused for ${durationMs}ms`);
-    }
-
-    /**
-     * Resume all requests
-     */
-    resume() {
-        this.globalPaused = false;
-        this.globalPauseUntil = 0;
-        logger.debug("Global rate limiter resumed");
-    }
-
-    /**
-     * Get queue statistics
-     */
-    getStats(): Record<ServiceName, { pending: number; size: number }> {
-        const stats: any = {};
-        for (const [service, queue] of this.queues.entries()) {
-            stats[service] = {
-                pending: queue.pending,
-                size: queue.size,
-            };
-        }
-        return stats;
-    }
-
-    /**
-     * Wait for all pending requests to complete
-     */
-    async drain(): Promise<void> {
-        const promises = Array.from(this.queues.values()).map((queue) =>
-            queue.onIdle()
-        );
-        await Promise.all(promises);
-    }
-
-    /**
-     * Clear all pending requests
-     */
-    clear() {
-        for (const queue of this.queues.values()) {
-            queue.clear();
-        }
-    }
-
-    /**
      * Update concurrency multiplier for parallel enrichment processing
      * This allows power users to increase enrichment speed while respecting API rate limits
      * @param multiplier 1-5, where 1 is conservative and 5 is maximum
      */
     updateConcurrencyMultiplier(multiplier: number) {
         const clampedMultiplier = Math.max(1, Math.min(5, multiplier));
-        this.concurrencyMultiplier = clampedMultiplier;
-        
         logger.debug(`[Rate Limiter] Updating concurrency multiplier to ${clampedMultiplier}`);
         
         // Update all service queues with new concurrency
@@ -378,13 +315,6 @@ class GlobalRateLimiter {
         }
     }
 
-    /**
-     * Get current concurrency multiplier
-     */
-    getConcurrencyMultiplier(): number {
-        return this.concurrencyMultiplier;
-    }
-
     private sleep(ms: number): Promise<void> {
         return new Promise((resolve) => setTimeout(resolve, ms));
     }
@@ -394,4 +324,4 @@ class GlobalRateLimiter {
 export const rateLimiter = new GlobalRateLimiter();
 
 // Export types for use in other services
-export type { ServiceName, RateLimitConfig };
+export type { ServiceName };

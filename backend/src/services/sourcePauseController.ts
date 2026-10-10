@@ -14,7 +14,7 @@ export type SourceName = string;
 /** How long a source rests after a rate limit before it is tried again. */
 const DEFAULT_PAUSE_WINDOW_MS = 30_000;
 
-export interface SourcePauseState {
+interface SourcePauseState {
     source: SourceName;
     /** When the pause lifts. */
     until: Date;
@@ -23,7 +23,7 @@ export interface SourcePauseState {
     message: string | null;
 }
 
-export interface PauseOptions {
+interface PauseOptions {
     until: Date;
     code?: string;
     message?: string;

@@ -284,18 +284,6 @@ class NotificationService {
             metadata: { href: "/import/playlist" },
         });
     }
-
-    /**
-     * System notification for something an admin must act on
-     */
-    async notifySystem(userId: string, title: string, message?: string) {
-        return this.create({
-            userId,
-            type: "system",
-            title,
-            message,
-        });
-    }
 }
 
 export const notificationService = new NotificationService();

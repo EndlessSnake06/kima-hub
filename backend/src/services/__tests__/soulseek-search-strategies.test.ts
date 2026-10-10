@@ -1,6 +1,6 @@
 import { normalizeTrackTitle, prepareArtistForSearch } from "../soulseek-search-strategies";
 
-describe("normalizeTrackTitle - Classical Music", () => {
+describe("normalizeTrackTitle", () => {
     it("should strip movement numbers from classical music titles", () => {
         const input = "I. Allegro con brio";
         const result = normalizeTrackTitle(input, "aggressive");

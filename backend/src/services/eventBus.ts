@@ -38,19 +38,11 @@ class EventBus {
     private byUser = new Map<string, Set<SSESubscriber>>();
 
     subscribe(userId: string, subscriber: SSESubscriber): () => void {
-        let set = this.byUser.get(userId);
-        if (!set) {
-            set = new Set();
-            this.byUser.set(userId, set);
-        }
+        const set = this.byUser.get(userId) ?? new Set<SSESubscriber>();
+        this.byUser.set(userId, set);
         set.add(subscriber);
 
-        return () => {
-            const current = this.byUser.get(userId);
-            if (!current) return;
-            current.delete(subscriber);
-            if (current.size === 0) this.byUser.delete(userId);
-        };
+        return () => this.drop(set, subscriber);
     }
 
     /** Remove a subscriber, and the user's entry once it has none left. */

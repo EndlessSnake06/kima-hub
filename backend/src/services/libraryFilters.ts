@@ -5,7 +5,7 @@
 
 import { Prisma } from "@prisma/client";
 
-/** `Album.location` for owned albums, for raw SQL such as `shuffleTracks`. */
+/** `Album.location` for owned albums. */
 export const LIBRARY_LOCATION = "LIBRARY";
 
 /** Spread into an `Album` where-clause to scope it to owned-library albums. */

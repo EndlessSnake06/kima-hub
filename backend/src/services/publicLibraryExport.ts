@@ -1,5 +1,5 @@
 /**
- * The owned library as one gzipped JSON document for chevron7.io: every present
+ * The owned library as one gzipped JSON document for the public vibe site: every present
  * track with a map position, its raw 3-axis position, moods, energy, valence and
  * its nearest tracks by the matching formula. Rebuilt only when the library's
  * fingerprint changes, in the background; the fingerprint doubles as the ETag.

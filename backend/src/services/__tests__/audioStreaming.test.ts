@@ -119,7 +119,6 @@ function makeRes() {
 
 /**
  * A minimal PQueue-compatible class that enforces real concurrency limits.
- * Used to replace the CJS stub in concurrency tests.
  */
 class RealConcurrencyQueue {
     private concurrency: number;
@@ -252,7 +251,7 @@ describe("parseRangeHeader", () => {
 });
 
 // ---------------------------------------------------------------------------
-// streamFileWithRangeSupport -- range matrix (B8, B11)
+// streamFileWithRangeSupport -- range matrix
 // ---------------------------------------------------------------------------
 
 describe("streamFileWithRangeSupport range matrix", () => {
@@ -312,7 +311,7 @@ describe("streamFileWithRangeSupport range matrix", () => {
 });
 
 // ---------------------------------------------------------------------------
-// streamFileWithRangeSupport -- conditional requests (B4 / 1.5)
+// streamFileWithRangeSupport -- conditional requests
 // ---------------------------------------------------------------------------
 
 describe("streamFileWithRangeSupport conditional requests", () => {
@@ -392,7 +391,7 @@ describe("streamFileWithRangeSupport conditional requests", () => {
 });
 
 // ---------------------------------------------------------------------------
-// getCachedTranscode freshness -- mtime equality + size (B5 / 1.6)
+// getCachedTranscode freshness -- mtime equality + size
 // ---------------------------------------------------------------------------
 
 describe("getCachedTranscode freshness", () => {
@@ -516,7 +515,7 @@ describe("getCachedTranscode freshness", () => {
 });
 
 // ---------------------------------------------------------------------------
-// transcodeToCache watchdog (B6 / 1.3)
+// transcodeToCache watchdog
 // ---------------------------------------------------------------------------
 
 describe("transcodeToCache watchdog", () => {
@@ -617,7 +616,7 @@ describe("transcodeToCache watchdog", () => {
 });
 
 // ---------------------------------------------------------------------------
-// transcodeQueue max concurrency (B6 / 1.3)
+// transcodeQueue max concurrency
 // ---------------------------------------------------------------------------
 
 describe("transcodeQueue max concurrency", () => {
