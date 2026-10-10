@@ -10,6 +10,8 @@ import { validateUrlForFetch } from "../utils/ssrf";
 import { deezerService, mergeAndDedupePodcasts } from "../services/deezer";
 import axios from "axios";
 import fs from "fs";
+import type { OutgoingHttpHeaders } from "http";
+import type { Readable } from "stream";
 import { resolveCorsOrigin } from "./audiobooks";
 import { upstreamHeader, upstreamHeaderNumber } from "../utils/upstreamHeaders";
 
@@ -22,6 +24,83 @@ const router = Router();
 const PREVIEW_RSS_TIMEOUT_MS = 8000;
 
 router.use(requireAuthOrToken);
+
+function mapItunesPodcast(podcast: any) {
+    return {
+        id: podcast.collectionId.toString(),
+        title: podcast.collectionName,
+        author: podcast.artistName,
+        coverUrl: podcast.artworkUrl600 || podcast.artworkUrl100,
+        feedUrl: podcast.feedUrl,
+        genres: podcast.genres || [],
+        episodeCount: podcast.trackCount || 0,
+        // A string, like the column it is saved into.
+        itunesId: podcast.collectionId?.toString() ?? null,
+        isExternal: true,
+    };
+}
+
+function mapDeezerPodcast(dp: Awaited<ReturnType<typeof deezerService.searchPodcasts>>[number]) {
+    return {
+        id: `deezer:${dp.id}`,
+        title: dp.title,
+        author: "",
+        coverUrl: dp.pictureUrl,
+        feedUrl: null,
+        genres: [] as string[],
+        episodeCount: 0,
+        itunesId: null,
+        isExternal: true,
+    };
+}
+
+function corsHeaders(corsOrigin: string | null) {
+    return corsOrigin
+        ? {
+              "Access-Control-Allow-Origin": corsOrigin,
+              "Access-Control-Allow-Credentials": "true",
+          }
+        : {};
+}
+
+function pipeCachedFile(
+    res: Response,
+    filePath: string,
+    status: 200 | 206,
+    headers: OutgoingHttpHeaders,
+    range?: { start: number; end: number },
+) {
+    res.writeHead(status, headers);
+    const fileStream = fs.createReadStream(filePath, range);
+    res.on("close", () => {
+        if (!fileStream.destroyed) fileStream.destroy();
+    });
+    fileStream.pipe(res);
+    fileStream.on("error", (err) => {
+        logger.error("    Cache stream error:", err);
+        if (!res.headersSent) {
+            res.status(500).json({ error: "Failed to stream episode" });
+        } else {
+            res.end();
+        }
+    });
+}
+
+function pipeUpstream(res: Response, upstream: Readable, label: string) {
+    upstream.on("error", (err: Error) => {
+        // A client that seeks away closes the stream early; that is not an error.
+        if ((err as NodeJS.ErrnoException).code !== "ERR_STREAM_PREMATURE_CLOSE") {
+            logger.debug(`    ${label} error: ${err.message}`);
+        }
+        if (!res.writableEnded) {
+            res.end();
+        }
+    });
+    res.on("close", () => {
+        if (!upstream.destroyed) upstream.destroy();
+    });
+    upstream.pipe(res);
+}
 
 /**
  * GET /podcasts
@@ -60,7 +139,7 @@ router.get("/", requireAuth, async (req, res) => {
                     ? `/podcasts/${podcast.id}/cover`
                     : podcast.imageUrl, // Fallback to original URL if not cached
                 episodeCount: podcast.episodeCount,
-                autoDownloadEpisodes: false, // Per-podcast auto-download not yet implemented
+                autoDownloadEpisodes: false,
                 episodes: podcast.episodes.map((ep) => ({
                     id: ep.id,
                     title: ep.title,
@@ -121,32 +200,9 @@ router.get("/discover/top", requireAuthOrToken, async (req, res) => {
             logger.warn("[TOP PODCASTS] iTunes failed:", (itunesResult.reason as any)?.message || itunesResult.reason);
         }
 
-        const itunesMapped = itunesPodcasts.map((podcast: any) => ({
-            id: podcast.collectionId.toString(),
-            title: podcast.collectionName,
-            author: podcast.artistName,
-            coverUrl: podcast.artworkUrl600 || podcast.artworkUrl100,
-            feedUrl: podcast.feedUrl,
-            genres: podcast.genres || [],
-            episodeCount: podcast.trackCount || 0,
-            // A string, like every other endpoint that returns one and like the column
-            // it ends up in. Handing back the raw number made subscribing to a podcast
-            // straight from discovery fail.
-            itunesId: podcast.collectionId?.toString() ?? null,
-            isExternal: true,
-        }));
+        const itunesMapped = itunesPodcasts.map(mapItunesPodcast);
 
-        const deezerMapped = deezerPodcasts.map((dp) => ({
-            id: `deezer:${dp.id}`,
-            title: dp.title,
-            author: "",
-            coverUrl: dp.pictureUrl,
-            feedUrl: null,
-            genres: [] as string[],
-            episodeCount: 0,
-            itunesId: null,
-            isExternal: true,
-        }));
+        const deezerMapped = deezerPodcasts.map(mapDeezerPodcast);
 
         const podcasts = mergeAndDedupePodcasts(itunesMapped, deezerMapped);
 
@@ -205,32 +261,9 @@ router.get("/discover/genres", async (req, res) => {
                 const itunesPodcasts = itunesResult.status === "fulfilled" ? itunesResult.value : [];
                 const deezerPodcasts = deezerResult.status === "fulfilled" ? deezerResult.value : [];
 
-                const itunesMapped = itunesPodcasts.map((podcast: any) => ({
-                    id: podcast.collectionId.toString(),
-                    title: podcast.collectionName,
-                    author: podcast.artistName,
-                    coverUrl: podcast.artworkUrl600 || podcast.artworkUrl100,
-                    feedUrl: podcast.feedUrl,
-                    genres: podcast.genres || [],
-                    episodeCount: podcast.trackCount || 0,
-                    // A string, like every other endpoint that returns one and like the column
-            // it ends up in. Handing back the raw number made subscribing to a podcast
-            // straight from discovery fail.
-            itunesId: podcast.collectionId?.toString() ?? null,
-                    isExternal: true,
-                }));
+                const itunesMapped = itunesPodcasts.map(mapItunesPodcast);
 
-                const deezerMapped = deezerPodcasts.map((dp) => ({
-                    id: `deezer:${dp.id}`,
-                    title: dp.title,
-                    author: "",
-                    coverUrl: dp.pictureUrl,
-                    feedUrl: null,
-                    genres: [] as string[],
-                    episodeCount: 0,
-                    itunesId: null,
-                    isExternal: true,
-                }));
+                const deezerMapped = deezerPodcasts.map(mapDeezerPodcast);
 
                 const podcasts = mergeAndDedupePodcasts(itunesMapped, deezerMapped);
 
@@ -305,32 +338,9 @@ router.get("/discover/genre/:genreId", async (req, res) => {
         const itunesPodcasts = itunesResult.status === "fulfilled" ? itunesResult.value : [];
         const deezerPodcasts = deezerResult.status === "fulfilled" ? deezerResult.value : [];
 
-        const itunesMapped = itunesPodcasts.map((podcast: any) => ({
-            id: podcast.collectionId.toString(),
-            title: podcast.collectionName,
-            author: podcast.artistName,
-            coverUrl: podcast.artworkUrl600 || podcast.artworkUrl100,
-            feedUrl: podcast.feedUrl,
-            genres: podcast.genres || [],
-            episodeCount: podcast.trackCount || 0,
-            // A string, like every other endpoint that returns one and like the column
-            // it ends up in. Handing back the raw number made subscribing to a podcast
-            // straight from discovery fail.
-            itunesId: podcast.collectionId?.toString() ?? null,
-            isExternal: true,
-        }));
+        const itunesMapped = itunesPodcasts.map(mapItunesPodcast);
 
-        const deezerMapped = deezerPodcasts.map((dp) => ({
-            id: `deezer:${dp.id}`,
-            title: dp.title,
-            author: "",
-            coverUrl: dp.pictureUrl,
-            feedUrl: null,
-            genres: [] as string[],
-            episodeCount: 0,
-            itunesId: null,
-            isExternal: true,
-        }));
+        const deezerMapped = deezerPodcasts.map(mapDeezerPodcast);
 
         const allPodcasts = mergeAndDedupePodcasts(itunesMapped, deezerMapped);
 
@@ -689,7 +699,7 @@ router.get("/:id", requireAuth, async (req, res) => {
             description: podcast.description,
             coverUrl: podcast.imageUrl,
             feedUrl: podcast.feedUrl,
-            genres: [], // Podcast genres not yet stored in database
+            genres: [],
             autoDownloadEpisodes: false,
             // `episodes` keeps its name and stays newest-first, so a client
             // that predates paging still renders -- it sees the first page
@@ -1103,8 +1113,7 @@ router.get("/:podcastId/episodes/:episodeId/stream", requireAuthOrToken, async (
         const { podcastId, episodeId } = req.params;
         const userId = req.user?.id;
         const podcastDebug = process.env.PODCAST_DEBUG === "1";
-        // Resolve once; reused by every writeHead() below instead of blindly
-        // reflecting the request's Origin header (see resolveCorsOrigin in ./audiobooks)
+        // Resolved against the allowed origins, never just reflected (see resolveCorsOrigin in ./audiobooks).
         const corsOrigin = resolveCorsOrigin(req.headers.origin);
 
         logger.debug(`\n [PODCAST STREAM] Request:`);
@@ -1136,12 +1145,17 @@ router.get("/:podcastId/episodes/:episodeId/stream", requireAuthOrToken, async (
 
         const range = req.headers.range;
 
-        // Import podcast download service
         const { getCachedFilePath, downloadInBackground, isDownloading } =
             await import("../services/podcastDownload");
 
-        // Check if episode is cached locally (with full range support)
         const cachedPath = await getCachedFilePath(episodeId);
+
+        const baseHeaders = {
+            "Content-Type": episode.mimeType || "audio/mpeg",
+            "Accept-Ranges": "bytes",
+            "Cache-Control": "public, max-age=3600",
+            ...corsHeaders(corsOrigin),
+        };
 
         if (cachedPath) {
             logger.debug(`   Streaming from cache: ${cachedPath}`);
@@ -1163,28 +1177,9 @@ router.get("/:podcastId/episodes/:episodeId/stream", requireAuthOrToken, async (
                         if (parsed.reason === "multi") {
                             // RFC 9110: ignore multi-range, serve full file as 200
                             logger.debug(`    Multi-range ignored, serving full file`);
-                            res.writeHead(200, {
-                                "Content-Type": episode.mimeType || "audio/mpeg",
+                            pipeCachedFile(res, cachedPath, 200, {
+                                ...baseHeaders,
                                 "Content-Length": fileSize,
-                                "Accept-Ranges": "bytes",
-                                "Cache-Control": "public, max-age=3600",
-                                ...(corsOrigin && {
-                                    "Access-Control-Allow-Origin": corsOrigin,
-                                    "Access-Control-Allow-Credentials": "true",
-                                }),
-                            });
-                            const fullStream = fs.createReadStream(cachedPath);
-                            res.on("close", () => {
-                                if (!fullStream.destroyed) fullStream.destroy();
-                            });
-                            fullStream.pipe(res);
-                            fullStream.on("error", (err) => {
-                                logger.error("    Cache stream error:", err);
-                                if (!res.headersSent) {
-                                    res.status(500).json({ error: "Failed to stream episode" });
-                                } else {
-                                    res.end();
-                                }
                             });
                         } else {
                             res.status(416).set({
@@ -1196,86 +1191,36 @@ router.get("/:podcastId/episodes/:episodeId/stream", requireAuthOrToken, async (
                     }
 
                     const { start, end } = parsed;
-                    const chunkSize = end - start + 1;
 
                     logger.debug(
                         `    Serving range: bytes ${start}-${end}/${fileSize}`
                     );
 
-                    res.writeHead(206, {
-                        "Content-Range": `bytes ${start}-${end}/${fileSize}`,
-                        "Accept-Ranges": "bytes",
-                        "Content-Length": chunkSize,
-                        "Content-Type": episode.mimeType || "audio/mpeg",
-                        "Cache-Control": "public, max-age=3600",
-                        ...(corsOrigin && {
-                            "Access-Control-Allow-Origin": corsOrigin,
-                            "Access-Control-Allow-Credentials": "true",
-                        }),
-                    });
-
-                    const fileStream = fs.createReadStream(cachedPath, {
-                        start,
-                        end: end,
-                    });
-                    // Clean up file stream when client disconnects
-                    res.on("close", () => {
-                        if (!fileStream.destroyed) {
-                            fileStream.destroy();
-                        }
-                    });
-                    fileStream.pipe(res);
-                    fileStream.on("error", (err) => {
-                        logger.error("    Cache stream error:", err);
-                        if (!res.headersSent) {
-                            res.status(500).json({
-                                error: "Failed to stream episode",
-                            });
-                        } else {
-                            res.end();
-                        }
-                    });
-                    return; // CRITICAL: Exit after starting cache stream
+                    pipeCachedFile(
+                        res,
+                        cachedPath,
+                        206,
+                        {
+                            ...baseHeaders,
+                            "Content-Range": `bytes ${start}-${end}/${fileSize}`,
+                            "Content-Length": end - start + 1,
+                        },
+                        { start, end },
+                    );
+                    return;
                 }
 
-                // No range - serve entire file
                 logger.debug(`    Serving full file: ${fileSize} bytes`);
-                res.writeHead(200, {
-                    "Content-Type": episode.mimeType || "audio/mpeg",
+                pipeCachedFile(res, cachedPath, 200, {
+                    ...baseHeaders,
                     "Content-Length": fileSize,
-                    "Accept-Ranges": "bytes",
-                    "Cache-Control": "public, max-age=3600",
-                    ...(corsOrigin && {
-                        "Access-Control-Allow-Origin": corsOrigin,
-                        "Access-Control-Allow-Credentials": "true",
-                    }),
                 });
-
-                const fileStream = fs.createReadStream(cachedPath);
-                // Clean up file stream when client disconnects
-                res.on("close", () => {
-                    if (!fileStream.destroyed) {
-                        fileStream.destroy();
-                    }
-                });
-                fileStream.pipe(res);
-                fileStream.on("error", (err) => {
-                    logger.error("    Cache stream error:", err);
-                    if (!res.headersSent) {
-                        res.status(500).json({
-                            error: "Failed to stream episode",
-                        });
-                    } else {
-                        res.end();
-                    }
-                });
-                return; // CRITICAL: Exit after starting cache stream
+                return;
             } catch (err: any) {
                 logger.error(
                     "    Failed to stream from cache, falling back to RSS:",
                     err.message
                 );
-                // Fall through to RSS streaming only if cache fails
             }
         }
 
@@ -1314,205 +1259,114 @@ router.get("/:podcastId/episodes/:episodeId/stream", requireAuthOrToken, async (
 
         if (range && fileSize) {
             const parsed = parseRangeHeader(range, fileSize);
-            if (!parsed.ok) {
-                if (parsed.reason !== "multi") {
-                    res.status(416).set({
-                        "Content-Range": `bytes */${fileSize}`,
-                    });
-                    res.end();
-                    return;
-                }
-                // multi-range: fall through to full-file stream below
-            } else {
-            const { start, end } = parsed;
-            const chunkSize = end - start + 1;
-
-            logger.debug(
-                `    Range request: bytes=${start}-${end}/${fileSize}`
-            );
-
-            const controller = new AbortController();
-
-            // Handle client disconnect BEFORE starting the request
-            res.on("close", () => {
-                controller.abort();
-            });
-
-            try {
-                // Try range request first
-                const response = await axios.get(episode.audioUrl, {
-                    headers: { Range: `bytes=${start}-${end}` },
-                    responseType: "stream",
-                    validateStatus: (status) =>
-                        status === 206 || status === 200,
-                    timeout: 30000,
-                    signal: controller.signal,
+            if (!parsed.ok && parsed.reason !== "multi") {
+                res.status(416).set({
+                    "Content-Range": `bytes */${fileSize}`,
                 });
-
-                // If upstream returned 200 OK instead of 206 Partial Content, it ignored our Range header.
-                // In this case, we must stream the whole response as 200 OK, or the browser will be confused
-                // if we try to wrap it in a 206.
-                if (response.status === 200) {
-                    logger.debug(
-                        `    Upstream returned 200 OK (ignored Range), streaming full response`
-                    );
-                    res.writeHead(200, {
-                        "Content-Type": episode.mimeType || "audio/mpeg",
-                        "Accept-Ranges": "bytes",
-                        "Content-Length":
-                            upstreamHeader(response.headers["content-length"]) || fileSize,
-                        "Cache-Control": "public, max-age=3600",
-                        ...(corsOrigin && {
-                            "Access-Control-Allow-Origin": corsOrigin,
-                            "Access-Control-Allow-Credentials": "true",
-                        }),
-                    });
-                } else {
-                    // Send 206 Partial Content with proper range
-                    res.writeHead(206, {
-                        "Content-Range": `bytes ${start}-${end}/${fileSize}`,
-                        "Accept-Ranges": "bytes",
-                        "Content-Length": chunkSize,
-                        "Content-Type": episode.mimeType || "audio/mpeg",
-                        "Cache-Control": "public, max-age=3600",
-                        ...(corsOrigin && {
-                            "Access-Control-Allow-Origin": corsOrigin,
-                            "Access-Control-Allow-Credentials": "true",
-                        }),
-                    });
-                }
-
-                // Handle stream errors to prevent process crash
-                response.data.on("error", (err: Error) => {
-                    // Client disconnect errors are expected during seeking
-                    if ((err as any).code !== "ERR_STREAM_PREMATURE_CLOSE") {
-                        logger.debug(`    RSS stream error: ${err.message}`);
-                    }
-                    if (!res.writableEnded) {
-                        res.end();
-                    }
-                });
-
-                // Clean up axios stream when client disconnects
-                res.on("close", () => {
-                    if (response.data && !response.data.destroyed) {
-                        response.data.destroy();
-                    }
-                });
-                response.data.pipe(res);
+                res.end();
                 return;
-            } catch (rangeError: any) {
-                if (axios.isCancel(rangeError)) {
-                    logger.debug("    Request aborted by client");
-                    return;
-                }
-                // 416 = Range Not Satisfiable - many podcast CDNs don't support range requests
-                // Fall back to streaming the full file and let the browser handle seeking
+            }
+            // Multi-range falls through to the full-file stream below.
+            if (parsed.ok) {
+                const { start, end } = parsed;
+
                 logger.debug(
-                    `    Range request failed (${
-                        rangeError.response?.status || rangeError.message
-                    }), falling back to full stream`
+                    `    Range request: bytes=${start}-${end}/${fileSize}`
                 );
 
-                // Stream full file instead - browser will handle seeking locally
-                const response = await axios.get(episode.audioUrl, {
-                    responseType: "stream",
-                    timeout: 60000,
-                    signal: controller.signal,
-                });
-
-                const contentLength = upstreamHeader(response.headers["content-length"]);
-
-                res.writeHead(200, {
-                    "Content-Type": episode.mimeType || "audio/mpeg",
-                    "Accept-Ranges": "bytes",
-                    ...(contentLength && { "Content-Length": contentLength }),
-                    "Cache-Control": "public, max-age=3600",
-                    ...(corsOrigin && {
-                        "Access-Control-Allow-Origin": corsOrigin,
-                        "Access-Control-Allow-Credentials": "true",
-                    }),
-                });
-
-                // Handle stream errors to prevent process crash
-                response.data.on("error", (err: Error) => {
-                    // Client disconnect errors are expected during seeking
-                    if ((err as any).code !== "ERR_STREAM_PREMATURE_CLOSE") {
-                        logger.debug(
-                            `    RSS fallback stream error: ${err.message}`
-                        );
-                    }
-                    if (!res.writableEnded) {
-                        res.end();
-                    }
-                });
-
-                // Clean up axios stream when client disconnects
+                const controller = new AbortController();
                 res.on("close", () => {
-                    if (response.data && !response.data.destroyed) {
-                        response.data.destroy();
-                    }
-                });
-                response.data.pipe(res);
-                return;
-            }
-            } // end parsed.ok range branch
-        }
-        {
-            // No range request - stream entire file
-            logger.debug(`    Streaming full file`);
-
-            const controller = new AbortController();
-            res.on("close", () => {
-                controller.abort();
-            });
-
-            try {
-                const response = await axios.get(episode.audioUrl, {
-                    responseType: "stream",
-                    signal: controller.signal,
+                    controller.abort();
                 });
 
-                const contentLength = upstreamHeader(response.headers["content-length"]);
+                try {
+                    const response = await axios.get(episode.audioUrl, {
+                        headers: { Range: `bytes=${start}-${end}` },
+                        responseType: "stream",
+                        validateStatus: (status) =>
+                            status === 206 || status === 200,
+                        timeout: 30000,
+                        signal: controller.signal,
+                    });
 
-                res.writeHead(200, {
-                    "Content-Type": episode.mimeType || "audio/mpeg",
-                    "Accept-Ranges": "bytes",
-                    ...(contentLength && { "Content-Length": contentLength }),
-                    "Cache-Control": "public, max-age=3600",
-                    ...(corsOrigin && {
-                        "Access-Control-Allow-Origin": corsOrigin,
-                        "Access-Control-Allow-Credentials": "true",
-                    }),
-                });
-
-                // Handle stream errors to prevent process crash
-                response.data.on("error", (err: Error) => {
-                    // Client disconnect errors are expected during seeking
-                    if ((err as any).code !== "ERR_STREAM_PREMATURE_CLOSE") {
+                    // An upstream that ignored Range answers 200; wrapping that in a 206 would confuse the browser.
+                    if (response.status === 200) {
                         logger.debug(
-                            `    RSS full stream error: ${err.message}`
+                            `    Upstream returned 200 OK (ignored Range), streaming full response`
                         );
+                        res.writeHead(200, {
+                            ...baseHeaders,
+                            "Content-Length":
+                                upstreamHeader(response.headers["content-length"]) || fileSize,
+                        });
+                    } else {
+                        res.writeHead(206, {
+                            ...baseHeaders,
+                            "Content-Range": `bytes ${start}-${end}/${fileSize}`,
+                            "Content-Length": end - start + 1,
+                        });
                     }
-                    if (!res.writableEnded) {
-                        res.end();
-                    }
-                });
 
-                // Clean up axios stream when client disconnects
-                res.on("close", () => {
-                    if (response.data && !response.data.destroyed) {
-                        response.data.destroy();
+                    pipeUpstream(res, response.data, "RSS stream");
+                    return;
+                } catch (rangeError: any) {
+                    if (axios.isCancel(rangeError)) {
+                        logger.debug("    Request aborted by client");
+                        return;
                     }
-                });
-                response.data.pipe(res);
-            } catch (error: any) {
-                if (axios.isCancel(error)) {
-                    logger.debug("    Request aborted by client");
+                    // Many podcast CDNs reject range requests; stream the whole file and the browser seeks locally.
+                    logger.debug(
+                        `    Range request failed (${
+                            rangeError.response?.status || rangeError.message
+                        }), falling back to full stream`
+                    );
+
+                    const response = await axios.get(episode.audioUrl, {
+                        responseType: "stream",
+                        timeout: 60000,
+                        signal: controller.signal,
+                    });
+
+                    const contentLength = upstreamHeader(response.headers["content-length"]);
+
+                    res.writeHead(200, {
+                        ...baseHeaders,
+                        ...(contentLength && { "Content-Length": contentLength }),
+                    });
+
+                    pipeUpstream(res, response.data, "RSS fallback stream");
                     return;
                 }
-                throw error;
             }
+        }
+
+        logger.debug(`    Streaming full file`);
+
+        const controller = new AbortController();
+        res.on("close", () => {
+            controller.abort();
+        });
+
+        try {
+            const response = await axios.get(episode.audioUrl, {
+                responseType: "stream",
+                signal: controller.signal,
+            });
+
+            const contentLength = upstreamHeader(response.headers["content-length"]);
+
+            res.writeHead(200, {
+                ...baseHeaders,
+                ...(contentLength && { "Content-Length": contentLength }),
+            });
+
+            pipeUpstream(res, response.data, "RSS full stream");
+        } catch (error: any) {
+            if (axios.isCancel(error)) {
+                logger.debug("    Request aborted by client");
+                return;
+            }
+            throw error;
         }
     } catch (error) {
         if (!res.headersSent) {
