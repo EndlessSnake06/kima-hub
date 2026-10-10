@@ -293,7 +293,7 @@ export async function enrichSimilarArtists(similar: SimilarArtist[], limit = 6):
             image: null as string | null,
             mbid: s.mbid,
             bio: null as string | null,
-            tags: [] as string[],
+            tags: [] as string[], // Wikidata serves no tags
         };
         const validMbid = s.mbid && isMbid(s.mbid) ? s.mbid : undefined;
 
@@ -314,9 +314,6 @@ export async function enrichSimilarArtists(similar: SimilarArtist[], limit = 6):
         ]);
         base.image = found?.url ?? null;
         base.bio = wd?.summary || null;
-        // WikidataResult carries {summary, heroUrl} only; tags are not a
-        // Wikidata concept we can serve without an extra MB round-trip.
-        base.tags = [];
         return base;
     };
 
@@ -324,5 +321,5 @@ export async function enrichSimilarArtists(similar: SimilarArtist[], limit = 6):
         Promise.all(capped.slice(0, enrichCount).map((s) => build(s, true))),
         Promise.all(capped.slice(enrichCount).map((s) => build(s, false))),
     ]);
-    return [...enriched, ...fast].filter(Boolean);
+    return [...enriched, ...fast];
 }
