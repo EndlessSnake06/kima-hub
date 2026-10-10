@@ -13,9 +13,6 @@ export const queryKeys = {
     artist: (id: string) => ["artist", id] as const,
 
     album: (id: string) => ["album", id] as const,
-    albums: (filters?: Record<string, unknown>) => ["albums", filters] as const,
-
-    library: () => ["library"] as const,
     libraryArtists: (params: {
         filter?: string;
         sortBy?: string;
@@ -39,11 +36,6 @@ export const queryKeys = {
         ["library", "recently-added", limit] as const,
 
     recommendations: (limit?: number) => ["recommendations", limit] as const,
-    similarArtists: (seedArtistId: string, limit?: number) =>
-        ["recommendations", "artists", seedArtistId, limit] as const,
-    similarAlbums: (seedAlbumId: string, limit?: number) =>
-        ["recommendations", "albums", seedAlbumId, limit] as const,
-
     search: (query: string, type?: string, limit?: number) =>
         ["search", query, type, limit] as const,
     discoverSearch: (query: string, type?: string, limit?: number) =>
@@ -94,15 +86,7 @@ export function useRecentlyAddedQuery(limit: number = 10) {
 export type LibraryFilter = "owned" | "discovery" | "all";
 export type SortOption = "name" | "name-desc" | "recent" | "tracks";
 
-interface LibraryArtistsParams {
-    filter?: LibraryFilter;
-    sortBy?: SortOption;
-    limit?: number;
-    page?: number;
-    enabled?: boolean;
-}
-
-interface LibraryAlbumsParams {
+interface LibraryPageParams {
     filter?: LibraryFilter;
     sortBy?: SortOption;
     limit?: number;
@@ -123,7 +107,7 @@ export function useLibraryArtistsQuery({
     limit = 40,
     page = 1,
     enabled = true,
-}: LibraryArtistsParams = {}) {
+}: LibraryPageParams = {}) {
     const offset = (page - 1) * limit;
     return useQuery({
         queryKey: queryKeys.libraryArtists({ filter, sortBy, limit, offset }),
@@ -147,7 +131,7 @@ export function useLibraryAlbumsQuery({
     limit = 40,
     page = 1,
     enabled = true,
-}: LibraryAlbumsParams = {}) {
+}: LibraryPageParams = {}) {
     const offset = (page - 1) * limit;
     return useQuery({
         queryKey: queryKeys.libraryAlbums({ filter, sortBy, limit, offset }),
