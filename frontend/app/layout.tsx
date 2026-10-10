@@ -60,10 +60,7 @@ export default function RootLayout({
 }>) {
     return (
         <html lang="en">
-            <body
-                className={`${montserrat.variable} antialiased`}
-                style={{ fontFamily: "var(--font-montserrat)" }}
-            >
+            <body className={`${montserrat.variable} antialiased`}>
                 <GlobalErrorBoundary>
                     <ServiceWorkerRegistration />
                     <AuthProvider>

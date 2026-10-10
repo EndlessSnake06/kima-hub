@@ -33,7 +33,6 @@ export function useDiscoverActions(
             }
         } catch (error: unknown) {
             console.error("Generation failed:", error);
-            // Clear pending state on error
             setPendingGeneration?.(false);
             const err = error as Error & { status?: number };
             if (err.status === 409) {

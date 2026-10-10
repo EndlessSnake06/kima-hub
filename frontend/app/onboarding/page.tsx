@@ -36,9 +36,7 @@ export default function OnboardingPage() {
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
 
-    // Use auth context state instead of duplicate API call
     useEffect(() => {
-        // Wait for auth context to finish loading
         if (authLoading) return;
 
         // Only check once to prevent re-renders
@@ -103,7 +101,6 @@ export default function OnboardingPage() {
             setStep(2);
         } catch (err: unknown) {
             const message = err instanceof Error ? err.message : String(err);
-            // Check if user already exists
             if (message?.includes("already taken")) {
                 // Usually a refresh/retry race: the account was created but the
                 // token never persisted client-side. Rather than dead-end on a

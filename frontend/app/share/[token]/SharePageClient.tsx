@@ -249,7 +249,6 @@ export default function SharePageClient() {
 
     const totalDuration = tracks.reduce((sum, t) => sum + (t.duration || 0), 0);
 
-    // Loading
     if (loading) {
         return (
             <div className="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center">
@@ -263,7 +262,6 @@ export default function SharePageClient() {
         );
     }
 
-    // Error
     if (error || !data) {
         return (
             <div className="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center px-4">
@@ -357,7 +355,7 @@ export default function SharePageClient() {
                                 />
                             </div>
 
-                            <div className="flex justify-between text-micro tabular-nums text-[var(--text-muted)] mb-5 tabular-nums">
+                            <div className="flex justify-between text-micro tabular-nums text-[var(--text-muted)] mb-5">
                                 <span>{formatTime(progress)}</span>
                                 <span>{formatTime(duration)}</span>
                             </div>
@@ -500,7 +498,7 @@ export default function SharePageClient() {
                                             )}
                                         </div>
 
-                                        <span className="text-micro tabular-nums text-[var(--text-muted)] flex-shrink-0 tabular-nums">
+                                        <span className="text-micro tabular-nums text-[var(--text-muted)] flex-shrink-0">
                                             {track.duration ? formatTime(track.duration) : ""}
                                         </span>
                                     </button>

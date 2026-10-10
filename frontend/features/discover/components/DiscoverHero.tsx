@@ -12,7 +12,6 @@ interface DiscoverHeroProps {
 }
 
 export function DiscoverHero({ playlist, config, onOpenSettings }: DiscoverHeroProps) {
-    // Calculate total duration
     const totalDuration =
         playlist?.tracks?.reduce((sum, t) => sum + (t.duration || 0), 0) || 0;
 

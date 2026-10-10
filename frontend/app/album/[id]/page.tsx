@@ -9,13 +9,11 @@ import { useAddToPlaylistMutation } from "@/hooks/useQueries";
 import { PlaylistSelector } from "@/components/ui/PlaylistSelector";
 import { useDownloadContext } from "@/lib/download-context";
 
-// Custom hooks
 import { useAlbumData } from "@/features/album/hooks/useAlbumData";
 import { useAlbumActions } from "@/features/album/hooks/useAlbumActions";
 import { usePreview } from "@/hooks/usePreview";
 import type { MissingTrack, Track as AlbumTrack } from "@/features/album/types";
 
-// Components
 import { AlbumHero } from "@/features/album/components/AlbumHero";
 import { AlbumActionBar } from "@/features/album/components/AlbumActionBar";
 import { TrackList } from "@/features/album/components/TrackList";
@@ -30,16 +28,15 @@ interface AlbumPageProps {
 
 export default function AlbumPage({ params }: AlbumPageProps) {
     const { id } = use(params);
-    const addToPlaylist = useAddToPlaylistMutation();    // Use split hooks to avoid re-renders from currentTime updates
+    const addToPlaylist = useAddToPlaylistMutation();
+    // Split hooks avoid re-renders from currentTime updates.
     const { currentTrack } = useAudioState();
     const { isPlaying } = useAudioPlayback();
     const { pause } = useAudioControls();
 
-    // State
     const [showPlaylistSelector, setShowPlaylistSelector] = useState(false);
     const [pendingTrackIds, setPendingTrackIds] = useState<string[]>([]);
 
-    // Custom hooks
     const { album, source, loading, failed, notFound, reloadAlbum } = useAlbumData(id);
     const { playAlbum, shufflePlay, addToQueue, downloadAlbum } =
         useAlbumActions();
@@ -122,7 +119,6 @@ export default function AlbumPage({ params }: AlbumPageProps) {
 
     const { colors } = useImageColor(colorExtractionUrl);
 
-    // Loading and error states
     if (loading) {
         return <LoadingScreen />;
     }
@@ -145,7 +141,6 @@ export default function AlbumPage({ params }: AlbumPageProps) {
         );
     }
 
-    // Event handlers
     const handlePlayTrack = (track: AlbumTrack, index: number) => {
         const ownedTrackIndex = (album.tracks || []).findIndex(
             (ownedTrack: AlbumTrack) => ownedTrack.id === track.id

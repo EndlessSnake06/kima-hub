@@ -81,7 +81,6 @@ export function useHomeData(): UseHomeDataReturn {
     const { data: browseData, isLoading: isBrowseLoading } =
         useBrowseAllQuery();
 
-    // Mutation for refreshing mixes
     const { mutateAsync: refreshMixes, isPending: isRefreshingMixes } =
         useRefreshMixesMutation();
 

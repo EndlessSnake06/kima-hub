@@ -34,7 +34,6 @@ export function usePodcastActions(podcastId: string, sortedEpisodes?: Episode[])
                 );
 
                 if (response.success && response.podcast?.id) {
-                    // Invalidate podcasts cache so the list refreshes
                     queryClient.invalidateQueries({ queryKey: queryKeys.podcasts() });
                     router.push(`/podcasts/${response.podcast.id}`);
                 }
@@ -118,7 +117,6 @@ export function usePodcastActions(podcastId: string, sortedEpisodes?: Episode[])
                 // A fresh read after the write, so the episode shows as played.
                 queryClient.invalidateQueries({ queryKey: queryKeys.podcast(podcastId) });
                 
-                // Dispatch event for real-time UI updates
                 dispatchQueryEvent("podcast-progress-updated");
             } catch (error) {
                 notify.error("Couldn't mark the episode as played", { message: error instanceof Error ? error.message : undefined });

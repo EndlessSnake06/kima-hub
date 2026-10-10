@@ -351,9 +351,7 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
         staleTime: 1000,
     });
 
-    // Everything below only changes while a run is in flight. Polling them on a
-    // fixed timer meant an open settings page asked the server 42 questions a
-    // minute forever, whether or not enrichment had ever been started.
+    // Everything below only changes while a run is in flight, so it polls only then.
     const enrichmentActive =
         !!enrichmentState?.status && enrichmentState.status !== "idle";
 
@@ -506,7 +504,6 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
     const workerDebounceRef = useRef<NodeJS.Timeout | null>(null);
     const debouncedSetWorkers = useCallback((workers: number) => {
         if (workerDebounceRef.current) clearTimeout(workerDebounceRef.current);
-        // Optimistic UI update immediately
         queryClient.setQueryData(["analysis-workers"], {
             workers,
             cpuCores: workersConfig?.cpuCores || 4,
@@ -532,7 +529,6 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
         }, 500);
     }, [clapWorkersConfig, queryClient, setClapWorkersMutation]);
 
-    // Clean up debounce timers on unmount
     useEffect(() => {
         return () => {
             if (workerDebounceRef.current) clearTimeout(workerDebounceRef.current);
@@ -791,11 +787,7 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                                 progress={enrichmentProgress.trackTags.progress}
                             />
 
-                            {/* Audio Analysis */}
-                            {/* audioAnalysis is absent from the progress payload
-                                when the analyzer has never run. Reading through it
-                                crashed the whole Cache page rather than hiding one
-                                stage. */}
+                            {/* audioAnalysis is absent from the progress payload until the analyzer has run. */}
                             {!featuresLoading && musicCNN && enrichmentProgress.audioAnalysis ? (
                                 <EnrichmentStage
                                     icon={Activity}

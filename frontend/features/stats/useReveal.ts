@@ -16,7 +16,7 @@ export function useReveal<T extends HTMLElement = HTMLDivElement>(options?: {
     const ref = useRef<T | null>(null);
     const [shown, setShown] = useState(false);
 
-        /** No IntersectionObserver: reveal at once. False on the server so hydration matches. */
+    /** No IntersectionObserver: reveal at once. False on the server so hydration matches. */
     const noObserver =
         typeof window !== "undefined" && typeof IntersectionObserver === "undefined";
 

@@ -12,7 +12,6 @@ export function DownloadPreferencesSection({
     settings,
     onUpdate,
 }: DownloadPreferencesSectionProps) {
-    // Service configuration detection
     const isLidarrConfigured =
         settings.lidarrEnabled === true &&
         settings.lidarrUrl.trim() !== "" &&
@@ -23,7 +22,6 @@ export function DownloadPreferencesSection({
     const areBothServicesConfigured = isLidarrConfigured && isSoulseekConfigured;
     const isDisabled = !areBothServicesConfigured;
 
-    // Dynamic fallback options based on primary source
     const getFallbackOptions = () => {
         if (settings.downloadSource === "soulseek") {
             return [

@@ -22,7 +22,6 @@ import { notify } from "@/lib/notify";
 import { Button } from "@/components/ui/Button";
 import { CachedImage } from "@/components/ui/CachedImage";
 
-// Types for Spotify Import
 interface SpotifyTrack {
     spotifyId: string;
     title: string;
@@ -112,7 +111,6 @@ function ImportPlaylistPageContent() {
     const queryClient = useQueryClient();
     const hasAutoFetched = useRef(false);
 
-    // State
     const [step, setStep] = useState<Step>("input");
     const [url, setUrl] = useState("");
     const [isLoading, setIsLoading] = useState(false);
@@ -262,7 +260,6 @@ function ImportPlaylistPageContent() {
         }
     }, [sseImportStatus]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Handle URL paste/change
     const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setUrl(e.target.value);
     };
@@ -321,7 +318,6 @@ function ImportPlaylistPageContent() {
         }
     };
 
-    // Start import
     const handleStartImport = async () => {
         if (!preview) return;
 
@@ -369,7 +365,6 @@ function ImportPlaylistPageContent() {
         }
     };
 
-    // Toggle album selection
     const toggleAlbum = (albumMbid: string) => {
         setSelectedAlbums((prev) => {
             const next = new Set(prev);
@@ -382,7 +377,6 @@ function ImportPlaylistPageContent() {
         });
     };
 
-    // Select/deselect all albums
     const toggleAllAlbums = () => {
         if (!preview) return;
 
@@ -397,7 +391,6 @@ function ImportPlaylistPageContent() {
         }
     };
 
-    // Cancel import
     const [isCancelling, setIsCancelling] = useState(false);
     const handleCancelImport = async () => {
         if (!importJob) return;

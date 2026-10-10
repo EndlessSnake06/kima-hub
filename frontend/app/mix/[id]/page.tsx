@@ -84,7 +84,6 @@ export default function MixPage() {
     const handlePlayMix = () => {
         if (!mix?.tracks || mix.tracks.length === 0) return;
 
-        // If this mix is playing, toggle pause/resume
         if (isThisMixPlaying) {
             if (isPlaying) {
                 pause();

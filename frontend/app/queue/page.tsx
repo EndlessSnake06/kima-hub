@@ -75,7 +75,6 @@ export default function QueuePage() {
         return null;
     }
 
-    // Split queue into current, next up, and previous
     const previousTracks = queue.slice(0, currentIndex);
     const nextTracks = queue.slice(currentIndex + 1);
 

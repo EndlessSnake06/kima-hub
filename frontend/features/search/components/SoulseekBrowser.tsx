@@ -134,7 +134,6 @@ export function SoulseekBrowser({
         return () => observer.disconnect();
     }, [hasMore]);
 
-    // Group results by username
     const grouped = useMemo(() => {
         const map = new Map<string, SoulseekResult[]>();
         for (const r of sorted) {

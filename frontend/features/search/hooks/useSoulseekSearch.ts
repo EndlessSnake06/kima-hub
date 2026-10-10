@@ -56,7 +56,6 @@ export function useSoulseekSearch({
         const timer = setTimeout(async () => {
             if (cancelled) return;
 
-            // Clear previous search
             if (searchIdRef.current) {
                 searchResultStore.clear(searchIdRef.current);
             }
@@ -74,7 +73,6 @@ export function useSoulseekSearch({
                 setIsSoulseekSearching(false);
                 setHasActiveSearch(true);
 
-                // Read store and update state
                 const syncFromStore = () => {
                     if (cancelled) return;
                     const session = searchResultStore.getSession(searchId);
@@ -86,13 +84,11 @@ export function useSoulseekSearch({
                     }
                 };
 
-                // Subscribe to SSE-driven store updates
                 const unsubscribe = searchResultStore.subscribe(searchId, syncFromStore);
 
                 // Immediately check for results that arrived during the POST roundtrip
                 syncFromStore();
 
-                // Store unsubscribe for cleanup
                 cleanupRef.current = () => {
                     unsubscribe();
                     searchResultStore.clear(searchId);

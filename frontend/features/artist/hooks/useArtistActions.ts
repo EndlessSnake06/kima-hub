@@ -18,9 +18,7 @@ export function useArtistActions() {
   // Use controls-only hook to avoid re-renders from playback state changes
   const { playTrack: playTrackFromContext, playTracks } = useAudioControls();
 
-  // Helper to load all tracks from owned albums
   const loadAllOwnedTracks = async (artist: Artist, albums: Album[]) => {
-    // Get owned albums sorted by year (newest first)
     const ownedAlbums = albums
       .filter((album) => album.owned)
       .sort((a, b) => (b.year || 0) - (a.year || 0));
@@ -29,7 +27,6 @@ export function useArtistActions() {
       return [];
     }
 
-    // Load tracks from all owned albums in parallel
     const albumDataPromises = ownedAlbums.map((album) =>
       api.getAlbum(album.id).catch(() => null)
     );
@@ -103,7 +100,6 @@ export function useArtistActions() {
           return;
         }
 
-        // Shuffle all tracks randomly
         const shuffledTracks = shuffleArray(allTracks);
 
         playTracks(shuffledTracks);
@@ -117,7 +113,6 @@ export function useArtistActions() {
   const playTrack = useCallback(
     (track: Track, artist: Artist) => {
       try {
-        // Format track for audio context
         const formattedTrack = {
           id: track.id,
           title: track.title,

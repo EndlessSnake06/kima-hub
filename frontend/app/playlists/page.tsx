@@ -573,7 +573,6 @@ function EmptyState({
 // --- Main page ---
 
 export default function PlaylistsPage() {
-    useRouter();
     useAuth();
     const { playTracks } = useAudioControls();
     const queryClient = useQueryClient();

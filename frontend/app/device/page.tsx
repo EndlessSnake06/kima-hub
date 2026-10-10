@@ -50,14 +50,12 @@ export default function DeviceLinkPage() {
     const [error, setError] = useState<string | null>(null);
     const [pendingRevoke, setPendingRevoke] = useState<LinkedDevice | null>(null);
 
-    // Redirect if not authenticated
     useEffect(() => {
         if (!authLoading && !isAuthenticated) {
             router.push("/login");
         }
     }, [isAuthenticated, authLoading, router]);
 
-    // Load linked devices
     const loadDevices = useCallback(async () => {
         try {
             const response = await api.request<LinkedDevice[]>("/device-link/devices");
@@ -76,7 +74,6 @@ export default function DeviceLinkPage() {
         }
     }, [isAuthenticated, loadDevices]);
 
-    // Generate a new link code
     const generateCode = async () => {
         setIsGenerating(true);
         setError(null);
@@ -128,7 +125,6 @@ export default function DeviceLinkPage() {
         return () => clearInterval(pollInterval);
     }, [linkCode, expired, codeUsed, loadDevices]);
 
-    // Copy code to clipboard
     const copyCode = async () => {
         if (linkCode && (await copyText(linkCode.code))) {
             setCopied(true);

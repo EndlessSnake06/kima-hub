@@ -30,7 +30,6 @@ function LazyAlbumCard({
     index: number;
 }) {
     const [coverArt, setCoverArt] = useState<string | null>(() => {
-        // Initial cover art from props
         if (source === "library" && album.coverArt) {
             return api.getCoverArtUrl(album.coverArt, 300);
         }
@@ -41,7 +40,6 @@ function LazyAlbumCard({
     });
     const [fetchAttempted, setFetchAttempted] = useState(false);
 
-    // Lazy-load cover art if not available
     useEffect(() => {
         if (coverArt || fetchAttempted) return;
 
@@ -69,10 +67,8 @@ function LazyAlbumCard({
         return () => clearTimeout(timeoutId);
     }, [album, coverArt, fetchAttempted, index]);
 
-    // Get MBID for download tracking
     const albumMbid = album.rgMbid || album.mbid || "";
 
-    // Build subtitle with year and type
     const subtitleParts: string[] = [];
     if (album.year) subtitleParts.push(String(album.year));
     if (album.type) subtitleParts.push(album.type);
@@ -129,7 +125,6 @@ export function AvailableAlbums({
         return null;
     }
 
-    // Separate studio albums from EPs/Singles/Demos
     const studioAlbums = albums.filter(
         (album) => album.type?.toLowerCase() === "album"
     );

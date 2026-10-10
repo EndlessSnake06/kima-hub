@@ -15,7 +15,6 @@ export function TVSearchInput({ initialQuery = "", onSearch }: TVSearchInputProp
     const [query, setQuery] = useState(initialQuery);
     const [isFocused, setIsFocused] = useState(false);
 
-    // Update query when initialQuery changes
     useEffect(() => {
         setQuery(initialQuery);
     }, [initialQuery]);
@@ -30,17 +29,14 @@ export function TVSearchInput({ initialQuery = "", onSearch }: TVSearchInputProp
     };
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
-        // On Enter, submit the search
         if (e.key === "Enter") {
             handleSubmit(e);
         }
-        // On Escape, blur the input
         if (e.key === "Escape") {
             inputRef.current?.blur();
         }
     };
 
-    // Only render this component in TV mode
     if (!isTV) {
         return null;
     }

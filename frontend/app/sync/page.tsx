@@ -28,7 +28,6 @@ function deriveMessage(p: number): string {
 }
 
 export default function SyncPage() {
-    useRouter();
     const queryClient = useQueryClient();
     const router = useRouter();
     const [initError, setInitError] = useState("");
@@ -127,7 +126,6 @@ export default function SyncPage() {
         };
     }, [scanStatus, postScanDone, initFailed, initError]);
 
-    // Start scan on mount
     useEffect(() => {
         let mounted = true;
 
