@@ -1,10 +1,7 @@
 import { logger } from "../utils/logger";
 import { safeError } from "../utils/errors";
 
-/**
- * Soulseek routes - Direct connection via vendored soulseek-ts
- * Supports both general searches (for UI) and track-specific searches (for downloads)
- */
+/** Soulseek routes: UI searches and track downloads over the vendored soulseek-ts connection. */
 
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth";
@@ -20,7 +17,6 @@ import { FileAttribute } from "../lib/soulseek/messages/common";
 
 const router = Router();
 
-// In-memory store for search results (with TTL cleanup)
 interface SearchSession {
     query: string;
     results: FormattedSearchResult[];
@@ -59,7 +55,6 @@ function formatSearchResult(response: FileSearchResponse) {
 
 type FormattedSearchResult = ReturnType<typeof formatSearchResult>[number];
 
-// Cleanup old search sessions every minute
 setInterval(() => {
     const now = Date.now();
     for (const [searchId, session] of searchSessions.entries()) {
@@ -69,7 +64,6 @@ setInterval(() => {
     }
 }, 60000);
 
-// Middleware to check if Soulseek credentials are configured
 async function requireSoulseekConfigured(_req: any, res: any, next: any) {
     try {
         const available = await soulseekService.isAvailable();
@@ -154,10 +148,8 @@ router.post(
             let searchQuery: string;
 
             if (query) {
-                // General search (from UI search bar)
                 searchQuery = query;
             } else if (artist && title) {
-                // Track-specific search (for downloads)
                 searchQuery = `${artist} ${title}`;
             } else {
                 return res.status(400).json({
@@ -169,7 +161,6 @@ router.post(
                 `[Soulseek] Starting general search: "${searchQuery}"`,
             );
 
-            // Evict oldest session if at capacity
             if (searchSessions.size >= MAX_SEARCH_SESSIONS) {
                 let oldestId: string | null = null;
                 let oldestTime = Infinity;
@@ -182,10 +173,8 @@ router.post(
                 if (oldestId) searchSessions.delete(oldestId);
             }
 
-            // Extract userId for SSE targeting and session ownership
             const userId = (req as any).user?.id;
 
-            // Create search session
             const searchId = randomUUID();
             searchSessions.set(searchId, {
                 query: searchQuery,
@@ -194,22 +183,18 @@ router.post(
                 userId,
             });
 
-            // Track streamed results count to limit UI overload
             let streamedCount = 0;
             const MAX_STREAMED_RESULTS = 200;
             let searchAborted = false;
 
-            // Start async search with onResult callback for SSE streaming
-            // Use 10s timeout for faster UI response (plenty of time to get 200+ results)
+            // 10 s is enough for 200+ results and keeps the UI quick
             soulseekService
                 .searchTrack(searchQuery, "", undefined, false, 10000, (response) => {
-                    // Stop streaming if we've already sent enough results
                     if (searchAborted || streamedCount >= MAX_STREAMED_RESULTS) {
                         searchAborted = true;
                         return;
                     }
 
-                    // Stream each peer response via SSE
                     const formatted = formatSearchResult(response);
 
                     // Filter for decent quality results (FLAC or 128kbps+ MP3, allow unknown bitrate)
@@ -218,7 +203,6 @@ router.post(
                     );
 
                     if (highQuality.length > 0 && userId) {
-                        // Limit to remaining quota
                         const toSend = highQuality.slice(0, MAX_STREAMED_RESULTS - streamedCount);
                         streamedCount += toSend.length;
 

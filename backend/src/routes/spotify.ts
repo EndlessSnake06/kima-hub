@@ -191,7 +191,6 @@ router.post("/import", async (req, res) => {
 
         let preview;
         if (previewJobId) {
-            // Use cached preview from the async preview job
             const stored = await spotifyImportService.getPreviewResult(previewJobId);
             if (!stored || stored.status !== "completed" || !stored.preview) {
                 return res.status(400).json({
@@ -275,7 +274,6 @@ router.get("/import/:jobId/status", async (req, res) => {
             return res.status(404).json({ error: "Import job not found" });
         }
 
-        // Ensure user owns this job
         if (job.userId !== userId) {
             return res
                 .status(403)
@@ -320,7 +318,6 @@ router.post("/import/:jobId/refresh", async (req, res) => {
             return res.status(404).json({ error: "Import job not found" });
         }
 
-        // Ensure user owns this job
         if (job.userId !== userId) {
             return res
                 .status(403)
@@ -356,7 +353,6 @@ router.post("/import/:jobId/cancel", async (req, res) => {
             return res.status(404).json({ error: "Import job not found" });
         }
 
-        // Ensure user owns this job
         if (job.userId !== userId) {
             return res
                 .status(403)

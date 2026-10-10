@@ -2,24 +2,18 @@ import * as fs from "fs";
 import { logger } from "../utils/logger";
 import * as path from "path";
 
-/**
- * Discovery Logger - Creates detailed log files for each discovery playlist generation
- */
+/** Writes one log file per discovery playlist generation. */
 class DiscoveryLogger {
     private logDir: string;
     private currentLogFile: string | null = null;
     private currentStream: fs.WriteStream | null = null;
 
     constructor() {
-        // Store logs in /app/logs/discovery (matches Dockerfile directory)
         this.logDir = process.env.NODE_ENV === "production"
             ? "/app/logs/discovery"
             : path.join(process.cwd(), "data", "logs", "discovery");
     }
 
-    /**
-     * Start a new log file for a discovery generation
-     */
     start(userId: string, jobId?: number): string {
         if (!fs.existsSync(this.logDir)) {
             fs.mkdirSync(this.logDir, { recursive: true });
@@ -42,9 +36,6 @@ class DiscoveryLogger {
         return this.currentLogFile;
     }
 
-    /**
-     * Write a line to the current log
-     */
     write(message: string, indent: number = 0): void {
         const prefix = "  ".repeat(indent);
         const timestamp = new Date().toISOString().split("T")[1].split(".")[0];
@@ -57,9 +48,6 @@ class DiscoveryLogger {
         logger.debug(message);
     }
 
-    /**
-     * Write a section header
-     */
     section(title: string): void {
         this.write("");
         this.write("─".repeat(50));
@@ -67,55 +55,34 @@ class DiscoveryLogger {
         this.write("─".repeat(50));
     }
 
-    /**
-     * Write a success message
-     */
     success(message: string, indent: number = 0): void {
         this.write(`✓ ${message}`, indent);
     }
 
-    /**
-     * Write an error message
-     */
     error(message: string, indent: number = 0): void {
         this.write(`✗ ${message}`, indent);
     }
 
-    /**
-     * Write a warning message
-     */
     warn(message: string, indent: number = 0): void {
         this.write(`[WARN] ${message}`, indent);
     }
 
-    /**
-     * Write info message
-     */
     info(message: string, indent: number = 0): void {
         this.write(`ℹ ${message}`, indent);
     }
 
-    /**
-     * Write a table of key-value pairs
-     */
     table(data: Record<string, any>, indent: number = 1): void {
         for (const [key, value] of Object.entries(data)) {
             this.write(`${key}: ${value}`, indent);
         }
     }
 
-    /**
-     * Write a list of items
-     */
     list(items: string[], indent: number = 1): void {
         for (const item of items) {
             this.write(`• ${item}`, indent);
         }
     }
 
-    /**
-     * End the current log and close the stream
-     */
     end(success: boolean, summary?: string): void {
         this.write("");
         this.write("═".repeat(60));

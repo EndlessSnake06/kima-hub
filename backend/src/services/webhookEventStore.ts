@@ -58,9 +58,7 @@ class WebhookEventStore {
         return (await prisma.webhookEvent.count({ where: { eventId } })) > 0;
     }
 
-    /**
-     * Mark an event as processed successfully
-     */
+    /** Marks an event processed. */
     async markProcessed(
         eventId: string,
         correlationId?: string
@@ -77,9 +75,7 @@ class WebhookEventStore {
         logger.debug(`[WEBHOOK-STORE] Marked processed: ${eventId}`);
     }
 
-    /**
-     * Mark an event as failed (stores error and increments retry count)
-     */
+    /** Marks an event failed, storing the error and counting a retry. */
     async markFailed(
         eventId: string,
         error: string
