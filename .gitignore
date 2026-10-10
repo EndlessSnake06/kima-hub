@@ -144,9 +144,10 @@ frontend/test-*.tsx
 CLAUDE.md
 AGENTS.md
 
-# Internal Documentation (public docs are in project root)
+# Internal documentation; the public docs live in /docs
 docs/
 **/docs/
+!/docs/
 context_portal/
 issues/
 plans/

@@ -1,250 +1,134 @@
-# kima-hub
+<p align="center">
+  <img src="assets/social-card.png" alt="Kima, a self-hosted music server that matches songs by how they sound and feel" width="640">
+</p>
 
-[![Docker Image](https://img.shields.io/docker/v/chevron7locked/kima?label=Docker&sort=semver)](https://hub.docker.com/r/chevron7locked/kima)
-[![GitHub Release](https://img.shields.io/github/v/release/Chevron7Locked/kima-hub?label=Release)](https://github.com/Chevron7Locked/kima-hub/releases)
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+<p align="center">
+  <a href="https://hub.docker.com/r/chevron7locked/kima"><img src="https://img.shields.io/docker/v/chevron7locked/kima?label=Docker&sort=semver" alt="Docker image"></a>
+  <a href="https://github.com/Chevron7Locked/kima-hub/releases"><img src="https://img.shields.io/github/v/release/Chevron7Locked/kima-hub?label=Release" alt="Latest release"></a>
+  <a href="https://www.gnu.org/licenses/gpl-3.0"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License: GPL v3"></a>
+</p>
 
-A self-hosted, on-demand audio streaming platform that brings the Spotify experience to your personal music library.
+Kima is a music server you run yourself. Point it at a folder of music and it gives you a web app to play it from, on a computer or a phone, along with podcasts and audiobooks. It also works out how each song sounds and feels, so it can find songs that match and lay your whole library out as a map.
 
-Kima is built for music lovers who want the convenience of streaming services without sacrificing ownership of their library. Point it at your music collection, and Kima handles the rest: artist discovery, personalized playlists, podcast subscriptions. It fits the tools you already run, like Lidarr and Audiobookshelf.
+**Web app:** any modern browser, and it installs to your home screen as an app.
+**iOS app:** coming soon to the App Store.
 
-![Kima Home Screen](assets/screenshots/desktop-home.png)
+<p align="center">
+  <img src="assets/screenshots/mobile-home.png" alt="The home page on a phone" width="22%">
+  <img src="assets/screenshots/mobile-player.png" alt="The player on a phone" width="22%">
+  <img src="assets/screenshots/mobile-vibe.png" alt="The vibe map on a phone" width="22%">
+  <img src="assets/screenshots/mobile-library.png" alt="The library on a phone" width="22%">
+</p>
 
----
+## The vibe engine
 
-## A Note on Native Apps
+Kima describes every song three ways and matches songs on all three.
 
-***The native iOS app is built and in testing — targeting an October release.*** It's a real Swift app, not a wrapper around the web view.
+| | What it is | Weight |
+| --- | --- | --- |
+| **Sound** | A list of numbers that an audio model (CLAP, from LAION) produces by listening to the song. Songs that sound alike get similar lists. | 1 |
+| **Feel** | How the song feels: calm or intense, bright or dark (its valence and arousal). It is read from the audio and set against the range of your own library, so "calm" means calm for your music. | 0.25 |
+| **Genre** | The genres MusicBrainz lists for the song's artist. They count only between songs by different artists, so one artist's songs do not match each other just because they share genres. | 0.25 |
 
-**Why iOS first, and not Android.** The PWA is genuinely good on Android — background playback, lock-screen controls, and resuming after an interruption all just work. On iOS it fights the platform. A standalone PWA's audio session gets suspended when the app is backgrounded, and playback stops dead when a track ends: Media Session still reports "playing" while no sound comes out. That's [WebKit #261858](https://bugs.webkit.org/show_bug.cgi?id=261858) — filed September 2023, still open.
+The three make one similarity score. Every vibe feature uses it: similar tracks, recommendations from a track, Song Path, Blend and the ranking of similar artists. A list holds at most 2 songs from one album and 4 from one artist. Searching with words matches on sound only, because a sentence has no feel or genre. Library radio stations are separate and do not use the score. Moods (Upbeat, Melancholic, Calm, Intense and Energetic) are not part of it either; they label songs for mood mixes and for the map's mood buttons.
 
-Kima works around it, and the workarounds hold: audio is routed through an AudioContext that claims the session more durably than a bare `<audio>` element, the session is re-claimed on foreground and route changes, and every wait in the recovery ladder has a deadline. But that machinery exists because the platform breaks the ordinary path, not because the ordinary path was wrong. A native app needs none of it.
+### The map
 
-The PWA isn't going anywhere and stays fully supported, and Android users in particular lose nothing by staying on it.
+Open **Vibe** in the sidebar. Your library appears as a 3D picture laid out from that same score, so songs that match sit close together. The map is laid out once, after your library has been through enrichment. New songs are placed among the others, and a song never moves once it has a place.
 
-Thanks for your patience while I work through this.
+<p align="center">
+  <img src="assets/screenshots/vibe-map.png" alt="The vibe map: a library drawn as stars in 3D" width="800">
+</p>
 
----
+Click a star to see the song with four actions: Play, Match Vibe (queue the song and its closest matches), Similar (light up its closest matches on the map) and Song Path. The search box finds songs by name and also by a description of the sound, such as "quiet and rainy".
 
-## Table of Contents
+<p align="center">
+  <img src="assets/screenshots/vibe-track.png" alt="A selected song on the vibe map" width="49%">
+  <img src="assets/screenshots/vibe-search.png" alt="Searching the map by a description of the sound" width="49%">
+</p>
 
--   [Features](#features)
-    -   [The Vibe System](#the-vibe-system)
-    -   [Playlist Import](#playlist-import)
--   [Mobile Support](#mobile-support)
--   [Quick Start](#quick-start)
--   [Configuration](#configuration)
--   [CLAP Audio Analysis](#clap-audio-analysis)
--   [GPU Acceleration](#gpu-acceleration)
--   [Integrations](#integrations)
-    -   [Native Apps (Subsonic)](#native-apps-subsonic)
--   [Using Kima](#using-kima)
-    -   [Using the Vibe System](#using-the-vibe-system)
--   [Administration](#administration)
--   [Architecture](#architecture)
--   [Roadmap](#roadmap)
--   [Privacy](#privacy)
--   [License](#license)
--   [Acknowledgments](#acknowledgments)
+### Song Path and Blend
 
----
+**Song Path** takes a start and an end, either a song, an artist or a sound, and queues a run of songs that moves from one to the other.
+
+**Blend** takes songs you want more of and, if you like, songs you want less of, and builds a playlist from the songs that match the first group and not the second.
+
+<p align="center">
+  <img src="assets/screenshots/vibe-songpath.png" alt="Song Path from one song to another" width="49%">
+  <img src="assets/screenshots/vibe-blend.png" alt="Blend: more like these songs, less like those" width="49%">
+</p>
+
+### How it is worked out
+
+After a scan, Kima runs five enrichment steps in the background: artist metadata, mood tags, audio analysis, vibe embeddings (the sound vectors) and similarity (the matches and the map). They take a few hours on a large library, and **Settings > Library Enrichment** shows their progress. Audio analysis reads the last 90 seconds of each song, or the whole song when it is shorter. The sound vector comes from five 10-second samples spread across the song. Both audio models run on ONNX Runtime on the processor, and an optional switch moves them to an NVIDIA graphics card; see [docs/gpu.md](docs/gpu.md).
 
 ## Features
 
-### Your Music, Your Way
-
--   **Stream your library** - FLAC, MP3, AAC, OGG, and other common formats work out of the box
--   **Automatic cataloging** - Kima scans your library and enriches it with metadata from MusicBrainz and AcoustID, including ISRC codes and genre tags
--   **Audio transcoding** - Stream at original quality or transcode on-the-fly (320kbps, 192kbps, or 128kbps)
--   **Lyrics** - Displays embedded lyrics or fetches them automatically from LRCLIB. Timed lyrics get line-by-line sync during playback; untimed lyrics display as static text. Coverage is good for major artists but varies for niche or independent music\*
--   **Ultra-wide support** - Library grid scales up to 8 columns on large displays
-
 <p align="center">
-  <img src="assets/screenshots/desktop-library.png" alt="Library View" width="800">
+  <img src="assets/screenshots/desktop-home.png" alt="The home page on a computer" width="800">
 </p>
 
-### Discovery and Playlists
+### Your library
 
--   **Made For You mixes** - Programmatically generated playlists based on your library:
-    -   Era mixes (Your 90s, Your 2000s, etc.)
-    -   Genre mixes
-    -   Top tracks
-    -   Rediscover forgotten favorites
-    -   Similar artist recommendations
--   **Library Radio Stations** - One-click radio modes for instant listening:
-    -   Shuffle All (your entire library)
-    -   Workout (high energy tracks)
-    -   Discovery (lesser-played gems)
-    -   Favorites (most played)
-    -   Dynamic genre and decade stations generated from your library
--   **Discover Weekly** - Weekly playlists of new music tailored to your listening habits, seeded from your ListenBrainz-scrobbled history (requires Lidarr for the auto-download)
--   **Artist recommendations** - Find similar artists based on what you already love
--   **Artist name resolution** - Smart alias lookup via MusicBrainz (e.g., "of mice" → "Of Mice & Men")
--   **Discography sorting** - Sort artist albums by year or date added
--   **Deezer previews** - Preview tracks you don't own before adding them to your library
--   **Vibe matching** - Find tracks that match your current mood (see [The Vibe System](#the-vibe-system))
-
-### Podcasts
-
--   **Subscribe via RSS** - Search iTunes for podcasts and subscribe directly
--   **Track progress** - Pick up where you left off across devices
--   **Episode management** - Browse episodes, mark as played, and manage your subscriptions
--   **Mobile skip buttons** - Jump ±30 seconds on mobile for easy navigation
+- **Your files.** Reads MP3, FLAC, M4A, AAC, OGG, Opus, WAV, WMA, APE and WV files, and identifies them with MusicBrainz: first by a MusicBrainz tag in the file, then by the album's track list and a title-checked name search, and last by an AcoustID audio fingerprint.
+- **Streaming quality.** Play the original file, or have Kima convert it on the fly to 320, 192 or 128 kbps.
+- **Lyrics.** Shows lyrics stored in the file, or fetches them from LRCLIB. Timed lyrics follow along with the song.
+- **Playlists.** Make them private or public to the other accounts on your server, drag to reorder, or share one as a link that opens without an account.
+- **Stats.** A page on what you replay most, which artists make up most of your listening and how much of your library you have never played.
 
 <p align="center">
-  <img src="assets/screenshots/desktop-podcasts.png" alt="Podcasts" width="800">
-</p>
-
-### Audiobooks
-
--   **Audiobookshelf integration** - Connect your existing Audiobookshelf instance
--   **Unified experience** - Browse and listen to audiobooks alongside your music
--   **Progress sync** - Your listening position syncs with Audiobookshelf
--   **Mobile skip buttons** - Jump ±30 seconds on mobile for easy chapter navigation
-
-<p align="center">
-  <img src="assets/screenshots/desktop-audiobooks.png" alt="Audiobooks" width="800">
-</p>
-
-### The Vibe System
-
-Everything in your library gets embedded by a CLAP audio model and projected into a 3D space where similar-sounding tracks cluster together. The result is a nebula of your music: stars for tracks, drifting backdrop stars for depth, colored by mood. The map, the search, and the player's "keep the vibe going" mode all read from the same vectors.
-
-**The map** -- every track in your library, rendered in 3D. Zoom and fly to explore. Search is native to the map: type a song, an artist, or a description ("quiet and rainy", "fast and loud") and the matching stars light up while the rest dim. Click a track to inspect it; double-click to play.
-
-<p align="center">
-  <img src="assets/screenshots/vibe-map.png" alt="Vibe Map" width="800">
+  <img src="assets/screenshots/desktop-library.png" alt="The library" width="49%">
+  <img src="assets/screenshots/desktop-stats.png" alt="The stats page" width="49%">
 </p>
 
 <p align="center">
-  <img src="assets/screenshots/vibe-search.png" alt="Vibe Search" width="800">
+  <img src="assets/screenshots/desktop-album.png" alt="An album page" width="49%">
+  <img src="assets/screenshots/desktop-artist.png" alt="An artist page" width="49%">
 </p>
 
-**Song Path** -- pick a start track and an end track, and Kima builds a queue that glides between them through audio space: a DJ-quality continuous mix that travels gradually from one sonic neighborhood to the other.
+### Finding something to play
+
+- **Mood mixes.** Pick one of five moods and Kima builds a playlist from the songs that fit.
+- **Made for you and radio.** Generated mixes on the home page, and one-click radio stations: shuffle everything, high energy, lesser-played, most played, and stations for your common genres and decades.
+- **Similar artists.** Taken from ListenBrainz, with Deezer as a fallback, and ranked toward your library. Each one shows how many of their albums you own.
+- **Weekly discovery.** Weekly playlists of music you do not own, built from similar artists and downloaded through Lidarr or Soulseek.
 
 <p align="center">
-  <img src="assets/screenshots/vibe-songpath.png" alt="Song Path" width="800">
+  <img src="assets/screenshots/mood-mixer.png" alt="The mood mixer" width="800">
 </p>
 
-**Blend** -- add multiple tracks and Kima finds the centroid in audio space. The result is a queue of tracks that blend all of the inputs together into something new.
+### Podcasts and audiobooks
+
+- **Podcasts.** Search for a show, subscribe, and Kima streams episodes from the show's own feed and remembers your place across devices.
+- **Audiobooks.** Connect an [Audiobookshelf](https://www.audiobookshelf.org/) server and listen alongside your music. Your position is saved back to it.
 
 <p align="center">
-  <img src="assets/screenshots/vibe-blend.png" alt="Vibe Blend" width="800">
+  <img src="assets/screenshots/desktop-podcasts.png" alt="Podcasts" width="49%">
+  <img src="assets/screenshots/desktop-audiobooks.png" alt="Audiobooks" width="49%">
 </p>
 
-**Additional features:**
+### Getting music
 
--   **Text search** - Type any descriptor ("loud and fast", "rainy day piano") to highlight matching tracks on the map
--   **Right-click context menu** - Vibe from any track (similar-track queue), find similar (highlight on map), or start a Song Path
--   **Labels** - Toggle track/artist labels on the map
--   **Keep The Vibe Going** - From the player, activate vibe mode to continuously queue tracks that match what's playing
+- **Lidarr.** Request an album you do not own, and Kima adds it when Lidarr finishes the download.
+- **Soulseek.** Search the network and download from it, through Kima's own connection or your [slskd](https://github.com/slskd/slskd) server.
+- **Playlist import.** Bring in playlists from Spotify, Deezer, YouTube, YouTube Music, SoundCloud, Bandcamp and Mixcloud, or an M3U file. Kima matches each track to your library and can send the missing ones to your download source.
 
-**Mood Mixer** -- pick a mood preset (Upbeat, Melancholic, Calm, Intense, Energetic) to instantly generate a playlist calibrated to that sound, tuned to your music's continuity. Moods are derived from audio analysis of your actual library, not genre tags.
+### Accounts and apps
 
-<p align="center">
-  <img src="assets/screenshots/mood-mixer.png" alt="Mood Mixer" width="800">
-</p>
+- **Several users.** Each account has its own plays, playlists and settings. The first account is the administrator, and any account can turn on two-factor authentication.
+- **Other apps.** Kima speaks the OpenSubsonic API, so Subsonic music apps can play from it. Each app gets its own token, which you can revoke.
+- **Scrobbling.** Optionally send your plays to your own ListenBrainz account.
+- **TV.** Kima switches to a layout for remote controls on Android TV, Fire TV and Google TV browsers.
 
-### Playlist Import
+## Requirements
 
-Import playlists from Spotify, Deezer, and YouTube, or browse and discover new music directly.
+- Docker, on a `linux/amd64` or `linux/arm64` machine.
+- A folder of music.
+- Memory: each audio analysis worker needs about 1 to 1.5 GB, and up to 2 to 3 GB at its peak. The example Compose file limits the container to 6 GB. On a small machine, lower the worker count in **Settings > Library Enrichment**.
+- A modern web browser.
+- Optional: an NVIDIA graphics card (see [docs/gpu.md](docs/gpu.md)), and Lidarr, Audiobookshelf or slskd if you use those features.
 
--   **Spotify Import** - Paste any Spotify playlist URL to import tracks
--   **Deezer Import** - Same functionality for Deezer playlists
--   **YouTube Import** - Import from YouTube and YouTube Music playlists
--   **ISRC Matching** - Deterministic track matching via International Standard Recording Codes before falling back to fuzzy text matching
--   **Smart Preview** - See which tracks are already in your library, which albums can be downloaded, and which have no matches
--   **Selective Download** - Choose exactly which albums to add to your library
--   **Browse Deezer** - Explore Deezer's featured playlists and radio stations directly in-app
-
-<p align="center">
-  <img src="assets/screenshots/deezer-browse.png" alt="Browse Deezer" width="800">
-</p>
-<p align="center">
-  <img src="assets/screenshots/spotify-import-preview.png" alt="Import Preview" width="800">
-</p>
-
-### Native Apps
-
--   **OpenSubsonic API** - Use any Subsonic-compatible client (Symfonium, DSub, Ultrasonic, etc.) to stream your Kima library
--   **Standard Subsonic auth** - paste your API token into the password field -- works with Amperfy, Symfonium, DSub, and any standard Subsonic client (MD5 token auth is not supported; see Native Apps below)
--   **Per-client tokens** - Generate named API tokens in Settings > Native Apps; revoke them individually when a device is lost or replaced
--   **Enrichment-aware** - Genres and artist biographies exposed to clients come from MusicBrainz and Wikidata enrichment, not just file tags
--   **Lyrics, bookmarks, and play queue** - getLyrics, bookmarks, and savePlayQueue/getPlayQueue for cross-device resume
-
-### Multi-User Support
-
--   **Separate accounts** - Each user gets their own playlists, listening history, and preferences
--   **Admin controls** - Manage users and system settings from the web interface
--   **Two-factor authentication** - Secure accounts with TOTP-based 2FA
-
-### Custom Playlists
-
--   **Create and curate** - Build your own playlists from your library
--   **Share with others** - Make playlists public for other users on your instance
--   **Save mixes** - Convert any auto-generated mix into a permanent playlist
-
-### Mobile and TV
-
--   **Progressive Web App (PWA)** - Install Kima on your phone or tablet for a native-like experience
--   **Android TV** - Fully optimized 10-foot interface with D-pad/remote navigation
--   **Responsive Web** - Works on any device with a modern browser
-
-<p align="center">
-  <img src="assets/screenshots/mobile-home.png" alt="Mobile Home" width="280">
-  <img src="assets/screenshots/mobile-player.png" alt="Mobile Player" width="280">
-  <img src="assets/screenshots/mobile-library.png" alt="Mobile Library" width="280">
-</p>
-
----
-
-## Mobile Support
-
-### Progressive Web App (PWA)
-
-Kima works as a PWA on mobile devices, giving you a native app-like experience without needing to download from an app store.
-
-**To install on Android:**
-
-1. Open your Kima server in Chrome
-2. Tap the menu (⋮)
-3. Select "Add to Home Screen" or "Install app"
-
-**To install on iOS:**
-
-1. Open your Kima server in Safari
-2. Tap the Share button
-3. Select "Add to Home Screen"
-
-**PWA Features:**
-
--   Full streaming functionality
--   Background audio playback
--   Lock screen and notification media controls (iOS Control Center and Android notifications)
--   Offline caching for faster loads
--   Installable icon on home screen
-
-### Android TV
-
-Kima includes a dedicated interface optimized for television displays:
-
--   Large artwork and readable text from across the room
--   Full D-pad and remote navigation support
--   Persistent Now Playing bar for quick access to playback controls
--   Simplified navigation focused on browsing and playback
-
-The TV interface is automatically enabled when accessing Kima from an Android TV device's browser.
-
----
-
-## Quick Start
-
-The image ships for both x86-64 and ARM (so: Linux boxes, NAS units, and Intel
-and Apple Silicon Macs). Nothing in Kima requires a GPU, a particular CPU
-vendor, or PyTorch; the GPU section below is an optional speed-up, not a
-requirement.
-
-### One Command Install
+## Quick start
 
 ```bash
 docker run -d \
@@ -255,57 +139,9 @@ docker run -d \
   chevron7locked/kima:latest
 ```
 
-That's it! Open http://localhost:3030 and create your account.
+Open <http://localhost:3030> and create your account. The first account becomes the administrator. When setup finishes, Kima scans your music and starts enrichment.
 
-**With GPU acceleration** (requires [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)):
-
-```bash
-docker run -d \
-  --name kima \
-  --gpus all \
-  --device /dev/nvidia0 --device /dev/nvidiactl \
-  --device /dev/nvidia-uvm --device /dev/nvidia-uvm-tools \
-  -p 3030:3030 \
-  -v /path/to/your/music:/music \
-  -v kima_data:/data \
-  chevron7locked/kima:latest
-```
-
-The `--device` lines keep the GPU after the host reloads its services (`systemctl daemon-reload`, which updates
-run): without them, on hosts where systemd manages Docker's cgroups, anything the container starts afterwards
-cannot open the card ([NVIDIA's note](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/troubleshooting.html)).
-
-### What's Included
-
-The Kima container includes everything you need:
-
--   **Web Interface** (port 3030)
--   **API Server** (internal)
--   **PostgreSQL Database** (internal)
--   **Redis Cache** (internal)
-
-### Configuration Options
-
-```bash
-docker run -d \
-  --name kima \
-  -p 3030:3030 \
-  -v /path/to/your/music:/music \
-  -v kima_data:/data \
-  -e SESSION_SECRET=your-secret-key \
-  -e TZ=America/New_York \
-  --add-host=host.docker.internal:host-gateway \
-  chevron7locked/kima:latest
-```
-
-| Variable         | Description            | Default        |
-| ---------------- | ---------------------- | -------------- |
-| `SESSION_SECRET` | Session encryption key | Auto-generated |
-| `TZ`             | Timezone               | UTC            |
-
-### Using Docker Compose
-
-Create a `docker-compose.yml` file:
+The same thing as a Compose file:
 
 ```yaml
 services:
@@ -317,9 +153,6 @@ services:
         volumes:
             - /path/to/your/music:/music
             - kima_data:/data
-        environment:
-            - TZ=America/New_York
-        # Required for Lidarr webhook integration on Linux
         extra_hosts:
             - "host.docker.internal:host-gateway"
         restart: unless-stopped
@@ -328,805 +161,64 @@ volumes:
     kima_data:
 ```
 
-Then run:
+`/data` holds the database, the caches and the secrets Kima generates on its first start. Back it up: without it you lose your users, playlists and play history, and the credentials you saved in Settings can no longer be read.
 
-```bash
-docker compose up -d
-```
-
-**Updating with Docker Compose:**
-
-```bash
-docker compose pull
-docker compose up -d
-```
-
-### Bind-mounting `/data` on Linux
-
-Named volumes are recommended. If you bind-mount `/data`, make sure required subdirectories exist and are writable by the container service users.
-
-```bash
-mkdir -p /path/to/kima-data/postgres /path/to/kima-data/redis
-```
-
-If startup logs report a permission error, `chown` the host path to the UID/GID shown in the logs (for example, the postgres user).
-
----
-
-Kima will begin scanning your music library automatically. Depending on the size of your collection, this may take a few minutes to several hours.
-
----
-
-## Release Channels
-
-Kima offers two release channels to match your stability preferences:
-
-### 🟢 Stable (Recommended)
-
-Production-ready releases. Updated when new stable versions are released.
-
-```bash
-docker pull chevron7locked/kima:latest
-# or specific version
-docker pull chevron7locked/kima:v1.11.0
-```
-
-### 🔴 Pre-release (Development)
-
-Unreleased builds, published on demand rather than on a timer. One exists
-because someone deliberately cut it, not because a clock struck 4am.
-They live on GitHub's registry; Docker Hub carries stable releases only.
-
-⚠️ **Not recommended for production**: may be unstable or broken. A pre-release
-build labels itself in the interface (`v1.11.0-prerelease`) so you can always
-tell which channel a running instance came from.
-
-```bash
-docker pull ghcr.io/chevron7locked/kima:prerelease
-```
-
-`:prerelease` always points at the newest one; pull it again whenever you want
-to move up.
-
-**In Compose, the registry prefix is required.** Stable images come from Docker
-Hub, which Docker assumes by default, so `chevron7locked/kima:latest` resolves.
-Pre-releases live on GitHub's registry and will not resolve without the
-`ghcr.io/` prefix; a bare `kima:prerelease` sends Docker looking on Docker Hub
-for an image that isn't there.
-
-```yaml
-services:
-    kima-hub:
-        image: ghcr.io/chevron7locked/kima:prerelease
-```
-
-Every build is also tagged with its commit (`:prerelease-a1b2c3d`). You don't
-need it to follow the channel. It's there for pinning a known-good build or
-for saying which one you were on in a bug report.
-
-⚠️ **Point it at a fresh data volume, not your live one.** A pre-release runs
-any new database migrations on first boot, and Prisma migrations don't roll
-back. Once they've applied, the older image can no longer read that database.
-Use a separate volume and a separate port to run one alongside your real
-instance, or take a backup first if you're deliberately upgrading in place.
-
-> **The old `chevron7locked/kima:nightly` tag is retired.** It was last built
-> successfully on 2026-08-12 and is not updated any more. If you are running it,
-> move to a stable release or to the pre-release channel above.
-
-**For contributors:** See [`CONTRIBUTING.md`](CONTRIBUTING.md) for information on submitting pull requests and contributing to Kima.
-
----
+To update, run `docker compose pull` and then `docker compose up -d`. [docs/install.md](docs/install.md) covers the other Compose files, bind-mounting `/data`, pre-release images and installing Kima on a phone.
 
 ## Configuration
 
-### Environment Variables
-
-The unified Kima container handles most configuration automatically. Here are the available options:
-
-| Variable                            | Default                            | Description                                                                 |
-| ----------------------------------- | ---------------------------------- | --------------------------------------------------------------------------- |
-| `SESSION_SECRET`                    | Auto-generated                     | Session encryption key (recommended to set for persistence across restarts) |
-| `SETTINGS_ENCRYPTION_KEY`           | Required                           | Encryption key for stored credentials (generate with `openssl rand -base64 32`) |
-| `TZ`                                | `UTC`                              | Timezone for the container                                                  |
-| `PORT`                              | `3030`                             | Port to access Kima                                                       |
-| `KIMA_CALLBACK_URL`               | `http://host.docker.internal:3030` | URL for Lidarr webhook callbacks (see [Lidarr integration](#lidarr))        |
-| `AUDIO_ANALYSIS_WORKERS`            | `2`                                | Analysis workers until set in Settings (up to the machine's cores)          |
-| `AUDIO_ANALYSIS_THREADS_PER_WORKER` | `1`                                | Threads per analysis worker for the models and maths (1-4)                   |
-| `AUDIO_BRPOP_TIMEOUT`              | `30`                               | Seconds the analyzer waits for work before checking again                    |
-| `AUDIO_MODEL_IDLE_TIMEOUT`         | `300`                              | Seconds before unloading idle ML models to free memory (0 = never unload)    |
-| `LOG_LEVEL`                         | `warn` (prod) / `debug` (dev)      | Logging verbosity: debug, info, warn, error, silent                         |
-| `DOCS_PUBLIC`                       | `false`                            | Set to `true` to allow public access to API docs in production              |
-
-The music library path is configured via Docker volume mount (`-v /path/to/music:/music`).
-
-#### External Access
-
-If you're accessing Kima from outside your local network (via reverse proxy, for example), set the API URL:
-
-```env
-NEXT_PUBLIC_API_URL=https://kima-api.yourdomain.com
-```
-
-And add your domain to the allowed origins:
-
-```env
-ALLOWED_ORIGINS=http://localhost:3030,https://kima.yourdomain.com
-```
-
----
-
-## Security Considerations
-
-### Environment Variables
-
-Kima uses several sensitive environment variables. Never commit your `.env` file.
-
-| Variable                  | Purpose                        | Required          |
-| ------------------------- | ------------------------------ | ----------------- |
-| `SESSION_SECRET`          | Session encryption (32+ chars) | Yes               |
-| `SETTINGS_ENCRYPTION_KEY` | Encrypts stored credentials    | Yes               |
-| `SOULSEEK_USERNAME`       | Soulseek login                 | If using Soulseek |
-| `SOULSEEK_PASSWORD`       | Soulseek password              | If using Soulseek |
-| `LIDARR_API_KEY`          | Lidarr integration             | If using Lidarr   |
-| `OPENAI_API_KEY`          | AI features                    | Optional          |
-| `FANART_API_KEY`          | Artist images                  | Optional          |
-
-### Authentication & Session Security
-
--   **JWT tokens** - Access tokens expire after 24 hours; refresh tokens after 30 days
--   **Token refresh** - Automatic token refresh via `/api/auth/refresh` endpoint
--   **Password changes** - Changing your password invalidates all existing sessions
--   **Session cookies** - Secured with `httpOnly`, `sameSite=strict`, and `secure` (in production)
--   **Encryption validation** - Encryption key is validated on startup to prevent insecure defaults
-
-### Webhook Security
-
--   **Lidarr webhooks** - Support signature verification with configurable secret
--   Configure the webhook secret in Settings → Lidarr for additional security
-
-### Admin Dashboard Security
-
--   **Bull Board** - Job queue dashboard at `/admin/queues` requires authenticated admin user
--   **API Documentation** - Swagger docs at `/api-docs` require authentication in production (unless `DOCS_PUBLIC=true`)
-
-### VPN Configuration (Optional)
-
-If using Mullvad VPN for Soulseek:
-
--   Place WireGuard config in `backend/mullvad/` (gitignored)
--   Never commit VPN credentials or private keys
--   The `*.conf` and `key.txt` patterns are already in .gitignore
-
-### Generating Secrets
-
-```bash
-# Generate a secure session secret
-openssl rand -base64 32
-
-# Generate encryption key
-openssl rand -base64 32
-```
-
-### Network Security
-
--   Kima is designed for self-hosted LAN use
--   For external access, use a reverse proxy with HTTPS
--   Configure `ALLOWED_ORIGINS` for your domain
-
----
-
-## CLAP Audio Analysis
-
-The CLAP (Contrastive Language-Audio Pretraining) service generates embeddings for audio similarity search, powering the Vibe button's track matching feature.
-
-### Requirements
-
--   PostgreSQL with pgvector extension (included in `pgvector/pgvector:pg16` image)
--   2-4GB RAM per worker
--   The audio tower ships in the image as a pinned ONNX export. No PyTorch, no model download at runtime
-
-### Configuration
-
-Environment variables in docker-compose.yml:
-
-| Variable                  | Default | Description                                |
-| ------------------------- | ------- | ------------------------------------------ |
-| `CLAP_WORKERS`            | `2`     | Number of analysis workers (1-8)           |
-| `CLAP_THREADS_PER_WORKER` | `1`     | CPU threads per worker (1-4)               |
-
-### Usage
-
-The CLAP analyzer runs automatically alongside the main audio analyzer. The vibe button uses CLAP embeddings for finding similar tracks. Text-based vibe search is available at `/api/vibe/search`.
-
-### API Endpoints
-
-| Endpoint                       | Method | Description                                |
-| ------------------------------ | ------ | ------------------------------------------ |
-| `/api/vibe/similar/:trackId`   | GET    | Get tracks similar to the given track      |
-| `/api/vibe/search`             | POST   | Search tracks by text description          |
-| `/api/vibe/status`             | GET    | Get embedding progress                     |
-
----
-
-## GPU Acceleration
-
-If Kima's container can see an NVIDIA GPU, embedding rebuilds (the vibe map's
-CLAP analyzer) can run on it instead of the CPU. It is **optional** --
-everything works on CPU, and nothing about the GPU path touches your machine
-until you say so. Other analysis (BPM, mood, key -- the MusiCNN/Essentia
-analyzer) runs on CPU by design.
-
-Measured on a 4060 Ti: about **1.5x faster on the embedding step itself**
-(0.71 s to 0.45 s per track median), with embeddings identical to the CPU
-ones (cosine 1.0 to display precision). Full-rebuild wall time is limited by
-job dispatch more than compute, so expect the biggest real win to be your CPU
-coming free while a rebuild runs.
-
-### How it works
-
-1. Turn on **Settings -> Library Enrichment -> NVIDIA GPU acceleration**
-   (off by default; the 1.11 welcome window asks the same question).
-2. The analyzer downloads twelve pinned packages (about 2 GB) from PyPI,
-   verifies every file against a fixed fingerprint, and installs them into
-   Kima's own data directory, where they take about 3.4 GB. Nothing is baked
-   into the Docker image -- if you never flip the toggle, you never download
-   anything, and the code path is byte-identical to the CPU one.
-3. The GPU takes over when the analyzer next starts (CUDA fixes its
-   libraries at process start). The settings row tells you the truth while
-   you wait: "Installed -- will be used after the analyzer restarts", then
-   "Active -- embeddings are running on the GPU."
-4. Turning the toggle off removes the download.
-
-Failures are named, not silent: if the container cannot see an NVIDIA
-device the row says why, and your embeddings simply keep using the CPU.
-
-### Requirements
-
--   NVIDIA GPU with CUDA support
--   NVIDIA drivers installed on the host (`nvidia-smi` should work)
--   [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) -- bridges Docker to your GPU, so the container can see the card
-
-### Install NVIDIA Container Toolkit
-
-The toolkit is required for any Docker container to access the GPU. Install it once:
-
-**Fedora / Nobara / RHEL:**
-```bash
-curl -s -L https://nvidia.github.io/libnvidia-container/stable/rpm/nvidia-container-toolkit.repo | sudo tee /etc/yum.repos.d/nvidia-container-toolkit.repo && sudo dnf install -y nvidia-container-toolkit && sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker
-```
-
-**Ubuntu / Debian:**
-```bash
-curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg && curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list && sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit && sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker
-```
-
-### Verify Host Setup
-
-```bash
-# Check NVIDIA driver
-nvidia-smi
-
-# Check container toolkit
-nvidia-container-runtime --version
-```
-
-### Enable GPU
-
-Giving the container the GPU only lets it *see* the card. Two switches in **Settings -> Library Enrichment**
-choose what uses it: vibe embeddings, and audio analysis. The first one turned on downloads the GPU runtime (about
-2 GB, 3.4 GB on disk) into the data folder; it is removed when both are off. A switch applies on its own within
-about a minute: the analyzer finishes the songs it is on and restarts with the GPU on or off.
-
-**All-in-One container:**
-```bash
-docker run -d --gpus all \
-  --device /dev/nvidia0 --device /dev/nvidiactl --device /dev/nvidia-uvm --device /dev/nvidia-uvm-tools \
-  -p 3030:3030 -v /path/to/music:/music -v kima_data:/data chevron7locked/kima:latest
-```
-
-**Docker Compose:** add these lines to `audio-analyzer` and `audio-analyzer-clap` in `docker-compose.yml`:
-
-```yaml
-        gpus: all
-        devices:
-            - /dev/nvidia0
-            - /dev/nvidiactl
-            - /dev/nvidia-uvm
-            - /dev/nvidia-uvm-tools
-```
-
-Then restart: `docker compose up -d`
-
-### Verify GPU Detection
-
-Flip the settings toggle and watch the row's status line, or ask the API:
-
-```bash
-curl -H "Authorization: Bearer <token>" http://localhost:3030/api/system-settings/gpu
-```
-
-Expected within about a minute of turning a switch on (longer the first time, while the runtime downloads):
-`"status": "installed", "effective": true` for vibe embeddings, `"analysisEffective": true` for audio analysis.
-If the container cannot see the card, `"reason": "no_gpu"`; if a session could not use it, the page says it fell
-back to the CPU. Either way the work carries on, on the CPU.
-
-Host-side sanity checks:
-
-```bash
-# Check NVIDIA driver
-nvidia-smi
-
-# Check the container can see it too
-docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
-```
-
----
-
-## Integrations
-
-Kima works beautifully on its own, but it becomes even more powerful when connected to other services.
-
-### Lidarr
-
-Connect Kima to your Lidarr instance to request and download new music directly from the app.
-
-**What you get:**
-
--   Browse artists and albums you don't own
--                 Request downloads with a single click
--   Discover Weekly playlists that automatically download new recommendations
--   Automatic library sync when Lidarr finishes importing
-
-**Setup:**
-
-1. Go to Settings in Kima
-2. Navigate to the Lidarr section
-3. Enter your Lidarr URL (e.g., `http://localhost:8686`)
-4. Enter your Lidarr API key (found in Lidarr under Settings > General)
-5. Test the connection and save
-
-Kima will automatically configure a webhook in Lidarr to receive notifications when new music is imported.
-
-**Networking Note:**
-
-The webhook requires Lidarr to be able to reach Kima. By default Kima gives Lidarr `http://host.docker.internal:3030`. Lidarr resolves that name inside its own container: Docker Desktop provides it, and on Linux Lidarr's container needs `extra_hosts: ["host.docker.internal:host-gateway"]`.
-
-Otherwise, set the address Lidarr can reach Kima at:
-
-```yaml
-environment:
-    - KIMA_CALLBACK_URL=http://YOUR_KIMA_IP:3030
-```
-
-Saving the Lidarr settings sends Lidarr's test event. If it cannot reach Kima, admins get a "Lidarr cannot reach Kima" notification naming the address and Lidarr's error.
-
-### Audiobookshelf
-
-Connect to your Audiobookshelf instance to browse and listen to audiobooks within Kima.
-
-**What you get:**
-
--   Browse your audiobook library
--   Stream audiobooks directly in Kima
--   Progress syncs between Kima and Audiobookshelf
-
-**Setup:**
-
-1. Go to Settings in Kima
-2. Navigate to the Audiobookshelf section
-3. Enter your Audiobookshelf URL (e.g., `http://localhost:13378`)
-4. Enter your API key (found in Audiobookshelf under Settings > Users > your user > API Token)
-5. Test the connection and save
-
-### Soulseek
-
-Kima includes built-in Soulseek support for finding rare tracks and one-offs that aren't available through traditional download sources like Lidarr.
-
-[Soulseek](https://www.slsknet.org/) is a peer-to-peer file sharing network focused on music. Users share their music libraries and can browse/download from each other. Kima connects directly to the Soulseek network -- no additional software (like slskd) is required.
-
-**Setup:**
-
-1. Go to Settings in Kima
-2. Navigate to the Soulseek section
-3. Enter your Soulseek username and password (create an account at [slsknet.org](https://www.slsknet.org/) if you don't have one)
-4. Save your settings
-
-**How Search Works:**
-
-When you search for music in Kima's Discovery tab, Soulseek results appear alongside your library results. Each result shows the filename, file size, bitrate, and format (FLAC/MP3). Metadata like artist and album is parsed from the file path structure (typically `Artist/Album/01 - Track.flac`).
-
-**How Download Works:**
-
-1. Click the download button on a Soulseek search result
-2. Kima searches the Soulseek network for the best match (preferring FLAC, high bitrate)
-3. The file is downloaded directly to your music library path
-4. A library scan is triggered to import the new file
-5. Metadata enrichment runs automatically (artist info, mood tags, audio analysis)
-
-You can also configure Soulseek as a download source for playlist imports. In Settings > Downloads, set Soulseek as primary or fallback source. When importing a Spotify/Deezer playlist, tracks not found in your library will be searched and downloaded from Soulseek automatically.
-
-**Download progress** is visible in the Activity Panel (bell icon in the top bar).
-
-**Limitations:**
-
-- Download speed depends on the sharing user's connection and availability
-- Not all tracks will have results -- Soulseek coverage varies by genre and popularity
-- Some users may have slow connections or go offline during transfers
-- Kima retries with alternative users if a download fails or times out
-
-### Native Apps (Subsonic)
-
-Kima implements the [OpenSubsonic](https://opensubsonic.netlify.app/) REST API, making it compatible with any Subsonic client.
-
-**Tested clients:** Amperfy (iOS), Symfonium, DSub, Ultrasonic
-
-**Setup:**
-
-1. Go to Settings > Native Apps in Kima
-2. Enter a client name (e.g. "Amperfy on iPhone") and click **Generate Token**
-3. Copy and save the token -- it is only shown once
-4. In your client app, configure:
-   - **Server URL** -- your Kima server address (e.g. `http://192.168.1.10:3030`)
-   - **Username** -- your Kima username
-   - **Password** -- the token you just generated
-
-**Notes:**
-
-- Enter the token in the client's password field, not a separate token field -- Kima checks whether `p=` is a token before checking it against your account password, so the same field works for either
-- MD5 token auth (`t=`/`s=`) is **not supported** -- it's a challenge-response scheme that requires the server to hold your token in a reversible form, which Kima no longer does (tokens are hashed at rest, the same way passwords are). A client hard-coded to that scheme will fail to authenticate; every client we've tested falls back to sending the password field instead, which works
-- Your account password also still works in the password field, unless you have two-factor authentication enabled -- a 2FA account must use a token there, since the Subsonic protocol has no way to prompt for a TOTP code
-- Each client should have its own token so you can revoke access per device
-- Genres and biographies surfaced to clients come from MusicBrainz and Wikidata enrichment, not just file tags
-- DISCOVER-location albums are excluded from all library views
-- OpenSubsonic extensions exposed: `apiKeyAuthentication`, `songLyrics`, `indexBasedQueue`, and `getPodcastEpisode`
-- Additional OpenSubsonic endpoints supported: `tokenInfo`, `startScan`, `getScanStatus`, `search`, `search2`, `search3`, `getUser`, `getUsers`, `createUser`, `updateUser`, `deleteUser`, `changePassword`, `getPlaylists`, `getPlaylist`, `createPlaylist`, `updatePlaylist`, `deletePlaylist`, `setRating`, `getPlayQueue`, `getPlayQueueByIndex`, `savePlayQueue`, `savePlayQueueByIndex`, `getBookmarks`, `createBookmark`, `deleteBookmark`, `getInternetRadioStations`, `createInternetRadioStation`, `updateInternetRadioStation`, `deleteInternetRadioStation`, `getAvatar`, `getShares`, `createShare`, `updateShare`, `deleteShare`, `getChatMessages`, `addChatMessage`, `getVideos`, `getVideoInfo`, `getCaptions`, `jukeboxControl`, `getTranscodeDecision`, `getTranscodeStream`, `hls`, `getLyricsBySongId`, `getLyrics`, `getNowPlaying`, `getTopSongs`, `getSongsByGenre`, `getSimilarSongs`, `getSimilarSongs2`, `getMusicDirectory`, `getPodcasts`, `getNewestPodcasts`, `getPodcastEpisode`, `refreshPodcasts`
-
-**Subsonic route module layout (backend):**
-
-- `backend/src/routes/subsonic/index.ts` -- top-level router composition, auth/rate-limit, system endpoints
-- `library.ts` -- artists/albums/tracks browsing and directory traversal
-- `search.ts` -- `search`/`search2`/`search3`, genre/top/similar discovery
-- `playback.ts` -- stream/download/cover-art/scrobble/now-playing plus `hls`/`getTranscodeStream`
-- `playlists.ts` -- playlist list/read/create/update/delete
-- `queue.ts` -- play queue get/save (ID-based and index-based)
-- `starred.ts` -- star/unstar, starred lists, `setRating`
-- `artistInfo.ts` / `lyrics.ts` -- artist metadata and lyric endpoints
-- `userManagement.ts` / `profile.ts` -- user admin endpoints and `getUser`
-- `podcasts.ts` -- podcast subscription and episode endpoints
-- `compat.ts` -- compatibility/stub endpoints for clients that expect optional APIs
-
-**When adding a Subsonic endpoint:**
-
-1. Add the handler in the module that matches endpoint ownership (or create a new focused module if needed).
-2. Validate required query params and return Subsonic-compatible errors via `subsonicError`.
-3. Return response payloads through `subsonicOk` using existing mapper helpers where possible.
-4. Register the router in `backend/src/routes/subsonic/index.ts` (preserve catch-all behavior).
-5. Update the endpoint support list in this README and run diagnostics on touched Subsonic route files.
-
----
-
-## Using Kima
-
-### First-Time Setup
-
-When you first access Kima, you'll be guided through a setup wizard:
-
-1. **Create your account** - The first user becomes the administrator
-2. **Configure integrations** - Optionally connect Lidarr, Audiobookshelf, and other services
-3. **Wait for library scan** - Kima will scan and catalog your music collection
-
-### The Home Screen
-
-After setup, your home screen displays:
-
--   **Continue Listening** - Pick up where you left off
--   **Recently Added** - New additions to your library
--   **Library Radio Stations** - One-click radio modes (Shuffle All, Workout, Discovery, Favorites, plus genre and decade stations)
--   **Made For You** - Auto-generated mixes based on your library
--   **Recommended For You** - Artist recommendations seeded from your play history, matched via ListenBrainz and Deezer
--   **Popular Podcasts** - Trending podcasts you might enjoy
--   **Audiobooks** - Quick access to your audiobook library (if Audiobookshelf is connected)
-
-### Searching
-
-Kima offers two search modes:
-
-**Library Search** - Find artists, albums, and tracks in your collection. Results are instant and searchable by name.
-
-**Discovery Search** - Find new music and podcasts you don't own. Music comes from the Soulseek network; podcasts from iTunes and Deezer. From discovery results, you can:
-
--   Preview tracks via Deezer
--   Request downloads through Lidarr
--   Subscribe to podcasts
-
-<p align="center">
-  <img src="assets/screenshots/desktop-artist.png" alt="Artist Page" width="800">
-</p>
-<p align="center">
-  <img src="assets/screenshots/desktop-album.png" alt="Album Page" width="800">
-</p>
-
-### Managing Podcasts
-
-1. Use the search bar and select "Podcasts" to find shows
-2. Click on a podcast to see its details and recent episodes
-3. Click Subscribe to add it to your library
-4. Episodes stream directly from the RSS feed - no downloads required
-
-Your listening progress is saved automatically, so you can pause on one device and resume on another.
-
-### Creating Playlists
-
-1. Navigate to your Library and select the Playlists tab
-2. Click "New Playlist" and give it a name
-3. Add tracks by clicking the menu on any song and selecting "Add to Playlist"
-4. Reorder tracks by dragging and dropping
-5. Toggle "Public" to share with other users on your instance
-
-### Using the Vibe System
-
-**Exploring the map:**
-
-1. Navigate to **Vibe** in the sidebar
-2. Your library loads as a 3D nebula -- similar-sounding tracks cluster together
-3. Click any star to inspect the track; double-click to play it
-4. Use the **Search** bar to light up tracks matching a song, artist, or text description
-
-**Song Path -- journey between two tracks:**
-
-1. Click **Song Path** in the toolbar
-2. Search for and select a start track, then an end track
-3. Click **Generate Path** -- Kima queues a smooth sonic journey between them
-
-**Blend -- find the space between multiple tracks:**
-
-1. Click **Blend** in the toolbar
-2. Add tracks you want to blend together
-3. Kima finds the centroid in audio space and queues tracks from that neighborhood
-
-**Keep The Vibe Going (from the player):**
-
-1. Start playing any track
-2. Right-click it on the vibe map and select **Vibe** to queue similar tracks continuously
-
-**Mood Mixer:**
-
-1. On the home screen, click **Mood Mixer** next to the Made For You section
-2. Select a mood preset -- Kima instantly generates a playlist from your library calibrated to that mood
-3. Each preset count shows how many tracks in your library match that mood
-
-### Importing Playlists
-
-**From Spotify:**
-
-1. Copy a Spotify playlist URL
-2. Go to Import (in the sidebar)
-3. Paste the URL and click Preview
-4. Review the results - you'll see which tracks are in your library, which can be downloaded, and which aren't available
-5. Select albums to download and start the import
-
-**From Deezer:**
-
-1. Browse featured playlists directly in the Browse section, or paste a Deezer playlist URL
-2. The same preview and import flow applies
-3. Explore Deezer's curated playlists and radio stations for discovery
-
-**From YouTube:**
-
-1. Copy a YouTube or YouTube Music playlist URL
-2. Paste it in the import field on the Playlists page
-3. Kima extracts individual tracks and resolves them via song.link to identify each one
-4. The same preview and import flow applies
-
-### Playback Settings
-
-In Settings, you can configure:
-
--   **Playback Quality** - Choose between Original, High (320kbps), Medium (192kbps), or Low (128kbps)
--   **Cache Size** - Limit how much space transcoded files use
-
-<p align="center">
-  <img src="assets/screenshots/desktop-player.png" alt="Now Playing" width="800">
-</p>
-<p align="center">
-  <img src="assets/screenshots/desktop-settings.png" alt="Settings" width="800">
-</p>
-
-### Keyboard Shortcuts
-
-When using the web interface, these keyboard shortcuts are available during playback:
-
-| Key         | Action                   |
-| ----------- | ------------------------ |
-| Space       | Play / Pause             |
-| N           | Next track               |
-| P           | Previous track           |
-| S           | Toggle shuffle           |
-| M           | Toggle mute              |
-| Arrow Up    | Volume up                |
-| Arrow Down  | Volume down              |
-| Arrow Right | Seek forward 10 seconds  |
-| Arrow Left  | Seek backward 10 seconds |
-
-### Android TV
-
-Kima includes a dedicated interface optimized for television displays:
-
--   Large artwork and readable text from across the room
--   Full D-pad and remote navigation support
--   Persistent Now Playing bar for quick access to playback controls
--   Simplified navigation focused on browsing and playback
-
-The TV interface is automatically enabled when accessing Kima from an Android TV device. Access it through your TV's web browser.
-
----
-
-## Administration
-
-### Managing Users
-
-As an administrator, you can:
-
-1. Go to Settings > User Management
-2. Create new user accounts
-3. Delete existing users (except yourself)
-4. Users can be assigned "admin" or "user" roles
-
-### System Settings
-
-Administrators have access to additional settings:
-
--   **Lidarr/Audiobookshelf/Soulseek** - Configure integrations
--   **Storage Paths** - View configured paths
--   **Cache Management** - Clear caches if needed
--   **Advanced** - Download retry settings, concurrent download limits
-
-### Download Settings
-
-Configure how Kima acquires new music in Settings → Downloads:
-
--   **Primary Source** - Choose between Soulseek or Lidarr as your main download source
--   **Fallback Behavior** - Optionally fall back to the other source if the primary fails
--   **Stale Job Cleanup** - Clear stuck Discovery batches and downloads that aren't progressing
-
-### Enrichment Settings
-
-Control metadata enrichment in Settings → Cache & Automation:
-
--   **Enrichment Speed** - Adjust concurrency (1-5x) to balance speed vs. system load
--   **Failure Notifications** - Get notified when enrichment fails for specific items
--   **Retry/Skip Modal** - Choose to retry failed items or skip them to continue processing
-
-### Activity Panel
-
-The Activity Panel provides real-time visibility into downloads and system events:
-
--   **Notifications** - Alerts for completed downloads, ready playlists, and import completions
--   **Active Downloads** - Monitor download progress in real-time
--   **History** - View completed downloads and past events
-
-Access the Activity Panel by clicking the bell icon in the top bar (desktop) or through the menu (mobile).
-
-### API Keys
-
-For programmatic access to Kima:
-
-1. Go to Settings > API Keys
-2. Generate a new key with a descriptive name
-3. Use the key in the `Authorization` header: `Bearer YOUR_API_KEY`
-
-API documentation is available at `/api-docs` when the backend is running (requires authentication in production).
-
-### Bull Board Dashboard
-
-Monitor background job queues at `/admin/queues`:
-
--   View active, waiting, completed, and failed jobs
--   Retry or remove stuck jobs
--   Monitor download progress and enrichment tasks
--   Requires admin authentication
-
----
-
-## Architecture
-
-Kima consists of several components working together:
-
-```
-                                    ┌─────────────────┐
-                                    │   Your Browser  │
-                                    └────────┬────────┘
-                                             │
-                                             ▼
-┌─────────────────┐              ┌─────────────────────┐
-│  Music Library  │◄────────────►│     Frontend        │
-│   (Your Files)  │              │   (Next.js :3030)   │
-└─────────────────┘              └──────────┬──────────┘
-                                            │
-                                            ▼
-┌─────────────────┐              ┌─────────────────────┐
-│    Lidarr       │◄────────────►│      Backend        │
-│   (Optional)    │              │  (Express.js :3006) │
-└─────────────────┘              └──────────┬──────────┘
-                                            │
-┌─────────────────┐              ┌──────────┴──────────┐
-│ Audiobookshelf  │◄────────────►│                     │
-│   (Optional)    │              │  ┌───────────────┐  │
-└─────────────────┘              │  │  PostgreSQL   │  │
-                                 │  └───────────────┘  │
-                                 │  ┌───────────────┐  │
-                                 │  │     Redis     │  │
-                                 │  └───────────────┘  │
-                                 └─────────────────────┘
-```
-
-| Component           | Purpose                                    | Default Port |
-| ------------------- | ------------------------------------------ | ------------ |
-| Frontend            | Web interface (Next.js)                    | 3030         |
-| Backend             | API server (Express.js)                    | 3006         |
-| PostgreSQL          | Database (with pgvector)                   | 5432         |
-| Redis               | Caching and job queues                     | 6379         |
-| Audio Analyzer      | Mood, BPM, key detection (Essentia MusiCNN)| --           |
-| Audio Analyzer CLAP | Vibe similarity embeddings (LAION CLAP)    | --           |
-
----
-
-## Roadmap
-
-Kima is under active development. What's on the board, roughly in order:
-
--   **Native iOS app** - built and in testing, targeting an October release. Android follows after.
--   **Custom embedding model** - the shipped analyzer is a general-purpose audio model. The one in the works is trained on music, for exactly the jobs Kima asks of it: the map, the search, the mood mixes.
--   **Shared embedding store** - a public database of precomputed embeddings so a fresh install can skip re-analyzing music that's already been analyzed elsewhere and have a working vibe map on day one. It's the first feature with a data footprint, and [PRIVACY.md](PRIVACY.md) says exactly what it will and won't send before it ships.
--   **Offline Mode** - Download tracks for offline playback
--   **Windows Executable** - Standalone app for Windows users who prefer not to use Docker
-
-Contributions and suggestions are welcome.
-
----
-
-## Privacy
-
-Kima collects nothing. There is no telemetry, no analytics, no phone-home, and no Kima server that receives anything: the app runs entirely on your machine, and the only network calls are the metadata lookups the features you use make from your server (the full table is in [PRIVACY.md](PRIVACY.md)). The one planned feature with a data footprint, the shared embedding store, is described there too, before it exists.
-
-
-## License
+Most things are set in the web app, under **Settings**. In the all-in-one image the two secrets, `SESSION_SECRET` and `SETTINGS_ENCRYPTION_KEY`, are created for you. These environment variables are the ones you are most likely to want:
+
+| Variable | What it does |
+| --- | --- |
+| `SECURE_COOKIES` | Set to `true` when Kima is served over HTTPS. |
+| `ALLOWED_ORIGINS` | Comma-separated origins allowed to call the API from a browser. Unset allows any. |
+| `KIMA_CALLBACK_URL` | The address Lidarr uses to reach Kima. |
+| `LOG_LEVEL` | `debug`, `info`, `warn`, `error` or `silent`. |
+| `DISABLE_CLAP` | Set to `true` to stop the sound-vector analyzer. The vibe features then do not work. |
+
+Every variable, the ports and the storage paths are in [docs/configuration.md](docs/configuration.md).
+
+## Documentation
+
+| Guide | What it covers |
+| --- | --- |
+| [Install and update](docs/install.md) | Every Compose file, updating, stable and pre-release images, phones and TVs |
+| [Using Kima](docs/using-kima.md) | A tour of the web app and its keyboard shortcuts |
+| [Configuration](docs/configuration.md) | Settings, environment variables, ports and storage paths |
+| [Administration](docs/administration.md) | Enrichment, users, job queues, backups and logs |
+| [Integrations](docs/integrations.md) | Lidarr, Soulseek, Audiobookshelf, ListenBrainz and playlist import |
+| [Subsonic clients](docs/subsonic.md) | Connecting other music apps |
+| [NVIDIA GPU](docs/gpu.md) | Moving the audio models onto a graphics card |
+| [Security](docs/security.md) | Secrets, sign-in, and opening Kima to the internet |
+| [Development](docs/development.md) | Running from source, tests and releases |
+| [Privacy](PRIVACY.md) | What Kima sends to outside services |
+| [Changelog](CHANGELOG.md) | What changed in each version |
+
+Kima has no telemetry or analytics, and the author receives nothing from your install. [PRIVACY.md](PRIVACY.md) lists each outside service your server contacts and what it sends.
+
+## Contributing
+
+Bug reports and questions go to [GitHub Issues](https://github.com/Chevron7Locked/kima-hub/issues); include your Kima version and the output of `docker logs kima`. To change the code, read [CONTRIBUTING.md](CONTRIBUTING.md), then [docs/development.md](docs/development.md) for running Kima from source and the checks a pull request must pass.
+
+## Licence
 
 Kima is released under the [GNU General Public License v3.0](LICENSE).
 
-You are free to use, modify, and distribute this software under the terms of the GPL-3.0 license.
+The feel weights in `backend/src/services/matching/feelProbe.json` are derived from the DEAM dataset (Aljanaki, Yang & Soleymani, PLOS ONE 2017), which its authors release under Creative Commons BY-NC. That file is licensed under those terms and credited to DEAM; the rest of Kima stays under the GPL.
 
-The feel weights in `backend/src/services/matching/feelProbe.json` are derived from the DEAM dataset and are licensed separately under Creative Commons BY-NC, the terms DEAM's authors release it under.
+## Acknowledgements
 
----
+Kima builds on these projects and services:
 
-## Acknowledgments
-
-Kima wouldn't be possible without these services and projects:
-
--   [ListenBrainz](https://listenbrainz.org/) - Similar artists, charts, and open scrobbling
--   [AcoustID](https://acoustid.org/) - Audio-fingerprint track identification
--   [Wikidata](https://www.wikidata.org/) - Artist biographies
--   [MusicBrainz](https://musicbrainz.org/) - Comprehensive music database
--   [iTunes Search API](https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/iTuneSearchAPI/) - Podcast discovery
--   [Deezer](https://developers.deezer.com/) - Track previews and playlist browsing
--   [Odesli/song.link](https://odesli.co/) - Cross-platform music link resolution
--   [Fanart.tv](https://fanart.tv/) - Artist images and artwork
--   [Lidarr](https://lidarr.audio/) - Music collection management
--   [Audiobookshelf](https://www.audiobookshelf.org/) - Audiobook and podcast server
--   [DEAM](https://cvml.unige.ch/databases/DEAM/) (Aljanaki, Yang & Soleymani, PLOS ONE 2017) - Human valence and arousal ratings behind the feel part of matching
-
----
-
-## Support
-
-If you encounter issues or have questions:
-
-1. Check the [Issues](https://github.com/Chevron7Locked/kima-hub/issues) page for known problems
-2. Open a new issue with details about your setup and the problem you're experiencing
-3. Include logs from `docker compose logs` if relevant
-
----
-
-_Built with love for the self-hosted community._
+- [MusicBrainz](https://musicbrainz.org/), [Cover Art Archive](https://coverartarchive.org/) and [Wikidata](https://www.wikidata.org/) for metadata, artwork and artist biographies
+- [ListenBrainz](https://listenbrainz.org/) for similar artists, charts and open scrobbling
+- [AcoustID](https://acoustid.org/) for audio-fingerprint identification
+- [Deezer](https://developers.deezer.com/) for similar artists, artwork and playlist browsing, and [Fanart.tv](https://fanart.tv/) for artist images
+- [LRCLIB](https://lrclib.net/) for lyrics
+- [Apple's iTunes Search API](https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/iTuneSearchAPI/) for podcast search
+- [Odesli](https://odesli.co/) (song.link) for resolving links from other music services during playlist import, and [yt-dlp](https://github.com/yt-dlp/yt-dlp) for reading playlist links
+- [LAION CLAP](https://huggingface.co/laion/clap-htsat-unfused) for the sound model, and [Essentia](https://essentia.upf.edu/) with its MusiCNN models for audio analysis
+- [DEAM](https://cvml.unige.ch/databases/DEAM/) for the human valence and arousal ratings behind the feel part of matching
+- [UMAP](https://arxiv.org/abs/1802.03426) (McInnes, Healy and Melville) for the method behind the map's layout
+- [Lidarr](https://lidarr.audio/), [Audiobookshelf](https://www.audiobookshelf.org/) and [slskd](https://github.com/slskd/slskd) for the services Kima connects to
