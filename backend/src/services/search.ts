@@ -821,7 +821,7 @@ export class SearchService {
         }
 
         // Check cache
-        const cacheKey = `search:${type}:${normalizeCacheQuery(query)}:${limit}:${genre || ""}`;
+        const cacheKey = `search:${type}:${normalizeCacheQuery(query)}:${limit}:${offset}:${genre || ""}`;
         try {
             const cached = await redisClient.get(cacheKey);
             if (cached) {
