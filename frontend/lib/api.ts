@@ -26,6 +26,17 @@ interface MoodBucketMix {
     tracks?: ApiData[];
 }
 
+export interface VibePathTrack {
+    id: string;
+    title: string;
+    duration: number;
+    albumId: string;
+    albumTitle: string;
+    albumCoverUrl: string | null;
+    artistId: string;
+    artistName: string;
+}
+
 /**
  * The 1.11 release window's mood-mix answer (backend services/releases/moodMixes.ts).
  * "remove" clears a retired mix and does the same as "rebuild".
@@ -2045,9 +2056,9 @@ class ApiClient {
 
     async getVibePath(startTrackId: string, endTrackId: string, options?: { length?: number; mode?: "smooth" | "discovery" }) {
         return this.request<{
-            startTrack: { id: string; title: string; duration: number; albumId: string; albumTitle: string; albumCoverUrl: string | null; artistId: string; artistName: string };
-            endTrack: { id: string; title: string; duration: number; albumId: string; albumTitle: string; albumCoverUrl: string | null; artistId: string; artistName: string };
-            path: Array<{ id: string; title: string; duration: number; albumId: string; albumTitle: string; albumCoverUrl: string | null; artistId: string; artistName: string }>;
+            startTrack: VibePathTrack;
+            endTrack: VibePathTrack;
+            path: Array<VibePathTrack>;
             metadata: { totalTracks: number; embeddingDistance: number; averageStepSize: number; mode: string };
         }>("/vibe/path", {
             method: "POST",
