@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { SettingsSection, SettingsRow, SettingsToggle } from "../ui";
 import { SystemSettings } from "../../types";
 import {
@@ -8,6 +8,7 @@ import {
     type EnrichmentFailure,
     type GpuRuntimeStatus,
 } from "@/lib/api";
+import { useWorkerSetting } from "../../hooks/useWorkerSetting";
 import { useAuth } from "@/lib/auth-context";
 import { useFeatures } from "@/lib/features-context";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -167,6 +168,55 @@ const sliderClass = `w-32 h-1.5 bg-white/5 rounded-lg appearance-none cursor-poi
 const secondaryBtnClass =`px-4 py-1.5 text-xs tabular-nums bg-white/5 border border-white/10 text-[var(--text-secondary)] rounded-lg
     hover:bg-white/10 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all w-fit`;
 
+/** A slider for one analyzer's worker count, beside the cores it can use. */
+function WorkerSliderRow({ label, description, config, isLoading, setWorkers }: {
+    label: string;
+    description: string;
+    config: ReturnType<typeof useWorkerSetting>["config"];
+    isLoading: boolean;
+    setWorkers: (workers: number) => void;
+}) {
+    return (
+        <SettingsRow label={label} description={description}>
+            <div className="flex items-center gap-3">
+                <input
+                    type="range"
+                    min={1}
+                    max={config?.cpuCores ?? 8}
+                    aria-label={label}
+                    value={config?.workers ?? 2}
+                    disabled={isLoading}
+                    onChange={(e) => setWorkers(parseInt(e.target.value))}
+                    className={`${sliderClass} disabled:opacity-50 disabled:cursor-not-allowed`}
+                />
+                <div className="flex flex-col items-end gap-0.5">
+                    {isLoading ? (
+                        <span className="text-xs text-[var(--text-muted)] w-24 text-right">
+                            Loading...
+                        </span>
+                    ) : (
+                        <>
+                            <span className="text-xs tabular-nums text-[var(--text-secondary)] w-24 text-right">
+                                {config?.workers ?? 2} workers
+                            </span>
+                            {config && (
+                                <span className="text-xs tabular-nums text-[var(--text-muted)] w-24 text-right">
+                                    {config.cpuCores} cores available
+                                </span>
+                            )}
+                            {config?.analyzerOnline === false && (
+                                <span className="text-xs text-warning w-24 text-right">
+                                    analyzer offline
+                                </span>
+                            )}
+                        </>
+                    )}
+                </div>
+            </div>
+        </SettingsRow>
+    );
+}
+
 function EnrichmentFailuresList({ active = false }: { active?: boolean }) {
     const { data, isLoading } = useQuery({
         queryKey: ["enrichment-failures-inline"],
@@ -194,6 +244,7 @@ function EnrichmentFailuresList({ active = false }: { active?: boolean }) {
     );
 }
 
+type QueueResult = "retry" | "everything" | "wipe";
 type ConfirmTarget = "retryFailedAndBlocked" | "redecideEverything" | "wipeAndRerun" | null;
 
 const WIPE_MESSAGE =
@@ -313,7 +364,7 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
     const [redeciding, setRedeciding] = useState(false);
     const [retryingFailed, setRetryingFailed] = useState(false);
     const [retryResult, setRetryResult] = useState<{ reset: number } | null>(null);
-    const [queueResult, setQueueResult] = useState<"retry" | "everything" | "wipe" | null>(null);
+    const [queueResult, setQueueResult] = useState<QueueResult | null>(null);
     const [wiping, setWiping] = useState(false);
     const [confirmTarget, setConfirmTarget] = useState<ConfirmTarget>(null);
     const [maintenanceOpen, setMaintenanceOpen] = useState(false);
@@ -385,12 +436,6 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
             staleTime: 0,
         });
 
-    const { data: workersConfig, isLoading: isWorkersLoading } = useQuery({
-        queryKey: ["analysis-workers"],
-        queryFn: () => api.getAnalysisWorkers(),
-        staleTime: 0,
-    });
-
     const setConcurrencyMutation = useMutation({
         mutationFn: (concurrency: number) =>
             api.setEnrichmentConcurrency(concurrency),
@@ -415,39 +460,18 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
         },
     });
 
-    const setAnalysisWorkersMutation = useMutation({
-        mutationFn: (workers: number) =>
-            api.setAnalysisWorkers(workers),
-        onMutate: async (newWorkers) => {
-            await queryClient.cancelQueries({
-                queryKey: ["analysis-workers"],
-            });
-            const previousWorkers = queryClient.getQueryData([
-                "analysis-workers",
-            ]);
-            queryClient.setQueryData(["analysis-workers"], {
-                workers: newWorkers,
-                cpuCores: workersConfig?.cpuCores || 4,
-                recommended: workersConfig?.recommended || 2,
-                description: `Using ${newWorkers} of ${
-                    workersConfig?.cpuCores || 4
-                } available CPU cores`,
-            });
-            return { previousWorkers };
-        },
-        onError: (_err, _newWorkers, context) => {
-            queryClient.setQueryData(
-                ["analysis-workers"],
-                context?.previousWorkers
-            );
-        },
-    });
-
-    const { data: clapWorkersConfig, isLoading: isClapWorkersLoading } = useQuery({
-        queryKey: ["clap-workers"],
-        queryFn: () => api.getClapWorkers(),
-        staleTime: 0,
-    });
+    const analysisWorkers = useWorkerSetting(
+        "analysis-workers",
+        () => api.getAnalysisWorkers(),
+        (workers) => api.setAnalysisWorkers(workers),
+        2,
+    );
+    const clapWorkers = useWorkerSetting(
+        "clap-workers",
+        () => api.getClapWorkers(),
+        (workers) => api.setClapWorkers(workers),
+        1,
+    );
 
     const { data: gpuStatus } = useQuery({
         queryKey: ["gpu-runtime-status"],
@@ -471,70 +495,6 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                 queryKey: ["gpu-runtime-status"],
             }),
     });
-
-    const setClapWorkersMutation = useMutation({
-        mutationFn: (workers: number) =>
-            api.setClapWorkers(workers),
-        onMutate: async (newWorkers) => {
-            await queryClient.cancelQueries({
-                queryKey: ["clap-workers"],
-            });
-            const previousWorkers = queryClient.getQueryData([
-                "clap-workers",
-            ]);
-            queryClient.setQueryData(["clap-workers"], {
-                workers: newWorkers,
-                cpuCores: clapWorkersConfig?.cpuCores || 4,
-                recommended: clapWorkersConfig?.recommended || 1,
-                description: `Using ${newWorkers} of ${
-                    clapWorkersConfig?.cpuCores || 4
-                } available CPU cores`,
-            });
-            return { previousWorkers };
-        },
-        onError: (_err, _newWorkers, context) => {
-            queryClient.setQueryData(
-                ["clap-workers"],
-                context?.previousWorkers
-            );
-        },
-    });
-
-    // Debounced slider commits -- only send API call after user stops dragging
-    const workerDebounceRef = useRef<NodeJS.Timeout | null>(null);
-    const debouncedSetWorkers = useCallback((workers: number) => {
-        if (workerDebounceRef.current) clearTimeout(workerDebounceRef.current);
-        queryClient.setQueryData(["analysis-workers"], {
-            workers,
-            cpuCores: workersConfig?.cpuCores || 4,
-            recommended: workersConfig?.recommended || 2,
-            description: `Using ${workers} of ${workersConfig?.cpuCores || 4} available CPU cores`,
-        });
-        workerDebounceRef.current = setTimeout(() => {
-            setAnalysisWorkersMutation.mutate(workers);
-        }, 500);
-    }, [workersConfig, queryClient, setAnalysisWorkersMutation]);
-
-    const clapDebounceRef = useRef<NodeJS.Timeout | null>(null);
-    const debouncedSetClapWorkers = useCallback((workers: number) => {
-        if (clapDebounceRef.current) clearTimeout(clapDebounceRef.current);
-        queryClient.setQueryData(["clap-workers"], {
-            workers,
-            cpuCores: clapWorkersConfig?.cpuCores || 4,
-            recommended: clapWorkersConfig?.recommended || 1,
-            description: `Using ${workers} of ${clapWorkersConfig?.cpuCores || 4} available CPU cores`,
-        });
-        clapDebounceRef.current = setTimeout(() => {
-            setClapWorkersMutation.mutate(workers);
-        }, 500);
-    }, [clapWorkersConfig, queryClient, setClapWorkersMutation]);
-
-    useEffect(() => {
-        return () => {
-            if (workerDebounceRef.current) clearTimeout(workerDebounceRef.current);
-            if (clapDebounceRef.current) clearTimeout(clapDebounceRef.current);
-        };
-    }, []);
 
     const enrichmentSpeed = concurrencyConfig?.concurrency ?? 1;
 
@@ -579,56 +539,36 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
         }
     };
 
-    const execRetryFailedAndBlocked = async () => {
-        setRetryingAll(true);
+    const runQueueAction = async (
+        run: () => Promise<unknown>,
+        setBusy: (busy: boolean) => void,
+        result: QueueResult,
+        failure: string,
+    ) => {
+        setBusy(true);
         setError(null);
         try {
-            await api.retryFailedAndBlocked();
-            setQueueResult("retry");
+            await run();
+            setQueueResult(result);
             refetchProgress();
             void queryClient.invalidateQueries({ queryKey: ["enrichment-failure-counts"] });
             void queryClient.invalidateQueries({ queryKey: ["enrichment-failures-inline"] });
         } catch (err) {
-            console.error("Retry failed and blocked error:", err);
-            setError("Couldn't queue the retry");
+            console.error(failure, err);
+            setError(failure);
         } finally {
-            setRetryingAll(false);
+            setBusy(false);
         }
     };
 
-    const execRedecideEverything = async () => {
-        setRedeciding(true);
-        setError(null);
-        try {
-            await api.redecideEverything();
-            setQueueResult("everything");
-            refetchProgress();
-            void queryClient.invalidateQueries({ queryKey: ["enrichment-failure-counts"] });
-            void queryClient.invalidateQueries({ queryKey: ["enrichment-failures-inline"] });
-        } catch (err) {
-            console.error("Re-decide everything error:", err);
-            setError("Couldn't start the pass");
-        } finally {
-            setRedeciding(false);
-        }
-    };
+    const execRetryFailedAndBlocked = () =>
+        runQueueAction(() => api.retryFailedAndBlocked(), setRetryingAll, "retry", "Couldn't queue the retry");
 
-    const execWipeAndRerun = async () => {
-        setWiping(true);
-        setError(null);
-        try {
-            await api.wipeAndRerunEnrichment();
-            setQueueResult("wipe");
-            refetchProgress();
-            void queryClient.invalidateQueries({ queryKey: ["enrichment-failure-counts"] });
-            void queryClient.invalidateQueries({ queryKey: ["enrichment-failures-inline"] });
-        } catch (err) {
-            console.error("Wipe and re-run error:", err);
-            setError("Couldn't wipe and re-run");
-        } finally {
-            setWiping(false);
-        }
-    };
+    const execRedecideEverything = () =>
+        runQueueAction(() => api.redecideEverything(), setRedeciding, "everything", "Couldn't start the pass");
+
+    const execWipeAndRerun = () =>
+        runQueueAction(() => api.wipeAndRerunEnrichment(), setWiping, "wipe", "Couldn't wipe and re-run");
 
     const handleClearCaches = async () => {
         setClearingCaches(true);
@@ -1144,99 +1084,23 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                     </SettingsRow>
                 )}
 
-                {/* Audio Analyzer Workers Control */}
                 {settings.autoEnrichMetadata && !featuresLoading && musicCNN && (
-                    <SettingsRow
+                    <WorkerSliderRow
                         label="Audio Analysis Workers"
                         description="CPU workers for Essentia ML analysis"
-                    >
-                        <div className="flex items-center gap-3">
-                            <input
-                                type="range"
-                                min={1}
-                                max={workersConfig?.cpuCores ?? 8}
-                                aria-label="Audio Analysis Workers"
-                                value={workersConfig?.workers ?? 2}
-                                disabled={isWorkersLoading}
-                                onChange={(e) => {
-                                    debouncedSetWorkers(parseInt(e.target.value));
-                                }}
-                                className={`${sliderClass} disabled:opacity-50 disabled:cursor-not-allowed`}
-                            />
-                            <div className="flex flex-col items-end gap-0.5">
-                                {isWorkersLoading ? (
-                                    <span className="text-xs text-[var(--text-muted)] w-24 text-right">
-                                        Loading...
-                                    </span>
-                                ) : (
-                                    <>
-                                        <span className="text-xs tabular-nums text-[var(--text-secondary)] w-24 text-right">
-                                            {workersConfig?.workers ?? 2}{" "}
-                                            workers
-                                        </span>
-                                        {workersConfig && (
-                                            <span className="text-xs tabular-nums text-[var(--text-muted)] w-24 text-right">
-                                                {workersConfig.cpuCores} cores
-                                                available
-                                            </span>
-                                        )}
-                                    </>
-                                )}
-                            </div>
-                        </div>
-                    </SettingsRow>
+                        {...analysisWorkers}
+                    />
                 )}
 
-                {/* CLAP Analyzer Workers Control */}
                 {settings.autoEnrichMetadata && !featuresLoading && vibeEmbeddings && (
-                    <SettingsRow
+                    <WorkerSliderRow
                         label="Vibe Embedding Workers"
                         description="CPU workers for CLAP embeddings (vibe similarity)"
-                    >
-                        <div className="flex items-center gap-3">
-                            <input
-                                type="range"
-                                min={1}
-                                max={clapWorkersConfig?.cpuCores ?? 8}
-                                aria-label="Vibe Embedding Workers"
-                                value={clapWorkersConfig?.workers ?? 2}
-                                disabled={isClapWorkersLoading}
-                                onChange={(e) => {
-                                    debouncedSetClapWorkers(parseInt(e.target.value));
-                                }}
-                                className={`${sliderClass} disabled:opacity-50 disabled:cursor-not-allowed`}
-                            />
-                            <div className="flex flex-col items-end gap-0.5">
-                                {isClapWorkersLoading ? (
-                                    <span className="text-xs text-[var(--text-muted)] w-24 text-right">
-                                        Loading...
-                                    </span>
-                                ) : (
-                                    <>
-                                        <span className="text-xs tabular-nums text-[var(--text-secondary)] w-24 text-right">
-                                            {clapWorkersConfig?.workers ?? 2}{" "}
-                                            workers
-                                        </span>
-                                        {clapWorkersConfig && (
-                                            <span className="text-xs tabular-nums text-[var(--text-muted)] w-24 text-right">
-                                                {clapWorkersConfig.cpuCores} cores
-                                                available
-                                            </span>
-                                        )}
-                                        {clapWorkersConfig &&
-                                            clapWorkersConfig.analyzerOnline === false && (
-                                                <span className="text-xs text-warning w-24 text-right">
-                                                    analyzer offline
-                                                </span>
-                                            )}
-                                    </>
-                                )}
-                            </div>
-                        </div>
-                    </SettingsRow>
+                        {...clapWorkers}
+                    />
                 )}
 
-                {/* NVIDIA GPU switches: each row shows only measured state */}
+                {/* Each GPU switch row shows only measured state. */}
                 {settings.autoEnrichMetadata && !featuresLoading && vibeEmbeddings && (
                     <GpuSwitchRow
                         id="gpu-onnx-toggle"
