@@ -69,14 +69,20 @@ class NotificationPolicyService {
         // Handle based on job status
         switch (job.status) {
             case "completed":
-                return await this.evaluateCompletedJob(job, eventType);
+                return await this.evaluateTerminalJob(job, eventType, "complete", {
+                    reason: "Download completed successfully",
+                    notificationType: "download_complete",
+                });
 
             case "processing":
                 return await this.evaluateProcessingJob(job, eventType);
 
             case "failed":
             case "exhausted":
-                return await this.evaluateFailedJob(job, eventType);
+                return await this.evaluateTerminalJob(job, eventType, "failed", {
+                    reason: "Download failed",
+                    notificationType: "download_failed",
+                });
 
             case "pending":
                 return {
@@ -93,16 +99,22 @@ class NotificationPolicyService {
     }
 
     /**
-     * Evaluate notification for completed job
+     * A job that reached a terminal state notifies once — unless another job
+     * for the same album already did.
      */
-    private async evaluateCompletedJob(
+    private async evaluateTerminalJob(
         job: any,
-        eventType: string
+        eventType: string,
+        wantedEvent: "complete" | "failed",
+        notification: {
+            reason: string;
+            notificationType: "download_complete" | "download_failed";
+        }
     ): Promise<NotificationDecision> {
-        if (eventType !== "complete") {
+        if (eventType !== wantedEvent) {
             return {
                 shouldNotify: false,
-                reason: "Invalid event type for completed job",
+                reason: `Invalid event type for ${job.status} job`,
             };
         }
 
@@ -117,8 +129,7 @@ class NotificationPolicyService {
 
         return {
             shouldNotify: true,
-            reason: "Download completed successfully",
-            notificationType: "download_complete",
+            ...notification,
         };
     }
 
@@ -147,10 +158,11 @@ class NotificationPolicyService {
                     reason: "Job in active retry window - suppressing notification",
                 };
             }
-            // Retry window expired but still processing - extend it
+            // Retry window expired but still processing: stay quiet until the
+            // job reaches a terminal status and reports through it.
             return {
                 shouldNotify: false,
-                reason: "Retry window expired but job still processing - extending timeout",
+                reason: "Retry window expired but job still processing - waiting for terminal status",
             };
         }
 
@@ -161,40 +173,8 @@ class NotificationPolicyService {
     }
 
     /**
-     * Evaluate notification for failed/exhausted job
-     */
-    private async evaluateFailedJob(
-        job: any,
-        eventType: string
-    ): Promise<NotificationDecision> {
-        if (eventType !== "failed") {
-            return {
-                shouldNotify: false,
-                reason: "Invalid event type for failed job",
-            };
-        }
-
-        // Check if another job for same album already notified
-        const hasOtherNotification = await this.hasAlreadyNotified(job);
-        if (hasOtherNotification) {
-            return {
-                shouldNotify: false,
-                reason: "Another job for same album already sent notification",
-            };
-        }
-
-        return {
-            shouldNotify: true,
-            reason: "Download failed",
-            notificationType: "download_failed",
-        };
-    }
-
-    /**
-     * Check if job is in active retry window
-     * A job is in retry window if:
-     * 1. Status is 'processing'
-     * 2. Started within the last RETRY_WINDOW_MINUTES
+     * True while a processing job is young enough that a retry may still
+     * succeed: it started (or was created) within the retry window.
      */
     private async isInRetryWindow(job: any): Promise<boolean> {
         if (job.status !== "processing") {
@@ -202,25 +182,18 @@ class NotificationPolicyService {
         }
 
         const metadata = (job.metadata as any) || {};
-
-        // Get retry window duration (configurable per job or use default)
-        const retryWindowMinutes =
-            metadata.retryWindowMinutes || DEFAULT_RETRY_WINDOW_MINUTES;
-
-        // Get start time
         const startedAt = metadata.startedAt
             ? new Date(metadata.startedAt)
             : job.createdAt;
 
-        // Calculate if window has expired
-        const windowMs = retryWindowMinutes * 60 * 1000;
+        const windowMs = DEFAULT_RETRY_WINDOW_MINUTES * 60 * 1000;
         const elapsed = Date.now() - startedAt.getTime();
 
         if (elapsed > windowMs) {
             logger.debug(
                 `[NOTIFICATION-POLICY]   Retry window expired (${Math.round(
                     elapsed / 60000
-                )}m > ${retryWindowMinutes}m)`
+                )}m > ${DEFAULT_RETRY_WINDOW_MINUTES}m)`
             );
             return false;
         }
@@ -228,7 +201,7 @@ class NotificationPolicyService {
         logger.debug(
             `[NOTIFICATION-POLICY]   In retry window (${Math.round(
                 elapsed / 60000
-            )}m < ${retryWindowMinutes}m)`
+            )}m < ${DEFAULT_RETRY_WINDOW_MINUTES}m)`
         );
         return true;
     }
