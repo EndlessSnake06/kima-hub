@@ -165,9 +165,6 @@ const sliderClass = `w-32 h-1.5 bg-white/5 rounded-lg appearance-none cursor-poi
     [&::-webkit-slider-thumb]:from-brand [&::-webkit-slider-thumb]:to-brand-dark
     hover:[&::-webkit-slider-thumb]:scale-110 [&::-webkit-slider-thumb]:transition-transform`;
 
-const secondaryBtnClass =`px-4 py-1.5 text-xs tabular-nums bg-white/5 border border-white/10 text-[var(--text-secondary)] rounded-lg
-    hover:bg-white/10 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all w-fit`;
-
 /** A slider for one analyzer's worker count, beside the cores it can use. */
 function WorkerSliderRow({ label, description, config, isLoading, setWorkers }: {
     label: string;
@@ -623,38 +620,24 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
         else if (target === "wipeAndRerun") await execWipeAndRerun();
     };
 
-    const handlePause = async () => {
+    const controlEnrichment = async (run: () => Promise<unknown>, failure: string, alsoRefresh: string[] = []) => {
         try {
-            await api.pauseEnrichment();
-            queryClient.invalidateQueries({ queryKey: ["enrichment-status"] });
+            await run();
+            for (const key of ["enrichment-status", ...alsoRefresh]) {
+                queryClient.invalidateQueries({ queryKey: [key] });
+            }
         } catch (err) {
-            console.error("Pause error:", err);
-            setError("Failed to pause enrichment");
+            console.error(failure, err);
+            setError(failure);
         }
     };
 
-    const handleResume = async () => {
-        try {
-            await api.resumeEnrichment();
-            queryClient.invalidateQueries({ queryKey: ["enrichment-status"] });
-        } catch (err) {
-            console.error("Resume error:", err);
-            setError("Failed to resume enrichment");
-        }
-    };
+    const handlePause = () => controlEnrichment(() => api.pauseEnrichment(), "Failed to pause enrichment");
 
-    const handleStop = async () => {
-        try {
-            await api.stopEnrichment();
-            queryClient.invalidateQueries({ queryKey: ["enrichment-status"] });
-            queryClient.invalidateQueries({
-                queryKey: ["enrichment-progress"],
-            });
-        } catch (err) {
-            console.error("Stop error:", err);
-            setError("Failed to stop enrichment");
-        }
-    };
+    const handleResume = () => controlEnrichment(() => api.resumeEnrichment(), "Failed to resume enrichment");
+
+    const handleStop = () =>
+        controlEnrichment(() => api.stopEnrichment(), "Failed to stop enrichment", ["enrichment-progress"]);
 
     const isEnrichmentActive =
         enrichmentState?.status === "running" ||
@@ -806,38 +789,31 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                             >
                                 {syncing ? "Syncing..." : "Sync New"}
                             </Button>
-                            <button
+                            <Button
+                                size="sm"
                                 onClick={() => setConfirmTarget("retryFailedAndBlocked")}
-                                disabled={
-                                    retryingAll || syncing || isEnrichmentActive
-                                }
-                                className="px-3 py-2.5 min-h-[44px] text-xs tabular-nums bg-white/5 border border-white/10 text-[var(--text-secondary)] rounded-lg
-                                hover:bg-white/10 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                                disabled={retryingAll || syncing || isEnrichmentActive}
                             >
                                 {retryingAll ? "Queuing..." : "Retry what didn't work"}
-                            </button>
+                            </Button>
                             {currentUser?.role === "admin" && (
-                                <button
+                                <Button
+                                    size="sm"
                                     onClick={() => setConfirmTarget("redecideEverything")}
-                                    disabled={
-                                        redeciding || syncing || isEnrichmentActive
-                                    }
-                                    className="px-3 py-2.5 min-h-[44px] text-xs tabular-nums bg-white/5 border border-white/10 text-[var(--text-secondary)] rounded-lg
-                                    hover:bg-white/10 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                                    disabled={redeciding || syncing || isEnrichmentActive}
                                 >
                                     {redeciding ? "Queuing..." : "Start over on everything"}
-                                </button>
+                                </Button>
                             )}
                             {currentUser?.role === "admin" && (
-                                <button
+                                <Button
+                                    size="sm"
                                     onClick={() => setConfirmTarget("wipeAndRerun")}
                                     disabled={wiping}
                                     data-testid="enrichment-wipe"
-                                    className="px-3 py-2.5 min-h-[44px] text-xs tabular-nums bg-white/5 border border-white/10 text-[var(--text-secondary)] rounded-lg
-                                    hover:bg-white/10 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                                 >
                                     {wiping ? "Wiping..." : "Wipe and re-run"}
-                                </button>
+                                </Button>
                             )}
                             {queueResult !== null && (
                                 <span className="self-center text-xs text-success" data-testid="enrichment-queue-result">
@@ -1151,32 +1127,22 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                     {maintenanceOpen && (
                         <div className="px-4 pt-3 pb-4 space-y-3 border-t border-white/10">
                             {/* Non-destructive maintenance */}
-                            <button
-                                onClick={handleClearCaches}
-                                disabled={clearingCaches}
-                                className={secondaryBtnClass}
-                            >
+                            <Button size="sm" onClick={handleClearCaches} disabled={clearingCaches}>
                                 {clearingCaches ? "Clearing..." : "Clear All Caches"}
-                            </button>
-                            <button
-                                onClick={handleCleanupStaleJobs}
-                                disabled={cleaningStaleJobs}
-                                className={secondaryBtnClass}
-                            >
-                                {cleaningStaleJobs
-                                    ? "Cleaning..."
-                                    : "Cleanup Stale Jobs"}
-                            </button>
+                            </Button>
+                            <Button size="sm" onClick={handleCleanupStaleJobs} disabled={cleaningStaleJobs}>
+                                {cleaningStaleJobs ? "Cleaning..." : "Cleanup Stale Jobs"}
+                            </Button>
                             {((enrichmentProgress?.audioAnalysis?.failed ?? 0) > 0 || (enrichmentProgress?.audioAnalysis?.permanentlyFailed ?? 0) > 0) && (
-                                <button
+                                <Button
+                                    size="sm"
                                     onClick={handleRetryFailedAnalysis}
                                     disabled={retryingFailed || isEnrichmentActive}
-                                    className={secondaryBtnClass}
                                 >
                                     {retryingFailed
                                         ? "Retrying..."
                                         : `Retry Failed Analysis (${(enrichmentProgress?.audioAnalysis?.failed || 0) + (enrichmentProgress?.audioAnalysis?.permanentlyFailed || 0)})`}
-                                </button>
+                                </Button>
                             )}
 
                             {retryResult && (
