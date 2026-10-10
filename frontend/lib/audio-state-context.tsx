@@ -363,8 +363,8 @@ export function AudioStateProvider({ children }: { children: ReactNode }) {
                             setCurrentAudiobook(null);
                             setCurrentPodcast(null);
                         })
-                        .catch(() => {
-                            // Fire-and-forget: clearing stale server state, failure is non-critical
+                        .catch((err) => {
+                            if (!isGone(err)) return;
                             api.clearPlaybackState().catch(() => {});
                             clearRestoredPlayback();
                         });
@@ -379,8 +379,8 @@ export function AudioStateProvider({ children }: { children: ReactNode }) {
                             setCurrentTrack(null);
                             setCurrentPodcast(null);
                         })
-                        .catch(() => {
-                            // The remembered audiobook no longer exists: clear the stale server state.
+                        .catch((err) => {
+                            if (!isGone(err)) return;
                             api.clearPlaybackState().catch(() => {});
                             clearRestoredPlayback();
                         });
@@ -409,9 +409,9 @@ export function AudioStateProvider({ children }: { children: ReactNode }) {
                                 setCurrentAudiobook(null);
                             }
                         })
-                        .catch(() => {
-                            // Unsubscribed, possibly on another device, so the remembered
-                            // podcast no longer resolves. Clear the stale server state.
+                        .catch((err) => {
+                            // A podcast unsubscribed on another device no longer resolves.
+                            if (!isGone(err)) return;
                             api.clearPlaybackState().catch(() => {});
                             clearRestoredPlayback();
                         });
@@ -615,15 +615,9 @@ export function AudioStateProvider({ children }: { children: ReactNode }) {
                                 setCurrentIndex(serverState.currentIndex || 0);
                                 setIsShuffle(serverState.isShuffle || false);
                             }
-                        } catch {
-                            if (!mounted) return;
-                            await api.clearPlaybackState().catch(() => {});
-                            setCurrentTrack(null);
-                            setCurrentAudiobook(null);
-                            setCurrentPodcast(null);
-                            setPlaybackType(null);
-                            setQueue([]);
-                            setCurrentIndex(0);
+                        } catch (err) {
+                            // The server remembers a track that is gone; what plays here stays.
+                            if (mounted && isGone(err)) await api.clearPlaybackState().catch(() => {});
                             return;
                         }
                     } else if (
