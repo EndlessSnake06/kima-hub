@@ -8,6 +8,7 @@ import { logger } from "../utils/logger";
 import { prisma } from "../utils/db";
 import { shuffleArray } from "../utils/shuffle";
 import { NOT_MISSING } from "../utils/libraryEligibility";
+import { getMixColor } from "./mixes/helpers";
 
 // The heads' own lean: strictly more likely than not (two-class softmax
 // argmax), not a tuned value. Exactly 0.5 is the model not leaning either
@@ -37,11 +38,10 @@ const MOOD_BY_ID: Record<MoodType, (typeof MOODS)[number]> = Object.fromEntries(
     MOODS.map((m) => [m.id, m])
 ) as Record<MoodType, (typeof MOODS)[number]>;
 
-// Mood gradient colors for mix display
 const MOOD_GRADIENTS: Record<MoodType, string> = {
-    happy: "linear-gradient(to bottom, rgba(217, 119, 6, 0.5), rgba(161, 98, 7, 0.4), rgba(68, 64, 60, 0.4))",
+    happy: getMixColor("happy"),
     sad: "linear-gradient(to bottom, rgba(30, 58, 138, 0.6), rgba(88, 28, 135, 0.5), rgba(15, 23, 42, 0.4))",
-    chill: "linear-gradient(to bottom, rgba(17, 94, 89, 0.6), rgba(22, 78, 99, 0.5), rgba(15, 23, 42, 0.4))",
+    chill: getMixColor("chill"),
     party: "linear-gradient(to bottom, rgba(162, 28, 175, 0.6), rgba(131, 24, 67, 0.5), rgba(59, 7, 100, 0.4))",
     aggressive:
         "linear-gradient(to bottom, rgba(69, 10, 10, 0.7), rgba(17, 24, 39, 0.6), rgba(0, 0, 0, 0.5))",

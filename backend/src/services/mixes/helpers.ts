@@ -1,5 +1,7 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../utils/db";
 import { NOT_MISSING } from "../../utils/libraryEligibility";
+import { shuffleArray } from "../../utils/shuffle";
 
 export interface ProgrammaticMix {
     id: string;
@@ -108,12 +110,17 @@ export function getMixColor(type: string): string {
 }
 
 export function randomSample<T>(array: T[], count: number): T[] {
-    const result = [...array];
-    for (let i = result.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [result[i], result[j]] = [result[j], result[i]];
-    }
-    return result.slice(0, count);
+    return shuffleArray(array).slice(0, count);
+}
+
+/** Up to four album covers, in track order, for a mix's cover mosaic. */
+export function albumCoverUrls(
+    tracks: { album: { coverUrl: string | null } }[]
+): string[] {
+    return tracks
+        .filter((t) => t.album.coverUrl)
+        .slice(0, 4)
+        .map((t) => t.album.coverUrl!);
 }
 
 export function getSeededRandom(seed: string): number {
@@ -156,6 +163,69 @@ export type TrackWithAlbumCover = {
     [key: string]: unknown;
 };
 
+interface MixSpec {
+    id: string;
+    type: string;
+    name: string;
+    description: string;
+    /** Key into the mix colour table. */
+    colorType: string;
+}
+
+/** A mix of `limit` randomly sampled tracks. */
+export function sampleMix(
+    spec: MixSpec,
+    tracks: { id: string; album: { coverUrl: string | null } }[],
+    limit: number
+): ProgrammaticMix {
+    const sample = randomSample(tracks, limit);
+
+    return {
+        id: spec.id,
+        type: spec.type,
+        name: spec.name,
+        description: spec.description,
+        trackIds: sample.map((t) => t.id),
+        coverUrls: albumCoverUrls(sample),
+        trackCount: sample.length,
+        color: getMixColor(spec.colorType),
+    };
+}
+
+/** A sampled mix of the tracks that match a filter, or null when too few do. */
+export async function sampledMix(
+    spec: MixSpec & {
+        where: Prisma.TrackWhereInput;
+        /** How many matching tracks to fetch before sampling. */
+        take: number;
+        /** Fewest fetched tracks that still make a mix. */
+        minTracks: number;
+        /** Tracks in the finished mix. */
+        limit: number;
+    }
+): Promise<ProgrammaticMix | null> {
+    const tracks = await prisma.track.findMany({
+        where: spec.where,
+        include: { album: { select: { coverUrl: true } } },
+        take: spec.take,
+    });
+
+    if (tracks.length < spec.minTracks) return null;
+
+    return sampleMix(spec, tracks, spec.limit);
+}
+
+const WITH_ALBUM_GENRES = {
+    album: {
+        select: {
+            coverUrl: true,
+            genres: true,
+            userGenres: true,
+            artist: { select: { userGenres: true } },
+        },
+    },
+} satisfies Prisma.TrackInclude;
+
 /**
  * Tracks matching genre patterns: the Genre/TrackGenre tables first, then
  * album.genres and user genres in memory for tracks the tables lack.
@@ -175,7 +245,7 @@ export async function findTracksByGenrePatterns(
         genreRows.length === 0
             ? []
             : await prisma.track.findMany({
-                      where: {
+                  where: {
                       ...NOT_MISSING,
                       trackGenres: {
                           some: {
@@ -183,20 +253,7 @@ export async function findTracksByGenrePatterns(
                           },
                       },
                   },
-                  include: {
-                      album: {
-                          select: {
-                              coverUrl: true,
-                              genres: true,
-                              userGenres: true,
-                              artist: {
-                                  select: {
-                                      userGenres: true,
-                                  },
-                              },
-                          },
-                      },
-                  },
+                  include: WITH_ALBUM_GENRES,
                   take: limit,
               });
 
@@ -205,7 +262,7 @@ export async function findTracksByGenrePatterns(
     }
 
     const albumTracks = await prisma.track.findMany({
-            where: {
+        where: {
             ...NOT_MISSING,
             album: {
                 OR: [
@@ -214,20 +271,7 @@ export async function findTracksByGenrePatterns(
                 ],
             },
         },
-        include: {
-            album: {
-                select: {
-                    coverUrl: true,
-                    genres: true,
-                    userGenres: true,
-                    artist: {
-                        select: {
-                            userGenres: true,
-                        },
-                    },
-                },
-            },
-        },
+        include: WITH_ALBUM_GENRES,
         take: limit * 3,
     });
 

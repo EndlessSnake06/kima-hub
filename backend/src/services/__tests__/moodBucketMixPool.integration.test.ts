@@ -47,8 +47,8 @@ async function seed() {
     const album = await prisma.album.create({
         data: { id: "mmp_alb", rgMbid: "mmp_rg", artistId: artist.id, title: "Mix Pool Album", primaryType: "Album" },
     });
-    // chill mimics a real bucket's top-heavy scores: the old code's top-100
-    // cutoff lands exactly on tracks 0..99. party is one big tie instead.
+    // chill mimics a real bucket's top-heavy scores: a top-100 cutoff would
+    // land exactly on tracks 0..99. party is one big tie instead.
     const bucketRows = [] as Array<{ trackId: string; mood: string; score: number }>;
     for (let i = 0; i < TRACKS; i++) {
         const id = trackId(i);
@@ -95,7 +95,7 @@ describe("getMoodMix draws from the whole bucket (database)", () => {
 
     it("samples the whole bucket, not just the top 100", async () => {
         const union = await drawIds("chill", DRAWS_WHOLE);
-        // The old take:100 pool can never surface more than 100 distinct ids.
+        // A top-100 pool could never surface more than 100 distinct ids.
         expect(union.size).toBeGreaterThanOrEqual(MIN_UNION_WHOLE);
     });
 
@@ -105,7 +105,7 @@ describe("getMoodMix draws from the whole bucket (database)", () => {
     });
 
     it("excludes previously served ids from the next mix", async () => {
-        // Exclude the old top-100 outright: every drawn id must come from 100+.
+        // Exclude the top 100 outright: every drawn id must come from 100+.
         const excluded = Array.from({ length: 100 }, (_, i) => trackId(i));
         const mix = await moodBucketService.getMoodMix("chill", 15, excluded);
         expect(mix).not.toBeNull();
