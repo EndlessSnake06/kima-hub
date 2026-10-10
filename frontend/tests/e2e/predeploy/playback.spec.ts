@@ -22,7 +22,6 @@ test.describe("Playback", () => {
         expect(src).toBeTruthy();
         expect(src).toMatch(/\/api\/|stream|audio/i);
 
-        // Pause button must be visible (not just exist) -- use title to target FullPlayer button
         await expect(page.getByTitle("pause", { exact: true })).toBeVisible();
     });
 
@@ -30,7 +29,6 @@ test.describe("Playback", () => {
         const audioRequests: string[] = [];
         page.on("request", (req) => {
             const url = req.url();
-            // Capture any request that looks like an audio stream
             if (req.resourceType() === "media" || url.includes("/stream") || url.includes("/audio")) {
                 audioRequests.push(url);
             }
@@ -38,7 +36,6 @@ test.describe("Playback", () => {
 
         await startPlayingFirstAlbum(page);
 
-        // At least one audio request should have been made
         expect(audioRequests.length).toBeGreaterThan(0);
     });
 
@@ -50,11 +47,9 @@ test.describe("Playback", () => {
         await expect(pauseBtn).toBeVisible();
         await pauseBtn.click();
 
-        // After pause -- Play button visible
         const playBtn = page.getByTitle("play", { exact: true });
         await expect(playBtn).toBeVisible();
 
-        // Resume
         await playBtn.click();
         await expect(page.getByTitle("pause", { exact: true })).toBeVisible();
     });
@@ -73,13 +68,11 @@ test.describe("Playback", () => {
     test("previous track when currentTime > 3s restarts the same track", async ({ page }) => {
         await startPlayingFirstAlbum(page);
 
-        // Advance past the 3-second threshold
         await setAudioCurrentTime(page, 10);
 
         const srcBefore = await getAudioSrc(page);
         await page.getByLabel("Previous track").click();
 
-        // Brief settle -- the audio element should seek to 0 without src change
         await page.waitForTimeout(500);
 
         const srcAfter = await getAudioSrc(page);
@@ -92,7 +85,6 @@ test.describe("Playback", () => {
     test("previous track when currentTime <= 3s goes to prior track", async ({ page }) => {
         await startPlayingFirstAlbum(page);
 
-        // Advance to the next track first so there is a "previous"
         const src1 = await getAudioSrc(page);
         await page.getByLabel("Next track").click();
         await waitForSrcChange(page, src1);
@@ -104,18 +96,15 @@ test.describe("Playback", () => {
         await page.getByLabel("Previous track").click();
         const src3 = await waitForSrcChange(page, src2, 8_000);
 
-        // Should have gone back to track 1
         expect(src3).not.toBe(src2);
     });
 
     test("seek bar changes playback position", async ({ page }) => {
         await startPlayingFirstAlbum(page);
 
-        // Jump to a known position via JS so we have a baseline
         await setAudioCurrentTime(page, 30);
         await page.waitForTimeout(200);
 
-        // Seek to the 10% mark (should be earlier than 30s unless track < 5min)
         await seekToPercent(page, 10);
 
         const timeBefore = 30;

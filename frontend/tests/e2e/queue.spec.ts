@@ -18,11 +18,8 @@ test.describe("Queue", () => {
     });
 
     test("Add to queue button appends track to up-next list", async ({ page }) => {
-        // Start an album so the queue is populated. We land on the album page.
         await startPlayingFirstAlbum(page);
 
-        // Hover the first track row to reveal the Add to queue button, then click it.
-        // We are already on the album page -- no need to re-navigate.
         const firstTrackRow = page.locator("[data-track-row]").first();
         await firstTrackRow.waitFor({ timeout: 10_000 });
         await firstTrackRow.hover();
@@ -39,7 +36,6 @@ test.describe("Queue", () => {
 
         await openQueueByClick(page);
 
-        // Should show "Now Playing" heading since a track is active
         await expect(page.getByRole("heading", { name: "Now Playing" })).toBeVisible({ timeout: 5_000 });
     });
 
@@ -54,7 +50,6 @@ test.describe("Queue", () => {
     });
 
     test("Play now jumps to selected queue item", async ({ page }) => {
-        // Start album (populates queue with multiple tracks)
         await startPlayingFirstAlbum(page);
 
         const srcBefore = await getAudioSrc(page);
@@ -65,7 +60,6 @@ test.describe("Queue", () => {
         await expect(playNowButtons.first(), "a started album leaves tracks up next").toBeAttached({ timeout: 5_000 });
         await playNowButtons.first().click();
 
-        // Audio source should change since we skipped to a different track
         const srcAfter = await waitForSrcChange(page, srcBefore, 8_000);
         expect(srcAfter).not.toBe(srcBefore);
     });
@@ -118,7 +112,6 @@ test.describe("Queue", () => {
         await clearBtn.click();
         await page.getByRole("dialog", { name: "Clear the queue?" }).getByRole("button", { name: "Clear queue" }).click();
 
-        // Up Next section should disappear (or show empty state)
         await expect(page.getByText("No tracks in queue")).toBeVisible({ timeout: 5_000 });
     });
 });

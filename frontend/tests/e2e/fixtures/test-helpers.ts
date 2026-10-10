@@ -97,7 +97,6 @@ export async function seekToPercent(page: Page, percent: number): Promise<void> 
     const x = box.x + box.width * (percent / 100);
     const y = box.y + box.height / 2;
     await page.mouse.click(x, y);
-    // Brief settle time for the seek to take effect
     await page.waitForTimeout(300);
 }
 

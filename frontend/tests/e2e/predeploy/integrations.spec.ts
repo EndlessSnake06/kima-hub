@@ -12,16 +12,13 @@ test.describe("Integrations", () => {
 
         await page.goto("/settings");
 
-        // Navigate to Media Servers section in the sidebar
         const mediaServersLink = page.locator("text=Media Servers").first();
         await expect(mediaServersLink).toBeVisible({ timeout: 5000 });
         await mediaServersLink.click();
 
-        // Wait for the Audiobookshelf section to appear
         const absContainer = page.locator('#audiobookshelf');
         await expect(absContainer).toBeVisible({ timeout: 5000 });
 
-        // Enable Audiobookshelf if not already
         const enableToggle = page.locator('#abs-enabled');
         if (await enableToggle.isVisible({ timeout: 2000 })) {
             const isChecked = await enableToggle.isChecked();
@@ -40,12 +37,10 @@ test.describe("Integrations", () => {
             await apiKeyInput.fill(process.env.KIMA_TEST_ABS_API_KEY!);
         }
 
-        // Click test connection within Audiobookshelf section
         const testBtn = absContainer.getByRole("button", { name: /test connection/i });
         await expect(testBtn).toBeVisible({ timeout: 3000 });
         await testBtn.click();
 
-        // Wait for result - should show version number on success
         await page.waitForTimeout(3000);
         const pageText = await page.textContent("body");
         const hasResult = pageText?.includes("Connected") ||

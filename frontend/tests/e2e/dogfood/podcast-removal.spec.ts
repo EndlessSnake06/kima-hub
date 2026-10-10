@@ -107,7 +107,6 @@ test.describe.serial("Podcast removal", () => {
 
     test("R3. delete it through the real UI", async () => {
         test.skip(!podcastId, "R1 did not subscribe");
-        // open the podcast detail
         await page
             .locator("main")
             .getByRole("button", { name: new RegExp(escapeRegExp(podcastTitle)) })
@@ -151,7 +150,6 @@ test.describe.serial("Podcast removal", () => {
 
     test("R4. the podcast is gone from the API, and deleting again is idempotent", async () => {
         test.skip(!podcastId, "R1 did not subscribe");
-        // API-level: detail 404s
         const detail = await page.request.get(`/api/podcasts/${podcastId}`, {
             headers: { Authorization: `Bearer ${token}` },
         });
