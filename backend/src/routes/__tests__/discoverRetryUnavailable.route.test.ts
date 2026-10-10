@@ -138,8 +138,11 @@ async function waitFor(predicate: () => boolean, label: string): Promise<void> {
     throw new Error(`waitFor timed out: ${label}`);
 }
 
+const SECOND_ALBUM = { ...UNAVAILABLE_ALBUM, id: 'unavail-2', albumMbid: 'mbid-bbb', albumTitle: 'Windowlicker' };
+const SECOND_JOB = { ...RETRY_JOB, id: 'job-2', targetMbid: 'mbid-bbb' };
+
 /** Wire every query the handler runs BEFORE its res.json, plus the transaction. */
-function primeHandlerPreResponse() {
+function primeHandlerPreResponse({ twoAlbums = false } = {}) {
     // resolveViewWeek source: latest completed batch (tagged the prior week).
     (prisma.discoveryBatch.findFirst as jest.Mock)
         // 1st findFirst -> resolveViewWeek's completed-batch lookup
@@ -147,7 +150,9 @@ function primeHandlerPreResponse() {
         // 2nd findFirst -> active-batch guard (none in progress)
         .mockResolvedValueOnce(null);
 
-    (prisma.unavailableAlbum.findMany as jest.Mock).mockResolvedValue([UNAVAILABLE_ALBUM]);
+    (prisma.unavailableAlbum.findMany as jest.Mock).mockResolvedValue(
+        twoAlbums ? [UNAVAILABLE_ALBUM, SECOND_ALBUM] : [UNAVAILABLE_ALBUM],
+    );
     // No successful discovery / library matches -> the album survives filtering.
     (prisma.discoveryAlbum.findMany as jest.Mock).mockResolvedValue([]);
     (prisma.album.findMany as jest.Mock).mockResolvedValue([]);
@@ -163,7 +168,9 @@ function primeHandlerPreResponse() {
     );
 
     // No download is already working on the album; then the IIFE's job list.
-    (prisma.downloadJob.findMany as jest.Mock).mockResolvedValueOnce([]).mockResolvedValue([RETRY_JOB]);
+    (prisma.downloadJob.findMany as jest.Mock)
+        .mockResolvedValueOnce([])
+        .mockResolvedValue(twoAlbums ? [RETRY_JOB, SECOND_JOB] : [RETRY_JOB]);
     (prisma.discoveryBatch.update as jest.Mock).mockResolvedValue({});
     (prisma.downloadJob.update as jest.Mock).mockResolvedValue({});
 }
@@ -258,29 +265,7 @@ describe('POST /discover/retry-unavailable -- routes through checkBatchCompletio
         // One album acquires, the next fails its acquire result. The handler must
         // record completed/failed counts AND still hand off to checkBatchCompletion
         // -- failures alone must not short-circuit into a self-completed batch.
-        (prisma.discoveryBatch.findFirst as jest.Mock)
-            .mockResolvedValueOnce({ weekStart: new Date('2026-05-18T00:00:00.000Z') })
-            .mockResolvedValueOnce(null);
-        (prisma.unavailableAlbum.findMany as jest.Mock).mockResolvedValue([
-            UNAVAILABLE_ALBUM,
-            { ...UNAVAILABLE_ALBUM, id: 'unavail-2', albumMbid: 'mbid-bbb', albumTitle: 'Windowlicker' },
-        ]);
-        (prisma.discoveryAlbum.findMany as jest.Mock).mockResolvedValue([]);
-        (prisma.album.findMany as jest.Mock).mockResolvedValue([]);
-        (prisma.unavailableAlbum.deleteMany as jest.Mock).mockResolvedValue({ count: 0 });
-        (prisma.$transaction as jest.Mock).mockImplementation(async (cb: any) =>
-            cb({
-                discoveryBatch: { create: jest.fn().mockResolvedValue({ id: RETRY_BATCH_ID }) },
-                downloadJob: { create: jest.fn().mockResolvedValue({}) },
-                unavailableAlbum: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
-            }),
-        );
-        (prisma.downloadJob.findMany as jest.Mock).mockResolvedValueOnce([]).mockResolvedValue([
-            RETRY_JOB,
-            { ...RETRY_JOB, id: 'job-2', targetMbid: 'mbid-bbb' },
-        ]);
-        (prisma.discoveryBatch.update as jest.Mock).mockResolvedValue({});
-        (prisma.downloadJob.update as jest.Mock).mockResolvedValue({});
+        primeHandlerPreResponse({ twoAlbums: true });
 
         mockAcquireAlbum
             .mockResolvedValueOnce({ success: true })
@@ -332,28 +317,7 @@ describe('POST /discover/retry-unavailable -- routes through checkBatchCompletio
     it('COUNTS PERSISTED: the completed/failed tally is written to the batch BEFORE handing off', async () => {
         // One success and one failure: completedAlbums 1, failedAlbums 1, saved
         // before checkBatchCompletion.
-        (prisma.discoveryBatch.findFirst as jest.Mock)
-            .mockResolvedValueOnce({ weekStart: new Date('2026-05-18T00:00:00.000Z') })
-            .mockResolvedValueOnce(null);
-        (prisma.unavailableAlbum.findMany as jest.Mock).mockResolvedValue([
-            UNAVAILABLE_ALBUM,
-            { ...UNAVAILABLE_ALBUM, id: 'unavail-2', albumMbid: 'mbid-bbb', albumTitle: 'Windowlicker' },
-        ]);
-        (prisma.discoveryAlbum.findMany as jest.Mock).mockResolvedValue([]);
-        (prisma.album.findMany as jest.Mock).mockResolvedValue([]);
-        (prisma.unavailableAlbum.deleteMany as jest.Mock).mockResolvedValue({ count: 0 });
-        (prisma.$transaction as jest.Mock).mockImplementation(async (cb: any) =>
-            cb({
-                discoveryBatch: { create: jest.fn().mockResolvedValue({ id: RETRY_BATCH_ID }) },
-                downloadJob: { create: jest.fn().mockResolvedValue({}) },
-                unavailableAlbum: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
-            }),
-        );
-        (prisma.downloadJob.findMany as jest.Mock).mockResolvedValueOnce([]).mockResolvedValue([
-            RETRY_JOB,
-            { ...RETRY_JOB, id: 'job-2', targetMbid: 'mbid-bbb' },
-        ]);
-        (prisma.downloadJob.update as jest.Mock).mockResolvedValue({});
+        primeHandlerPreResponse({ twoAlbums: true });
 
         // Record the order of (a) every batch update and (b) the handoff so we can
         // assert the final tally is persisted and that it lands at-or-before handoff.
@@ -455,32 +419,9 @@ describe('POST /discover/retry-unavailable -- routes through checkBatchCompletio
     });
 
     it('SINGLE HANDOFF: checkBatchCompletion is invoked exactly once for the batch', async () => {
-        // Removing the force-complete must not be "compensated" by calling the
-        // proven flow per-job or twice. Two albums, both succeed -> exactly ONE
-        // handoff after the loop.
-        (prisma.discoveryBatch.findFirst as jest.Mock)
-            .mockResolvedValueOnce({ weekStart: new Date('2026-05-18T00:00:00.000Z') })
-            .mockResolvedValueOnce(null);
-        (prisma.unavailableAlbum.findMany as jest.Mock).mockResolvedValue([
-            UNAVAILABLE_ALBUM,
-            { ...UNAVAILABLE_ALBUM, id: 'unavail-2', albumMbid: 'mbid-bbb', albumTitle: 'Windowlicker' },
-        ]);
-        (prisma.discoveryAlbum.findMany as jest.Mock).mockResolvedValue([]);
-        (prisma.album.findMany as jest.Mock).mockResolvedValue([]);
-        (prisma.unavailableAlbum.deleteMany as jest.Mock).mockResolvedValue({ count: 0 });
-        (prisma.$transaction as jest.Mock).mockImplementation(async (cb: any) =>
-            cb({
-                discoveryBatch: { create: jest.fn().mockResolvedValue({ id: RETRY_BATCH_ID }) },
-                downloadJob: { create: jest.fn().mockResolvedValue({}) },
-                unavailableAlbum: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
-            }),
-        );
-        (prisma.downloadJob.findMany as jest.Mock).mockResolvedValueOnce([]).mockResolvedValue([
-            RETRY_JOB,
-            { ...RETRY_JOB, id: 'job-2', targetMbid: 'mbid-bbb' },
-        ]);
-        (prisma.discoveryBatch.update as jest.Mock).mockResolvedValue({});
-        (prisma.downloadJob.update as jest.Mock).mockResolvedValue({});
+        // Two albums, both succeed: exactly one handoff after the loop, not one
+        // per job.
+        primeHandlerPreResponse({ twoAlbums: true });
         mockAcquireAlbum.mockResolvedValue({ success: true });
         mockCheckBatchCompletion.mockResolvedValue(undefined);
 

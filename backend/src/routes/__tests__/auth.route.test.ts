@@ -287,16 +287,7 @@ describe('Admin-only routes', () => {
 
     it('POST /auth/create-user with role injection is rejected (invalid role)', async () => {
         const adminUser = { ...BASE_USER, role: 'admin' };
-        (prisma.user.findUnique as jest.Mock)
-            .mockResolvedValueOnce(adminUser) // auth lookup
-            .mockResolvedValueOnce(adminUser) // existing username check
-            .mockResolvedValueOnce(null); // username check returns null = available
-
-        // Re-mock: first call for admin auth, second for username check
         (prisma.user.findUnique as jest.Mock).mockResolvedValue(adminUser);
-        (prisma.user.findUnique as jest.Mock)
-            .mockResolvedValueOnce(adminUser)  // requireAdmin auth lookup
-            .mockResolvedValueOnce(null);      // username availability check
 
         (prisma.user.create as jest.Mock).mockResolvedValue({
             ...BASE_USER,
@@ -318,7 +309,7 @@ describe('Admin-only routes', () => {
     });
 });
 
-// ── DELETE /auth/account ──────────────────────────────────────────────────────
+// ── POST /auth/change-password ────────────────────────────────────────────────
 
 describe('POST /auth/change-password', () => {
     let app: express.Application;
@@ -373,6 +364,8 @@ describe('POST /auth/change-password', () => {
         expect(withOld.status).toBe(401);
     });
 });
+
+// ── DELETE /auth/account ──────────────────────────────────────────────────────
 
 describe('DELETE /auth/account', () => {
     let app: express.Application;

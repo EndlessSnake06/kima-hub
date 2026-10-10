@@ -99,7 +99,7 @@ async function unseed(n: string) {
     await prisma.$executeRawUnsafe(`DELETE FROM "Artist" WHERE id = $1`, id(`art_${n}`));
 }
 
-describe("vibe report endpoints (the analyzer reports, the backend writes)", () => {
+describe("vibe report endpoints", () => {
     it("a success report closes the record and mirrors completed", async () => {
         const trackId = await seedTrack("ok");
         const res = await request(app)

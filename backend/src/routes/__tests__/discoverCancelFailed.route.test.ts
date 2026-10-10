@@ -111,14 +111,10 @@ describe('DELETE /discover/batch -- cancel marks the batch failed, not completed
 
     it('CONSEQUENCE: a failed (cancelled) batch is excluded from the /current completed-only lookup', async () => {
         // The /current fallback queries discoveryBatch with status:"completed".
-        // A Prisma mock filtered by that where-clause returns null for a batch
-        // that is "failed" -- prove the handler then falls back to the calendar
-        // week (stale=false) rather than serving the cancelled batch's week.
-        (prisma.discoveryBatch.findFirst as jest.Mock).mockImplementation((q: any) => {
-            // Only a completed batch would be returned; our only batch is failed.
-            if (q?.where?.status === 'completed') return Promise.resolve(null);
-            return Promise.resolve(null);
-        });
+        // That lookup finds nothing for a batch that is "failed" -- prove the
+        // handler then falls back to the calendar week (stale=false) rather
+        // than serving the cancelled batch's week.
+        (prisma.discoveryBatch.findFirst as jest.Mock).mockResolvedValue(null);
         (prisma.discoveryAlbum.findMany as jest.Mock).mockResolvedValue([]);
         (prisma.unavailableAlbum.findMany as jest.Mock).mockResolvedValue([]);
         (prisma.track.findMany as jest.Mock).mockResolvedValue([]);

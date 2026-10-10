@@ -139,8 +139,6 @@ describe("the cover-art route asks every source", () => {
 
     describe("GET /album-cover/:mbid", () => {
         it("still looks up an album whose id this app invented", async () => {
-            // Refused outright before, which put 46% of a real library beyond
-            // reach of the one source that does not need an id.
             (prisma.album.findFirst as jest.Mock).mockResolvedValue({
                 title: "Reliance",
                 artist: { name: "Soen" },
@@ -154,8 +152,8 @@ describe("the cover-art route asks every source", () => {
         });
 
         it("looks the album up so the sources can search Deezer by name", async () => {
-            // The whole change. Given only an MBID, the sources can ask the
-            // archive and nothing else -- and the archive has about half.
+            // Given only an MBID, the sources can ask the Cover Art Archive and
+            // nothing else; the album's name lets them search Deezer too.
             (prisma.album.findFirst as jest.Mock).mockResolvedValue({
                 title: "Age Of Aquarius",
                 artist: { name: "Perturbator" },

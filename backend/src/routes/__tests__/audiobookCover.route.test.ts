@@ -76,7 +76,7 @@ const MUSIC = config.music.musicPath;
 const ALBUM_COVER = path.join(MUSIC, "Artist", "Album", "cover.jpg");
 const ALBUM_COVER_BODY = "an album cover inside the music folder";
 
-// Where the unguarded join would have landed: the route appends ".jpg" itself.
+// Where a path that escapes the music root would land: the route appends ".jpg" itself.
 const PROBE_BODY = "if you can read this, the traversal worked";
 const probeFile = path.join(os.tmpdir(), `kima-cover-traversal-${process.pid}.jpg`);
 
@@ -132,8 +132,6 @@ describe("GET /audiobooks/:id/cover", () => {
     });
 
     it("does not record an out-of-root path back onto the audiobook row", async () => {
-        // The unguarded version wrote whatever it resolved into
-        // localCoverPath, which would have persisted the escape.
         await request(app).get(`/${traversingId()}/cover`);
 
         expect(prisma.audiobook.update).not.toHaveBeenCalled();

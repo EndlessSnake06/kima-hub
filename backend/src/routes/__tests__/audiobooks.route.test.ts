@@ -202,17 +202,6 @@ describe("GET /audiobooks", () => {
         expect(book.trackCount).toBeUndefined();
         expect(book).not.toHaveProperty("trackCount");
     });
-
-    it("never coerces NULL numTracks to 0 or 1", async () => {
-        (prisma.audiobook.findMany as jest.Mock).mockResolvedValue([bookRowNullTracks]);
-
-        const res = await request(app).get("/audiobooks");
-        const book = res.body[0];
-
-        expect(book.trackCount).not.toBe(0);
-        expect(book.trackCount).not.toBe(1);
-        expect(book.trackCount).toBeUndefined();
-    });
 });
 
 // ── GET /series/:name ─────────────────────────────────────────────────────────
