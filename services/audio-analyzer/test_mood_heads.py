@@ -79,16 +79,15 @@ class ExtractMoodsTest(unittest.TestCase):
         self.assertEqual(out['moodParty'], 0.1)
 
     def test_heads_are_independent_not_paired(self):
-        # Bittersweet: confidently happy AND sad. The old pairwise softmax
-        # forced happy + sad = 1; each head must now keep its own value.
+        # Bittersweet: confidently happy AND sad. Each head keeps its own value; the pair
+        # need not sum to 1.
         heads = self._heads(mood_happy=_Head([0.8, 0.2]), mood_sad=_Head([0.3, 0.7]),
                             mood_relaxed=_Head([0.01, 0.99]),
                             mood_aggressive=_Head([0.01, 0.99]))
         out = _analyzer_with(heads)._extract_ml_features(np.zeros(16000))
         self.assertEqual(out['moodHappy'], 0.8)
         self.assertEqual(out['moodSad'], 0.7)
-        # A calm track: relaxed 0.99, aggressive 0.01 -- not the 0.5/0.5 the
-        # old clip-then-softmax produced for saturated heads.
+        # A calm track: relaxed 0.99, aggressive 0.01, not 0.5/0.5 for saturated heads.
         self.assertEqual(out['moodRelaxed'], 0.99)
         self.assertEqual(out['moodAggressive'], 0.01)
 

@@ -7,6 +7,8 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+import pytest
+
 _ANALYZER_PATH = os.path.join(os.path.dirname(__file__), "analyzer.py")
 _spec = importlib.util.spec_from_file_location("audio_analyzer_feed_loop", _ANALYZER_PATH)
 assert _spec and _spec.loader
@@ -194,7 +196,6 @@ def test_a_job_whose_claim_was_reissued_is_not_analysed(monkeypatch):
     assert analysed == ["new"]
 
 
-
 def test_a_failed_claim_lookup_puts_the_jobs_back_in_order(monkeypatch):
     jobs = [{"trackId": t, "filePath": f"/m/{t}", "jobId": f"{t}-1-r0"} for t in ("a", "b", "c")]
     w = make_worker(jobs, 4, monkeypatch, lambda args: None)
@@ -203,11 +204,8 @@ def test_a_failed_claim_lookup_puts_the_jobs_back_in_order(monkeypatch):
         raise RuntimeError("server closed the connection unexpectedly")
 
     monkeypatch.setattr(w, "_current_claims", boom)
-    try:
+    with pytest.raises(RuntimeError):
         w._fill()
-        raise AssertionError("the lookup's failure was swallowed")
-    except RuntimeError:
-        pass
     assert [json.loads(x)["trackId"] for x in w.redis.queue] == ["a", "b", "c"]
 
 

@@ -5,15 +5,13 @@ recording cursor."""
 import unittest
 from typing import Any
 
-
 import analyzer
 
 
 class _RecordingCursor:
     """Records every statement the save path executes."""
 
-    def __init__(self, *, returning_retry=1):
-        self.returning_retry = returning_retry
+    def __init__(self):
         self.statements: list[tuple[str, tuple]] = []
         self.rowcount = 1
 
@@ -22,7 +20,7 @@ class _RecordingCursor:
         self.rowcount = 1
 
     def fetchone(self):
-        return {"analysisRetryCount": self.returning_retry}
+        return {"?column?": 1}
 
     def fetchall(self):
         return []
@@ -33,7 +31,7 @@ class _RecordingCursor:
 
 class _RecordingDB:
     def __init__(self):
-        self.cursor: _RecordingCursor = _RecordingCursor(returning_retry=1)
+        self.cursor: _RecordingCursor = _RecordingCursor()
         self.commits = 0
         self.rollbacks = 0
 
@@ -68,7 +66,7 @@ class SuccessLeavesLedgerTest(unittest.TestCase):
             self.assertNotIn(
                 "EnrichmentFailure",
                 sql,
-                f"success path still writes the old ledger: {sql[:120]}",
+                f"the success path writes to the failure ledger: {sql[:120]}",
             )
 
     def test_writes_the_features_and_leaves_the_stage_record_to_the_server(self):
