@@ -743,9 +743,6 @@ model Track {
   danceabilityMl              Float?
   moodTags                    String[]
   essentiaGenres              String[]
-  // Genre tags kept from earlier releases. Nothing writes them now; the mood
-  // radio's fallback filter and the analysis report still read them.
-  enrichmentTags              String[]                 @default([])
   analysisStatus              String                   @default("pending")
   analysisVersion             String?
   analysisMode                String?
@@ -803,7 +800,6 @@ model Track {
   @@index([scanStatus])
   @@index([vibeAnalysisStatus])
   @@index([analysisStatus, vibeAnalysisStatus])
-  @@index([enrichmentTags], type: Gin, map: "Track_enrichmentTags_gin_idx")
   @@index([isrc])
   @@index([albumId])
   @@index([acousticness])
@@ -888,7 +884,6 @@ model User {
   twoFactorEnabled       Boolean                  @default(false)
   twoFactorSecret        String?
   twoFactorRecoveryCodes String?
-  moodMixParams          Json?
   tokenVersion           Int                      @default(0)
   createdAt              DateTime                 @default(now())
   apiKeys                ApiKey[]

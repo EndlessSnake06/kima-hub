@@ -839,9 +839,7 @@ router.get("/radio", async (req, res) => {
             };
             break;
           default:
-            moodWhere = {
-              enrichmentTags: { has: moodValue },
-            };
+            return res.status(400).json({ error: `Unknown mood: ${moodValue}` });
         }
 
         const moodTracks = await prisma.track.findMany({
