@@ -170,10 +170,8 @@ def _embed_all(model_id: str, sets: dict, workers: int, retry_failed: bool, back
 
 
 def v1_cache_embeddings(set_name: str) -> dict:
-    # Reuse the scored baseline cache. The cache key hashes the
-    # analyzer source, and the wave's comment/report edits changed the key
-    # without touching any window/mel/model/pooling line — so match the
-    # newest v1 cache dir by name rather than recomputing the hash.
+    # The cache key hashes the analyzer source, so a comment edit would change it. Take the
+    # scored v1 cache by directory name instead of recomputing the hash.
     import glob
     import embedders as EM
     dirs = sorted(glob.glob(os.path.join(HERE, '.cache', 'emb', 'v1-model*')), reverse=True)

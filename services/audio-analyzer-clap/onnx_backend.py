@@ -121,11 +121,8 @@ class OnnxCLAPBackend:
                     f'(torch-free mel via clap_mel)')
 
     def _mel_chunk(self, audio: np.ndarray) -> np.ndarray:
-        """Use HF ClapFeatureExtractor to compute the log-mel for a 10s chunk.
-
-        Returns [1001, 64] — exactly what HF ClapFeatureExtractor produces for
-        audio of <= 10s with the default truncation/padding.
-        """
+        """Log-mel of the first 10 s, [1001, 64]: what HF's ClapFeatureExtractor gives for audio of
+        10 s or less with its default truncation and padding."""
         clip = audio[:MAX_SAMPLES]
         return self._fe.get_input_mel(clip)[0]  # [1001, 64]
 
@@ -149,9 +146,8 @@ class OnnxCLAPBackend:
         return self.embed_clips([audio])[0]
 
 
-# Default ONNX TEXT model path (Xenova clap-htsat-unfused text_model.onnx).
-# The audio service keeps it under models/text_model.onnx; overridable so the
-# testbed/CI can point at a downloaded copy instead of baking 500MB in.
+# The text model (Xenova clap-htsat-unfused text_model.onnx) sits in models/;
+# CLAP_ONNX_TEXT_MODEL_PATH points at a copy elsewhere.
 def _default_text_model_path() -> str:
     here = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(here, 'models', 'text_model.onnx')

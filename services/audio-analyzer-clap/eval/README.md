@@ -320,6 +320,10 @@ effect on search would come through those norms.
 - `postprocess_eval.py`: post-processing experiments on the cached vectors (section above).
 - `datasets.py`: one loader per set, plus `derive-memo`.
 - `fit_feel_probe.py`: fits the feel probe on DEAM and writes `backend/src/services/matching/feelProbe.json`.
+- `calibrate_platt.py`, `calibration/`: fits the valence and arousal sigmoid on a labelled set (`--fit-on`) and writes `calibration/platt-<set>.json`. The analyzer's `VA_CALIB` is the `platt-memo2496.json` fit.
+- `matching_parity_fixture.py`, `map_parity_fixture.py`: write the fixtures the backend's matching and map tests compare the TypeScript against (`parity.json`, `map-parity.json`).
+- `mert_bakeoff.py`: scores a Hugging Face music encoder against the shipped model on the human sets.
+- `run.sh`: the one-command runner from the section above.
 - `embedders.py`: the v1 and engine embedders and the cache.
 - `metrics.py`: every score and interval.
 - `fetch_data.sh`, `SHA256SUMS`: downloads and their checksums.
