@@ -12,14 +12,12 @@ export async function writeEnvFile(
     // Write to project root .env (parent of backend dir) for docker-compose
     const envPath = path.resolve(process.cwd(), "..", ".env");
 
-    // Read existing .env
     let existingContent = "";
     const existingVars = new Map<string, string>();
 
     try {
         existingContent = fs.readFileSync(envPath, "utf-8");
 
-        // Parse existing variables
         existingContent.split("\n").forEach((line) => {
             const trimmed = line.trim();
             if (trimmed && !trimmed.startsWith("#")) {
@@ -33,21 +31,18 @@ export async function writeEnvFile(
         logger.debug("No existing .env file, creating new one");
     }
 
-    // Update with new values
     Object.entries(variables).forEach(([key, value]) => {
         if (value !== null && value !== undefined) {
             existingVars.set(key, value);
         }
     });
 
-    // Build new .env content
     const lines: string[] = [
         "# Kima Environment Variables",
         `# Auto-generated on ${new Date().toISOString()}`,
         "",
     ];
 
-    // Group variables by category
     const categories = {
         "Database & Redis": ["DATABASE_URL", "REDIS_URL"],
         Server: ["PORT", "NODE_ENV", "SESSION_SECRET", "ALLOWED_ORIGINS"],
@@ -56,18 +51,12 @@ export async function writeEnvFile(
         OpenAI: ["OPENAI_API_KEY"],
         Audiobookshelf: ["AUDIOBOOKSHELF_URL", "AUDIOBOOKSHELF_API_KEY"],
         Soulseek: ["SOULSEEK_USERNAME", "SOULSEEK_PASSWORD"],
-        "VPN (Mullvad)": [
-            "MULLVAD_PRIVATE_KEY",
-            "MULLVAD_ADDRESSES",
-            "MULLVAD_SERVER_CITY",
-        ],
         "Docker Paths": ["MUSIC_PATH", "DOWNLOAD_PATH"],
         Security: ["SETTINGS_ENCRYPTION_KEY"],
     };
 
     const writtenKeys = new Set<string>();
 
-    // Write categorized variables
     Object.entries(categories).forEach(([category, keys]) => {
         const categoryVars: string[] = [];
 
@@ -84,7 +73,6 @@ export async function writeEnvFile(
         }
     });
 
-    // Write uncategorized variables
     const uncategorized: string[] = [];
     existingVars.forEach((value, key) => {
         if (!writtenKeys.has(key)) {
@@ -96,9 +84,8 @@ export async function writeEnvFile(
         lines.push("", "# Other Variables", ...uncategorized);
     }
 
-    lines.push(""); // Trailing newline
+    lines.push("");
 
-    // Write to file
     fs.writeFileSync(envPath, lines.join("\n"), "utf-8");
     logger.debug(`.env file updated with ${existingVars.size} variables`);
 }
