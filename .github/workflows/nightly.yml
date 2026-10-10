@@ -20,53 +20,12 @@ jobs:
         steps:
             - uses: actions/checkout@v4
 
-            - name: Set up Docker Buildx
-              uses: docker/setup-buildx-action@v3
-
-            - name: Build Docker image
-              uses: docker/build-push-action@v5
+            - name: Build image, start stack, create test user, install Playwright
+              uses: ./.github/actions/e2e-stack
               with:
-                  context: .
-                  push: false
-                  load: true
-                  tags: kima:nightly
-                  cache-from: type=gha
-                  cache-to: type=gha,mode=max
-
-            - name: Start Kima stack
-              run: |
-                  docker run -d \
-                    --name kima-nightly \
-                    -p 3030:3030 \
-                    -p 3006:3006 \
-                    -v kima_nightly_data:/data \
-                    kima:nightly
-                  timeout 90 bash -c 'until curl -sf http://localhost:3030/api/health; do sleep 3; done'
-
-            - name: Create test user
-              run: |
-                  # Generate random credentials for this run -- no hardcoded passwords in source.
-                  TEST_USER="kima_e2e"
-                  TEST_PASS="$(openssl rand -hex 20)"
-                  echo "::add-mask::${TEST_PASS}"
-                  echo "KIMA_TEST_USERNAME=${TEST_USER}" >> "$GITHUB_ENV"
-                  echo "KIMA_TEST_PASSWORD=${TEST_PASS}" >> "$GITHUB_ENV"
-                  KIMA_CONTAINER=kima-nightly \
-                  KIMA_TEST_USERNAME="${TEST_USER}" \
-                  KIMA_TEST_PASSWORD="${TEST_PASS}" \
-                  bash scripts/create-e2e-user.sh
-
-            - uses: actions/setup-node@v4
-              with:
-                  node-version: "24"
-                  cache: "npm"
-                  cache-dependency-path: frontend/package-lock.json
-
-            - name: Install Playwright
-              working-directory: frontend
-              run: |
-                  npm ci
-                  npx playwright install --with-deps chromium
+                  tag: nightly
+                  container: kima-nightly
+                  volume: kima_nightly_data
 
             - name: Run full E2E suite
               working-directory: frontend
@@ -101,7 +60,7 @@ jobs:
 
             - name: Stop stack
               if: always()
-              run: |
-                  docker stop kima-nightly || true
-                  docker rm kima-nightly || true
-                  docker volume rm kima_nightly_data || true
+              uses: ./.github/actions/e2e-teardown
+              with:
+                  container: kima-nightly
+                  volume: kima_nightly_data

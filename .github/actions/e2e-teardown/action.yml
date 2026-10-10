@@ -1,0 +1,20 @@
+name: E2E stack teardown
+description: Stops the container and removes its data volume.
+
+inputs:
+    container:
+        description: Name of the container to stop.
+        required: true
+    volume:
+        description: Name of the /data volume to remove.
+        required: true
+
+runs:
+    using: composite
+    steps:
+        - name: Stop stack
+          shell: bash
+          run: |
+              docker stop ${{ inputs.container }} || true
+              docker rm ${{ inputs.container }} || true
+              docker volume rm ${{ inputs.volume }} || true

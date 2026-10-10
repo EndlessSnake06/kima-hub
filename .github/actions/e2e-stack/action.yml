@@ -1,0 +1,70 @@
+name: E2E Kima stack
+description: >-
+    Builds the image, boots the all-in-one container, creates the test user
+    and installs Playwright. The credentials land in KIMA_TEST_USERNAME and
+    KIMA_TEST_PASSWORD for the steps that follow.
+
+inputs:
+    tag:
+        description: Local image tag to build and run.
+        required: true
+    container:
+        description: Name for the container.
+        required: true
+    volume:
+        description: Name for the /data volume.
+        required: true
+
+runs:
+    using: composite
+    steps:
+        - name: Set up Docker Buildx
+          uses: docker/setup-buildx-action@v3
+
+        - name: Build Docker image
+          uses: docker/build-push-action@v5
+          with:
+              context: .
+              push: false
+              load: true
+              tags: kima:${{ inputs.tag }}
+              cache-from: type=gha
+              cache-to: type=gha,mode=max
+
+        - name: Start Kima stack
+          shell: bash
+          run: |
+              docker run -d \
+                --name ${{ inputs.container }} \
+                -p 3030:3030 \
+                -p 3006:3006 \
+                -v ${{ inputs.volume }}:/data \
+                kima:${{ inputs.tag }}
+              timeout 90 bash -c 'until curl -sf http://localhost:3030/api/health; do sleep 3; done'
+
+        - name: Create test user
+          shell: bash
+          run: |
+              # Random credentials per run -- no hardcoded passwords in source.
+              TEST_USER="kima_e2e"
+              TEST_PASS="$(openssl rand -hex 20)"
+              echo "::add-mask::${TEST_PASS}"
+              echo "KIMA_TEST_USERNAME=${TEST_USER}" >> "$GITHUB_ENV"
+              echo "KIMA_TEST_PASSWORD=${TEST_PASS}" >> "$GITHUB_ENV"
+              KIMA_CONTAINER=${{ inputs.container }} \
+              KIMA_TEST_USERNAME="${TEST_USER}" \
+              KIMA_TEST_PASSWORD="${TEST_PASS}" \
+              bash scripts/create-e2e-user.sh
+
+        - uses: actions/setup-node@v4
+          with:
+              node-version: "24"
+              cache: "npm"
+              cache-dependency-path: frontend/package-lock.json
+
+        - name: Install Playwright
+          shell: bash
+          working-directory: frontend
+          run: |
+              npm ci
+              npx playwright install --with-deps chromium
