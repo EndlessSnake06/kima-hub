@@ -881,7 +881,6 @@ class SoulseekService {
                 // different directories to be silently dropped
                 const key = `${response.username}:${file.filename}`;
 
-                // Skip if we've already seen this user+filename combo
                 if (seen.has(key)) {
                     continue;
                 }
@@ -1461,7 +1460,6 @@ class SoulseekService {
         // Group results by user and parent directory
         const flatResults = this.flattenSearchResults(responses);
 
-        // Filter blocked users before grouping
         const blockChecks = await Promise.all(
             flatResults.map(async (r) => ({
                 result: r,
@@ -1493,7 +1491,6 @@ class SoulseekService {
             if (discPattern.test(dir)) {
                 const parentDir = dir.replace(discPattern, "");
                 if (!mergedKeys.has(key)) {
-                    // Find all disc subfolders for this user+parent
                     for (const [otherKey, otherFiles] of groups) {
                         if (otherKey === key) continue;
                         const [otherUser, otherDir] = otherKey.split("|||");

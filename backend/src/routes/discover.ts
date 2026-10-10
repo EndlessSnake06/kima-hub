@@ -758,7 +758,6 @@ router.delete("/unlike", async (req, res) => {
             },
         });
 
-        // Remove OwnedAlbum record if it was from discovery_liked
         await prisma.ownedAlbum.deleteMany({
             where: {
                 rgMbid: albumId,
@@ -1578,7 +1577,6 @@ router.delete("/clear", async (req, res) => {
             );
         }
 
-        // Remove DiscoveryTrack records that no longer point at a track
         const orphanedDiscoveryTracks = await prisma.discoveryTrack.deleteMany({
             where: { trackId: null },
         });
@@ -1930,7 +1928,6 @@ router.post("/fix-tagging", requireAdmin, async (req, res) => {
                     data: { location: "DISCOVER" },
                 });
 
-                // Remove incorrect OwnedAlbum records (but not protected ones)
                 const removed = await prisma.ownedAlbum.deleteMany({
                     where: {
                         artist: { mbid: da.artistMbid },

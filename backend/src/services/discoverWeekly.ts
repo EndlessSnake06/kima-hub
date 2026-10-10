@@ -686,7 +686,6 @@ class DiscoverWeeklyService {
                 }
             }
 
-            // Update batch status with optimistic locking
             if (completed === 0) {
                 await updateBatchStatus(
                     batchId,

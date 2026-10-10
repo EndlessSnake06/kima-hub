@@ -327,7 +327,6 @@ router.post(
                     data: { cleared: true },
                 });
 
-                // Validate playlist ownership and pending track exists
                 const playlist = await prisma.playlist.findUnique({
                     where: { id: playlistId },
                 });

@@ -235,7 +235,6 @@ class SpotifyService {
                 try {
                     const data = JSON.parse(nextDataMatch[1]);
 
-                    // Log available data structure for debugging
                     const propsKeys = Object.keys(data?.props?.pageProps || {});
                     logger.debug(`Spotify Scraper: pageProps keys: [${propsKeys.join(", ")}]`);
 
@@ -538,7 +537,6 @@ class SpotifyService {
                 allItems.push(...items);
                 offset += items.length;
 
-                // Update total if API reports a higher number than initially stated
                 if (response.data?.total && response.data.total > total) {
                     total = response.data.total;
                 }
@@ -635,7 +633,6 @@ class SpotifyService {
                     continue;
                 }
 
-                // Get album name, handling null, undefined, and empty strings
                 const albumName = track.album?.name?.trim() || "Unknown Album";
 
                 tracks.push({
@@ -753,7 +750,6 @@ class SpotifyService {
                 // subtitle often contains "Artist1, Artist2, Artist3" but we want only primary
                 let primaryArtist = trackData.artists?.[0]?.name;
                 if (!primaryArtist && trackData.subtitle) {
-                    // Extract first artist from subtitle (before any comma)
                     primaryArtist = trackData.subtitle.split(",")[0].trim();
                 }
                 primaryArtist = primaryArtist || "Unknown Artist";
@@ -809,7 +805,6 @@ class SpotifyService {
         urlOrId: string,
         onProgress?: (fetched: number, total: number) => void,
     ): Promise<SpotifyPlaylist | null> {
-        // Extract ID from URL if needed
         let playlistId = urlOrId;
         const parsed = this.parseUrl(urlOrId);
         if (parsed) {

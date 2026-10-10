@@ -446,7 +446,6 @@ class AcquisitionService {
 
             // Note: Batch doesn't return per-track success mapping, so we use error messages to determine failures
             const results: AcquisitionResult[] = requests.map((req) => {
-                // Check if this specific track had an error in the batch result
                 const trackKey = `${req.artistName} - ${req.trackTitle}`;
                 const trackError = batchResult.errors.find((e) =>
                     e.startsWith(trackKey)
@@ -705,7 +704,6 @@ class AcquisitionService {
 
                 await this.updateJobStatus(job.id, "failed", result.error);
 
-                // Return structured error info for fallback logic
                 return {
                     success: false,
                     error: result.error,
@@ -750,7 +748,6 @@ class AcquisitionService {
         // Dedup key: use MBID if available, otherwise use artist+album as identifier
         const dedupKey = request.mbid || `${request.artistName}::${request.albumTitle}`;
 
-        // Check for existing active download job (before acquiring lock)
         const existingJobWhere: any = {
             userId: context.userId,
             discoveryBatchId: context.discoveryBatchId || null,
