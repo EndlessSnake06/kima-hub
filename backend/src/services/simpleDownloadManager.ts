@@ -1096,24 +1096,6 @@ class SimpleDownloadManager {
         await this.mergeMetadata(jobId, { progress, downloadStatus: item.status, statusText });
     }
 
-    async getStats(): Promise<{
-        pending: number;
-        processing: number;
-        completed: number;
-        failed: number;
-    }> {
-        const [pending, processing, completed, failed] = await Promise.all([
-            prisma.downloadJob.count({ where: { status: "pending" } }),
-            prisma.downloadJob.count({ where: { status: "processing" } }),
-            prisma.downloadJob.count({ where: { status: "completed" } }),
-            prisma.downloadJob.count({ where: { status: "failed" } }),
-        ]);
-
-        this.updateActiveDownloadsMetric().catch(() => {});
-
-        return { pending, processing, completed, failed };
-    }
-
     /**
      * Complete processing jobs whose album Lidarr now holds in full, matched by
      * Lidarr's album id or the album's MusicBrainz id, catching imports whose
