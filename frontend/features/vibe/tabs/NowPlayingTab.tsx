@@ -28,7 +28,6 @@ export function NowPlayingTab() {
     return (
         <div className="flex-1 overflow-y-auto">
             <div className="p-4 space-y-4">
-                {/* Album art */}
                 <div className="relative aspect-square w-full max-w-[280px] mx-auto rounded-lg overflow-hidden bg-[#181818]">
                     {coverUrl ? (
                         <CachedImage
@@ -48,7 +47,6 @@ export function NowPlayingTab() {
                     )}
                 </div>
 
-                {/* Track info */}
                 <div className="text-center">
                     <p className="text-lg font-semibold text-white truncate">
                         {currentTrack.title}
