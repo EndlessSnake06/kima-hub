@@ -12,7 +12,6 @@ export interface ScanJobData {
     albumMbid?: string; // Optional: the album a download or retry brought in
     artistMbid?: string; // Optional: the artist of a retried track
     source?: string; // Optional: source of scan (e.g., "lidarr-webhook", "discover-weekly-completion", "spotify-import")
-    downloadId?: string; // Optional: the download job this scan is for
     discoveryBatchId?: string; // Optional: Discovery Weekly batch ID
     spotifyImportJobId?: string; // Optional: Spotify Import job ID
 }
