@@ -72,7 +72,7 @@ function makeApp() {
     return app;
 }
 
-describe('DELETE /discover/batch -- cancel marks the batch failed, not completed', () => {
+describe('DELETE /discover/batch -- cancel marks the batch failed, not completed (Task 8)', () => {
     let app: express.Application;
 
     beforeAll(() => { app = makeApp(); });
@@ -94,8 +94,9 @@ describe('DELETE /discover/batch -- cancel marks the batch failed, not completed
         expect(res.body.success).toBe(true);
         expect(res.body.batchesCancelled).toBe(1);
 
-        // The status must be "failed": "completed" would read as a real (empty)
-        // week to the /current fallback.
+        // DISCRIMINATOR: the batch update MUST set status="failed". The original
+        // defect set it to "completed", which the /current fallback would read as
+        // a real (empty) week.
         expect((prisma.discoveryBatch.update as jest.Mock).mock.calls.length).toBe(1);
         const updateArgs = (prisma.discoveryBatch.update as jest.Mock).mock.calls[0][0];
         expect(updateArgs.where).toEqual({ id: 'batch-stuck-1' });

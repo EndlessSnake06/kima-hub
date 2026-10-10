@@ -81,7 +81,7 @@ function fakeJob(state: string) {
     };
 }
 
-describe('POST /discover/generate -- drop stale job hash before re-enqueue', () => {
+describe('POST /discover/generate -- drop stale job hash before re-enqueue (Task 9)', () => {
     let app: express.Application;
 
     beforeAll(() => {
