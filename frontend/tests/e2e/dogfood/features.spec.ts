@@ -7,7 +7,7 @@
 
 import { test, expect, Browser, Page, BrowserContext, APIRequestContext, request } from "@playwright/test";
 import { DogfoodSession, navigateByClick, openAlbumsTab, firstAlbumCard } from "./session";
-import { PLAYER, settle } from "../fixtures/shared";
+import { readPlayer, settle } from "../fixtures/shared";
 
 const baseUrl = process.env.KIMA_UI_BASE_URL || "http://127.0.0.1:3030";
 const username = process.env.KIMA_TEST_USERNAME || "";
@@ -39,11 +39,8 @@ test.describe("Dogfood: tray, scrobbling, public feed, GPU, release window", () 
         expect(res.status(), "GET /api/public/vibe/live").toBe(200);
         return (await res.json()) as { status: string; trackId: string | null; position: number };
     };
-    const playingTrackId = () =>
-        page.evaluate((sel) => {
-            const src = (document.querySelector(sel) as HTMLAudioElement | null)?.src ?? "";
-            return src.match(/\/tracks\/([^/]+)\//)?.[1] ?? null;
-        }, PLAYER);
+    const playingTrackId = async () =>
+        (await readPlayer(page)).src.match(/\/tracks\/([^/]+)\//)?.[1] ?? null;
     // A settings switch hides its checkbox under the drawn switch, so clicks go to the label.
     const settingsSwitch = (id: string) => page.locator(`label:has(> #${id})`);
 

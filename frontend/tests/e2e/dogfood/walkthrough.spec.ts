@@ -3,16 +3,28 @@
  * state builds up as in real use. It checks the user's own music is on screen
  * and audio position moves, and a bare instance fails instead of skipping.
  */
-import { test, expect, devices, Browser, Page, BrowserContext } from "@playwright/test";
+import { test, expect, devices, Browser, Page, BrowserContext, Locator } from "@playwright/test";
 import { DogfoodSession, navigateByClick, firstAlbumCard, openAlbumsTab } from "./session";
 import { readLibraryFacts, assertReady, coverageGaps, LibraryFacts } from "./preflight";
-import { PLAYER, escapeRegExp, settle, softwareWebGL } from "../fixtures/shared";
+import { PLAYER, escapeRegExp, readPlayer, settle, softwareWebGL } from "../fixtures/shared";
 
 const baseUrl = process.env.KIMA_UI_BASE_URL || "http://127.0.0.1:3030";
 const username = process.env.KIMA_TEST_USERNAME || "";
 const password = process.env.KIMA_TEST_PASSWORD || "";
 
 const RUN_TAG = `dogfood-${Date.now()}`;
+
+/** The track title of every playlist row, in DOM order. */
+function rowTitles(rows: Locator): Promise<string[]> {
+    return rows.evaluateAll((els) =>
+        els.map(
+            (el) =>
+                el.querySelector("p.text-sm.font-bold")?.textContent?.trim() ??
+                el.querySelector("p")?.textContent?.trim() ??
+                "",
+        ),
+    );
+}
 
 // A walkthrough is a long single thread of interactions: journey 4 has no meaning if
 // journey 2 never got audio playing. Serial mode stops the run at the first real failure
@@ -30,7 +42,6 @@ test.describe("Dogfood walkthrough", () => {
     let gaps: string[] = [];
     let token = "";
     const createdPlaylistIds: string[] = [];
-    let movedTrackTitle = "";
 
     test.beforeAll(async ({ browser: launched }) => {
         browser = launched;
@@ -221,26 +232,16 @@ test.describe("Dogfood walkthrough", () => {
         await session.step("press play", async () => {
             await page.getByLabel("Play all").click();
             await page.getByTitle("pause", { exact: true }).waitFor({ timeout: 15_000 });
-            const src = await page.evaluate(
-                (sel) => (document.querySelector(sel) as HTMLAudioElement | null)?.src ?? "",
-                PLAYER,
-            );
+            const src = (await readPlayer(page)).src;
             expect(src, "no audio source was set").toBeTruthy();
             return { streamUrl: src.replace(baseUrl, "").slice(0, 80) };
         });
 
-        // The assertion the rest of the suite never makes. A src attribute and a Pause
-        // icon prove the UI changed its mind, not that a single sample reached the
-        // speakers. Position moving forward is the only evidence of actual playback.
+        // A src attribute and a Pause icon prove the UI changed its mind, not that a
+        // single sample reached the speakers. Position moving forward is the evidence.
         await session.step("audio is genuinely advancing", async () => {
             const read = () =>
-                page.evaluate(
-                    (sel) => {
-                        const el = document.querySelector(sel) as HTMLAudioElement | null;
-                        return { t: el?.currentTime ?? -1, paused: el?.paused ?? true, ready: el?.readyState ?? 0 };
-                    },
-                    PLAYER,
-                );
+                readPlayer(page);
 
             const first = await read();
             await page.waitForTimeout(2500);
@@ -317,10 +318,7 @@ test.describe("Dogfood walkthrough", () => {
         // The player and the queue page must name the same track. The id comes
         // from the stream URL the audio element is playing; its title from the API.
         await session.step("the queue and the player name the same track", async () => {
-            const src = await page.evaluate(
-                (sel) => (document.querySelector(sel) as HTMLAudioElement | null)?.src ?? "",
-                PLAYER,
-            );
+            const src = (await readPlayer(page)).src;
             const id = src.match(/\/tracks\/([^/]+)\/stream/)?.[1];
             expect(id, `could not read a track id from the stream URL: ${src}`).toBeTruthy();
 
@@ -473,10 +471,7 @@ test.describe("Dogfood walkthrough", () => {
             await row.locator('[aria-label^="Play "]').first().click();
             await page.waitForTimeout(1500);
             // Play Now replaces the queue position; the audio source must have moved.
-            const playing = await page.evaluate(
-                (sel) => (document.querySelector(sel) as HTMLAudioElement | null)?.src ?? "",
-                PLAYER,
-            );
+            const playing = (await readPlayer(page)).src;
             expect(playing, "no audio source after Play Now").toBeTruthy();
             const heading = page.getByRole("heading", { name: "Now Playing" });
             const nowPlaying = ((await heading.locator("xpath=..").textContent()) ?? "")
@@ -534,13 +529,7 @@ test.describe("Dogfood walkthrough", () => {
             await page.getByTitle("play", { exact: true }).click();
             await page.getByTitle("pause", { exact: true }).waitFor({ timeout: 10_000 });
             const read = () =>
-                page.evaluate(
-                    (sel) => {
-                        const el = document.querySelector(sel) as HTMLAudioElement | null;
-                        return { t: el?.currentTime ?? -1, paused: el?.paused ?? true };
-                    },
-                    PLAYER,
-                );
+                readPlayer(page);
             const a = await read();
             await page.waitForTimeout(2500);
             const b = await read();
@@ -551,12 +540,9 @@ test.describe("Dogfood walkthrough", () => {
 
         // True auto-advance: seek to just before the end and watch the player move to
         // the next track by itself. Clicking "Next" proves the button; this proves
-        // the ended/gapless machinery, which no other spec in the suite does.
+        // the ended/gapless machinery.
         await session.step("a track that ends advances on its own", async () => {
-            const srcBefore = await page.evaluate(
-                (sel) => (document.querySelector(sel) as HTMLAudioElement | null)?.src ?? "",
-                PLAYER,
-            );
+            const srcBefore = (await readPlayer(page)).src;
             await page.evaluate((sel) => {
                 const el = document.querySelector(sel) as HTMLAudioElement | null;
                 if (el && Number.isFinite(el.duration) && el.duration > 0) {
@@ -567,10 +553,7 @@ test.describe("Dogfood walkthrough", () => {
             const deadline = Date.now() + 25_000;
             let srcNow = srcBefore;
             while (Date.now() < deadline) {
-                srcNow = await page.evaluate(
-                    (sel) => (document.querySelector(sel) as HTMLAudioElement | null)?.src ?? "",
-                    PLAYER,
-                );
+                srcNow = (await readPlayer(page)).src;
                 if (srcNow && srcNow !== srcBefore) break;
                 await page.waitForTimeout(1000);
             }
@@ -602,13 +585,7 @@ test.describe("Dogfood walkthrough", () => {
             let t0 = -1;
             let startedPlaying = false;
             while (Date.now() < playDeadline) {
-                const { t, paused: p } = await page.evaluate(
-                    (sel) => {
-                        const el = document.querySelector(sel) as HTMLAudioElement | null;
-                        return { t: el?.currentTime ?? -1, paused: el?.paused ?? true };
-                    },
-                    playSel,
-                );
+                const { t, paused: p } = await readPlayer(page, playSel);
                 if (t0 === -1) { t0 = t; }
                 else if (!p && t > t0) { startedPlaying = true; break; }
                 await page.waitForTimeout(500);
@@ -616,7 +593,6 @@ test.describe("Dogfood walkthrough", () => {
             expect(startedPlaying, "the next track did not start playing after auto-advance").toBe(true);
             return { advanced: true };
         });
-
 
         session.assertClean("Journey 3b (session resilience)");
     });
@@ -875,7 +851,6 @@ test.describe("Dogfood walkthrough", () => {
             return { deletedFromUi: true };
         });
 
-
         session.assertClean("Journey 4b (playlist editing)");
     });
 
@@ -883,7 +858,6 @@ test.describe("Dogfood walkthrough", () => {
     test("4c. curate: reorder tracks and the order survives a reload", async () => {
         session.setJourney("4c. Playlist reorder");
         test.setTimeout(180_000);
-        // Count PATCH /move requests (permanent evidence for this journey)
         let moveReqs = 0;
         page.on("request", (r) => {
             if (r.method() === "PATCH" && r.url().includes("/move")) moveReqs++;
@@ -892,9 +866,9 @@ test.describe("Dogfood walkthrough", () => {
         // 4b creates and deletes a 2-track playlist, so we need our own.
         let playlistId = "";
         let trackIds: string[] = [];
+        let movedTrackTitle = "";
 
         await session.step("create a playlist with three tracks via the API", async () => {
-            // Create the playlist
             const createRes = await page.request.post("/api/playlists", {
                 data: { name: `${RUN_TAG}-reorder` },
                 headers: { Authorization: `Bearer ${token}` },
@@ -905,7 +879,6 @@ test.describe("Dogfood walkthrough", () => {
             expect(playlistId, "playlist creation returned no id").toBeTruthy();
             createdPlaylistIds.push(playlistId);
 
-            // Get three tracks from the library
             const tracksRes = await page.request.get("/api/library/tracks?limit=10", {
                 headers: { Authorization: `Bearer ${token}` },
             });
@@ -917,7 +890,6 @@ test.describe("Dogfood walkthrough", () => {
             expect(tracks.length, "library has fewer than 3 tracks to add").toBeGreaterThanOrEqual(3);
             trackIds = tracks.slice(0, 3).map((t: { id: string }) => t.id);
 
-            // Add all three tracks
             for (const trackId of trackIds) {
                 const addRes = await page.request.post(
                     `/api/playlists/${playlistId}/items`,
@@ -935,7 +907,6 @@ test.describe("Dogfood walkthrough", () => {
             return { id: playlistId, tracksAdded: trackIds.length };
         });
 
-        // Open the playlist and capture initial order
         await session.step("open the playlist and capture initial order", async () => {
             await page.goto(`/playlist/${playlistId}`);
             await settle(page, 2000);
@@ -943,21 +914,11 @@ test.describe("Dogfood walkthrough", () => {
             await expect(rows.first()).toBeVisible({ timeout: 15_000 });
             const count = await rows.count();
             expect(count, "playlist has fewer than 3 tracks after adding").toBeGreaterThanOrEqual(3);
-            // Capture track titles in DOM order
-            const titles = await rows.evaluateAll(
-                (els) =>
-                    els.map(
-                        (el) =>
-                            el.querySelector("p.text-sm.font-bold")?.textContent?.trim() ??
-                            el.querySelector("p")?.textContent?.trim() ??
-                            "",
-                    ),
-            );
+            const titles = await rowTitles(rows);
             expect(titles.length, "no track titles found in DOM").toBeGreaterThanOrEqual(3);
             return { initialOrder: titles.join(" | "), trackCount: count };
         });
 
-        // Move the last track up twice via the up buttons
         await session.step("move the last track up twice", async () => {
             // Pin the track we're moving by its title (not position)
             const rows = page.locator("[data-track-index]");
@@ -974,7 +935,6 @@ test.describe("Dogfood walkthrough", () => {
             await moveUp.click();
             await settle(page, 800);
 
-
             await movedRow.hover();
             await settle(page, 300);
             await moveUp.click();
@@ -983,18 +943,9 @@ test.describe("Dogfood walkthrough", () => {
             return { movedTitle: movedTrackTitle, moves: 2, moveReqs };
         });
 
-        // Assert DOM order changed
         await session.step("assert DOM order changed after moves", async () => {
             const rows = page.locator("[data-track-index]");
-            const newTitles = await rows.evaluateAll(
-                (els) =>
-                    els.map(
-                        (el) =>
-                            el.querySelector("p.text-sm.font-bold")?.textContent?.trim() ??
-                            el.querySelector("p")?.textContent?.trim() ??
-                            "",
-                    ),
-            );
+            const newTitles = await rowTitles(rows);
             expect(newTitles.length, "track count changed after reorder").toBe(trackIds.length);
 
             const lastRow = rows.last();
@@ -1007,27 +958,17 @@ test.describe("Dogfood walkthrough", () => {
             ).toBeLessThan(newTitles.length - 1);
             return { newOrder: newTitles.join(" | "), lastMovedTo: newLastTitle };
         });
-        // Reload and assert order persisted
         await session.step("reload and assert order persisted", async () => {
             await page.reload();
             await settle(page, 2000);
             const rows = page.locator("[data-track-index]");
             await expect(rows.first()).toBeVisible({ timeout: 15_000 });
 
-            const persistedTitles = await rows.evaluateAll(
-                (els) =>
-                    els.map(
-                        (el) =>
-                            el.querySelector("p.text-sm.font-bold")?.textContent?.trim() ??
-                            el.querySelector("p")?.textContent?.trim() ??
-                            "",
-                    ),
-            );
+            const persistedTitles = await rowTitles(rows);
             expect(persistedTitles.length, "track count changed after reload").toBe(trackIds.length);
             return { persistedOrder: persistedTitles.join(" | ") };
         });
 
-        // GET the playlist via API and assert order matches DOM
         await session.step("API order matches DOM order (server truth)", async () => {
             const res = await page.request.get(`/api/playlists/${playlistId}`, {
                 headers: { Authorization: `Bearer ${token}` },
@@ -1037,17 +978,8 @@ test.describe("Dogfood walkthrough", () => {
             const items = body.items ?? body.playlist?.items ?? [];
             expect(items.length, "playlist has no items from API").toBeGreaterThanOrEqual(3);
 
-            // Compare API order with DOM order
             const rows = page.locator("[data-track-index]");
-            const domTitles = await rows.evaluateAll(
-                (els) =>
-                    els.map(
-                        (el) =>
-                            el.querySelector("p.text-sm.font-bold")?.textContent?.trim() ??
-                            el.querySelector("p")?.textContent?.trim() ??
-                            "",
-                    ),
-            );
+            const domTitles = await rowTitles(rows);
 
             const apiTitles = items.map(
                 (item: { track?: { title?: string }; title?: string }) =>
@@ -1064,7 +996,6 @@ test.describe("Dogfood walkthrough", () => {
             return { apiItemCount: items.length, domItemCount: domTitles.length, orderMatched: true };
         });
 
-        // Cleanup: delete the playlist
         await session.step("clean up the reorder playlist", async () => {
             const res = await page.request.delete(`/api/playlists/${playlistId}`, {
                 headers: { Authorization: `Bearer ${token}` },
@@ -1362,13 +1293,7 @@ test.describe("Dogfood walkthrough", () => {
                 await page.getByTitle("pause", { exact: true }).waitFor({ timeout: 30_000 });
 
                 const read = () =>
-                    page.evaluate(
-                        (sel) => {
-                            const el = document.querySelector(sel) as HTMLAudioElement | null;
-                            return { t: el?.currentTime ?? -1, paused: el?.paused ?? true, src: el?.src ?? "" };
-                        },
-                        PLAYER,
-                    );
+                    readPlayer(page);
 
                 const first = await read();
                 await page.waitForTimeout(3000);
@@ -1511,7 +1436,6 @@ test.describe("Dogfood walkthrough", () => {
                 return;
             }
 
-            // 1. The podcast card is visible in the library list
             await session.step("podcast card is visible in the library", async () => {
                 await navigateByClick(page, "/podcasts");
                 await settle(page, 2500);
@@ -1523,7 +1447,6 @@ test.describe("Dogfood walkthrough", () => {
                 return { title: podcastTitle, cardVisible: true };
             });
 
-            // 2. Fetch podcast detail and see the episode list
             await session.step("podcast detail page shows episodes", async () => {
                 const res = await page.request.get(`/api/podcasts/${podcastId}`, {
                     headers: { Authorization: `Bearer ${token}` },
@@ -1535,9 +1458,7 @@ test.describe("Dogfood walkthrough", () => {
                 return { episodes: episodes.length };
             });
 
-            // 3. Mark an episode as played via the progress endpoint
             await session.step("mark an episode as played", async () => {
-                // Fetch episodes to get an episode ID
                 const epRes = await page.request.get(`/api/podcasts/${podcastId}/episodes`, {
                     headers: { Authorization: `Bearer ${token}` },
                 });
@@ -1550,7 +1471,6 @@ test.describe("Dogfood walkthrough", () => {
                 const episodeId = episodes[0].id ?? episodes[0].episodeId ?? "";
                 expect(episodeId, "episode list returned entries without an id").toBeTruthy();
 
-                // Mark as played: set progress to a few seconds in
                 const progressRes = await page.request.post(
                     `/api/podcasts/${podcastId}/episodes/${episodeId}/progress`,
                     {
@@ -1565,7 +1485,6 @@ test.describe("Dogfood walkthrough", () => {
                 return { episodeId, markedPlayed: true };
             });
 
-            // 4. Manually refresh the podcast feed
             await session.step("refresh the podcast feed for new episodes", async () => {
                 const before = await page.request.get(`/api/podcasts/${podcastId}`, {
                     headers: { Authorization: `Bearer ${token}` },
@@ -1587,7 +1506,7 @@ test.describe("Dogfood walkthrough", () => {
                 return { beforeEpisodes: beforeCount, afterEpisodes: afterCount, refreshed: true };
             });
 
-            // 5. Find similar podcasts (uses iTunes Search API, no auth needed)
+            // Similar podcasts come from the iTunes Search API.
             await session.step("find similar podcasts", async () => {
                 const res = await page.request.get(`/api/podcasts/${podcastId}/similar`, {
                     headers: { Authorization: `Bearer ${token}` },
@@ -1598,7 +1517,6 @@ test.describe("Dogfood walkthrough", () => {
                 return { similarCount: Array.isArray(similar) ? similar.length : 0 };
             });
 
-            // 6. Unsubscribe
             await session.step("unsubscribe from the podcast", async () => {
                 const res = await page.request.delete(`/api/podcasts/${podcastId}/unsubscribe`, {
                     headers: { Authorization: `Bearer ${token}` },
@@ -1700,13 +1618,7 @@ test.describe("Dogfood walkthrough", () => {
             await page.getByLabel("Pause", { exact: true }).waitFor({ timeout: 30_000 });
 
             const read = () =>
-                page.evaluate(
-                    (sel) => {
-                        const el = document.querySelector(sel) as HTMLAudioElement | null;
-                        return { t: el?.currentTime ?? -1, paused: el?.paused ?? true, src: el?.src ?? "" };
-                    },
-                    PLAYER,
-                );
+                readPlayer(page);
 
             const first = await read();
             await page.waitForTimeout(3000);
@@ -1757,7 +1669,7 @@ test.describe("Dogfood walkthrough", () => {
                         working.push({ id: d.tracks[0].id, title: d.tracks[0].title, query: q });
                     }
                 } catch {
-                    // skip
+                    // a query that errors or times out is replaced by the next candidate
                 }
             }
             expect(working.length, "not enough tracks with CLAP embeddings to pick two queries").toBeGreaterThanOrEqual(2);
@@ -1775,9 +1687,7 @@ test.describe("Dogfood walkthrough", () => {
             return { canvas: true };
         });
 
-        // Song Path (drift): the flagship vibe journey -- pick two anchors, ask for a
-        // glide between them, and the app builds a queue. Nothing anywhere else in
-        // the suite connects vibe output to actual playback.
+        // Song Path (drift): two anchors in, a queue of tracks gliding between them out.
         await session.step("build a song path between two tracks", async () => {
             const drift = page
                 .locator(
@@ -1873,15 +1783,9 @@ test.describe("Dogfood walkthrough", () => {
             }
             await page.getByTitle("pause", { exact: true }).waitFor({ timeout: 20_000 });
 
-            const a = await page.evaluate(
-                (sel) => (document.querySelector(sel) as HTMLAudioElement | null)?.currentTime ?? -1,
-                PLAYER,
-            );
+            const a = (await readPlayer(page)).t;
             await page.waitForTimeout(2500);
-            const b = await page.evaluate(
-                (sel) => (document.querySelector(sel) as HTMLAudioElement | null)?.currentTime ?? -1,
-                PLAYER,
-            );
+            const b = (await readPlayer(page)).t;
             expect(b, `the vibe-built queue plays but the position did not advance (${a}s -> ${b}s)`).toBeGreaterThan(a);
             return { queueFromPath: len, playing: true };
         });
@@ -1947,7 +1851,6 @@ test.describe("Dogfood walkthrough", () => {
             expect(a, `station "${name}" — no active audio element found at start`).toBeGreaterThanOrEqual(0);
             return { station: name, advancing: true };
         });
-
 
         await session.step("switch to another station without breaking", async () => {
             const readActiveSrc = () =>
@@ -2199,8 +2102,6 @@ test.describe("Dogfood walkthrough", () => {
         await session.step("generate the device pairing code", async () => {
             await page.goto("/device");
             await settle(page, 2000);
-            // The device page starts with a "Generate Code" button; the <code> element
-            // only appears after the user clicks it. Click it and wait for the code.
             const generateBtn = page.getByText("Generate Code");
             await expect(generateBtn).toBeVisible({ timeout: 10_000 });
             await generateBtn.click();
@@ -2209,7 +2110,6 @@ test.describe("Dogfood walkthrough", () => {
         });
 
         await session.step("the device page shows the pairing code and QR", async () => {
-            // Wait for the code element to appear after generating.
             const code = page.locator("code");
             await expect(code.first()).toBeVisible({ timeout: 15_000 });
             const digits = (await code.first().textContent())?.trim() ?? "";
@@ -2218,13 +2118,11 @@ test.describe("Dogfood walkthrough", () => {
             return { code: digits.slice(0, 2) + "****", qrRendered: qr > 0 };
         });
 
-        // Subsonic compatibility is a shipping promise of the server. This backend
-        // deliberately does not support the MD5 challenge-response scheme (bcrypt
-        // could never answer it); the supported credential is an OpenSubsonic API
-        // key, provisioned here the way a real client would and revoked after.
+        // The server holds no plaintext secret, so it cannot answer Subsonic's MD5 token
+        // login; the supported credential is an OpenSubsonic API key, created here the
+        // way a client would and revoked after.
         await session.step("the Subsonic API answers an API-key ping", async () => {
             const keyName = "dogfood-gate";
-            // The Next.js proxy rewrites /api/* to the backend, so the path must be /api/api-keys
             const made = await page.request.post("/api/api-keys", {
                 data: { deviceName: keyName },
                 headers: { Authorization: `Bearer ${token}` },
@@ -2428,10 +2326,7 @@ test.describe("Dogfood walkthrough", () => {
             // The server is the source of truth for playback state, so a fresh
             // device should learn what the first one is playing without being told.
             await session.step("the second device sees what the first is playing", async () => {
-                const src = await page.evaluate(
-                    (sel) => (document.querySelector(sel) as HTMLAudioElement | null)?.src ?? "",
-                    PLAYER,
-                );
+                const src = (await readPlayer(page)).src;
                 const id = src.match(/\/tracks\/([^/]+)\/stream/)?.[1] ?? "";
                 expect(id, "could not read the playing track id on the first tab").toBeTruthy();
                 const res = await other.request.get(`/api/library/tracks/${id}`, {

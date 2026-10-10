@@ -1,5 +1,5 @@
 import { Page, TestInfo, test } from "@playwright/test";
-import { PLAYER } from "./shared";
+import { PLAYER, readPlayer } from "./shared";
 
 function requireEnv(name: string): string {
     const value = process.env[name];
@@ -57,15 +57,12 @@ async function waitForPlaying(page: Page, timeoutMs = 8_000): Promise<void> {
 
 /** Get the current <audio> src -- the stream URL. */
 export async function getAudioSrc(page: Page): Promise<string> {
-    return page.evaluate((sel) => {
-        const el = document.querySelector(sel) as HTMLAudioElement | null;
-        return el?.src ?? "";
-    }, PLAYER);
+    return (await readPlayer(page)).src;
 }
 
 /** Get the current playback position in seconds. */
 export async function getAudioCurrentTime(page: Page): Promise<number> {
-    return page.evaluate((sel) => (document.querySelector(sel) as HTMLAudioElement | null)?.currentTime ?? -1, PLAYER);
+    return (await readPlayer(page)).t;
 }
 
 /** Force-set the audio element currentTime (bypasses player seek logic -- test only). */
