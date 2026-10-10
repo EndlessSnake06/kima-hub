@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1280, initial-scale=1">
+<title>kima social card</title>
+<style>
+    @font-face {
+        font-family: "Montserrat";
+        src: url("../frontend/public/fonts/montserrat-latin.woff2") format("woff2");
+        font-weight: 100 900;
+        font-style: normal;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+        width: 1280px;
+        height: 640px;
+        overflow: hidden;
+        background: #0e0b14;
+    }
+
+    .card {
+        position: relative;
+        width: 1280px;
+        height: 640px;
+        overflow: hidden;
+        font-family: "Montserrat", sans-serif;
+        text-align: center;
+        background:
+            radial-gradient(ellipse 62% 78% at 50% 0%, #3a2461 0%, #271a41 42%, rgba(14, 11, 20, 0) 100%),
+            #0e0b14;
+    }
+
+    .brand {
+        position: absolute;
+        top: 32px;
+        left: 0;
+        right: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 26px;
+    }
+
+    .mark {
+        width: 96px;
+        height: 96px;
+        background: linear-gradient(180deg, #fca506 2%, #fdac15 9%, #fdb530 17%, #fcb253 24%, #f69472 31%, #e86690 39%, #cd45aa 46%, #a633c2 54%, #7731d2 61%, #483ad9 69%, #234ed9 76%, #0e6bd3 83%, #0583cd 91%, #0191c9 98%);
+        -webkit-mask: url("../frontend/public/assets/images/kima.webp") center / contain no-repeat;
+        mask: url("../frontend/public/assets/images/kima.webp") center / contain no-repeat;
+    }
+
+    .word {
+        font-size: 116px;
+        font-weight: 600;
+        line-height: 1;
+        letter-spacing: -0.01em;
+        color: #f4eee2;
+        padding-bottom: 14px;
+    }
+
+    .rule {
+        position: absolute;
+        top: 176px;
+        left: 605px;
+        width: 70px;
+        height: 4px;
+        border-radius: 2px;
+        background: #8c60d6;
+    }
+
+    .tagline {
+        position: absolute;
+        top: 196px;
+        left: 0;
+        right: 0;
+        font-size: 28px;
+        font-weight: 500;
+        letter-spacing: 0.01em;
+        color: #f4eee2;
+    }
+
+    .subline {
+        position: absolute;
+        top: 240px;
+        left: 0;
+        right: 0;
+        font-size: 21px;
+        font-weight: 400;
+        letter-spacing: 0.01em;
+        color: #85789a;
+    }
+
+    .shots {
+        position: absolute;
+        top: 298px;
+        left: 135px;
+        display: flex;
+        align-items: flex-start;
+        gap: 30px;
+    }
+
+    .frame {
+        overflow: hidden;
+        border: 2px solid #5b4875;
+        background: #0e0b14;
+        box-shadow: 0 0 44px rgba(124, 74, 210, 0.28);
+    }
+
+    .frame img { display: block; width: 100%; height: auto; }
+    .frame.phone { width: 175px; border-radius: 24px; }
+    .frame.desktop { width: 600px; border-radius: 14px; }
+</style>
+</head>
+<body>
+<div class="card">
+    <div class="brand">
+        <div class="mark"></div>
+        <div class="word">kima</div>
+    </div>
+    <div class="rule"></div>
+    <div class="tagline">a music server you run yourself</div>
+    <div class="subline">it matches songs by how they sound and feel, and maps your library</div>
+    <div class="shots">
+        <div class="frame phone"><img src="../assets/screenshots/mobile-library.png" alt=""></div>
+        <div class="frame desktop"><img src="../assets/screenshots/vibe-songpath.png" alt=""></div>
+        <div class="frame phone"><img src="../assets/screenshots/mobile-player.png" alt=""></div>
+    </div>
+</div>
+</body>
+</html>
