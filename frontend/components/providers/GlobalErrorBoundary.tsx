@@ -1,46 +1,15 @@
 "use client";
 
-import React, { Component, ReactNode } from "react";
+import { ReactNode } from "react";
+import { ErrorBoundary } from "@/components/providers/ErrorBoundary";
 import { Button } from "@/components/ui/Button";
 
-interface Props {
-    children: ReactNode;
-}
-
-interface State {
-    hasError: boolean;
-    error: Error | null;
-}
-
-/**
- * Global error boundary for catching application-level errors.
- * Provides a fallback UI when critical errors occur in production.
- */
-export class GlobalErrorBoundary extends Component<Props, State> {
-    constructor(props: Props) {
-        super(props);
-        this.state = { hasError: false, error: null };
-    }
-
-    static getDerivedStateFromError(error: Error): State {
-        return { hasError: true, error };
-    }
-
-    componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-        console.error("[GlobalErrorBoundary] Application error:", error);
-        console.error(
-            "[GlobalErrorBoundary] Component stack:",
-            errorInfo.componentStack
-        );
-    }
-
-    private handleReload = () => {
-        window.location.reload();
-    };
-
-    render() {
-        if (this.state.hasError) {
-            return (
+/** Fallback page for errors that reach the top of the app. */
+export function GlobalErrorBoundary({ children }: { children: ReactNode }) {
+    return (
+        <ErrorBoundary
+            label="GlobalErrorBoundary"
+            renderFallback={(error) => (
                 <div className="min-h-screen flex items-center justify-center bg-gray-950 text-white p-4">
                     <div className="max-w-md w-full text-center space-y-6">
                         <div className="space-y-2">
@@ -52,26 +21,26 @@ export class GlobalErrorBoundary extends Component<Props, State> {
                                 reloading the page.
                             </p>
                         </div>
-                        {this.state.error && (
+                        {error && (
                             <div className="bg-gray-900 p-4 rounded-lg text-left">
                                 <p className="text-sm tabular-nums text-danger-light break-words">
-                                    {this.state.error.message}
+                                    {error.message}
                                 </p>
                             </div>
                         )}
                         <Button
                             variant="primary"
                             size="lg"
-                            onClick={this.handleReload}
+                            onClick={() => window.location.reload()}
                             className="w-full"
                         >
                             Reload Page
                         </Button>
                     </div>
                 </div>
-            );
-        }
-
-        return this.props.children;
-    }
+            )}
+        >
+            {children}
+        </ErrorBoundary>
+    );
 }
