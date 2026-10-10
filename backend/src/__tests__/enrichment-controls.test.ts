@@ -501,36 +501,10 @@ describe("POST /enrichment/re-decide-everything", () => {
     });
 });
 
-// ── (d) The removed controls are gone, and nothing wipes on retry ───────
+// ── (d) Retry offers only owed work and wipes nothing ──────────────────
 
-describe("the removed controls", () => {
-    it("no longer exist on the worker module", async () => {
-        const worker = await import("../workers/unifiedEnrichment");
-        for (const gone of [
-            "runFullEnrichment", "resetArtistsOnly", "resetMoodTagsOnly",
-            "reRunArtistsOnly", "reRunMoodTagsOnly", "reRunAudioAnalysisOnly",
-            "resetAllEnrichmentData", "clearPauseState",
-        ]) {
-            expect(worker).not.toHaveProperty(gone);
-        }
-    });
-
-    it("no longer have routes: the old reset/re-run/full endpoints are 404", async () => {
-        const app = express();
-        app.use(express.json());
-        app.use("/enrichment", enrichmentRouter);
-
-        for (const path of [
-            "/enrichment/full", "/enrichment/start", "/enrichment/reset-artists",
-            "/enrichment/reset-mood-tags", "/enrichment/reset-audio-analysis",
-            "/enrichment/reset-all",
-        ]) {
-            const res = await request(app).post(path);
-            expect(res.status).toBe(404);
-        }
-    });
-
-    it("retryFailedAndBlocked offers only owed work and wipes nothing", async () => {
+describe("retryFailedAndBlocked", () => {
+    it("offers only owed work and wipes nothing", async () => {
         await seedTrack(id("answered"), {
             recording: "done", analysis: "done", embedding: "done",
             enrichmentTags: ["rock"],

@@ -286,8 +286,7 @@ describe("AcoustID: the fingerprint is the fingerprint stage's stored answer", (
         // The fingerprint is untouched — nothing recomputed it.
         expect(track?.acoustidFingerprint).toBe(FINGERPRINT);
         // Nothing matched, so no recording is invented — and nothing is
-        // stamped on the track either (moods come from analysis only,
-        // the record owns the answered question).
+        // stamped on the track either (moods come from analysis only).
         expect(track?.recordingMbid).toBeNull();
         expect(track?.enrichmentTags).toEqual([]);
     });

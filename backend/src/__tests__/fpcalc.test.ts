@@ -122,8 +122,8 @@ describe("fpcalcService.fingerprintFile", () => {
 
     it("never parses stdout after a failed exit", async () => {
         // Even when the killed run left a perfectly good fingerprint in the
-        // buffer (the 1.5.1 behaviour that motivated this defect), the failed
-        // exit wins: the caller must see the failure, not stale output.
+        // buffer, the failed exit wins: the caller must see the failure, not
+        // stale output.
         runScenario({
             ok: false,
             stdout: FINGERPRINT_JSON,

@@ -168,7 +168,7 @@ function primeHandlerPreResponse() {
     (prisma.downloadJob.update as jest.Mock).mockResolvedValue({});
 }
 
-describe('POST /discover/retry-unavailable -- routes through checkBatchCompletion (Task 6)', () => {
+describe('POST /discover/retry-unavailable -- routes through checkBatchCompletion', () => {
     let app: express.Application;
 
     beforeAll(() => { app = makeApp(); });
@@ -189,9 +189,8 @@ describe('POST /discover/retry-unavailable -- routes through checkBatchCompletio
         const res = await request(app).post('/discover/retry-unavailable');
         expect(res.status).toBe(200); // response already sent before background work
 
-        // DISCRIMINATOR: the unmodified handler has NO top-level catch, so a
-        // rejected handoff would surface as an unhandled rejection and the batch
-        // would never be marked failed. The fix must write this exact shape.
+        // A rejected handoff must not escape as an unhandled rejection: the
+        // batch is marked failed with this exact shape.
         await waitFor(
             () =>
                 (prisma.discoveryBatch.update as jest.Mock).mock.calls.some(
@@ -224,9 +223,7 @@ describe('POST /discover/retry-unavailable -- routes through checkBatchCompletio
             'checkBatchCompletion invoked',
         );
 
-        // DISCRIMINATOR: zero self-driven "completed" transitions. The unmodified
-        // handler writes status:"completed" at discover.ts:1073 -- this assertion
-        // fails against it.
+        // The handler writes no "completed" status of its own.
         const completedSelfWrites = (prisma.discoveryBatch.update as jest.Mock).mock.calls.filter(
             (c) => c[0]?.data?.status === 'completed',
         );
@@ -250,8 +247,7 @@ describe('POST /discover/retry-unavailable -- routes through checkBatchCompletio
             'checkBatchCompletion invoked',
         );
 
-        // DISCRIMINATOR: the unmodified handler calls scanQueue.add('scan', {
-        // ..., source:'discover-retry-unavailable' }). The fix removes it.
+        // No scan is queued with source 'discover-retry-unavailable'.
         const retrySourceScans = (scanQueue.add as jest.Mock).mock.calls.filter(
             (c) => c[1]?.source === 'discover-retry-unavailable',
         );
@@ -324,7 +320,7 @@ describe('POST /discover/retry-unavailable -- routes through checkBatchCompletio
             'checkBatchCompletion invoked on happy path',
         );
 
-        // DISCRIMINATOR: the proven flow is invoked with the retry batch id.
+        // The retry batch id is handed to checkBatchCompletion.
         expect(mockCheckBatchCompletion).toHaveBeenCalledWith(RETRY_BATCH_ID);
         // And the album was actually acquired first.
         expect(mockAcquireAlbum).toHaveBeenCalledTimes(1);
@@ -383,14 +379,14 @@ describe('POST /discover/retry-unavailable -- routes through checkBatchCompletio
 
         await waitFor(() => events.includes('handoff'), 'handoff recorded');
 
-        // DISCRIMINATOR 1: a final tally of 1 completed / 1 failed is persisted.
+        // A final tally of 1 completed / 1 failed is persisted.
         const persistedFinalTally = (prisma.discoveryBatch.update as jest.Mock).mock.calls.some(
             (c) => c[0]?.data?.completedAlbums === 1 && c[0]?.data?.failedAlbums === 1,
         );
         expect(persistedFinalTally).toBe(true);
 
-        // DISCRIMINATOR 2: the final 1/1 tally is written at or before the handoff,
-        // never only after -- otherwise checkBatchCompletion sees stale counts.
+        // The final 1/1 tally is written at or before the handoff, never only
+        // after, so checkBatchCompletion sees current counts.
         const handoffIdx = events.indexOf('handoff');
         const finalTallyIdx = events.indexOf('count:1/1');
         expect(finalTallyIdx).toBeGreaterThanOrEqual(0);
@@ -416,7 +412,7 @@ describe('POST /discover/retry-unavailable -- routes through checkBatchCompletio
 
         await waitFor(() => order.includes('handoff'), 'handoff after acquire');
 
-        // DISCRIMINATOR: the first recorded event is the acquire, not the handoff.
+        // The first recorded event is the acquire, not the handoff.
         expect(order[0]).toBe('acquire');
         expect(order.indexOf('acquire')).toBeLessThan(order.indexOf('handoff'));
     });
@@ -444,9 +440,8 @@ describe('POST /discover/retry-unavailable -- routes through checkBatchCompletio
         const res = await request(app).post('/discover/retry-unavailable');
         expect(res.status).toBe(200);
 
-        // DISCRIMINATOR: even though the crash happens BEFORE the handoff, the
-        // whole-IIFE .catch must still write the failed shape, and the handoff
-        // must NEVER run because the crash precedes it.
+        // A crash before the handoff still writes the failed shape (the .catch
+        // wraps the whole IIFE), and the handoff never runs.
         await waitFor(
             () =>
                 (prisma.discoveryBatch.update as jest.Mock).mock.calls.some(
@@ -501,7 +496,7 @@ describe('POST /discover/retry-unavailable -- routes through checkBatchCompletio
         await Promise.resolve();
         await Promise.resolve();
 
-        // DISCRIMINATOR: exactly one handoff, despite two acquired albums.
+        // One handoff, despite two acquired albums.
         expect(mockCheckBatchCompletion).toHaveBeenCalledTimes(1);
         expect(mockCheckBatchCompletion).toHaveBeenCalledWith(RETRY_BATCH_ID);
     });

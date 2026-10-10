@@ -96,9 +96,6 @@ describe("acoustidApiKey round-trip", () => {
         const post = await request(app)
             .post("/system-settings")
             .send({ ...baseRow, acoustidApiKey: "acoustid-test-key-1234" });
-        if (post.status !== 200) {
-            console.log("POST body:", JSON.stringify(post.body).slice(0, 400));
-        }
         expect(post.status).toBe(200);
 
         // the stored value must NOT be plaintext

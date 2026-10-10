@@ -112,7 +112,7 @@ const LIBRARY_TRACK = {
     album: { id: 'alb-1', coverUrl: '/c/geo.jpg', artist: { name: 'Boards of Canada' } },
 };
 
-describe('GET /discover/current -- bounded latest-completed-batch fallback (Task 3)', () => {
+describe('GET /discover/current -- bounded latest-completed-batch fallback', () => {
     let app: express.Application;
 
     beforeAll(() => { app = makeApp(); });
@@ -127,9 +127,9 @@ describe('GET /discover/current -- bounded latest-completed-batch fallback (Task
     });
 
     it('DATA-LOSS PATH: queries DiscoveryAlbum at the older batch week, not the empty calendar week', async () => {
-        // The bug: ACTIVE albums tagged 05-18, calendar week is 05-25. The
-        // latest completed batch is also tagged 05-18, so Task 3 must resolve
-        // the display week to 05-18 and surface the orphaned rows.
+        // ACTIVE albums are tagged 05-18 and the calendar week is 05-25. The
+        // latest completed batch is also tagged 05-18, so the display week
+        // resolves to 05-18 and surfaces those rows.
         (prisma.discoveryBatch.findFirst as jest.Mock).mockResolvedValue({
             weekStart: new Date(BATCH_MONDAY_ISO),
         });
@@ -139,9 +139,8 @@ describe('GET /discover/current -- bounded latest-completed-batch fallback (Task
 
         expect(res.status).toBe(200);
 
-        // DISCRIMINATOR: the DiscoveryAlbum query must use the BATCH's week
-        // (05-18), never the calendar Monday (05-25). The unmodified handler
-        // uses the calendar Monday and returns zero rows.
+        // The DiscoveryAlbum query uses the BATCH's week (05-18), never the
+        // calendar Monday (05-25).
         const albumQuery = (prisma.discoveryAlbum.findMany as jest.Mock).mock.calls[0][0];
         const queriedWeek: Date = albumQuery.where.weekStartDate;
         expect(queriedWeek.toISOString().slice(0, 10)).toBe('2026-05-18');
@@ -161,9 +160,7 @@ describe('GET /discover/current -- bounded latest-completed-batch fallback (Task
         const res = await request(app).get('/discover/current');
 
         expect(res.status).toBe(200);
-        // DISCRIMINATOR: `stale` is a Task-3-only field. The unmodified handler
-        // never emits it (=> undefined). It must be true for a week older than
-        // the current calendar week.
+        // `stale` is true for a week older than the current calendar week.
         expect(res.body.stale).toBe(true);
     });
 
@@ -191,10 +188,8 @@ describe('GET /discover/current -- bounded latest-completed-batch fallback (Task
 
         await request(app).get('/discover/current');
 
-        // DISCRIMINATOR: Task 3 introduces this lookup; the unmodified handler
-        // never queries discoveryBatch from /current at all. Assert it ran
-        // before indexing the call args so the failure reads as "fallback
-        // lookup missing" rather than an undefined-index TypeError.
+        // Assert the lookup ran before indexing the call args, so a failure
+        // reads as "fallback lookup missing" rather than an undefined-index error.
         expect((prisma.discoveryBatch.findFirst as jest.Mock).mock.calls.length).toBeGreaterThan(0);
         const batchQuery = (prisma.discoveryBatch.findFirst as jest.Mock).mock.calls[0][0];
         expect(batchQuery.where).toEqual(
@@ -282,7 +277,7 @@ describe('GET /discover/current -- bounded latest-completed-batch fallback (Task
     });
 });
 
-describe('GET /discover/batch-status -- latest terminal batch on the no-active branch (Task 3)', () => {
+describe('GET /discover/batch-status -- latest terminal batch on the no-active branch', () => {
     let app: express.Application;
 
     beforeAll(() => { app = makeApp(); });
@@ -294,7 +289,7 @@ describe('GET /discover/batch-status -- latest terminal batch on the no-active b
 
     it('NO-ACTIVE + TERMINAL EXISTS: returns lastBatchId/lastBatchStatus from a terminal-only lookup', async () => {
         // First findFirst -> active batch lookup (none). Second findFirst ->
-        // the Task-3 terminal lookup.
+        // the terminal lookup.
         (prisma.discoveryBatch.findFirst as jest.Mock)
             .mockResolvedValueOnce(null)
             .mockResolvedValueOnce({ id: 'batch-done-1', status: 'completed' });
@@ -303,8 +298,6 @@ describe('GET /discover/batch-status -- latest terminal batch on the no-active b
 
         expect(res.status).toBe(200);
         expect(res.body.active).toBe(false);
-        // DISCRIMINATOR: these two fields exist ONLY after Task 3. The
-        // unmodified no-active branch returns {active,status,progress} only.
         expect(res.body.lastBatchId).toBe('batch-done-1');
         expect(res.body.lastBatchStatus).toBe('completed');
 

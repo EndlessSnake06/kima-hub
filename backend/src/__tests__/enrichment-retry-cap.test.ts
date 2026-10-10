@@ -102,15 +102,11 @@ afterAll(async () => {
     await wipe();
     await prisma.sourceAttempt.deleteMany({ where: { source: "musicbrainz" } });
     await prisma.$disconnect();
-    // Importing the real worker module opens connections the unit under
-    // test never uses: four BullMQ queues built at module scope in
-    // enrichmentQueues, the enrichmentState singleton's two clients, and
-    // the shared Redis client. Left open, Jest finishes and outlives it.
     await closeEngineConnections();
 });
 
 describe("increasing waits for temporary errors", () => {
-    it("computeStageRetryWaitMs waits 1 min, 10 min, then 1 h", () => {
+    it("computeStageRetryWaitMs climbs 1 min, 10 min, 1 h", () => {
         expect(computeStageRetryWaitMs(1)).toBe(60_000);
         expect(computeStageRetryWaitMs(2)).toBe(600_000);
         expect(computeStageRetryWaitMs(3)).toBe(3_600_000);
