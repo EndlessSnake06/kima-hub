@@ -311,25 +311,8 @@ class ApiClient {
     }
 
     private async _doEnsureFreshToken(): Promise<"fresh" | RefreshResult> {
-        const tok = this.getCurrentToken();
-        if (tok) {
-            try {
-                const parts = tok.split(".");
-                if (parts.length === 3) {
-                    const payload = JSON.parse(
-                        atob(parts[1].replace(/-/g, "+").replace(/_/g, "/"))
-                    ) as { exp?: number };
-                    if (
-                        typeof payload.exp === "number" &&
-                        payload.exp - Date.now() / 1000 > 3600
-                    ) {
-                        return "fresh";
-                    }
-                }
-            } catch {
-                // Malformed JWT: fall through to refresh.
-            }
-        }
+        const secondsLeft = this.tokenSecondsLeft();
+        if (secondsLeft !== null && secondsLeft > 3600) return "fresh";
 
         if (this.refreshPromise) return (await this.refreshPromise);
         this.refreshPromise = this._doRefresh();
@@ -346,22 +329,25 @@ class ApiClient {
         return tok ? `Bearer ${tok}` : null;
     }
 
-    private tokenExpiresWithin60Min(): boolean {
+    /** Seconds until the access token expires; null when there is no token or it has no readable expiry. */
+    private tokenSecondsLeft(): number | null {
         const tok = this.getCurrentToken();
-        if (!tok) return false;
+        if (!tok) return null;
         try {
             const parts = tok.split(".");
-            if (parts.length !== 3) return false;
+            if (parts.length !== 3) return null;
             const payload = JSON.parse(
                 atob(parts[1].replace(/-/g, "+").replace(/_/g, "/"))
             ) as { exp?: number };
-            return (
-                typeof payload.exp === "number" &&
-                payload.exp - Date.now() / 1000 < 3600
-            );
+            return typeof payload.exp === "number" ? payload.exp - Date.now() / 1000 : null;
         } catch {
-            return false;
+            return null;
         }
+    }
+
+    private tokenExpiresWithin60Min(): boolean {
+        const secondsLeft = this.tokenSecondsLeft();
+        return secondsLeft !== null && secondsLeft < 3600;
     }
 
     private async _doRefresh(): Promise<"refreshed" | "rejected" | "network-error"> {
@@ -745,7 +731,12 @@ class ApiClient {
 
     // Streaming
     getStreamUrl(trackId: string): string {
-        const baseUrl = `${this.getBaseUrl()}/api/library/tracks/${trackId}/stream`;
+        return this.tokenizedUrl(`/api/library/tracks/${trackId}/stream`);
+    }
+
+    /** `<audio>` cannot send headers, so the access token rides in the query; a token near expiry is refreshed in the background. */
+    private tokenizedUrl(path: string): string {
+        const baseUrl = `${this.getBaseUrl()}${path}`;
         const token = this.getCurrentToken();
         if (this.tokenExpiresWithin60Min()) void this.ensureFreshToken();
         if (token) {
@@ -1322,13 +1313,7 @@ class ApiClient {
     }
 
     getPodcastEpisodeStreamUrl(podcastId: string, episodeId: string): string {
-        const baseUrl = `${this.getBaseUrl()}/api/podcasts/${podcastId}/episodes/${episodeId}/stream`;
-        const token = this.getCurrentToken();
-        if (this.tokenExpiresWithin60Min()) void this.ensureFreshToken();
-        if (token) {
-            return `${baseUrl}?token=${encodeURIComponent(token)}`;
-        }
-        return baseUrl;
+        return this.tokenizedUrl(`/api/podcasts/${podcastId}/episodes/${episodeId}/stream`);
     }
 
     /**
@@ -1726,12 +1711,6 @@ class ApiClient {
         }>("/enrichment/re-decide-everything", { method: "POST" });
     }
 
-    async retryFailedAnalysis() {
-        return this.request<{ message: string; reset: number }>("/analysis/retry-failed", {
-            method: "POST",
-        });
-    }
-
     // Enrichment control and failure management
 
     async getEnrichmentState() {
@@ -1791,6 +1770,12 @@ class ApiClient {
         return this.request<ConcurrencyConfig>("/enrichment/concurrency", {
             method: "PUT",
             body: JSON.stringify({ concurrency }),
+        });
+    }
+
+    async retryFailedAnalysis() {
+        return this.request<{ message: string; reset: number }>("/analysis/retry-failed", {
+            method: "POST",
         });
     }
 
