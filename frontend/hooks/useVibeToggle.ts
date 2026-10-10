@@ -25,8 +25,7 @@ export function useVibeToggle() {
             if (!result.success || result.trackCount <= 0) {
                 notify.error("Couldn't find matching tracks in your library");
             }
-        } catch (error) {
-            console.error("Failed to start vibe match:", error);
+        } catch {
             notify.error("Failed to match vibe");
         } finally {
             setIsVibeLoading(false);
