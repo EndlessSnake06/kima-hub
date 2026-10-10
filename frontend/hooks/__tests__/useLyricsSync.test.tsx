@@ -83,6 +83,26 @@ async function teardown(resultsRef: React.MutableRefObject<RenderState[]>, root:
     resultsRef.current = [];
 }
 
+async function mountWithTrack(
+    root: Root,
+    resultsRef: React.MutableRefObject<RenderState[]>,
+    trackId: string | null,
+) {
+    await act(async () => {
+        root.render(
+            <PlaybackCtx.Provider value={{ currentTime: 0 }}>
+                <AudioCtx.Provider value={{ currentTrack: trackId === null ? null : { id: trackId } }}>
+                    <LyricStateLog results={resultsRef} />
+                </AudioCtx.Provider>
+            </PlaybackCtx.Provider>
+        );
+    });
+}
+
+async function settle(ms: number) {
+    await act(async () => { await new Promise<void>((r) => setTimeout(r, ms)); });
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -99,22 +119,14 @@ describe("useLyricsSync -- loading state machine", () => {
             plainLyrics: null, syncedLyrics: null, source: "",
         });
 
-        await act(async () => {
-            root.render(
-                <PlaybackCtx.Provider value={{ currentTime: 0 }}>
-                    <AudioCtx.Provider value={{ currentTrack: { id: "track-abc" } }}>
-                        <LyricStateLog results={resultsRef} />
-                    </AudioCtx.Provider>
-                </PlaybackCtx.Provider>
-            );
-        });
+        await mountWithTrack(root, resultsRef, "track-abc");
 
         // resultsRef.current[0] is the FIRST render's value.
         expect(resultsRef.current.length).toBeGreaterThanOrEqual(1);
         expect(resultsRef.current[0].isLoading).toBe(true);
 
         // Wait for API + any additional renders to settle.
-        await act(async () => { await new Promise<void>((r) => setTimeout(r, 100)); });
+        await settle(100);
 
         const last = resultsRef.current[resultsRef.current.length - 1];
         expect(last.isLoading).toBe(false);
@@ -126,15 +138,7 @@ describe("useLyricsSync -- loading state machine", () => {
     it("mounts with no trackId => isLoading=false", async () => {
         const { resultsRef, root, div } = await createTree();
 
-        await act(async () => {
-            root.render(
-                <PlaybackCtx.Provider value={{ currentTime: 0 }}>
-                    <AudioCtx.Provider value={{ currentTrack: null }}>
-                        <LyricStateLog results={resultsRef} />
-                    </AudioCtx.Provider>
-                </PlaybackCtx.Provider>
-            );
-        });
+        await mountWithTrack(root, resultsRef, null);
 
         expect(resultsRef.current.length).toBeGreaterThanOrEqual(1);
         expect(resultsRef.current[0].isLoading).toBe(false);
@@ -149,22 +153,14 @@ describe("useLyricsSync -- loading state machine", () => {
             plainLyrics: null, syncedLyrics: "[00:00]Hello\n[00:02]World", source: "lrclib",
         });
 
-        await act(async () => {
-            root.render(
-                <PlaybackCtx.Provider value={{ currentTime: 0 }}>
-                    <AudioCtx.Provider value={{ currentTrack: { id: "track-synced" } }}>
-                        <LyricStateLog results={resultsRef} />
-                    </AudioCtx.Provider>
-                </PlaybackCtx.Provider>
-            );
-        });
+        await mountWithTrack(root, resultsRef, "track-synced");
 
         // First render: loading.
         expect(resultsRef.current[0].isLoading).toBe(true);
         expect(resultsRef.current[0].hasLyrics).toBe(false);
 
         // Wait for API.
-        await act(async () => { await new Promise<void>((r) => setTimeout(r, 300)); });
+        await settle(300);
 
         const last = resultsRef.current[resultsRef.current.length - 1];
         expect(last.isLoading).toBe(false);
@@ -181,17 +177,9 @@ describe("useLyricsSync -- loading state machine", () => {
             plainLyrics: null, syncedLyrics: null, source: "none",
         });
 
-        await act(async () => {
-            root.render(
-                <PlaybackCtx.Provider value={{ currentTime: 0 }}>
-                    <AudioCtx.Provider value={{ currentTrack: { id: "track-none" } }}>
-                        <LyricStateLog results={resultsRef} />
-                    </AudioCtx.Provider>
-                </PlaybackCtx.Provider>
-            );
-        });
+        await mountWithTrack(root, resultsRef, "track-none");
 
-        await act(async () => { await new Promise<void>((r) => setTimeout(r, 300)); });
+        await settle(300);
 
         const last = resultsRef.current[resultsRef.current.length - 1];
         expect(last.isLoading).toBe(false);
@@ -201,56 +189,30 @@ describe("useLyricsSync -- loading state machine", () => {
     });
 
     it("transitions to loading again on track change, then loaded", async () => {
-        // Create a persistent component for track changes.
-        const resultsRef = { current: [] } as React.MutableRefObject<RenderState[]>;
+        const { resultsRef, root, div } = await createTree();
 
         mockApi.getTrackLyrics
             .mockResolvedValueOnce({ plainLyrics: "Line 1\nLine 2", syncedLyrics: null, source: "plain" })
             .mockResolvedValueOnce({ plainLyrics: null, syncedLyrics: "[00:00]New\n[00:02]Track", source: "lrclib" });
 
-        const div = document.createElement("div");
-        div.id = "test-root";
-        document.body.appendChild(div);
-        const root = createRoot(div);
+        await mountWithTrack(root, resultsRef, "track-a");
 
-        // Mount with track-a.
-        await act(async () => {
-            root.render(
-                <PlaybackCtx.Provider value={{ currentTime: 0 }}>
-                    <AudioCtx.Provider value={{ currentTrack: { id: "track-a" } }}>
-                        <LyricStateLog results={resultsRef} />
-                    </AudioCtx.Provider>
-                </PlaybackCtx.Provider>
-            );
-        });
-
-        await act(async () => { await new Promise<void>((r) => setTimeout(r, 200)); });
+        await settle(200);
 
         // After track-a: loading=false, hasLyrics=true.
         expect(resultsRef.current[resultsRef.current.length - 1].isLoading).toBe(false);
         expect(resultsRef.current[resultsRef.current.length - 1].hasLyrics).toBe(true);
 
-        // Change track.
-        await act(async () => {
-            root.render(
-                <PlaybackCtx.Provider value={{ currentTime: 0 }}>
-                    <AudioCtx.Provider value={{ currentTrack: { id: "track-b" } }}>
-                        <LyricStateLog results={resultsRef} />
-                    </AudioCtx.Provider>
-                </PlaybackCtx.Provider>
-            );
-        });
+        await mountWithTrack(root, resultsRef, "track-b");
 
-        await act(async () => { await new Promise<void>((r) => setTimeout(r, 300)); });
+        await settle(300);
 
         const last = resultsRef.current[resultsRef.current.length - 1];
         expect(last.isLoading).toBe(false);
         expect(last.hasLyrics).toBe(true);
         expect(last.isSynced).toBe(true);
 
-        root.unmount();
-        div.remove();
-        resultsRef.current = [];
+        await teardown(resultsRef, root, div);
     });
 
     it("transitions to loading=false when api rejects", async () => {
@@ -258,17 +220,9 @@ describe("useLyricsSync -- loading state machine", () => {
 
         mockApi.getTrackLyrics.mockRejectedValueOnce(new Error("network fail"));
 
-        await act(async () => {
-            root.render(
-                <PlaybackCtx.Provider value={{ currentTime: 0 }}>
-                    <AudioCtx.Provider value={{ currentTrack: { id: "track-error" } }}>
-                        <LyricStateLog results={resultsRef} />
-                    </AudioCtx.Provider>
-                </PlaybackCtx.Provider>
-            );
-        });
+        await mountWithTrack(root, resultsRef, "track-error");
 
-        await act(async () => { await new Promise<void>((r) => setTimeout(r, 300)); });
+        await settle(300);
 
         const last = resultsRef.current[resultsRef.current.length - 1];
         expect(last.isLoading).toBe(false);
