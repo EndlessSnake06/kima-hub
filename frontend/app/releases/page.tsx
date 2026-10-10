@@ -11,6 +11,8 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { MediaCard } from "@/components/cards/MediaCard";
 import { plural } from "@/lib/format";
 import { PageMessage } from "@/components/ui/PageMessage";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { buttonClass } from "@/components/ui/Button";
 
 interface ReleaseItem {
     id: number | string;
@@ -164,20 +166,16 @@ export default function ReleasesPage() {
                 )}
 
                 {(!data?.upcoming?.length && !data?.recent?.length) && (
-                    <div className="flex flex-col items-center justify-center py-20 text-center">
-                        <Calendar className="w-16 h-16 text-[var(--text-muted)] mb-6" />
-                        <h3 className="text-xl font-medium text-white mb-2">No releases found</h3>
-                        <p className="text-[var(--text-secondary)] max-w-md mb-6">
-                            Add artists to Lidarr and enable monitoring to see their upcoming and recent releases here.
-                        </p>
-                        <Link
-                            href="/settings"
-                            className="inline-flex items-center gap-2 px-4 py-2 bg-brand text-black rounded-lg hover:bg-brand-hover transition-colors"
-                        >
+                    <EmptyState
+                        icon={<Calendar className="w-16 h-16" />}
+                        title="No releases found"
+                        description="Add artists to Lidarr and enable monitoring to see their upcoming and recent releases here."
+                    >
+                        <Link href="/settings" className={buttonClass("primary")}>
                             Configure Lidarr
                             <ArrowRight className="w-4 h-4" />
                         </Link>
-                    </div>
+                    </EmptyState>
                 )}
             </div>
         </div>

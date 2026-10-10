@@ -7,7 +7,6 @@ import { useSearchData } from "@/features/search/hooks/useSearchData";
 import { useSoulseekSearch } from "@/features/search/hooks/useSoulseekSearch";
 import { SearchFilters } from "@/features/search/components/SearchFilters";
 import { TopResult } from "@/features/search/components/TopResult";
-import { EmptyState } from "@/features/search/components/EmptyState";
 import { LibraryAlbumsGrid } from "@/features/search/components/LibraryAlbumsGrid";
 import { LibraryPodcastsGrid } from "@/features/search/components/LibraryPodcastsGrid";
 import { LibraryAudiobooksGrid } from "@/features/search/components/LibraryAudiobooksGrid";
@@ -18,6 +17,7 @@ import { UnifiedSongsList } from "@/features/search/components/UnifiedSongsList"
 import { SoulseekBrowser } from "@/features/search/components/SoulseekBrowser";
 import { TVSearchInput } from "@/features/search/components/TVSearchInput";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
+import { EmptyState } from "@/components/ui/EmptyState";
 import type { FilterTab } from "@/features/search/types";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 
@@ -136,7 +136,13 @@ export default function SearchPage() {
                     </div>
                 )}
 
-                <EmptyState hasSearched={hasSearched} isLoading={isLoading} />
+                {!hasSearched && !isLoading && (
+                    <EmptyState
+                        icon={<SearchIcon className="w-16 h-16" />}
+                        title="Search your library"
+                        description="Use the search bar above to find music, artists, and albums"
+                    />
+                )}
 
                 {hasSearched &&
                     filterTab !== "soulseek" &&
@@ -305,22 +311,15 @@ export default function SearchPage() {
                             !libraryResults.podcasts?.length &&
                             !libraryResults.audiobooks?.length &&
                             !libraryResults.episodes?.length)) && (
-                        <div className="flex flex-col items-center justify-center py-32 text-center animate-fade-soft">
-                            <div className="relative mb-8">
-                                <SearchIcon className="w-20 h-20 text-[var(--text-muted)]" />
-                                <div className="absolute inset-0 bg-gradient-to-br from-brand/20 to-brand-dark/20 blur-2xl" />
-                            </div>
-                            <h3 className="text-2xl font-bold text-white mb-3">
-                                No matches found
-                            </h3>
-                            <p className="text-[var(--text-secondary)] mb-2">
-                                Try a different search term or check your
-                                spelling
-                            </p>
+                        <EmptyState
+                            icon={<SearchIcon className="w-16 h-16" />}
+                            title="No matches found"
+                            description="Try a different search term or check your spelling"
+                        >
                             <p className="text-sm text-[var(--text-muted)]">
                                 Tip: Enable Soulseek to search the P2P network
                             </p>
-                        </div>
+                        </EmptyState>
                     )}
             </div>
         </div>

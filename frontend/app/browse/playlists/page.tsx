@@ -17,33 +17,18 @@ import { SectionHeader } from "@/components/ui/SectionHeader";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { DeezerIcon } from "@/features/home/components/DeezerIcon";
+import type { PlaylistPreview } from "@/features/home/types";
 import { MediaCard } from "@/components/cards/MediaCard";
 import { TileCard } from "@/components/cards/TileCard";
 import { plural } from "@/lib/format";
-
-interface PlaylistPreview {
-    id: string;
-    source: "deezer" | "spotify";
-    type: "playlist" | "radio";
-    title: string;
-    description: string | null;
-    creator: string;
-    imageUrl: string | null;
-    trackCount: number;
-    url: string;
-}
 
 interface Genre {
     id: number;
     name: string;
     imageUrl: string | null;
 }
-
-const DeezerIcon = ({ className }: { className?: string }) => (
-    <svg viewBox="0 0 24 24" className={className} fill="currentColor">
-        <path d="M18.81 4.16v3.03H24V4.16h-5.19zM6.27 8.38v3.027h5.189V8.38h-5.19zm12.54 0v3.027H24V8.38h-5.19zM6.27 12.595v3.027h5.189v-3.027h-5.19zm6.27 0v3.027h5.19v-3.027h-5.19zm6.27 0v3.027H24v-3.027h-5.19zM0 16.81v3.029h5.19v-3.03H0zm6.27 0v3.029h5.189v-3.03h-5.19zm6.27 0v3.029h5.19v-3.03h-5.19zm6.27 0v3.029H24v-3.03h-5.19z" />
-    </svg>
-);
 
 type BrowseTab = "playlists" | "genres";
 
@@ -327,22 +312,12 @@ export default function BrowsePlaylistsPage() {
                     )}
 
                     {loadError && !isLoading && (
-                        <div className="flex flex-col items-center justify-center py-20 text-center">
-                            <Music2 className="w-12 h-12 text-white/10 mb-4" />
-                            <h3 className="text-lg font-bold text-white mb-2 tracking-tight">
-                                Couldn&apos;t load content
-                            </h3>
-                            <p className="text-xs tabular-nums text-[var(--text-muted)] mb-6 max-w-sm">
-                                {loadError}
-                            </p>
-                            <Button
-                                variant="primary"
-                                size="sm"
-                                onClick={fetchAllContent}
-                            >
-                                Try again
-                            </Button>
-                        </div>
+                        <EmptyState
+                            icon={<Music2 className="w-12 h-12" />}
+                            title="Couldn't load content"
+                            description={loadError}
+                            action={{ label: "Try again", onClick: fetchAllContent }}
+                        />
                     )}
 
                     {!isLoading && !isSearching && hasSearched && (
@@ -354,22 +329,12 @@ export default function BrowsePlaylistsPage() {
                                 count={playlists.length}
                             />
                             {playlists.length === 0 ?
-                                <div className="flex flex-col items-center justify-center py-20 text-center">
-                                    <h3 className="text-lg font-bold text-white mb-2 tracking-tight">
-                                        No playlists found
-                                    </h3>
-                                    <p className="text-xs text-[var(--text-muted)] mb-4">
-                                        Try a different search or import a URL
-                                        directly
-                                    </p>
-                                    <Button
-                                        variant="primary"
-                                        size="sm"
-                                        onClick={() => setShowUrlModal(true)}
-                                    >
-                                        Import by URL
-                                    </Button>
-                                </div>
+                                <EmptyState
+                                    icon={<Search className="w-12 h-12" />}
+                                    title="No playlists found"
+                                    description="Try a different search or import a URL directly"
+                                    action={{ label: "Import by URL", onClick: () => setShowUrlModal(true) }}
+                                />
                             :   <div className="grid-media">
                                     {playlists.map((item, idx) =>
                                         renderCard(item, idx, "search"),

@@ -15,6 +15,7 @@ import {
 import { formatTime, formatDuration } from "@/lib/format";
 import { cascadeStyle } from "@/lib/motion";
 import { CachedImage } from "@/components/ui/CachedImage";
+import { GradientSpinner } from "@/components/ui/GradientSpinner";
 
 interface ShareTrack {
     id: string;
@@ -253,7 +254,7 @@ export default function SharePageClient() {
         return (
             <div className="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center">
                 <div className="flex flex-col items-center gap-3">
-                    <div className="w-8 h-8 border-2 border-brand/30 border-t-brand rounded-full animate-spin" />
+                    <GradientSpinner size="md" />
                     <p className="text-xs text-[var(--text-muted)]">
                         Loading
                     </p>

@@ -28,7 +28,6 @@ import {
     RefreshCw,
     AlertCircle,
     X,
-    Loader2,
     ArrowLeft,
     Share2,
     Copy,
@@ -597,7 +596,7 @@ export default function PlaylistDetailPage() {
                                     title="retry download"
                                 >
                                     {isRetrying ? (
-                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                        <GradientSpinner size="sm" />
                                     ) : (
                                         <RefreshCw className="w-4 h-4" />
                                     )}
@@ -615,7 +614,7 @@ export default function PlaylistDetailPage() {
                                     title="remove from playlist"
                                 >
                                     {isRemoving ? (
-                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                        <GradientSpinner size="sm" />
                                     ) : (
                                         <X className="w-4 h-4" />
                                     )}
@@ -1032,7 +1031,7 @@ export default function PlaylistDetailPage() {
                                 title="share playlist"
                             >
                                 {shareLoading ? (
-                                    <Loader2 className="w-5 h-5 animate-spin" />
+                                    <GradientSpinner size="sm" />
                                 ) : (
                                     <Share2 className="w-5 h-5" />
                                 )}

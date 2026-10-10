@@ -19,17 +19,13 @@ import { notify } from "@/lib/notify";
 import { cn } from "@/lib/cn";
 import { GradientSpinner } from "@/components/ui/GradientSpinner";
 import { PageMessage } from "@/components/ui/PageMessage";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { useAudioState } from "@/lib/audio-state-context";
 import { useAudioControls } from "@/lib/audio-controls-context";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { Button } from "@/components/ui/Button";
 import { CachedImage } from "@/components/ui/CachedImage";
-
-const DeezerIcon = ({ className }: { className?: string }) => (
-    <svg viewBox="0 0 24 24" className={className} fill="currentColor">
-        <path d="M18.81 4.16v3.03H24V4.16h-5.19zM6.27 8.38v3.027h5.189V8.38h-5.19zm12.54 0v3.027H24V8.38h-5.19zM6.27 12.595v3.027h5.189v-3.027h-5.19zm6.27 0v3.027h5.19v-3.027h-5.19zm6.27 0v3.027H24v-3.027h-5.19zM0 16.81v3.029h5.19v-3.03H0zm6.27 0v3.029h5.189v-3.03h-5.19zm6.27 0v3.029h5.19v-3.03h-5.19zm6.27 0v3.029H24v-3.03h-5.19z" />
-    </svg>
-);
+import { DeezerIcon } from "@/features/home/components/DeezerIcon";
 
 interface DeezerTrack {
     deezerId: string;
@@ -360,15 +356,11 @@ export default function DeezerPlaylistDetailPage() {
                             </div>
                         </div>
                     ) : (
-                        <div className="flex flex-col items-center justify-center py-24 text-center">
-                            <Music2 className="w-12 h-12 text-white/10 mb-4" />
-                            <h3 className="text-lg font-bold text-white mb-2 tracking-tight">
-                                No tracks found
-                            </h3>
-                            <p className="text-xs text-[var(--text-muted)]">
-                                This playlist appears to be empty
-                            </p>
-                        </div>
+                        <EmptyState
+                            icon={<Music2 className="w-12 h-12" />}
+                            title="No tracks found"
+                            description="This playlist appears to be empty"
+                        />
                     )}
                 </div>
             </div>
