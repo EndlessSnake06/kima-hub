@@ -382,11 +382,12 @@ class AudioAnalyzer:
     Audio analysis: Essentia's signal measures and the MusiCNN models' moods,
     valence/arousal and danceability. Without the models a track is not analysed:
     no hand-made estimate stands in for them.
+
+    ``musicnn_server`` is the main process's MusicnnServer address when the GPU runs
+    MusiCNN for every worker; without it MusiCNN runs here on the CPU.
     """
 
     def __init__(self, musicnn_server=None):
-        """``musicnn_server`` is the main process's MusicnnServer address when the GPU runs
-        MusiCNN for every worker; without it MusiCNN runs here on the CPU."""
         self.enhanced_mode = False  # the models are loaded and every head is there
         self.models_error: Optional[str] = None  # why not, when they are not
         self.musicnn_model = None  # Base MusiCNN model

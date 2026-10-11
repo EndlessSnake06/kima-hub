@@ -1,7 +1,7 @@
 /**
  * A `rateLimited` answer parks the record until its `retryAfter`, uses no
- * attempt and never tags the track `_not_found`. A no-match from every source
- * closes the record `done` with the asked sources as evidence.
+ * attempt and records no failure. A no-match from every source closes the
+ * record `done` with the asked sources as evidence.
  */
 
 const noData = { kind: "absent", evidence: { mocked: true } } as const;
