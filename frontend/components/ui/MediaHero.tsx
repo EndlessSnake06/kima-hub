@@ -63,6 +63,8 @@ interface MediaHeroProps {
     title: string;
     /** Beside the title: the metadata edit controls. */
     titleExtra?: ReactNode;
+    /** Spacing between title and edit controls; artist keeps the wider gap-3. */
+    titleGap?: "gap-2" | "gap-3";
     /** The dot-separated meta line under the title. */
     meta: ReactNode;
     /** A block under the meta line: the genre chip. */
@@ -84,6 +86,7 @@ export function MediaHero({
     eyebrowLabel,
     title,
     titleExtra,
+    titleGap = "gap-2",
     meta,
     metaExtra,
     children,
@@ -106,7 +109,7 @@ export function MediaHero({
                             <div className={cn("w-1.5 h-1.5 rounded-full", eyebrowDotClass)} />
                             <span className="t-eyebrow">{eyebrowLabel}</span>
                         </div>
-                        <div className="flex items-center gap-2 group mb-2">
+                        <div className={cn("flex items-center group mb-2", titleGap)}>
                             <h1 className="text-2xl md:text-4xl lg:text-5xl font-bold tracking-tight text-white leading-tight line-clamp-2">
                                 {title}
                             </h1>

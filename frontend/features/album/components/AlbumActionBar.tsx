@@ -46,9 +46,11 @@ export function AlbumActionBar({
             showPause={showPause}
             onPlayPause={handlePlayPauseClick}
             onShuffle={onShuffle}
+            secondaryShape="square"
         >
             {isOwned && (
                 <MediaActionButton
+                    shape="square"
                     icon={<ListPlus className="w-5 h-5" />}
                     label="add to playlist"
                     onClick={onAddToPlaylist}

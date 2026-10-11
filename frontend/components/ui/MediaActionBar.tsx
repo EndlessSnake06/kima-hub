@@ -2,6 +2,7 @@
 
 import { memo, type ReactNode } from "react";
 import { Play, Pause, Shuffle } from "lucide-react";
+import { cn } from "@/lib/cn";
 
 interface MediaActionBarProps {
     /** The play disc hides when there is nothing to play (an unowned album). */
@@ -9,6 +10,11 @@ interface MediaActionBarProps {
     showPause: boolean;
     onPlayPause: () => void;
     onShuffle: () => void;
+    /**
+     * Secondary icon buttons: "square" (rounded-lg) is the deliberate branch
+     * from Spotify's circles (Kevin's call); "circle" matches the play disc.
+     */
+    secondaryShape: "circle" | "square";
     /** Extra icon buttons and CTAs, in order, as MediaActionButton/CTA elements. */
     children?: ReactNode;
 }
@@ -19,6 +25,7 @@ export const MediaActionBar = memo(function MediaActionBar({
     showPause,
     onPlayPause,
     onShuffle,
+    secondaryShape,
     children,
 }: MediaActionBarProps) {
     return (
@@ -37,7 +44,14 @@ export const MediaActionBar = memo(function MediaActionBar({
                 </button>
             )}
 
-            {showPlay && <MediaActionButton icon={<Shuffle className="w-5 h-5" />} label="shuffle play" onClick={onShuffle} />}
+            {showPlay && (
+                <MediaActionButton
+                    shape={secondaryShape}
+                    icon={<Shuffle className="w-5 h-5" />}
+                    label="shuffle play"
+                    onClick={onShuffle}
+                />
+            )}
 
             {children}
         </div>
@@ -49,6 +63,7 @@ interface MediaActionButtonProps {
     label: string;
     onClick: () => void;
     disabled?: boolean;
+    shape: "circle" | "square";
 }
 
 /** A secondary icon button beside the play disc. */
@@ -57,13 +72,17 @@ export const MediaActionButton = memo(function MediaActionButton({
     label,
     onClick,
     disabled,
+    shape,
 }: MediaActionButtonProps) {
     return (
         <button
             onClick={onClick}
             title={label}
             disabled={disabled}
-            className="h-8 w-8 rounded-full hover:bg-white/10 flex items-center justify-center text-[var(--text-secondary)] hover:text-white transition-all disabled:opacity-50"
+            className={cn(
+                "h-8 w-8 hover:bg-white/10 flex items-center justify-center text-[var(--text-secondary)] hover:text-white transition-all disabled:opacity-50",
+                shape === "circle" ? "rounded-full" : "rounded-lg",
+            )}
         >
             {icon}
         </button>

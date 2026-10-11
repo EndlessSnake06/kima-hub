@@ -49,6 +49,7 @@ export function ArtistHero({
             eyebrowDotClass="bg-type-artist"
             eyebrowLabel="Artist"
             title={displayData.name}
+            titleGap="gap-3"
             titleExtra={
                 <MetadataEditControls
                     edited={displayData.hasUserOverrides}

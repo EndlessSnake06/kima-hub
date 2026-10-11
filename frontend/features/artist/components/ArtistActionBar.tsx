@@ -48,9 +48,11 @@ export function ArtistActionBar({
             showPause={showPause}
             onPlayPause={handlePlayPauseClick}
             onShuffle={onShuffle}
+            secondaryShape="square"
         >
             {showRadio && (
                 <MediaActionButton
+                    shape="square"
                     icon={<Radio className="w-5 h-5" />}
                     label="start artist radio"
                     onClick={onStartRadio}
