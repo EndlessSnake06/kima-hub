@@ -15,7 +15,9 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useLibraryActions } from "@/features/library/hooks/useLibraryActions";
-import { PageHeader } from "@/components/layout/PageHeader";
+import { CollectionMasthead } from "@/features/library/components/CollectionMasthead";
+import { useLibraryVibe } from "@/features/library/useLibraryVibe";
+import { useShelfSummary } from "@/features/library/useShelfSummary";
 import { LibraryTabs } from "@/features/library/components/LibraryTabs";
 import { LibraryToolbar } from "@/features/library/components/LibraryToolbar";
 import { ArtistsGrid } from "@/features/library/components/ArtistsGrid";
@@ -55,6 +57,11 @@ export default function LibraryPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const { playTracks } = useAudioControls();
+
+    // The masthead's mood band and heard line; both cache independently of the
+    // tab pages and keep their last copy on failure.
+    const vibe = useLibraryVibe();
+    const shelf = useShelfSummary();
 
     const validTabs: Tab[] = ["artists", "albums", "tracks"];
     const tabParam = searchParams.get("tab");
@@ -365,10 +372,11 @@ export default function LibraryPage() {
 
     return (
         <div className="min-h-screen">
-            <PageHeader
-                eyebrow="Your library"
+            <CollectionMasthead
                 title="Collection"
-                description={`${totalItems.toLocaleString()} ${activeTab === "artists" ? "artists" : activeTab === "albums" ? "albums" : "tracks"}`}
+                heardLine={shelf.heard}
+                fallbackLine={`${totalItems.toLocaleString()} ${activeTab === "artists" ? "artists" : activeTab === "albums" ? "albums" : "tracks"}`}
+                shares={vibe.shares}
             />
 
             <div className="relative page-shell pb-24">
@@ -403,6 +411,7 @@ export default function LibraryPage() {
                             isLoading={isLoading}
                             onPlay={playArtist}
                             onDelete={handleDeleteArtist}
+                            moodByKey={vibe.artistMood}
                             gridKey={gridKey}
                         />
                     )}
@@ -414,6 +423,7 @@ export default function LibraryPage() {
                             isLoading={isLoading}
                             onPlay={playAlbum}
                             onDelete={handleDeleteAlbum}
+                            moodByKey={vibe.albumMood}
                             gridKey={gridKey}
                         />
                     )}

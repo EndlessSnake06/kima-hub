@@ -31,7 +31,7 @@ const KINDS = {
         label: "Podcast",
         dot: "bg-type-podcast",
         Icon: Mic2,
-        fallback: ["#0f1a2e", "#0a0f1a"] as [string, string],
+        fallback: ["#251a33", "#120e18"] as [string, string],
     },
 };
 
@@ -102,7 +102,7 @@ export function SpokenHero({
                 </div>
 
                 <div className="flex items-end gap-6">
-                    <div className="w-[140px] h-[140px] md:w-[192px] md:h-[192px] bg-[var(--bg-primary)] rounded-lg shrink-0 overflow-hidden relative border-2 border-white/10">
+                    <div className="w-[140px] h-[140px] md:w-[192px] md:h-[192px] bg-[var(--bg-primary)] rounded-[14px] shrink-0 overflow-hidden relative ring-1 ring-white/10 shadow-[0_8px_30px_rgba(0,0,0,0.45)]">
                         {heroImage ? (
                             <CachedImage
                                 src={heroImage}

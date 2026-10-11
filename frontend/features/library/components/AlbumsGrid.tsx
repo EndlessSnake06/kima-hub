@@ -11,6 +11,8 @@ interface AlbumsGridProps {
     albums: Album[];
     onPlay: (albumId: string) => Promise<void>;
     onDelete: (albumId: string, albumTitle: string) => void;
+    /** The mood each album shares with its tracks, from the vibe map. */
+    moodByKey?: Map<string, string>;
     isLoading?: boolean;
     gridKey?: number;
 }
@@ -20,6 +22,7 @@ interface AlbumCardItemProps {
     index: number;
     onPlay: (albumId: string) => Promise<void>;
     onDelete: (albumId: string, albumTitle: string) => void;
+    moodKey?: string;
 }
 
 const AlbumCardItem = memo(
@@ -28,6 +31,7 @@ const AlbumCardItem = memo(
         index,
         onPlay,
         onDelete,
+        moodKey,
     }: AlbumCardItemProps) {
         return (
             <MediaCard
@@ -39,12 +43,14 @@ const AlbumCardItem = memo(
                 type="album"
                 index={index}
                 action={{ icon: Play, label: "Play", onClick: () => onPlay(album.id) }}
+                moodKey={moodKey}
                 onDelete={() => onDelete(album.id, album.title)}
             />
         );
     },
     (prevProps, nextProps) => {
-        return prevProps.album.id === nextProps.album.id;
+        // The mood arrives later than the album; a same-id card must still update for it.
+        return prevProps.album.id === nextProps.album.id && prevProps.moodKey === nextProps.moodKey;
     },
 );
 
@@ -52,6 +58,7 @@ const AlbumsGrid = memo(function AlbumsGrid({
     albums,
     onPlay,
     onDelete,
+    moodByKey,
     isLoading = false,
     gridKey,
 }: AlbumsGridProps) {
@@ -87,6 +94,7 @@ const AlbumsGrid = memo(function AlbumsGrid({
                     index={index}
                     onPlay={onPlay}
                     onDelete={onDelete}
+                    moodKey={moodByKey?.get(album.id)}
                 />
             ))}
         </div>

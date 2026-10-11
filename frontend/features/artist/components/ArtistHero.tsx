@@ -49,7 +49,7 @@ export function ArtistHero({
 
             <div className="relative page-shell pt-16 pb-6">
                 <div className="flex items-end gap-6">
-                    <div className="w-[140px] h-[140px] md:w-[192px] md:h-[192px] bg-[#282828] rounded-full shrink-0 overflow-hidden relative">
+                    <div className="w-[140px] h-[140px] md:w-[192px] md:h-[192px] bg-[#282828] rounded-full shrink-0 overflow-hidden relative ring-1 ring-white/10 shadow-[0_8px_30px_rgba(0,0,0,0.45)]">
                         {heroImage ? (
                             <CachedImage
                                 src={heroImage}

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Loader2, Trash2, type LucideIcon } from "lucide-react";
 import { CachedImage } from "@/components/ui/CachedImage";
 import { cn } from "@/lib/cn";
+import { MOOD_COLORS, moodLabel } from "@/features/vibe/mapUtils";
 
 type MediaType = "artist" | "album" | "track" | "podcast" | "audiobook";
 
@@ -37,6 +38,8 @@ interface MediaCardProps {
     corner?: ReactNode;
     progress?: number;
     action?: MediaCardAction;
+    /** One of the five mood keys; marks the card's meta with a dot in its map colour. */
+    moodKey?: string | null;
     onDelete?: () => void;
     className?: string;
 }
@@ -111,23 +114,25 @@ export const MediaCard = memo(function MediaCard({
     corner,
     progress,
     action,
+    moodKey,
     onDelete,
     className,
 }: MediaCardProps) {
     const styles = TYPE_STYLES[type];
     const ActionIcon = action?.busy ? Loader2 : action?.icon;
+    const moodColour = moodKey && moodKey !== "unanalyzed" ? MOOD_COLORS[moodKey] ?? null : null;
 
     const body = (
-        <div
-            className={cn(
-                "relative bg-[var(--bg-primary)] border border-white/10 rounded-lg overflow-hidden transition-[border-color] duration-150",
-                styles.border,
-            )}
-        >
-            <div className={cn("relative", aspect === "portrait" ? "aspect-[2/3]" : "aspect-square")}>
-                <div className="relative w-full h-full bg-[#181818] flex items-center justify-center overflow-hidden">
-                    <Cover key={String(imageUrl)} imageUrl={imageUrl} title={title} sizes={sizes} FallbackIcon={fallbackIcon} />
-                </div>
+        <div className="relative">
+            {/* Bare artwork: a rounded square with a hairline edge and soft elevation, no panel. */}
+            <div
+                className={cn(
+                    "relative w-full h-full bg-[#181818] flex items-center justify-center overflow-hidden",
+                    "rounded-lg ring-1 ring-white/10 shadow-[0_8px_24px_rgba(0,0,0,0.35)]",
+                    aspect === "portrait" ? "aspect-[2/3]" : "aspect-square",
+                )}
+            >
+                <Cover key={String(imageUrl)} imageUrl={imageUrl} title={title} sizes={sizes} FallbackIcon={fallbackIcon} />
 
                 {badge && <div className="absolute top-2 left-2">{badge}</div>}
                 {corner && <div className="absolute top-2 right-2">{corner}</div>}
@@ -148,12 +153,13 @@ export const MediaCard = memo(function MediaCard({
                             aria-label={`${action.label} ${title}`}
                             title={action.label.toLowerCase()}
                             className={cn(
-                                "touch-reveal absolute bottom-3 right-3 w-11 h-11 rounded-lg bg-brand hover:bg-brand-hover flex items-center justify-center transition-opacity duration-150",
-                                action.busy ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
+                                "absolute bottom-3 right-3 w-11 h-11 rounded-full border border-white/15 bg-black/55 backdrop-blur-[2px]",
+                                "flex items-center justify-center transition-[transform,background-color] duration-150",
+                                "hover:bg-black/75 hover:scale-105 active:scale-95",
                             )}
                         >
                             <ActionIcon
-                                className={cn("w-5 h-5 text-black", action.busy ? "animate-spin" : "fill-current ml-0.5")}
+                                className={cn("w-5 h-5 text-white", action.busy ? "animate-spin" : "fill-current ml-0.5")}
                             />
                         </button>
                     </>
@@ -165,21 +171,32 @@ export const MediaCard = memo(function MediaCard({
                         onClick={stop(onDelete)}
                         aria-label={`Delete ${title}`}
                         title={`Delete ${title}`.toLowerCase()}
-                        className="absolute top-2 right-2 w-8 h-8 rounded-lg bg-black/80 border border-white/20 hidden md:flex items-center justify-center opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-danger/90 transition-opacity duration-150"
+                        className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/80 border border-white/20 hidden md:flex items-center justify-center opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-danger/90 transition-opacity duration-150"
                     >
                         <Trash2 className="w-4 h-4 text-white" />
                     </button>
                 )}
             </div>
 
-            <div className={cn("h-0.5 scale-x-0 group-hover:scale-x-100 transition-transform duration-150", styles.bar)} />
+            <div className={cn("h-0.5 mt-1 scale-x-0 group-hover:scale-x-100 transition-transform duration-150", styles.bar)} />
 
-            <div className="p-3 bg-gradient-to-b from-[#0a0a0a] to-[#0f0f0f]">
+            <div className="pt-1.5 px-0.5">
                 <h3 className="text-sm font-bold text-white truncate tracking-tight" title={title.toLowerCase()}>
                     {title}
                 </h3>
                 {subtitle && (
-                    <p className="text-xs tabular-nums text-[var(--text-muted)] truncate mt-0.5">{subtitle}</p>
+                    <p className="flex items-center gap-1.5 text-xs tabular-nums text-[var(--text-muted)] mt-0.5">
+                        {moodColour && (
+                            <span
+                                role="img"
+                                aria-label={moodLabel(moodKey!).toLowerCase()}
+                                title={moodLabel(moodKey!).toLowerCase()}
+                                className="size-1.5 shrink-0 rounded-full"
+                                style={{ background: `rgb(${moodColour[0]} ${moodColour[1]} ${moodColour[2]})` }}
+                            />
+                        )}
+                        <span className="truncate">{subtitle}</span>
+                    </p>
                 )}
             </div>
         </div>

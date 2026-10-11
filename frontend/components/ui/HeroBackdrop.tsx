@@ -1,18 +1,25 @@
 import type { ColorPalette } from "@/hooks/useImageColor";
 import { CachedImage } from "@/components/ui/CachedImage";
 
+/**
+ * The backdrop melts into the page ground over its lower half instead of
+ * ending on a hard edge at the first row.
+ */
+const FADE_MASK = {
+    WebkitMaskImage: "linear-gradient(to bottom, black 50%, transparent 100%)",
+    maskImage: "linear-gradient(to bottom, black 50%, transparent 100%)",
+} as const;
+
 const TINTS = {
     music: {
-        imageClass: "opacity-50",
         overImage: (c: ColorPalette) =>
-            `linear-gradient(to bottom, ${c.vibrant}30 0%, ${c.darkVibrant}60 40%, ${c.darkMuted}90 70%, #0a0a0a 100%)`,
+            `linear-gradient(to bottom, ${c.vibrant}30 0%, ${c.darkVibrant}60 50%, ${c.darkMuted}90 85%, #0a0a0a 100%)`,
         bare: (c: ColorPalette) =>
             `linear-gradient(to bottom, ${c.vibrant}40 0%, ${c.darkVibrant}80 50%, #0a0a0a 100%)`,
     },
     spoken: {
-        imageClass: "opacity-40",
         overImage: (c: ColorPalette) =>
-            `linear-gradient(to bottom, ${c.vibrant}20 0%, ${c.darkVibrant}50 40%, #0a0a0a 100%)`,
+            `linear-gradient(to bottom, ${c.vibrant}28 0%, ${c.darkVibrant}55 50%, ${c.darkMuted}90 85%, #0a0a0a 100%)`,
         bare: (c: ColorPalette) =>
             `linear-gradient(to bottom, ${c.vibrant}30 0%, ${c.darkVibrant}60 50%, #0a0a0a 100%)`,
     },
@@ -36,6 +43,7 @@ export function HeroBackdrop({ image, alt, colors, tint, fallback }: HeroBackdro
             <div
                 className="absolute inset-0"
                 style={{
+                    ...FADE_MASK,
                     background: colors
                         ? t.bare(colors)
                         : `linear-gradient(to bottom, ${fallback[0]} 0%, ${fallback[1]} 50%, #0a0a0a 100%)`,
@@ -45,8 +53,9 @@ export function HeroBackdrop({ image, alt, colors, tint, fallback }: HeroBackdro
     }
 
     return (
-        <div className="absolute inset-0 overflow-hidden">
-            <div className={`absolute inset-0 scale-110 blur-md ${t.imageClass}`}>
+        <div className="absolute inset-0 overflow-hidden" style={FADE_MASK}>
+            {/* The cover, heavily blurred, under a dark scrim so pale sleeves stay legible. */}
+            <div className="absolute inset-0 scale-110 blur-2xl">
                 <CachedImage
                     src={image}
                     alt={alt}
@@ -56,6 +65,7 @@ export function HeroBackdrop({ image, alt, colors, tint, fallback }: HeroBackdro
                     priority
                 />
             </div>
+            <div className="absolute inset-0 bg-black/50" />
             <div
                 className="absolute inset-0"
                 style={{
@@ -64,7 +74,6 @@ export function HeroBackdrop({ image, alt, colors, tint, fallback }: HeroBackdro
                         : "linear-gradient(to bottom, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.7) 40%, #0a0a0a 100%)",
                 }}
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-transparent to-transparent" />
         </div>
     );
 }

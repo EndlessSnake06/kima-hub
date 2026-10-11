@@ -209,6 +209,11 @@ export function MiniPlayer() {
                 onTouchMove={handleTouchMove}
                 onTouchEnd={handleTouchEnd}
             >
+                {/* Page content melts into the bar instead of clipping at its edge. */}
+                <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute bottom-full inset-x-4 h-6 rounded-t-full bg-gradient-to-b from-transparent to-[#15100a]/85"
+                />
 
                 {/* Gradient border container - uses padding technique for gradient border */}
                 <div

@@ -39,12 +39,12 @@ export function PodcastActionBar({
                 <button
                     onClick={isPlayingPodcast ? onPause : onPlayLatest}
                     aria-label={isPlayingPodcast ? "pause" : "play the latest episode"}
-                    className="w-10 h-10 rounded-lg bg-[var(--color-brand)] hover:bg-[var(--color-brand-hover)] transition-all flex items-center justify-center hover:scale-105 active:scale-95"
+                    className="h-12 w-12 rounded-full bg-[var(--color-brand)] hover:bg-[var(--color-brand-hover)] transition-all flex items-center justify-center hover:scale-105 active:scale-95"
                 >
                     {isPlayingPodcast ? (
-                        <Pause className="w-4 h-4 text-white" />
+                        <Pause className="w-5 h-5 text-[var(--color-on-brand)] fill-current" />
                     ) : (
-                        <Play className="w-4 h-4 text-white ml-0.5" fill="white" />
+                        <Play className="w-5 h-5 text-[var(--color-on-brand)] fill-current ml-0.5" />
                     )}
                 </button>
             )}

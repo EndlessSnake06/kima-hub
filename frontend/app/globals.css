@@ -26,6 +26,11 @@
     --color-brand-hover: #e69200;
     --color-brand-light: #fcb84d;
     --color-brand-dark: #d48c00;
+    /* Glyphs and text that sit on an amber fill. */
+    --color-on-brand: #160a02;
+
+    /* The violet cosmos bleed behind page headers and hero backdrops. */
+    --color-ambient: #773b97;
 
     /* One colour per content type, used only to mark the type: section bars,
      * type dots. Controls and the playing state always use brand. */

@@ -45,13 +45,13 @@ export function AlbumActionBar({
                 <>
                     <button
                         onClick={handlePlayPauseClick}
-                        aria-label={showPause ? "Pause" : "Play all"}
-                        className="h-12 w-12 rounded-lg flex items-center justify-center transition-all hover:scale-105 bg-brand"
+                        aria-label={showPause ? "pause" : "play all"}
+                        className="h-12 w-12 rounded-full flex items-center justify-center transition-all hover:scale-105 active:scale-95 bg-brand"
                     >
                         {showPause ? (
-                            <Pause className="w-5 h-5 fill-current text-black" />
+                            <Pause className="w-5 h-5 fill-current text-[var(--color-on-brand)]" />
                         ) : (
-                            <Play className="w-5 h-5 fill-current text-black ml-0.5" />
+                            <Play className="w-5 h-5 fill-current text-[var(--color-on-brand)] ml-0.5" />
                         )}
                     </button>
 
