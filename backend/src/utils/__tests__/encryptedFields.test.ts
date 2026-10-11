@@ -67,11 +67,10 @@ describe("the encrypted settings map", () => {
 
     it("maps every encrypted settings field", () => {
         // Every encrypted SystemSettings field, read and write side alike.
-        expect(Object.keys(ENCRYPTED_FIELDS)).toHaveLength(9);
+        expect(Object.keys(ENCRYPTED_FIELDS)).toHaveLength(8);
         for (const field of ["fanartApiKey", "slskdApiKey", "spotifyClientSecret",
             "lidarrApiKey", "lidarrWebhookSecret", "acoustidApiKey",
-            "audiobookshelfApiKey", "soulseekPassword",
-            "openaiApiKey"]) {
+            "audiobookshelfApiKey", "soulseekPassword"]) {
             expect(ENCRYPTED_FIELDS).toHaveProperty(field);
         }
     });
@@ -103,13 +102,13 @@ describe("broken stored values re-seed to \"needs re-entry\"", () => {
         // Never-decrypted: plaintext written straight into the column.
         // Handing it back would pass a never-encrypted value through as a
         // credential.
-        const settings = { openaiApiKey: "sk-plaintext-never-encrypted" };
+        const settings = { fanartApiKey: "plaintext-never-encrypted" };
 
         const resolved = await resolveEncryptedSettings(settings);
 
-        expect(resolved.openaiApiKey).toBeNull();
+        expect(resolved.fanartApiKey).toBeNull();
         expect(mockUpdate).toHaveBeenCalledWith(
-            expect.objectContaining({ data: { openaiApiKey: null } }),
+            expect.objectContaining({ data: { fanartApiKey: null } }),
         );
     });
 

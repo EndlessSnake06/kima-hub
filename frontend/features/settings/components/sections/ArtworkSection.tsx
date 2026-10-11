@@ -4,20 +4,20 @@ import { SettingsSection, SettingsRow, SettingsInput, SettingsToggle, Connection
 import { ConnectionTestResult, SystemSettings } from "../../types";
 import { useConnectionTest } from "../../hooks/useConnectionTest";
 
-interface AIServicesSectionProps {
+interface ArtworkSectionProps {
     settings: SystemSettings;
     onUpdate: (updates: Partial<SystemSettings>) => void;
     onTest: (service: string) => Promise<ConnectionTestResult>;
     isTesting: boolean;
 }
 
-export function AIServicesSection({ settings, onUpdate, onTest, isTesting }: AIServicesSectionProps) {
+export function ArtworkSection({ settings, onUpdate, onTest, isTesting }: ArtworkSectionProps) {
     const fanartTest = useConnectionTest(() => onTest("fanart"), { connected: () => "Connected" });
 
     return (
         <SettingsSection
-            id="ai-services"
-            title="AI & Artwork"
+            id="artwork"
+            title="Artwork"
             description="Enhance your library with high-quality artwork"
         >
             <SettingsRow

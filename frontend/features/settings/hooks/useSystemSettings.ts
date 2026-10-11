@@ -7,9 +7,6 @@ const defaultSystemSettings: SystemSettings = {
     lidarrEnabled: true,
     lidarrUrl: "http://localhost:8686",
     lidarrApiKey: "",
-    openaiEnabled: false,
-    openaiApiKey: "",
-    openaiModel: "gpt-4",
     fanartEnabled: false,
     fanartApiKey: "",
     acoustidApiKey: "",
@@ -111,12 +108,6 @@ export function useSystemSettings() {
                     result = await api.testLidarr(
                         systemSettings.lidarrUrl,
                         systemSettings.lidarrApiKey
-                    );
-                    break;
-                case "openai":
-                    result = await api.testOpenai(
-                        systemSettings.openaiApiKey,
-                        systemSettings.openaiModel
                     );
                     break;
                 case "fanart":

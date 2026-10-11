@@ -1026,13 +1026,6 @@ class ApiClient {
         });
     }
 
-    async testOpenai(apiKey: string, model: string) {
-        return this.request<ServiceTestResult>("/system-settings/test-openai", {
-            method: "POST",
-            body: JSON.stringify({ apiKey, model }),
-        });
-    }
-
     async testFanart(apiKey: string) {
         return this.request<ServiceTestResult>("/system-settings/test-fanart", {
             method: "POST",

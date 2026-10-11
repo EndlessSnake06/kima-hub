@@ -48,7 +48,6 @@ export async function writeEnvFile(
         Server: ["PORT", "NODE_ENV", "SESSION_SECRET", "ALLOWED_ORIGINS"],
         Lidarr: ["LIDARR_ENABLED", "LIDARR_URL", "LIDARR_API_KEY"],
         "Fanart.tv": ["FANART_API_KEY"],
-        OpenAI: ["OPENAI_API_KEY"],
         Audiobookshelf: ["AUDIOBOOKSHELF_URL", "AUDIOBOOKSHELF_API_KEY"],
         Soulseek: ["SOULSEEK_USERNAME", "SOULSEEK_PASSWORD"],
         "Docker Paths": ["MUSIC_PATH", "DOWNLOAD_PATH"],

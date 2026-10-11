@@ -655,10 +655,6 @@ model SystemSettings {
   /// Kima removes junk downloads (no usable music, the wrong album) so Lidarr
   /// tries the next release; off leaves them to the user's own setup.
   lidarrRemoveJunk            Boolean  @default(true)
-  openaiEnabled               Boolean  @default(false)
-  openaiApiKey                String?
-  openaiModel                 String?  @default("gpt-4")
-  openaiBaseUrl               String?
   fanartEnabled               Boolean  @default(false)
   fanartApiKey                String?
   audiobookshelfEnabled       Boolean  @default(false)

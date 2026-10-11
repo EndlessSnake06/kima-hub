@@ -61,8 +61,6 @@ const baseRow: Record<string, unknown> = {
     id: "default",
     lidarrEnabled: true,
     lidarrUrl: "http://localhost:8686",
-    openaiEnabled: false,
-    openaiModel: "gpt-4",
     fanartEnabled: false,
     audiobookshelfEnabled: false,
     audiobookshelfUrl: "http://localhost:13378",

@@ -49,12 +49,6 @@ const systemSettingsSchema = z.object({
   lidarrMetadataProfileId: z.number().int().positive().nullable().optional(),
   lidarrRemoveJunk: z.boolean().optional(),
 
-  // AI Services
-  openaiEnabled: z.boolean().optional(),
-  openaiApiKey: z.string().nullable().optional(),
-  openaiModel: z.string().optional(),
-  openaiBaseUrl: z.string().nullable().optional(),
-
   fanartEnabled: z.boolean().optional(),
   fanartApiKey: z.string().nullable().optional(),
   acoustidApiKey: z.string().nullable().optional(),
@@ -130,8 +124,6 @@ router.get("/", async (_req, res) => {
           id: "default",
           lidarrEnabled: true,
           lidarrUrl: "http://localhost:8686",
-          openaiEnabled: false,
-          openaiModel: "gpt-4",
           fanartEnabled: false,
           audiobookshelfEnabled: false,
           audiobookshelfUrl: "http://localhost:13378",
@@ -369,38 +361,6 @@ router.post("/lidarr-profiles", async (req, res) => {
     });
   } catch (error) {
     safeError(res, "Lidarr profile fetch", error);
-  }
-});
-
-// POST /system-settings/test-openai
-router.post("/test-openai", async (req, res) => {
-  try {
-    const { apiKey, model } = req.body;
-
-    if (!apiKey) {
-      return res.status(400).json({ error: "API key is required" });
-    }
-
-    const response = await axios.post(
-      "https://api.openai.com/v1/chat/completions",
-      {
-        model: model || "gpt-3.5-turbo",
-        messages: [{ role: "user", content: "Test" }],
-        max_tokens: 5,
-      },
-      {
-        headers: { Authorization: `Bearer ${apiKey}` },
-        timeout: 10000,
-      },
-    );
-
-    res.json({
-      success: true,
-      message: "OpenAI connection successful",
-      model: response.data.model,
-    });
-  } catch (error) {
-    safeError(res, "OpenAI connection test", error);
   }
 });
 

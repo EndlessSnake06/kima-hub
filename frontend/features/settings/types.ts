@@ -19,10 +19,7 @@ export interface SystemSettings {
     lidarrQualityProfileId: number | null;
     lidarrMetadataProfileId: number | null;
     lidarrRemoveJunk: boolean;
-    // AI Services
-    openaiEnabled: boolean;
-    openaiApiKey: string;
-    openaiModel: string;
+    // Artwork & fingerprinting
     fanartEnabled: boolean;
     fanartApiKey: string;
     acoustidApiKey: string | null;
