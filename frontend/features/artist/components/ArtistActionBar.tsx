@@ -1,5 +1,6 @@
-import { Play, Pause, Shuffle, Download, Radio } from "lucide-react";
+import { Download, Radio } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { MediaActionBar, MediaActionButton } from "@/components/ui/MediaActionBar";
 import type { Album, ArtistSource } from "../types";
 
 interface ArtistActionBarProps {
@@ -43,35 +44,17 @@ export function ArtistActionBar({
     };
 
     return (
-        <div className="flex items-center gap-4">
-            <button
-                onClick={handlePlayPauseClick}
-                aria-label={showPause ? "pause" : "play all"}
-                className="h-12 w-12 rounded-full flex items-center justify-center transition-all hover:scale-105 active:scale-95 bg-brand"
-            >
-                {showPause ? (
-                    <Pause className="w-5 h-5 fill-current text-[var(--color-on-brand)]" />
-                ) : (
-                    <Play className="w-5 h-5 fill-current text-[var(--color-on-brand)] ml-0.5" />
-                )}
-            </button>
-
-            <button
-                onClick={onShuffle}
-                className="h-8 w-8 rounded-full hover:bg-white/10 flex items-center justify-center text-[var(--text-secondary)] hover:text-white transition-all"
-                title="shuffle play"
-            >
-                <Shuffle className="w-5 h-5" />
-            </button>
-
+        <MediaActionBar
+            showPause={showPause}
+            onPlayPause={handlePlayPauseClick}
+            onShuffle={onShuffle}
+        >
             {showRadio && (
-                <button
+                <MediaActionButton
+                    icon={<Radio className="w-5 h-5" />}
+                    label="start artist radio"
                     onClick={onStartRadio}
-                    className="h-8 w-8 rounded-full hover:bg-white/10 flex items-center justify-center text-[var(--text-secondary)] hover:text-white transition-all"
-                    title="start artist radio"
-                >
-                    <Radio className="w-5 h-5" />
-                </button>
+                />
             )}
 
             {showDownloadAll && (
@@ -91,6 +74,6 @@ export function ArtistActionBar({
                     </span>
                 </button>
             )}
-        </div>
+        </MediaActionBar>
     );
 }

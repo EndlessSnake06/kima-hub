@@ -1,5 +1,6 @@
-import { Play, Pause, Shuffle, Download, ListPlus } from "lucide-react";
+import { Download, ListPlus } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { MediaActionBar, MediaActionButton } from "@/components/ui/MediaActionBar";
 import type { Album, AlbumSource } from "../types";
 
 interface AlbumActionBarProps {
@@ -40,37 +41,18 @@ export function AlbumActionBar({
     };
 
     return (
-        <div className="flex items-center gap-4">
+        <MediaActionBar
+            showPlay={isOwned}
+            showPause={showPause}
+            onPlayPause={handlePlayPauseClick}
+            onShuffle={onShuffle}
+        >
             {isOwned && (
-                <>
-                    <button
-                        onClick={handlePlayPauseClick}
-                        aria-label={showPause ? "pause" : "play all"}
-                        className="h-12 w-12 rounded-full flex items-center justify-center transition-all hover:scale-105 active:scale-95 bg-brand"
-                    >
-                        {showPause ? (
-                            <Pause className="w-5 h-5 fill-current text-[var(--color-on-brand)]" />
-                        ) : (
-                            <Play className="w-5 h-5 fill-current text-[var(--color-on-brand)] ml-0.5" />
-                        )}
-                    </button>
-
-                    <button
-                        onClick={onShuffle}
-                        className="h-8 w-8 rounded-lg hover:bg-white/10 flex items-center justify-center text-[var(--text-secondary)] hover:text-white transition-all"
-                        title="shuffle play"
-                    >
-                        <Shuffle className="w-5 h-5" />
-                    </button>
-
-                    <button
-                        onClick={onAddToPlaylist}
-                        className="h-8 w-8 rounded-lg hover:bg-white/10 flex items-center justify-center text-[var(--text-secondary)] hover:text-white transition-all"
-                        title="add to playlist"
-                    >
-                        <ListPlus className="w-5 h-5" />
-                    </button>
-                </>
+                <MediaActionButton
+                    icon={<ListPlus className="w-5 h-5" />}
+                    label="add to playlist"
+                    onClick={onAddToPlaylist}
+                />
             )}
 
             {showDownload && (
@@ -90,6 +72,6 @@ export function AlbumActionBar({
                     </span>
                 </button>
             )}
-        </div>
+        </MediaActionBar>
     );
 }
