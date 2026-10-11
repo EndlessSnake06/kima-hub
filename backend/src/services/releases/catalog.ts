@@ -99,11 +99,13 @@ const KEVIN_1_11 = [
         "- Our own embed model",
         "- Social features",
         "- A personal vibe layer that sits on top of the base matching engine to tailor your personal vibes",
-        "- A plugin store for things like audiobooks, the social features, a future e-reader (conceptualized, no code " +
-            "yet) and plenty more, with hopefully room for users to add onto the store for all to pull from",
-        "- And my favorite bit: a global enrichment database. Purely opt-in, anonymized, and ONLY the final vectors + " +
-            "basic artist data uploaded, so over time we can do away with the per-user enrichment and pull from a " +
-            "database populated by us.",
+        "- Modularizing Kima so you pick your own install. Beyond music, everything becomes a module: audiobooks, " +
+            "podcasts, social, a future e-reader (conceptualized, no code yet). People have asked me to let them " +
+            "strip audiobooks out; soon they'll be able to. And I want room for users to publish their own modules " +
+            "for everyone to pull from",
+        "- And my favorite bit: a shared global enrichment database. Purely opt-in and anonymized: you upload only " +
+            "the finished vectors and basic artist data. Over time, most installs skip the enrichment grind and pull " +
+            "from a database we built together",
     ].join("\n"),
     "My plan is natural discovery, not promoted discovery. That means any artist jamming to their own music gets the " +
         "same care as everything else, and once uploaded to the global database, a new undiscovered map will populate " +
@@ -168,7 +170,7 @@ export const RELEASES: Release[] = [
                     "Every song sits where the vibe engine puts it, so songs that match sit together. A very faint glow " +
                     "sits behind the whole map, and a few far-off stars give it depth.\n\n" +
                     "Your map is laid out once, after your library has been through enrichment. New songs are placed " +
-                    "among the others, and a song never moves once it has a place.",
+                    "among the others and keep their place; a wipe and re-run lays the whole map out fresh.",
                 links: [{ label: "Open the vibe map", href: "/vibe" }],
             },
             {
@@ -181,7 +183,9 @@ export const RELEASES: Release[] = [
                     "own. Audio fingerprinting only handles what that can't settle.\n\n" +
                     "The analyzers only report what they actually measured. Anything they couldn't work out stays " +
                     "empty instead of being guessed.\n\n" +
-                    "The vibe analyzer no longer needs PyTorch. It's smaller, and it runs on Apple silicon.",
+                    "Everything runs on ONNX Runtime now: the sound vectors and the audio analysis both. No PyTorch " +
+                    "anywhere. It's lighter, it runs on Apple silicon, and a switch in Settings moves the heavy work " +
+                    "onto an NVIDIA card.",
             },
             {
                 kind: "note",
