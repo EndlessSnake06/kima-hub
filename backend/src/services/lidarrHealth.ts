@@ -19,7 +19,7 @@ const BACKOFF_MS = [1, 2, 5, 15].map((minutes) => minutes * 60_000);
 const STABLE_MS = 15 * 60_000;
 const DATABASE_ERROR = /malformed|database is locked|disk I\/O/i;
 
-export interface LidarrHealthState {
+interface LidarrHealthState {
     status: "ok" | "unhealthy" | "off";
     reason?: string;
     since: Date;

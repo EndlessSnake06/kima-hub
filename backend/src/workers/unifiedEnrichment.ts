@@ -350,7 +350,7 @@ export const STAGE_TIMEOUT_MS: Record<TimedStage, number> = {
     fingerprint: 30_000,
 };
 
-export function getStageTimeoutMs(stage: TimedStage): number {
+function getStageTimeoutMs(stage: TimedStage): number {
     return STAGE_TIMEOUT_MS[stage];
 }
 
