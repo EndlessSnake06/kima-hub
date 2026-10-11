@@ -41,7 +41,7 @@ interface VibePathTrack {
 }
 
 /** Similar-tracks answers share this shape; /vibe/similar and /vibe/alchemy send no trackNo. */
-export interface VibeTrack {
+interface VibeTrack {
     id: string;
     title: string;
     duration: number;

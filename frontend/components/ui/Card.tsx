@@ -1,7 +1,7 @@
 import { HTMLAttributes, forwardRef, memo } from "react";
 import { cn } from "@/lib/cn";
 
-export interface CardProps extends HTMLAttributes<HTMLDivElement> {
+interface CardProps extends HTMLAttributes<HTMLDivElement> {
     variant?: "default" | "ai" | "metric";
     hover?: boolean;
 }

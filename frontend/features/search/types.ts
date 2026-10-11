@@ -26,7 +26,7 @@ export interface Podcast {
     episodeCount?: number;
 }
 
-export interface Episode {
+interface Episode {
     id: string;
     title: string;
     description?: string | null;
