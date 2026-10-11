@@ -3,7 +3,7 @@
 import { ReactNode, memo, type CSSProperties } from "react";
 import { Button } from "./Button";
 
-export interface EmptyStateProps {
+interface EmptyStateProps {
     icon: ReactNode;
     title: string;
     description: string;

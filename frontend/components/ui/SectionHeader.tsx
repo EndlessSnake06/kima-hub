@@ -4,7 +4,7 @@ import { memo, type ReactNode } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { cn } from "@/lib/cn";
 
-export type SectionType = "featured" | "track" | "album" | "artist" | "podcast" | "audiobook";
+type SectionType = "featured" | "track" | "album" | "artist" | "podcast" | "audiobook";
 
 const BAR: Record<SectionType, string> = {
     featured: "bg-brand",

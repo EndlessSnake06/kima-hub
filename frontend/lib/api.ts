@@ -29,7 +29,7 @@ interface MoodBucketMix {
     tracks?: ApiData[];
 }
 
-export interface VibePathTrack {
+interface VibePathTrack {
     id: string;
     title: string;
     duration: number;

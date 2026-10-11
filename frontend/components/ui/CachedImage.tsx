@@ -36,4 +36,3 @@ const CachedImage = memo(function CachedImage({
 });
 
 export { CachedImage };
-export type { CachedImageProps };

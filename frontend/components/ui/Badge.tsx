@@ -1,7 +1,7 @@
 import { HTMLAttributes, forwardRef, memo } from "react";
 import { cn } from "@/lib/cn";
 
-export interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
+interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
   variant?: "success" | "warning" | "error" | "info" | "ai" | "default";
 }
 

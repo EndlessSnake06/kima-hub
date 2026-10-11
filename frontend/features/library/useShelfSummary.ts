@@ -21,7 +21,7 @@ interface StatsAnswer {
 }
 
 /** "7% of library played · 7,107 tracks never played"; null until it loads. */
-export function heardLine(shelf: ShelfBlock | undefined): string | null {
+function heardLine(shelf: ShelfBlock | undefined): string | null {
     if (!shelf || shelf.tracks.total <= 0) return null;
     const pct = Math.round((shelf.tracks.heard / shelf.tracks.total) * 100);
     const never = shelf.neverPlayed;

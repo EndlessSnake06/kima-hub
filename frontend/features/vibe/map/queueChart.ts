@@ -94,14 +94,14 @@ export function createChartMaterial(color: string, stars: StarUniforms) {
 }
 
 /** How many songs after the playing one are charted, and how many already played trail behind it. */
-export const CHART_AHEAD = 60;
-export const CHART_BEHIND = 3;
+const CHART_AHEAD = 60;
+const CHART_BEHIND = 3;
 /** Songs after the playing one that get a ring. */
 export const CHART_RINGED = 8;
 
 const MAX_LEVEL = 8;
 
-export interface QueueChartStar {
+interface QueueChartStar {
     id: string;
     /** Position in the queue relative to the playing song: 1 is next. */
     order: number;

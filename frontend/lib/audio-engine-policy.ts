@@ -13,7 +13,7 @@ export type EngineStatus =
     | "blocked"
     | "error";
 
-export type PauseClass = "user" | "system";
+type PauseClass = "user" | "system";
 
 export type TimerId = "nudge-settle" | "reload-settle" | "load-deadline";
 

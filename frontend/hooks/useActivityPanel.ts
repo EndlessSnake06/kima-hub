@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 
-export const ACTIVITY_PANEL_KEY = "kima_activity_panel_open";
+const ACTIVITY_PANEL_KEY = "kima_activity_panel_open";
 
 export type ActivityPanelTab = "notifications" | "active" | "imports" | "history" | "settings";
 
