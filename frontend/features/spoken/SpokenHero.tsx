@@ -5,7 +5,7 @@ import { Fragment, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { ColorPalette } from "@/hooks/useImageColor";
 import { HeroBackdrop } from "@/components/ui/HeroBackdrop";
-import { CachedImage } from "@/components/ui/CachedImage";
+import { HeroCover } from "@/components/ui/MediaHero";
 import { cn } from "@/lib/cn";
 
 const KINDS = {
@@ -102,22 +102,13 @@ export function SpokenHero({
                 </div>
 
                 <div className="flex items-end gap-6">
-                    <div className="w-[140px] h-[140px] md:w-[192px] md:h-[192px] bg-[var(--bg-primary)] rounded-[14px] shrink-0 overflow-hidden relative ring-1 ring-white/10 shadow-[0_8px_30px_rgba(0,0,0,0.45)]">
-                        {heroImage ? (
-                            <CachedImage
-                                src={heroImage}
-                                alt={title}
-                                fill
-                                sizes="(max-width: 768px) 140px, 192px"
-                                className="object-cover"
-                                priority
-                            />
-                        ) : (
-                            <div className="w-full h-full flex items-center justify-center">
-                                <Icon className="w-16 h-16 text-[var(--text-muted)]" />
-                            </div>
-                        )}
-                    </div>
+                    <HeroCover
+                        image={heroImage}
+                        alt={title}
+                        shape="square"
+                        fallbackIcon={<Icon className="w-16 h-16 text-[var(--text-muted)]" />}
+                        bgClass="bg-[var(--bg-primary)]"
+                    />
 
                     <div className="flex-1 min-w-0 pb-1">
                         <h1 className="text-2xl md:text-4xl lg:text-5xl font-bold text-white leading-tight line-clamp-2 mb-2 tracking-tight">
