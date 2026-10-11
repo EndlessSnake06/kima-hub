@@ -1,11 +1,8 @@
 "use client";
 
-import { useAudioState } from "@/lib/audio-state-context";
-import { useAudioPlayback } from "@/lib/audio-playback-context";
-import { useAudioControls } from "@/lib/audio-controls-context";
 import { useMediaInfo } from "@/hooks/useMediaInfo";
+import { usePlayerControls } from "@/hooks/usePlayerControls";
 import { PlayCountLine } from "@/features/stats/PlayCountLine";
-import { usePlaybackProgress } from "@/hooks/usePlaybackProgress";
 import Link from "next/link";
 import {
     Play,
@@ -36,7 +33,6 @@ import { VibeToggleButton } from "./VibeToggleButton";
 import { PlayerCover } from "@/components/player/PlayerCover";
 
 export function FullPlayer() {
-    // Use split contexts to avoid re-rendering on every currentTime update
     const {
         currentTrack,
         playbackType,
@@ -47,19 +43,14 @@ export function FullPlayer() {
         activeOperation,
         queue,
         currentIndex,
-    } = useAudioState();
-
-    const {
         isPlaying,
         isBuffering,
         canSeek,
         downloadProgress,
         audioError,
-    } = useAudioPlayback();
-
-    const { duration, displayTime, progress } = usePlaybackProgress();
-
-    const {
+        duration,
+        displayTime,
+        progress,
         pause,
         resumeWithGesture,
         next,
@@ -72,7 +63,7 @@ export function FullPlayer() {
         toggleMute,
         toggleShuffle,
         toggleRepeat,
-    } = useAudioControls();
+    } = usePlayerControls();
 
     const { handleLyricsToggle, isLyricsActive } = useLyricsToggle({ inline: false });
 

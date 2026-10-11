@@ -1,7 +1,7 @@
 "use client";
 
-import { useAudioState, useAudioPlayback, useAudioControls } from "@/lib/audio-context";
 import { useMediaInfo } from "@/hooks/useMediaInfo";
+import { usePlayerControls } from "@/hooks/usePlayerControls";
 import { PlayCountLine } from "@/features/stats/PlayCountLine";
 import Link from "next/link";
 import { useRef, useState } from "react";
@@ -24,7 +24,6 @@ import {
 import { formatTime, formatTimeRemaining } from "@/lib/format";
 import { shuffleState } from "@/lib/shuffle";
 import { cn } from "@/lib/cn";
-import { usePlaybackProgress } from "@/hooks/usePlaybackProgress";
 import { useIsMobile, useIsTablet } from "@/hooks/useMediaQuery";
 import { SeekSlider } from "./SeekSlider";
 import { SleepTimer } from "./SleepTimer";
@@ -42,17 +41,14 @@ export function OverlayPlayer() {
         isShuffle,
         repeatMode,
         activeOperation,
-    } = useAudioState();
-    const {
         isPlaying,
         isBuffering,
         canSeek,
         downloadProgress,
         audioError,
-    } = useAudioPlayback();
-
-    const { duration, displayTime, progress } = usePlaybackProgress();
-    const {
+        duration,
+        displayTime,
+        progress,
         pause,
         resumeWithGesture,
         next,
@@ -63,7 +59,7 @@ export function OverlayPlayer() {
         skipBackward,
         toggleShuffle,
         toggleRepeat,
-    } = useAudioControls();
+    } = usePlayerControls();
 
     const isMobile = useIsMobile();
     const isTablet = useIsTablet();
