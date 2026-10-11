@@ -186,8 +186,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--mtt-csv', required=True)
     ap.add_argument('--cache-key', default='v1-model37df17afb988-*')
-    ap.add_argument('--deam-ann', default=os.path.expanduser(
-        '~/kima-vibe-testbed/deam/annotations/annotations averaged per song/song_level'))
+    ap.add_argument('--deam-ann', required=True,
+                    help="DEAM song-level annotation directory (annotations averaged per song)")
     ap.add_argument('--fit-on', default='deam', choices=LABEL_SETS)
     ap.add_argument('--out', help='default: calibration/platt-<fit-on>.json')
     args = ap.parse_args()

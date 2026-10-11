@@ -69,9 +69,8 @@ Attribution for the vendored labels:
   (reproduces the committed file byte for byte).
 
 **Memo2496 trap:** the Figshare record also has `arousal_all_std.csv`, the
-per-second spread *between raters*, with the same shape. The copy in
-`~/kima-vibe-testbed/memo2496/arousal_all_average.csv` that the new engine's
-research used is byte-identical to that std file (md5 `7524b16f…`, Figshare file
+per-second spread *between raters*, with the same shape. The copy the new
+engine's research used is byte-identical to that std file (md5 `7524b16f…`, Figshare file
 52358366), not to the average (md5 `a582e8b6…`, file 52358360). Its
 "Memo2496 intensity labels are unusable" finding was measured against rater
 disagreement, not arousal. With the real average, arousal is the most

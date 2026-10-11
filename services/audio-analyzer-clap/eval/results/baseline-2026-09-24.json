@@ -1,6 +1,6 @@
 {
   "generated": "2026-09-24T15:40:08",
-  "data_root": "/private/tmp/claude-501/-Users-chevron7locked-projects-kima-kima-hub-v1/10e30eb5-3b76-43e7-930d-edf18d572a0f/scratchpad/vibe-eval/data",
+  "data_root": "eval/data",
   "missing_sets": {},
   "models": {
     "v1": {
