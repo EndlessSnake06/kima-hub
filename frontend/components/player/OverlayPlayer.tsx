@@ -21,7 +21,7 @@ import {
     RefreshCw,
     MicVocal,
 } from "lucide-react";
-import { formatTime, formatTimeRemaining } from "@/lib/format";
+import { formatTime, formatMediaDuration } from "@/lib/format";
 import { shuffleState } from "@/lib/shuffle";
 import { cn } from "@/lib/cn";
 import { useIsMobile, useIsTablet } from "@/hooks/useMediaQuery";
@@ -256,11 +256,7 @@ export function OverlayPlayer() {
                         />
                         <div className="flex justify-between text-xs text-[var(--text-muted)] tabular-nums font-medium">
                             <span>{formatTime(displayTime)}</span>
-                            <span>
-                                {playbackType === "podcast" || playbackType === "audiobook"
-                                    ? formatTimeRemaining(Math.max(0, duration - displayTime))
-                                    : formatTime(duration)}
-                            </span>
+                            <span>{formatMediaDuration(playbackType, duration, displayTime)}</span>
                         </div>
                     </div>
 

@@ -43,9 +43,20 @@ export function clampTime(currentTime: number, duration: number): number {
 }
 
 /** Remaining time as -m:ss or -h:mm:ss; nothing left reads as 0:00. */
-export function formatTimeRemaining(seconds: number): string {
+function formatTimeRemaining(seconds: number): string {
     if (isNaN(seconds) || !isFinite(seconds) || seconds <= 0) return "0:00";
     return `-${formatTime(seconds)}`;
+}
+
+/** Spoken media counts down; music shows total length. */
+export function formatMediaDuration(
+    playbackType: string | null,
+    duration: number,
+    currentTime: number,
+): string {
+    return playbackType === "podcast" || playbackType === "audiobook"
+        ? formatTimeRemaining(Math.max(0, duration - currentTime))
+        : formatTime(duration);
 }
 
 export function formatNumber(num: number): string {

@@ -8,7 +8,7 @@ import { useAudio } from "@/lib/audio-context";
 import { api } from "@/lib/api";
 import { DPAD_KEYS } from "@/lib/tv-utils";
 import { useTVNavigation } from "@/hooks/useTVNavigation";
-import { formatTime, clampTime, formatTimeRemaining } from "@/lib/format";
+import { formatTime, clampTime, formatMediaDuration } from "@/lib/format";
 import { RefreshCw, SkipBack, SkipForward, Shuffle, Repeat } from "lucide-react";
 import { CachedImage } from "@/components/ui/CachedImage";
 import { KimaMark } from "@/components/ui/KimaMark";
@@ -259,11 +259,7 @@ export function TVLayout({ children }: { children: React.ReactNode }) {
                     </div>
 
                     <div className="tv-np-time">
-                        {formatTime(clampedCurrentTime)} / {
-                            playbackType === "podcast" || playbackType === "audiobook"
-                                ? formatTimeRemaining(Math.max(0, duration - clampedCurrentTime))
-                                : formatTime(duration)
-                        }
+                        {formatTime(clampedCurrentTime)} / {formatMediaDuration(playbackType, duration, clampedCurrentTime)}
                     </div>
 
                     <button

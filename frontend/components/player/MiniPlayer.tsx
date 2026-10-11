@@ -1,6 +1,6 @@
 "use client";
 
-import { useAudioState, useAudioPlayback, useAudioControls } from "@/lib/audio-context";
+import { usePlayerControls } from "@/hooks/usePlayerControls";
 import { useMediaInfo } from "@/hooks/useMediaInfo";
 import { PlayCountLine } from "@/features/stats/PlayCountLine";
 import { useIsMobile, useIsTablet } from "@/hooks/useMediaQuery";
@@ -29,7 +29,6 @@ import { useState, useRef } from "react";
 import { KeyboardShortcutsTooltip } from "./KeyboardShortcutsTooltip";
 import { SeekSlider } from "./SeekSlider";
 import { SleepTimer } from "./SleepTimer";
-import { usePlaybackProgress } from "@/hooks/usePlaybackProgress";
 import { VibeToggleButton } from "./VibeToggleButton";
 import { CachedImage } from "@/components/ui/CachedImage";
 import { PlayerCover } from "@/components/player/PlayerCover";
@@ -43,16 +42,13 @@ export function MiniPlayer() {
         isShuffle,
         repeatMode,
         activeOperation,
-    } = useAudioState();
-    const {
         isPlaying,
         isBuffering,
         canSeek,
         downloadProgress,
         audioError,
-    } = useAudioPlayback();
-    const { duration, progress } = usePlaybackProgress();
-    const {
+        duration,
+        progress,
         pause,
         resumeWithGesture,
         next,
@@ -63,7 +59,7 @@ export function MiniPlayer() {
         skipForward,
         skipBackward,
         setPlayerMode,
-    } = useAudioControls();
+    } = usePlayerControls();
     const isMobile = useIsMobile();
     const isTablet = useIsTablet();
     const isMobileOrTablet = isMobile || isTablet;

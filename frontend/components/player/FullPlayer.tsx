@@ -25,7 +25,7 @@ import {
 import { KeyboardShortcutsTooltip } from "./KeyboardShortcutsTooltip";
 import { shuffleState } from "@/lib/shuffle";
 import { cn } from "@/lib/cn";
-import { formatTime, formatTimeRemaining } from "@/lib/format";
+import { formatTime, formatMediaDuration } from "@/lib/format";
 import { SeekSlider } from "./SeekSlider";
 import { SleepTimer } from "./SleepTimer";
 import { useLyricsToggle } from "@/hooks/useLyricsToggle";
@@ -359,12 +359,7 @@ export function FullPlayer() {
                                     duration >= 3600 ? "w-14" : "w-10"
                                 )}
                             >
-                                {playbackType === "podcast" ||
-                                playbackType === "audiobook"
-                                    ? formatTimeRemaining(
-                                          Math.max(0, duration - displayTime)
-                                      )
-                                    : formatTime(duration)}
+                                {formatMediaDuration(playbackType, duration, displayTime)}
                             </span>
                         </div>
                     </div>

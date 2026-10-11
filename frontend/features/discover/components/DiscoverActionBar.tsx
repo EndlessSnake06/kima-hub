@@ -1,7 +1,8 @@
 "use client";
 
-import { Play, Pause, X } from "lucide-react";
+import { X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { PlayDisc } from "@/components/ui/MediaActionBar";
 import type { DiscoverPlaylist } from "../types";
 
 interface DiscoverActionBarProps {
@@ -25,20 +26,18 @@ export function DiscoverActionBar({
     const canCancel = isGenerating && !!onCancelGeneration;
     if (!canPlay && !canCancel) return null;
 
+    const showPause = isPlaylistPlaying && isPlaying;
+
     return (
         <div className="page-shell pb-6 flex items-center gap-4">
             {canPlay && (
-                <button
+                <PlayDisc
+                    showPause={showPause}
                     onClick={onPlayToggle}
+                    shape="square"
                     disabled={isGenerating}
-                    aria-label={isPlaylistPlaying && isPlaying ? "Pause" : "Play Discover Weekly"}
-                    className="h-12 w-12 flex items-center justify-center rounded-lg bg-brand hover:bg-brand-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                    {isPlaylistPlaying && isPlaying ?
-                        <Pause className="w-5 h-5 fill-current text-black" />
-                    :   <Play className="w-5 h-5 fill-current text-black ml-0.5" />
-                    }
-                </button>
+                    label={showPause ? "pause" : "play discover weekly"}
+                />
             )}
 
             {canCancel && (

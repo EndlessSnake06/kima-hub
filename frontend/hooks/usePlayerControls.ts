@@ -6,10 +6,8 @@ import { useAudioControls } from "@/lib/audio-controls-context";
 import { usePlaybackProgress } from "@/hooks/usePlaybackProgress";
 
 /**
- * The playback wiring every full-surface player shares. The state stays split
- * across the four contexts so a currentTime update re-renders only the
- * components reading progress; this hook gathers the reads, it does not merge
- * the sources.
+ * Gathers the four playback context reads for full-surface players. The sources
+ * stay split so a currentTime tick re-renders only progress readers.
  */
 export function usePlayerControls() {
     const {

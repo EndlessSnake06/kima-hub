@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, ReactNode } from "react";
 
-export type SettingsOwner = "lyrics" | "discover" | null;
+type SettingsOwner = "lyrics" | "discover" | null;
 
 interface ActivityPanelSettingsContextType {
     settingsContent: ReactNode | null;

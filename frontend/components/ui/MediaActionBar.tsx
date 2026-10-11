@@ -9,42 +9,67 @@ interface MediaActionBarProps {
     showPlay?: boolean;
     showPause: boolean;
     onPlayPause: () => void;
-    onShuffle: () => void;
+    onShuffle?: () => void;
     /**
-     * Secondary icon buttons: "square" (rounded-lg) is the deliberate branch
-     * from Spotify's circles (Kevin's call); "circle" matches the play disc.
+     * "square" (rounded-lg) is the deliberate branch from Spotify's circles
+     * (Kevin's call); "circle" is the play disc.
      */
+    discShape?: "circle" | "square";
     secondaryShape: "circle" | "square";
     /** Extra icon buttons and CTAs, in order, as MediaActionButton/CTA elements. */
     children?: ReactNode;
 }
 
-/** The play disc + shuffle row under a hero; one place the disc shape lives. */
+/** The brand play/pause disc; one place the disc shape and glyph live. */
+export const PlayDisc = memo(function PlayDisc({
+    showPause,
+    onClick,
+    shape,
+    disabled,
+    label,
+}: {
+    showPause: boolean;
+    onClick: () => void;
+    shape: "circle" | "square";
+    disabled?: boolean;
+    label?: string;
+}) {
+    return (
+        <button
+            onClick={onClick}
+            disabled={disabled}
+            aria-label={label ?? (showPause ? "pause" : "play all")}
+            className={cn(
+                "h-12 w-12 flex items-center justify-center transition-all hover:scale-105 active:scale-95 bg-brand disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100",
+                shape === "circle" ? "rounded-full" : "rounded-lg",
+            )}
+        >
+            {showPause ? (
+                <Pause className="w-5 h-5 fill-current text-[var(--color-on-brand)]" />
+            ) : (
+                <Play className="w-5 h-5 fill-current text-[var(--color-on-brand)] ml-0.5" />
+            )}
+        </button>
+    );
+});
+
+/** The play disc + shuffle row under a hero. */
 export const MediaActionBar = memo(function MediaActionBar({
     showPlay = true,
     showPause,
     onPlayPause,
     onShuffle,
+    discShape = "circle",
     secondaryShape,
     children,
 }: MediaActionBarProps) {
     return (
         <div className="flex items-center gap-4">
             {showPlay && (
-                <button
-                    onClick={onPlayPause}
-                    aria-label={showPause ? "pause" : "play all"}
-                    className="h-12 w-12 rounded-full flex items-center justify-center transition-all hover:scale-105 active:scale-95 bg-brand"
-                >
-                    {showPause ? (
-                        <Pause className="w-5 h-5 fill-current text-[var(--color-on-brand)]" />
-                    ) : (
-                        <Play className="w-5 h-5 fill-current text-[var(--color-on-brand)] ml-0.5" />
-                    )}
-                </button>
+                <PlayDisc showPause={showPause} onClick={onPlayPause} shape={discShape} />
             )}
 
-            {showPlay && (
+            {showPlay && onShuffle && (
                 <MediaActionButton
                     shape={secondaryShape}
                     icon={<Shuffle className="w-5 h-5" />}
