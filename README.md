@@ -34,7 +34,7 @@ The three make one similarity score. Every vibe feature uses it: similar tracks,
 
 ### The map
 
-Open **Vibe** in the sidebar. Your library appears as a 3D picture laid out from that same score, so songs that match sit close together. The map is laid out once, after your library has been through enrichment. New songs are placed among the others, and a song never moves once it has a place.
+Open **Vibe** in the sidebar. Your library appears as a 3D picture laid out from that same score, so songs that match sit close together. The map is laid out once, after your library has been through enrichment. New songs are placed among the others and keep their place; a wipe and re-run lays the whole map out fresh.
 
 <p align="center">
   <img src="assets/screenshots/vibe-map.png" alt="The vibe map: a library drawn as stars in 3D" width="800">
