@@ -15,6 +15,7 @@ import {
 import {
     getGpuStatus,
     setGpuToggles,
+    gpuSupported,
 } from "../services/gpuRuntime";
 import { configureLidarrWebhook } from "../services/lidarrWebhookSetup";
 import { createLidarrClient } from "../services/lidarrClient";
@@ -620,6 +621,9 @@ router.get("/gpu", async (_req, res) => {
 router.post("/gpu", async (req, res) => {
   try {
     const { enabled, analysis } = gpuToggleSchema.parse(req.body);
+    if ((enabled || analysis) && !gpuSupported()) {
+      return res.status(400).json({ error: "GPU acceleration is only available on linux/x86_64 hosts" });
+    }
     res.json(await setGpuToggles({ soundVectors: enabled, analysis }));
   } catch (error) {
     if (error instanceof z.ZodError) {

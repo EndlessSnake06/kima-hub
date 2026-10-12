@@ -13,6 +13,9 @@ const mockGet = jest.fn().mockResolvedValue(null);
 jest.mock("../../utils/redis", () => ({
     redisClient: { publish: (...a: unknown[]) => mockPublish(...a), get: (...a: unknown[]) => mockGet(...a) },
 }));
+// The switch logic is host-independent; pin the platform answer so the suite
+// behaves the same on an arm or macOS runner as on the linux/x86_64 target.
+jest.mock("../../services/gpuPlatform", () => ({ gpuSupported: () => true }));
 
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gpu-toggles-"));
 process.env.DATA_DIR = dataDir;

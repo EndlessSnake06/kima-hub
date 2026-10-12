@@ -9,6 +9,7 @@ import { ChoiceDecidedBy } from "@prisma/client";
 import { prisma } from "../../utils/db";
 import { logger } from "../../utils/logger";
 import { GPU_CHOICE_KEY, RELEASES, choicesIn, findRelease, type Release, type ReleaseItem } from "./catalog";
+import { gpuSupported } from "../gpuRuntime";
 import { MOOD_MIX_RELEASE, moodMixState, type MoodMixState } from "./moodMixes";
 
 export { findRelease, GPU_CHOICE_KEY } from "./catalog";
@@ -111,6 +112,9 @@ async function forUser(userId: string, releases: Release[]): Promise<Release[]> 
     };
     const applies = async (item: ReleaseItem, release: Release): Promise<boolean> => {
         if (item.kind === "action" && item.olderLibraryOnly && !(await enrichedBefore(release.date))) return false;
+        // The GPU choice is only asked where the CUDA runtime can exist; on
+        // other hosts the answer would always be "unsupported_platform".
+        if (item.kind === "choice" && item.key === GPU_CHOICE_KEY && !gpuSupported()) return false;
         if (!("requires" in item) || !item.requires) return true;
         if (item.requires === "admin") return isAdmin();
         if (item.kind !== "action") return true;

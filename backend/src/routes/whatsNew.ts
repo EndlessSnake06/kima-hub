@@ -17,7 +17,7 @@ import {
     currentReleaseFor,
     setChoice,
 } from "../services/releases";
-import { setGpuToggles } from "../services/gpuRuntime";
+import { setGpuToggles, gpuSupported } from "../services/gpuRuntime";
 import {
     MoodMixCannotKeepError,
     MoodMixNotFoundError,
@@ -124,6 +124,9 @@ router.post("/:version/choice", async (req, res) => {
         if (key === GPU_CHOICE_KEY) {
             if (req.user!.role !== "admin") {
                 return res.status(403).json({ error: "Only admins can change GPU acceleration" });
+            }
+            if (enabled && !gpuSupported()) {
+                return res.status(400).json({ error: "GPU acceleration is only available on linux/x86_64 hosts" });
             }
             await setGpuToggles({ soundVectors: enabled });
         }

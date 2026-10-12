@@ -21,6 +21,7 @@ jest.mock("../../utils/redis", () => ({
 
 jest.mock("../../services/gpuRuntime", () => ({
     setGpuToggles: jest.fn().mockResolvedValue({ enabled: true }),
+    gpuSupported: () => true,
 }));
 
 import express from "express";

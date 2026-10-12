@@ -4,6 +4,7 @@ import { prisma } from "../utils/db";
 import { redisClient } from "../utils/redis";
 import { logger } from "../utils/logger";
 import { invalidateSystemSettingsCache } from "../utils/systemSettings";
+import { gpuSupported } from "./gpuPlatform";
 
 // GPU toggles: sound vectors (`gpuOnnxEnabled`) and audio analysis
 // (`gpuAnalysisEnabled`) share one downloaded runtime. The DB columns are the truth;
@@ -21,6 +22,8 @@ interface GpuToggles {
     soundVectors: boolean;
     analysis: boolean;
 }
+
+export { gpuSupported } from "./gpuPlatform";
 
 interface GpuState {
     status?: string;
@@ -93,6 +96,10 @@ export async function getGpuStatus() {
     const analysisProvider = readJsonSafe<{ active?: boolean; measured?: boolean }>(ANALYSIS_PROVIDER_PATH);
     const analysisProviderActive = analysisProvider?.active === true;
     return {
+        // The CUDA runtime only exists for linux/x86_64 CPython 3.11 (the
+        // installer's own gate); on anything else the switches are not
+        // offered anywhere.
+        supported: gpuSupported(),
         enabled,
         analysis: toggles.analysis,
         analysisEffective: toggles.analysis && installed && analysisProviderActive,
@@ -115,6 +122,11 @@ export async function getGpuStatus() {
 
 /** Set either switch. The runtime is installed while either is on and removed when both are off. */
 export async function setGpuToggles(change: Partial<GpuToggles>) {
+    // Writing the switches on an unsupported platform only stores a setting
+    // the analyzers will never act on; the routes refuse before this.
+    if (!gpuSupported() && (change.soundVectors || change.analysis)) {
+        throw new Error("GPU acceleration requires a linux/x86_64 host");
+    }
     const data = {
         ...(change.soundVectors !== undefined ? { gpuOnnxEnabled: change.soundVectors } : {}),
         ...(change.analysis !== undefined ? { gpuAnalysisEnabled: change.analysis } : {}),

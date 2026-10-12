@@ -1068,8 +1068,10 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                     />
                 )}
 
-                {/* Each GPU switch row shows only measured state. */}
-                {settings.autoEnrichMetadata && !featuresLoading && vibeEmbeddings && (
+                {/* Each GPU switch row shows only measured state; on hosts the
+                    CUDA runtime cannot exist for (arm, macOS), the rows are
+                    not offered at all. */}
+                {settings.autoEnrichMetadata && !featuresLoading && vibeEmbeddings && gpuStatus?.supported && (
                     <GpuSwitchRow
                         id="gpu-onnx-toggle"
                         label="NVIDIA GPU for vibe embeddings"
@@ -1082,7 +1084,7 @@ export function CacheSection({ settings, onUpdate }: CacheSectionProps) {
                         onChange={(checked) => setGpuMutation.mutate(checked)}
                     />
                 )}
-                {settings.autoEnrichMetadata && !featuresLoading && musicCNN && (
+                {settings.autoEnrichMetadata && !featuresLoading && musicCNN && gpuStatus?.supported && (
                     <GpuSwitchRow
                         id="gpu-analysis-toggle"
                         label="NVIDIA GPU for audio analysis"

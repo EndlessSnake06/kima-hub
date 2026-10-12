@@ -10,6 +10,10 @@ import { GPU_CHOICE_KEY, RELEASES } from "../../services/releases/catalog";
 import { invalidateSystemSettingsCache } from "../../utils/systemSettings";
 import { closeEngineConnections } from "../../__tests__/helpers/engineConnections";
 
+// The GPU item and its answer read the same on every host; pin the platform
+// answer so the suite behaves the same on arm/macOS runners as on linux/x86_64.
+jest.mock("../../services/gpuPlatform", () => ({ gpuSupported: () => true }));
+
 const USER = "whatsnew_reopen_user";
 const ADMIN = "whatsnew_reopen_admin";
 const newest = [...RELEASES].sort((a, b) => (a.date === b.date ? a.version.localeCompare(b.version) : a.date < b.date ? -1 : 1)).at(-1)!;
