@@ -202,11 +202,16 @@ export function WhatsNewWindow({
             return;
         }
         setOpenKey(null);
-        requestAnimationFrame(() => {
+        const jump = () => {
             const heading = dialogRef.current?.querySelector<HTMLElement>("#whats-new-needs");
-            heading?.scrollIntoView({ block: "start", behavior: "smooth" });
-            heading?.focus();
-        });
+            if (!heading) {
+                requestAnimationFrame(jump);
+                return;
+            }
+            heading.scrollIntoView({ block: "start" });
+            heading.focus();
+        };
+        requestAnimationFrame(jump);
     };
 
     const itemList = (list: ReleaseItem[]) => (
@@ -359,18 +364,25 @@ export function WhatsNewWindow({
                     </button>
                 </header>
 
-                <div ref={bodyRef} className="flex-1 overflow-y-auto px-5 sm:px-6 py-6">
-                    {wide ? (
-                        <div className="grid gap-x-12 gap-y-10 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+                {wide ? (
+                    <div className="flex-1 min-h-0 flex flex-col lg:flex-row">
+                        <div
+                            ref={bodyRef}
+                            className={`min-h-0 overflow-y-auto px-5 sm:px-6 py-6 border-b lg:border-b-0 lg:border-r border-white/10 ${
+                                opened ? "flex-1 hidden lg:block" : "max-h-[38vh] lg:max-h-none lg:flex-[1.2]"
+                            }`}
+                        >
                             {opened ? page(opened) : note}
-                            <div className={`lg:self-start lg:sticky lg:top-0 ${opened ? "hidden lg:block" : ""}`}>{list}</div>
                         </div>
-                    ) : opened ? (
-                        page(opened)
-                    ) : (
-                        list
-                    )}
-                </div>
+                        <div className={`min-h-0 overflow-y-auto px-5 sm:px-6 py-6 ${opened ? "hidden lg:block flex-1" : "flex-1"}`}>
+                            {list}
+                        </div>
+                    </div>
+                ) : (
+                    <div ref={bodyRef} className="flex-1 min-h-0 overflow-y-auto px-5 sm:px-6 py-6">
+                        {opened ? page(opened) : list}
+                    </div>
+                )}
 
                 <footer className="shrink-0 px-5 sm:px-6 py-4 border-t border-white/10 flex items-center justify-between gap-4">
                     <div className="min-w-0">
