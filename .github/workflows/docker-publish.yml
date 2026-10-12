@@ -15,7 +15,7 @@ env:
     DOCKERHUB_IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/kima
 
 jobs:
-    build:
+    build-amd64:
         runs-on: ubuntu-latest
         permissions:
             contents: read
@@ -35,9 +35,6 @@ jobs:
                   sudo rm -rf /opt/ghc
                   sudo rm -rf /usr/local/share/boost
                   sudo rm -rf "$AGENT_TOOLSDIRECTORY"
-
-            - name: Set up QEMU
-              uses: docker/setup-qemu-action@v3
 
             - name: Set up Docker Buildx
               uses: docker/setup-buildx-action@v3
@@ -64,10 +61,9 @@ jobs:
                     echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
                   fi
 
-            # Scan the Intel image before publishing; the multi-architecture build
-            # below reuses its cached layers. Reports only: most findings are
-            # base-image packages with no fix yet, and security.yml blocks on the
-            # fixable ones.
+            # Scan the Intel image before publishing; the digest push below reuses
+            # its cached layers. Reports only: most findings are base-image packages
+            # with no fix yet, and security.yml blocks on the fixable ones.
             - name: Build image for scanning (amd64)
               uses: docker/build-push-action@v5
               with:
@@ -106,23 +102,150 @@ jobs:
                     echo '```'
                   } >> "$GITHUB_STEP_SUMMARY"
 
-            - name: Build and push
+            - name: Build and push by digest (amd64)
+              id: push
               uses: docker/build-push-action@v5
               with:
                   context: .
                   file: ./Dockerfile
-                  push: true
-                  tags: |
-                      ${{ env.DOCKERHUB_IMAGE_NAME }}:${{ steps.version.outputs.version }}
-                      ${{ env.DOCKERHUB_IMAGE_NAME }}:latest
-                      ${{ env.GHCR_IMAGE_NAME }}:${{ steps.version.outputs.version }}
-                      ${{ env.GHCR_IMAGE_NAME }}:latest
+                  platforms: linux/amd64
+                  outputs: type=image,name=${{ env.DOCKERHUB_IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
                   cache-from: type=gha
                   cache-to: type=gha,mode=max
-                  platforms: linux/amd64,linux/arm64
+
+            - name: Export digest
+              run: |
+                  mkdir -p ${{ runner.temp }}/digests
+                  digest="${{ steps.push.outputs.digest }}"
+                  touch "${{ runner.temp }}/digests/${digest#sha256:}"
+
+            - name: Upload digest
+              uses: actions/upload-artifact@v4
+              with:
+                  name: digests-amd64
+                  path: ${{ runner.temp }}/digests/*
+                  if-no-files-found: error
+                  retention-days: 1
+
+    build-arm64:
+        runs-on: ubuntu-24.04-arm
+        permissions:
+            contents: read
+            packages: write
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            # Same head room the amd64 job needs: the image carries the ML
+            # models and a full Postgres, so a default runner's disk fills
+            # partway through the build.
+            - name: Free up disk space
+              run: |
+                  sudo rm -rf /usr/share/dotnet
+                  sudo rm -rf /opt/ghc
+                  sudo rm -rf /usr/local/share/boost
+                  sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@v3
+
+            - name: Login to DockerHub
+              uses: docker/login-action@v3
+              with:
+                  username: ${{ secrets.DOCKERHUB_USERNAME }}
+                  password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+            - name: Login to GitHub Container Registry
+              uses: docker/login-action@v3
+              with:
+                  registry: ghcr.io
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Build and push by digest (arm64)
+              id: push
+              uses: docker/build-push-action@v5
+              with:
+                  context: .
+                  file: ./Dockerfile
+                  platforms: linux/arm64
+                  outputs: type=image,name=${{ env.DOCKERHUB_IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+                  cache-from: type=gha
+                  cache-to: type=gha,mode=max
+
+            - name: Export digest
+              run: |
+                  mkdir -p ${{ runner.temp }}/digests
+                  digest="${{ steps.push.outputs.digest }}"
+                  touch "${{ runner.temp }}/digests/${digest#sha256:}"
+
+            - name: Upload digest
+              uses: actions/upload-artifact@v4
+              with:
+                  name: digests-arm64
+                  path: ${{ runner.temp }}/digests/*
+                  if-no-files-found: error
+                  retention-days: 1
+
+    merge:
+        needs: [build-amd64, build-arm64]
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            packages: write
+        steps:
+            - name: Set GHCR image name
+              run: |
+                  OWNER="${{ github.repository_owner }}"
+                  echo "GHCR_IMAGE_NAME=ghcr.io/${OWNER,,}/kima" >> $GITHUB_ENV
+
+            - name: Download digests
+              uses: actions/download-artifact@v4
+              with:
+                  path: ${{ runner.temp }}/digests
+                  pattern: digests-*
+                  merge-multiple: true
+
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@v3
+
+            - name: Login to DockerHub
+              uses: docker/login-action@v3
+              with:
+                  username: ${{ secrets.DOCKERHUB_USERNAME }}
+                  password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+            - name: Login to GitHub Container Registry
+              uses: docker/login-action@v3
+              with:
+                  registry: ghcr.io
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Extract version
+              id: version
+              run: |
+                  if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+                    echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+                  else
+                    echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+                  fi
+
+            - name: Create manifest list and push
+              working-directory: ${{ runner.temp }}/digests
+              run: |
+                  docker buildx imagetools create -t ${{ env.DOCKERHUB_IMAGE_NAME }}:${{ steps.version.outputs.version }} \
+                    -t ${{ env.DOCKERHUB_IMAGE_NAME }}:latest \
+                    -t ${{ env.GHCR_IMAGE_NAME }}:${{ steps.version.outputs.version }} \
+                    -t ${{ env.GHCR_IMAGE_NAME }}:latest \
+                    $(printf '${{ env.DOCKERHUB_IMAGE_NAME }}@sha256:%s ' *)
+
+            - name: Inspect image
+              run: |
+                  docker buildx imagetools inspect ${{ env.DOCKERHUB_IMAGE_NAME }}:${{ steps.version.outputs.version }}
 
     create-release:
-        needs: [build]
+        needs: [merge]
         runs-on: ubuntu-latest
         permissions:
             contents: write

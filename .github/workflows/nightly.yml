@@ -64,3 +64,92 @@ jobs:
               with:
                   container: kima-nightly
                   volume: kima_nightly_data
+
+    arm64-smoke:
+        name: ARM64 native boot check
+        runs-on: ubuntu-24.04-arm
+        timeout-minutes: 45
+        permissions:
+            contents: read
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@v3
+
+            - name: Build image (native arm64)
+              uses: docker/build-push-action@v5
+              with:
+                  context: .
+                  file: ./Dockerfile
+                  push: false
+                  load: true
+                  tags: kima:arm64-smoke
+                  cache-from: type=gha
+                  cache-to: type=gha,mode=max
+
+            - name: Boot and verify the analyzer
+              shell: bash
+              run: |
+                  docker run -d \
+                    --name kima-arm64-smoke \
+                    -p 3031:3030 \
+                    -v kima_arm64_smoke_data:/data \
+                    kima:arm64-smoke
+                  timeout 180 bash -c 'until curl -sf http://localhost:3031/api/health; do sleep 3; done'
+                  docker exec kima-arm64-smoke supervisorctl status audio-analyzer | grep -q RUNNING
+                  # The analyzer pool is lazy (workers start with the first job),
+                  # so its boot log proves nothing on an empty container. Make
+                  # the analyzer's own MusiCNN module prove the vendored models
+                  # inside the running image, on its own ONNX Runtime.
+                  docker exec kima-arm64-smoke python3 -c "
+                  import sys; sys.path.insert(0, '/app/audio-analyzer')
+                  from musicnn_onnx import MusicnnBody, mel_patches, gate_signal
+                  import numpy as np
+                  body = MusicnnBody('/app/models', use_gpu=False, threads=2)
+                  got = body.run(mel_patches(gate_signal()))
+                  expected = np.load('/app/models/musicnn-answers.npz')['musicnn']
+                  cos = ((got*expected).sum(1)/np.linalg.norm(got,axis=1)/np.linalg.norm(expected,axis=1)).min()
+                  print(f'MusiCNN gate cosine: {cos:.7f} (min 0.99999)')
+                  assert cos >= 0.99999, 'vendored models drifted from the recorded answers'
+                  " 2>&1 | tee /tmp/arm64-boot.log
+                  docker logs kima-arm64-smoke 2>&1 | tail -20 >> /tmp/arm64-boot.log
+
+            - name: Upload boot log
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: arm64-smoke-log-${{ github.run_id }}
+                  path: /tmp/arm64-boot.log
+                  retention-days: 14
+
+            - name: Stop stack
+              if: always()
+              run: |
+                  docker rm -f kima-arm64-smoke
+                  docker volume rm kima_arm64_smoke_data
+
+    musicnn-reproof:
+        name: Re-derive vendored MusiCNN ONNX
+        runs-on: ubuntu-24.04-arm
+        timeout-minutes: 30
+        permissions:
+            contents: read
+
+        steps:
+            - uses: actions/checkout@v4
+
+            # Re-derives the vendored ONNX from the frozen .pb sources and gates
+            # it against the vendored reference answers, on the architecture the
+            # conversion is hardest on. If the committed ONNX ever drifts from
+            # what the converter produces from the committed sources, this job
+            # fails. The image builds themselves no longer run the converter
+            # (the ONNX is vendored); this keeps the proof alive.
+            - name: Convert and gate
+              shell: bash
+              run: |
+                  cd services/audio-analyzer
+                  docker build \
+                    -f ci-reprove.Dockerfile -t musicnn-reproof . \
+                    || { echo "::error::vendored ONNX does not match a fresh conversion of the committed .pb sources"; exit 1; }

@@ -3,8 +3,9 @@ name: Pre-release Image
 # A pre-release image, pushed on purpose: push the `prerelease` branch or press
 # Run workflow on the Actions tab. The image goes only to this repository's
 # GitHub Container Registry; Docker Hub is reserved for version tags
-# (docker-publish.yml). Both architectures are built so a release tag cut from
-# the same commit is known to build on ARM as well.
+# (docker-publish.yml). Both architectures build natively (per-arch runners,
+# merged by digest) so a release tag cut from the same commit is known to build
+# on ARM as well.
 
 on:
     push:
@@ -21,10 +22,10 @@ concurrency:
     cancel-in-progress: true
 
 jobs:
-    build:
-        name: Build & Push Pre-release (ghcr.io only)
+    build-amd64:
+        name: Build (amd64)
         runs-on: ubuntu-latest
-        timeout-minutes: 90
+        timeout-minutes: 60
         permissions:
             contents: read
             packages: write
@@ -47,8 +48,150 @@ jobs:
                   sudo rm -rf /usr/local/share/boost
                   sudo rm -rf "$AGENT_TOOLSDIRECTORY"
 
-            - name: Set up QEMU
-              uses: docker/setup-qemu-action@v3
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@v3
+
+            - name: Login to GitHub Container Registry
+              uses: docker/login-action@v3
+              with:
+                  registry: ghcr.io
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Get short SHA
+              id: sha
+              run: echo "short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+            - name: Build and push by digest (amd64)
+              id: push
+              uses: docker/build-push-action@v5
+              with:
+                  context: .
+                  file: ./Dockerfile
+                  platforms: linux/amd64
+                  push: true
+                  outputs: type=image,name=${{ env.GHCR_IMAGE }},push-by-digest=true,name-canonical=true,push=true
+                  # The running app shows "<version>-prerelease" so it is never
+                  # mistaken for a release.
+                  build-args: |
+                      NEXT_PUBLIC_BUILD_TYPE=prerelease
+                  labels: |
+                      org.opencontainers.image.revision=${{ github.sha }}
+                      org.opencontainers.image.version=prerelease-${{ steps.sha.outputs.short }}
+                  cache-from: type=gha
+                  cache-to: type=gha,mode=max
+
+            - name: Export digest
+              run: |
+                  mkdir -p ${{ runner.temp }}/digests
+                  digest="${{ steps.push.outputs.digest }}"
+                  touch "${{ runner.temp }}/digests/${digest#sha256:}"
+
+            - name: Upload digest
+              uses: actions/upload-artifact@v4
+              with:
+                  name: digests-amd64
+                  path: ${{ runner.temp }}/digests/*
+                  if-no-files-found: error
+                  retention-days: 1
+
+    build-arm64:
+        name: Build (arm64, native)
+        runs-on: ubuntu-24.04-arm
+        timeout-minutes: 60
+        permissions:
+            contents: read
+            packages: write
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Set image name
+              run: |
+                  OWNER="${{ github.repository_owner }}"
+                  echo "GHCR_IMAGE=ghcr.io/${OWNER,,}/kima" >> $GITHUB_ENV
+
+            # Same head room the amd64 job needs: the image carries the ML
+            # models and a full Postgres, so a default runner's disk fills
+            # partway through the build.
+            - name: Free up disk space
+              run: |
+                  sudo rm -rf /usr/share/dotnet
+                  sudo rm -rf /opt/ghc
+                  sudo rm -rf /usr/local/share/boost
+                  sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@v3
+
+            - name: Login to GitHub Container Registry
+              uses: docker/login-action@v3
+              with:
+                  registry: ghcr.io
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Get short SHA
+              id: sha
+              run: echo "short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+            - name: Build and push by digest (arm64)
+              id: push
+              uses: docker/build-push-action@v5
+              with:
+                  context: .
+                  file: ./Dockerfile
+                  platforms: linux/arm64
+                  push: true
+                  outputs: type=image,name=${{ env.GHCR_IMAGE }},push-by-digest=true,name-canonical=true,push=true
+                  # The running app shows "<version>-prerelease" so it is never
+                  # mistaken for a release.
+                  build-args: |
+                      NEXT_PUBLIC_BUILD_TYPE=prerelease
+                  labels: |
+                      org.opencontainers.image.revision=${{ github.sha }}
+                      org.opencontainers.image.version=prerelease-${{ steps.sha.outputs.short }}
+                  cache-from: type=gha
+                  cache-to: type=gha,mode=max
+
+            - name: Export digest
+              run: |
+                  mkdir -p ${{ runner.temp }}/digests
+                  digest="${{ steps.push.outputs.digest }}"
+                  touch "${{ runner.temp }}/digests/${digest#sha256:}"
+
+            - name: Upload digest
+              uses: actions/upload-artifact@v4
+              with:
+                  name: digests-arm64
+                  path: ${{ runner.temp }}/digests/*
+                  if-no-files-found: error
+                  retention-days: 1
+
+    merge:
+        name: Merge manifest
+        needs: [build-amd64, build-arm64]
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            packages: write
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Set image name
+              run: |
+                  OWNER="${{ github.repository_owner }}"
+                  echo "GHCR_IMAGE=ghcr.io/${OWNER,,}/kima" >> $GITHUB_ENV
+
+            - name: Download digests
+              uses: actions/download-artifact@v4
+              with:
+                  path: ${{ runner.temp }}/digests
+                  pattern: digests-*
+                  merge-multiple: true
 
             - name: Set up Docker Buildx
               uses: docker/setup-buildx-action@v3
@@ -77,32 +220,26 @@ jobs:
                     echo 'TAGS_EOF'
                   } >> $GITHUB_OUTPUT
 
-            - name: Build and push pre-release
-              uses: docker/build-push-action@v5
-              with:
-                  context: .
-                  file: ./Dockerfile
-                  push: true
-                  tags: ${{ steps.tags.outputs.list }}
-                  # The running app shows "<version>-prerelease" so it is never
-                  # mistaken for a release.
-                  build-args: |
-                      NEXT_PUBLIC_BUILD_TYPE=prerelease
-                  labels: |
-                      org.opencontainers.image.revision=${{ github.sha }}
-                      org.opencontainers.image.version=prerelease-${{ steps.sha.outputs.short }}
-                  cache-from: type=gha
-                  cache-to: type=gha,mode=max
-                  platforms: linux/amd64,linux/arm64
+            - name: Create manifest list and push
+              working-directory: ${{ runner.temp }}/digests
+              run: |
+                  args=()
+                  while IFS= read -r t; do
+                    [ -n "$t" ] && args+=( -t "$t" )
+                  done <<TAGS_EOF
+                  ${{ steps.tags.outputs.list }}
+                  TAGS_EOF
+                  docker buildx imagetools create "${args[@]}" \
+                    $(printf '${{ env.GHCR_IMAGE }}@sha256:%s ' *)
 
             - name: Summary
               run: |
                   {
                     echo "### Pre-release image published"
                     echo ""
-                    echo "Both architectures built, so a release tag off this commit should build too."
+                    echo "Both architectures built natively, so a release tag off this commit should build too."
                     echo ""
                     echo '```'
                     echo "docker pull ${GHCR_IMAGE}:prerelease-${{ steps.sha.outputs.short }}"
                     echo '```'
-                  } >> $GITHUB_STEP_SUMMARY
+                  } >> "$GITHUB_STEP_SUMMARY"

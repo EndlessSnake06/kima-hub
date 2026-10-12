@@ -41,25 +41,15 @@ RUN python3 export_onnx.py --src ckpt --out hf_audio.onnx \
     && echo '[builder] hf_audio.onnx exported and sha-verified'
 
 # ============================================================
-# MUSICNN ONNX BUILDER STAGE
-# Essentia's MusiCNN model and its ten heads, checksum-verified, converted to ONNX
-# and gated: the build fails unless the ONNX graphs answer as Essentia's TensorFlow
-# does (services/audio-analyzer/convert_musicnn.py). Only the ONNX files reach the
-# image. The graphs are the same on every platform; the stage runs as x86_64 because
-# Essentia-TensorFlow publishes no other Linux wheel.
-FROM --platform=linux/amd64 python:3.11-slim AS musicnn-onnx-builder
-WORKDIR /build
-RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-RUN pip3 install --no-cache-dir 'tensorflow-cpu==2.13.1' 'onnxruntime==1.22.0' 'requests' \
-    && pip3 install --no-cache-dir --no-deps 'tf2onnx==1.16.1' 'onnx==1.14.1' 'essentia-tensorflow==2.1b6.dev1389'
-COPY services/audio-analyzer/fetch_models.sh services/audio-analyzer/models.sha256 \
-     services/audio-analyzer/musicnn_onnx.py services/audio-analyzer/convert_musicnn.py ./
-# onnxruntime 1.22.0 is the GPU runtime's version; the shipped image checks its own below.
-RUN sh fetch_models.sh pb \
-    && python3 convert_musicnn.py convert pb onnx \
-    && python3 convert_musicnn.py reference pb answers.npz \
-    && python3 convert_musicnn.py gate onnx answers.npz
+# MUSICNN MODELS (vendored ONNX + reference answers)
+# MusiCNN and its ten heads ship as converted ONNX checked into the repo
+# (services/audio-analyzer/models/), together with the reference answers
+# recorded from the validated pipeline. The build gate below runs the vendored
+# graphs on this image's own ONNX Runtime and fails unless they answer within
+# 1e-4 of the reference pass -- a tampered or drifted weights file fails the
+# build. The frozen TensorFlow originals (pb/) and the converter
+# (convert_musicnn.py) stay in the repo so anyone can re-derive the ONNX and
+# re-verify; they are no longer part of any image build.
 
 FROM node:24-slim
 
@@ -98,6 +88,15 @@ RUN apt-get install -y --no-install-recommends \
     # Build tools (needed for some Python packages)
     build-essential \
     python3-dev \
+    pkg-config \
+    # Essentia source build: headers for the build, runtime libs kept after purge
+    libeigen3-dev \
+    libfftw3-dev \
+    libyaml-dev \
+    libsamplerate0-dev \
+    libfftw3-single3 \
+    libsamplerate0 \
+    libyaml-0-2 \
     && rm -rf /var/lib/apt/lists/*
 
 # Create directories
@@ -146,12 +145,25 @@ RUN pip3 install --no-cache-dir --break-system-packages \
     'soundfile==0.14.0'
 
 # Essentia for the signal analysis and MusiCNN's input features; MusiCNN itself runs on
-# ONNX Runtime, so no TensorFlow is installed. Essentia publishes Linux wheels for x86_64
-# only: there a failed install fails the build; elsewhere the image runs without audio
-# analysis and CLAP still works.
-RUN if [ "$(uname -m)" = "x86_64" ]; then \
-        pip3 install --no-cache-dir --break-system-packages --no-deps 'essentia==2.1b6.dev1389'; \
-    else echo "[$(uname -m)] Essentia has no wheel here -- audio analysis disabled"; fi
+# ONNX Runtime, so no TensorFlow is installed. Essentia publishes Linux wheels for
+# x86_64 only: it is built from source at the dev1389 pin (upstream commit 36ec3d92)
+# on every architecture, so amd64 and arm64 run the same build. The source build
+# matches the wheel's answers to 1e-6 on library tracks; the gate below proves it
+# works on this image before anything ships. A failed build here fails the image.
+RUN pip3 install --no-cache-dir --break-system-packages 'numpy==1.24.4' 'six' 'pyyaml' \
+    && curl -fsSL --retry 5 -o /tmp/essentia.tar.gz \
+        'https://github.com/MTG/essentia/archive/36ec3d929402d491cbbb1120c54631e8c205b0ff.tar.gz' \
+    && mkdir /tmp/essentia-src && tar xzf /tmp/essentia.tar.gz -C /tmp/essentia-src --strip-components=1 \
+    && cd /tmp/essentia-src \
+    && python3 waf configure --mode=release --with-python \
+    && python3 waf -j"$(nproc)" \
+    && python3 waf install \
+    && ldconfig \
+    && LIB="$(python3 -c 'import sysconfig; print(sysconfig.get_path("purelib"))')" \
+    && if [ -d /usr/local/lib/python3/dist-packages/essentia ] && [ ! -e "$LIB/essentia" ]; then \
+        mv /usr/local/lib/python3/dist-packages/essentia "$LIB/"; fi \
+    && python3 -c 'import essentia; print("essentia importable:", essentia.__version__)' \
+    && cd / && rm -rf /tmp/essentia-src /tmp/essentia.tar.gz
 
 # numpy 1.24.4 is what Essentia, the MusiCNN gate and the CLAP parity were validated with.
 # Force exact wheel versions to avoid resolver drift leaving incompatible pandas/scipy.
@@ -169,15 +181,12 @@ RUN pip cache purge \
     && find /usr -name "*.pyc" -delete \
     && find /usr -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
 
-# MusiCNN and its heads as ONNX, converted and gated in the builder stage, then
-# checked again against Essentia's answers on this image's own ONNX Runtime. The
-# answers stay: the analyzer checks its GPU session against them at every start.
-COPY --from=musicnn-onnx-builder /build/onnx/ /app/models/
-COPY --from=musicnn-onnx-builder /build/answers.npz /app/models/musicnn-answers.npz
+# MusiCNN and its heads as vendored ONNX, checked on this image's own ONNX
+# Runtime against the vendored reference answers. The answers stay in the image:
+# the analyzer checks its GPU session against them at every start.
+COPY services/audio-analyzer/models/ /app/models/
 COPY services/audio-analyzer/convert_musicnn.py services/audio-analyzer/musicnn_onnx.py /tmp/musicnn-gate/
-RUN if [ "$(uname -m)" = "x86_64" ]; then \
-        cd /tmp/musicnn-gate && python3 convert_musicnn.py gate /app/models /app/models/musicnn-answers.npz; \
-    else echo "[$(uname -m)] no Essentia -- MusiCNN gate not run, audio analysis disabled"; fi \
+RUN cd /tmp/musicnn-gate && python3 convert_musicnn.py gate /app/models /app/models/musicnn-answers.npz \
     && rm -rf /tmp/musicnn-gate
 
 # analyzer.py imports classifier and musicnn_onnx at load.
@@ -377,7 +386,8 @@ RUN MALLOC_ARENA_MAX=1 NODE_OPTIONS="--max-old-space-size=2048" npm run build \
 # supervisor launches node/next/prisma directly — so the tree is deleted.
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
         /usr/local/bin/yarn /usr/local/bin/yarnpkg 2>/dev/null || true && \
-    apt-get purge -y --auto-remove build-essential python3-dev 2>/dev/null || true && \
+    apt-get purge -y --auto-remove build-essential python3-dev pkg-config \
+        libeigen3-dev libfftw3-dev libyaml-dev libsamplerate0-dev 2>/dev/null || true && \
     rm -f /usr/bin/wget /bin/wget 2>/dev/null || true && \
     rm -f /usr/bin/curl /bin/curl 2>/dev/null || true && \
     rm -f /usr/bin/nc /bin/nc /usr/bin/ncat /usr/bin/netcat 2>/dev/null || true && \
