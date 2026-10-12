@@ -2,6 +2,7 @@ import { Router } from "express";
 import { logger } from "../utils/logger";
 import { withTimeout } from "../utils/timeout";
 import { getSimilarArtists } from "../services/artistSimilarity";
+import { listenBrainzService } from "../services/listenBrainz";
 import { musicBrainzService } from "../services/musicbrainz";
 import { resolveArtistMbid } from "../services/artistCorrection";
 import { deezerService } from "../services/deezer";
@@ -312,6 +313,65 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
             }
         }
 
+        // Popular tracks: global popularity, not the local echo. Same tiers
+        // as the library artist page (LB sitewide top recordings, then Deezer),
+        // but with no owned library to join against, every row is unowned and
+        // previewable.
+        let topTracks: any[] = [];
+        {
+            if (mbid) {
+                try {
+                    topTracks = (
+                        await listenBrainzService.getTopRecordingsForArtist(mbid, req.user!.id, 10)
+                    ).map((r) => ({
+                        id: r.recordingMbid,
+                        title: r.title,
+                        duration: Math.round(r.lengthMs / 1000) || 0,
+                        playCount: r.playCount,
+                        listeners: r.listeners,
+                        userPlayCount: 0,
+                        popularitySource: "listenbrainz",
+                        album: {
+                            id: null,
+                            title: r.releaseName || "Unknown Album",
+                        },
+                    }));
+                } catch (lbError) {
+                    logger.debug(
+                        `[Discovery] LB top recordings failed for ${artistName}:`,
+                        lbError
+                    );
+                }
+            }
+            if (topTracks.length === 0) {
+                try {
+                    topTracks = (await deezerService.getArtistTopTracks(artistName, 10)).map(
+                        (r) => ({
+                            id: `dz:${r.title.toLowerCase()}`,
+                            title: r.title,
+                            duration: Math.round(r.durationMs / 1000) || 0,
+                            playCount: r.rank,
+                            listeners: 0,
+                            userPlayCount: 0,
+                            popularitySource: "deezer",
+                            previewUrl: r.previewUrl,
+                            album: {
+                                id: null,
+                                title: r.album || "Unknown Album",
+                                coverUrl: r.coverUrl,
+                                coverArt: r.coverUrl,
+                            },
+                        })
+                    );
+                } catch (dzError) {
+                    logger.debug(
+                        `[Discovery] Deezer top tracks failed for ${artistName}:`,
+                        dzError
+                    );
+                }
+            }
+        }
+
         const response = {
             mbid,
             name: artistName,
@@ -324,9 +384,9 @@ router.get("/discover/:nameOrMbid", async (req, res) => {
             playcount: 0,
             url: mbid ? `https://musicbrainz.org/artist/${mbid}` : null,
             albums: albums.map((album: any) => ({ ...album, owned: false })), // Mark all as not owned
-            // No global play-count source, and discovery artists have no local
-            // listens: no top tracks; the page shows discography and similar artists.
-            topTracks: [],
+            // Global popularity tiers above (LB sitewide, then Deezer); empty
+            // only when both clouds were unavailable.
+            topTracks,
             similarArtists,
         };
 

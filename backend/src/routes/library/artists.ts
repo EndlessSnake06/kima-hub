@@ -27,8 +27,11 @@ import { toAudioFeaturesDTO } from "../../utils/audioFeatures";
 import { resolveWithinMusicRoot } from "./trackPath";
 import { parseLimit } from "./paging";
 import { findArtistArtwork, withAlbumArtwork } from "../../services/artwork";
+import { listenBrainzService } from "../../services/listenBrainz";
+import { deezerService } from "../../services/deezer";
 import { LIBRARY_LOCATION } from "../../services/libraryFilters";
 import { editionlessKey } from "../../services/albumIdentity";
+import { getEffectiveYear } from "../../utils/dateFilters";
 
 // Alphabetical sorts use `sortName` (article-stripped, unaccented,
 // lowercased; indexed). `name`/`name-desc` take the raw-SQL branch below,
@@ -577,9 +580,133 @@ router.get("/artists/:id", async (req, res) => {
 
     const userId = req.user!.id;
 
-    // Top tracks: the user's most played by this artist; with no plays, the
-    // artist's tracks by MusicBrainz first-release date.
+    // Popular tracks: real global popularity, not an echo of the user's own
+    // listens. ListenBrainz sitewide top recordings first (needs the user's
+    // scrobble token), Deezer's artist-top as the no-token fallback; both are
+    // joined against the owned library so owned rows play and unowned rows
+    // preview. When both sources are unavailable the local floor applies:
+    // the user's most played by this artist, then MB first-release date.
+    let popularitySource = "local";
     {
+      const ownedByMbid = new Map<string, any>();
+      const ownedByTitle = new Map<string, any>();
+      for (const t of allTracks) {
+        if (t.recordingMbid) ownedByMbid.set(t.recordingMbid, t);
+        const bare = t.title.replace(/\s*[-–(].*$/, "").trim().toLowerCase();
+        if (bare && !ownedByTitle.has(bare)) ownedByTitle.set(bare, t);
+      }
+      const joinOwned = (
+        rows: Array<{
+          key: string;
+          title: string;
+          albumName?: string | null;
+          coverUrl?: string | null;
+          previewUrl?: string | null;
+          durationMs?: number;
+          listeners: number;
+          playCount: number;
+        }>
+      ): any[] => {
+        const seen = new Set<string>();
+        const joined: any[] = [];
+        for (const r of rows) {
+          const owned =
+            ownedByMbid.get(r.key) ||
+            ownedByTitle.get(r.title.toLowerCase()) ||
+            ownedByTitle.get(
+              r.title.replace(/\s*[-–(].*$/, "").trim().toLowerCase()
+            );
+          // Two global rows can join to the same owned track (the Radio Edit
+          // and the album cut of one song): keep the first, higher-ranked one.
+          const dedupeKey = owned ? owned.id : `dz:${r.key}`;
+          if (seen.has(dedupeKey)) continue;
+          seen.add(dedupeKey);
+          if (owned) {
+            joined.push({
+              ...owned,
+              playCount: r.playCount,
+              listeners: r.listeners,
+              userPlayCount: owned.playCount ?? 0,
+              popularitySource: "global",
+              album: { ...owned.album, coverArt: owned.album?.coverUrl },
+            });
+          } else {
+            joined.push({
+              id: `dz:${r.key}`,
+              title: r.title,
+              duration: Math.round((r.durationMs || 0) / 1000) || 0,
+              playCount: r.playCount,
+              listeners: r.listeners,
+              userPlayCount: 0,
+              popularitySource: "global",
+              previewUrl: r.previewUrl || null,
+              album: {
+                id: null,
+                title: r.albumName || "Unknown Album",
+                coverUrl: r.coverUrl || null,
+                coverArt: r.coverUrl || null,
+              },
+            });
+          }
+        }
+        return joined;
+      };
+
+      let global: any[] = [];
+      if (isMbid(effectiveMbid)) {
+        try {
+          const lb = await listenBrainzService.getTopRecordingsForArtist(effectiveMbid, userId, 10);
+          if (lb.length > 0) {
+            global = joinOwned(
+              lb.map((r) => ({
+                key: r.recordingMbid,
+                title: r.title,
+                albumName: r.releaseName,
+                durationMs: r.lengthMs,
+                listeners: r.listeners,
+                playCount: r.playCount,
+              }))
+            );
+            popularitySource = "listenbrainz";
+          }
+        } catch (lbError) {
+          logger.warn(
+            `[Artist] ListenBrainz top recordings failed for ${artist.name}:`,
+            lbError
+          );
+        }
+      }
+      if (global.length === 0) {
+        try {
+          const dz = await deezerService.getArtistTopTracks(artist.name, 10);
+          if (dz.length > 0) {
+            global = joinOwned(
+              dz.map((r) => ({
+                key: r.title.toLowerCase(),
+                title: r.title,
+                albumName: r.album,
+                coverUrl: r.coverUrl,
+                previewUrl: r.previewUrl,
+                durationMs: r.durationMs,
+                listeners: 0,
+                playCount: r.rank,
+              }))
+            );
+            popularitySource = "deezer";
+          }
+        } catch (dzError) {
+          logger.warn(
+            `[Artist] Deezer top tracks failed for ${artist.name}:`,
+            dzError
+          );
+        }
+      }
+      topTracks = global;
+      logger.debug(
+        `[Artist] Popular tracks from ${popularitySource} (${global.length})`,
+      );
+    }
+    if (topTracks.length === 0) {
       const played = await prisma.$queryRaw<
         Array<{
           id: string;
@@ -745,13 +872,23 @@ router.get("/artists/:id", async (req, res) => {
       }
     }
 
+    // Both album sections on the artist page are year-ordered. The array above is assembled
+    // database-first then MusicBrainz, so its raw order is acquisition order: an artist's
+    // unowned albums came back looking random, and the web renders this order directly.
+    const albumsByYear = [...albumsWithOwnership].sort((a, b) => {
+      const av = getEffectiveYear(a) ?? -1;
+      const bv = getEffectiveYear(b) ?? -1;
+      if (av !== bv) return bv - av;
+      return String(a.title).localeCompare(String(b.title));
+    });
+
     res.json({
       ...artist,
       mbid: isMbid(artist.mbid) ? artist.mbid : null,
       coverArt: heroUrl,
       bio: getArtistDisplaySummary(artist),
       genres: getMergedGenres(artist),
-      albums: albumsWithOwnership,
+      albums: albumsByYear,
       topTracks,
       similarArtists,
     });

@@ -32,6 +32,17 @@ interface DeezerTrack {
     coverUrl: string | null;
 }
 
+/** One of an artist's most popular tracks on Deezer (its /artist/{id}/top). */
+export interface DeezerTopTrack {
+    title: string;
+    artist: string;
+    album: string | null;
+    coverUrl: string | null;
+    previewUrl: string | null;
+    durationMs: number;
+    rank: number;
+}
+
 interface DeezerPlaylist {
     id: string;
     title: string;
@@ -213,6 +224,62 @@ class DeezerService {
         } catch (error: any) {
             // An error is not "no related artists": the caller decides what a failed source means.
             logger.warn(`Deezer related artists error for ${artistName}: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * An artist's most popular tracks on Deezer (its own rank order), for the
+     * artist page's "Popular" section. The artist is resolved by verified
+     * search (same rule as every Deezer call: a hit counts only when the name
+     * agrees), then `/artist/{id}/top`. [] when unresolved or the artist has
+     * no top list; throws on a transport error so the caller can decide.
+     */
+    async getArtistTopTracks(artistName: string, limit = 10): Promise<DeezerTopTrack[]> {
+        const cacheKey = `artist-top:${artistName.toLowerCase()}:${limit}`;
+
+        try {
+            return await this.cachedRequest(cacheKey, async () => {
+                const search = await this.deezerGet<any>("/search/artist", {
+                    params: { q: artistName, limit: 25 },
+                    timeout: 5000,
+                });
+                const hits: any[] = search?.data || [];
+                // Deezer's rank puts namesakes first (an obscure exact "Adele"
+                // outranks THE Adele, who sits at position 6), and shared
+                // names normalize alike (Emine'm == Eminem). Search wide and
+                // let fan count decide: the artist a library page is about is
+                // never the namesake with a thousand fans.
+                const seed = hits
+                    .filter((h) => h?.id && namesAgree(h.name, artistName))
+                    .sort((a, b) => (Number(b.nb_fan) || 0) - (Number(a.nb_fan) || 0))[0];
+                if (!seed) {
+                    logger.debug(
+                        `[DEEZER] Seed "${artistName}" unresolved for top tracks`
+                    );
+                    return [];
+                }
+
+                const top = await this.deezerGet<any>(`/artist/${seed.id}/top`, {
+                    params: { limit },
+                    timeout: 5000,
+                });
+                const list: any[] = top?.data || [];
+                return list
+                    .filter((t: any) => t?.title)
+                    .slice(0, limit)
+                    .map((t: any) => ({
+                        title: String(t.title),
+                        artist: t.artist?.name || artistName,
+                        album: t.album?.title || null,
+                        coverUrl: t.album?.cover_medium || t.album?.cover || null,
+                        previewUrl: t.preview || null,
+                        durationMs: (Number(t.duration) || 0) * 1000,
+                        rank: Number(t.rank) || 0,
+                    }));
+            });
+        } catch (error: any) {
+            logger.warn(`Deezer artist top tracks error for ${artistName}:`, error.message);
             throw error;
         }
     }

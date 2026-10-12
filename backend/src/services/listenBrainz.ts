@@ -30,6 +30,17 @@ export interface ChartArtist {
     mbid: string;
 }
 
+/** One of an artist's most-listened recordings, sitewide (popularity API). */
+export interface LbTopRecording {
+    recordingMbid: string;
+    title: string;
+    releaseMbid: string | null;
+    releaseName: string | null;
+    lengthMs: number;
+    listeners: number;
+    playCount: number;
+}
+
 const LB_BASE = process.env.LISTENBRAINZ_API_URL || "https://api.listenbrainz.org";
 const LB_LABS_BASE = process.env.LISTENBRAINZ_LABS_URL || "https://labs.api.listenbrainz.org";
 /** The model ListenBrainz's artist pages show similar artists from
@@ -201,6 +212,66 @@ class ListenBrainzService {
         } catch (error) {
             logger.warn("ListenBrainz sitewide chart error:", error);
             return [];
+        }
+    }
+
+    /**
+     * An artist's most-listened recordings across all of ListenBrainz,
+     * strongest first. The popularity endpoint needs a token (any user's;
+     * it is gated against scrapers, not use), so the playing user's own
+     * scrobble token unlocks it. The artist page's "Popular" section reads
+     * this; with no token or no data the caller falls to Deezer and the
+     * local floor. Ranked data moves slowly; cached 6h.
+     */
+    async getTopRecordingsForArtist(
+        artistMbid: string,
+        userId: string,
+        limit = 10
+    ): Promise<LbTopRecording[]> {
+        // ListenBrainz requires an auth token on popularity endpoints
+        // (anonymous calls now get 401 at their gateway). That is an
+        // opt-in bonus for users who connected ListenBrainz for scrobbling:
+        // anyone without a token skips straight to the Deezer tier, so
+        // nothing in Kima asks a user to sign up anywhere.
+        const token = await this.getUserToken(userId);
+        if (!token) return [];
+
+        const cacheKey = `lb:top-rec:${artistMbid}:${limit}`;
+        try {
+            const cached = await redisClient.get(cacheKey);
+            if (cached) return JSON.parse(cached) as LbTopRecording[];
+        } catch (err) {
+            logger.warn("Redis get error:", err);
+        }
+
+        try {
+            const rows = await this.rateLimitedGet<any>(
+                `/1/popularity/top-recordings-for-artist/${artistMbid}`,
+                { count: limit },
+                token,
+                INTERACTIVE_PRIORITY
+            );
+            const results: LbTopRecording[] = (Array.isArray(rows) ? rows : [])
+                .filter((r: any) => r?.recording_mbid && r?.recording_name)
+                .slice(0, limit)
+                .map((r: any) => ({
+                    recordingMbid: r.recording_mbid,
+                    title: r.recording_name,
+                    releaseMbid: r.release_mbid || null,
+                    releaseName: r.release_name || null,
+                    lengthMs: Number(r.length) || 0,
+                    listeners: Number(r.total_user_count) || 0,
+                    playCount: Number(r.total_listen_count) || 0,
+                }));
+            if (results.length > 0) {
+                await redisClient.setex(cacheKey, 21600, JSON.stringify(results));
+            }
+            return results;
+        } catch (error) {
+            // An error is not "no data": the caller decides what a failed
+            // source means.
+            logger.warn(`ListenBrainz top recordings error for ${artistMbid}:`, error);
+            throw error;
         }
     }
 
