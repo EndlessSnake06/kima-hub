@@ -84,35 +84,19 @@ const WIPE_MESSAGE =
 
 const KEVIN_1_11 = [
     "Hey y'all.",
-    "I know updates have been slow, and if you've stuck around, thank you. If this is your first install, great timing.",
-    "I've had a series of unfortunate events since the launch of Kima, oddly. Painful family passings in short order, " +
+    "I know updates have been slow. If you've stuck around, thank you. If this is your first install, great timing.",
+    "I've had a series of unfortunate events since Kima launched, oddly. Painful family passings in short order, " +
         "animal emergencies keeping us at the vet overnight, and of course the atrocity that is the American corporate " +
-        "grind. I also have ADHD, so I hyperfocus on shit and realize later I've been neglecting the big boy. And I have " +
-        "seemingly infinite ideas that I'm toying with, which are also a partial cause for the delays. That's done now. " +
-        "My focus is on Kima, the mobile application, and most importantly, the vibe engine.",
-    "Between all of that, I've been working on Kima v2, and this new enrichment engine rebuild is phase 1. This update " +
-        "does require a complete wipe and rerun of the engine. Only the engine's data gets wiped; your music, playlists, " +
-        "plays and likes stay exactly as they are. I think you'll be happy that you did.",
-    "The future of Kima is going to be wild. I'm not going to go deep on my future plans yet, because honestly I'm a " +
-        "little shy about it. But at a glance:",
-    [
-        "- Our own embed model",
-        "- Social features",
-        "- A personal vibe layer that sits on top of the base matching engine to tailor your personal vibes",
-        "- Modularizing Kima so you pick your own install. Beyond music, everything becomes a module: audiobooks, " +
-            "podcasts, social, a future e-reader (conceptualized, no code yet). People have asked me to let them " +
-            "strip audiobooks out; soon they'll be able to. And I want room for users to publish their own modules " +
-            "for everyone to pull from",
-        "- And my favorite bit: a shared global enrichment database. Purely opt-in and anonymized: you upload only " +
-            "the finished vectors and basic artist data. Over time, most installs skip the enrichment grind and pull " +
-            "from a database we built together",
-    ].join("\n"),
-    "My plan is natural discovery, not promoted discovery. That means any artist jamming to their own music gets the " +
-        "same care as everything else, and once uploaded to the global database, a new undiscovered map will populate " +
-        "with it. You'll be able to see music, regardless of artist, hype or financial backing, right in the zones you " +
-        "tend to favor. Natural, fair, and honestly exciting. Of course, the code will be open source and free to " +
-        "peruse, so you know I'm not just harvesting your data.",
-    "Like I said above, if you've stuck around, if you yell at the app in frustration (I do) but still hang in, I " +
+        "grind. I also have ADHD, so I hyperfocus on shit and realize later I've been neglecting the big boy. " +
+        "That's done now. My focus is Kima: the mobile application and, most importantly, the vibe engine.",
+    "Through all of that I've been building Kima v2, and this enrichment engine rebuild is phase 1. This update " +
+        "needs a complete wipe and rerun of the engine. Only the engine's data gets wiped; your music, playlists, " +
+        "plays and likes stay exactly as they are. I think you'll be happy you did.",
+    "The plan is to modularize Kima with a store. The base app stays pure music + vibes. Everything else " +
+        "\u2014 audiobooks, podcasts, future additions \u2014 comes from the store, and you configure what your Kima " +
+        "includes. People have asked me to let them strip audiobooks out; they'll be able to. And I want room for " +
+        "you to publish your own modules for anyone to pull from.",
+    "If you've stuck around, if you yell at the app in frustration (I do) but still hang in \u2014 I " +
         "love you. Thanks again, and I hope this update makes y'all feel good. We need it in this world.",
 ].join("\n\n");
 
@@ -122,7 +106,7 @@ export const RELEASES: Release[] = [
         title: "Kima 1.11",
         summary:
             "Songs match on sound, feel and genre, there's a new vibe map, the enrichment engine is rebuilt, and Last.fm is gone.",
-        date: "2026-10-05",
+        date: "2026-10-12",
         note: { from: "Kevin", body: KEVIN_1_11 },
         items: [
             {
@@ -184,8 +168,9 @@ export const RELEASES: Release[] = [
                     "The analyzers only report what they actually measured. Anything they couldn't work out stays " +
                     "empty instead of being guessed.\n\n" +
                     "Everything runs on ONNX Runtime now: the sound vectors and the audio analysis both. No PyTorch " +
-                    "anywhere. It's lighter, it runs on Apple silicon, and a switch in Settings moves the heavy work " +
-                    "onto an NVIDIA card.",
+                    "anywhere. It's lighter, and a switch in Settings moves the heavy work onto an NVIDIA card when " +
+                    "Kima can see one. The whole engine builds and runs natively on x86 and ARM, so Apple-silicon " +
+                    "Macs get the full analysis, not a reduced one.",
             },
             {
                 kind: "note",
@@ -244,7 +229,10 @@ export const RELEASES: Release[] = [
                 body:
                     "Similar artists come from ListenBrainz, with Deezer as a backup. Names come from MusicBrainz, " +
                     "artist bios from Wikidata, and album art from Deezer and the Cover Art Archive. None of it needs " +
-                    "an account or an API key.",
+                    "an account or an API key.\n\n" +
+                    "ListenBrainz is recommended for popularity, never required. If you sign up there and turn on " +
+                    "scrobbling, Kima switches your popularity to your ListenBrainz data automatically. Until then, " +
+                    "Deezer keeps filling it in.",
             },
             {
                 kind: "choice",
@@ -252,9 +240,9 @@ export const RELEASES: Release[] = [
                 title: "Use an NVIDIA graphics card",
                 summary: "Optional. Run the heaviest job on your graphics card; off unless you turn it on.",
                 body:
-                    "Making vibe data is the heaviest job Kima runs. If your server has an NVIDIA card that Kima can " +
-                    "see, that job can run on the card: about 1.5 times faster, and your processor stays free for " +
-                    "everything else.\n\n" +
+                    "Making vibe data is the heaviest job Kima runs. If your server runs Linux and has an NVIDIA " +
+                    "card that Kima can see, that job can run on the card: about 2 to 3 times faster with your " +
+                    "worker slider up, and your processor stays free for everything else.\n\n" +
                     "It's safe to turn on partway through a run. You can change it any time in Settings, under " +
                     "Library Enrichment.",
                 discloses:

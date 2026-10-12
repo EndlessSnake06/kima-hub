@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - nightly
 
-## [1.11.0] - 2026-10-09
+## [1.11.0] - 2026-10-12
 
 ### Added
 
@@ -92,6 +92,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A song whose fingerprint can't be made is still identified** by its tags and a name search; it was closed unidentified.
 - **An artist is asked again after a MusicBrainz outage** instead of being marked done without its genres.
 - **Upgrading works on a database Kima's user doesn't own** (an external Postgres); the clock setting falls back to the user's own.
+- **Sound-vector building keeps up with the worker slider.** Raising workers past the count set at startup exhausted the analyzer's database connections and wedged songs mid-embed; the pool now follows the live slider, always kept under the server's own connection limit.
+- **The sound-vector stage starts and stays running.** A refactor stopped its worker 125 milliseconds after launch and the progress ledger froze without an error; it was proven running again at concurrency 16 and 24.
+- **GPU switches appear only where a GPU can exist** — Linux with an NVIDIA card the server can see. They were offered on every platform and did nothing elsewhere.
+- **The app opens in browsers that block storage.** Private-mode and blocked-storage browsers crashed the API client on load; sign-in now keeps working in memory and the app opens.
 - **A song's genres are its recording's own MusicBrainz genres** whichever way it was identified; songs identified from their album's tracklist were given crowd tags or, without them, the album's genres. Spotify playlist import and shared links pick MusicBrainz's recording by title, version, artist and length too, instead of taking its first answer. On upgrade each album's tracklist is fetched once more (two MusicBrainz requests per album).
 - **Enrichment says it is finished only when it is.** It waited for neither identification answers due a retry nor artists still being looked up, and a question someone set aside counted as still to do, which also kept the vibe map from being laid out.
 - **Audio analysis reads the real end of a song** when the file's header gives a shorter length than the audio has.

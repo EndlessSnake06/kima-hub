@@ -68,6 +68,12 @@ After a scan, Kima runs five enrichment steps in the background: artist metadata
   <img src="assets/screenshots/desktop-home.png" alt="The home page on a computer" width="800">
 </p>
 
+Each update opens with a short list of what changed and, sometimes, a note from Kevin; every line opens its own page with the buttons and links for it.
+
+<p align="center">
+  <img src="assets/screenshots/whats-new.png" alt="The update window" width="800">
+</p>
+
 ### Your library
 
 - **Your files.** Reads MP3, FLAC, M4A, AAC, OGG, Opus, WAV, WMA, APE and WV files, and identifies them with MusicBrainz: first by a MusicBrainz tag in the file, then by the album's track list and a title-checked name search, and last by an AcoustID audio fingerprint.
@@ -84,6 +90,10 @@ After a scan, Kima runs five enrichment steps in the background: artist metadata
 <p align="center">
   <img src="assets/screenshots/desktop-album.png" alt="An album page" width="49%">
   <img src="assets/screenshots/desktop-artist.png" alt="An artist page" width="49%">
+</p>
+
+<p align="center">
+  <img src="assets/screenshots/desktop-collection.png" alt="The collection: browse by mood, album, artist and genre" width="800">
 </p>
 
 ### Finding something to play
