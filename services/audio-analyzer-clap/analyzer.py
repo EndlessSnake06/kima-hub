@@ -498,6 +498,8 @@ class BullMQVibeWorker:
         self.stop_event = stop_event
         self._redis_client = None
         self._db_pool = None  # psycopg2.pool.ThreadedConnectionPool
+        self._db_pool_lock = threading.Lock()
+        self._server_max_connections = None
         # Concurrency is live, not frozen at import. The settings screen writes
         # SystemSettings.clapWorkers and publishes set_workers; this is where
         # that number lands. Guarded because ControlHandler sets it from a
@@ -531,14 +533,18 @@ class BullMQVibeWorker:
             loop.close()
             logger.info("BullMQVibeWorker stopped")
 
-    async def _run(self):
-        from bullmq import Worker as BullWorker
+    def _pool_size(self, workers: int) -> int:
+        """Connections to hold for `workers` concurrent jobs: two per job, with
+        a floor and a ceiling. The ceiling respects the server's own limit
+        (max_connections, read once at connect) minus room for the backend's
+        pool, so a many-core host can never wedge Postgres itself."""
+        headroom = 10
+        server_max = self._server_max_connections or 100
+        return max(8, min(workers * 2, max(9, server_max - headroom)))
 
-        self._redis_client = redis.from_url(REDIS_URL)
-
-        # Thread-safe connection pool — each executor thread gets its own
-        # connection so concurrent jobs never share a psycopg2 connection.
-        pool_size = max(8, self.desired_concurrency * 2)
+    def _connect_pool(self, workers: int):
+        self._server_max_connections = self._read_server_max_connections()
+        pool_size = self._pool_size(workers)
         self._db_pool = psycopg2.pool.ThreadedConnectionPool(
             minconn=1,
             maxconn=pool_size,
@@ -548,24 +554,66 @@ class BullMQVibeWorker:
         )
         logger.info(f"Connected to PostgreSQL (pool size: {pool_size})")
 
-        def build_worker(concurrency: int):
-            w = BullWorker(
-                VIBE_QUEUE_NAME,
-                self._process_job,
-                {
-                    "connection": REDIS_URL,
-                    "concurrency": concurrency,
-                    "lockDuration": JOB_LOCK_MS,
-                },
+    def _read_server_max_connections(self) -> int | None:
+        """The server's max_connections, or None when it cannot be read (the
+        fallback ceiling then applies)."""
+        try:
+            conn = psycopg2.connect(
+                dsn=DATABASE_URL,
+                options="-c client_encoding=UTF8 -c timezone=UTC",
+                application_name="clap-analyzer",
             )
-            w.on("failed", lambda job, err: logger.error(
-                f"[BullMQ] Job {job.id if job else '?'} failed: {err}"
-            ))
-            w.on("error", lambda err: logger.error(f"[BullMQ] Worker error: {err}"))
-            return w
+            try:
+                with conn.cursor() as cursor:
+                    cursor.execute("SHOW max_connections")
+                    row = cursor.fetchone()
+                return int(row[0]) if row else None
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.warning(f"Could not read max_connections: {e}")
+            return None
 
+    def _resize_pool(self, workers: int):
+        """Bring the pool to the size `workers` needs. Called only from the
+        worker-replacement path, after close() has drained every running job,
+        so no connection is checked out when the old pool closes."""
+        with self._db_pool_lock:
+            old = self._db_pool
+            self._connect_pool(workers)
+            if old is not None:
+                try:
+                    old.closeall()
+                except Exception as e:
+                    logger.warning(f"Error closing the old DB pool: {e}")
+            logger.info(f"DB pool resized for {workers} workers")
+
+    def build_worker(self, concurrency: int):
+        # Imported here, not at module top, to match the worker's own lazy
+        # load; the import must live in this method's scope, which is entered
+        # fresh on every call.
+        from bullmq import Worker as BullWorker
+
+        w = BullWorker(
+            VIBE_QUEUE_NAME,
+            self._process_job,
+            {
+                "connection": REDIS_URL,
+                "concurrency": concurrency,
+                "lockDuration": JOB_LOCK_MS,
+            },
+        )
+        w.on("failed", lambda job, err: logger.error(
+            f"[BullMQ] Job {job.id if job else '?'} failed: {err}"
+        ))
+        w.on("error", lambda err: logger.error(f"[BullMQ] Worker error: {err}"))
+        return w
+
+    async def _run(self):
+        self._redis_client = redis.from_url(REDIS_URL)
         self._active_concurrency = self.desired_concurrency
-        bullmq_worker = build_worker(self._active_concurrency)
+        self._connect_pool(self._active_concurrency)
+        bullmq_worker = self.build_worker(self._active_concurrency)
         logger.info(f"[BullMQ] Worker started with concurrency {self._active_concurrency}")
 
         last_heartbeat = 0.0
@@ -583,7 +631,11 @@ class BullMQVibeWorker:
                         await bullmq_worker.close()
                     except Exception as e:
                         logger.error(f"[BullMQ] Error closing worker for resize: {e}")
-                    bullmq_worker = build_worker(target)
+                    # With every job drained, no connection is checked out:
+                    # rebuild the pool for the new count before the new worker
+                    # starts taking jobs, so it never runs against the old size.
+                    self._resize_pool(target)
+                    bullmq_worker = self.build_worker(target)
                     self._active_concurrency = target
                     logger.info(f"[BullMQ] Worker now running with concurrency {target}")
 
