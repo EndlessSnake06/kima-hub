@@ -196,24 +196,6 @@ export function WhatsNewWindow({
         return null;
     };
 
-    const showWaiting = () => {
-        if (waiting.length === 1) {
-            openItem(waiting[0].key);
-            return;
-        }
-        setOpenKey(null);
-        const jump = () => {
-            const heading = dialogRef.current?.querySelector<HTMLElement>("#whats-new-needs");
-            if (!heading) {
-                requestAnimationFrame(jump);
-                return;
-            }
-            heading.scrollIntoView({ block: "start" });
-            heading.focus();
-        };
-        requestAnimationFrame(jump);
-    };
-
     const itemList = (list: ReleaseItem[]) => (
         <ul className="-mx-3 flex flex-col">
             {list.map((item) => {
@@ -273,6 +255,69 @@ export function WhatsNewWindow({
             </h3>
             <Body text={release.note.body} />
             <p className="pt-1 text-[0.9375rem] font-medium text-white">{release.note.from}</p>
+        </section>
+    );
+
+    const NEEDS = "__needs";
+
+    const fullView = opened !== null || openKey === NEEDS;
+
+    const backLabel = (
+        <>
+            <ChevronLeft className="w-4 h-4" />
+            {wide ? (
+                <>
+                    <span className="lg:hidden">What&apos;s new</span>
+                    <span className="hidden lg:inline">{release.note!.from}&apos;s note</span>
+                </>
+            ) : (
+                "What's new"
+            )}
+        </>
+    );
+
+    const needsPage = (
+        <section aria-labelledby="whats-new-needs-page" className="flex flex-col gap-5 max-w-prose">
+            <button
+                type="button"
+                data-back
+                onClick={() => setOpenKey(null)}
+                className="-ml-2 self-start min-h-9 py-1.5 pl-1 pr-3 rounded-lg flex items-center gap-1 text-sm text-[var(--text-secondary)] hover:text-white hover:bg-white/5 transition-colors"
+            >
+                {backLabel}
+            </button>
+            <h3 id="whats-new-needs-page" className="text-xl font-semibold tracking-tight text-white text-balance">
+                Needs you
+            </h3>
+            {waiting.map((item) => (
+                <div key={item.key} className="flex flex-col gap-3 pt-5 border-t border-white/10">
+                    <h4 className="text-base font-semibold text-white">{item.title}</h4>
+                    <div className="flex flex-col gap-3">
+                        <Body text={item.body} />
+                    </div>
+                    {item.kind === "choice" && (
+                        <div className="flex flex-col gap-3">
+                            {item.discloses && (
+                                <p className="text-sm leading-relaxed text-[var(--text-secondary)] max-w-[62ch]">
+                                    <span className="text-white">What leaves your server: </span>
+                                    {item.discloses}
+                                </p>
+                            )}
+                            <div className="flex gap-2">
+                                <ChoiceButton selected={choices[item.key] === true} onClick={() => answer(item.key, true)} label="Turn it on" />
+                                <ChoiceButton selected={choices[item.key] === false} onClick={() => answer(item.key, false)} label="No thanks" />
+                            </div>
+                            {choices[item.key] === undefined && (
+                                <p className="text-sm text-[var(--text-muted)]">If you don&apos;t answer, it stays off.</p>
+                            )}
+                        </div>
+                    )}
+                    {item.kind === "action" && renderAction?.(item)}
+                    {item.kind === "action" && item.ifClosed && !done.includes(item.key) && (
+                        <p className="text-sm text-[var(--text-muted)] max-w-[62ch]">{item.ifClosed}</p>
+                    )}
+                </div>
+            ))}
         </section>
     );
 
@@ -339,6 +384,8 @@ export function WhatsNewWindow({
         </section>
     );
 
+    const pageBody = opened ? page(opened) : openKey === NEEDS ? needsPage : note;
+
     return (
         <div
             className="fixed inset-0 z-(--z-modal) flex items-end sm:items-center justify-center bg-black/70 p-0 sm:p-6 animate-fade-soft"
@@ -369,10 +416,10 @@ export function WhatsNewWindow({
                         <div
                             ref={bodyRef}
                             className={`min-h-0 overflow-y-auto px-5 sm:px-6 py-6 border-b lg:border-b-0 lg:border-r border-white/10 ${
-                                opened ? "flex-1 hidden lg:block" : "max-h-[38vh] lg:max-h-none lg:flex-[1.2]"
+                                fullView ? "flex-1 hidden lg:block" : "max-h-[38vh] lg:max-h-none lg:flex-[1.2]"
                             }`}
                         >
-                            {opened ? page(opened) : note}
+                            {pageBody}
                         </div>
                         <div className={`min-h-0 overflow-y-auto px-5 sm:px-6 py-6 ${opened ? "hidden lg:block flex-1" : "flex-1"}`}>
                             {list}
@@ -380,7 +427,7 @@ export function WhatsNewWindow({
                     </div>
                 ) : (
                     <div ref={bodyRef} className="flex-1 min-h-0 overflow-y-auto px-5 sm:px-6 py-6">
-                        {opened ? page(opened) : list}
+                        {opened ? page(opened) : openKey === NEEDS ? needsPage : list}
                     </div>
                 )}
 
@@ -394,7 +441,7 @@ export function WhatsNewWindow({
                             <p className="text-xs leading-relaxed text-[var(--text-muted)]">
                                 <button
                                     type="button"
-                                    onClick={showWaiting}
+                                    onClick={() => openItem(NEEDS)}
                                     data-testid="whatsnew-waiting"
                                     className="text-white underline underline-offset-4 decoration-white/30 hover:decoration-white"
                                 >
