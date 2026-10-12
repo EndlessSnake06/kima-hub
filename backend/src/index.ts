@@ -215,12 +215,34 @@ async function healthHandler(_req: express.Request, res: express.Response) {
     const embeddingCheck = await checkEmbeddingWritePath();
     const lidarr = lidarrHealthMonitor.getState();
 
+    // Both analyzers hold an open Postgres connection under their own
+    // application_name, so the database answers "are they alive". A dead
+    // analyzer (crash loop, gave up) shows up here instead of hiding behind
+    // an all-ok — the 20h silent outage this would have caught.
+    let analyzers: string;
+    try {
+        const rows = await prisma.$queryRaw<Array<{ application_name: string }>>`
+            SELECT DISTINCT application_name FROM pg_stat_activity
+            WHERE datname = current_database() AND application_name IN ('audio-analyzer', 'clap-analyzer')`;
+        const names = new Set(rows.map((r) => r.application_name));
+        analyzers = names.has("audio-analyzer")
+            ? names.has("clap-analyzer")
+                ? "ok"
+                : "analysis-only"
+            : names.has("clap-analyzer")
+              ? "embeddings-only"
+              : "offline";
+    } catch {
+        analyzers = "unknown";
+    }
+
     const allOk = Object.values(checks).every((v) => v === "ok");
     res.status(allOk ? 200 : 503).json({
         status: allOk ? "ok" : "degraded",
         uptime: Math.floor(process.uptime()),
         version: config.version,
         ...checks,
+        analyzers,
         // Codes only: this route needs no login, and the full reasons are in the log.
         embeddingWritePath: embeddingCheck.ok ? "ok" : "error",
         ...(embeddingCheck.ok ? {} : { embeddingWritePathReason: embeddingCheck.reason }),
