@@ -203,6 +203,8 @@ export interface AnalysisWorkersConfig {
 }
 
 export interface GpuRuntimeStatus {
+    /** Whether the CUDA runtime exists for this host (linux/x86_64); false hides the switches everywhere. */
+    supported: boolean;
     /** The switch for vibe embeddings (sound vectors). */
     enabled: boolean;
     /** The switch for audio analysis (MusiCNN); shares the same download. */
@@ -225,6 +227,19 @@ export interface GpuRuntimeStatus {
     updatedAt: string | null;
 }
 
+/**
+ * The browser's storage, when it exists. SSR never has it; some client
+ * environments throw on access (sandboxed iframes). Callers keep working in
+ * memory when it's absent. Reads the global, which is what a browser exposes.
+ */
+const authStorage = (): Storage | null => {
+    try {
+        return (globalThis as { localStorage?: Storage }).localStorage ?? null;
+    } catch {
+        return null;
+    }
+};
+
 class ApiClient {
     private token: string | null = null;
     private tokenInitialized: boolean = false;
@@ -232,8 +247,9 @@ class ApiClient {
     private ensurePromise: Promise<"fresh" | RefreshResult> | null = null;
 
     constructor() {
-        if (typeof window !== "undefined") {
-            this.token = localStorage.getItem(AUTH_TOKEN_KEY);
+        const storage = authStorage();
+        if (storage) {
+            this.token = storage.getItem(AUTH_TOKEN_KEY);
             if (this.token) {
                 this.tokenInitialized = true;
             }
@@ -246,11 +262,12 @@ class ApiClient {
      * Call this early in the app lifecycle to ensure the token is loaded
      */
     async initToken(): Promise<string | null> {
-        if (typeof window === "undefined") {
+        const storage = authStorage();
+        if (!storage) {
             return null;
         }
 
-        const storedToken = localStorage.getItem(AUTH_TOKEN_KEY);
+        const storedToken = storage.getItem(AUTH_TOKEN_KEY);
         if (storedToken) {
             this.token = storedToken;
         }
@@ -275,26 +292,26 @@ class ApiClient {
 
     setToken(token: string, refreshToken?: string) {
         this.token = token;
-        if (typeof window !== "undefined") {
-            localStorage.setItem(AUTH_TOKEN_KEY, token);
+        const storage = authStorage();
+        if (storage) {
+            storage.setItem(AUTH_TOKEN_KEY, token);
             if (refreshToken) {
-                localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+                storage.setItem(REFRESH_TOKEN_KEY, refreshToken);
             }
         }
     }
 
     getRefreshToken(): string | null {
-        if (typeof window === "undefined") {
-            return null;
-        }
-        return localStorage.getItem(REFRESH_TOKEN_KEY);
+        const storage = authStorage();
+        return storage ? storage.getItem(REFRESH_TOKEN_KEY) : null;
     }
 
     clearToken() {
         this.token = null;
-        if (typeof window !== "undefined") {
-            localStorage.removeItem(AUTH_TOKEN_KEY);
-            localStorage.removeItem(REFRESH_TOKEN_KEY);
+        const storage = authStorage();
+        if (storage) {
+            storage.removeItem(AUTH_TOKEN_KEY);
+            storage.removeItem(REFRESH_TOKEN_KEY);
         }
     }
 
@@ -767,9 +784,10 @@ class ApiClient {
         if (this.token) {
             return this.token;
         }
-        // Try to load from localStorage if on client
-        if (typeof window !== "undefined") {
-            const storedToken = localStorage.getItem(AUTH_TOKEN_KEY);
+        // Try to load from storage if on client
+        const storage = authStorage();
+        if (storage) {
+            const storedToken = storage.getItem(AUTH_TOKEN_KEY);
             if (storedToken) {
                 this.token = storedToken;
                 this.tokenInitialized = true;
