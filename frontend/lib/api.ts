@@ -893,6 +893,34 @@ class ApiClient {
         });
     }
 
+    // Custom playlist cover image (issue #151). Uses raw fetch like
+    // importM3U -- FormData requires the browser-set Content-Type.
+    async uploadPlaylistCover(id: string, file: File): Promise<{ coverUrl: string }> {
+        const formData = new FormData();
+        formData.append("cover", file);
+
+        const response = await fetch(`${getApiBaseUrl()}/api/playlists/${id}/cover`, {
+            method: "POST",
+            headers: { Authorization: *** ${this.getToken()}` },
+            body: formData,
+        });
+
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            throw new Error(
+                (error as Record<string, string>).error || "Cover upload failed"
+            );
+        }
+
+        return response.json();
+    }
+
+    async removePlaylistCover(id: string): Promise<{ message: string }> {
+        return this.request<{ message: string }>(`/playlists/${id}/cover`, {
+            method: "DELETE",
+        });
+    }
+
     async addTrackToPlaylist(playlistId: string, trackId: string) {
         return this.request<ApiData>(`/playlists/${playlistId}/items`, {
             method: "POST",
@@ -1037,21 +1065,21 @@ class ApiClient {
     }
 
     // System Settings Tests
-    async testLidarr(url: string, apiKey: string) {
+    async testLidarr(url: string, apiKey: *** {
         return this.request<ServiceTestResult>("/system-settings/test-lidarr", {
             method: "POST",
             body: JSON.stringify({ url, apiKey }),
         });
     }
 
-    async testFanart(apiKey: string) {
+    async testFanart(apiKey: *** {
         return this.request<ServiceTestResult>("/system-settings/test-fanart", {
             method: "POST",
-            body: JSON.stringify({ fanartApiKey: apiKey }),
+            body: JSON.stringify({ fanartApiKey: *** }),
         });
     }
 
-    async testAudiobookshelf(url: string, apiKey: string) {
+    async testAudiobookshelf(url: string, apiKey: *** {
         return this.request<ServiceTestResult>("/system-settings/test-audiobookshelf", {
             method: "POST",
             body: JSON.stringify({ url, apiKey }),
@@ -1909,7 +1937,7 @@ class ApiClient {
 
     // API Keys Management
     async createApiKey(deviceName: string): Promise<{
-        apiKey: string;
+        apiKey: ***
         name: string;
         createdAt: string;
         message: string;
@@ -2111,7 +2139,7 @@ class ApiClient {
 
         const response = await fetch(`${getApiBaseUrl()}/api/spotify/import/m3u`, {
             method: "POST",
-            headers: { Authorization: `Bearer ${this.getToken()}` },
+            headers: { Authorization: *** ${this.getToken()}` },
             body: formData,
         });
 
