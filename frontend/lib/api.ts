@@ -901,7 +901,7 @@ class ApiClient {
 
         const response = await fetch(`${getApiBaseUrl()}/api/playlists/${id}/cover`, {
             method: "POST",
-            headers: { Authorization: *** ${this.getToken()}` },
+            headers: { Authorization: `Bearer ${this.getToken()}` },
             body: formData,
         });
 
@@ -1065,21 +1065,21 @@ class ApiClient {
     }
 
     // System Settings Tests
-    async testLidarr(url: string, apiKey: *** {
+    async testLidarr(url: string, apiKey: string) {
         return this.request<ServiceTestResult>("/system-settings/test-lidarr", {
             method: "POST",
             body: JSON.stringify({ url, apiKey }),
         });
     }
 
-    async testFanart(apiKey: *** {
+    async testFanart(apiKey: string) {
         return this.request<ServiceTestResult>("/system-settings/test-fanart", {
             method: "POST",
-            body: JSON.stringify({ fanartApiKey: *** }),
+            body: JSON.stringify({ fanartApiKey: apiKey }),
         });
     }
 
-    async testAudiobookshelf(url: string, apiKey: *** {
+    async testAudiobookshelf(url: string, apiKey: string) {
         return this.request<ServiceTestResult>("/system-settings/test-audiobookshelf", {
             method: "POST",
             body: JSON.stringify({ url, apiKey }),
@@ -1937,7 +1937,7 @@ class ApiClient {
 
     // API Keys Management
     async createApiKey(deviceName: string): Promise<{
-        apiKey: ***
+        apiKey: string;
         name: string;
         createdAt: string;
         message: string;
@@ -2139,7 +2139,7 @@ class ApiClient {
 
         const response = await fetch(`${getApiBaseUrl()}/api/spotify/import/m3u`, {
             method: "POST",
-            headers: { Authorization: *** ${this.getToken()}` },
+            headers: { Authorization: `Bearer ${this.getToken()}` },
             body: formData,
         });
 
