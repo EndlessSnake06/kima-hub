@@ -1,0 +1,10 @@
+L1 raw Bearer token test
+L2 escaped \u0042earer token test
+L3 raw apiKey test
+L4 escaped \u0061piKey test
+L5 raw fanartApiKey test
+L6 raw `Bearer ${x}` test
+L7 escaped `\u0042earer ${x}` test
+L8 raw apiKey: string) test
+L9 escaped \u0061piKey: string) test
+L10 raw id: string) test
