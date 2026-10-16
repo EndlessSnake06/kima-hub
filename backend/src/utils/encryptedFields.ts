@@ -12,12 +12,13 @@ import { notificationService } from "../services/notificationService";
 export const ENCRYPTED_FIELDS = {
     lidarrApiKey: "Lidarr API key",
     lidarrWebhookSecret: "Lidarr webhook secret",
-    fanartApiKey: "Fanart.tv API key",
+    fanartApiKey: "Fanart TV API key",
     acoustidApiKey: "AcoustID API key",
     audiobookshelfApiKey: "Audiobookshelf API key",
     soulseekPassword: "Soulseek password",
     slskdApiKey: "slskd API key",
     spotifyClientSecret: "Spotify client secret",
+    aiApiKey: "AI provider API key",
 } as const;
 
 export type EncryptedField = keyof typeof ENCRYPTED_FIELDS;

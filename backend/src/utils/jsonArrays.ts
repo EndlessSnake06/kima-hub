@@ -1,1 +1,23 @@
-LyoqCiAqIFRoZSBTeXN0ZW1TZXR0aW5ncyBKU09OLWFycmF5IGd1YXJkcmFpbHMgKGFpQmxvY2tlZEdlbnJlcyAvIGFpQmxvY2tlZEFydGlzdHMpCiAqIGFyZSBzdG9yZWQgYXMgcGxhaW4gVEVYVCBjb2x1bW5zIChwcmlzbWEgU3RyaW5nPykgYW5kIGNyb3NzIHRoZSBEQiBib3VuZGFyeQogKiBhcyBzdHJpbmdzLiBUaGVzZSB0d28gaGVscGVycyBhcmUgdGhlIHNpbmdsZSBwb2ludCB3aGVyZSB0aGV5IGFyZQogKiBzdHJpbmdpZmllZCAvIHBhcnNlZDsgZXZlcnkgY29uc3VtZXIgZGVhbHMgaW4gc3RyaW5nW10gb25seS4KICovCgpleHBvcnQgZnVuY3Rpb24gc3RyaW5naWZ5U3RyaW5nQXJyYXkodmFsdWVzOiBzdHJpbmdbXSB8IHVuZGVmaW5lZCk6IHN0cmluZyB7CiAgICBjb25zdCBjbGVhbmVkID0gKHZhbHVlcyA/PyBbXSkubWFwKCh2KSA9PiB2LnRyaW0oKSkuZmlsdGVyKCh2KSA9PiB2Lmxlbmd0aCA+IDApOwogICAgcmV0dXJuIEpTT04uc3RyaW5naWZ5KGNsZWFuZWQpOwp9CgpleHBvcnQgZnVuY3Rpb24gcGFyc2VTdHJpbmdBcnJheSh2YWx1ZTogdW5rbm93bik6IHN0cmluZ1tdIHsKICAgIGlmICh0eXBlb2YgdmFsdWUgIT09ICJzdHJpbmciIHx8IHZhbHVlLnRyaW0oKSA9PT0gIiIpIHJldHVybiBbXTsKICAgIHRyeSB7CiAgICAgICAgY29uc3QgcGFyc2VkOiB1bmtub3duID0gSlNPTi5wYXJzZSh2YWx1ZSk7CiAgICAgICAgcmV0dXJuIEFycmF5LmlzQXJyYXkocGFyc2VkKQogICAgICAgICAgICA/IHBhcnNlZC5maWx0ZXIoKHYpOiB2IGlzIHN0cmluZyA9PiB0eXBlb2YgdiA9PT0gInN0cmluZyIgJiYgdi5sZW5ndGggPiAwKQogICAgICAgICAgICA6IFtdOwogICAgfSBjYXRjaCB7CiAgICAgICAgcmV0dXJuIFtdOwogICAgfQp9Cg==
+/**
+ * The SystemSettings JSON-array guardrails (aiBlockedGenres / aiBlockedArtists)
+ * are stored as plain TEXT columns (prisma String?) and cross the DB boundary
+ * as strings. These two helpers are the single point where they are
+ * stringified / parsed; every consumer deals in string[] only.
+ */
+
+export function stringifyStringArray(values: string[] | undefined): string {
+    const cleaned = (values ?? []).map((v) => v.trim()).filter((v) => v.length > 0);
+    return JSON.stringify(cleaned);
+}
+
+export function parseStringArray(value: unknown): string[] {
+    if (typeof value !== "string" || value.trim() === "") return [];
+    try {
+        const parsed: unknown = JSON.parse(value);
+        return Array.isArray(parsed)
+            ? parsed.filter((v): v is string => typeof v === "string" && v.length > 0)
+            : [];
+    } catch {
+        return [];
+    }
+}
