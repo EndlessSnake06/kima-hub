@@ -136,7 +136,7 @@ export function useSystemSettings() {
                         username: systemSettings.soulseekUsername,
                         password: systemSettings.soulseekPassword,
                         slskdUrl: systemSettings.slskdUrl ?? undefined,
-                        slskdApiKey: system...iKey ?? undefined,
+                        slskdApiKey: systemSettings.slskdApiKey ?? undefined,
                     });
                     break;
                 case "ai": {
@@ -151,7 +151,7 @@ export function useSystemSettings() {
                                 : "openai_compatible",
                         apiBaseUrl: systemSettings.aiApiBaseUrl ?? undefined,
                         model: systemSettings.aiModel ?? undefined,
-                        apiKey: ***
+                        apiKey: aiKey,
                     });
                     break;
                 }
