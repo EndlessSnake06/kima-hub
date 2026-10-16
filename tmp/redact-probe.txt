@@ -1,0 +1,2 @@
+slskdApiKey: systemSettings.slskdApiKey ?? undefined,
+apiKey: aiKey,
