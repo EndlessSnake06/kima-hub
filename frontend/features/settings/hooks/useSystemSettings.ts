@@ -32,7 +32,7 @@ const defaultSystemSettings: SystemSettings = {
     lidarrMetadataProfileId: null,
     lidarrRemoveJunk: true,
     // Download preferences
-n    downloadSource: "soulseek",
+    downloadSource: "soulseek",
     primaryFailureFallback: "none",
     // AI playlist generation (#240, Manual Mode) — off by default. Values are
     // overwritten by the server once loaded; these only seed the pre-load
