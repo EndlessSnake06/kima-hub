@@ -12,7 +12,7 @@ import { notificationService } from "../services/notificationService";
 export const ENCRYPTED_FIELDS = {
     lidarrApiKey: "Lidarr API key",
     lidarrWebhookSecret: "Lidarr webhook secret",
-    fanartApiKey: "Fanart TV API key",
+    fanartApiKey: "Fanart.tv API key",
     acoustidApiKey: "AcoustID API key",
     audiobookshelfApiKey: "Audiobookshelf API key",
     soulseekPassword: "Soulseek password",
