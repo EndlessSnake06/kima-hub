@@ -302,7 +302,7 @@ model DownloadJob {
   discoveryBatchId String?
   artistMbid       String?
   cleared          Boolean         @default(false)
-  discoveryBatch   DiscoveryBatch? @relation(fields: [discoveryBatchId], references: [id])
+  discoveryBatch   DiscoveryBatch? @relation(fields: [discoveryBatchId], references: [id], onDelete: Cascade)
   user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([artistMbid])
@@ -520,7 +520,7 @@ model Podcast {
   description      String?
   imageUrl         String?
   localCoverPath   String?
-  itunesId         String?                  @unique
+  itunesId         Int?                  @unique
   language         String?
   explicit         Boolean                  @default(false)
   episodeCount     Int                      @default(0)
@@ -698,6 +698,22 @@ model SystemSettings {
   soulseekMode                String?  @default("p2p")
   slskdUrl                    String?
   slskdApiKey                 String?
+  // AI-assisted playlist generation (opt-in, off by default). The provider is
+  // any OpenAI-compatible chat endpoint (OpenAI or local: Ollama, LM Studio,
+  // vLLM). aiApiKey is stored encrypted (ENCRYPTED_FIELDS in
+  // utils/encryptedFields.ts); the JSON arrays are global guardrails applied
+  // to every generation. See routes/aiPlaylists.ts and PRIVACY.md.
+  aiPlaylistEnabled           Boolean  @default(false)
+  aiProvider                  String   @default("openai")
+  aiApiBaseUrl                String?
+  aiModel                     String?
+  aiApiKey                    String?
+  /// Global guardrail: max tracks a single AI generation may add.
+  aiMaxPlaylistSize           Int      @default(100)
+  /// JSON array of genre names excluded from every AI generation (guardrail).
+  aiBlockedGenres             String?
+  /// JSON array of artist names excluded from every AI generation (guardrail).
+  aiBlockedArtists            String?
 }
 
 model Track {
