@@ -302,7 +302,7 @@ model DownloadJob {
   discoveryBatchId String?
   artistMbid       String?
   cleared          Boolean         @default(false)
-  discoveryBatch   DiscoveryBatch? @relation(fields: [discoveryBatchId], references: [id], onDelete: Cascade)
+  discoveryBatch   DiscoveryBatch? @relation(fields: [discoveryBatchId], references: [id])
   user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([artistMbid])
@@ -520,7 +520,7 @@ model Podcast {
   description      String?
   imageUrl         String?
   localCoverPath   String?
-  itunesId         Int?                  @unique
+  itunesId         String?                  @unique
   language         String?
   explicit         Boolean                  @default(false)
   episodeCount     Int                      @default(0)
