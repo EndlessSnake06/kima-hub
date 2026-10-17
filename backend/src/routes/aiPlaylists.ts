@@ -1,5 +1,5 @@
 /**
- * POST /api/playlists/ai-generate — AI-assisted playlist generation, Manual Mode
+ * POST /api/ai-playlists/generate — AI-assisted playlist generation, Manual Mode
  * (#240, PR 1/3).
  *
  * The LLM's only job is translating a free-text prompt into explicit selection
@@ -209,7 +209,18 @@ router.post("/generate", async (req, res) => {
         if (error instanceof UserFacingError) {
             return res.status(error.statusCode).json({ error: error.message });
         }
-        safeError(res, "POST /api/playlists/ai-generate", error);
+        // Provider-level failures (bad key, endpoint down, timeout, empty
+        // completion) are upstream problems — 502 with a generic message,
+        // without echoing the provider's response body to the client.
+        if (error instanceof Error && error.message.startsWith("AI provider")) {
+            return res
+                .status(502)
+                .json({
+                    error:
+                        "The AI provider rejected or failed the request. Check the AI provider settings in the system settings.",
+                });
+        }
+        safeError(res, "POST /api/ai-playlists/generate", error);
     }
 });
 

@@ -143,7 +143,7 @@ export class OpenAICompatibleProvider implements AIProvider {
             choices?: { message?: { content?: string } }[];
         };
         const content = data.choices?.[0]?.message?.content;
-        if (!content) throw new Error("The AI provider returned an empty completion");
+        if (!content) throw new Error("AI provider returned an empty completion");
         return content;
     }
 

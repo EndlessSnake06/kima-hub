@@ -106,8 +106,10 @@ export async function resolveVibeQuery(
         ? Prisma.sql`AND ${d2} <= ${query.feelTolerance * query.feelTolerance}::float8`
         : Prisma.sql``;
     const scoreExpr = hasFeel ? Prisma.sql`EXP(-c.d2 / 2.0)` : Prisma.sql`1.0::float8`;
+    // Order by the score expression itself: `score` is only an alias of the
+    // outer SELECT and cannot be referenced through the CTE alias (`c`).
     const orderExpr = hasFeel
-        ? Prisma.sql`c.score DESC, c.id ASC`
+        ? Prisma.sql`${scoreExpr} DESC, c.id ASC`
         : Prisma.sql`c."year" DESC NULLS LAST, c.id ASC`;
 
     // Era bounds. Note: tracks without a release year are excluded whenever an
